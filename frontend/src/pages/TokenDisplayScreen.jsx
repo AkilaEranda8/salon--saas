@@ -48,7 +48,7 @@ const fmtTime = (t) => {
 const initials = (n) => (n || '?').split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase();
 
 export default function TokenDisplayScreen() {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const branchId = searchParams.get('branchId') || '1';
 
   const [queue, setQueue]       = useState([]);
@@ -56,7 +56,15 @@ export default function TokenDisplayScreen() {
   const [clock, setClock]       = useState(new Date());
   const [connected, setConnected] = useState(false);
   const [flashKey, setFlashKey] = useState(0);
+  const [branches, setBranches] = useState([]);
   const prevServingRef          = useRef(null);
+
+  // ── Fetch branches ─────────────────────────────────────────────────
+  useEffect(() => {
+    publicApi.get('/public/branches').then((r) => setBranches(r.data || [])).catch(() => {});
+  }, []);
+
+  const currentBranch = branches.find((b) => String(b.id) === String(branchId));
 
   // ── Clock ──────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -130,6 +138,31 @@ export default function TokenDisplayScreen() {
             Zane Salon
           </span>
           <span style={{ fontSize: 13, color: C.muted, fontWeight: 500 }}>Queue Display</span>
+          {branches.length > 1 && (
+            <select
+              value={branchId}
+              onChange={(e) => setSearchParams({ branchId: e.target.value })}
+              style={{
+                marginLeft: 8, padding: '4px 10px', borderRadius: 8,
+                background: C.card, color: C.text, border: `1px solid ${C.border}`,
+                fontSize: 13, fontWeight: 600, cursor: 'pointer', outline: 'none',
+                fontFamily: 'inherit',
+              }}
+            >
+              {branches.map((b) => (
+                <option key={b.id} value={b.id}>{b.name}</option>
+              ))}
+            </select>
+          )}
+          {branches.length <= 1 && currentBranch && (
+            <span style={{
+              marginLeft: 8, padding: '3px 12px', borderRadius: 8,
+              background: C.card, border: `1px solid ${C.border}`,
+              fontSize: 13, fontWeight: 600, color: C.blue,
+            }}>
+              {currentBranch.name}
+            </span>
+          )}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
           <span style={{ fontFamily: 'monospace', fontSize: 28, fontWeight: 700, letterSpacing: 2, color: C.text }}>

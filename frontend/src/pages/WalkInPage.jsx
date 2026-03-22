@@ -144,7 +144,7 @@ export default function WalkInPage() {
       <span style={{ fontFamily: 'monospace', fontSize: 15, fontWeight: 700, color: DARK, letterSpacing: 1 }}>
         {clock.toLocaleTimeString()}
       </span>
-      <Button variant="ghost" size="sm" onClick={() => window.open('/token-display', '_blank')}>
+      <Button variant="ghost" size="sm" onClick={() => window.open(`/token-display?branchId=${selectedBranch}`, '_blank')}>
         Token Display
       </Button>
       <Button size="sm" onClick={() => { setFormError(''); setForm({ ...EMPTY_FORM, branchId: selectedBranch }); setShowCheckin(true); }}>

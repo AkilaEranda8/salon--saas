@@ -44,10 +44,10 @@ async function seedData() {
 
   // ── Staff ───────────────────────────────────────────────────────────────────
   const staffData = [
-    { name: 'Ahmed Khan',   phone: '0321-1111111', role_title: 'Senior Stylist',    branch_id: branch1.id, commission_type: 'percent', commission_value: 15, join_date: '2023-01-10', is_active: true },
-    { name: 'Sara Ali',     phone: '0321-2222222', role_title: 'Hair Colorist',     branch_id: branch1.id, commission_type: 'percent', commission_value: 12, join_date: '2023-03-15', is_active: true },
-    { name: 'Fatima Noor',  phone: '0321-3333333', role_title: 'Makeup Artist',     branch_id: branch2.id, commission_type: 'fixed',   commission_value: 500, join_date: '2023-06-01', is_active: true },
-    { name: 'Bilal Shah',   phone: '0321-4444444', role_title: 'Junior Stylist',    branch_id: branch3.id, commission_type: 'percent', commission_value: 10, join_date: '2024-01-20', is_active: true },
+    { name: 'Ahmed Khan',   phone: '0321-1111111', role_title: 'Senior Stylist',    branch_id: branch1.id, commission_type: 'percentage', commission_value: 15, join_date: '2023-01-10', is_active: true },
+    { name: 'Sara Ali',     phone: '0321-2222222', role_title: 'Hair Colorist',     branch_id: branch1.id, commission_type: 'percentage', commission_value: 12, join_date: '2023-03-15', is_active: true },
+    { name: 'Fatima Noor',  phone: '0321-3333333', role_title: 'Makeup Artist',     branch_id: branch2.id, commission_type: 'fixed',      commission_value: 500, join_date: '2023-06-01', is_active: true },
+    { name: 'Bilal Shah',   phone: '0321-4444444', role_title: 'Junior Stylist',    branch_id: branch3.id, commission_type: 'percentage', commission_value: 10, join_date: '2024-01-20', is_active: true },
   ];
   const staffMembers = [];
   for (const s of staffData) {

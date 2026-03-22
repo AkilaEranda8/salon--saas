@@ -1,15 +1,35 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { colors } from '../components/shared/theme';
-import { ErrorMessage } from '../components/shared/Feedback';
+
+/* ── Palette ── */
+const P = {
+  bg:      '#0b0e13',
+  card:    '#13161d',
+  surface: '#1a1e27',
+  border:  '#252a35',
+  gold:    '#c9a96e',
+  goldDim: '#9a7d4e',
+  text:    '#f1f0ec',
+  muted:   '#7c8190',
+  danger:  '#ef4444',
+  white:   '#ffffff',
+};
 
 const DEMO_ACCOUNTS = [
-  { label: 'Super Admin', username: 'superadmin', password: 'admin123', color: '#ef4444' },
-  { label: 'Admin',       username: 'admin',      password: 'admin123', color: '#f97316' },
-  { label: 'Manager',     username: 'manager1',   password: 'manager123', color: '#3b82f6' },
-  { label: 'Staff',       username: 'staff1',     password: 'staff123',   color: '#10b981' },
+  { label: 'Super Admin', username: 'superadmin', password: 'admin123', icon: '👑' },
+  { label: 'Admin',       username: 'admin',      password: 'admin123', icon: '🛡' },
+  { label: 'Manager',     username: 'manager1',   password: 'manager123', icon: '📋' },
+  { label: 'Staff',       username: 'staff1',     password: 'staff123',   icon: '✂️' },
 ];
+
+/* ── Keyframes ── */
+const ANIMS = `
+@keyframes fadeUp { from { opacity:0; transform:translateY(24px); } to { opacity:1; transform:translateY(0); } }
+@keyframes shimmer { 0% { background-position:-200% 0; } 100% { background-position:200% 0; } }
+@keyframes float { 0%,100% { transform:translateY(0); } 50% { transform:translateY(-6px); } }
+@keyframes pulse-ring { 0% { box-shadow:0 0 0 0 rgba(201,169,110,.45); } 70% { box-shadow:0 0 0 12px rgba(201,169,110,0); } 100% { box-shadow:0 0 0 0 rgba(201,169,110,0); } }
+`;
 
 export default function LoginPage() {
   const { login } = useAuth();
@@ -19,6 +39,9 @@ export default function LoginPage() {
   const [showPw,  setShowPw]  = useState(false);
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState('');
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => { setMounted(true); }, []);
 
   const handleChange = (e) => {
     setForm((p) => ({ ...p, [e.target.name]: e.target.value }));
@@ -39,108 +62,220 @@ export default function LoginPage() {
     }
   };
 
-  const inputStyle = {
-    width: '100%', padding: '10px 14px', borderRadius: 10,
-    border: `1.5px solid ${colors.border}`, fontSize: 15,
-    color: colors.dark, background: colors.white, outline: 'none',
-    boxSizing: 'border-box', fontFamily: 'inherit',
+  const inputBase = {
+    width: '100%', padding: '13px 16px', borderRadius: 12, fontSize: 15,
+    color: P.text, background: P.surface, outline: 'none',
+    border: `1.5px solid ${P.border}`, boxSizing: 'border-box',
+    fontFamily: "'DM Sans', sans-serif", transition: 'border-color .2s, box-shadow .2s',
   };
 
   return (
     <div style={{
-      minHeight: '100vh', background: 'linear-gradient(135deg, #f0f4ff 0%, #f8faff 50%, #f5f0ff 100%)',
+      minHeight: '100vh',
+      background: `radial-gradient(ellipse 80% 60% at 50% -10%, #1a1510 0%, ${P.bg} 70%)`,
       display: 'flex', alignItems: 'center', justifyContent: 'center',
-      padding: '1rem', fontFamily: "'DM Sans', sans-serif",
+      padding: '1rem', fontFamily: "'DM Sans', sans-serif", position: 'relative', overflow: 'hidden',
     }}>
-      <div style={{ width: '100%', maxWidth: 420 }}>
-        {/* ── Logo ── */}
-        <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
+      <style>{ANIMS}</style>
+
+      {/* ── Decorative elements ── */}
+      <div style={{ position:'absolute', top:'-15%', left:'-10%', width:420, height:420, borderRadius:'50%', background:'radial-gradient(circle, rgba(201,169,110,.06) 0%, transparent 70%)', pointerEvents:'none' }} />
+      <div style={{ position:'absolute', bottom:'-20%', right:'-10%', width:500, height:500, borderRadius:'50%', background:'radial-gradient(circle, rgba(201,169,110,.04) 0%, transparent 70%)', pointerEvents:'none' }} />
+
+      <div style={{
+        width: '100%', maxWidth: 440,
+        animation: mounted ? 'fadeUp .7s ease-out both' : 'none',
+      }}>
+        {/* ── Brand ── */}
+        <div style={{ textAlign: 'center', marginBottom: 36 }}>
           <div style={{
             display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-            width: 64, height: 64, borderRadius: 18,
-            background: `linear-gradient(135deg, ${colors.primary}, ${colors.accent})`,
-            fontSize: 28, marginBottom: 12, boxShadow: '0 8px 24px rgba(99,102,241,0.3)',
-          }}>✂️</div>
+            width: 72, height: 72, borderRadius: 22,
+            background: `linear-gradient(145deg, ${P.gold}, ${P.goldDim})`,
+            fontSize: 32, marginBottom: 16,
+            boxShadow: `0 12px 36px rgba(201,169,110,.25)`,
+            animation: 'float 4s ease-in-out infinite',
+          }}>
+            <span role="img" aria-label="scissors">✂️</span>
+          </div>
           <h1 style={{
             fontFamily: "'Cormorant Garamond', serif",
-            fontSize: 36, fontWeight: 700, color: colors.dark,
-            margin: 0, letterSpacing: 1,
-          }}>Zane Salon</h1>
-          <p style={{ color: colors.muted, margin: '6px 0 0', fontSize: 14 }}>Salon Management System</p>
+            fontSize: 42, fontWeight: 700, color: P.text,
+            margin: 0, letterSpacing: 2,
+          }}>
+            ZANE <span style={{ color: P.gold }}>SALON</span>
+          </h1>
+          <p style={{
+            color: P.muted, margin: '8px 0 0', fontSize: 13,
+            letterSpacing: 4, textTransform: 'uppercase', fontWeight: 500,
+          }}>Management Suite</p>
         </div>
 
         {/* ── Card ── */}
         <div style={{
-          background: colors.white, borderRadius: 20,
-          boxShadow: '0 8px 40px rgba(0,0,0,0.10)',
-          padding: '2rem',
+          background: P.card, borderRadius: 24,
+          border: `1px solid ${P.border}`,
+          boxShadow: '0 20px 60px rgba(0,0,0,.35), 0 1px 0 rgba(201,169,110,.08) inset',
+          padding: '2.25rem 2rem 2rem',
+          backdropFilter: 'blur(20px)',
         }}>
-          <h2 style={{ margin: '0 0 1.5rem', fontSize: 20, fontWeight: 700, color: colors.dark }}>Sign In</h2>
+          {/* Header */}
+          <div style={{ marginBottom: 28 }}>
+            <h2 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: P.text }}>
+              Welcome back
+            </h2>
+            <p style={{ margin: '6px 0 0', fontSize: 14, color: P.muted }}>
+              Sign in to your account
+            </p>
+          </div>
 
-          {error && <div style={{ marginBottom: '1rem' }}><ErrorMessage message={error} /></div>}
+          {/* Error */}
+          {error && (
+            <div style={{
+              padding: '10px 14px', borderRadius: 12, marginBottom: 18,
+              background: 'rgba(239,68,68,.1)', border: '1px solid rgba(239,68,68,.2)',
+              display: 'flex', alignItems: 'center', gap: 8,
+            }}>
+              <span style={{ fontSize: 16 }}>⚠️</span>
+              <span style={{ fontSize: 13, fontWeight: 500, color: '#fca5a5' }}>{error}</span>
+            </div>
+          )}
 
           <form onSubmit={handleSubmit}>
-            <div style={{ marginBottom: '1rem' }}>
-              <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: colors.muted, marginBottom: 6 }}>Username</label>
-              <input name="username" value={form.username} onChange={handleChange}
-                placeholder="Enter username" autoFocus
-                style={inputStyle} required />
+            {/* Username */}
+            <div style={{ marginBottom: 18 }}>
+              <label style={{
+                display: 'block', fontSize: 12, fontWeight: 600,
+                color: P.muted, marginBottom: 8, textTransform: 'uppercase', letterSpacing: 1,
+              }}>Username</label>
+              <div style={{ position: 'relative' }}>
+                <span style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', fontSize: 16, color: P.muted, pointerEvents: 'none' }}>
+                  👤
+                </span>
+                <input name="username" value={form.username} onChange={handleChange}
+                  placeholder="Enter your username" autoFocus autoComplete="username"
+                  style={{ ...inputBase, paddingLeft: 42 }}
+                  onFocus={(e) => { e.target.style.borderColor = P.gold; e.target.style.boxShadow = `0 0 0 3px rgba(201,169,110,.15)`; }}
+                  onBlur={(e) => { e.target.style.borderColor = P.border; e.target.style.boxShadow = 'none'; }}
+                  required />
+              </div>
             </div>
 
-            <div style={{ marginBottom: '1.5rem' }}>
-              <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: colors.muted, marginBottom: 6 }}>Password</label>
+            {/* Password */}
+            <div style={{ marginBottom: 26 }}>
+              <label style={{
+                display: 'block', fontSize: 12, fontWeight: 600,
+                color: P.muted, marginBottom: 8, textTransform: 'uppercase', letterSpacing: 1,
+              }}>Password</label>
               <div style={{ position: 'relative' }}>
+                <span style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', fontSize: 16, color: P.muted, pointerEvents: 'none' }}>
+                  🔒
+                </span>
                 <input name="password" value={form.password} onChange={handleChange}
-                  type={showPw ? 'text' : 'password'} placeholder="Enter password"
-                  style={{ ...inputStyle, paddingRight: 44 }} required />
+                  type={showPw ? 'text' : 'password'} placeholder="Enter your password"
+                  autoComplete="current-password"
+                  style={{ ...inputBase, paddingLeft: 42, paddingRight: 46 }}
+                  onFocus={(e) => { e.target.style.borderColor = P.gold; e.target.style.boxShadow = `0 0 0 3px rgba(201,169,110,.15)`; }}
+                  onBlur={(e) => { e.target.style.borderColor = P.border; e.target.style.boxShadow = 'none'; }}
+                  required />
                 <button type="button" onClick={() => setShowPw(!showPw)}
                   style={{
                     position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)',
-                    background: 'none', border: 'none', cursor: 'pointer', color: colors.muted, fontSize: 16,
+                    background: 'none', border: 'none', cursor: 'pointer', fontSize: 16,
+                    color: P.muted, padding: 2, lineHeight: 1,
                   }}>
                   {showPw ? '🙈' : '👁'}
                 </button>
               </div>
             </div>
 
+            {/* Submit */}
             <button type="submit" disabled={loading}
               style={{
-                width: '100%', padding: '12px', borderRadius: 10, border: 'none',
-                background: loading ? colors.border : `linear-gradient(135deg, ${colors.primary}, ${colors.accent})`,
-                color: loading ? colors.muted : '#fff', fontSize: 15, fontWeight: 700,
-                cursor: loading ? 'not-allowed' : 'pointer', transition: 'all .2s',
+                width: '100%', padding: '14px', borderRadius: 14, border: 'none',
+                background: loading
+                  ? P.surface
+                  : `linear-gradient(135deg, ${P.gold}, ${P.goldDim})`,
+                color: loading ? P.muted : '#0b0e13',
+                fontSize: 15, fontWeight: 700, letterSpacing: .5,
+                cursor: loading ? 'not-allowed' : 'pointer',
+                transition: 'all .25s',
                 fontFamily: 'inherit',
-              }}>
-              {loading ? 'Signing in…' : 'Sign In'}
+                boxShadow: loading ? 'none' : '0 6px 24px rgba(201,169,110,.3)',
+                ...(loading ? {} : { animation: 'pulse-ring 2s ease-out infinite' }),
+              }}
+              onMouseEnter={(e) => { if(!loading) e.target.style.transform = 'translateY(-1px)'; }}
+              onMouseLeave={(e) => { e.target.style.transform = 'translateY(0)'; }}
+            >
+              {loading ? (
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{
+                    width: 16, height: 16, border: `2px solid ${P.muted}`,
+                    borderTopColor: 'transparent', borderRadius: '50%',
+                    display: 'inline-block', animation: 'spin .8s linear infinite',
+                  }} />
+                  Signing in…
+                </span>
+              ) : 'Sign In'}
             </button>
           </form>
         </div>
 
-        {/* ── Demo accounts ── */}
+        {/* ── Demo Accounts ── */}
         <div style={{
-          background: colors.white, borderRadius: 16,
-          boxShadow: '0 4px 20px rgba(0,0,0,0.06)',
-          padding: '1.25rem', marginTop: '1rem',
+          marginTop: 18, padding: '18px 20px', borderRadius: 18,
+          background: P.card, border: `1px solid ${P.border}`,
+          animation: mounted ? 'fadeUp .7s ease-out .15s both' : 'none',
         }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: colors.muted, marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-            Demo Accounts — click to fill
+          <div style={{
+            fontSize: 11, fontWeight: 600, color: P.muted,
+            textTransform: 'uppercase', letterSpacing: 2, marginBottom: 12,
+          }}>
+            Quick Access
           </div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
             {DEMO_ACCOUNTS.map((a) => (
-              <button key={a.username}
-                type="button"
+              <button key={a.username} type="button"
                 onClick={() => { setForm({ username: a.username, password: a.password }); setError(''); }}
                 style={{
-                  padding: '5px 12px', borderRadius: 8, border: `1.5px solid ${a.color}20`,
-                  background: a.color + '12', color: a.color, fontWeight: 600, fontSize: 12,
-                  cursor: 'pointer', fontFamily: 'inherit', transition: 'all .15s',
-                }}>
-                {a.label}
+                  display: 'flex', alignItems: 'center', gap: 10,
+                  padding: '10px 14px', borderRadius: 12,
+                  background: P.surface, border: `1px solid ${P.border}`,
+                  color: P.text, cursor: 'pointer', fontFamily: 'inherit',
+                  transition: 'all .2s', textAlign: 'left',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.borderColor = P.gold + '55';
+                  e.currentTarget.style.background = P.border;
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.borderColor = P.border;
+                  e.currentTarget.style.background = P.surface;
+                }}
+              >
+                <span style={{ fontSize: 18, lineHeight: 1 }}>{a.icon}</span>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 600 }}>{a.label}</div>
+                  <div style={{ fontSize: 11, color: P.muted, marginTop: 1 }}>{a.username}</div>
+                </div>
               </button>
             ))}
           </div>
         </div>
+
+        {/* ── Footer ── */}
+        <div style={{
+          textAlign: 'center', marginTop: 28, fontSize: 12, color: P.muted,
+          animation: mounted ? 'fadeUp .7s ease-out .3s both' : 'none',
+        }}>
+          <span style={{ letterSpacing: 1 }}>ZANE SALON</span>
+          <span style={{ margin: '0 8px', opacity: .3 }}>·</span>
+          <span>Management Suite</span>
+        </div>
       </div>
+
+      {/* Spinner keyframe (for loading state) */}
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   );
 }

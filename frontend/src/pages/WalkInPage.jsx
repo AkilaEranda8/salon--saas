@@ -168,7 +168,11 @@ export default function WalkInPage() {
   const STATUS_ORDER = { waiting: 0, serving: 1, completed: 2, cancelled: 3 };
   const filteredQueue = (filterStatus === 'all' ? queue : queue.filter((e) => e.status === filterStatus))
     .slice()
-    .sort((a, b) => (STATUS_ORDER[a.status] ?? 9) - (STATUS_ORDER[b.status] ?? 9));
+    .sort((a, b) => {
+      const statusDiff = (STATUS_ORDER[a.status] ?? 9) - (STATUS_ORDER[b.status] ?? 9);
+      if (statusDiff !== 0) return statusDiff;
+      return b.id - a.id; // newest first within same status
+    });
 
   /*  Actions  */
   const changeStatus = async (id, status) => {

@@ -387,8 +387,13 @@ export default function PaymentsPage() {
           { accessorKey:'commission_amount', header:'Commission', meta:{ width:'12%', align:'right' },
             cell: ({ getValue }) => <span style={{ fontWeight:800, color:'#D97706', fontFamily:"'Outfit',sans-serif", fontSize:15 }}>Rs. {Number(getValue()||0).toLocaleString()}</span>
           },
-          { id:'invoice', header:'Invoice', meta:{ width:'10%', align:'center' },
-            cell: ({ row }) => <ActionBtn onClick={() => { setInvoiceItem(row.original); setShowInvoice(true); }} title="View Invoice" color="#2563EB"><IconEye /></ActionBtn>
+          { id:'invoice', header:'Actions', meta:{ width:'12%', align:'center' },
+            cell: ({ row }) => (
+              <div style={{ display:'flex', gap:4, justifyContent:'center' }}>
+                <ActionBtn onClick={() => { setInvoiceItem(row.original); setShowInvoice(true); }} title="View Receipt" color="#2563EB"><IconEye /></ActionBtn>
+                <ActionBtn onClick={() => printReceipt(row.original)} title="Print Receipt" color="#059669"><PrintIcon /></ActionBtn>
+              </div>
+            )
           },
         ]}
         data={displayed}

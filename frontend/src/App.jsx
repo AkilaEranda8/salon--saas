@@ -120,7 +120,7 @@ function AppShell() {
             {/* ── TEAM ────────────────────────────────────── */}
             <Route path="/staff"        element={<StaffPage />} />
             <Route path="/commission"   element={
-              <RoleRoute roles={['superadmin', 'admin', 'manager']}>
+              <RoleRoute roles={['superadmin', 'admin', 'manager', 'staff']}>
                 <CommissionPage />
               </RoleRoute>
             } />

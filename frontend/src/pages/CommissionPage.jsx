@@ -14,7 +14,7 @@ const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov
 
 export default function CommissionPage() {
   const { user } = useAuth();
-  const isAdminRole = ['superadmin','admin'].includes(user?.role);
+  const isAdminRole = ['superadmin','admin','manager','staff'].includes(user?.role);
   const now = new Date();
   const [month, setMonth]   = useState(now.getMonth() + 1);
   const [year, setYear]     = useState(now.getFullYear());

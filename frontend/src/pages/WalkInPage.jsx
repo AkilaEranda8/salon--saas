@@ -510,17 +510,17 @@ export default function WalkInPage() {
                   onFocus={(e) => { e.target.style.borderColor = '#6366f1'; setShowCustDrop(true); }}
                   onBlur={(e) => { e.target.style.borderColor = '#D0D5DD'; setTimeout(() => setShowCustDrop(false), 200); }}
                   style={{
-                    width: '100%', padding: '9px 38px 9px 12px', borderRadius: 10,
+                    width: '100%', padding: '9px 12px', borderRadius: 10,
                     border: '1.5px solid #D0D5DD', fontSize: 14, fontFamily: 'inherit',
                     background: '#FAFAFA', color: DARK, outline: 'none', boxSizing: 'border-box',
                   }}
                 />
-                <span style={{
-                  position: 'absolute', right: 11, top: '50%', transform: 'translateY(-50%)',
-                  fontSize: 15, color: '#94A3B8', pointerEvents: 'none',
-                }}>
-                  {custLoading ? '⏳' : '🔍'}
-                </span>
+                {custLoading && (
+                  <span style={{
+                    position: 'absolute', right: 11, top: '50%', transform: 'translateY(-50%)',
+                    fontSize: 15, color: '#94A3B8', pointerEvents: 'none',
+                  }}>⏳</span>
+                )}
               </div>
 
               {/* DROPDOWN */}

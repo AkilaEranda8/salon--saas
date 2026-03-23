@@ -303,43 +303,70 @@ export default function PaymentsPage() {
 
       {/* Record Payment Modal */}
       <Modal open={showForm} onClose={() => setShowForm(false)} title="Record Payment" size="md"
-        footer={<><Button variant="secondary" onClick={() => setShowForm(false)}>Cancel</Button>
-          <Button variant="primary" loading={saving} onClick={handleSave}>Record Payment</Button></>}>
-        {formErr && <div style={{ background:'#FEF2F2', color:'#DC2626', padding:'9px 13px', borderRadius:9, marginBottom:14, fontSize:13, border:'1px solid #FEE2E2' }}>{formErr}</div>}
-        <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
-          {(isAdmin && !hasFixedBranch) && (
-            <FormGroup label="Branch">
-              <Select value={form.branch_id||''} onChange={e => setForm(f=>({...f, branch_id:e.target.value, staff_id:''}))}>
-                <option value="">Select branch</option>
-                {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-              </Select>
-            </FormGroup>
-          )}
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
-            <FormGroup label="Customer">
-              <Select value={form.customer_id||''} onChange={e => {
-                const cid = e.target.value;
-                setForm(f=>({...f, customer_id:cid}));
-                setCustPackages([]);
-                if (cid) {
-                  setLoadingPkgs(true);
-                  api.get(`/packages/customer/${cid}/active`).then(r => {
-                    setCustPackages(Array.isArray(r.data) ? r.data : []);
-                  }).catch(() => {}).finally(() => setLoadingPkgs(false));
-                }
-              }}>
-                <option value="">Walk-in / select</option>
-                {customers.map(c => <option key={c.id} value={c.id}>{c.name} ({c.phone})</option>)}
-              </Select>
-            </FormGroup>
-            <FormGroup label="Staff">
-              <Select value={form.staff_id||''} onChange={e => setForm(f=>({...f, staff_id:e.target.value}))}>
-                <option value="">Select staff</option>
-                {(form.branch_id ? staffList.filter(s => s.branch_id == form.branch_id) : staffList).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-              </Select>
-            </FormGroup>
+        footer={
+          <div style={{ display:'flex', gap:10, justifyContent:'flex-end', width:'100%' }}>
+            <Button variant="secondary" onClick={() => setShowForm(false)}>Cancel</Button>
+            <Button variant="primary" loading={saving} onClick={handleSave}>
+              <span style={{ display:'flex', alignItems:'center', gap:6 }}>
+                <IconDollar />Record Payment
+              </span>
+            </Button>
           </div>
-          <FormGroup label="Services" required>
+        }>
+        {formErr && (
+          <div style={{ background:'#FEF2F2', color:'#B91C1C', padding:'10px 14px', borderRadius:10, marginBottom:16, fontSize:13, border:'1px solid #FECACA', display:'flex', alignItems:'center', gap:8 }}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            {formErr}
+          </div>
+        )}
+        <div style={{ display:'flex', flexDirection:'column', gap:0 }}>
+
+          {/* ── Section: Who ── */}
+          <div style={{ background:'#F8FAFC', borderRadius:12, border:'1px solid #EAECF0', padding:'14px 16px', marginBottom:12 }}>
+            <div style={{ fontSize:11, fontWeight:700, color:'#667085', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:12, display:'flex', alignItems:'center', gap:6 }}>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+              Customer & Staff
+            </div>
+            {(isAdmin && !hasFixedBranch) && (
+              <FormGroup label="Branch" style={{ marginBottom:10 }}>
+                <Select value={form.branch_id||''} onChange={e => setForm(f=>({...f, branch_id:e.target.value, staff_id:''}))}>
+                  <option value="">Select branch</option>
+                  {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                </Select>
+              </FormGroup>
+            )}
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+              <FormGroup label="Customer">
+                <Select value={form.customer_id||''} onChange={e => {
+                  const cid = e.target.value;
+                  setForm(f=>({...f, customer_id:cid}));
+                  setCustPackages([]);
+                  if (cid) {
+                    setLoadingPkgs(true);
+                    api.get(`/packages/customer/${cid}/active`).then(r => {
+                      setCustPackages(Array.isArray(r.data) ? r.data : []);
+                    }).catch(() => {}).finally(() => setLoadingPkgs(false));
+                  }
+                }}>
+                  <option value="">Walk-in / select</option>
+                  {customers.map(c => <option key={c.id} value={c.id}>{c.name} ({c.phone})</option>)}
+                </Select>
+              </FormGroup>
+              <FormGroup label="Staff">
+                <Select value={form.staff_id||''} onChange={e => setForm(f=>({...f, staff_id:e.target.value}))}>
+                  <option value="">Select staff</option>
+                  {(form.branch_id ? staffList.filter(s => s.branch_id == form.branch_id) : staffList).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                </Select>
+              </FormGroup>
+            </div>
+          </div>
+
+          {/* ── Section: Services ── */}
+          <div style={{ background:'#F8FAFC', borderRadius:12, border:'1px solid #EAECF0', padding:'14px 16px', marginBottom:12 }}>
+            <div style={{ fontSize:11, fontWeight:700, color:'#667085', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:12, display:'flex', alignItems:'center', gap:6 }}>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+              Services <span style={{ color:'#EF4444', marginLeft:2 }}>*</span>
+            </div>
             <ServiceMultiSelect
               services={services.filter(s => s.is_active !== false)}
               selected={form.service_ids}
@@ -357,71 +384,115 @@ export default function PaymentsPage() {
               }}
             />
             {form.service_ids.length > 0 && (
-              <div style={{ marginTop:6, display:'flex', gap:6, flexWrap:'wrap' }}>
+              <div style={{ marginTop:10, display:'flex', gap:6, flexWrap:'wrap' }}>
                 {services.filter(s => form.service_ids.includes(s.id)).map(s => (
-                  <span key={s.id} style={{ fontSize:11, color:'#475467', background:'#F8FAFC', border:'1px solid #E4E7EC', padding:'2px 8px', borderRadius:6 }}>
-                    {s.name} — Rs. {Number(s.price||0).toLocaleString()}
+                  <span key={s.id} style={{ fontSize:11, color:'#344054', background:'#fff', border:'1px solid #D0D5DD', padding:'3px 10px', borderRadius:20, fontWeight:500 }}>
+                    {s.name} <span style={{ color:'#667085' }}>Rs. {Number(s.price||0).toLocaleString()}</span>
                   </span>
                 ))}
                 {form.service_ids.length > 1 && (
-                  <span style={{ fontSize:11, fontWeight:700, color:'#059669', background:'#ECFDF5', border:'1px solid #A7F3D0', padding:'2px 8px', borderRadius:6 }}>
+                  <span style={{ fontSize:11, fontWeight:700, color:'#065F46', background:'#ECFDF5', border:'1px solid #6EE7B7', padding:'3px 10px', borderRadius:20 }}>
                     Total: Rs. {services.filter(s => form.service_ids.includes(s.id)).reduce((sum, s) => sum + Number(s.price||0), 0).toLocaleString()}
                   </span>
                 )}
               </div>
             )}
-          </FormGroup>
-          <FormGroup label="Total Amount (Rs.)" required>
-            <Input type="number" value={form.total_amount||''} onChange={e => setForm(f=>({...f, total_amount:e.target.value}))} />
-          </FormGroup>
-          <FormGroup label="Loyalty Discount (Rs.)">
-            <Input type="number" value={form.loyalty_discount||0} onChange={e => setForm(f=>({...f, loyalty_discount:Number(e.target.value)}))} />
-          </FormGroup>
-          <div>
-            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8 }}>
-              <span style={{ fontSize:12, fontWeight:700, color:'#344054', textTransform:'uppercase', letterSpacing:'0.04em', fontFamily:"'Inter',sans-serif" }}>Payment Splits</span>
-              <Button variant="ghost" size="sm" onClick={addSplit}>+ Add Split</Button>
+          </div>
+
+          {/* ── Section: Amount ── */}
+          <div style={{ background:'#F8FAFC', borderRadius:12, border:'1px solid #EAECF0', padding:'14px 16px', marginBottom:12 }}>
+            <div style={{ fontSize:11, fontWeight:700, color:'#667085', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:12, display:'flex', alignItems:'center', gap:6 }}>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+              Amount
             </div>
-            {form.splits.map((sp, i) => (
-              <div key={i} style={{ marginBottom:8 }}>
-                <div style={{ display:'flex', gap:8, alignItems:'center' }}>
-                  <Select value={sp.method} onChange={e => setSplit(i,'method',e.target.value)} style={{ flex:'0 0 155px' }}>
-                    {METHODS.map(m => <option key={m} value={m}>{METHOD_LABEL[m]}</option>)}
-                  </Select>
-                  <Input type="number" value={sp.amount} placeholder="Amount" onChange={e => setSplit(i,'amount',e.target.value)} style={{ flex:1 }} />
-                  {form.splits.length > 1 && (
-                    <button onClick={() => removeSplit(i)} style={{ background:'none', border:'none', cursor:'pointer', color:'#DC2626', fontSize:18, padding:'0 4px' }}>×</button>
-                  )}
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+              <FormGroup label="Total Amount (Rs.)" required>
+                <Input type="number" value={form.total_amount||''} onChange={e => setForm(f=>({...f, total_amount:e.target.value}))} />
+              </FormGroup>
+              <FormGroup label="Loyalty Discount (Rs.)">
+                <Input type="number" value={form.loyalty_discount||0} onChange={e => setForm(f=>({...f, loyalty_discount:Number(e.target.value)}))} />
+              </FormGroup>
+            </div>
+            {form.total_amount && (
+              <div style={{ marginTop:12, background: 'linear-gradient(135deg,#EFF6FF 0%,#F0FDF4 100%)', borderRadius:10, padding:'10px 14px', display:'flex', justifyContent:'space-between', alignItems:'center', border:'1px solid #BFDBFE' }}>
+                <div style={{ fontSize:12, color:'#3B82F6' }}>
+                  Rs. {Number(form.total_amount||0).toLocaleString()}
+                  {Number(form.loyalty_discount||0) > 0 && <span style={{ color:'#EF4444', marginLeft:6 }}>− Rs. {Number(form.loyalty_discount).toLocaleString()}</span>}
                 </div>
-                {sp.method === 'Package' && (
-                  <div style={{ marginTop:6, marginLeft:0 }}>
-                    {!form.customer_id ? (
-                      <div style={{ fontSize:12, color:'#D97706', background:'#FFFBEB', padding:'6px 10px', borderRadius:7, border:'1px solid #FDE68A' }}>Select a customer first to use package payment</div>
-                    ) : loadingPkgs ? (
-                      <div style={{ fontSize:12, color:'#98A2B3' }}>Loading packages...</div>
-                    ) : custPackages.length === 0 ? (
-                      <div style={{ fontSize:12, color:'#D97706', background:'#FFFBEB', padding:'6px 10px', borderRadius:7, border:'1px solid #FDE68A' }}>No active packages for this customer</div>
-                    ) : (
-                      <Select value={sp.customer_package_id||''} onChange={e => setSplit(i,'customer_package_id',e.target.value)}
-                        style={{ marginTop:2, fontSize:12 }}>
-                        <option value="">Select package…</option>
-                        {custPackages.map(cp => (
-                          <option key={cp.id} value={cp.id}>
-                            {cp.package?.name || 'Package'} — {cp.sessions_remaining || (cp.sessions_total - cp.sessions_used)} sessions left (expires {new Date(cp.expiry_date).toLocaleDateString()})
-                          </option>
-                        ))}
-                      </Select>
-                    )}
-                  </div>
-                )}
-              </div>
-            ))}
-            {form.splits.length > 0 && form.total_amount && (
-              <div style={{ fontSize:12, color:'#98A2B3', textAlign:'right' }}>
-                Split total: Rs. {form.splits.reduce((s,sp)=>s+Number(sp.amount||0),0).toLocaleString()} / Rs. {Number(form.total_amount||0).toLocaleString()}
+                <div style={{ fontSize:14, fontWeight:800, color:'#1D4ED8', fontFamily:"'Outfit',sans-serif" }}>
+                  Net: Rs. {(Number(form.total_amount||0) - Number(form.loyalty_discount||0)).toLocaleString()}
+                </div>
               </div>
             )}
           </div>
+
+          {/* ── Section: Payment Splits ── */}
+          <div style={{ background:'#F8FAFC', borderRadius:12, border:'1px solid #EAECF0', padding:'14px 16px' }}>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
+              <div style={{ fontSize:11, fontWeight:700, color:'#667085', textTransform:'uppercase', letterSpacing:'0.06em', display:'flex', alignItems:'center', gap:6 }}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+                Payment Method
+              </div>
+              <button onClick={addSplit} style={{ background:'#EFF6FF', border:'1px solid #BFDBFE', color:'#1D4ED8', borderRadius:8, padding:'4px 12px', fontSize:12, fontWeight:600, cursor:'pointer', display:'flex', alignItems:'center', gap:4 }}>
+                <span style={{ fontSize:16, lineHeight:1 }}>+</span> Add Split
+              </button>
+            </div>
+            <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+              {form.splits.map((sp, i) => (
+                <div key={i} style={{ background:'#fff', borderRadius:10, border:'1px solid #E4E7EC', padding:'10px 12px' }}>
+                  <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+                    <Select value={sp.method} onChange={e => setSplit(i,'method',e.target.value)} style={{ flex:'0 0 148px' }}>
+                      {METHODS.map(m => <option key={m} value={m}>{METHOD_LABEL[m]}</option>)}
+                    </Select>
+                    <Input type="number" value={sp.amount} placeholder="Amount (Rs.)" onChange={e => setSplit(i,'amount',e.target.value)} style={{ flex:1 }} />
+                    {form.splits.length > 1 && (
+                      <button onClick={() => removeSplit(i)} style={{ background:'#FEF2F2', border:'1px solid #FECACA', borderRadius:7, cursor:'pointer', color:'#DC2626', fontSize:15, width:30, height:30, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>×</button>
+                    )}
+                  </div>
+                  {sp.method === 'Package' && (
+                    <div style={{ marginTop:8 }}>
+                      {!form.customer_id ? (
+                        <div style={{ fontSize:12, color:'#92400E', background:'#FFFBEB', padding:'7px 10px', borderRadius:8, border:'1px solid #FDE68A', display:'flex', alignItems:'center', gap:6 }}>
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                          Select a customer first to use package payment
+                        </div>
+                      ) : loadingPkgs ? (
+                        <div style={{ fontSize:12, color:'#98A2B3', padding:'4px 0' }}>Loading packages...</div>
+                      ) : custPackages.length === 0 ? (
+                        <div style={{ fontSize:12, color:'#92400E', background:'#FFFBEB', padding:'7px 10px', borderRadius:8, border:'1px solid #FDE68A' }}>No active packages for this customer</div>
+                      ) : (
+                        <Select value={sp.customer_package_id||''} onChange={e => setSplit(i,'customer_package_id',e.target.value)} style={{ fontSize:12 }}>
+                          <option value="">Select package…</option>
+                          {custPackages.map(cp => (
+                            <option key={cp.id} value={cp.id}>
+                              {cp.package?.name || 'Package'} — {cp.sessions_remaining || (cp.sessions_total - cp.sessions_used)} sessions left (expires {new Date(cp.expiry_date).toLocaleDateString()})
+                            </option>
+                          ))}
+                        </Select>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+            {form.splits.length > 0 && form.total_amount && (() => {
+              const splitTotal = form.splits.reduce((s,sp)=>s+Number(sp.amount||0),0);
+              const net = Number(form.total_amount||0) - Number(form.loyalty_discount||0);
+              const diff = net - splitTotal;
+              const ok = Math.abs(diff) < 0.01;
+              return (
+                <div style={{ marginTop:10, display:'flex', justifyContent:'space-between', alignItems:'center', background: ok ? '#F0FDF4' : '#FFFBEB', border:`1px solid ${ok ? '#BBF7D0' : '#FDE68A'}`, borderRadius:8, padding:'7px 12px', fontSize:12 }}>
+                  <span style={{ color: ok ? '#166534' : '#92400E', fontWeight:600 }}>
+                    {ok ? '✓ Splits match net amount' : `Remaining: Rs. ${Math.abs(diff).toLocaleString()}`}
+                  </span>
+                  <span style={{ color:'#667085' }}>
+                    Rs. {splitTotal.toLocaleString()} / Rs. {net.toLocaleString()}
+                  </span>
+                </div>
+              );
+            })()}
+          </div>
+
         </div>
       </Modal>
 

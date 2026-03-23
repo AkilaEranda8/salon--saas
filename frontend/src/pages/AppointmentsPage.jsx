@@ -240,13 +240,14 @@ export default function AppointmentsPage() {
   }, [filterBranch, filterStatus, filterDate, page]);
   useEffect(() => { load(); }, [load]);
 
+  const calcServiceTotal = (ids) => ids.reduce((sum, sid) => { const s = services.find(x => Number(x.id) === Number(sid)); return sum + Number(s?.price || 0); }, 0);
   const openPayment = (row) => {
     setPaymentAppt(row);
     const svcId = Number(row.service_id || row.service?.id);
     const ids = svcId ? [svcId] : [];
     setPaymentServices(ids);
-    const total = ids.reduce((sum, sid) => { const s = services.find(x => Number(x.id) === Number(sid)); return sum + Number(s?.price || 0); }, 0);
-    setPaymentAmt(total || row.amount || '');
+    const total = calcServiceTotal(ids);
+    setPaymentAmt(total > 0 ? total : (row.amount || ''));
     setPaymentMethod('Cash');
     setPaymentErr('');
     setPaymentOk(false);
@@ -256,8 +257,7 @@ export default function AppointmentsPage() {
     const nid = Number(id);
     setPaymentServices(prev => {
       const next = prev.includes(nid) ? prev.filter(x => x !== nid) : [...prev, nid];
-      const total = next.reduce((sum, sid) => { const s = services.find(x => Number(x.id) === Number(sid)); return sum + Number(s?.price || 0); }, 0);
-      setPaymentAmt(total || '');
+      setPaymentAmt(calcServiceTotal(next));
       return next;
     });
   };

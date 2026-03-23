@@ -20,46 +20,142 @@ function PrintIcon() {
   return <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>;
 }
 
+function printReceipt(payment) {
+  const fmtDate = d => d ? new Date(d).toLocaleString('en-GB', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' }) : '';
+  const line = (label, value) => `<tr><td style="color:#555;padding:2px 0;font-size:12px;">${label}</td><td style="text-align:right;font-weight:600;font-size:12px;padding:2px 0;">${value||'—'}</td></tr>`;
+  const dash = () => `<tr><td colspan="2"><div style="border-top:1px dashed #bbb;margin:6px 0;"></div></td></tr>`;
+
+  const splits = (payment.splits||[]).map(sp =>
+    `<tr><td style="color:#555;font-size:12px;padding:2px 0;">${METHOD_LABEL[sp.method]||sp.method}</td><td style="text-align:right;font-size:12px;font-weight:600;">Rs. ${Number(sp.amount||0).toLocaleString()}</td></tr>`
+  ).join('');
+
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
+  <title>Receipt</title>
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family: 'Courier New', monospace; width:300px; margin:0 auto; padding:12px 10px; font-size:12px; color:#111; }
+    h1 { text-align:center; font-size:16px; font-weight:900; letter-spacing:2px; margin-bottom:2px; }
+    .subtitle { text-align:center; font-size:10px; color:#666; margin-bottom:10px; }
+    table { width:100%; border-collapse:collapse; }
+    .total-row td { font-size:14px; font-weight:900; padding-top:6px; border-top:2px solid #111; }
+    .total-row td:last-child { text-align:right; }
+    .footer { text-align:center; font-size:10px; color:#888; margin-top:12px; letter-spacing:1px; }
+    @media print {
+      @page { margin:0; size: 72mm auto; }
+      body { padding:6px; }
+    }
+  </style></head><body>
+  <h1>ZANE SALON</h1>
+  <div class="subtitle">Payment Receipt</div>
+  <div style="border-top:2px solid #111;border-bottom:1px dashed #bbb;padding:4px 0;margin-bottom:6px;font-size:10px;color:#555;text-align:center;">
+    ${fmtDate(payment.date)} &nbsp;|&nbsp; #${payment.id||''}
+  </div>
+  <table>
+    ${line('Customer', payment.customer?.name || payment.customer_name)}
+    ${line('Staff', payment.staff?.name)}
+    ${line('Branch', payment.branch?.name)}
+    ${line('Service', payment.service?.name)}
+    ${dash()}
+    ${line('Subtotal', 'Rs. ' + Number(payment.total_amount||0).toLocaleString())}
+    ${Number(payment.loyalty_discount||0) > 0 ? line('Loyalty Disc.', '- Rs. ' + Number(payment.loyalty_discount).toLocaleString()) : ''}
+    ${dash()}
+    <tr><td colspan="2"><div style="border-top:1px dashed #bbb;margin:4px 0;"></div></td></tr>
+    <tr class="total-row">
+      <td>NET TOTAL</td>
+      <td>Rs. ${(Number(payment.total_amount||0) - Number(payment.loyalty_discount||0)).toLocaleString()}</td>
+    </tr>
+    ${dash()}
+    ${splits}
+    ${dash()}
+  </table>
+  <div class="footer">Thank you for visiting!<br>*** ZANE SALON ***</div>
+  <script>window.onload=function(){window.print();setTimeout(function(){window.close();},800);}<\/script>
+  </body></html>`;
+
+  const w = window.open('', '_blank', 'width=340,height=550,scrollbars=no,toolbar=no,menubar=no');
+  if (w) { w.document.write(html); w.document.close(); }
+}
+
 function InvoiceModal({ open, onClose, payment }) {
   if (!open || !payment) return null;
+  const net = Number(payment.total_amount||0) - Number(payment.loyalty_discount||0);
   return createPortal(
     <div style={{ position:'fixed', inset:0, zIndex:9000, display:'flex', alignItems:'center', justifyContent:'center', background:'rgba(16,24,40,0.55)', backdropFilter:'blur(2px)' }}>
-      <div style={{ background:'#fff', borderRadius:20, padding:36, width:400, maxWidth:'95vw', boxShadow:'0 24px 64px rgba(16,24,40,0.25)', fontFamily:"'Inter',sans-serif" }}>
-        <div style={{ textAlign:'center', marginBottom:24 }}>
-          <div style={{ width:48, height:48, borderRadius:14, background:'#EFF6FF', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 10px', color:'#2563EB' }}>
+      <div style={{ background:'#fff', borderRadius:20, width:340, maxWidth:'95vw', boxShadow:'0 24px 64px rgba(16,24,40,0.25)', fontFamily:"'Courier New',monospace", overflow:'hidden' }}>
+
+        {/* Header */}
+        <div style={{ background:'#101828', padding:'20px 24px 16px', textAlign:'center' }}>
+          <div style={{ width:40, height:40, borderRadius:12, background:'rgba(255,255,255,0.12)', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 10px', color:'#fff' }}>
             <IconReceipt />
           </div>
-          <h2 style={{ margin:0, fontFamily:"'Outfit',sans-serif", fontWeight:800, fontSize:20, color:'#101828' }}>Zane Salon</h2>
-          <p style={{ margin:'4px 0 0', color:'#98A2B3', fontSize:12 }}>Payment Receipt</p>
-        </div>
-        <div style={{ borderTop:'2px dashed #E4E7EC', paddingTop:16, marginBottom:16 }}>
-          {[
-            { label:'Customer', value: payment.customer_name },
-            { label:'Service',  value: payment.service?.name || '' },
-            { label:'Staff',    value: payment.staff?.name || '' },
-            { label:'Date',     value: payment.date ? new Date(payment.date).toLocaleDateString() : '' },
-          ].map(({ label, value }) => (
-            <div key={label} style={{ display:'flex', justifyContent:'space-between', marginBottom:8, fontSize:13 }}>
-              <span style={{ color:'#98A2B3' }}>{label}</span>
-              <span style={{ fontWeight:600, color:'#101828' }}>{value}</span>
-            </div>
-          ))}
-          <div style={{ borderTop:'1px solid #EAECF0', marginTop:8, paddingTop:8 }}>
-            {(payment.splits||[]).map((sp, i) => (
-              <div key={i} style={{ display:'flex', justifyContent:'space-between', marginBottom:6, fontSize:13 }}>
-                <span style={{ color:'#475467' }}>{METHOD_LABEL[sp.method]||sp.method}</span>
-                <span style={{ fontWeight:600 }}>Rs. {Number(sp.amount||0).toLocaleString()}</span>
-              </div>
-            ))}
+          <div style={{ color:'#fff', fontWeight:900, fontSize:18, letterSpacing:3, fontFamily:"'Courier New',monospace" }}>ZANE SALON</div>
+          <div style={{ color:'#98A2B3', fontSize:11, marginTop:2, letterSpacing:1 }}>PAYMENT RECEIPT</div>
+          <div style={{ color:'#667085', fontSize:10, marginTop:6 }}>
+            {payment.date ? new Date(payment.date).toLocaleString('en-GB', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' }) : ''}
+            {payment.id ? ` · #${payment.id}` : ''}
           </div>
         </div>
-        <div style={{ background:'#EFF6FF', padding:'12px 16px', borderRadius:10, display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
-          <span style={{ fontWeight:700, color:'#2563EB' }}>Total</span>
-          <span style={{ fontFamily:"'Outfit',sans-serif", fontWeight:800, fontSize:18, color:'#2563EB' }}>Rs. {Number(payment.total_amount||0).toLocaleString()}</span>
+
+        {/* Receipt Body */}
+        <div style={{ padding:'16px 20px', background:'#FAFAFA', fontFamily:"'Courier New',monospace" }}>
+          <div style={{ borderTop:'1px dashed #D0D5DD', marginBottom:12 }} />
+
+          {/* Details */}
+          {[
+            { label:'Customer', value: payment.customer?.name || payment.customer_name },
+            { label:'Staff',    value: payment.staff?.name },
+            { label:'Branch',   value: payment.branch?.name },
+            { label:'Service',  value: payment.service?.name },
+          ].filter(r => r.value).map(({ label, value }) => (
+            <div key={label} style={{ display:'flex', justifyContent:'space-between', marginBottom:5, fontSize:12 }}>
+              <span style={{ color:'#667085' }}>{label}</span>
+              <span style={{ fontWeight:700, color:'#344054', maxWidth:180, textAlign:'right' }}>{value}</span>
+            </div>
+          ))}
+
+          <div style={{ borderTop:'1px dashed #D0D5DD', margin:'10px 0' }} />
+
+          {/* Amounts */}
+          <div style={{ display:'flex', justifyContent:'space-between', marginBottom:5, fontSize:12 }}>
+            <span style={{ color:'#667085' }}>Subtotal</span>
+            <span style={{ fontWeight:600 }}>Rs. {Number(payment.total_amount||0).toLocaleString()}</span>
+          </div>
+          {Number(payment.loyalty_discount||0) > 0 && (
+            <div style={{ display:'flex', justifyContent:'space-between', marginBottom:5, fontSize:12 }}>
+              <span style={{ color:'#D97706' }}>Loyalty Disc.</span>
+              <span style={{ fontWeight:600, color:'#D97706' }}>- Rs. {Number(payment.loyalty_discount).toLocaleString()}</span>
+            </div>
+          )}
+
+          <div style={{ borderTop:'2px solid #101828', margin:'10px 0 8px' }} />
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:10 }}>
+            <span style={{ fontWeight:900, fontSize:13, letterSpacing:1 }}>NET TOTAL</span>
+            <span style={{ fontWeight:900, fontSize:16, color:'#101828' }}>Rs. {net.toLocaleString()}</span>
+          </div>
+
+          {/* Payment splits */}
+          {(payment.splits||[]).length > 0 && (
+            <>
+              <div style={{ borderTop:'1px dashed #D0D5DD', margin:'8px 0' }} />
+              {(payment.splits||[]).map((sp, i) => (
+                <div key={i} style={{ display:'flex', justifyContent:'space-between', marginBottom:4, fontSize:12 }}>
+                  <span style={{ color:'#475467' }}>{METHOD_LABEL[sp.method]||sp.method}</span>
+                  <span style={{ fontWeight:600 }}>Rs. {Number(sp.amount||0).toLocaleString()}</span>
+                </div>
+              ))}
+            </>
+          )}
+
+          <div style={{ borderTop:'1px dashed #D0D5DD', margin:'12px 0 8px' }} />
+          <div style={{ textAlign:'center', fontSize:10, color:'#98A2B3', letterSpacing:1 }}>THANK YOU FOR VISITING!</div>
         </div>
-        <div style={{ display:'flex', gap:8 }}>
+
+        {/* Buttons */}
+        <div style={{ padding:'12px 20px 16px', display:'flex', gap:8, background:'#fff', borderTop:'1px solid #F2F4F7' }}>
           <Button variant="secondary" fullWidth onClick={onClose}>Close</Button>
-          <Button variant="primary" fullWidth onClick={() => window.print()} style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}><PrintIcon /> Print</Button>
+          <Button variant="primary" fullWidth onClick={() => printReceipt(payment)} style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
+            <PrintIcon /> Print
+          </Button>
         </div>
       </div>
     </div>,

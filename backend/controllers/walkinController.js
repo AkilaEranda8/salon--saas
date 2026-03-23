@@ -75,36 +75,43 @@ exports.checkin = async (req, res) => {
     }
 
     const dateStr = today();
-    const token = await generateToken(branchId, dateStr);
 
-    // Calculate estimated wait
-    const service = await Service.findByPk(serviceId);
-    if (!service) return res.status(404).json({ message: 'Service not found.' });
+    const result = await sequelize.transaction(async (t) => {
+      const token = await generateToken(branchId, dateStr, t);
 
-    const waitingCount = await WalkIn.count({
-      where: { branch_id: branchId, check_in_date: dateStr, status: 'waiting' },
+      // Calculate estimated wait
+      const service = await Service.findByPk(serviceId, { transaction: t });
+      if (!service) throw Object.assign(new Error('Service not found.'), { status: 404 });
+
+      const waitingCount = await WalkIn.count({
+        where: { branch_id: branchId, check_in_date: dateStr, status: 'waiting' },
+        transaction: t,
+      });
+      const estimatedWait = waitingCount * (service.duration_minutes || 30);
+
+      const entry = await WalkIn.create({
+        token,
+        customer_name: customerName,
+        phone: phone || null,
+        branch_id: branchId,
+        service_id: serviceId,
+        staff_id: null,
+        status: 'waiting',
+        check_in_time: new Date().toTimeString().slice(0, 8),
+        check_in_date: dateStr,
+        estimated_wait: estimatedWait,
+        note: note || null,
+      }, { transaction: t });
+
+      return WalkIn.findByPk(entry.id, { include: defaultInclude, transaction: t });
     });
-    const estimatedWait = waitingCount * (service.duration_minutes || 30);
 
-    const entry = await WalkIn.create({
-      token,
-      customer_name: customerName,
-      phone: phone || null,
-      branch_id: branchId,
-      service_id: serviceId,
-      staff_id: null,
-      status: 'waiting',
-      check_in_time: new Date().toTimeString().slice(0, 8),
-      check_in_date: dateStr,
-      estimated_wait: estimatedWait,
-      note: note || null,
-    });
-
-    const full = await WalkIn.findByPk(entry.id, { include: defaultInclude });
+    const full = result;
 
     emitQueueUpdate(branchId, { action: 'checkin', entry: full });
     res.status(201).json(full);
   } catch (err) {
+    if (err.status === 404) return res.status(404).json({ message: err.message });
     console.error('walkin.checkin error:', err);
     res.status(500).json({ message: 'Failed to check in walk-in customer.' });
   }

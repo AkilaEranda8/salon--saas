@@ -59,6 +59,21 @@ function EntryServices({ entry, svc, services, MUTED }) {
 /*  Print CSS injected once  */
 const PRINT_CSS = `@media print { body > *:not(#walkin-print-root) { display: none !important; } #walkin-print-root { display: block !important; } }`;
 
+const RESPONSIVE_CSS = `
+.wq-card { display:flex; align-items:center; gap:16px; flex-wrap:wrap; padding:14px 16px; }
+.wq-customer { flex:1 1 160px; min-width:0; }
+.wq-staff { flex:0 0 160px; }
+.wq-status { flex-shrink:0; min-width:85px; text-align:center; }
+.wq-actions { display:flex; align-items:center; gap:6px; flex-shrink:0; flex-wrap:wrap; }
+@media (max-width: 640px) {
+  .wq-card { padding:12px 12px; gap:10px; }
+  .wq-staff { flex:1 1 100%; order:3; }
+  .wq-status { order:2; }
+  .wq-actions { order:4; flex:1 1 100%; justify-content:flex-end; }
+  .wq-customer { flex:1 1 120px; }
+}
+`;
+
 export default function WalkInPage() {
   const { user }  = useAuth();
   const { toast } = useToast();
@@ -300,7 +315,7 @@ export default function WalkInPage() {
       */
   return (
     <PageWrapper title="Walk-In Queue" subtitle="Real-time queue management" actions={pageActions}>
-      <style>{PRINT_CSS}</style>
+      <style>{PRINT_CSS}{RESPONSIVE_CSS}</style>
 
       {/*  No branch selected  */}
       {!selectedBranch && isAdmin && (
@@ -394,40 +409,36 @@ export default function WalkInPage() {
             const svc = entry.service || {};
             const stf = entry.staff;
             return (
-              <div key={entry.id} style={{
+              <div key={entry.id} className="wq-card" style={{
                 background: '#fff', borderRadius: 14,
                 boxShadow: '0 1px 4px rgba(16,24,40,0.06)',
                 border: '1px solid #EAECF0',
                 borderLeft: `5px solid ${STATUS_BORDER[entry.status] || '#E4E7EC'}`,
-                padding: '16px 20px',
-                display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap',
               }}>
 
                 {/* TOKEN */}
                 <div style={{ textAlign: 'center', flexShrink: 0 }}>
                   <div style={{
-                    width: 52, height: 52, borderRadius: 12,
+                    width: 48, height: 48, borderRadius: 10,
                     background: '#1e293b', color: '#fff',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: 17, fontWeight: 900, fontFamily: 'monospace',
-                    letterSpacing: 1,
+                    fontSize: 15, fontWeight: 900, fontFamily: 'monospace', letterSpacing: 1,
                   }}>{entry.token}</div>
-                  <div style={{ fontSize: 11, color: MUTED, marginTop: 4 }}>{fmtTime(entry.check_in_time)}</div>
+                  <div style={{ fontSize: 10, color: MUTED, marginTop: 3 }}>{fmtTime(entry.check_in_time)}</div>
                 </div>
 
                 {/* CUSTOMER + SERVICE */}
-                <div style={{ flex: '1 1 180px', minWidth: 0 }}>
-                  <div style={{ fontSize: 15, fontWeight: 700, color: DARK }}>{entry.customer_name || 'Walk-in'}</div>
+                <div className="wq-customer">
+                  <div style={{ fontSize: 14, fontWeight: 700, color: DARK }}>{entry.customer_name || 'Walk-in'}</div>
                   {entry.phone && <div style={{ fontSize: 12, color: MUTED, marginTop: 1 }}>{entry.phone}</div>}
-                  {/* Services — primary + extras from note */}
                   <EntryServices entry={entry} svc={svc} services={services} MUTED={MUTED} />
                 </div>
 
                 {/* STAFF */}
-                <div style={{ flex: '0 0 170px' }}>
+                <div className="wq-staff">
                   {stf ? (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <StaffAvatar name={stf.name} size={32} />
+                      <StaffAvatar name={stf.name} size={30} />
                       <div>
                         <div style={{ fontSize: 13, fontWeight: 600, color: DARK }}>{stf.name}</div>
                         {stf.role_title && <div style={{ fontSize: 11, color: MUTED }}>{stf.role_title}</div>}
@@ -449,15 +460,15 @@ export default function WalkInPage() {
                 </div>
 
                 {/* STATUS + WAIT */}
-                <div style={{ flexShrink: 0, minWidth: 90, textAlign: 'center' }}>
+                <div className="wq-status">
                   <Badge variant={entry.status} dot>{STATUS_LABELS[entry.status] || entry.status}</Badge>
                   {entry.status === 'waiting' && entry.estimated_wait != null && (
-                    <div style={{ fontSize: 11, color: MUTED, marginTop: 4 }}>~{entry.estimated_wait} min wait</div>
+                    <div style={{ fontSize: 11, color: MUTED, marginTop: 4 }}>~{entry.estimated_wait} min</div>
                   )}
                 </div>
 
                 {/* ACTIONS */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0, flexWrap: 'wrap' }}>
+                <div className="wq-actions">
                   {entry.status === 'completed' ? (
                     <button disabled style={{
                       padding: '5px 12px', borderRadius: 7, fontSize: 12, fontWeight: 700,

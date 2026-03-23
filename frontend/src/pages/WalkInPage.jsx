@@ -456,7 +456,13 @@ export default function WalkInPage() {
                   {entry.status === 'waiting' && (
                     <Button size="sm" onClick={() => changeStatus(entry.id, 'serving')}>Start</Button>
                   )}
-                  {(entry.status === 'serving' || entry.status === 'completed' || entry.status === 'waiting') && (
+                  {entry.status === 'completed' ? (
+                    <button disabled style={{
+                      padding: '5px 12px', borderRadius: 7, fontSize: 12, fontWeight: 700,
+                      background: '#FEE2E2', color: '#B91C1C', border: '1.5px solid #FECACA',
+                      cursor: 'not-allowed', fontFamily: 'inherit',
+                    }}>✓ Paid</button>
+                  ) : (entry.status === 'serving' || entry.status === 'waiting') && (
                     <Button
                       size="sm"
                       style={{ background: '#10b981', color: '#fff', border: 'none', fontWeight: 700 }}

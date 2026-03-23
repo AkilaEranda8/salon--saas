@@ -166,7 +166,7 @@ function ApptRow({ row, idx, canEdit, onView, onEdit, onDelete, onStatusChange, 
         <span style={{ fontWeight:700, color:'#059669', fontSize:14 }}>Rs. {Number(row.service?.price||row.amount||0).toLocaleString()}</span>
       </td>
       <td style={{ padding:'13px 16px' }}>
-        {!canEdit||s==='cancelled' ? <StatusBadge status={s} /> : (
+        {!canEdit||s==='completed'||s==='cancelled' ? <StatusBadge status={s} /> : (
           <select value={s} onChange={e => onStatusChange(e.target.value)}
             style={{ padding:'4px 10px', borderRadius:20, border:`1.5px solid ${meta.color}40`, background:meta.bg, color:meta.color, fontWeight:700, fontSize:12, fontFamily:"'Inter',sans-serif", outline:'none', cursor:'pointer' }}>
             {APPT_STATUSES.map(st => <option key={st} value={st}>{STATUS_META[st].label}</option>)}

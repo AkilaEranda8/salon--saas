@@ -243,15 +243,22 @@ export default function AppointmentsPage() {
   const openPayment = (row) => {
     setPaymentAppt(row);
     const svcId = row.service_id || row.service?.id;
-    setPaymentServices(svcId ? [svcId] : []);
-    setPaymentAmt(row.amount || '');
+    const ids = svcId ? [svcId] : [];
+    setPaymentServices(ids);
+    const total = ids.reduce((sum, sid) => { const s = services.find(x => x.id === sid); return sum + Number(s?.price || 0); }, 0);
+    setPaymentAmt(total || row.amount || '');
     setPaymentMethod('Cash');
     setPaymentErr('');
     setPaymentOk(false);
     setShowPayment(true);
   };
   const togglePaymentService = (id) => {
-    setPaymentServices(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+    setPaymentServices(prev => {
+      const next = prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id];
+      const total = next.reduce((sum, sid) => { const s = services.find(x => x.id === sid); return sum + Number(s?.price || 0); }, 0);
+      setPaymentAmt(total || '');
+      return next;
+    });
   };
   const handlePayment = async () => {
     if (!paymentAmt || Number(paymentAmt) <= 0) return setPaymentErr('Amount is required');

@@ -184,7 +184,7 @@ function ApptRow({ row, idx, canEdit, onView, onEdit, onDelete, onStatusChange, 
       <td style={{ padding:'13px 16px', textAlign:'center' }}>
         <div style={{ display:'flex', gap:4, justifyContent:'center' }}>
           <ActionBtn onClick={onView} title="View" color="#2563EB"><IconEye /></ActionBtn>
-          {canEdit && s!=='cancelled' && <ActionBtn onClick={onPayment} title="Collect Payment" color="#059669"><IconMoney /></ActionBtn>}
+          {canEdit && s==='in_service' && <ActionBtn onClick={onPayment} title="Collect Payment" color="#059669"><IconMoney /></ActionBtn>}
           {canEdit && <ActionBtn onClick={onEdit} title="Edit" color="#D97706"><IconEdit /></ActionBtn>}
           {canEdit && <ActionBtn onClick={onDelete} title="Delete" color="#DC2626"><IconTrash /></ActionBtn>}
         </div>
@@ -284,6 +284,8 @@ export default function AppointmentsPage() {
         customer_name: paymentAppt.customer_name,
         splits: [{ method: paymentMethod, amount: Number(paymentAmt) }],
       });
+      // Auto-mark appointment as completed
+      await api.patch(`/appointments/${paymentAppt.id}/status`, { status: 'completed' });
       setPaymentOk(true);
       load();
       setTimeout(() => { setShowPayment(false); setPaymentOk(false); }, 1200);

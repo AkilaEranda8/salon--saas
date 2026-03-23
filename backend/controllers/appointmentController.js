@@ -108,8 +108,15 @@ const create = async (req, res) => {
       return res.status(400).json({ message: 'branch_id, service_id, customer_name, date and time are required.' });
     }
 
+    // Auto-fetch service price if amount not provided
+    let finalAmount = amount;
+    if (!finalAmount && service_id) {
+      const svc = await Service.findByPk(service_id, { attributes: ['price'] });
+      if (svc) finalAmount = svc.price;
+    }
+
     const appt = await Appointment.create({
-      branch_id, customer_id, staff_id, service_id, customer_name, phone, date, time, amount, notes,
+      branch_id, customer_id, staff_id, service_id, customer_name, phone, date, time, amount: finalAmount, notes,
       is_recurring: is_recurring || false,
       recurrence_frequency: is_recurring ? (recurrence_frequency || 'weekly') : null,
     });
@@ -144,6 +151,13 @@ const update = async (req, res) => {
     for (const field of allowed) {
       if (req.body[field] !== undefined) updates[field] = req.body[field];
     }
+
+    // Auto-update amount from service price when service changes
+    if (updates.service_id) {
+      const svc = await Service.findByPk(updates.service_id, { attributes: ['price'] });
+      if (svc) updates.amount = svc.price;
+    }
+
     await appt.update(updates);
     return res.json(appt);
   } catch (err) {

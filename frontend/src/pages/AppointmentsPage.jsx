@@ -502,7 +502,7 @@ export default function AppointmentsPage() {
       </div>
 
       {/* New / Edit Modal */}
-      <Modal open={showForm} onClose={()=>setShowForm(false)} title={editItem?'Edit Appointment':'New Appointment'} size="md"
+      <Modal open={showForm} onClose={()=>setShowForm(false)} title={editItem?'Edit Appointment':'New Appointment'} size="lg"
         footer={<><Button variant="secondary" onClick={()=>setShowForm(false)}>Cancel</Button><Button variant="primary" loading={saving} onClick={handleSave}>{editItem?'Save Changes':'Create Appointment'}</Button></>}>
         {formErr && <div style={{ background:'#FEF2F2', color:'#DC2626', padding:'9px 13px', borderRadius:9, marginBottom:16, fontSize:13, border:'1px solid #FEE2E2' }}> {formErr}</div>}
         <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
@@ -544,39 +544,58 @@ export default function AppointmentsPage() {
               </div>
             )}
           </FormGroup>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
-            <FormGroup label={selectedCust?'Customer Name':'Name (manual)'} required>
-              <Input value={form.customer_name||''} onChange={e=>setForm(f=>({...f,customer_name:e.target.value}))} placeholder="Full name" />
+          {/* Phone (manual only when no customer selected) */}
+          {!selectedCust && (
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
+              <FormGroup label="Name (manual)" required>
+                <Input value={form.customer_name||''} onChange={e=>setForm(f=>({...f,customer_name:e.target.value}))} placeholder="Full name" />
+              </FormGroup>
+              <FormGroup label="Phone"><Input value={form.phone||''} onChange={e=>setForm(f=>({...f,phone:e.target.value}))} placeholder="0300-0000000" /></FormGroup>
+            </div>
+          )}
+          {selectedCust && (
+            <FormGroup label="Phone">
+              <Input value={form.phone||''} onChange={e=>setForm(f=>({...f,phone:e.target.value}))} placeholder="0300-0000000" />
             </FormGroup>
-            <FormGroup label="Phone"><Input value={form.phone||''} onChange={e=>setForm(f=>({...f,phone:e.target.value}))} placeholder="0300-0000000" /></FormGroup>
-          </div>
-          {/* Active Packages */}
-          {custPackages.length>0 && (
+          )}
+          {/* Active Packages — always show when customer selected */}
+          {selectedCust && (
             <div>
               <div style={{ fontSize:11, fontWeight:700, color:'#98A2B3', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:8 }}>
-                Active Packages <span style={{ fontSize:11, fontWeight:400, color:'#C4CAD4', textTransform:'none' }}>— click to use</span>
+                Packages <span style={{ fontSize:11, fontWeight:400, color:'#C4CAD4', textTransform:'none' }}>— click to use a session</span>
               </div>
-              <div style={{ display:'flex', flexDirection:'column', gap:7 }}>
-                {custPackages.map(cp=>{
-                  const isSel = selectedPkg?.id===cp.id;
-                  const pkgServices = cp.package?.services || [];
-                  const sessLeft = (cp.sessions_total||0)-(cp.sessions_used||0);
-                  return (
-                    <div key={cp.id} onClick={()=>{ setSelectedPkg(isSel?null:cp); if(!isSel&&pkgServices.length>0){ const sid=String(pkgServices[0]); const svc=services.find(x=>String(x.id)===sid); setForm(f=>({...f,service_id:sid,amount:0})); } }}
-                      style={{ display:'flex', alignItems:'center', gap:12, padding:'10px 14px', borderRadius:10, border:`1.5px solid ${isSel?'#7C3AED':'#E4E7EC'}`, background:isSel?'#F5F3FF':'#FAFAFA', cursor:'pointer', transition:'all 0.15s' }}>
-                      <div style={{ width:36, height:36, borderRadius:8, background:isSel?'#7C3AED':'#E4E7EC', color:isSel?'#fff':'#667085', display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, fontWeight:800, flexShrink:0 }}>PKG</div>
-                      <div style={{ flex:1, minWidth:0 }}>
-                        <div style={{ fontSize:13, fontWeight:700, color:isSel?'#5B21B6':'#101828' }}>{cp.package?.name||'Package'}</div>
-                        <div style={{ fontSize:11, color:'#667085', marginTop:1 }}>
-                          {sessLeft} session{sessLeft!==1?'s':''} left · expires {cp.expiry_date}
+              {custPackages.length === 0 ? (
+                <div style={{ background:'#F9FAFB', border:'1.5px dashed #E4E7EC', borderRadius:10, padding:'12px 16px', fontSize:13, color:'#98A2B3', textAlign:'center' }}>
+                  No active packages for this customer
+                </div>
+              ) : (
+                <div style={{ display:'flex', flexDirection:'column', gap:7 }}>
+                  {custPackages.map(cp=>{
+                    const isSel = selectedPkg?.id===cp.id;
+                    const pkgServices = cp.package?.services || [];
+                    const sessLeft = (cp.sessions_total||0)-(cp.sessions_used||0);
+                    return (
+                      <div key={cp.id} onClick={()=>{
+                        setSelectedPkg(isSel?null:cp);
+                        if(!isSel && pkgServices.length>0){
+                          const sid = String(pkgServices[0]);
+                          setForm(f=>({...f, service_id:sid, additional_service_ids:[], amount:0}));
+                        }
+                      }} style={{ display:'flex', alignItems:'center', gap:12, padding:'10px 14px', borderRadius:10, border:`1.5px solid ${isSel?'#7C3AED':'#E4E7EC'}`, background:isSel?'#F5F3FF':'#FAFAFA', cursor:'pointer', transition:'all 0.15s' }}>
+                        <div style={{ width:36, height:36, borderRadius:8, background:isSel?'#7C3AED':'#E4E7EC', color:isSel?'#fff':'#667085', display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, fontWeight:800, flexShrink:0 }}>PKG</div>
+                        <div style={{ flex:1, minWidth:0 }}>
+                          <div style={{ fontSize:13, fontWeight:700, color:isSel?'#5B21B6':'#101828' }}>{cp.package?.name||'Package'}</div>
+                          <div style={{ fontSize:11, color:'#667085', marginTop:1 }}>
+                            {sessLeft} session{sessLeft!==1?'s':''} left · expires {cp.expiry_date}
+                          </div>
                         </div>
+                        {isSel && <span style={{ fontSize:13, color:'#7C3AED', fontWeight:700 }}>✓ Selected</span>}
                       </div>
-                      {isSel && <span style={{ fontSize:13, color:'#7C3AED', fontWeight:700 }}>✓ Selected</span>}
-                    </div>
-                  );
-                })}
-              </div>
-              {selectedPkg && <div style={{ fontSize:11, color:'#7C3AED', marginTop:5, fontWeight:600 }}>Package session will be redeemed on save</div>}
+                    );
+                  })}
+                  {selectedPkg && <div style={{ fontSize:11, color:'#7C3AED', marginTop:4, fontWeight:600 }}>Package session will be redeemed on save</div>}
+                </div>
+              )}
             </div>
           )}
           {isSuperAdmin && <FormGroup label="Branch"><Select value={form.branch_id||''} onChange={e=>setForm(f=>({...f,branch_id:e.target.value,staff_id:''}))}>

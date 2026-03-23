@@ -453,9 +453,6 @@ export default function WalkInPage() {
 
                 {/* ACTIONS */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0, flexWrap: 'wrap' }}>
-                  {entry.status === 'waiting' && (
-                    <Button size="sm" onClick={() => changeStatus(entry.id, 'serving')}>Start</Button>
-                  )}
                   {entry.status === 'completed' ? (
                     <button disabled style={{
                       padding: '5px 12px', borderRadius: 7, fontSize: 12, fontWeight: 700,
@@ -474,9 +471,6 @@ export default function WalkInPage() {
                   <Button size="sm" variant="ghost" onClick={() => setShowToken(entry)}>Token</Button>
                   {(entry.status === 'waiting' || entry.status === 'serving') && (
                     <Button size="sm" variant="danger" onClick={() => changeStatus(entry.id, 'cancelled')}>Cancel</Button>
-                  )}
-                  {entry.status === 'completed' && (
-                    <Button size="sm" variant="ghost" onClick={() => removeEntry(entry.id)}>Clear</Button>
                   )}
                 </div>
               </div>

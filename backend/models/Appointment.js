@@ -55,18 +55,6 @@ const Appointment = sequelize.define('Appointment', {
     type: DataTypes.TEXT,
     allowNull: true,
   },
-  additional_staff_ids: {
-    type: DataTypes.TEXT,
-    allowNull: true,
-    get() {
-      const raw = this.getDataValue('additional_staff_ids');
-      if (!raw) return [];
-      try { return JSON.parse(raw); } catch { return []; }
-    },
-    set(val) {
-      this.setDataValue('additional_staff_ids', val && val.length ? JSON.stringify(val.map(Number)) : null);
-    },
-  },
   is_recurring: {
     type: DataTypes.BOOLEAN,
     defaultValue: false,

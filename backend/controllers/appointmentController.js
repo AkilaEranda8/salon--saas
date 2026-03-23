@@ -37,15 +37,7 @@ const list = async (req, res) => {
       ],
     });
 
-    // Resolve additional_staff details for each appointment
-    const data = await Promise.all(rows.map(async (r) => {
-      const plain = r.toJSON();
-      const ids = plain.additional_staff_ids || [];
-      plain.additional_staff = ids.length ? await resolveAdditionalStaff(ids) : [];
-      return plain;
-    }));
-
-    return res.json({ total: count, page, limit, data });
+    return res.json({ total: count, page, limit, data: rows });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ message: 'Server error.' });
@@ -108,15 +100,9 @@ const getOne = async (req, res) => {
   }
 };
 
-const resolveAdditionalStaff = async (ids) => {
-  if (!ids || !ids.length) return [];
-  const staffs = await Staff.findAll({ where: { id: ids }, attributes: ['id', 'name'] });
-  return staffs;
-};
-
 const create = async (req, res) => {
   try {
-    const { branch_id, customer_id, staff_id, service_id, customer_name, phone, date, time, amount, notes, is_recurring, recurrence_frequency, additional_staff_ids } = req.body;
+    const { branch_id, customer_id, staff_id, service_id, customer_name, phone, date, time, amount, notes, is_recurring, recurrence_frequency } = req.body;
 
     if (!branch_id || !service_id || !customer_name || !date || !time) {
       return res.status(400).json({ message: 'branch_id, service_id, customer_name, date and time are required.' });
@@ -129,13 +115,10 @@ const create = async (req, res) => {
       if (svc) finalAmount = svc.price;
     }
 
-    const extraIds = Array.isArray(additional_staff_ids) ? additional_staff_ids.map(Number).filter(Boolean) : [];
-
     const appt = await Appointment.create({
       branch_id, customer_id, staff_id, service_id, customer_name, phone, date, time, amount: finalAmount, notes,
       is_recurring: is_recurring || false,
       recurrence_frequency: is_recurring ? (recurrence_frequency || 'weekly') : null,
-      additional_staff_ids: extraIds,
     });
 
     // Fire-and-forget notification (only if phone provided)
@@ -169,12 +152,6 @@ const update = async (req, res) => {
       if (req.body[field] !== undefined) updates[field] = req.body[field];
     }
 
-    // Handle additional staff
-    if (req.body.additional_staff_ids !== undefined) {
-      const ids = Array.isArray(req.body.additional_staff_ids) ? req.body.additional_staff_ids.map(Number).filter(Boolean) : [];
-      updates.additional_staff_ids = ids;
-    }
-
     // Auto-update amount from service price when service changes
     if (updates.service_id) {
       const svc = await Service.findByPk(updates.service_id, { attributes: ['price'] });
@@ -182,11 +159,7 @@ const update = async (req, res) => {
     }
 
     await appt.update(updates);
-
-    // Return with resolved additional staff details
-    const plain = appt.toJSON();
-    plain.additional_staff = await resolveAdditionalStaff(plain.additional_staff_ids || []);
-    return res.json(plain);
+    return res.json(appt);
   } catch (err) {
     return res.status(500).json({ message: 'Server error.' });
   }

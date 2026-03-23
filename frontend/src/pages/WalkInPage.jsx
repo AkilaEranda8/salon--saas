@@ -55,6 +55,14 @@ export default function WalkInPage() {
   const [selectedCust,   setSelectedCust]   = useState(null);
   const custSearchRef = useRef(null);
 
+  /* Payment modal */
+  const [payEntry,       setPayEntry]       = useState(null);
+  const [payMethod,      setPayMethod]      = useState('Cash');
+  const [payAmount,      setPayAmount]      = useState('');
+  const [payNote,        setPayNote]        = useState('');
+  const [paying,         setPaying]         = useState(false);
+  const [payError,       setPayError]       = useState('');
+
   const [branches,  setBranches]  = useState([]);
   const [services,  setServices]  = useState([]);
   const [staffList, setStaffList] = useState([]);
@@ -121,6 +129,46 @@ export default function WalkInPage() {
   };
   const removeEntry = async (id) => {
     try { await api.delete(`/walkin/${id}`); } catch { /* socket refreshes */ }
+  };
+
+  /*  Open payment modal — pre-fill total from service prices  */
+  const openPayment = (entry) => {
+    const extraMatch = entry.note?.match(/\[services:([\d,]+)\]/);
+    const extraIds   = extraMatch ? extraMatch[1].split(',').map(Number) : [];
+    const allIds     = [...new Set([entry.service_id, ...extraIds].filter(Boolean))];
+    const allSvcs    = services.filter((s) => allIds.includes(s.id));
+    const total      = allSvcs.reduce((sum, s) => sum + parseFloat(s.price || 0), 0);
+    setPayEntry({ ...entry, _allSvcs: allSvcs });
+    setPayAmount(total > 0 ? String(total) : '');
+    setPayMethod('Cash');
+    setPayNote('');
+    setPayError('');
+  };
+
+  const submitPayment = async () => {
+    if (!payAmount || isNaN(+payAmount) || +payAmount <= 0) {
+      setPayError('Valid amount required.'); return;
+    }
+    setPaying(true); setPayError('');
+    try {
+      await api.post('/payments', {
+        branch_id:     payEntry.branch_id,
+        staff_id:      payEntry.staff_id   || undefined,
+        customer_name: payEntry.customer_name,
+        service_id:    payEntry.service_id || undefined,
+        splits:        [{ method: payMethod, amount: +payAmount }],
+        loyalty_discount: 0,
+        note: payNote || undefined,
+      });
+      // mark as completed
+      if (payEntry.status !== 'completed') {
+        await api.patch(`/walkin/${payEntry.id}/status`, { status: 'completed' });
+      }
+      toast({ type: 'success', message: 'Payment collected!' });
+      setPayEntry(null);
+    } catch (err) {
+      setPayError(err.response?.data?.message || 'Payment failed.');
+    } finally { setPaying(false); }
   };
 
   /*  Check-in submit  */
@@ -410,6 +458,15 @@ export default function WalkInPage() {
                   )}
                   {entry.status === 'serving' && (
                     <Button size="sm" onClick={() => changeStatus(entry.id, 'completed')}>Done</Button>
+                  )}
+                  {(entry.status === 'serving' || entry.status === 'completed' || entry.status === 'waiting') && (
+                    <Button
+                      size="sm"
+                      style={{ background: '#10b981', color: '#fff', border: 'none', fontWeight: 700 }}
+                      onClick={() => openPayment(entry)}
+                    >
+                      💰 Pay
+                    </Button>
                   )}
                   <Button size="sm" variant="ghost" onClick={() => setShowToken(entry)}>Token</Button>
                   {(entry.status === 'waiting' || entry.status === 'serving') && (
@@ -721,6 +778,124 @@ export default function WalkInPage() {
           <div style={{ display: 'flex', gap: 10, justifyContent: 'center', marginTop: 16 }}>
             <Button variant="secondary" onClick={() => setShowToken(null)}>Close</Button>
             <Button onClick={() => window.print()}>Print</Button>
+          </div>
+        </Modal>
+      )}
+
+      {/*  PAYMENT MODAL  */}
+      {payEntry && (
+        <Modal open={!!payEntry} onClose={() => setPayEntry(null)} title="Collect Payment" size="sm">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+
+            {/* Customer + Token info */}
+            <div style={{ background: '#F8FAFC', borderRadius: 10, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div style={{
+                width: 44, height: 44, borderRadius: 10, background: '#1e293b', color: '#fff',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 16, fontWeight: 900, fontFamily: 'monospace', flexShrink: 0,
+              }}>{payEntry.token}</div>
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: DARK }}>{payEntry.customer_name}</div>
+                {payEntry.phone && <div style={{ fontSize: 12, color: MUTED }}>📞 {payEntry.phone}</div>}
+              </div>
+            </div>
+
+            {/* Services breakdown */}
+            {payEntry._allSvcs?.length > 0 && (
+              <div style={{ border: '1px solid #E4E7EC', borderRadius: 10, overflow: 'hidden' }}>
+                {payEntry._allSvcs.map((s, i) => (
+                  <div key={s.id} style={{
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                    padding: '9px 14px', borderBottom: i < payEntry._allSvcs.length - 1 ? '1px solid #F2F4F7' : 'none',
+                  }}>
+                    <div>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: DARK }}>{s.name}</span>
+                      <span style={{ fontSize: 11, color: MUTED, marginLeft: 8 }}>{s.duration_minutes} min</span>
+                    </div>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: '#059669' }}>
+                      {s.price ? `Rs. ${Number(s.price).toLocaleString()}` : '—'}
+                    </span>
+                  </div>
+                ))}
+                <div style={{
+                  display: 'flex', justifyContent: 'space-between', padding: '10px 14px',
+                  background: '#F9FAFB', borderTop: '1.5px solid #E4E7EC',
+                }}>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: DARK }}>Total</span>
+                  <span style={{ fontSize: 15, fontWeight: 800, color: '#059669' }}>
+                    Rs. {Number(payAmount || 0).toLocaleString()}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* Payment method */}
+            <div>
+              <Label>Payment Method</Label>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {['Cash', 'Card', 'Online Transfer'].map((m) => (
+                  <button key={m} type="button" onClick={() => setPayMethod(m)} style={{
+                    padding: '7px 16px', borderRadius: 8, fontSize: 13, fontWeight: 600,
+                    cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s',
+                    border: `1.5px solid ${payMethod === m ? '#10b981' : '#D0D5DD'}`,
+                    background: payMethod === m ? '#F0FDF4' : '#fff',
+                    color: payMethod === m ? '#065F46' : DARK,
+                  }}>{m}</button>
+                ))}
+              </div>
+            </div>
+
+            {/* Amount */}
+            <div>
+              <Label>Amount (Rs.) *</Label>
+              <input
+                type="number"
+                min="0"
+                value={payAmount}
+                onChange={(e) => setPayAmount(e.target.value)}
+                style={{
+                  width: '100%', padding: '9px 12px', borderRadius: 10,
+                  border: '1.5px solid #D0D5DD', fontSize: 14, fontFamily: 'inherit',
+                  background: '#fff', color: DARK, outline: 'none', boxSizing: 'border-box',
+                }}
+                onFocus={(e) => (e.target.style.borderColor = '#10b981')}
+                onBlur={(e)  => (e.target.style.borderColor = '#D0D5DD')}
+              />
+            </div>
+
+            {/* Note */}
+            <div>
+              <Label>Note <span style={{ color: MUTED, fontWeight: 400 }}>(optional)</span></Label>
+              <input
+                type="text"
+                placeholder="e.g. discount applied…"
+                value={payNote}
+                onChange={(e) => setPayNote(e.target.value)}
+                style={{
+                  width: '100%', padding: '9px 12px', borderRadius: 10,
+                  border: '1.5px solid #D0D5DD', fontSize: 14, fontFamily: 'inherit',
+                  background: '#fff', color: DARK, outline: 'none', boxSizing: 'border-box',
+                }}
+              />
+            </div>
+
+            {payError && (
+              <div style={{ background: '#FEE2E2', border: '1px solid #FECACA', borderRadius: 8, padding: '9px 14px', color: '#B91C1C', fontSize: 13 }}>
+                {payError}
+              </div>
+            )}
+          </div>
+
+          <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 20 }}>
+            <Button variant="secondary" onClick={() => setPayEntry(null)}>Cancel</Button>
+            <Button
+              loading={paying}
+              disabled={paying || !payAmount}
+              style={{ background: '#10b981', border: 'none' }}
+              onClick={submitPayment}
+            >
+              Collect Rs. {Number(payAmount || 0).toLocaleString()}
+            </Button>
           </div>
         </Modal>
       )}

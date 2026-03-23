@@ -749,65 +749,58 @@ export default function WalkInPage() {
             </div>
           )}
 
-          {/* ── PACKAGES (shown when existing customer selected) ── */}
-          {selectedCust && (
+          {/* ── PACKAGES (shown only when customer has active packages) ── */}
+          {selectedCust && custPackages.length > 0 && (
             <div>
               <div style={{ fontSize: 11, fontWeight: 700, color: '#98A2B3', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
                 Packages
                 <span style={{ fontSize: 11, fontWeight: 400, color: '#C4CAD4', textTransform: 'none', marginLeft: 6 }}>— click to use a session</span>
               </div>
-              {custPackages.length === 0 ? (
-                <div style={{ background: '#F9FAFB', border: '1.5px dashed #E4E7EC', borderRadius: 10, padding: '10px 14px', fontSize: 12, color: '#98A2B3', textAlign: 'center' }}>
-                  No active packages for this customer
-                </div>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-                  {custPackages.map((cp) => {
-                    const isSel = selectedPkg?.id === cp.id;
-                    const pkgSvcIds = cp.package?.services || [];
-                    const sessLeft  = (cp.sessions_total || 0) - (cp.sessions_used || 0);
-                    return (
-                      <div key={cp.id} onClick={() => {
-                        const next = isSel ? null : cp;
-                        setSelectedPkg(next);
-                        if (!isSel && pkgSvcIds.length > 0) {
-                          // Auto-select package services
-                          const validIds = pkgSvcIds.map(String).filter((sid) =>
-                            services.some((s) => String(s.id) === sid)
-                          );
-                          setForm((f) => ({ ...f, serviceIds: validIds }));
-                        }
-                      }} style={{
-                        display: 'flex', alignItems: 'center', gap: 12,
-                        padding: '10px 14px', borderRadius: 10, cursor: 'pointer',
-                        border: `1.5px solid ${isSel ? '#7C3AED' : '#E4E7EC'}`,
-                        background: isSel ? '#F5F3FF' : '#FAFAFA',
-                        transition: 'all 0.15s',
-                      }}>
-                        <div style={{
-                          width: 36, height: 36, borderRadius: 8, flexShrink: 0,
-                          background: isSel ? '#7C3AED' : '#E9D5FF',
-                          color: isSel ? '#fff' : '#6D28D9',
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          fontSize: 10, fontWeight: 800,
-                        }}>PKG</div>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: 13, fontWeight: 700, color: isSel ? '#5B21B6' : DARK }}>{cp.package?.name || 'Package'}</div>
-                          <div style={{ fontSize: 11, color: MUTED, marginTop: 1 }}>
-                            {sessLeft} session{sessLeft !== 1 ? 's' : ''} left · expires {cp.expiry_date}
-                          </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                {custPackages.map((cp) => {
+                  const isSel = selectedPkg?.id === cp.id;
+                  const pkgSvcIds = cp.package?.services || [];
+                  const sessLeft  = (cp.sessions_total || 0) - (cp.sessions_used || 0);
+                  return (
+                    <div key={cp.id} onClick={() => {
+                      const next = isSel ? null : cp;
+                      setSelectedPkg(next);
+                      if (!isSel && pkgSvcIds.length > 0) {
+                        const validIds = pkgSvcIds.map(String).filter((sid) =>
+                          services.some((s) => String(s.id) === sid)
+                        );
+                        setForm((f) => ({ ...f, serviceIds: validIds }));
+                      }
+                    }} style={{
+                      display: 'flex', alignItems: 'center', gap: 12,
+                      padding: '10px 14px', borderRadius: 10, cursor: 'pointer',
+                      border: `1.5px solid ${isSel ? '#7C3AED' : '#E4E7EC'}`,
+                      background: isSel ? '#F5F3FF' : '#FAFAFA',
+                      transition: 'all 0.15s',
+                    }}>
+                      <div style={{
+                        width: 36, height: 36, borderRadius: 8, flexShrink: 0,
+                        background: isSel ? '#7C3AED' : '#E9D5FF',
+                        color: isSel ? '#fff' : '#6D28D9',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: 10, fontWeight: 800,
+                      }}>PKG</div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: isSel ? '#5B21B6' : DARK }}>{cp.package?.name || 'Package'}</div>
+                        <div style={{ fontSize: 11, color: MUTED, marginTop: 1 }}>
+                          {sessLeft} session{sessLeft !== 1 ? 's' : ''} left · expires {cp.expiry_date}
                         </div>
-                        {isSel && <span style={{ fontSize: 12, color: '#7C3AED', fontWeight: 700, flexShrink: 0 }}>✓ Using</span>}
                       </div>
-                    );
-                  })}
-                  {selectedPkg && (
-                    <div style={{ fontSize: 11, color: '#7C3AED', fontWeight: 600, marginTop: 2 }}>
-                      Package session will be redeemed on check-in
+                      {isSel && <span style={{ fontSize: 12, color: '#7C3AED', fontWeight: 700, flexShrink: 0 }}>✓ Using</span>}
                     </div>
-                  )}
-                </div>
-              )}
+                  );
+                })}
+                {selectedPkg && (
+                  <div style={{ fontSize: 11, color: '#7C3AED', fontWeight: 600, marginTop: 2 }}>
+                    Package session will be redeemed on check-in
+                  </div>
+                )}
+              </div>
             </div>
           )}
 

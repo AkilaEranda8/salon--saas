@@ -24,7 +24,7 @@ const STATUS_META = {
   cancelled:  { color:'#DC2626', bg:'#FEF2F2', label:'Cancelled'  },
   no_show:    { color:'#64748B', bg:'#F8FAFC', label:'No Show'    },
 };
-const EMPTY = { branch_id:'', customer_name:'', phone:'', service_id:'', staff_id:'', date:'', time:'', amount:'', notes:'', status:'pending' };
+const EMPTY = { branch_id:'', customer_name:'', phone:'', service_id:'', staff_id:'', additional_staff_ids:[], date:'', time:'', amount:'', notes:'', status:'pending' };
 const LIMIT = 20;
 
 function StatusBadge({ status }) {
@@ -152,9 +152,17 @@ function ApptRow({ row, idx, canEdit, onView, onEdit, onDelete, onStatusChange, 
       </td>
       <td style={{ padding:'13px 16px' }}>
         {row.staff?.name ? (
-          <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-            <StaffAvatar name={row.staff.name} size={32} />
-            <span style={{ fontSize:13, fontWeight:500, color:'#344054' }}>{row.staff.name}</span>
+          <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+            <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+              <StaffAvatar name={row.staff.name} size={28} />
+              <span style={{ fontSize:13, fontWeight:500, color:'#344054' }}>{row.staff.name}</span>
+            </div>
+            {(row.additional_staff||[]).map(s => (
+              <div key={s.id} title={s.name} style={{ display:'flex', alignItems:'center', gap:4 }}>
+                <StaffAvatar name={s.name} size={24} />
+                <span style={{ fontSize:11, color:'#667085' }}>{s.name}</span>
+              </div>
+            ))}
           </div>
         ) : <span style={{ fontSize:13, color:'#D0D5DD' }}>—</span>}
       </td>
@@ -284,14 +292,15 @@ export default function AppointmentsPage() {
   };
 
   const openAdd    = () => { setEditItem(null); setForm({...EMPTY, branch_id:user?.branch_id||'', date:today}); setFormErr(''); setShowForm(true); };
-  const openEdit   = row => { setEditItem(row); setForm({...row, service_id:row.service?.id||row.service_id, staff_id:row.staff?.id||row.staff_id, date:row.date?.slice(0,10)||''}); setFormErr(''); setShowForm(true); };
+  const openEdit   = row => { setEditItem(row); setForm({...row, service_id:row.service?.id||row.service_id, staff_id:row.staff?.id||row.staff_id, date:row.date?.slice(0,10)||'', additional_staff_ids:row.additional_staff_ids||[]}); setFormErr(''); setShowForm(true); };
   const openDetail = row => { setDetailItem(row); setShowDetail(true); };
 
   const handleSave = async () => {
     if (!form.customer_name||!form.service_id||!form.date||!form.time) return setFormErr('Customer, service, date and time are required');
     setSaving(true);
     try {
-      editItem ? await api.put(`/appointments/${editItem.id}`, form) : await api.post('/appointments', form);
+      const payload = { ...form, additional_staff_ids: form.additional_staff_ids || [] };
+      editItem ? await api.put(`/appointments/${editItem.id}`, payload) : await api.post('/appointments', payload);
       setShowForm(false); load();
     } catch (e) { setFormErr(e.response?.data?.message||'Save failed'); }
     setSaving(false);
@@ -442,10 +451,41 @@ export default function AppointmentsPage() {
             <FormGroup label="Service" required><Select value={form.service_id||''} onChange={e=>{const sid=e.target.value; const svc=services.find(x=>Number(x.id)===Number(sid)); setForm(f=>({...f,service_id:sid,amount:svc?Number(svc.price):f.amount}));}}>
               <option value="">Select service</option>{services.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
             </Select></FormGroup>
-            <FormGroup label="Staff"><Select value={form.staff_id||''} onChange={e=>setForm(f=>({...f,staff_id:e.target.value}))}>
+            <FormGroup label="Primary Staff"><Select value={form.staff_id||''} onChange={e=>setForm(f=>({...f,staff_id:e.target.value}))}>
               <option value="">Any available</option>{filteredStaff.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
             </Select></FormGroup>
           </div>
+          {/* Additional Staff */}
+          {filteredStaff.filter(s => String(s.id) !== String(form.staff_id)).length > 0 && (
+            <FormGroup label="Additional Staff (optional)">
+              <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginTop:2 }}>
+                {filteredStaff.filter(s => String(s.id) !== String(form.staff_id)).map(s => {
+                  const sel = (form.additional_staff_ids||[]).map(Number).includes(Number(s.id));
+                  return (
+                    <button key={s.id} type="button" onClick={() => setForm(f => {
+                      const cur = (f.additional_staff_ids||[]).map(Number);
+                      const next = sel ? cur.filter(x => x !== Number(s.id)) : [...cur, Number(s.id)];
+                      return { ...f, additional_staff_ids: next };
+                    })} style={{
+                      display:'flex', alignItems:'center', gap:7, padding:'5px 12px 5px 7px',
+                      borderRadius:20, border:`1.5px solid ${sel?'#7C3AED':'#E4E7EC'}`,
+                      background:sel?'#F5F3FF':'#fff', cursor:'pointer', fontFamily:"'Inter',sans-serif",
+                      transition:'all 0.15s',
+                    }}>
+                      <StaffAvatar name={s.name} size={22} />
+                      <span style={{ fontSize:12, fontWeight:sel?700:500, color:sel?'#5B21B6':'#344054' }}>{s.name}</span>
+                      {sel && <span style={{ fontSize:10, color:'#7C3AED' }}>✓</span>}
+                    </button>
+                  );
+                })}
+              </div>
+              {(form.additional_staff_ids||[]).length > 0 && (
+                <div style={{ fontSize:11, color:'#7C3AED', marginTop:5 }}>
+                  {(form.additional_staff_ids||[]).length} additional staff selected
+                </div>
+              )}
+            </FormGroup>
+          )}
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:14 }}>
             <FormGroup label="Date" required><Input type="date" value={form.date||''} onChange={e=>setForm(f=>({...f,date:e.target.value}))} /></FormGroup>
             <FormGroup label="Time" required><Input type="time" value={form.time||''} onChange={e=>setForm(f=>({...f,time:e.target.value}))} /></FormGroup>

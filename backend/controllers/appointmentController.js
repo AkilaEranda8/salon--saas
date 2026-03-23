@@ -168,7 +168,7 @@ const update = async (req, res) => {
 const changeStatus = async (req, res) => {
   try {
     const { status } = req.body;
-    const allowed = ['pending', 'confirmed', 'completed', 'cancelled'];
+    const allowed = ['pending', 'confirmed', 'in_service', 'completed', 'cancelled', 'no_show'];
     if (!allowed.includes(status)) {
       return res.status(400).json({ message: `Status must be one of: ${allowed.join(', ')}.` });
     }

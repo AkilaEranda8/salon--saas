@@ -44,7 +44,7 @@ const Appointment = sequelize.define('Appointment', {
     defaultValue: 0,
   },
   status: {
-    type: DataTypes.ENUM('pending', 'confirmed', 'completed', 'cancelled'),
+    type: DataTypes.ENUM('pending', 'confirmed', 'in_service', 'completed', 'cancelled', 'no_show'),
     defaultValue: 'pending',
   },
   commission_paid: {

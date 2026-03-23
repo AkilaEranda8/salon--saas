@@ -15,13 +15,14 @@ const IconCalendar = () => <svg width="15" height="15" viewBox="0 0 24 24" fill=
 const IconPlus     = () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>;
 const IconMoney    = () => <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>;
 
-const APPT_STATUSES = ['pending','confirmed','completed','cancelled','no_show'];
+const APPT_STATUSES = ['pending','confirmed','in_service','completed','cancelled','no_show'];
 const STATUS_META = {
-  pending:   { color:'#D97706', bg:'#FFFBEB', label:'Pending'   },
-  confirmed: { color:'#2563EB', bg:'#EFF6FF', label:'Confirmed' },
-  completed: { color:'#059669', bg:'#ECFDF5', label:'Completed' },
-  cancelled: { color:'#DC2626', bg:'#FEF2F2', label:'Cancelled' },
-  no_show:   { color:'#64748B', bg:'#F8FAFC', label:'No Show'   },
+  pending:    { color:'#D97706', bg:'#FFFBEB', label:'Pending'    },
+  confirmed:  { color:'#2563EB', bg:'#EFF6FF', label:'Confirmed'  },
+  in_service: { color:'#7C3AED', bg:'#F5F3FF', label:'In Service' },
+  completed:  { color:'#059669', bg:'#ECFDF5', label:'Completed'  },
+  cancelled:  { color:'#DC2626', bg:'#FEF2F2', label:'Cancelled'  },
+  no_show:    { color:'#64748B', bg:'#F8FAFC', label:'No Show'    },
 };
 const EMPTY = { branch_id:'', customer_name:'', phone:'', service_id:'', staff_id:'', date:'', time:'', amount:'', notes:'', status:'pending' };
 const LIMIT = 20;
@@ -165,7 +166,7 @@ function ApptRow({ row, idx, canEdit, onView, onEdit, onDelete, onStatusChange, 
         <span style={{ fontWeight:700, color:'#059669', fontSize:14 }}>Rs. {Number(row.service?.price||row.amount||0).toLocaleString()}</span>
       </td>
       <td style={{ padding:'13px 16px' }}>
-        {!canEdit||s==='completed'||s==='cancelled' ? <StatusBadge status={s} /> : (
+        {!canEdit||s==='cancelled' ? <StatusBadge status={s} /> : (
           <select value={s} onChange={e => onStatusChange(e.target.value)}
             style={{ padding:'4px 10px', borderRadius:20, border:`1.5px solid ${meta.color}40`, background:meta.bg, color:meta.color, fontWeight:700, fontSize:12, fontFamily:"'Inter',sans-serif", outline:'none', cursor:'pointer' }}>
             {APPT_STATUSES.map(st => <option key={st} value={st}>{STATUS_META[st].label}</option>)}

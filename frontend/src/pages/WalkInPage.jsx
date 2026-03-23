@@ -16,7 +16,7 @@ import {
 const STATUS_BORDER = { waiting: '#f59e0b', serving: '#10b981', completed: '#94a3b8', cancelled: '#ef4444' };
 const STATUS_LABELS = { waiting: 'Waiting', serving: 'In Service', completed: 'Completed', cancelled: 'Cancelled' };
 const FILTER_PILLS  = ['all', 'waiting', 'serving', 'completed', 'cancelled'];
-const EMPTY_FORM    = { customerName: '', phone: '', serviceId: '', branchId: '', note: '' };
+const EMPTY_FORM    = { customerName: '', phone: '', serviceIds: [], branchId: '', note: '' };
 const DARK          = '#101828';
 const MUTED         = '#64748B';
 const ACTIVE_PILL   = '#1e293b';
@@ -128,17 +128,28 @@ export default function WalkInPage() {
     try {
       const res = await api.post('/walkin/checkin', {
         customerName: form.customerName,
-        phone:        form.phone      || undefined,
-        branchId:     form.branchId   || selectedBranch,
-        serviceId:    +form.serviceId,
-        note:         form.note       || undefined,
+        phone:        form.phone        || undefined,
+        branchId:     form.branchId     || selectedBranch,
+        serviceIds:   form.serviceIds.map(Number),
+        note:         form.note         || undefined,
       });
       setShowCheckin(false);
       setForm({ ...EMPTY_FORM, branchId: selectedBranch });
+      setCustSearch(''); setCustResults([]); setCustAll([]); setShowCustDrop(false);
       setShowToken(res.data);
     } catch (err) {
       setFormError(err.response?.data?.message || 'Check-in failed.');
     } finally { setSaving(false); }
+  };
+
+  /*  Toggle a service in/out of selected list  */
+  const toggleService = (id) => {
+    setForm((f) => ({
+      ...f,
+      serviceIds: f.serviceIds.includes(id)
+        ? f.serviceIds.filter((s) => s !== id)
+        : [...f.serviceIds, id],
+    }));
   };
 
   /*  Load all customers when modal opens  */
@@ -173,8 +184,9 @@ export default function WalkInPage() {
   };
 
   /*  Estimated wait preview  */
-  const selectedService = services.find((s) => s.id === +form.serviceId);
-  const waitPreview     = selectedService ? stats.waiting * (selectedService.duration_minutes || 30) : null;
+  const selectedServices = services.filter((s) => form.serviceIds.includes(String(s.id)) || form.serviceIds.includes(s.id));
+  const totalDuration    = selectedServices.reduce((sum, s) => sum + (s.duration_minutes || 30), 0);
+  const waitPreview      = selectedServices.length > 0 ? stats.waiting * totalDuration : null;
 
   /*  Page actions  */
   const pageActions = (
@@ -315,19 +327,38 @@ export default function WalkInPage() {
                 <div style={{ flex: '1 1 180px', minWidth: 0 }}>
                   <div style={{ fontSize: 15, fontWeight: 700, color: DARK }}>{entry.customer_name || 'Walk-in'}</div>
                   {entry.phone && <div style={{ fontSize: 12, color: MUTED, marginTop: 1 }}>{entry.phone}</div>}
-                  {svc.name && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 5 }}>
-                      <span style={{ fontSize: 12, fontWeight: 600, color: '#344054' }}>{svc.name}</span>
-                      {svc.duration_minutes && (
-                        <span style={{ fontSize: 11, padding: '1px 7px', borderRadius: 99, background: '#F1F5F9', color: MUTED, fontWeight: 600 }}>
-                          {svc.duration_minutes} min
-                        </span>
-                      )}
-                    </div>
-                  )}
-                  {entry.note && (
-                    <div style={{ fontSize: 12, color: '#94A3B8', fontStyle: 'italic', marginTop: 3 }}>{entry.note}</div>
-                  )}
+                  {/* Services — primary + extras from note */}
+                  {(() => {
+                    const extraMatch = entry.note?.match(/\[services:([\d,]+)\]/);
+                    const extraIds   = extraMatch ? extraMatch[1].split(',').map(Number) : [];
+                    const extraSvcs  = services.filter((s) => extraIds.includes(s.id) && s.id !== svc.id);
+                    const allSvcs    = svc.name ? [svc, ...extraSvcs] : extraSvcs;
+                    const cleanNote  = entry.note?.replace(/\[services:[\d,]+\]\s*/g, '').trim();
+                    const totalMin   = allSvcs.reduce((sum, s) => sum + (s.duration_minutes || 0), 0);
+                    return (
+                      <>
+                        {allSvcs.length > 0 && (
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 5 }}>
+                            {allSvcs.map((s) => (
+                              <span key={s.id} style={{
+                                fontSize: 11, padding: '2px 8px', borderRadius: 99,
+                                background: '#EEF2FF', color: '#4338CA', fontWeight: 600,
+                                border: '1px solid #C7D2FE',
+                              }}>{s.name}</span>
+                            ))}
+                            {totalMin > 0 && (
+                              <span style={{ fontSize: 11, padding: '2px 7px', borderRadius: 99, background: '#F1F5F9', color: MUTED, fontWeight: 600 }}>
+                                {totalMin} min
+                              </span>
+                            )}
+                          </div>
+                        )}
+                        {cleanNote && (
+                          <div style={{ fontSize: 12, color: '#94A3B8', fontStyle: 'italic', marginTop: 3 }}>{cleanNote}</div>
+                        )}
+                      </>
+                    );
+                  })()}
                 </div>
 
                 {/* STAFF */}
@@ -527,19 +558,79 @@ export default function WalkInPage() {
           </div>
 
           <div>
-            <Label>Service *</Label>
-            <select style={{ width: '100%', padding: '9px 12px', borderRadius: 10, border: '1px solid #D0D5DD', fontSize: 14, fontFamily: 'inherit', background: '#fff', color: DARK }}
-              value={form.serviceId} onChange={(e) => setForm({ ...form, serviceId: e.target.value })}>
-              <option value="">Select service</option>
-              {services.filter((s) => s.is_active !== false).map((s) => (
-                <option key={s.id} value={s.id}>{s.name} — {s.duration_minutes} min</option>
-              ))}
-            </select>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+              <Label style={{ margin: 0 }}>Services * <span style={{ color: MUTED, fontWeight: 500 }}>(select one or more)</span></Label>
+              {form.serviceIds.length > 0 && (
+                <span style={{ fontSize: 11, color: '#6366f1', fontWeight: 700 }}>
+                  {form.serviceIds.length} selected · {totalDuration} min total
+                </span>
+              )}
+            </div>
+
+            {/* Selected chips */}
+            {form.serviceIds.length > 0 && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+                {selectedServices.map((s) => (
+                  <span key={s.id} style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 5,
+                    padding: '4px 10px', borderRadius: 99,
+                    background: '#EEF2FF', border: '1.5px solid #C7D2FE',
+                    fontSize: 12, fontWeight: 600, color: '#4338CA',
+                  }}>
+                    {s.name}
+                    <button
+                      type="button"
+                      onClick={() => toggleService(s.id)}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6366f1', fontSize: 14, lineHeight: 1, padding: 0, marginLeft: 2 }}
+                    >×</button>
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {/* Service list */}
+            <div style={{
+              border: '1.5px solid #D0D5DD', borderRadius: 10,
+              maxHeight: 180, overflowY: 'auto', background: '#FAFAFA',
+            }}>
+              {services.filter((s) => s.is_active !== false).map((s, idx, arr) => {
+                const selected = form.serviceIds.includes(s.id) || form.serviceIds.includes(String(s.id));
+                return (
+                  <div
+                    key={s.id}
+                    onClick={() => toggleService(s.id)}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 10,
+                      padding: '9px 12px', cursor: 'pointer',
+                      background: selected ? '#EEF2FF' : 'transparent',
+                      borderBottom: idx < arr.length - 1 ? '1px solid #F2F4F7' : 'none',
+                      transition: 'background 0.1s',
+                    }}
+                    onMouseEnter={(e) => { if (!selected) e.currentTarget.style.background = '#F8F9FF'; }}
+                    onMouseLeave={(e) => { if (!selected) e.currentTarget.style.background = 'transparent'; }}
+                  >
+                    <div style={{
+                      width: 18, height: 18, borderRadius: 5, flexShrink: 0,
+                      border: `2px solid ${selected ? '#6366f1' : '#D0D5DD'}`,
+                      background: selected ? '#6366f1' : '#fff',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}>
+                      {selected && <span style={{ color: '#fff', fontSize: 11, fontWeight: 900, lineHeight: 1 }}>✓</span>}
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <span style={{ fontSize: 13, fontWeight: selected ? 700 : 500, color: selected ? '#4338CA' : DARK }}>{s.name}</span>
+                    </div>
+                    <span style={{ fontSize: 11, color: MUTED, flexShrink: 0 }}>{s.duration_minutes} min</span>
+                    {s.price && <span style={{ fontSize: 11, fontWeight: 600, color: '#059669', flexShrink: 0 }}>Rs. {Number(s.price).toLocaleString()}</span>}
+                  </div>
+                );
+              })}
+            </div>
           </div>
 
           {waitPreview != null && (
             <div style={{ background: '#F0FDF4', borderRadius: 8, padding: '8px 14px', fontSize: 13, color: '#15803D', fontWeight: 600 }}>
-              ⏳ Estimated wait: ~{waitPreview} min ({stats.waiting} ahead)
+              ⏳ Estimated wait: ~{waitPreview} min · {totalDuration} min service · {stats.waiting} ahead
             </div>
           )}
 
@@ -551,7 +642,7 @@ export default function WalkInPage() {
 
         <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 20 }}>
           <Button variant="secondary" onClick={() => setShowCheckin(false)}>Cancel</Button>
-          <Button onClick={handleCheckin} loading={saving} disabled={saving || !form.customerName || !form.serviceId}>
+          <Button onClick={handleCheckin} loading={saving} disabled={saving || !form.customerName || form.serviceIds.length === 0}>
             Check In
           </Button>
         </div>

@@ -68,45 +68,65 @@ exports.stats = async (req, res) => {
 // ── POST /api/walkin/checkin ──────────────────────────────────────────────────
 exports.checkin = async (req, res) => {
   try {
-    const { customerName, phone, branchId, serviceId, note } = req.body;
+    const { customerName, phone, branchId, serviceId, serviceIds, note } = req.body;
 
-    if (!customerName || !branchId || !serviceId) {
-      return res.status(400).json({ message: 'customerName, branchId, and serviceId are required.' });
+    // Accept either serviceIds (array) or legacy serviceId (single)
+    const ids = Array.isArray(serviceIds) && serviceIds.length > 0
+      ? serviceIds.map(Number).filter(Boolean)
+      : serviceId ? [Number(serviceId)] : [];
+
+    if (!customerName || !branchId || ids.length === 0) {
+      return res.status(400).json({ message: 'customerName, branchId, and at least one serviceId are required.' });
     }
 
+    const primaryServiceId = ids[0];
     const dateStr = today();
 
     const result = await sequelize.transaction(async (t) => {
       const token = await generateToken(branchId, dateStr, t);
 
-      // Calculate estimated wait
-      const service = await Service.findByPk(serviceId, { transaction: t });
-      if (!service) throw Object.assign(new Error('Service not found.'), { status: 404 });
+      // Load all selected services to get total duration
+      const services = await Service.findAll({
+        where: { id: ids },
+        transaction: t,
+      });
+      if (services.length === 0) throw Object.assign(new Error('Service not found.'), { status: 404 });
+
+      const totalDuration = services.reduce((sum, s) => sum + (s.duration_minutes || 30), 0);
 
       const waitingCount = await WalkIn.count({
         where: { branch_id: branchId, check_in_date: dateStr, status: 'waiting' },
         transaction: t,
       });
-      const estimatedWait = waitingCount * (service.duration_minutes || 30);
+      const estimatedWait = waitingCount * totalDuration;
+
+      // Build extra_services note suffix if multiple services selected
+      const extraNote = ids.length > 1
+        ? `[services:${ids.join(',')}]`
+        : '';
+      const fullNote = [extraNote, note].filter(Boolean).join(' ');
 
       const entry = await WalkIn.create({
         token,
         customer_name: customerName,
         phone: phone || null,
         branch_id: branchId,
-        service_id: serviceId,
+        service_id: primaryServiceId,
         staff_id: null,
         status: 'waiting',
         check_in_time: new Date().toTimeString().slice(0, 8),
         check_in_date: dateStr,
         estimated_wait: estimatedWait,
-        note: note || null,
+        note: fullNote || null,
       }, { transaction: t });
 
       return WalkIn.findByPk(entry.id, { include: defaultInclude, transaction: t });
     });
 
-    const full = result;
+    // Attach all service details to response
+    const allServices = await Service.findAll({ where: { id: ids }, attributes: ['id', 'name', 'duration_minutes', 'price'] });
+    const full = result.toJSON ? result.toJSON() : result;
+    full.services = allServices;
 
     emitQueueUpdate(branchId, { action: 'checkin', entry: full });
     res.status(201).json(full);

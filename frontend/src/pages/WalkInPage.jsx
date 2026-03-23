@@ -180,7 +180,7 @@ export default function WalkInPage() {
 
   const selectCustomer = (c) => {
     setSelectedCust(c);
-    setForm((f) => ({ ...f, customerName: c.name, phone: c.phone || '' }));
+    setForm((f) => ({ ...f, customerName: c.name, phone: c.phone || f.phone }));
     setCustSearch('');
     setShowCustDrop(false);
   };
@@ -489,7 +489,7 @@ export default function WalkInPage() {
             /* SEARCH BOX */
             <div style={{ position: 'relative' }} ref={custSearchRef}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                <Label style={{ margin: 0 }}>Search Customer</Label>
+                <Label style={{ margin: 0 }}>Customer Name *</Label>
                 {custLoading && <span style={{ fontSize: 11, color: '#6366f1', fontWeight: 600 }}>Loading…</span>}
                 {!custLoading && custAll.length > 0 && (
                   <span style={{ fontSize: 11, color: MUTED }}>{custAll.length} customers</span>
@@ -499,9 +499,14 @@ export default function WalkInPage() {
               <div style={{ position: 'relative' }}>
                 <input
                   type="text"
-                  placeholder={custLoading ? 'Loading customers…' : 'Search by name or phone…'}
+                  placeholder={custLoading ? 'Loading customers…' : 'Customer name or search existing…'}
                   value={custSearch}
-                  onChange={(e) => { setCustSearch(e.target.value); setShowCustDrop(true); }}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setCustSearch(v);
+                    setForm((f) => ({ ...f, customerName: v }));
+                    setShowCustDrop(true);
+                  }}
                   onFocus={(e) => { e.target.style.borderColor = '#6366f1'; setShowCustDrop(true); }}
                   onBlur={(e) => { e.target.style.borderColor = '#D0D5DD'; setTimeout(() => setShowCustDrop(false), 200); }}
                   style={{
@@ -590,27 +595,18 @@ export default function WalkInPage() {
                 </div>
               )}
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#94A3B8', fontSize: 12, fontWeight: 500, marginTop: 10 }}>
-                <div style={{ flex: 1, height: 1, background: '#E4E7EC' }} />
-                or enter manually below
-                <div style={{ flex: 1, height: 1, background: '#E4E7EC' }} />
-              </div>
             </div>
           )}
 
-          {/* Manual name/phone — only shown when no customer selected from DB */}
-          {!selectedCust && (
-            <>
-              <div>
-                <Label>Customer Name *</Label>
-                <Input placeholder="Name or 'Walk-in'" value={form.customerName} onChange={(e) => setForm({ ...form, customerName: e.target.value })} />
-              </div>
-              <div>
-                <Label>Phone</Label>
-                <Input placeholder="Optional" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
-              </div>
-            </>
-          )}
+          {/* Phone — always visible */}
+          <div>
+            <Label>Phone <span style={{ color: MUTED, fontWeight: 400 }}>(optional)</span></Label>
+            <Input
+              placeholder="Phone number"
+              value={form.phone}
+              onChange={(e) => setForm({ ...form, phone: e.target.value })}
+            />
+          </div>
 
           <div>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
@@ -697,7 +693,7 @@ export default function WalkInPage() {
 
         <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 20 }}>
           <Button variant="secondary" onClick={() => setShowCheckin(false)}>Cancel</Button>
-          <Button onClick={handleCheckin} loading={saving} disabled={saving || !form.customerName || form.serviceIds.length === 0}>
+          <Button onClick={handleCheckin} loading={saving} disabled={saving || (!selectedCust && !custSearch.trim()) || form.serviceIds.length === 0}>
             Check In
           </Button>
         </div>

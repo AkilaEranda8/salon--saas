@@ -242,10 +242,10 @@ export default function AppointmentsPage() {
 
   const openPayment = (row) => {
     setPaymentAppt(row);
-    const svcId = row.service_id || row.service?.id;
+    const svcId = Number(row.service_id || row.service?.id);
     const ids = svcId ? [svcId] : [];
     setPaymentServices(ids);
-    const total = ids.reduce((sum, sid) => { const s = services.find(x => x.id === sid); return sum + Number(s?.price || 0); }, 0);
+    const total = ids.reduce((sum, sid) => { const s = services.find(x => Number(x.id) === Number(sid)); return sum + Number(s?.price || 0); }, 0);
     setPaymentAmt(total || row.amount || '');
     setPaymentMethod('Cash');
     setPaymentErr('');
@@ -253,9 +253,10 @@ export default function AppointmentsPage() {
     setShowPayment(true);
   };
   const togglePaymentService = (id) => {
+    const nid = Number(id);
     setPaymentServices(prev => {
-      const next = prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id];
-      const total = next.reduce((sum, sid) => { const s = services.find(x => x.id === sid); return sum + Number(s?.price || 0); }, 0);
+      const next = prev.includes(nid) ? prev.filter(x => x !== nid) : [...prev, nid];
+      const total = next.reduce((sum, sid) => { const s = services.find(x => Number(x.id) === Number(sid)); return sum + Number(s?.price || 0); }, 0);
       setPaymentAmt(total || '');
       return next;
     });
@@ -499,7 +500,7 @@ export default function AppointmentsPage() {
               <FormGroup label="Services" required>
                 <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
                   {services.map(s => {
-                    const active = paymentServices.includes(s.id);
+                    const active = paymentServices.includes(Number(s.id));
                     return (
                       <button key={s.id} onClick={()=>togglePaymentService(s.id)} style={{ padding:'7px 14px', borderRadius:10, border:`1.5px solid ${active?'#2563EB':'#E4E7EC'}`, background:active?'#EFF6FF':'#fff', color:active?'#2563EB':'#667085', fontWeight:active?700:500, fontSize:12, cursor:'pointer', fontFamily:"'Inter',sans-serif", transition:'all 0.15s', display:'flex', alignItems:'center', gap:6 }}>
                         {active && <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>}

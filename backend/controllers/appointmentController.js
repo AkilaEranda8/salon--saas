@@ -121,16 +121,27 @@ const create = async (req, res) => {
       return res.status(400).json({ message: 'branch_id, service_id, customer_name, date and time are required.' });
     }
 
+    // Sanitize FK fields — empty string → null to avoid DB type errors
+    const safeCustomerId = customer_id ? Number(customer_id) : null;
+    const safeStaffId    = staff_id    ? Number(staff_id)    : null;
+    const safeBranchId   = Number(branch_id);
+    const safeServiceId  = Number(service_id);
+
     // Auto-fetch service price if amount not provided
-    let finalAmount = amount;
-    if (!finalAmount && service_id) {
-      const svc = await Service.findByPk(service_id, { attributes: ['price'] });
-      if (svc) finalAmount = svc.price;
+    let finalAmount = (amount !== undefined && amount !== '') ? Number(amount) : null;
+    if (finalAmount === null && safeServiceId) {
+      const svc = await Service.findByPk(safeServiceId, { attributes: ['price'] });
+      if (svc) finalAmount = Number(svc.price);
     }
 
     const extraSvcIds = Array.isArray(additional_service_ids) ? additional_service_ids.map(Number).filter(Boolean) : [];
     const appt = await Appointment.create({
-      branch_id, customer_id, staff_id, service_id, customer_name, phone, date, time, amount: finalAmount, notes,
+      branch_id:   safeBranchId,
+      customer_id: safeCustomerId,
+      staff_id:    safeStaffId,
+      service_id:  safeServiceId,
+      customer_name, phone: phone || null, date, time,
+      amount: finalAmount, notes: notes || null,
       is_recurring: is_recurring || false,
       recurrence_frequency: is_recurring ? (recurrence_frequency || 'weekly') : null,
       additional_service_ids: extraSvcIds,
@@ -139,15 +150,16 @@ const create = async (req, res) => {
     // Fire-and-forget notification (only if phone provided)
     if (phone) {
       const [branch, service] = await Promise.all([
-        Branch.findByPk(branch_id,   { attributes: ['id', 'name', 'phone'] }),
-        Service.findByPk(service_id, { attributes: ['id', 'name'] }),
+        Branch.findByPk(safeBranchId,  { attributes: ['id', 'name', 'phone'] }),
+        Service.findByPk(safeServiceId, { attributes: ['id', 'name'] }),
       ]);
       notifyAppointmentConfirmed(appt, branch, service);
     }
 
     return res.status(201).json(appt);
   } catch (err) {
-    return res.status(500).json({ message: 'Server error.' });
+    console.error('[Appointment.create] Error:', err.message, err.stack);
+    return res.status(500).json({ message: 'Server error.', detail: err.message });
   }
 };
 
@@ -161,11 +173,15 @@ const update = async (req, res) => {
       return res.status(403).json({ message: 'Access denied. Appointment belongs to a different branch.' });
     }
 
-    const allowed = ['staff_id', 'service_id', 'customer_name', 'phone', 'date', 'time', 'amount', 'notes', 'status'];
+    const allowed = ['service_id', 'customer_name', 'phone', 'date', 'time', 'amount', 'notes', 'status'];
     const updates = {};
     for (const field of allowed) {
-      if (req.body[field] !== undefined) updates[field] = req.body[field];
+      if (req.body[field] !== undefined) updates[field] = req.body[field] === '' ? null : req.body[field];
     }
+    // Sanitize FK integer fields
+    if (req.body.staff_id !== undefined)   updates.staff_id   = req.body.staff_id   ? Number(req.body.staff_id)   : null;
+    if (req.body.service_id !== undefined) updates.service_id = req.body.service_id ? Number(req.body.service_id) : null;
+    if (req.body.customer_id !== undefined) updates.customer_id = req.body.customer_id ? Number(req.body.customer_id) : null;
 
     // Handle additional services
     if (req.body.additional_service_ids !== undefined) {
@@ -186,7 +202,8 @@ const update = async (req, res) => {
     await appt.update(updates);
     return res.json(appt);
   } catch (err) {
-    return res.status(500).json({ message: 'Server error.' });
+    console.error('[Appointment.update] Error:', err.message, err.stack);
+    return res.status(500).json({ message: 'Server error.', detail: err.message });
   }
 };
 

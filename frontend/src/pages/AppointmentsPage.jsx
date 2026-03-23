@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
@@ -475,56 +475,86 @@ export default function AppointmentsPage() {
       </Modal>
 
       {/* Collect Payment Modal */}
-      <Modal open={showPayment} onClose={()=>setShowPayment(false)} title="Collect Payment" size="md"
-        footer={!paymentOk&&<><Button variant="secondary" onClick={()=>setShowPayment(false)}>Cancel</Button><Button variant="primary" loading={paymentSaving} onClick={handlePayment}>Confirm Payment</Button></>}>
+      <Modal open={showPayment} onClose={()=>setShowPayment(false)} title="Collect Payment" size="sm">
         {paymentAppt && (
           paymentOk ? (
             <div style={{ textAlign:'center', padding:'28px 0' }}>
-              <div style={{ width:56, height:56, borderRadius:'50%', background:'#ECFDF5', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 14px' }}>
-                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#059669" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+              <div style={{ width:64, height:64, borderRadius:'50%', background:'#ECFDF5', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 16px' }}>
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#059669" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
               </div>
-              <div style={{ fontSize:16, fontWeight:700, color:'#059669' }}>Payment Recorded!</div>
+              <div style={{ fontSize:17, fontWeight:700, color:'#059669' }}>Payment Collected!</div>
+              <div style={{ fontSize:13, color:'#667085', marginTop:6 }}>Rs. {Number(paymentAmt||0).toLocaleString()} via {paymentMethod}</div>
             </div>
           ) : (
-            <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
-              {paymentErr && <div style={{ background:'#FEF2F2', color:'#DC2626', padding:'9px 13px', borderRadius:9, fontSize:13, border:'1px solid #FEE2E2' }}>{paymentErr}</div>}
-              <div style={{ background:'#F9FAFB', borderRadius:12, padding:'14px 16px' }}>
-                <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-                  <div>
-                    <div style={{ fontSize:15, fontWeight:700, color:'#101828' }}>{paymentAppt.customer_name}</div>
-                    <div style={{ fontSize:13, color:'#667085', marginTop:2 }}>{paymentAppt.phone||''}</div>
+            <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
+              {paymentErr && <div style={{ background:'#FEE2E2', border:'1px solid #FECACA', borderRadius:8, padding:'9px 14px', color:'#B91C1C', fontSize:13 }}>{paymentErr}</div>}
+
+              {/* Customer info */}
+              <div style={{ background:'#F8FAFC', borderRadius:10, padding:'12px 16px', display:'flex', alignItems:'center', gap:12 }}>
+                <div style={{ width:42, height:42, borderRadius:10, background:'#1e293b', color:'#fff', display:'flex', alignItems:'center', justifyContent:'center', fontSize:16, fontWeight:800, flexShrink:0 }}>
+                  {paymentAppt.customer_name?.charAt(0)?.toUpperCase()}
+                </div>
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ fontSize:14, fontWeight:700, color:'#101828' }}>{paymentAppt.customer_name}</div>
+                  <div style={{ display:'flex', gap:10, marginTop:2, flexWrap:'wrap' }}>
+                    {paymentAppt.phone && <span style={{ fontSize:12, color:'#667085' }}>📞 {paymentAppt.phone}</span>}
+                    {paymentAppt.staff?.name && <span style={{ fontSize:12, color:'#667085' }}>✂ {paymentAppt.staff.name}</span>}
                   </div>
-                  {paymentAppt.staff?.name && <span style={{ background:'#F3F4F6', color:'#475467', padding:'4px 12px', borderRadius:8, fontSize:12, fontWeight:500 }}>{paymentAppt.staff.name}</span>}
                 </div>
               </div>
-              <FormGroup label="Services" required>
-                <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
-                  {services.map(s => {
-                    const active = paymentServices.includes(Number(s.id));
-                    return (
-                      <button key={s.id} onClick={()=>togglePaymentService(s.id)} style={{ padding:'7px 14px', borderRadius:10, border:`1.5px solid ${active?'#2563EB':'#E4E7EC'}`, background:active?'#EFF6FF':'#fff', color:active?'#2563EB':'#667085', fontWeight:active?700:500, fontSize:12, cursor:'pointer', fontFamily:"'Inter',sans-serif", transition:'all 0.15s', display:'flex', alignItems:'center', gap:6 }}>
-                        {active && <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>}
-                        {s.name}
-                        {s.price ? <span style={{ opacity:0.6, marginLeft:2 }}>Rs.{Number(s.price).toLocaleString()}</span> : ''}
-                      </button>
-                    );
-                  })}
+
+              {/* Service breakdown */}
+              {paymentServices.length > 0 && (
+                <div style={{ border:'1px solid #E4E7EC', borderRadius:10, overflow:'hidden' }}>
+                  {services.filter(s => paymentServices.includes(Number(s.id))).map((s, i, arr) => (
+                    <div key={s.id} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'9px 14px', borderBottom: i < arr.length-1 ? '1px solid #F2F4F7' : 'none' }}>
+                      <div>
+                        <span style={{ fontSize:13, fontWeight:600, color:'#101828' }}>{s.name}</span>
+                        {s.duration_minutes && <span style={{ fontSize:11, color:'#98A2B3', marginLeft:8 }}>{s.duration_minutes} min</span>}
+                      </div>
+                      <span style={{ fontSize:13, fontWeight:700, color:'#059669' }}>
+                        {s.price ? `Rs. ${Number(s.price).toLocaleString()}` : '—'}
+                      </span>
+                    </div>
+                  ))}
+                  <div style={{ display:'flex', justifyContent:'space-between', padding:'10px 14px', background:'#F9FAFB', borderTop:'1.5px solid #E4E7EC' }}>
+                    <span style={{ fontSize:13, fontWeight:700, color:'#101828' }}>Total</span>
+                    <span style={{ fontSize:15, fontWeight:800, color:'#059669' }}>Rs. {Number(paymentAmt||0).toLocaleString()}</span>
+                  </div>
                 </div>
-                {paymentServices.length===0 && <div style={{ fontSize:12, color:'#DC2626', marginTop:4 }}>Select at least one service</div>}
-              </FormGroup>
-              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
-                <FormGroup label="Amount (Rs.)" required>
-                  <Input type="number" value={paymentAmt} onChange={e=>setPaymentAmt(e.target.value)} placeholder="0" />
-                </FormGroup>
-                <FormGroup label="Payment Method" required>
-                  <Select value={paymentMethod} onChange={e=>setPaymentMethod(e.target.value)}>
-                    {['Cash','Card','Bank Transfer','Online'].map(m=><option key={m} value={m}>{m}</option>)}
-                  </Select>
-                </FormGroup>
+              )}
+
+              {/* Payment method toggle */}
+              <div>
+                <div style={{ fontSize:11, fontWeight:700, color:'#98A2B3', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:8 }}>Payment Method</div>
+                <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+                  {['Cash','Card','Online Transfer'].map(m => (
+                    <button key={m} type="button" onClick={()=>setPaymentMethod(m)} style={{
+                      padding:'7px 16px', borderRadius:8, fontSize:13, fontWeight:600,
+                      cursor:'pointer', fontFamily:"'Inter',sans-serif", transition:'all 0.15s',
+                      border:`1.5px solid ${paymentMethod===m?'#10b981':'#D0D5DD'}`,
+                      background:paymentMethod===m?'#F0FDF4':'#fff',
+                      color:paymentMethod===m?'#065F46':'#101828',
+                    }}>{m}</button>
+                  ))}
+                </div>
               </div>
-              <div style={{ background:'#F0FDF4', borderRadius:10, padding:'12px 16px', display:'flex', alignItems:'center', justifyContent:'space-between', border:'1px solid #BBF7D0' }}>
-                <span style={{ fontSize:13, fontWeight:600, color:'#166534' }}>Total</span>
-                <span style={{ fontSize:18, fontWeight:800, color:'#059669' }}>Rs. {Number(paymentAmt||0).toLocaleString()}</span>
+
+              {/* Amount */}
+              <div>
+                <div style={{ fontSize:11, fontWeight:700, color:'#98A2B3', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:6 }}>Amount (Rs.) *</div>
+                <input type="number" min="0" value={paymentAmt} onChange={e=>setPaymentAmt(e.target.value)}
+                  style={{ width:'100%', padding:'9px 12px', borderRadius:10, border:'1.5px solid #D0D5DD', fontSize:14, fontFamily:"'Inter',sans-serif", background:'#fff', color:'#101828', outline:'none', boxSizing:'border-box' }}
+                  onFocus={e=>e.target.style.borderColor='#10b981'} onBlur={e=>e.target.style.borderColor='#D0D5DD'} />
+              </div>
+
+              {/* Actions */}
+              <div style={{ display:'flex', gap:10, justifyContent:'flex-end', marginTop:6 }}>
+                <Button variant="secondary" onClick={()=>setShowPayment(false)}>Cancel</Button>
+                <Button loading={paymentSaving} disabled={paymentSaving||!paymentAmt} onClick={handlePayment}
+                  style={{ background:'#10b981', border:'none', fontWeight:700 }}>
+                  Collect Rs. {Number(paymentAmt||0).toLocaleString()}
+                </Button>
               </div>
             </div>
           )

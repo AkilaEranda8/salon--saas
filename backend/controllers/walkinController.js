@@ -137,6 +137,41 @@ exports.checkin = async (req, res) => {
   }
 };
 
+// ── PUT /api/walkin/:id ────────────────────────────────────────────────────────
+exports.update = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { customerName, phone, serviceId, serviceIds, staffId, note } = req.body;
+
+    const entry = await WalkIn.findByPk(id);
+    if (!entry) return res.status(404).json({ message: 'Walk-in entry not found.' });
+
+    // Resolve primary service
+    const ids = Array.isArray(serviceIds) && serviceIds.length > 0
+      ? serviceIds.map(Number).filter(Boolean)
+      : serviceId ? [Number(serviceId)] : null;
+
+    const extraNote = ids && ids.length > 1 ? `[services:${ids.join(',')}]` : '';
+    const baseNote  = (note !== undefined ? note : (entry.note || '').replace(/\[services:[\d,]+\]\s*/g, '').trim());
+    const fullNote  = [extraNote, baseNote].filter(Boolean).join(' ');
+
+    await entry.update({
+      ...(customerName !== undefined && { customer_name: customerName }),
+      ...(phone        !== undefined && { phone: phone || null }),
+      ...(ids          && { service_id: ids[0] }),
+      ...(staffId      !== undefined && { staff_id: staffId || null }),
+      note: fullNote || null,
+    });
+
+    const full = await WalkIn.findByPk(id, { include: defaultInclude });
+    emitQueueUpdate(entry.branch_id, { action: 'update', entry: full });
+    res.json(full);
+  } catch (err) {
+    console.error('walkin.update error:', err);
+    res.status(500).json({ message: 'Failed to update walk-in entry.' });
+  }
+};
+
 // ── PATCH /api/walkin/:id/status ──────────────────────────────────────────────
 exports.updateStatus = async (req, res) => {
   try {

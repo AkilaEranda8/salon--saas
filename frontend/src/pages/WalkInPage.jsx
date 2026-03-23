@@ -110,6 +110,12 @@ export default function WalkInPage() {
   const [paying,         setPaying]         = useState(false);
   const [payError,       setPayError]       = useState('');
 
+  /* Edit modal */
+  const [editEntry,      setEditEntry]      = useState(null);
+  const [editForm,       setEditForm]       = useState({});
+  const [editSaving,     setEditSaving]     = useState(false);
+  const [editError,      setEditError]      = useState('');
+
   const [branches,  setBranches]  = useState([]);
   const [services,  setServices]  = useState([]);
   const [staffList, setStaffList] = useState([]);
@@ -223,6 +229,52 @@ export default function WalkInPage() {
     } catch (err) {
       setPayError(err.response?.data?.message || err.message || 'Payment failed. Check server logs.');
     } finally { setPaying(false); }
+  };
+
+  /*  Edit walk-in  */
+  const openEdit = (entry) => {
+    const extraMatch = entry.note?.match(/\[services:([\d,]+)\]/);
+    const extraIds   = extraMatch ? extraMatch[1].split(',').map(Number) : [];
+    const allIds     = [...new Set([entry.service_id, ...extraIds].filter(Boolean))];
+    const cleanNote  = (entry.note || '').replace(/\[services:[\d,]+\]\s*/g, '').trim();
+    setEditEntry(entry);
+    setEditForm({
+      customerName: entry.customer_name || '',
+      phone:        entry.phone || '',
+      serviceIds:   allIds.map(String),
+      staffId:      entry.staff_id ? String(entry.staff_id) : '',
+      note:         cleanNote,
+    });
+    setEditError('');
+  };
+
+  const submitEdit = async () => {
+    if (!editForm.customerName.trim()) { setEditError('Customer name is required.'); return; }
+    if (!editForm.serviceIds.length)   { setEditError('At least one service is required.'); return; }
+    setEditSaving(true); setEditError('');
+    try {
+      await api.put(`/walkin/${editEntry.id}`, {
+        customerName: editForm.customerName,
+        phone:        editForm.phone || undefined,
+        serviceIds:   editForm.serviceIds.map(Number),
+        staffId:      editForm.staffId ? Number(editForm.staffId) : null,
+        note:         editForm.note || undefined,
+      });
+      toast.success('Walk-in updated!');
+      setEditEntry(null);
+    } catch (err) {
+      setEditError(err.response?.data?.message || 'Update failed.');
+    } finally { setEditSaving(false); }
+  };
+
+  const toggleEditService = (id) => {
+    const sid = String(id);
+    setEditForm((f) => ({
+      ...f,
+      serviceIds: f.serviceIds.includes(sid)
+        ? f.serviceIds.filter((s) => s !== sid)
+        : [...f.serviceIds, sid],
+    }));
   };
 
   /*  Check-in submit  */
@@ -487,6 +539,9 @@ export default function WalkInPage() {
                     >
                       Pay
                     </Button>
+                  )}
+                  {(entry.status === 'waiting' || entry.status === 'serving') && (
+                    <Button size="sm" variant="ghost" onClick={() => openEdit(entry)}>Edit</Button>
                   )}
                   <Button size="sm" variant="ghost" onClick={() => setShowToken(entry)}>Token</Button>
                   {(entry.status === 'waiting' || entry.status === 'serving') && (
@@ -795,6 +850,108 @@ export default function WalkInPage() {
           <div style={{ display: 'flex', gap: 10, justifyContent: 'center', marginTop: 16 }}>
             <Button variant="secondary" onClick={() => setShowToken(null)}>Close</Button>
             <Button onClick={() => window.print()}>Print</Button>
+          </div>
+        </Modal>
+      )}
+
+      {/*  EDIT MODAL  */}
+      {editEntry && (
+        <Modal open={!!editEntry} onClose={() => setEditEntry(null)} title="Edit Walk-in" size="md">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            {editError && (
+              <div style={{ background: '#FEE2E2', border: '1px solid #FECACA', borderRadius: 8, padding: '9px 14px', color: '#B91C1C', fontSize: 13 }}>{editError}</div>
+            )}
+
+            <div>
+              <Label>Customer Name *</Label>
+              <Input value={editForm.customerName} onChange={(e) => setEditForm({ ...editForm, customerName: e.target.value })} placeholder="Customer name" />
+            </div>
+
+            <div>
+              <Label>Phone <span style={{ color: MUTED, fontWeight: 400 }}>(optional)</span></Label>
+              <Input value={editForm.phone} onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })} placeholder="Phone number" />
+            </div>
+
+            {/* Staff assign */}
+            <div>
+              <Label>Assign Staff</Label>
+              <select
+                value={editForm.staffId}
+                onChange={(e) => setEditForm({ ...editForm, staffId: e.target.value })}
+                style={{ width: '100%', padding: '9px 12px', borderRadius: 10, border: '1px solid #D0D5DD', fontSize: 14, fontFamily: 'inherit', background: '#fff', color: DARK }}
+              >
+                <option value="">— Unassigned —</option>
+                {staffList.filter((s) => s.is_active !== false).map((s) => (
+                  <option key={s.id} value={s.id}>{s.name}{busyStaffIds.has(s.id) ? ' (Busy)' : ''}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Services multi-select */}
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                <Label style={{ margin: 0 }}>Services *</Label>
+                {editForm.serviceIds.length > 0 && (
+                  <span style={{ fontSize: 11, color: '#6366f1', fontWeight: 700 }}>
+                    {editForm.serviceIds.length} selected
+                  </span>
+                )}
+              </div>
+              {/* Selected chips */}
+              {editForm.serviceIds.length > 0 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+                  {services.filter((s) => editForm.serviceIds.includes(String(s.id))).map((s) => (
+                    <span key={s.id} style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 5,
+                      padding: '4px 10px', borderRadius: 99,
+                      background: '#EEF2FF', border: '1.5px solid #C7D2FE',
+                      fontSize: 12, fontWeight: 600, color: '#4338CA',
+                    }}>
+                      {s.name}
+                      <button type="button" onClick={() => toggleEditService(s.id)}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6366f1', fontSize: 14, lineHeight: 1, padding: 0 }}>×</button>
+                    </span>
+                  ))}
+                </div>
+              )}
+              <div style={{ border: '1.5px solid #D0D5DD', borderRadius: 10, maxHeight: 180, overflowY: 'auto', background: '#FAFAFA' }}>
+                {services.filter((s) => s.is_active !== false).map((s, idx, arr) => {
+                  const selected = editForm.serviceIds.includes(String(s.id));
+                  return (
+                    <div key={s.id} onClick={() => toggleEditService(s.id)} style={{
+                      display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', cursor: 'pointer',
+                      background: selected ? '#EEF2FF' : 'transparent',
+                      borderBottom: idx < arr.length - 1 ? '1px solid #F2F4F7' : 'none',
+                    }}
+                      onMouseEnter={(e) => { if (!selected) e.currentTarget.style.background = '#F8F9FF'; }}
+                      onMouseLeave={(e) => { if (!selected) e.currentTarget.style.background = 'transparent'; }}
+                    >
+                      <div style={{
+                        width: 18, height: 18, borderRadius: 5, flexShrink: 0,
+                        border: `2px solid ${selected ? '#6366f1' : '#D0D5DD'}`,
+                        background: selected ? '#6366f1' : '#fff',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }}>
+                        {selected && <span style={{ color: '#fff', fontSize: 11, fontWeight: 900, lineHeight: 1 }}>✓</span>}
+                      </div>
+                      <span style={{ flex: 1, fontSize: 13, fontWeight: selected ? 700 : 500, color: selected ? '#4338CA' : DARK }}>{s.name}</span>
+                      <span style={{ fontSize: 11, color: MUTED }}>{s.duration_minutes} min</span>
+                      {s.price && <span style={{ fontSize: 11, fontWeight: 600, color: '#059669' }}>Rs. {Number(s.price).toLocaleString()}</span>}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div>
+              <Label>Notes <span style={{ color: MUTED, fontWeight: 400 }}>(optional)</span></Label>
+              <Textarea rows={2} value={editForm.note} onChange={(e) => setEditForm({ ...editForm, note: e.target.value })} placeholder="Optional notes" />
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 20 }}>
+            <Button variant="secondary" onClick={() => setEditEntry(null)}>Cancel</Button>
+            <Button loading={editSaving} disabled={editSaving} onClick={submitEdit}>Save Changes</Button>
           </div>
         </Modal>
       )}

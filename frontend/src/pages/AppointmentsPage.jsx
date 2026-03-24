@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, Fragment } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
@@ -14,7 +14,6 @@ const IconClose    = () => <svg width="18" height="18" viewBox="0 0 24 24" fill=
 const IconCalendar = () => <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>;
 const IconPlus     = () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>;
 const IconMoney    = () => <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>;
-const IconPackage  = () => <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="16.5" y1="9.4" x2="7.5" y2="4.21"/><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>;
 
 const APPT_STATUSES = ['pending','confirmed','in_service','completed','cancelled','no_show'];
 const STATUS_META = {
@@ -137,7 +136,7 @@ function PagBtn({ onClick, disabled, active, label }) {
   );
 }
 
-function ApptRow({ row, idx, canEdit, onView, onEdit, onDelete, onStatusChange, onPayment, onSellPkg }) {
+function ApptRow({ row, idx, canEdit, onView, onEdit, onDelete, onStatusChange, onPayment }) {
   const [hovered, setHovered] = useState(false);
   const s = row.status;
   const meta = STATUS_META[s] ?? STATUS_META.pending;
@@ -183,7 +182,6 @@ function ApptRow({ row, idx, canEdit, onView, onEdit, onDelete, onStatusChange, 
         <div style={{ display:'flex', gap:4, justifyContent:'center' }}>
           <ActionBtn onClick={onView} title="View" color="#2563EB"><IconEye /></ActionBtn>
           {canEdit && s==='in_service' && <ActionBtn onClick={onPayment} title="Collect Payment" color="#059669"><IconMoney /></ActionBtn>}
-          {canEdit && row.customer_id && <ActionBtn onClick={onSellPkg} title="Sell Package" color="#7C3AED"><IconPackage /></ActionBtn>}
           {canEdit && <ActionBtn onClick={onEdit} title="Edit" color="#D97706"><IconEdit /></ActionBtn>}
           {canEdit && <ActionBtn onClick={onDelete} title="Delete" color="#DC2626"><IconTrash /></ActionBtn>}
         </div>
@@ -226,10 +224,7 @@ export default function AppointmentsPage() {
   const [showCustDrop, setShowCustDrop] = useState(false);
   const [selectedCust, setSelectedCust] = useState(null);
   const custRef = useRef(null);
-  // Package selection for form
-  const [custPackages, setCustPackages] = useState([]);
-  const [selectedPkg, setSelectedPkg]   = useState(null);
-  const [pkgLoading,  setPkgLoading]    = useState(false);
+
 
   const [showPayment, setShowPayment]     = useState(false);
   const [paymentAppt, setPaymentAppt]     = useState(null);
@@ -239,17 +234,6 @@ export default function AppointmentsPage() {
   const [paymentErr, setPaymentErr]       = useState('');
   const [paymentOk, setPaymentOk]         = useState(false);
   const [paymentServices, setPaymentServices] = useState([]);
-
-  // Sell Package modal
-  const [showSellPkg,       setShowSellPkg]       = useState(false);
-  const [sellPkgStep,       setSellPkgStep]       = useState(1);
-  const [sellPkgCustomers,  setSellPkgCustomers]  = useState([]);
-  const [sellPkgPackages,   setSellPkgPackages]   = useState([]);
-  const [sellPkgCustSearch, setSellPkgCustSearch] = useState('');
-  const [sellPkgForm,       setSellPkgForm]       = useState({ customer_id:'', package_id:'', payment_method:'Cash', notes:'' });
-  const [sellPkgSaving,     setSellPkgSaving]     = useState(false);
-  const [sellPkgError,      setSellPkgError]      = useState('');
-  const [sellPkgOk,         setSellPkgOk]         = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -292,15 +276,6 @@ export default function AppointmentsPage() {
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  // Load active packages when customer is selected
-  useEffect(() => {
-    if (!selectedCust?.id) { setCustPackages([]); setSelectedPkg(null); setPkgLoading(false); return; }
-    setPkgLoading(true);
-    api.get(`/packages/customer/${selectedCust.id}/active`)
-      .then(r => setCustPackages(r.data || []))
-      .catch(() => setCustPackages([]))
-      .finally(() => setPkgLoading(false));
-  }, [selectedCust]);
 
   const selectCust = (c) => {
     setSelectedCust(c);
@@ -308,7 +283,7 @@ export default function AppointmentsPage() {
     setCustSearch(''); setShowCustDrop(false);
   };
   const clearCust = () => {
-    setSelectedCust(null); setSelectedPkg(null); setCustPackages([]);
+    setSelectedCust(null);
     setForm(f => ({ ...f, customer_id: '', customer_name: '', phone: '' }));
   };
 
@@ -356,8 +331,8 @@ export default function AppointmentsPage() {
     setPaymentSaving(false);
   };
 
-  const openAdd    = () => { setEditItem(null); setForm({...EMPTY, branch_id:user?.branch_id||'', date:today}); setFormErr(''); setSelectedCust(null); setSelectedPkg(null); setCustPackages([]); setCustSearch(''); setShowForm(true); };
-  const openEdit   = row => { setEditItem(row); setForm({...row, service_id:row.service?.id||row.service_id, additional_service_ids:row.additional_service_ids||[], staff_id:row.staff?.id||row.staff_id, date:row.date?.slice(0,10)||''}); setFormErr(''); setSelectedCust(null); setSelectedPkg(null); setCustPackages([]); setCustSearch(''); setShowForm(true); };
+  const openAdd    = () => { setEditItem(null); setForm({...EMPTY, branch_id:user?.branch_id||'', date:today}); setFormErr(''); setSelectedCust(null); setCustSearch(''); setShowForm(true); };
+  const openEdit   = row => { setEditItem(row); setForm({...row, service_id:row.service?.id||row.service_id, additional_service_ids:row.additional_service_ids||[], staff_id:row.staff?.id||row.staff_id, date:row.date?.slice(0,10)||''}); setFormErr(''); setSelectedCust(null); setCustSearch(''); setShowForm(true); };
   const openDetail = row => { setDetailItem(row); setShowDetail(true); };
 
   const handleSave = async () => {
@@ -368,21 +343,6 @@ export default function AppointmentsPage() {
       const res = editItem
         ? await api.put(`/appointments/${editItem.id}`, payload)
         : await api.post('/appointments', payload);
-      // Redeem package session if a package was selected (new appointments only)
-      if (!editItem && selectedPkg && form.service_id) {
-        try {
-          await api.post('/packages/redeem', {
-            customerPackageId: selectedPkg.id,
-            serviceId: Number(form.service_id),
-            appointmentId: res.data?.id || null,
-            staffId: form.staff_id || null,
-          });
-        } catch (pkgErr) {
-          // Non-fatal — appointment already created, just warn
-          setFormErr(`Appointment saved but package redeem failed: ${pkgErr.response?.data?.message || pkgErr.message}`);
-          setSaving(false); load(); return;
-        }
-      }
       setShowForm(false); load();
     } catch (e) { setFormErr(e.response?.data?.message||'Save failed'); }
     setSaving(false);
@@ -394,47 +354,6 @@ export default function AppointmentsPage() {
     try { await api.delete(`/appointments/${deleteId}`); } catch {}
     setDeleteId(null); load();
   };
-
-  const openSellPkg = (prefillCust = null) => {
-    setSellPkgStep(prefillCust?.id ? 2 : 1);
-    setSellPkgError(''); setSellPkgOk(false); setSellPkgCustSearch('');
-    setSellPkgForm({ customer_id: prefillCust?.id ? String(prefillCust.id) : '', package_id:'', payment_method:'Cash', notes:'' });
-    setSellPkgPackages([]); setSellPkgCustomers([]);
-    setShowSellPkg(true);
-    Promise.all([
-      api.get('/packages'),
-      api.get('/customers?limit=500'),
-    ]).then(([pkgRes, custRes]) => {
-      setSellPkgPackages((Array.isArray(pkgRes.data) ? pkgRes.data : (pkgRes.data?.data || [])).filter(p => p.is_active));
-      setSellPkgCustomers(custRes.data?.data || custRes.data || []);
-    }).catch(() => {});
-  };
-
-  const handleSellPkg = async () => {
-    if (!sellPkgForm.customer_id) { setSellPkgError('Please select a customer.'); return; }
-    if (!sellPkgForm.package_id)  { setSellPkgError('Please select a package.'); return; }
-    const brId = filterBranch || user?.branch_id;
-    if (!brId) { setSellPkgError('Branch not available.'); return; }
-    setSellPkgSaving(true); setSellPkgError('');
-    try {
-      await api.post('/packages/purchase', {
-        customer_id:    Number(sellPkgForm.customer_id),
-        package_id:     Number(sellPkgForm.package_id),
-        branch_id:      Number(brId),
-        payment_method: sellPkgForm.payment_method,
-        notes:          sellPkgForm.notes || undefined,
-      });
-      setSellPkgOk(true);
-      setTimeout(() => { setShowSellPkg(false); setSellPkgOk(false); }, 1600);
-    } catch (err) { setSellPkgError(err.response?.data?.message || 'Purchase failed.'); }
-    setSellPkgSaving(false);
-  };
-
-  const sellPkgFilteredCusts = sellPkgCustSearch.trim()
-    ? sellPkgCustomers.filter(c => c.name?.toLowerCase().includes(sellPkgCustSearch.toLowerCase()) || c.phone?.includes(sellPkgCustSearch))
-    : sellPkgCustomers;
-  const sellPkgSelPkg  = sellPkgPackages.find(p  => String(p.id) === String(sellPkgForm.package_id));
-  const sellPkgSelCust = sellPkgCustomers.find(c => String(c.id) === String(sellPkgForm.customer_id));
 
   const filteredStaff = form.branch_id ? staffList.filter(s => s.branch_id==form.branch_id) : staffList;
   const counts = APPT_STATUSES.reduce((acc,s) => { acc[s]=appts.filter(a=>a.status===s).length; return acc; }, {});
@@ -454,14 +373,7 @@ export default function AppointmentsPage() {
 
   return (
     <PageWrapper title="Appointments" subtitle={`${total} total appointments`}
-      actions={canEdit && (
-        <div style={{ display:'flex', gap:8 }}>
-          <Button variant="primary" onClick={() => openSellPkg()} style={{ display:'flex', alignItems:'center', gap:6, background:'#7C3AED' }}>
-            <IconPackage /> Sell Package
-          </Button>
-          <Button variant="primary" onClick={openAdd} style={{ display:'flex', alignItems:'center', gap:6 }}><IconPlus /> New Appointment</Button>
-        </div>
-      )}>
+      actions={canEdit && <Button variant="primary" onClick={openAdd} style={{ display:'flex', alignItems:'center', gap:6 }}><IconPlus /> New Appointment</Button>}>
 
       {/* Stat Cards */}
       <div style={{ display:'flex', gap:12, flexWrap:'wrap' }}>
@@ -545,8 +457,7 @@ export default function AppointmentsPage() {
               ) : displayed.map((row,idx)=>(
                 <ApptRow key={row.id} row={row} idx={idx} canEdit={canEdit}
                   onView={()=>openDetail(row)} onEdit={()=>openEdit(row)} onDelete={()=>confirmDelete(row.id)}
-                  onStatusChange={v=>handleStatusChange(row.id,v)} onPayment={()=>openPayment(row)}
-                  onSellPkg={() => openSellPkg(row.customer_id ? { id: row.customer_id, name: row.customer_name } : null)} />
+                  onStatusChange={v=>handleStatusChange(row.id,v)} onPayment={()=>openPayment(row)} />
               ))}
             </tbody>
           </table>
@@ -623,124 +534,53 @@ export default function AppointmentsPage() {
               <Input value={form.phone||''} onChange={e=>setForm(f=>({...f,phone:e.target.value}))} placeholder="0300-0000000" />
             </FormGroup>
           )}
-          {/* Active Packages — show while loading or when packages exist */}
-          {selectedCust && (pkgLoading || custPackages.length > 0) && (
-            <div>
-              <div style={{ fontSize:11, fontWeight:700, color:'#98A2B3', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:8 }}>
-                Packages
-                {pkgLoading
-                  ? <span style={{ fontSize:11, fontWeight:400, color:'#C4CAD4', textTransform:'none', marginLeft:6 }}>— loading…</span>
-                  : <span style={{ fontSize:11, fontWeight:400, color:'#C4CAD4', textTransform:'none', marginLeft:6 }}>— click to use a session</span>
-                }
-              </div>
-              {pkgLoading ? (
-                <div style={{ background:'#F9FAFB', borderRadius:10, padding:'10px 14px', fontSize:12, color:'#98A2B3', textAlign:'center' }}>
-                  Loading packages…
-                </div>
-              ) : (
-              <div style={{ display:'flex', flexDirection:'column', gap:7 }}>
-                {custPackages.map(cp=>{
-                  const isSel = selectedPkg?.id===cp.id;
-                  const pkgServices = cp.package?.services || [];
-                  const sessLeft = (cp.sessions_total||0)-(cp.sessions_used||0);
-                  return (
-                    <div key={cp.id} onClick={()=>{
-                      setSelectedPkg(isSel?null:cp);
-                      if(!isSel && pkgServices.length>0){
-                        const sid = String(pkgServices[0]);
-                        setForm(f=>({...f, service_id:sid, additional_service_ids:[], amount:0}));
-                      }
-                    }} style={{ display:'flex', alignItems:'center', gap:12, padding:'10px 14px', borderRadius:10, border:`1.5px solid ${isSel?'#7C3AED':'#E4E7EC'}`, background:isSel?'#F5F3FF':'#FAFAFA', cursor:'pointer', transition:'all 0.15s' }}>
-                      <div style={{ width:36, height:36, borderRadius:8, background:isSel?'#7C3AED':'#E4E7EC', color:isSel?'#fff':'#667085', display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, fontWeight:800, flexShrink:0 }}>PKG</div>
-                      <div style={{ flex:1, minWidth:0 }}>
-                        <div style={{ fontSize:13, fontWeight:700, color:isSel?'#5B21B6':'#101828' }}>{cp.package?.name||'Package'}</div>
-                        <div style={{ fontSize:11, color:'#667085', marginTop:1 }}>
-                          {sessLeft} session{sessLeft!==1?'s':''} left · expires {cp.expiry_date}
-                        </div>
-                      </div>
-                      {isSel && <span style={{ fontSize:13, color:'#7C3AED', fontWeight:700 }}>✓ Selected</span>}
-                    </div>
-                  );
-                })}
-                {selectedPkg && <div style={{ fontSize:11, color:'#7C3AED', marginTop:4, fontWeight:600 }}>Package session will be redeemed on save</div>}
-              </div>
-              )}
-            </div>
-          )}
           {isSuperAdmin && <FormGroup label="Branch"><Select value={form.branch_id||''} onChange={e=>setForm(f=>({...f,branch_id:e.target.value,staff_id:''}))}>
             <option value="">Select branch</option>{branches.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}
           </Select></FormGroup>}
           {/* Services multi-select */}
           <FormGroup label="Services" required>
             <div style={{ display:'flex', flexDirection:'column', gap:5, maxHeight:180, overflowY:'auto', border:'1.5px solid #E4E7EC', borderRadius:10, padding:'8px 10px' }}>
-              {(() => {
-                const pkgSvcIds = (selectedPkg?.package?.services || []).map(Number);
-                return services.map(s => {
-                  const isPrimary   = String(form.service_id) === String(s.id);
-                  const isExtra     = (form.additional_service_ids||[]).map(Number).includes(Number(s.id));
-                  const isSel       = isPrimary || isExtra;
-                  const coveredByPkg = pkgSvcIds.includes(Number(s.id));
-                  return (
-                    <label key={s.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'6px 8px', borderRadius:8, cursor:'pointer', background: coveredByPkg && isSel ? '#F5F3FF' : isSel ? '#F0FDF4' : 'transparent', border: coveredByPkg ? '1px solid #DDD6FE' : 'none', transition:'background 0.1s' }}>
-                      <input type="checkbox" checked={isSel} onChange={() => {
-                        setForm(f => {
-                          const cur = (f.additional_service_ids||[]).map(Number);
-                          const pkgIds = (selectedPkg?.package?.services || []).map(Number);
-                          // Price for a service = 0 if covered by selected package
-                          const svcPrice = (id) => {
-                            const sv = services.find(x=>Number(x.id)===Number(id));
-                            return pkgIds.includes(Number(id)) ? 0 : Number(sv?.price||0);
-                          };
-                          if (isPrimary) {
-                            if (cur.length > 0) {
-                              const [newPrimary, ...rest] = cur;
-                              const total = rest.reduce((sum,id)=>sum+svcPrice(id),0) + svcPrice(newPrimary);
-                              return { ...f, service_id: String(newPrimary), additional_service_ids: rest, amount: total };
-                            }
-                            return { ...f, service_id: '', additional_service_ids: [], amount: '' };
+              {services.map(s => {
+                const isPrimary = String(form.service_id) === String(s.id);
+                const isExtra   = (form.additional_service_ids||[]).map(Number).includes(Number(s.id));
+                const isSel     = isPrimary || isExtra;
+                return (
+                  <label key={s.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'6px 8px', borderRadius:8, cursor:'pointer', background: isSel ? '#F0FDF4' : 'transparent', transition:'background 0.1s' }}>
+                    <input type="checkbox" checked={isSel} onChange={() => {
+                      setForm(f => {
+                        const cur = (f.additional_service_ids||[]).map(Number);
+                        const svcPrice = (id) => { const sv = services.find(x=>Number(x.id)===Number(id)); return Number(sv?.price||0); };
+                        if (isPrimary) {
+                          if (cur.length > 0) {
+                            const [newPrimary, ...rest] = cur;
+                            return { ...f, service_id: String(newPrimary), additional_service_ids: rest, amount: rest.reduce((sum,id)=>sum+svcPrice(id),0) + svcPrice(newPrimary) };
                           }
-                          if (isExtra) {
-                            const next = cur.filter(x => x !== Number(s.id));
-                            const allIds = [f.service_id, ...next].filter(Boolean);
-                            const total = allIds.reduce((sum,id)=>sum+svcPrice(id),0);
-                            return { ...f, additional_service_ids: next, amount: total };
-                          }
-                          if (!f.service_id) {
-                            return { ...f, service_id: String(s.id), amount: svcPrice(s.id) };
-                          }
-                          const next = [...cur, Number(s.id)];
-                          const allIds = [f.service_id, ...next].filter(Boolean);
-                          const total = allIds.reduce((sum,id)=>sum+svcPrice(id),0);
-                          return { ...f, additional_service_ids: next, amount: total };
-                        });
-                      }} style={{ accentColor:'#7C3AED', width:15, height:15, flexShrink:0 }} />
-                      <div style={{ flex:1, minWidth:0, display:'flex', alignItems:'center', gap:6 }}>
-                        <span style={{ fontSize:13, fontWeight:isSel?700:500, color:isSel?(coveredByPkg?'#5B21B6':'#059669'):'#101828' }}>{s.name}</span>
-                        {isPrimary && !coveredByPkg && <span style={{ fontSize:10, color:'#059669', fontWeight:700, background:'#DCFCE7', padding:'1px 6px', borderRadius:4 }}>Primary</span>}
-                        {coveredByPkg && <span style={{ fontSize:10, color:'#7C3AED', fontWeight:700, background:'#EDE9FE', padding:'1px 7px', borderRadius:4 }}>PKG</span>}
-                      </div>
-                      {coveredByPkg ? (
-                        <div style={{ textAlign:'right', flexShrink:0 }}>
-                          <span style={{ fontSize:11, color:'#94A3B8', textDecoration:'line-through', display:'block' }}>Rs.{Number(s.price||0).toLocaleString()}</span>
-                          <span style={{ fontSize:12, color:'#7C3AED', fontWeight:800 }}>FREE</span>
-                        </div>
-                      ) : (
-                        <span style={{ fontSize:12, color:'#059669', fontWeight:600, flexShrink:0 }}>Rs.{Number(s.price||0).toLocaleString()}</span>
-                      )}
-                    </label>
-                  );
-                });
-              })()}
+                          return { ...f, service_id: '', additional_service_ids: [], amount: '' };
+                        }
+                        if (isExtra) {
+                          const next = cur.filter(x => x !== Number(s.id));
+                          return { ...f, additional_service_ids: next, amount: [f.service_id, ...next].filter(Boolean).reduce((sum,id)=>sum+svcPrice(id),0) };
+                        }
+                        if (!f.service_id) return { ...f, service_id: String(s.id), amount: svcPrice(s.id) };
+                        const next = [...cur, Number(s.id)];
+                        return { ...f, additional_service_ids: next, amount: [f.service_id, ...next].filter(Boolean).reduce((sum,id)=>sum+svcPrice(id),0) };
+                      });
+                    }} style={{ accentColor:'#059669', width:15, height:15, flexShrink:0 }} />
+                    <div style={{ flex:1, minWidth:0, display:'flex', alignItems:'center', gap:6 }}>
+                      <span style={{ fontSize:13, fontWeight:isSel?700:500, color:isSel?'#059669':'#101828' }}>{s.name}</span>
+                      {isPrimary && <span style={{ fontSize:10, color:'#059669', fontWeight:700, background:'#DCFCE7', padding:'1px 6px', borderRadius:4 }}>Primary</span>}
+                    </div>
+                    <span style={{ fontSize:12, color:'#059669', fontWeight:600, flexShrink:0 }}>Rs.{Number(s.price||0).toLocaleString()}</span>
+                  </label>
+                );
+              })}
             </div>
-            {/* Selected chips */}
             {(form.service_id || (form.additional_service_ids||[]).length>0) && (
               <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginTop:6 }}>
                 {[form.service_id, ...(form.additional_service_ids||[])].filter(Boolean).map((id,i) => {
                   const svc = services.find(x=>String(x.id)===String(id));
                   if (!svc) return null;
-                  const pkgSvcIds = (selectedPkg?.package?.services || []).map(Number);
-                  const free = pkgSvcIds.includes(Number(id));
-                  return <span key={id} style={{ fontSize:11, background: free ? '#EDE9FE' : '#DCFCE7', color: free ? '#5B21B6' : '#059669', padding:'2px 9px', borderRadius:20, fontWeight:600 }}>{i===0?'★ ':''}{svc.name}{free?' (FREE)':''}</span>;
+                  return <span key={id} style={{ fontSize:11, background:'#DCFCE7', color:'#059669', padding:'2px 9px', borderRadius:20, fontWeight:600 }}>{i===0?'★ ':''}{svc.name}</span>;
                 })}
                 <span style={{ fontSize:11, color:'#059669', fontWeight:700, padding:'2px 0', alignSelf:'center' }}>Total: Rs. {Number(form.amount||0).toLocaleString()}</span>
               </div>
@@ -862,180 +702,6 @@ export default function AppointmentsPage() {
               </div>
             </div>
           )
-        )}
-      </Modal>
-
-      {/* Sell Package Modal */}
-      <Modal open={showSellPkg} onClose={() => { setShowSellPkg(false); setSellPkgOk(false); }} title="Sell Package" size="md">
-        {sellPkgOk ? (
-          <div style={{ textAlign:'center', padding:'28px 0' }}>
-            <div style={{ width:64, height:64, borderRadius:'50%', background:'#F5F3FF', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 16px' }}>
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#7C3AED" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-            </div>
-            <div style={{ fontSize:17, fontWeight:700, color:'#7C3AED', fontFamily:"'Inter',sans-serif" }}>Package Sold!</div>
-            <div style={{ fontSize:13, color:'#667085', marginTop:6, fontFamily:"'Inter',sans-serif" }}>{sellPkgSelCust?.name} has been assigned the package.</div>
-          </div>
-        ) : (
-          <>
-            {/* Stepper */}
-            <div style={{ display:'flex', alignItems:'center', marginBottom:22 }}>
-              {[['Customer',1],['Package',2],['Payment',3]].map(([label, step], i, arr) => {
-                const done = sellPkgStep > step, active = sellPkgStep === step;
-                return (
-                  <div key={step} style={{ display:'flex', alignItems:'center', flex: i < arr.length-1 ? 1 : 'none' }}>
-                    <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:3, flexShrink:0 }}>
-                      <div style={{ width:30, height:30, borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, fontWeight:700, fontFamily:"'Inter',sans-serif",
-                        background:done?'#7C3AED':active?'#F5F3FF':'#F2F4F7',
-                        border:active?'2px solid #7C3AED':done?'none':'2px solid #D0D5DD',
-                        color:done?'#fff':active?'#7C3AED':'#64748B' }}>
-                        {done ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg> : step}
-                      </div>
-                      <span style={{ fontSize:10, fontWeight:600, color:active?'#7C3AED':'#64748B', fontFamily:"'Inter',sans-serif", whiteSpace:'nowrap' }}>{label}</span>
-                    </div>
-                    {i < arr.length-1 && <div style={{ flex:1, height:2, background:done?'#7C3AED':'#E4E7EC', margin:'0 6px', marginBottom:18 }} />}
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Step 1: Customer */}
-            {sellPkgStep === 1 && (
-              <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
-                <div style={{ fontSize:12, fontWeight:700, color:'#344054', fontFamily:"'Inter',sans-serif" }}>Search Customer</div>
-                <input value={sellPkgCustSearch} onChange={e=>setSellPkgCustSearch(e.target.value)} placeholder="Name or phone..."
-                  style={{ width:'100%', padding:'9px 12px', borderRadius:10, border:'1.5px solid #E4E7EC', fontSize:13, fontFamily:"'Inter',sans-serif", outline:'none', boxSizing:'border-box', color:'#101828' }}
-                  onFocus={e=>e.target.style.borderColor='#7C3AED'} onBlur={e=>e.target.style.borderColor='#E4E7EC'} />
-                <div style={{ maxHeight:220, overflowY:'auto', border:'1.5px solid #E4E7EC', borderRadius:10 }}>
-                  {sellPkgCustomers.length === 0 ? (
-                    <div style={{ textAlign:'center', padding:20, color:'#98A2B3', fontSize:13, fontFamily:"'Inter',sans-serif" }}>Loading customers…</div>
-                  ) : sellPkgFilteredCusts.length === 0 ? (
-                    <div style={{ textAlign:'center', padding:20, color:'#98A2B3', fontSize:13, fontFamily:"'Inter',sans-serif" }}>No customers found</div>
-                  ) : sellPkgFilteredCusts.slice(0,30).map(c => {
-                    const sel = String(c.id) === String(sellPkgForm.customer_id);
-                    return (
-                      <div key={c.id} onClick={() => setSellPkgForm(f=>({...f, customer_id:String(c.id)}))}
-                        style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 14px',
-                          background:sel?'#F5F3FF':'#fff', borderBottom:'1px solid #F2F4F7',
-                          cursor:'pointer', borderLeft:`3px solid ${sel?'#7C3AED':'transparent'}` }}
-                        onMouseEnter={e=>{ if(!sel) e.currentTarget.style.background='#FAFAFA'; }}
-                        onMouseLeave={e=>{ if(!sel) e.currentTarget.style.background=sel?'#F5F3FF':'#fff'; }}>
-                        <div style={{ width:34, height:34, borderRadius:'50%', background:'#EDE9FE', color:'#7C3AED', fontWeight:700, fontSize:13, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, fontFamily:"'Inter',sans-serif" }}>
-                          {(c.name||'?')[0].toUpperCase()}
-                        </div>
-                        <div style={{ flex:1 }}>
-                          <div style={{ fontSize:13, fontWeight:600, color:'#101828', fontFamily:"'Inter',sans-serif" }}>{c.name}</div>
-                          {c.phone && <div style={{ fontSize:11, color:'#667085', fontFamily:"'Inter',sans-serif" }}>{c.phone}</div>}
-                        </div>
-                        {sel && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#7C3AED" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>}
-                      </div>
-                    );
-                  })}
-                </div>
-                {sellPkgSelCust && (
-                  <div style={{ padding:'10px 14px', background:'linear-gradient(135deg,#7C3AED,#2563EB)', borderRadius:10, color:'#fff' }}>
-                    <span style={{ fontSize:14, fontWeight:700, fontFamily:"'Inter',sans-serif" }}>{sellPkgSelCust.name}</span>
-                    {sellPkgSelCust.phone && <span style={{ fontSize:12, opacity:0.8, marginLeft:8 }}>{sellPkgSelCust.phone}</span>}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Step 2: Package */}
-            {sellPkgStep === 2 && (
-              <div>
-                {sellPkgSelCust && (
-                  <div style={{ background:'#F9FAFB', borderRadius:8, padding:'8px 12px', fontSize:12, color:'#667085', marginBottom:14, fontFamily:"'Inter',sans-serif" }}>
-                    Customer: <strong style={{ color:'#101828' }}>{sellPkgSelCust.name}</strong>
-                  </div>
-                )}
-                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, maxHeight:300, overflowY:'auto' }}>
-                  {sellPkgPackages.length === 0 ? (
-                    <div style={{ gridColumn:'1/-1', textAlign:'center', padding:24, color:'#98A2B3', fontSize:13, fontFamily:"'Inter',sans-serif" }}>Loading packages…</div>
-                  ) : sellPkgPackages.map(p => {
-                    const sel = String(p.id) === String(sellPkgForm.package_id);
-                    const accent = p.type === 'bundle' ? '#2563EB' : '#7C3AED';
-                    return (
-                      <div key={p.id} onClick={() => setSellPkgForm(f=>({...f, package_id:String(p.id)}))}
-                        style={{ padding:'12px 14px', borderRadius:10, cursor:'pointer', transition:'all 0.15s', position:'relative',
-                          border:sel?`2px solid ${accent}`:'1.5px solid #E4E7EC', borderTop:`3px solid ${accent}`,
-                          background:sel?(p.type==='bundle'?'#EFF6FF':'#F5F3FF'):'#fff' }}>
-                        <div style={{ fontSize:12, fontWeight:700, color:'#101828', marginBottom:2, fontFamily:"'Inter',sans-serif" }}>{p.name}</div>
-                        <div style={{ fontSize:11, color:'#667085', fontFamily:"'Inter',sans-serif" }}>{p.sessions_count} sessions · {p.validity_days} days</div>
-                        <div style={{ fontSize:15, fontWeight:800, color:'#101828', marginTop:6, fontFamily:"'Inter',sans-serif" }}>Rs. {Number(p.package_price).toLocaleString()}</div>
-                        {Number(p.discount_percent) > 0 && (
-                          <span style={{ position:'absolute', top:8, right:8, fontSize:10, color:'#059669', fontWeight:700, background:'#D1FAE5', padding:'2px 7px', borderRadius:10, fontFamily:"'Inter',sans-serif" }}>{Math.round(p.discount_percent)}% OFF</span>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* Step 3: Payment */}
-            {sellPkgStep === 3 && (
-              <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
-                {sellPkgSelCust && (
-                  <div style={{ background:'#F9FAFB', borderRadius:10, padding:'10px 14px', fontSize:13, fontFamily:"'Inter',sans-serif" }}>
-                    <span style={{ fontWeight:600, color:'#101828' }}>Customer: </span>
-                    <span style={{ color:'#667085' }}>{sellPkgSelCust.name}</span>
-                  </div>
-                )}
-                {sellPkgSelPkg && (
-                  <div style={{ padding:14, background:'linear-gradient(135deg,#7C3AED 0%,#2563EB 100%)', borderRadius:12, color:'#fff' }}>
-                    <div style={{ fontSize:11, opacity:0.75, marginBottom:4, letterSpacing:'0.06em', fontFamily:"'Inter',sans-serif" }}>PACKAGE</div>
-                    <div style={{ fontSize:16, fontWeight:800, marginBottom:10, fontFamily:"'Inter',sans-serif" }}>{sellPkgSelPkg.name}</div>
-                    <div style={{ display:'flex', gap:20 }}>
-                      {[[sellPkgSelPkg.sessions_count,'Sessions'],[`${sellPkgSelPkg.validity_days}d`,'Validity'],[`Rs.${Number(sellPkgSelPkg.package_price).toLocaleString()}`,'Price']].map(([val,lbl]) => (
-                        <div key={lbl} style={{ textAlign:'center' }}>
-                          <div style={{ fontSize:14, fontWeight:800, fontFamily:"'Inter',sans-serif" }}>{val}</div>
-                          <div style={{ fontSize:10, opacity:0.8, fontFamily:"'Inter',sans-serif" }}>{lbl}</div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                <div>
-                  <div style={{ fontSize:11, fontWeight:700, color:'#98A2B3', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:8 }}>Payment Method</div>
-                  <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
-                    {['Cash','Card','Online Transfer'].map(m => (
-                      <button key={m} type="button" onClick={() => setSellPkgForm(f=>({...f,payment_method:m}))} style={{
-                        padding:'7px 16px', borderRadius:8, fontSize:13, fontWeight:600, cursor:'pointer', fontFamily:"'Inter',sans-serif",
-                        border:`1.5px solid ${sellPkgForm.payment_method===m?'#7C3AED':'#D0D5DD'}`,
-                        background:sellPkgForm.payment_method===m?'#F5F3FF':'#fff',
-                        color:sellPkgForm.payment_method===m?'#5B21B6':'#101828',
-                      }}>{m}</button>
-                    ))}
-                  </div>
-                </div>
-                <div>
-                  <div style={{ fontSize:11, fontWeight:700, color:'#98A2B3', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:6 }}>Notes (optional)</div>
-                  <input value={sellPkgForm.notes} onChange={e=>setSellPkgForm(f=>({...f,notes:e.target.value}))} placeholder="Any notes..."
-                    style={{ width:'100%', padding:'9px 12px', borderRadius:10, border:'1.5px solid #E4E7EC', fontSize:13, fontFamily:"'Inter',sans-serif", outline:'none', boxSizing:'border-box', color:'#101828' }}
-                    onFocus={e=>e.target.style.borderColor='#7C3AED'} onBlur={e=>e.target.style.borderColor='#E4E7EC'} />
-                </div>
-              </div>
-            )}
-
-            {sellPkgError && <div style={{ marginTop:12, padding:'9px 13px', background:'#FEE2E2', borderRadius:8, color:'#DC2626', fontSize:13, border:'1px solid #FEE2E2', fontFamily:"'Inter',sans-serif" }}>{sellPkgError}</div>}
-
-            <div style={{ display:'flex', justifyContent:'space-between', marginTop:20 }}>
-              <Button variant="secondary" onClick={() => { if(sellPkgStep>1){setSellPkgStep(s=>s-1);setSellPkgError('');}else setShowSellPkg(false); }}>
-                {sellPkgStep===1?'Cancel':'← Back'}
-              </Button>
-              {sellPkgStep < 3 ? (
-                <Button variant="primary" style={{ background:'#7C3AED' }} onClick={() => {
-                  if(sellPkgStep===1&&!sellPkgForm.customer_id){setSellPkgError('Please select a customer.');return;}
-                  if(sellPkgStep===2&&!sellPkgForm.package_id){setSellPkgError('Please select a package.');return;}
-                  setSellPkgError(''); setSellPkgStep(s=>s+1);
-                }}>Next →</Button>
-              ) : (
-                <Button loading={sellPkgSaving} disabled={sellPkgSaving} style={{ background:'#7C3AED', border:'none' }} onClick={handleSellPkg}>
-                  {sellPkgSaving?'Processing…':`Sell · Rs.${Number(sellPkgSelPkg?.package_price||0).toLocaleString()}`}
-                </Button>
-              )}
-            </div>
-          </>
         )}
       </Modal>
 

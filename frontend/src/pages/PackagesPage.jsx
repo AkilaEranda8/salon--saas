@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useCallback, useMemo, Fragment } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
 import PageWrapper from '../components/layout/PageWrapper';
@@ -17,9 +17,7 @@ const STATUS_BADGE  = {
   expired:   { bg:'#FEE2E2', color:'#DC2626' },
   completed: { bg:'#F1F5F9', color:'#475467' },
 };
-const PAYMENT_METHODS = ['Cash','Card','Online Transfer','Bank Transfer'];
 const EMPTY_PKG  = { name:'', description:'', type:'bundle', services:[], sessions_count:'', validity_days:'90', package_price:'', is_active:true, branch_id:'' };
-const EMPTY_SELL = { customer_id:'', package_id:'', branch_id:'', payment_method:'Cash', notes:'' };
 const MUTED = '#64748B';
 
 /*  helpers  */
@@ -48,7 +46,7 @@ function SessionBar({ used, total }) {
 }
 
 /*  PackageCard  */
-function PackageCard({ pkg, canEdit, onEdit, onToggle, onDelete, onSell }) {
+function PackageCard({ pkg, canEdit, onEdit, onToggle, onDelete }) {
   const [hovered, setHovered] = useState(false);
   const accent   = ACCENT_COLOR[pkg.type] || ACCENT_COLOR.bundle;
   const tb       = TYPE_BADGE[pkg.type]   || TYPE_BADGE.bundle;
@@ -149,8 +147,6 @@ function PackageCard({ pkg, canEdit, onEdit, onToggle, onDelete, onSell }) {
           <button onClick={() => onToggle(pkg)}
             style={{ padding:'6px 14px', borderRadius:8, border:'1.5px solid #E4E7EC', background:'#fff', cursor:'pointer', fontSize:12, fontWeight:600, color:pkg.is_active?'#D97706':'#059669', fontFamily:"'Inter',sans-serif" }}>
             {pkg.is_active ? 'Deactivate' : 'Activate'}</button>
-          <button onClick={() => onSell(pkg)}
-            style={{ padding:'6px 14px', borderRadius:8, border:'1.5px solid #BFDBFE', background:'#EFF6FF', cursor:'pointer', fontSize:12, fontWeight:600, color:'#2563EB', fontFamily:"'Inter',sans-serif" }}>Sell</button>
           <button onClick={() => onDelete(pkg.id)}
             style={{ padding:'6px 14px', borderRadius:8, border:'none', background:'transparent', cursor:'pointer', fontSize:12, fontWeight:600, color:'#DC2626', marginLeft:'auto', fontFamily:"'Inter',sans-serif" }}>Delete</button>
         </div>
@@ -174,7 +170,6 @@ export default function PackagesPage() {
   const [branches,    setBranches]    = useState([]);
   const [allServices, setAllServices] = useState([]);
   const [customers,   setCustomers]   = useState([]);
-  const [custSearch,  setCustSearch]  = useState('');
 
   const [packages,   setPackages]   = useState([]);
   const [pkgLoading, setPkgLoading] = useState(false);
@@ -193,12 +188,6 @@ export default function PackagesPage() {
   const [filterStatus, setFilterStatus] = useState('');
   const [filterBranch, setFilterBranch] = useState('');
   const [soldSearch,   setSoldSearch]   = useState('');
-
-  const [showSellModal,  setShowSellModal]  = useState(false);
-  const [sellStep,       setSellStep]       = useState(1);
-  const [sellForm,       setSellForm]       = useState(EMPTY_SELL);
-  const [sellSaving,     setSellSaving]     = useState(false);
-  const [sellError,      setSellError]      = useState('');
 
   const [showRedeemModal, setShowRedeemModal] = useState(false);
   const [redeemTarget,    setRedeemTarget]    = useState(null);
@@ -251,15 +240,7 @@ export default function PackagesPage() {
     return Math.max(0, ((originalPrice - Number(pkgForm.package_price)) / originalPrice) * 100);
   }, [originalPrice, pkgForm.package_price]);
 
-  const filteredCustomers = useMemo(() => {
-    if (!custSearch.trim()) return customers;
-    const q = custSearch.toLowerCase();
-    return customers.filter(c => c.name?.toLowerCase().includes(q) || c.phone?.includes(q));
-  }, [customers, custSearch]);
-
-  const sellSelectedPkg  = packages.find(p => String(p.id) === String(sellForm.package_id));
-  const sellSelectedCust = customers.find(c => String(c.id) === String(sellForm.customer_id));
-  const soldPages        = Math.ceil(soldTotal / 20);
+  const soldPages = Math.ceil(soldTotal / 20);
 
   const activeCount    = packages.filter(p => p.is_active).length;
   const bundleCount    = packages.filter(p => p.type === 'bundle').length;
@@ -333,35 +314,6 @@ export default function PackagesPage() {
     try { await api.put(`/packages/${pkg.id}`, { is_active: !pkg.is_active }); loadPackages(); } catch {}
   };
 
-  /*  sell  */
-  const openSellModal = (preselectedPkg = null) => {
-    setSellStep(1);
-    setSellForm({ ...EMPTY_SELL, branch_id:user.branchId?String(user.branchId):'', package_id:preselectedPkg?String(preselectedPkg.id):'' });
-    setSellError('');
-    setCustSearch('');
-    setShowSellModal(true);
-  };
-  const handleSell = async () => {
-    setSellError('');
-    if (!sellForm.customer_id) { setSellError('Please select a customer.'); return; }
-    if (!sellForm.package_id)  { setSellError('Please select a package.');  return; }
-    const branchId = sellForm.branch_id || user.branchId;
-    if (!branchId) { setSellError('Please select a branch.'); return; }
-    setSellSaving(true);
-    try {
-      await api.post('/packages/purchase', {
-        customer_id:    Number(sellForm.customer_id),
-        package_id:     Number(sellForm.package_id),
-        branch_id:      Number(branchId),
-        payment_method: sellForm.payment_method,
-        notes:          sellForm.notes || undefined,
-      });
-      setShowSellModal(false);
-      if (activeTab === 'sold') loadSold();
-    } catch (err) { setSellError(err.response?.data?.message || 'Purchase failed.'); }
-    finally { setSellSaving(false); }
-  };
-
   /*  redeem  */
   const openRedeemModal = (cp) => {
     setRedeemTarget(cp); setRedeemSvcId(''); setRedeemNotes(''); setRedeemError(''); setShowRedeemModal(true);
@@ -381,20 +333,12 @@ export default function PackagesPage() {
   return (
     <PageWrapper title="Packages" subtitle="Manage package templates and customer subscriptions"
       actions={
-        <div style={{ display:'flex', gap:8 }}>
-          {canEdit && (
-            <button onClick={() => openSellModal()}
-              style={{ display:'flex', alignItems:'center', gap:6, background:'#2563EB', color:'#fff', border:'none', borderRadius:10, padding:'8px 18px', fontSize:13, fontWeight:700, cursor:'pointer', fontFamily:"'Inter',sans-serif" }}>
-              <IconDollar /> Sell Package
-            </button>
-          )}
-          {canEdit && activeTab === 'templates' && (
-            <button onClick={openCreatePkg}
-              style={{ display:'flex', alignItems:'center', gap:6, background:'#fff', color:'#344054', border:'1.5px solid #E4E7EC', borderRadius:10, padding:'8px 18px', fontSize:13, fontWeight:700, cursor:'pointer', fontFamily:"'Inter',sans-serif" }}>
-              + New Package
-            </button>
-          )}
-        </div>
+        canEdit && activeTab === 'templates' && (
+          <button onClick={openCreatePkg}
+            style={{ display:'flex', alignItems:'center', gap:6, background:'#fff', color:'#344054', border:'1.5px solid #E4E7EC', borderRadius:10, padding:'8px 18px', fontSize:13, fontWeight:700, cursor:'pointer', fontFamily:"'Inter',sans-serif" }}>
+            + New Package
+          </button>
+        )
       }
     >
       {/* Stat Cards */}
@@ -436,7 +380,7 @@ export default function PackagesPage() {
             <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(300px,1fr))', gap:20 }}>
               {packages.map(pkg => (
                 <PackageCard key={pkg.id} pkg={pkg} canEdit={canEdit}
-                  onEdit={openEditPkg} onToggle={handleTogglePkg} onDelete={handleDeletePkg} onSell={openSellModal} />
+                  onEdit={openEditPkg} onToggle={handleTogglePkg} onDelete={handleDeletePkg} />
               ))}
             </div>
           )}
@@ -679,149 +623,6 @@ export default function PackagesPage() {
             <span style={{ fontSize:14, fontWeight:600, color:'#344054', fontFamily:"'Inter',sans-serif" }}>Active</span>
           </div>
           {pkgFormError && <div style={{ padding:'8px 12px', background:'#FEE2E2', borderRadius:8, color:'#DC2626', fontSize:13, fontFamily:"'Inter',sans-serif" }}>{pkgFormError}</div>}
-        </div>
-      </Modal>
-
-      {/*  Sell Modal (3-step)  */}
-      <Modal open={showSellModal} onClose={() => setShowSellModal(false)} title="Sell Package" width={560}>
-        {/* Stepper */}
-        <div style={{ display:'flex', alignItems:'center', marginBottom:24 }}>
-          {[1,2,3].map((step,i) => {
-            const labels = ['Customer','Package','Payment'];
-            const done   = sellStep > step;
-            const active = sellStep === step;
-            return (
-              <Fragment key={step}>
-                <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:4 }}>
-                  <div style={{ width:32, height:32, borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center', fontSize:13, fontWeight:700, fontFamily:"'Outfit',sans-serif",
-                    background: done?'#2563EB':active?'#EFF6FF':'#F2F4F7',
-                    border:     active?'2px solid #2563EB':done?'none':'2px solid #D0D5DD',
-                    color:      done?'#fff':active?'#2563EB':'#64748B' }}>
-                    {done ? <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg> : step}
-                  </div>
-                  <span style={{ fontSize:11, fontWeight:600, color:active?'#2563EB':'#64748B', fontFamily:"'Inter',sans-serif" }}>{labels[i]}</span>
-                </div>
-                {i < 2 && <div style={{ flex:1, height:2, background:done?'#2563EB':'#E4E7EC', margin:'0 8px', marginBottom:20 }} />}
-              </Fragment>
-            );
-          })}
-        </div>
-        {/* Step 1 */}
-        {sellStep === 1 && (
-          <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
-            <div><Lbl>Search Customer</Lbl>
-              <input value={custSearch} onChange={e=>setCustSearch(e.target.value)} placeholder="Search by name or phone" style={inp} />
-            </div>
-            <div style={{ maxHeight:230, overflowY:'auto', border:'1px solid #E4E7EC', borderRadius:10, overflow:'hidden' }}>
-              {filteredCustomers.slice(0,20).map(c => {
-                const sel = String(c.id) === String(sellForm.customer_id);
-                return (
-                  <div key={c.id} onClick={() => setSellForm(f=>({...f,customer_id:String(c.id)}))}
-                    style={{ display:'flex', alignItems:'center', gap:12, padding:'10px 14px', background:sel?'#EFF6FF':'#fff', borderBottom:'1px solid #F2F4F7', cursor:'pointer', borderLeft:sel?'3px solid #2563EB':'3px solid transparent', transition:'background 0.1s' }}>
-                    <div style={{ width:36, height:36, borderRadius:'50%', background:'#EFF6FF', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, fontWeight:700, fontSize:15, color:'#2563EB', fontFamily:"'Outfit',sans-serif" }}>
-                      {(c.name||'?')[0].toUpperCase()}
-                    </div>
-                    <div style={{ flex:1 }}>
-                      <div style={{ fontSize:14, fontWeight:600, color:'#101828', fontFamily:"'Inter',sans-serif" }}>{c.name}</div>
-                      <div style={{ fontSize:12, color:'#64748B', fontFamily:"'Inter',sans-serif" }}>{c.phone||'No phone'}</div>
-                    </div>
-                    {sel && <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2563EB" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>}
-                  </div>
-                );
-              })}
-              {filteredCustomers.length === 0 && <div style={{ textAlign:'center', padding:'24px 16px', color:'#64748B', fontSize:13, fontFamily:"'Inter',sans-serif" }}>No customers found</div>}
-            </div>
-            {sellSelectedCust && (
-              <div style={{ padding:'12px 16px', background:'linear-gradient(135deg,#2563EB,#7C3AED)', borderRadius:12, color:'#fff' }}>
-                <div style={{ fontSize:15, fontWeight:700, fontFamily:"'Outfit',sans-serif" }}>{sellSelectedCust.name}</div>
-                <div style={{ fontSize:12, opacity:0.8, marginTop:2, fontFamily:"'Inter',sans-serif" }}>{sellSelectedCust.phone||''}</div>
-              </div>
-            )}
-          </div>
-        )}
-        {/* Step 2 */}
-        {sellStep === 2 && (
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
-            {packages.filter(p=>p.is_active).map(p => {
-              const sel    = String(p.id) === String(sellForm.package_id);
-              const accent = ACCENT_COLOR[p.type] || ACCENT_COLOR.bundle;
-              return (
-                <div key={p.id} onClick={() => setSellForm(f=>({...f,package_id:String(p.id)}))}
-                  style={{ padding:'14px 16px', borderRadius:12, cursor:'pointer', position:'relative', transition:'all 0.15s',
-                    borderTop:  `3px solid ${accent}`,
-                    border:     sel?`2px solid ${accent}`:'1.5px solid #E4E7EC',
-                    background: sel?(p.type==='bundle'?'#EFF6FF':'#EDE9FE'):'#fff' }}>
-                  <div style={{ fontSize:13, fontWeight:700, color:'#101828', marginBottom:4, fontFamily:"'Inter',sans-serif" }}>{p.name}</div>
-                  <div style={{ fontSize:11, color:'#64748B', fontFamily:"'Inter',sans-serif" }}>{p.sessions_count} sessions  {p.validity_days} days</div>
-                  <div style={{ fontSize:15, fontWeight:800, color:'#101828', marginTop:6, fontFamily:"'Outfit',sans-serif" }}>Rs. {Number(p.package_price).toLocaleString()}</div>
-                  {Number(p.discount_percent) > 0 && (
-                    <span style={{ position:'absolute', top:8, right:8, padding:'2px 8px', borderRadius:10, background:'#D1FAE5', color:'#059669', fontSize:10, fontWeight:700, fontFamily:"'Inter',sans-serif" }}>
-                      {Math.round(p.discount_percent)}% OFF
-                    </span>
-                  )}
-                </div>
-              );
-            })}
-            {packages.filter(p=>p.is_active).length === 0 && (
-              <div style={{ gridColumn:'1/-1', textAlign:'center', padding:24, color:'#64748B', fontFamily:"'Inter',sans-serif" }}>No active packages available</div>
-            )}
-          </div>
-        )}
-        {/* Step 3 */}
-        {sellStep === 3 && (
-          <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
-            {sellSelectedPkg && (
-              <div style={{ padding:16, background:'linear-gradient(135deg,#2563EB 0%,#7C3AED 100%)', borderRadius:14, color:'#fff', marginBottom:4 }}>
-                <div style={{ fontSize:11, opacity:0.8, textTransform:'uppercase', letterSpacing:'0.6px', marginBottom:4, fontFamily:"'Inter',sans-serif" }}>Package Summary</div>
-                <div style={{ fontSize:18, fontWeight:800, marginBottom:10, fontFamily:"'Outfit',sans-serif" }}>{sellSelectedPkg.name}</div>
-                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:8 }}>
-                  {[[sellSelectedPkg.sessions_count,'Sessions'],[`${sellSelectedPkg.validity_days}d`,'Validity'],[`Rs.${Number(sellSelectedPkg.package_price).toLocaleString()}`,'Price']].map(([val,lbl]) => (
-                    <div key={lbl} style={{ textAlign:'center', background:'rgba(255,255,255,0.15)', borderRadius:8, padding:'6px 4px' }}>
-                      <div style={{ fontSize:15, fontWeight:800, fontFamily:"'Outfit',sans-serif" }}>{val}</div>
-                      <div style={{ fontSize:10, opacity:0.8, fontFamily:"'Inter',sans-serif" }}>{lbl}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-            {!user.branchId && (
-              <div><Lbl>Branch</Lbl>
-                <select value={sellForm.branch_id} onChange={e=>setSellForm(f=>({...f,branch_id:e.target.value}))} style={inp}>
-                  <option value="">Select branch</option>
-                  {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-                </select>
-              </div>
-            )}
-            <div><Lbl>Payment Method</Lbl>
-              <select value={sellForm.payment_method} onChange={e=>setSellForm(f=>({...f,payment_method:e.target.value}))} style={inp}>
-                {PAYMENT_METHODS.map(m => <option key={m} value={m}>{m}</option>)}
-              </select>
-            </div>
-            <div><Lbl>Notes (optional)</Lbl>
-              <textarea value={sellForm.notes} onChange={e=>setSellForm(f=>({...f,notes:e.target.value}))} placeholder="Any notes" rows={2} style={{ ...inp, resize:'vertical' }} />
-            </div>
-          </div>
-        )}
-        {sellError && <div style={{ marginTop:12, padding:'8px 12px', background:'#FEE2E2', borderRadius:8, color:'#DC2626', fontSize:13, fontFamily:"'Inter',sans-serif" }}>{sellError}</div>}
-        <div style={{ display:'flex', justifyContent:'space-between', marginTop:20 }}>
-          <button onClick={() => sellStep>1 ? setSellStep(s=>s-1) : setShowSellModal(false)}
-            style={{ padding:'8px 20px', borderRadius:10, border:'1.5px solid #E4E7EC', background:'#fff', color:'#344054', fontWeight:600, cursor:'pointer', fontSize:13, fontFamily:"'Inter',sans-serif" }}>
-            {sellStep === 1 ? 'Cancel' : ' Back'}
-          </button>
-          {sellStep < 3 ? (
-            <button onClick={() => {
-              if (sellStep===1 && !sellForm.customer_id) { setSellError('Please select a customer.'); return; }
-              if (sellStep===2 && !sellForm.package_id)  { setSellError('Please select a package.');  return; }
-              setSellError(''); setSellStep(s=>s+1);
-            }} style={{ padding:'8px 22px', borderRadius:10, border:'none', background:'#2563EB', color:'#fff', fontWeight:700, cursor:'pointer', fontSize:13, fontFamily:"'Inter',sans-serif" }}>
-              Next 
-            </button>
-          ) : (
-            <button onClick={handleSell} disabled={sellSaving}
-              style={{ padding:'8px 22px', borderRadius:10, border:'none', background:sellSaving?'#93C5FD':'#2563EB', color:'#fff', fontWeight:700, cursor:sellSaving?'not-allowed':'pointer', fontSize:13, fontFamily:"'Inter',sans-serif" }}>
-              {sellSaving ? 'Processing' : `Sell${sellSelectedPkg ? `  Rs. ${Number(sellSelectedPkg.package_price).toLocaleString()}` : ''}`}
-            </button>
-          )}
         </div>
       </Modal>
 

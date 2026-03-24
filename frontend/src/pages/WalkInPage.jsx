@@ -102,21 +102,7 @@ export default function WalkInPage() {
   const [selectedCust,   setSelectedCust]   = useState(null);
   const custSearchRef = useRef(null);
 
-  /* Package selection */
-  const [custPackages,  setCustPackages]  = useState([]);
-  const [selectedPkg,   setSelectedPkg]   = useState(null);
-  const [pkgLoading,    setPkgLoading]    = useState(false);
 
-  /* Sell Package modal */
-  const [showSellPkg,       setShowSellPkg]       = useState(false);
-  const [sellPkgStep,       setSellPkgStep]       = useState(1);
-  const [sellPkgCustomers,  setSellPkgCustomers]  = useState([]);
-  const [sellPkgPackages,   setSellPkgPackages]   = useState([]);
-  const [sellPkgCustSearch, setSellPkgCustSearch] = useState('');
-  const [sellPkgForm,       setSellPkgForm]       = useState({ customer_id:'', package_id:'', payment_method:'Cash', notes:'' });
-  const [sellPkgSaving,     setSellPkgSaving]     = useState(false);
-  const [sellPkgError,      setSellPkgError]      = useState('');
-  const [sellPkgOk,         setSellPkgOk]         = useState(false);
 
   /* Payment modal */
   const [payEntry,       setPayEntry]       = useState(null);
@@ -293,48 +279,6 @@ export default function WalkInPage() {
     }));
   };
 
-  /*  Sell Package  */
-  const openSellPkg = (prefillCust = null) => {
-    setSellPkgStep(prefillCust?.id ? 2 : 1);
-    setSellPkgError(''); setSellPkgOk(false); setSellPkgCustSearch('');
-    setSellPkgForm({ customer_id: prefillCust?.id ? String(prefillCust.id) : '', package_id:'', payment_method:'Cash', notes:'' });
-    setSellPkgPackages([]); setSellPkgCustomers([]);
-    setShowSellPkg(true);
-    Promise.all([
-      api.get('/packages'),
-      api.get('/customers?limit=500'),
-    ]).then(([pkgRes, custRes]) => {
-      setSellPkgPackages((Array.isArray(pkgRes.data) ? pkgRes.data : (pkgRes.data?.data || [])).filter(p => p.is_active));
-      setSellPkgCustomers(custRes.data?.data || custRes.data || []);
-    }).catch(() => {});
-  };
-
-  const handleSellPkg = async () => {
-    if (!sellPkgForm.customer_id) { setSellPkgError('Please select a customer.'); return; }
-    if (!sellPkgForm.package_id)  { setSellPkgError('Please select a package.'); return; }
-    const brId = selectedBranch || user?.branch_id;
-    if (!brId) { setSellPkgError('Branch not available.'); return; }
-    setSellPkgSaving(true); setSellPkgError('');
-    try {
-      await api.post('/packages/purchase', {
-        customer_id:    Number(sellPkgForm.customer_id),
-        package_id:     Number(sellPkgForm.package_id),
-        branch_id:      Number(brId),
-        payment_method: sellPkgForm.payment_method,
-        notes:          sellPkgForm.notes || undefined,
-      });
-      setSellPkgOk(true);
-      setTimeout(() => { setShowSellPkg(false); setSellPkgOk(false); }, 1600);
-    } catch (err) { setSellPkgError(err.response?.data?.message || 'Purchase failed.'); }
-    setSellPkgSaving(false);
-  };
-
-  const sellPkgFilteredCusts = sellPkgCustSearch.trim()
-    ? sellPkgCustomers.filter(c => c.name?.toLowerCase().includes(sellPkgCustSearch.toLowerCase()) || c.phone?.includes(sellPkgCustSearch))
-    : sellPkgCustomers;
-  const sellPkgSelPkg  = sellPkgPackages.find(p  => String(p.id) === String(sellPkgForm.package_id));
-  const sellPkgSelCust = sellPkgCustomers.find(c => String(c.id) === String(sellPkgForm.customer_id));
-
   /*  Check-in submit  */
   const handleCheckin = async () => {
     setSaving(true); setFormError('');
@@ -346,20 +290,10 @@ export default function WalkInPage() {
         serviceIds:   form.serviceIds.map(Number),
         note:         form.note         || undefined,
       });
-      // Redeem package session if one was selected
-      if (selectedPkg && form.serviceIds.length > 0) {
-        try {
-          await api.post('/packages/redeem', {
-            customerPackageId: selectedPkg.id,
-            serviceId:         Number(form.serviceIds[0]),
-            notes:             `Walk-in #${res.data?.tokenNumber || res.data?.id || ''}`,
-          });
-        } catch { /* non-fatal */ }
-      }
       setShowCheckin(false);
       setForm({ ...EMPTY_FORM, branchId: selectedBranch });
       setCustSearch(''); setCustResults([]); setCustAll([]); setShowCustDrop(false);
-      setSelectedCust(null); setSelectedPkg(null); setCustPackages([]);
+      setSelectedCust(null);
       setShowToken(res.data);
     } catch (err) {
       setFormError(err.response?.data?.message || 'Check-in failed.');
@@ -406,23 +340,14 @@ export default function WalkInPage() {
     setForm((f) => ({ ...f, customerName: c.name, phone: c.phone || f.phone }));
     setCustSearch('');
     setShowCustDrop(false);
-    // Load active packages for this customer
-    setCustPackages([]); setSelectedPkg(null); setPkgLoading(true);
-    api.get(`/packages/customer/${c.id}/active`)
-      .then((r) => setCustPackages(r.data || []))
-      .catch(() => setCustPackages([]))
-      .finally(() => setPkgLoading(false));
   };
 
   const clearSelectedCust = () => {
     setSelectedCust(null);
     setSelectedPkg(null);
-    setCustPackages([]);
-    setPkgLoading(false);
     setForm((f) => ({ ...f, customerName: '', phone: '' }));
     setCustSearch('');
     setShowCustDrop(false);
-  };
 
   /*  Estimated wait preview  */
   const selectedServices = services.filter((s) => form.serviceIds.includes(String(s.id)) || form.serviceIds.includes(s.id));
@@ -437,11 +362,6 @@ export default function WalkInPage() {
       </span>
       <Button variant="ghost" size="sm" onClick={() => window.open(`/token-display?branchId=${selectedBranch}`, '_blank')}>
         Token Display
-      </Button>
-      <Button size="sm" style={{ background:'#7C3AED', color:'#fff', border:'none', fontWeight:700, display:'flex', alignItems:'center', gap:6 }}
-        onClick={() => openSellPkg()}>
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="16.5" y1="9.4" x2="7.5" y2="4.21"/><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
-        Sell Package
       </Button>
       <Button size="sm" onClick={() => { setFormError(''); setForm({ ...EMPTY_FORM, branchId: selectedBranch }); setCustSearch(''); setCustResults([]); setCustAll([]); setSelectedCust(null); setShowCustDrop(false); setShowCheckin(true); }}>
         + New Walk-in
@@ -627,12 +547,6 @@ export default function WalkInPage() {
                     <Button size="sm" variant="ghost" onClick={() => openEdit(entry)}>Edit</Button>
                   )}
                   <Button size="sm" variant="ghost" onClick={() => setShowToken(entry)}>Token</Button>
-                  <Button size="sm"
-                    style={{ background:'#F5F3FF', color:'#7C3AED', border:'1.5px solid #DDD6FE', fontWeight:700 }}
-                    onClick={() => openSellPkg(entry.customer_id ? { id: entry.customer_id, name: entry.customer_name } : null)}
-                    title="Sell Package">
-                    PKG
-                  </Button>
                   {(entry.status === 'waiting' || entry.status === 'serving') && (
                     <Button size="sm" variant="danger" onClick={() => changeStatus(entry.id, 'cancelled')}>Cancel</Button>
                   )}
@@ -644,7 +558,7 @@ export default function WalkInPage() {
       )}
 
       {/*  CHECK-IN MODAL  */}
-      <Modal open={showCheckin} onClose={() => { setShowCheckin(false); setCustSearch(''); setCustResults([]); setCustAll([]); setSelectedCust(null); setShowCustDrop(false); setSelectedPkg(null); setCustPackages([]); }} title="New Walk-in Check-in" size="md">
+      <Modal open={showCheckin} onClose={() => { setShowCheckin(false); setCustSearch(''); setCustResults([]); setCustAll([]); setSelectedCust(null); setShowCustDrop(false); }} title="New Walk-in Check-in" size="md">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           {formError && (
             <div style={{ background: '#FEE2E2', border: '1px solid #FECACA', borderRadius: 8, padding: '10px 14px', color: '#B91C1C', fontSize: 13 }}>{formError}</div>
@@ -816,70 +730,6 @@ export default function WalkInPage() {
             </div>
           )}
 
-          {/* ── PACKAGES (shown when loading or has packages) ── */}
-          {selectedCust && (pkgLoading || custPackages.length > 0) && (
-            <div>
-              <div style={{ fontSize: 11, fontWeight: 700, color: '#98A2B3', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
-                Packages
-                {pkgLoading
-                  ? <span style={{ fontSize: 11, fontWeight: 400, color: '#C4CAD4', textTransform: 'none', marginLeft: 6 }}>— loading…</span>
-                  : <span style={{ fontSize: 11, fontWeight: 400, color: '#C4CAD4', textTransform: 'none', marginLeft: 6 }}>— click to use a session</span>
-                }
-              </div>
-              {pkgLoading ? (
-                <div style={{ background: '#F9FAFB', borderRadius: 10, padding: '10px 14px', fontSize: 12, color: '#98A2B3', textAlign: 'center' }}>
-                  Loading packages…
-                </div>
-              ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-                {custPackages.map((cp) => {
-                  const isSel = selectedPkg?.id === cp.id;
-                  const pkgSvcIds = cp.package?.services || [];
-                  const sessLeft  = (cp.sessions_total || 0) - (cp.sessions_used || 0);
-                  return (
-                    <div key={cp.id} onClick={() => {
-                      const next = isSel ? null : cp;
-                      setSelectedPkg(next);
-                      if (!isSel && pkgSvcIds.length > 0) {
-                        const validIds = pkgSvcIds.map(String).filter((sid) =>
-                          services.some((s) => String(s.id) === sid)
-                        );
-                        setForm((f) => ({ ...f, serviceIds: validIds }));
-                      }
-                    }} style={{
-                      display: 'flex', alignItems: 'center', gap: 12,
-                      padding: '10px 14px', borderRadius: 10, cursor: 'pointer',
-                      border: `1.5px solid ${isSel ? '#7C3AED' : '#E4E7EC'}`,
-                      background: isSel ? '#F5F3FF' : '#FAFAFA',
-                      transition: 'all 0.15s',
-                    }}>
-                      <div style={{
-                        width: 36, height: 36, borderRadius: 8, flexShrink: 0,
-                        background: isSel ? '#7C3AED' : '#E9D5FF',
-                        color: isSel ? '#fff' : '#6D28D9',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        fontSize: 10, fontWeight: 800,
-                      }}>PKG</div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 13, fontWeight: 700, color: isSel ? '#5B21B6' : DARK }}>{cp.package?.name || 'Package'}</div>
-                        <div style={{ fontSize: 11, color: MUTED, marginTop: 1 }}>
-                          {sessLeft} session{sessLeft !== 1 ? 's' : ''} left · expires {cp.expiry_date}
-                        </div>
-                      </div>
-                      {isSel && <span style={{ fontSize: 12, color: '#7C3AED', fontWeight: 700, flexShrink: 0 }}>✓ Using</span>}
-                    </div>
-                  );
-                })}
-                {selectedPkg && (
-                  <div style={{ fontSize: 11, color: '#7C3AED', fontWeight: 600, marginTop: 2 }}>
-                    Package session will be redeemed on check-in
-                  </div>
-                )}
-              </div>
-              )}
-            </div>
-          )}
-
           {/* Phone — always visible */}
           <div>
             <Label>Phone <span style={{ color: MUTED, fontWeight: 400 }}>(optional)</span></Label>
@@ -903,26 +753,21 @@ export default function WalkInPage() {
             {/* Selected chips */}
             {form.serviceIds.length > 0 && (
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
-                {selectedServices.map((s) => {
-                  const pkgSvcIds    = (selectedPkg?.package?.services || []).map(Number);
-                  const coveredByPkg = pkgSvcIds.includes(Number(s.id));
-                  return (
-                    <span key={s.id} style={{
-                      display: 'inline-flex', alignItems: 'center', gap: 5,
-                      padding: '4px 10px', borderRadius: 99,
-                      background: coveredByPkg ? '#EDE9FE' : '#EEF2FF',
-                      border: `1.5px solid ${coveredByPkg ? '#C4B5FD' : '#C7D2FE'}`,
-                      fontSize: 12, fontWeight: 600, color: coveredByPkg ? '#5B21B6' : '#4338CA',
-                    }}>
-                      {s.name}{coveredByPkg && <span style={{ fontSize: 10, marginLeft: 3, opacity: 0.8 }}>(FREE)</span>}
-                      <button
-                        type="button"
-                        onClick={() => toggleService(s.id)}
-                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: coveredByPkg ? '#7C3AED' : '#6366f1', fontSize: 14, lineHeight: 1, padding: 0, marginLeft: 2 }}
-                      >×</button>
-                    </span>
-                  );
-                })}
+                {selectedServices.map((s) => (
+                  <span key={s.id} style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 5,
+                    padding: '4px 10px', borderRadius: 99,
+                    background: '#EEF2FF', border: '1.5px solid #C7D2FE',
+                    fontSize: 12, fontWeight: 600, color: '#4338CA',
+                  }}>
+                    {s.name}
+                    <button
+                      type="button"
+                      onClick={() => toggleService(s.id)}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6366f1', fontSize: 14, lineHeight: 1, padding: 0, marginLeft: 2 }}
+                    >×</button>
+                  </span>
+                ))}
               </div>
             )}
 
@@ -932,9 +777,7 @@ export default function WalkInPage() {
               maxHeight: 180, overflowY: 'auto', background: '#FAFAFA',
             }}>
               {services.filter((s) => s.is_active !== false).map((s, idx, arr) => {
-                const selected      = form.serviceIds.includes(s.id) || form.serviceIds.includes(String(s.id));
-                const pkgSvcIds     = (selectedPkg?.package?.services || []).map(Number);
-                const coveredByPkg  = pkgSvcIds.includes(Number(s.id));
+                const selected = form.serviceIds.includes(s.id) || form.serviceIds.includes(String(s.id));
                 return (
                   <div
                     key={s.id}
@@ -942,10 +785,8 @@ export default function WalkInPage() {
                     style={{
                       display: 'flex', alignItems: 'center', gap: 10,
                       padding: '9px 12px', cursor: 'pointer',
-                      background: selected ? (coveredByPkg ? '#F5F3FF' : '#EEF2FF') : 'transparent',
+                      background: selected ? '#EEF2FF' : 'transparent',
                       borderBottom: idx < arr.length - 1 ? '1px solid #F2F4F7' : 'none',
-                      border: coveredByPkg ? '1px solid #DDD6FE' : 'none',
-                      borderRadius: coveredByPkg ? 8 : 0,
                       transition: 'background 0.1s',
                     }}
                     onMouseEnter={(e) => { if (!selected) e.currentTarget.style.background = '#F8F9FF'; }}
@@ -953,25 +794,15 @@ export default function WalkInPage() {
                   >
                     <div style={{
                       width: 18, height: 18, borderRadius: 5, flexShrink: 0,
-                      border: `2px solid ${selected ? (coveredByPkg ? '#7C3AED' : '#6366f1') : '#D0D5DD'}`,
-                      background: selected ? (coveredByPkg ? '#7C3AED' : '#6366f1') : '#fff',
+                      border: `2px solid ${selected ? '#6366f1' : '#D0D5DD'}`,
+                      background: selected ? '#6366f1' : '#fff',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                     }}>
                       {selected && <span style={{ color: '#fff', fontSize: 11, fontWeight: 900, lineHeight: 1 }}>✓</span>}
                     </div>
-                    <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <span style={{ fontSize: 13, fontWeight: selected ? 700 : 500, color: selected ? (coveredByPkg ? '#5B21B6' : '#4338CA') : DARK }}>{s.name}</span>
-                      {coveredByPkg && <span style={{ fontSize: 10, color: '#7C3AED', fontWeight: 800, background: '#EDE9FE', padding: '1px 6px', borderRadius: 4 }}>PKG</span>}
-                    </div>
+                    <span style={{ flex: 1, fontSize: 13, fontWeight: selected ? 700 : 500, color: selected ? '#4338CA' : DARK }}>{s.name}</span>
                     <span style={{ fontSize: 11, color: MUTED, flexShrink: 0 }}>{s.duration_minutes} min</span>
-                    {coveredByPkg ? (
-                      <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                        {s.price && <span style={{ fontSize: 10, color: '#94A3B8', textDecoration: 'line-through', display: 'block' }}>Rs.{Number(s.price).toLocaleString()}</span>}
-                        <span style={{ fontSize: 11, color: '#7C3AED', fontWeight: 800 }}>FREE</span>
-                      </div>
-                    ) : (
-                      s.price && <span style={{ fontSize: 11, fontWeight: 600, color: '#059669', flexShrink: 0 }}>Rs.{Number(s.price).toLocaleString()}</span>
-                    )}
+                    {s.price && <span style={{ fontSize: 11, fontWeight: 600, color: '#059669', flexShrink: 0 }}>Rs.{Number(s.price).toLocaleString()}</span>}
                   </div>
                 );
               })}
@@ -1125,182 +956,6 @@ export default function WalkInPage() {
           </div>
         </Modal>
       )}
-
-      {/*  SELL PACKAGE MODAL  */}
-      <Modal open={showSellPkg} onClose={() => { setShowSellPkg(false); setSellPkgOk(false); }} title="Sell Package" size="md">
-        {sellPkgOk ? (
-          <div style={{ textAlign:'center', padding:'28px 0' }}>
-            <div style={{ width:64, height:64, borderRadius:'50%', background:'#F5F3FF', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 16px' }}>
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#7C3AED" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-            </div>
-            <div style={{ fontSize:17, fontWeight:700, color:'#7C3AED', fontFamily:'inherit' }}>Package Sold!</div>
-            <div style={{ fontSize:13, color:MUTED, marginTop:6 }}>{sellPkgSelCust?.name} has been assigned the package.</div>
-          </div>
-        ) : (
-          <div style={{ display:'flex', flexDirection:'column', gap:0 }}>
-            {/* Stepper */}
-            <div style={{ display:'flex', alignItems:'center', marginBottom:22 }}>
-              {[['Customer',1],['Package',2],['Payment',3]].map(([label, step], i, arr) => {
-                const done = sellPkgStep > step, active = sellPkgStep === step;
-                return (
-                  <div key={step} style={{ display:'flex', alignItems:'center', flex: i < arr.length-1 ? 1 : 'none' }}>
-                    <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:3, flexShrink:0 }}>
-                      <div style={{ width:30, height:30, borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, fontWeight:700, fontFamily:'inherit',
-                        background:done?'#7C3AED':active?'#F5F3FF':'#F2F4F7',
-                        border:active?'2px solid #7C3AED':done?'none':'2px solid #D0D5DD',
-                        color:done?'#fff':active?'#7C3AED':'#64748B' }}>
-                        {done ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg> : step}
-                      </div>
-                      <span style={{ fontSize:10, fontWeight:600, color:active?'#7C3AED':'#64748B', fontFamily:'inherit', whiteSpace:'nowrap' }}>{label}</span>
-                    </div>
-                    {i < arr.length-1 && <div style={{ flex:1, height:2, background:done?'#7C3AED':'#E4E7EC', margin:'0 6px', marginBottom:18 }} />}
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Step 1: Customer */}
-            {sellPkgStep === 1 && (
-              <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
-                <div style={{ fontSize:12, fontWeight:700, color:DARK }}>Search Customer</div>
-                <input value={sellPkgCustSearch} onChange={e=>setSellPkgCustSearch(e.target.value)} placeholder="Name or phone..."
-                  style={{ width:'100%', padding:'9px 12px', borderRadius:10, border:'1.5px solid #E4E7EC', fontSize:13, fontFamily:'inherit', outline:'none', boxSizing:'border-box', color:DARK }}
-                  onFocus={e=>e.target.style.borderColor='#7C3AED'} onBlur={e=>e.target.style.borderColor='#E4E7EC'} />
-                <div style={{ maxHeight:220, overflowY:'auto', border:'1.5px solid #E4E7EC', borderRadius:10 }}>
-                  {sellPkgCustomers.length === 0 ? (
-                    <div style={{ textAlign:'center', padding:20, color:'#98A2B3', fontSize:13 }}>Loading customers…</div>
-                  ) : sellPkgFilteredCusts.length === 0 ? (
-                    <div style={{ textAlign:'center', padding:20, color:'#98A2B3', fontSize:13 }}>No customers found</div>
-                  ) : sellPkgFilteredCusts.slice(0,30).map(c => {
-                    const sel = String(c.id) === String(sellPkgForm.customer_id);
-                    return (
-                      <div key={c.id} onClick={() => setSellPkgForm(f=>({...f, customer_id:String(c.id)}))}
-                        style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 14px',
-                          background:sel?'#F5F3FF':'#fff', borderBottom:'1px solid #F2F4F7',
-                          cursor:'pointer', borderLeft:`3px solid ${sel?'#7C3AED':'transparent'}` }}
-                        onMouseEnter={e=>{ if(!sel) e.currentTarget.style.background='#FAFAFA'; }}
-                        onMouseLeave={e=>{ if(!sel) e.currentTarget.style.background=sel?'#F5F3FF':'#fff'; }}>
-                        <div style={{ width:34, height:34, borderRadius:'50%', background:'#EDE9FE', color:'#7C3AED', fontWeight:700, fontSize:13, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-                          {(c.name||'?')[0].toUpperCase()}
-                        </div>
-                        <div style={{ flex:1 }}>
-                          <div style={{ fontSize:13, fontWeight:600, color:DARK }}>{c.name}</div>
-                          {c.phone && <div style={{ fontSize:11, color:MUTED }}>{c.phone}</div>}
-                        </div>
-                        {sel && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#7C3AED" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>}
-                      </div>
-                    );
-                  })}
-                </div>
-                {sellPkgSelCust && (
-                  <div style={{ padding:'10px 14px', background:'linear-gradient(135deg,#7C3AED,#2563EB)', borderRadius:10, color:'#fff' }}>
-                    <span style={{ fontSize:14, fontWeight:700 }}>{sellPkgSelCust.name}</span>
-                    {sellPkgSelCust.phone && <span style={{ fontSize:12, opacity:0.8, marginLeft:8 }}>{sellPkgSelCust.phone}</span>}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Step 2: Package */}
-            {sellPkgStep === 2 && (
-              <div>
-                {sellPkgSelCust && (
-                  <div style={{ background:'#F9FAFB', borderRadius:8, padding:'8px 12px', fontSize:12, color:MUTED, marginBottom:14 }}>
-                    Customer: <strong style={{ color:DARK }}>{sellPkgSelCust.name}</strong>
-                  </div>
-                )}
-                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, maxHeight:300, overflowY:'auto' }}>
-                  {sellPkgPackages.length === 0 ? (
-                    <div style={{ gridColumn:'1/-1', textAlign:'center', padding:24, color:'#98A2B3', fontSize:13 }}>Loading packages…</div>
-                  ) : sellPkgPackages.map(p => {
-                    const sel = String(p.id) === String(sellPkgForm.package_id);
-                    const accent = p.type === 'bundle' ? '#2563EB' : '#7C3AED';
-                    return (
-                      <div key={p.id} onClick={() => setSellPkgForm(f=>({...f, package_id:String(p.id)}))}
-                        style={{ padding:'12px 14px', borderRadius:10, cursor:'pointer', transition:'all 0.15s', position:'relative',
-                          border:sel?`2px solid ${accent}`:'1.5px solid #E4E7EC', borderTop:`3px solid ${accent}`,
-                          background:sel?(p.type==='bundle'?'#EFF6FF':'#F5F3FF'):'#fff' }}>
-                        <div style={{ fontSize:12, fontWeight:700, color:DARK, marginBottom:2 }}>{p.name}</div>
-                        <div style={{ fontSize:11, color:MUTED }}>{p.sessions_count} sessions · {p.validity_days} days</div>
-                        <div style={{ fontSize:15, fontWeight:800, color:DARK, marginTop:6 }}>Rs. {Number(p.package_price).toLocaleString()}</div>
-                        {Number(p.discount_percent) > 0 && (
-                          <span style={{ position:'absolute', top:8, right:8, fontSize:10, color:'#059669', fontWeight:700, background:'#D1FAE5', padding:'2px 7px', borderRadius:10 }}>{Math.round(p.discount_percent)}% OFF</span>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* Step 3: Payment */}
-            {sellPkgStep === 3 && (
-              <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
-                {sellPkgSelCust && (
-                  <div style={{ background:'#F9FAFB', borderRadius:10, padding:'10px 14px', fontSize:13 }}>
-                    <span style={{ fontWeight:600, color:DARK }}>Customer: </span>
-                    <span style={{ color:MUTED }}>{sellPkgSelCust.name}</span>
-                  </div>
-                )}
-                {sellPkgSelPkg && (
-                  <div style={{ padding:14, background:'linear-gradient(135deg,#7C3AED 0%,#2563EB 100%)', borderRadius:12, color:'#fff' }}>
-                    <div style={{ fontSize:11, opacity:0.75, marginBottom:4, letterSpacing:'0.06em' }}>PACKAGE</div>
-                    <div style={{ fontSize:16, fontWeight:800, marginBottom:10 }}>{sellPkgSelPkg.name}</div>
-                    <div style={{ display:'flex', gap:20 }}>
-                      {[[sellPkgSelPkg.sessions_count,'Sessions'],[`${sellPkgSelPkg.validity_days}d`,'Validity'],[`Rs.${Number(sellPkgSelPkg.package_price).toLocaleString()}`,'Price']].map(([val,lbl]) => (
-                        <div key={lbl} style={{ textAlign:'center' }}>
-                          <div style={{ fontSize:14, fontWeight:800 }}>{val}</div>
-                          <div style={{ fontSize:10, opacity:0.8 }}>{lbl}</div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                <div>
-                  <div style={{ fontSize:11, fontWeight:700, color:'#98A2B3', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:8 }}>Payment Method</div>
-                  <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
-                    {['Cash','Card','Online Transfer'].map(m => (
-                      <button key={m} type="button" onClick={() => setSellPkgForm(f=>({...f,payment_method:m}))} style={{
-                        padding:'7px 16px', borderRadius:8, fontSize:13, fontWeight:600, cursor:'pointer', fontFamily:'inherit',
-                        border:`1.5px solid ${sellPkgForm.payment_method===m?'#7C3AED':'#D0D5DD'}`,
-                        background:sellPkgForm.payment_method===m?'#F5F3FF':'#fff',
-                        color:sellPkgForm.payment_method===m?'#5B21B6':DARK,
-                      }}>{m}</button>
-                    ))}
-                  </div>
-                </div>
-                <div>
-                  <div style={{ fontSize:11, fontWeight:700, color:'#98A2B3', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:6 }}>Notes (optional)</div>
-                  <input value={sellPkgForm.notes} onChange={e=>setSellPkgForm(f=>({...f,notes:e.target.value}))} placeholder="Any notes..."
-                    style={{ width:'100%', padding:'9px 12px', borderRadius:10, border:'1.5px solid #E4E7EC', fontSize:13, fontFamily:'inherit', outline:'none', boxSizing:'border-box', color:DARK }}
-                    onFocus={e=>e.target.style.borderColor='#7C3AED'} onBlur={e=>e.target.style.borderColor='#E4E7EC'} />
-                </div>
-              </div>
-            )}
-
-            {sellPkgError && <div style={{ marginTop:12, padding:'9px 13px', background:'#FEE2E2', borderRadius:8, color:'#DC2626', fontSize:13, border:'1px solid #FEE2E2' }}>{sellPkgError}</div>}
-
-            <div style={{ display:'flex', justifyContent:'space-between', marginTop:20 }}>
-              <Button variant="secondary" onClick={() => { if(sellPkgStep>1){setSellPkgStep(s=>s-1);setSellPkgError('');}else setShowSellPkg(false); }}>
-                {sellPkgStep===1?'Cancel':'← Back'}
-              </Button>
-              {sellPkgStep < 3 ? (
-                <Button style={{ background:'#7C3AED', color:'#fff', border:'none', fontWeight:700 }} onClick={() => {
-                  if(sellPkgStep===1&&!sellPkgForm.customer_id){setSellPkgError('Please select a customer.');return;}
-                  if(sellPkgStep===2&&!sellPkgForm.package_id){setSellPkgError('Please select a package.');return;}
-                  setSellPkgError(''); setSellPkgStep(s=>s+1);
-                }}>Next →</Button>
-              ) : (
-                <Button loading={sellPkgSaving} disabled={sellPkgSaving}
-                  style={{ background:'#7C3AED', color:'#fff', border:'none', fontWeight:700 }}
-                  onClick={handleSellPkg}>
-                  {sellPkgSaving?'Processing…':`Sell · Rs.${Number(sellPkgSelPkg?.package_price||0).toLocaleString()}`}
-                </Button>
-              )}
-            </div>
-          </div>
-        )}
-      </Modal>
 
       {/*  PAYMENT MODAL  */}
       {payEntry && (

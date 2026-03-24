@@ -344,10 +344,10 @@ export default function WalkInPage() {
 
   const clearSelectedCust = () => {
     setSelectedCust(null);
-    setSelectedPkg(null);
     setForm((f) => ({ ...f, customerName: '', phone: '' }));
     setCustSearch('');
     setShowCustDrop(false);
+  };
 
   /*  Estimated wait preview  */
   const selectedServices = services.filter((s) => form.serviceIds.includes(String(s.id)) || form.serviceIds.includes(s.id));

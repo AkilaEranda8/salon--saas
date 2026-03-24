@@ -38,21 +38,61 @@ function StaffPill({ name, selected, onClick }) {
   );
 }
 
-function ViewStaff({ serviceId }) {
-  const [staff, setStaff] = useState([]);
-  useEffect(() => {
+function ViewStaff({ serviceId, canEdit, onStaffChanged }) {
+  const [staff, setStaff]       = useState([]);
+  const [loaded, setLoaded]     = useState(false);
+  const [removing, setRemoving] = useState(false);
+
+  const loadStaff = useCallback(() => {
     if (!serviceId) return;
+    setLoaded(false);
     api.get(`/services/${serviceId}/staff`)
-      .then(r => setStaff(r.data || []))
-      .catch(() => setStaff([]));
+      .then(r => { setStaff(r.data || []); setLoaded(true); })
+      .catch(() => { setStaff([]); setLoaded(true); });
   }, [serviceId]);
-  if (!staff.length) return null;
+
+  useEffect(() => { loadStaff(); }, [loadStaff]);
+
+  const removeAll = async () => {
+    if (!window.confirm('Remove all assigned staff from this service?')) return;
+    setRemoving(true);
+    try {
+      await api.put(`/services/${serviceId}/staff`, { staffIds: [] });
+      setStaff([]);
+      onStaffChanged?.();
+    } catch { /* silent */ }
+    setRemoving(false);
+  };
+
+  if (!loaded) return null;
+
   return (
-    <div style={{ marginTop:16, textAlign:'left' }}>
-      <div style={{ fontSize:11, fontWeight:700, color:'#98A2B3', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:8 }}>Assigned Staff</div>
-      <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
-        {staff.map(s => <StaffPill key={s.id} name={s.name} selected={true} onClick={() => {}} />)}
+    <div style={{ marginTop:16, textAlign:'left', borderTop:'1px solid #F2F4F7', paddingTop:14 }}>
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:8 }}>
+        <div style={{ fontSize:11, fontWeight:700, color:'#98A2B3', textTransform:'uppercase', letterSpacing:'0.05em' }}>
+          Assigned Staff
+          {staff.length > 0 && (
+            <span style={{ marginLeft:6, fontWeight:700, color:'#059669', textTransform:'none', letterSpacing:0 }}>
+              · {staff.length}
+            </span>
+          )}
+        </div>
+        {canEdit && staff.length > 0 && (
+          <button onClick={removeAll} disabled={removing} style={{
+            fontSize:11, fontWeight:600, color:'#DC2626', background:'none', border:'1px solid #FEE2E2',
+            borderRadius:6, cursor:'pointer', padding:'3px 8px', lineHeight:1.4, transition:'all 0.15s',
+          }}>
+            {removing ? 'Removing…' : 'Remove All'}
+          </button>
+        )}
       </div>
+      {staff.length === 0 ? (
+        <div style={{ fontSize:13, color:'#C4CAD4', fontStyle:'italic' }}>No staff assigned</div>
+      ) : (
+        <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+          {staff.map(s => <StaffPill key={s.id} name={s.name} selected={true} onClick={() => {}} />)}
+        </div>
+      )}
     </div>
   );
 }
@@ -129,7 +169,15 @@ export default function ServicesPage() {
     } catch (e) { setFormErr(e.response?.data?.message || 'Save failed'); }
     setSaving(false);
   };
-  const handleDelete = async id => { if (!window.confirm('Delete this service?')) return; await api.delete(`/services/${id}`); load(); };
+  const handleDelete = async id => {
+    if (!window.confirm('Delete this service?')) return;
+    try {
+      await api.delete(`/services/${id}`);
+      load();
+    } catch (e) {
+      window.alert(e.response?.data?.message || 'Delete failed');
+    }
+  };
 
   const displayed = services.filter(s => {
     if (!search) return true;
@@ -268,9 +316,16 @@ export default function ServicesPage() {
 
           {/* Staff Assignment */}
           {allStaff.length > 0 && (
-            <div>
-              <div style={{ fontSize:11, fontWeight:700, color:'#98A2B3', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:8 }}>
-                Assigned Staff <span style={{ fontSize:11, fontWeight:400, color:'#C4CAD4', textTransform:'none' }}>(optional)</span>
+            <div style={{ borderTop:'1px solid #F2F4F7', paddingTop:14 }}>
+              <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
+                <div style={{ fontSize:11, fontWeight:700, color:'#98A2B3', textTransform:'uppercase', letterSpacing:'0.05em' }}>
+                  Assigned Staff
+                </div>
+                {svcStaff.length > 0 && (
+                  <span style={{ fontSize:11, fontWeight:700, color:'#059669', background:'#ECFDF5', border:'1px solid #A7F3D0', borderRadius:20, padding:'2px 10px' }}>
+                    {svcStaff.length} staff assigned
+                  </span>
+                )}
               </div>
               <div style={{ display:'flex', gap:7, flexWrap:'wrap' }}>
                 {allStaff.map(s => (
@@ -278,11 +333,6 @@ export default function ServicesPage() {
                     onClick={() => setSvcStaff(prev => prev.includes(Number(s.id)) ? prev.filter(x => x !== Number(s.id)) : [...prev, Number(s.id)])} />
                 ))}
               </div>
-              {svcStaff.length > 0 && (
-                <div style={{ fontSize:11, color:'#059669', marginTop:6, fontWeight:600 }}>
-                  {svcStaff.length} staff assigned
-                </div>
-              )}
             </div>
           )}
         </div>
@@ -305,7 +355,7 @@ export default function ServicesPage() {
             </div>
             {viewItem.description && <p style={{ color: '#475467', fontSize: 14, lineHeight: 1.6, margin: 0 }}>{viewItem.description}</p>}
             {/* Assigned Staff */}
-            <ViewStaff serviceId={viewItem.id} />
+            <ViewStaff serviceId={viewItem.id} canEdit={canEdit} />
             {canEdit && <div style={{ marginTop: 16 }}><Button variant="primary" onClick={() => { setShowView(false); openEdit(viewItem); }}>Edit Service</Button></div>}
           </div>
         )}

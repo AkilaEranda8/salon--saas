@@ -63,9 +63,16 @@ const remove = async (req, res) => {
     const svc = await Service.findByPk(req.params.id);
     if (!svc) return res.status(404).json({ message: 'Service not found.' });
 
+    // Remove pivot records first to avoid FK constraint failures.
+    await StaffSpecialization.destroy({ where: { service_id: Number(req.params.id) } });
     await svc.destroy();
     return res.json({ message: 'Service deleted.' });
   } catch (err) {
+    if (err?.name === 'SequelizeForeignKeyConstraintError') {
+      return res.status(409).json({
+        message: 'This service is used in appointments/payments and cannot be deleted.',
+      });
+    }
     return res.status(500).json({ message: 'Server error.' });
   }
 };

@@ -516,7 +516,9 @@ export default function WalkInPage() {
 
                 {/* ACTIONS */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0, flexWrap: 'wrap' }}>
-                  <Button size="sm" variant="ghost" onClick={() => openEdit(entry)}>Edit</Button>
+                  {entry.status !== 'completed' && (
+                    <Button size="sm" variant="ghost" onClick={() => openEdit(entry)}>Edit</Button>
+                  )}
                   {entry.status === 'waiting' && (
                     <Button size="sm" onClick={() => changeStatus(entry.id, 'serving')}>Start</Button>
                   )}

@@ -179,6 +179,9 @@ exports.update = async (req, res) => {
 
     const entry = await WalkIn.findByPk(id);
     if (!entry) return res.status(404).json({ message: 'Walk-in entry not found.' });
+    if (entry.status === 'completed') {
+      return res.status(400).json({ message: 'Completed walk-in entries cannot be edited.' });
+    }
 
     if (customerName != null && !String(customerName).trim()) {
       return res.status(400).json({ message: 'customerName cannot be empty.' });

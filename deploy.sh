@@ -35,7 +35,7 @@ else
 fi
 
 # ── 3. Clone the repository ───────────────────────────────────────────────────
-APP_DIR="/root/xanesalon"
+APP_DIR="/root/zanesalon"
 
 if [ -d "$APP_DIR" ]; then
     echo ""
@@ -107,8 +107,8 @@ echo "════════════════════════�
 echo ""
 docker compose ps
 echo ""
-echo "    Website:     https://xanesalon.com"
-  echo "  Management:  https://main.xanesalon.com"
-  echo "  API:         https://api.xanesalon.com"
-  echo "  phpMyAdmin:  https://pma.xanesalon.com"
+echo "    Website:     https://zanesalon.com"
+  echo "  Management:  https://main.zanesalon.com"
+  echo "  API:         https://api.zanesalon.com"
+  echo "  phpMyAdmin:  https://pma.zanesalon.com"
 echo ""

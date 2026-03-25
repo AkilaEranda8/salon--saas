@@ -1,18 +1,18 @@
 #!/bin/bash
-# ── SSL initialization script for xanesalon.com ──────────────────────────────
+# ── SSL initialization script for zanesalon.com ──────────────────────────────
 # Run this ONCE on the VPS to obtain Let's Encrypt certificates.
 # After that, a cron job handles auto-renewal.
 #
 # Subdomains covered:
-#   xanesalon.com         → Public website
-#   www.xanesalon.com     → Public website (redirects to non-www)
-#   main.xanesalon.com    → Management system
-#   api.xanesalon.com     → Backend API
-#   pma.xanesalon.com     → phpMyAdmin
+#   zanesalon.com         → Public website
+#   www.zanesalon.com     → Public website (redirects to non-www)
+#   main.zanesalon.com    → Management system
+#   api.zanesalon.com     → Backend API
+#   pma.zanesalon.com     → phpMyAdmin
 
 set -e
 
-DOMAIN="xanesalon.com"
+DOMAIN="zanesalon.com"
 EMAIL="akilaeranda8@gmail.com"
 COMPOSE="docker compose"
 
@@ -20,7 +20,7 @@ echo "=== Step 1: Create temporary HTTP-only nginx config ==="
 cat > /tmp/default_http.conf << 'HTTPCONF'
 server {
     listen 80;
-    server_name xanesalon.com www.xanesalon.com main.xanesalon.com api.xanesalon.com pma.xanesalon.com;
+    server_name zanesalon.com www.zanesalon.com main.zanesalon.com api.zanesalon.com pma.zanesalon.com;
 
     location /.well-known/acme-challenge/ {
         root /var/www/certbot;
@@ -67,10 +67,10 @@ CRON_CMD="0 3 * * * cd /root/xanesalon && $COMPOSE run --rm --profile certbot ce
 
 echo ""
 echo "=== ✅ SSL setup complete! ==="
-echo "  https://xanesalon.com          → Public Website"
-echo "  https://www.xanesalon.com      → Public Website (redirects)"
-echo "  https://main.xanesalon.com     → Management System"
-echo "  https://api.xanesalon.com      → Backend API"
-echo "  https://pma.xanesalon.com      → phpMyAdmin"
+echo "  https://zanesalon.com          → Public Website"
+echo "  https://www.zanesalon.com      → Public Website (redirects)"
+echo "  https://main.zanesalon.com     → Management System"
+echo "  https://api.zanesalon.com      → Backend API"
+echo "  https://pma.zanesalon.com      → phpMyAdmin"
 echo ""
 echo "Auto-renewal cron installed (daily at 3 AM)."

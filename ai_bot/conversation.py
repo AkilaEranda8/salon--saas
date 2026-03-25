@@ -175,8 +175,160 @@ def _format_branches(branches: list) -> str:
 
 # ── Main handler ─────────────────────────────────────────────────────────────
 
-async def handle_message(session_id: str, text: str, intent: str) -> str:
+async def handle_management(intent: str, token: str) -> str | None:
+    """Handle internal management queries. Returns None if intent not management-related."""
+    from datetime import date
+
+    today_str = date.today().strftime("%d %b %Y")  # e.g. "25 Mar 2026"
+
+    # ── Today's appointments ─────────────────────────────────────────────
+    if intent == "today_appointments":
+        appts = await salon_api.get_today_appointments(token)
+        if not appts:
+            return f"No appointments scheduled for today ({today_str})."
+        by_status: dict = {}
+        for a in appts:
+            s = a.get("status", "unknown")
+            by_status[s] = by_status.get(s, 0) + 1
+        lines = [f"**Today's Appointments ({today_str})** — {len(appts)} total\n"]
+        for status, count in by_status.items():
+            icon = {"confirmed":"✅","pending":"⏳","completed":"💰","cancelled":"❌"}.get(status,"•")
+            lines.append(f"{icon} {status.capitalize()}: **{count}**")
+        # List next 5
+        upcoming = [a for a in appts if a.get("status") in ("confirmed","pending")][:5]
+        if upcoming:
+            lines.append("\n**Upcoming:**")
+            for a in upcoming:
+                t = (a.get("time") or "")[:5]
+                cust = a.get("customer_name", "Customer")
+                svc  = a.get("service", {}).get("name", "") if isinstance(a.get("service"), dict) else ""
+                staff = a.get("staff", {}).get("name", "") if isinstance(a.get("staff"), dict) else ""
+                lines.append(f"• {t} — {cust} ({svc}) with {staff}")
+        return "\n".join(lines)
+
+    # ── Pending appointments ─────────────────────────────────────────────
+    if intent == "pending_appointments":
+        appts = await salon_api.get_pending_appointments(token)
+        if not appts:
+            return "No pending appointments right now. All clear!"
+        lines = [f"**Pending Appointments** — {len(appts)} waiting for confirmation\n"]
+        for a in appts[:8]:
+            d = a.get("date", "")
+            t = (a.get("time") or "")[:5]
+            cust = a.get("customer_name", "Customer")
+            svc  = a.get("service", {}).get("name", "") if isinstance(a.get("service"), dict) else ""
+            lines.append(f"• {d} {t} — **{cust}** ({svc})")
+        if len(appts) > 8:
+            lines.append(f"  ...and {len(appts)-8} more")
+        lines.append("\nGo to **Appointments** page to confirm them.")
+        return "\n".join(lines)
+
+    # ── Today's revenue ──────────────────────────────────────────────────
+    if intent == "today_revenue":
+        payments = await salon_api.get_today_payments(token)
+        if not payments:
+            return f"No payments recorded for today ({today_str}) yet."
+        total   = sum(float(p.get("total_amount", 0)) for p in payments)
+        cash    = sum(float(p.get("total_amount", 0)) for p in payments if p.get("payment_method") == "cash")
+        card    = sum(float(p.get("total_amount", 0)) for p in payments if p.get("payment_method") == "card")
+        comm    = sum(float(p.get("commission_amount", 0)) for p in payments)
+        lines   = [
+            f"**Today's Revenue ({today_str})**\n",
+            f"💰 Total:      **Rs. {total:,.0f}**",
+            f"🧾 Transactions: **{len(payments)}**",
+            f"💵 Cash:       Rs. {cash:,.0f}",
+            f"💳 Card:       Rs. {card:,.0f}",
+            f"🤝 Commission: Rs. {comm:,.0f}",
+        ]
+        return "\n".join(lines)
+
+    # ── Recent payments ──────────────────────────────────────────────────
+    if intent == "recent_payments":
+        payments = await salon_api.get_today_payments(token)
+        if not payments:
+            return "No payments found for today."
+        lines = [f"**Recent Payments Today** ({len(payments)} transactions)\n"]
+        for p in payments[:6]:
+            amt  = float(p.get("total_amount", 0))
+            cust = p.get("customer_name", "Customer")
+            svc  = p.get("service", {}).get("name", "") if isinstance(p.get("service"), dict) else ""
+            t    = (p.get("time") or p.get("created_at") or "")[:5]
+            lines.append(f"• {t} — **{cust}** | {svc} | Rs. {amt:,.0f}")
+        return "\n".join(lines)
+
+    # ── Staff performance ─────────────────────────────────────────────────
+    if intent == "staff_stats":
+        from datetime import date
+        month = date.today().strftime("%B %Y")
+        staff = await salon_api.get_staff_report(token)
+        if not staff:
+            return "No staff data available for this month."
+        lines = [f"**Staff Performance — {month}**\n"]
+        for i, s in enumerate(staff[:8], 1):
+            name = s.get("name") or s.get("dataValues", {}).get("name", "Staff")
+            rev  = float(s.get("totalRevenue") or s.get("dataValues", {}).get("totalRevenue") or 0)
+            appts = int(s.get("apptCount") or s.get("dataValues", {}).get("apptCount") or 0)
+            comm = float(s.get("totalCommission") or s.get("dataValues", {}).get("totalCommission") or 0)
+            medal = ["🥇","🥈","🥉"][i-1] if i <= 3 else f"{i}."
+            lines.append(f"{medal} **{name}** — Rs. {rev:,.0f} | {appts} appts | comm Rs. {comm:,.0f}")
+        return "\n".join(lines)
+
+    # ── Low inventory ─────────────────────────────────────────────────────
+    if intent == "low_inventory":
+        items = await salon_api.get_low_stock(token)
+        if not items:
+            return "All inventory levels are fine! No low stock alerts."
+        lines = [f"**Low Stock Alert** — {len(items)} items need restocking\n"]
+        for item in items[:10]:
+            name = item.get("name", "Item")
+            qty  = item.get("quantity", 0)
+            unit = item.get("unit", "")
+            lines.append(f"⚠️ **{name}** — only {qty} {unit} left")
+        lines.append("\nGo to **Inventory** page to restock.")
+        return "\n".join(lines)
+
+    # ── Walk-in queue ─────────────────────────────────────────────────────
+    if intent == "walkin_status":
+        queue = await salon_api.get_walkin_queue(token)
+        waiting = [w for w in queue if w.get("status") in ("waiting", "pending")]
+        serving = [w for w in queue if w.get("status") == "serving"]
+        lines = [f"**Walk-in Queue Status**\n",
+                 f"⏳ Waiting: **{len(waiting)}**",
+                 f"💇 Being served: **{len(serving)}**"]
+        if waiting:
+            lines.append("\n**In queue:**")
+            for w in waiting[:5]:
+                name = w.get("customer_name", "Customer")
+                svc  = w.get("service", {}).get("name", "") if isinstance(w.get("service"), dict) else ""
+                lines.append(f"• {name}" + (f" — {svc}" if svc else ""))
+        return "\n".join(lines)
+
+    # ── Customer stats ────────────────────────────────────────────────────
+    if intent == "customer_stats":
+        data = await salon_api.get_customer_count(token)
+        total = data.get("total", 0)
+        dash  = await salon_api.get_dashboard(token)
+        new_this_month = dash.get("newCustomersMonth", dash.get("new_customers_month", 0))
+        lines = [
+            "**Customer Statistics**\n",
+            f"👥 Total Customers: **{total:,}**",
+        ]
+        if new_this_month:
+            lines.append(f"🆕 New this month: **{new_this_month}**")
+        lines.append("\nGo to **Customers** page for full details.")
+        return "\n".join(lines)
+
+    return None   # Not a management intent
+
+
+async def handle_message(session_id: str, text: str, intent: str, token: str | None = None) -> str:
     sess = get_session(session_id)
+
+    # ── Management queries (authenticated) ────────────────────────────────────
+    if token and sess.state == IDLE:
+        mgmt_reply = await handle_management(intent, token)
+        if mgmt_reply is not None:
+            return mgmt_reply
 
     # ── Always-available commands ─────────────────────────────────────────────
     if intent == "goodbye":

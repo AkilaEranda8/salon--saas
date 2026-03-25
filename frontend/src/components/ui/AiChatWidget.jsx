@@ -206,9 +206,10 @@ export default function AiChatWidget() {
 
     try {
       const res = await fetch(`${BOT_URL}/chat`, {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ session_id: sessionId, message: text }),
+        method:      'POST',
+        credentials: 'include',
+        headers:     { 'Content-Type': 'application/json' },
+        body:        JSON.stringify({ session_id: sessionId, message: text }),
       });
       const data = await res.json();
       setSessionId(data.session_id);

@@ -2,7 +2,7 @@
 Zane Salon AI Bot — FastAPI server
 Run: uvicorn main:app --reload --port 8000
 """
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import uuid
@@ -15,7 +15,8 @@ app = FastAPI(title="Zane Salon AI Bot", version="1.0.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["https://main.zanesalon.com", "http://localhost:5173", "http://localhost:3000"],
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -34,9 +35,18 @@ class ChatResponse(BaseModel):
 
 
 @app.post("/chat", response_model=ChatResponse)
-async def chat(req: ChatRequest):
+async def chat(req: ChatRequest, request: Request):
     session_id = req.session_id or str(uuid.uuid4())
     message    = req.message.strip()
+
+    # Extract JWT cookie forwarded from the browser — enables management queries
+    cookie_header = request.headers.get("cookie", "")
+    token = None
+    for part in cookie_header.split(";"):
+        part = part.strip()
+        if part.startswith("token="):
+            token = part[len("token="):]
+            break
 
     if not message:
         return ChatResponse(
@@ -50,7 +60,7 @@ async def chat(req: ChatRequest):
     intent     = result["intent"]
     confidence = result["confidence"]
 
-    reply = await handle_message(session_id, message, intent)
+    reply = await handle_message(session_id, message, intent, token=token)
 
     return ChatResponse(
         session_id=session_id,

@@ -79,6 +79,71 @@ TRAINING_DATA = {
         "don't want appointment", "cancel the booking",
     ],
 
+    # ── Management / Internal queries ────────────────────────────────────
+    "today_appointments": [
+        "how many appointments today", "today appointments", "today schedule",
+        "appointments today", "today's bookings", "how many bookings today",
+        "adura vela appointments", "ada appointments", "ada bookings",
+        "what appointments do we have today", "show today appointments",
+        "ada schedule eka", "today's agenda", "appointments list today",
+        "how busy are we today", "today appointment count",
+    ],
+
+    "pending_appointments": [
+        "pending appointments", "unconfirmed bookings", "pending bookings",
+        "how many pending", "show pending", "not confirmed appointments",
+        "waiting appointments", "approval pending", "pending list",
+        "confirm karana na appointments", "pending ona",
+    ],
+
+    "today_revenue": [
+        "today revenue", "today's earnings", "how much earned today",
+        "today income", "today sales", "today's money",
+        "ada revenue", "ada income", "ada earnings", "ada sales",
+        "how much did we make today", "daily revenue", "today total",
+        "today payment total", "today collection",
+    ],
+
+    "staff_stats": [
+        "staff performance", "best staff", "top staff", "who is best staff",
+        "staff report", "staff stats", "staff commission",
+        "who performed best", "top performing staff",
+        "staff ranking", "staff revenue", "which staff is best",
+        "staff veda", "staff performance report",
+    ],
+
+    "low_inventory": [
+        "low stock", "inventory alert", "what is low", "low inventory",
+        "out of stock", "stock running low", "inventory warning",
+        "stock check", "what needs restocking", "low items",
+        "stock thibena dewal", "stock nathi", "inventory low",
+        "what products are running out", "reorder needed",
+    ],
+
+    "walkin_status": [
+        "walk in queue", "walkin queue", "how many walk ins",
+        "walk in count", "queue status", "current queue",
+        "who is waiting", "walk in today", "walk-in list",
+        "ada walk in", "queue eka kohomada", "walkin status",
+        "how many people waiting", "queue length",
+    ],
+
+    "customer_stats": [
+        "how many customers", "total customers", "customer count",
+        "customer stats", "new customers", "customer report",
+        "customers this month", "customer total",
+        "customers thiyanawa", "customer gana", "how many clients",
+        "total clients", "customer database",
+    ],
+
+    "recent_payments": [
+        "recent payments", "latest payments", "last payments",
+        "today payments", "payment list", "recent transactions",
+        "show payments", "recent sales", "latest transactions",
+        "ada payments", "recent bills", "payment history",
+        "last few payments", "what was paid today",
+    ],
+
     "goodbye": [
         "bye", "goodbye", "see you", "thanks bye", "ok thanks",
         "thank you bye", "later", "cya", "take care", "done",

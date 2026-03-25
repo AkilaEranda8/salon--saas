@@ -5,12 +5,15 @@ const BOT_URL = import.meta.env.VITE_AI_BOT_URL || 'http://localhost:8000';
 
 /* ── Quick reply suggestions ── */
 const SUGGESTIONS = [
-  { label: '📋 Show services',      text: 'show services' },
-  { label: '💰 Price list',         text: 'what are your prices' },
-  { label: '📅 Book appointment',   text: 'I want to book an appointment' },
-  { label: '📍 Branch locations',   text: 'where are you located' },
-  { label: '👤 Staff list',         text: 'show staff' },
-  { label: '❓ Help',              text: 'help' },
+  { label: '📅 Today appointments', text: 'how many appointments today',  group: 'mgmt' },
+  { label: '⏳ Pending bookings',   text: 'show pending appointments',    group: 'mgmt' },
+  { label: '💰 Today revenue',      text: "today's revenue",              group: 'mgmt' },
+  { label: '⭐ Staff stats',        text: 'show staff performance',       group: 'mgmt' },
+  { label: '📦 Low stock',         text: 'show low inventory',           group: 'mgmt' },
+  { label: '🚶 Walk-in queue',      text: 'walk in queue status',         group: 'mgmt' },
+  { label: '👥 Customers',         text: 'how many customers',           group: 'mgmt' },
+  { label: '📋 Services',          text: 'show services',                group: 'public' },
+  { label: '❓ Help',              text: 'help',                         group: 'public' },
 ];
 
 const CSS = `
@@ -136,9 +139,10 @@ export default function AiChatPage() {
     setLoading(true);
     try {
       const res  = await fetch(`${BOT_URL}/chat`, {
-        method:  'POST',
-        headers: { 'Content-Type':'application/json' },
-        body:    JSON.stringify({ session_id: sessionId, message: msg }),
+        method:      'POST',
+        credentials: 'include',   // forwards JWT cookie → enables management queries
+        headers:     { 'Content-Type':'application/json' },
+        body:        JSON.stringify({ session_id: sessionId, message: msg }),
       });
       const data = await res.json();
       setSessionId(data.session_id);

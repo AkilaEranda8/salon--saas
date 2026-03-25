@@ -16,9 +16,21 @@ const IconPlus     = () => <svg width="16" height="16" viewBox="0 0 24 24" fill=
 const IconMoney    = () => <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>;
 
 const APPT_STATUSES = ['pending','confirmed','completed','cancelled','no_show'];
+const APPT_EXTRA_SERVICES_PREFIX = 'Additional services:';
+const stripAdditionalServicesLine = (notes = '') =>
+  String(notes)
+    .split('\n')
+    .filter(line => !line.trim().startsWith(APPT_EXTRA_SERVICES_PREFIX))
+    .join('\n')
+    .trim();
+const parseAdditionalServiceNames = (notes = '') => {
+  const line = String(notes).split('\n').find(line => line.trim().startsWith(APPT_EXTRA_SERVICES_PREFIX));
+  if (!line) return [];
+  return line.replace(APPT_EXTRA_SERVICES_PREFIX, '').split(',').map(s => s.trim()).filter(Boolean);
+};
 const STATUS_META = {
   pending:   { color:'#D97706', bg:'#FFFBEB', label:'Pending'   },
-  confirmed: { color:'#2563EB', bg:'#EFF6FF', label:'Confirmed' },
+  confirmed: { color:'#2563EB', bg:'#EFF6FF', label:'In Service' },
   completed: { color:'#059669', bg:'#ECFDF5', label:'Completed' },
   cancelled: { color:'#DC2626', bg:'#FEF2F2', label:'Cancelled' },
   no_show:   { color:'#64748B', bg:'#F8FAFC', label:'No Show'   },
@@ -219,6 +231,7 @@ export default function AppointmentsPage() {
   const [paymentErr, setPaymentErr]       = useState('');
   const [paymentOk, setPaymentOk]         = useState(false);
   const [paymentServices, setPaymentServices] = useState([]);
+  const [apptServiceIds, setApptServiceIds] = useState([]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -282,15 +295,43 @@ export default function AppointmentsPage() {
     setPaymentSaving(false);
   };
 
-  const openAdd    = () => { setEditItem(null); setForm({...EMPTY, branch_id:user?.branch_id||'', date:today}); setFormErr(''); setShowForm(true); };
-  const openEdit   = row => { setEditItem(row); setForm({...row, service_id:row.service?.id||row.service_id, staff_id:row.staff?.id||row.staff_id, date:row.date?.slice(0,10)||''}); setFormErr(''); setShowForm(true); };
+  const openAdd    = () => { setEditItem(null); setForm({...EMPTY, branch_id:user?.branch_id||'', date:today}); setApptServiceIds([]); setFormErr(''); setShowForm(true); };
+  const openEdit   = row => {
+    const sid = Number(row.service?.id || row.service_id || 0);
+    const extraNames = parseAdditionalServiceNames(row.notes || '');
+    const extraIds = extraNames
+      .map(name => services.find(s => s.name === name)?.id)
+      .filter(Boolean)
+      .map(Number);
+    const selectedIds = Array.from(new Set([...(sid ? [sid] : []), ...extraIds]));
+    setEditItem(row);
+    setForm({
+      ...row,
+      service_id: row.service?.id || row.service_id,
+      staff_id: row.staff?.id || row.staff_id,
+      date: row.date?.slice(0,10) || '',
+      notes: stripAdditionalServicesLine(row.notes || ''),
+    });
+    setApptServiceIds(selectedIds);
+    setFormErr('');
+    setShowForm(true);
+  };
   const openDetail = row => { setDetailItem(row); setShowDetail(true); };
 
   const handleSave = async () => {
-    if (!form.customer_name||!form.service_id||!form.date||!form.time) return setFormErr('Customer, service, date and time are required');
+    if (!form.customer_name||!apptServiceIds.length||!form.date||!form.time) return setFormErr('Customer, service, date and time are required');
     setSaving(true);
     try {
-      editItem ? await api.put(`/appointments/${editItem.id}`, form) : await api.post('/appointments', form);
+      const selectedSvcs = services.filter(s => apptServiceIds.includes(Number(s.id)));
+      const [primary, ...extras] = selectedSvcs;
+      const extraNote = extras.length ? `${APPT_EXTRA_SERVICES_PREFIX} ${extras.map(s => s.name).join(', ')}` : '';
+      const payload = {
+        ...form,
+        service_id: primary?.id || form.service_id,
+        amount: selectedSvcs.reduce((sum, s) => sum + Number(s.price || 0), 0) || form.amount,
+        notes: [stripAdditionalServicesLine(form.notes || ''), extraNote].filter(Boolean).join('\n'),
+      };
+      editItem ? await api.put(`/appointments/${editItem.id}`, payload) : await api.post('/appointments', payload);
       setShowForm(false); load();
     } catch (e) { setFormErr(e.response?.data?.message||'Save failed'); }
     setSaving(false);
@@ -301,6 +342,20 @@ export default function AppointmentsPage() {
     if (!deleteId) return;
     try { await api.delete(`/appointments/${deleteId}`); } catch {}
     setDeleteId(null); load();
+  };
+
+  const toggleApptService = (id) => {
+    const nid = Number(id);
+    setApptServiceIds(prev => {
+      const next = prev.includes(nid) ? prev.filter(x => x !== nid) : [...prev, nid];
+      const total = calcServiceTotal(next);
+      setForm(f => ({
+        ...f,
+        service_id: next[0] || '',
+        amount: total || '',
+      }));
+      return next;
+    });
   };
 
   const filteredStaff = form.branch_id ? staffList.filter(s => s.branch_id==form.branch_id) : staffList;
@@ -430,21 +485,55 @@ export default function AppointmentsPage() {
         footer={<><Button variant="secondary" onClick={()=>setShowForm(false)}>Cancel</Button><Button variant="primary" loading={saving} onClick={handleSave}>{editItem?'Save Changes':'Create Appointment'}</Button></>}>
         {formErr && <div style={{ background:'#FEF2F2', color:'#DC2626', padding:'9px 13px', borderRadius:9, marginBottom:16, fontSize:13, border:'1px solid #FEE2E2' }}> {formErr}</div>}
         <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
-            <FormGroup label="Customer Name" required><Input value={form.customer_name||''} onChange={e=>setForm(f=>({...f,customer_name:e.target.value}))} placeholder="Full name" /></FormGroup>
-            <FormGroup label="Phone"><Input value={form.phone||''} onChange={e=>setForm(f=>({...f,phone:e.target.value}))} placeholder="0300-0000000" /></FormGroup>
-          </div>
+          <FormGroup label="Customer" required>
+            {form.customer_name ? (
+              <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:10, border:'1px solid #86EFAC', background:'#ECFDF3', borderRadius:10, padding:'10px 12px' }}>
+                <div style={{ display:'flex', alignItems:'center', gap:10, minWidth:0 }}>
+                  <div style={{ width:34, height:34, borderRadius:8, background:'#16A34A', color:'#fff', display:'flex', alignItems:'center', justifyContent:'center', fontWeight:800 }}>
+                    {form.customer_name?.charAt(0)?.toUpperCase() || 'C'}
+                  </div>
+                  <div style={{ minWidth:0 }}>
+                    <div style={{ fontSize:14, fontWeight:700, color:'#0F172A', lineHeight:1.2 }}>{form.customer_name}</div>
+                    {form.phone && <div style={{ fontSize:12, color:'#64748B' }}>{form.phone}</div>}
+                  </div>
+                </div>
+                <button type="button" onClick={() => setForm(f=>({...f, customer_name:'', phone:''}))} style={{ border:'none', background:'none', color:'#94A3B8', cursor:'pointer', fontSize:18, lineHeight:1 }}>×</button>
+              </div>
+            ) : (
+              <Input value={form.customer_name||''} onChange={e=>setForm(f=>({...f,customer_name:e.target.value}))} placeholder="Type customer name" />
+            )}
+          </FormGroup>
+          <FormGroup label="Phone"><Input value={form.phone||''} onChange={e=>setForm(f=>({...f,phone:e.target.value}))} placeholder="0300-0000000" /></FormGroup>
           {isSuperAdmin && <FormGroup label="Branch"><Select value={form.branch_id||''} onChange={e=>setForm(f=>({...f,branch_id:e.target.value,staff_id:''}))}>
             <option value="">Select branch</option>{branches.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}
           </Select></FormGroup>}
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
-            <FormGroup label="Service" required><Select value={form.service_id||''} onChange={e=>{const sid=e.target.value; const svc=services.find(x=>Number(x.id)===Number(sid)); setForm(f=>({...f,service_id:sid,amount:svc?Number(svc.price):f.amount}));}}>
-              <option value="">Select service</option>{services.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
-            </Select></FormGroup>
-            <FormGroup label="Staff"><Select value={form.staff_id||''} onChange={e=>setForm(f=>({...f,staff_id:e.target.value}))}>
-              <option value="">Any available</option>{filteredStaff.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
-            </Select></FormGroup>
-          </div>
+          <FormGroup label="Services" required>
+            <div style={{ border:'1px solid #DCE6F3', borderRadius:12, overflow:'hidden', maxHeight:180, overflowY:'auto' }}>
+              {services.filter(s => s.is_active !== false).map((s, idx, arr) => {
+                const active = apptServiceIds.includes(Number(s.id));
+                return (
+                  <label key={s.id} style={{ display:'grid', gridTemplateColumns:'24px 1fr auto', alignItems:'center', gap:10, padding:'9px 12px', borderBottom:idx!==arr.length-1?'1px solid #EEF2F6':'none', background:active?'#F0F9FF':'#fff', cursor:'pointer' }}>
+                    <input type="checkbox" checked={active} onChange={() => toggleApptService(s.id)} style={{ width:16, height:16, accentColor:'#2563EB' }} />
+                    <span style={{ fontSize:14, color:'#0F172A', fontWeight:active?700:500 }}>{s.name}</span>
+                    <span style={{ fontSize:14, color:'#059669', fontWeight:800 }}>Rs.{Number(s.price||0).toLocaleString()}</span>
+                  </label>
+                );
+              })}
+            </div>
+            {apptServiceIds.length > 0 && (
+              <div style={{ marginTop:8, display:'flex', gap:6, flexWrap:'wrap', alignItems:'center' }}>
+                {services.filter(s => apptServiceIds.includes(Number(s.id))).map(s => (
+                  <span key={s.id} style={{ fontSize:12, color:'#047857', background:'#D1FAE5', border:'1px solid #A7F3D0', padding:'2px 8px', borderRadius:999, fontWeight:700 }}>
+                    {s.name}
+                  </span>
+                ))}
+                <span style={{ fontSize:13, color:'#047857', fontWeight:800 }}>Total: Rs. {Number(form.amount||0).toLocaleString()}</span>
+              </div>
+            )}
+          </FormGroup>
+          <FormGroup label="Staff"><Select value={form.staff_id||''} onChange={e=>setForm(f=>({...f,staff_id:e.target.value}))}>
+            <option value="">Any available</option>{filteredStaff.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
+          </Select></FormGroup>
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:14 }}>
             <FormGroup label="Date" required><Input type="date" value={form.date||''} onChange={e=>setForm(f=>({...f,date:e.target.value}))} /></FormGroup>
             <FormGroup label="Time" required><Input type="time" value={form.time||''} onChange={e=>setForm(f=>({...f,time:e.target.value}))} /></FormGroup>

@@ -3,6 +3,8 @@ const { Appointment, Branch, Customer, Staff, Service } = require('../models');
 const { notifyAppointmentConfirmed } = require('../services/notificationService');
 const { createNextRecurring } = require('../services/recurringService');
 
+const normalizeStatusForDb = (status) => (status === 'in_service' ? 'confirmed' : status);
+
 const getBranchWhere = (req) => {
   const where = {};
   if (req.userBranchId) {
@@ -20,7 +22,7 @@ const list = async (req, res) => {
     const offset = (page - 1) * limit;
 
     const where = getBranchWhere(req);
-    if (req.query.status)  where.status   = req.query.status;
+    if (req.query.status)  where.status   = normalizeStatusForDb(req.query.status);
     if (req.query.staffId) where.staff_id = req.query.staffId;
     if (req.query.date)    where.date     = req.query.date;
 
@@ -151,6 +153,7 @@ const update = async (req, res) => {
     for (const field of allowed) {
       if (req.body[field] !== undefined) updates[field] = req.body[field];
     }
+    if (updates.status) updates.status = normalizeStatusForDb(updates.status);
 
     // Auto-update amount from service price when service changes
     if (updates.service_id) {
@@ -168,10 +171,11 @@ const update = async (req, res) => {
 const changeStatus = async (req, res) => {
   try {
     const { status } = req.body;
-    const allowed = ['pending', 'confirmed', 'completed', 'cancelled'];
+    const allowed = ['pending', 'confirmed', 'in_service', 'completed', 'cancelled'];
     if (!allowed.includes(status)) {
       return res.status(400).json({ message: `Status must be one of: ${allowed.join(', ')}.` });
     }
+    const dbStatus = normalizeStatusForDb(status);
 
     const appt = await Appointment.findByPk(req.params.id);
     if (!appt) return res.status(404).json({ message: 'Appointment not found.' });
@@ -181,10 +185,10 @@ const changeStatus = async (req, res) => {
       return res.status(403).json({ message: 'Access denied. Appointment belongs to a different branch.' });
     }
 
-    await appt.update({ status });
+    await appt.update({ status: dbStatus });
 
     // Send confirmation notification when status changes to 'confirmed'
-    if (status === 'confirmed' && appt.phone) {
+    if (dbStatus === 'confirmed' && appt.phone) {
       const [branch, service] = await Promise.all([
         Branch.findByPk(appt.branch_id,   { attributes: ['id', 'name', 'phone'] }),
         Service.findByPk(appt.service_id, { attributes: ['id', 'name'] }),
@@ -193,7 +197,7 @@ const changeStatus = async (req, res) => {
     }
 
     // Auto-create next recurring appointment when completed
-    if (status === 'completed' && appt.is_recurring) {
+    if (dbStatus === 'completed' && appt.is_recurring) {
       setImmediate(() => createNextRecurring(appt));
     }
 

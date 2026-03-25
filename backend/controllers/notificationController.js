@@ -299,7 +299,7 @@ const testProvider = async (req, res) => {
         meta: { customer_name: 'Test', event_type: 'test', branch_id: null },
       });
       if (result && result.status === 'failed') {
-        return res.status(502).json({ message: `SMS failed: ${result.error}` });
+        return res.status(400).json({ message: `SMS failed: ${result.error}` });
       }
       if (!result) {
         return res.status(400).json({ message: 'SMS not sent — check User ID, API Key, and Sender ID.' });

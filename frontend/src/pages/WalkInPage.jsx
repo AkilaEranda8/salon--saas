@@ -51,10 +51,16 @@ export default function WalkInPage() {
   const [paymentAmount,  setPaymentAmount]  = useState('');
   const [paymentSaving,  setPaymentSaving]  = useState(false);
   const [paymentError,   setPaymentError]   = useState('');
+  const [paymentOk,      setPaymentOk]      = useState(false);
+  const [paymentServices,setPaymentServices]= useState([]);
   const [editEntry,      setEditEntry]      = useState(null);
   const [editForm,       setEditForm]       = useState({ customerName: '', phone: '', serviceId: '', note: '' });
   const [editSaving,     setEditSaving]     = useState(false);
   const [editError,      setEditError]      = useState('');
+  const [showNewService, setShowNewService] = useState(false);
+  const [newServiceForm, setNewServiceForm] = useState({ name: '', category: '', duration_minutes: 30, price: '' });
+  const [newServiceSaving, setNewServiceSaving] = useState(false);
+  const [newServiceError, setNewServiceError] = useState('');
 
   const [custSearch,     setCustSearch]     = useState('');
   const [custResults,    setCustResults]    = useState([]);
@@ -130,17 +136,37 @@ export default function WalkInPage() {
   const removeEntry = async (id) => {
     try { await api.delete(`/walkin/${id}`); } catch { /* socket refreshes */ }
   };
+  const calcServiceTotal = (ids) => ids.reduce((sum, sid) => {
+    const svc = services.find((x) => Number(x.id) === Number(sid));
+    return sum + Number(svc?.price || 0);
+  }, 0);
   const openPayment = (entry) => {
-    const baseAmount = Number(entry?.service?.price || 0);
+    const svcId = Number(entry?.service_id || entry?.service?.id);
+    const ids = svcId ? [svcId] : [];
+    const baseAmount = calcServiceTotal(ids);
     setPaymentEntry(entry);
     setPaymentMethod('Cash');
     setPaymentAmount(baseAmount > 0 ? String(baseAmount) : '');
     setPaymentError('');
+    setPaymentOk(false);
+    setPaymentServices(ids);
+  };
+  const togglePaymentService = (id) => {
+    const nid = Number(id);
+    setPaymentServices((prev) => {
+      const next = prev.includes(nid) ? prev.filter((x) => x !== nid) : [...prev, nid];
+      setPaymentAmount(calcServiceTotal(next));
+      return next;
+    });
   };
   const handleCollectPayment = async () => {
     if (!paymentEntry) return;
     if (!paymentAmount || Number(paymentAmount) <= 0) {
       setPaymentError('Enter a valid amount.');
+      return;
+    }
+    if (!paymentServices.length) {
+      setPaymentError('Select at least one service.');
       return;
     }
     setPaymentSaving(true);
@@ -149,15 +175,19 @@ export default function WalkInPage() {
       await api.post('/payments', {
         branch_id: paymentEntry.branch_id || selectedBranch,
         staff_id: paymentEntry.staff_id || paymentEntry.staff?.id || null,
-        service_id: paymentEntry.service_id || paymentEntry.service?.id || null,
+        service_id: paymentServices[0] || paymentEntry.service_id || paymentEntry.service?.id || null,
         customer_name: paymentEntry.customer_name || 'Walk-in',
         splits: [{ method: paymentMethod, amount: Number(paymentAmount) }],
       });
       if (paymentEntry.status !== 'completed') {
         await api.patch(`/walkin/${paymentEntry.id}/status`, { status: 'completed' });
       }
+      setPaymentOk(true);
       toast('Payment collected successfully.', 'success');
-      setPaymentEntry(null);
+      setTimeout(() => {
+        setPaymentEntry(null);
+        setPaymentOk(false);
+      }, 1200);
     } catch (e) {
       setPaymentError(e.response?.data?.message || 'Payment collection failed.');
     } finally {
@@ -195,6 +225,33 @@ export default function WalkInPage() {
       setEditError(e.response?.data?.message || 'Update failed.');
     } finally {
       setEditSaving(false);
+    }
+  };
+  const handleCreateService = async () => {
+    if (!newServiceForm.name.trim()) {
+      setNewServiceError('Service name is required.');
+      return;
+    }
+    setNewServiceSaving(true);
+    setNewServiceError('');
+    try {
+      const payload = {
+        name: newServiceForm.name.trim(),
+        category: newServiceForm.category.trim() || null,
+        duration_minutes: Number(newServiceForm.duration_minutes) || 30,
+        price: Number(newServiceForm.price || 0),
+      };
+      const res = await api.post('/services', payload);
+      const created = res.data;
+      setServices((prev) => [...prev, created].sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''))));
+      setEditForm((f) => ({ ...f, serviceId: created.id }));
+      setShowNewService(false);
+      setNewServiceForm({ name: '', category: '', duration_minutes: 30, price: '' });
+      toast('Service created successfully.', 'success');
+    } catch (e) {
+      setNewServiceError(e.response?.data?.message || 'Failed to create service.');
+    } finally {
+      setNewServiceSaving(false);
     }
   };
 
@@ -666,48 +723,79 @@ export default function WalkInPage() {
       {/*  PAYMENT MODAL  */}
       <Modal open={!!paymentEntry} onClose={() => setPaymentEntry(null)} title="Collect Walk-in Payment" size="sm">
         {paymentEntry && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {paymentError && (
-              <div style={{ background: '#FEE2E2', border: '1px solid #FECACA', borderRadius: 8, padding: '10px 14px', color: '#B91C1C', fontSize: 13 }}>
-                {paymentError}
+          paymentOk ? (
+            <div style={{ textAlign: 'center', padding: '24px 0' }}>
+              <div style={{ width: 56, height: 56, borderRadius: '50%', background: '#ECFDF5', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 14px' }}>
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#059669" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
               </div>
-            )}
-            <div style={{ background: '#F9FAFB', border: '1px solid #EAECF0', borderRadius: 10, padding: '10px 12px' }}>
-              <div style={{ fontSize: 14, fontWeight: 700, color: DARK }}>{paymentEntry.customer_name || 'Walk-in'}</div>
-              <div style={{ fontSize: 12, color: MUTED, marginTop: 2 }}>
-                {paymentEntry.service?.name || 'Service'}
+              <div style={{ fontSize: 16, fontWeight: 700, color: '#059669' }}>Payment Recorded!</div>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              {paymentError && (
+                <div style={{ background: '#FEE2E2', border: '1px solid #FECACA', borderRadius: 8, padding: '10px 14px', color: '#B91C1C', fontSize: 13 }}>
+                  {paymentError}
+                </div>
+              )}
+              <div style={{ background: '#F9FAFB', borderRadius: 10, padding: '12px 14px' }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: DARK }}>{paymentEntry.customer_name || 'Walk-in'}</div>
+                {paymentEntry.phone && <div style={{ fontSize: 12, color: MUTED, marginTop: 2 }}>{paymentEntry.phone}</div>}
+              </div>
+              <div>
+                <Label>Services *</Label>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
+                  {services.filter((s) => s.is_active !== false).map((s) => {
+                    const active = paymentServices.includes(Number(s.id));
+                    return (
+                      <button key={s.id} onClick={() => togglePaymentService(s.id)} style={{ padding: '7px 14px', borderRadius: 10, border: `1.5px solid ${active ? '#2563EB' : '#E4E7EC'}`, background: active ? '#EFF6FF' : '#fff', color: active ? '#2563EB' : '#667085', fontWeight: active ? 700 : 500, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s', display: 'flex', alignItems: 'center', gap: 6 }}>
+                        {active && <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>}
+                        {s.name}
+                        {s.price ? <span style={{ opacity: 0.65 }}>Rs.{Number(s.price).toLocaleString()}</span> : ''}
+                      </button>
+                    );
+                  })}
+                </div>
+                {paymentServices.length === 0 && <div style={{ fontSize: 12, color: '#DC2626', marginTop: 6 }}>Select at least one service</div>}
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div>
+                  <Label>Amount (Rs.) *</Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    value={paymentAmount}
+                    onChange={(e) => setPaymentAmount(e.target.value)}
+                    placeholder="0"
+                  />
+                </div>
+                <div>
+                  <Label>Payment Method *</Label>
+                  <select
+                    value={paymentMethod}
+                    onChange={(e) => setPaymentMethod(e.target.value)}
+                    style={{ width: '100%', padding: '9px 12px', borderRadius: 10, border: '1px solid #D0D5DD', fontSize: 14, fontFamily: 'inherit', background: '#fff', color: DARK }}
+                  >
+                    {['Cash', 'Card', 'Bank Transfer', 'Online'].map((m) => (
+                      <option key={m} value={m}>{m}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div style={{ background: '#F0FDF4', borderRadius: 10, padding: '10px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', border: '1px solid #BBF7D0' }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: '#166534' }}>Total</span>
+                <span style={{ fontSize: 18, fontWeight: 800, color: '#059669' }}>Rs. {Number(paymentAmount || 0).toLocaleString()}</span>
               </div>
             </div>
-            <div>
-              <Label>Amount (Rs.) *</Label>
-              <Input
-                type="number"
-                min="0"
-                value={paymentAmount}
-                onChange={(e) => setPaymentAmount(e.target.value)}
-                placeholder="0"
-              />
-            </div>
-            <div>
-              <Label>Payment Method *</Label>
-              <select
-                value={paymentMethod}
-                onChange={(e) => setPaymentMethod(e.target.value)}
-                style={{ width: '100%', padding: '9px 12px', borderRadius: 10, border: '1px solid #D0D5DD', fontSize: 14, fontFamily: 'inherit', background: '#fff', color: DARK }}
-              >
-                {['Cash', 'Card', 'Bank Transfer', 'Online'].map((m) => (
-                  <option key={m} value={m}>{m}</option>
-                ))}
-              </select>
-            </div>
+          )
+        )}
+        {!paymentOk && (
+          <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 20 }}>
+            <Button variant="secondary" onClick={() => setPaymentEntry(null)}>Cancel</Button>
+            <Button onClick={handleCollectPayment} loading={paymentSaving} disabled={paymentSaving || !paymentAmount || Number(paymentAmount) <= 0}>
+              Confirm Payment
+            </Button>
           </div>
         )}
-        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 20 }}>
-          <Button variant="secondary" onClick={() => setPaymentEntry(null)}>Cancel</Button>
-          <Button onClick={handleCollectPayment} loading={paymentSaving} disabled={paymentSaving || !paymentAmount || Number(paymentAmount) <= 0}>
-            Confirm Payment
-          </Button>
-        </div>
       </Modal>
 
       {/*  EDIT MODAL  */}
@@ -735,7 +823,18 @@ export default function WalkInPage() {
             />
           </div>
           <div>
-            <Label>Service *</Label>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Label style={{ margin: 0 }}>Service *</Label>
+              {isAdmin && (
+                <button
+                  type="button"
+                  onClick={() => { setShowNewService(true); setNewServiceError(''); }}
+                  style={{ border: 'none', background: 'none', color: '#2563EB', fontSize: 12, fontWeight: 700, cursor: 'pointer', padding: 0 }}
+                >
+                  + New Service
+                </button>
+              )}
+            </div>
             <select
               value={editForm.serviceId}
               onChange={(e) => setEditForm((f) => ({ ...f, serviceId: e.target.value }))}
@@ -761,6 +860,60 @@ export default function WalkInPage() {
           <Button variant="secondary" onClick={() => setEditEntry(null)}>Cancel</Button>
           <Button onClick={handleEditSave} loading={editSaving} disabled={editSaving || !editForm.customerName.trim() || !editForm.serviceId}>
             Save Changes
+          </Button>
+        </div>
+      </Modal>
+
+      {/*  NEW SERVICE MODAL (ADMIN)  */}
+      <Modal open={showNewService} onClose={() => setShowNewService(false)} title="Add New Service" size="sm">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {newServiceError && (
+            <div style={{ background: '#FEE2E2', border: '1px solid #FECACA', borderRadius: 8, padding: '10px 14px', color: '#B91C1C', fontSize: 13 }}>
+              {newServiceError}
+            </div>
+          )}
+          <div>
+            <Label>Service Name *</Label>
+            <Input
+              value={newServiceForm.name}
+              onChange={(e) => setNewServiceForm((f) => ({ ...f, name: e.target.value }))}
+              placeholder="e.g. Hair Spa"
+            />
+          </div>
+          <div>
+            <Label>Category</Label>
+            <Input
+              value={newServiceForm.category}
+              onChange={(e) => setNewServiceForm((f) => ({ ...f, category: e.target.value }))}
+              placeholder="Optional"
+            />
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <div>
+              <Label>Duration (min)</Label>
+              <Input
+                type="number"
+                min="1"
+                value={newServiceForm.duration_minutes}
+                onChange={(e) => setNewServiceForm((f) => ({ ...f, duration_minutes: e.target.value }))}
+              />
+            </div>
+            <div>
+              <Label>Price (Rs.)</Label>
+              <Input
+                type="number"
+                min="0"
+                value={newServiceForm.price}
+                onChange={(e) => setNewServiceForm((f) => ({ ...f, price: e.target.value }))}
+                placeholder="0"
+              />
+            </div>
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 20 }}>
+          <Button variant="secondary" onClick={() => setShowNewService(false)}>Cancel</Button>
+          <Button onClick={handleCreateService} loading={newServiceSaving} disabled={newServiceSaving || !newServiceForm.name.trim()}>
+            Create Service
           </Button>
         </div>
       </Modal>

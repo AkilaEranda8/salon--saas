@@ -187,7 +187,7 @@ function ApptRow({ row, idx, canEdit, onView, onEdit, onDelete, onStatusChange, 
       <td style={{ padding:'13px 16px', textAlign:'center' }}>
         <div style={{ display:'flex', gap:4, justifyContent:'center' }}>
           <ActionBtn onClick={onView} title="View" color="#2563EB"><IconEye /></ActionBtn>
-          {canEdit && s!=='cancelled' && <ActionBtn onClick={onPayment} title="Collect Payment" color="#059669"><IconMoney /></ActionBtn>}
+          {canEdit && s==='confirmed' && <ActionBtn onClick={onPayment} title="Collect Payment" color="#059669"><IconMoney /></ActionBtn>}
           {canEdit && <ActionBtn onClick={onEdit} title="Edit" color="#D97706"><IconEdit /></ActionBtn>}
           {canEdit && <ActionBtn onClick={onDelete} title="Delete" color="#DC2626"><IconTrash /></ActionBtn>}
         </div>
@@ -275,6 +275,9 @@ export default function AppointmentsPage() {
     });
   };
   const handlePayment = async () => {
+    if (!(paymentAppt?.status === 'confirmed' || paymentAppt?.status === 'in_service')) {
+      return setPaymentErr('Payment can be collected only when status is In Service.');
+    }
     if (!paymentAmt || Number(paymentAmt) <= 0) return setPaymentErr('Amount is required');
     if (!paymentServices.length) return setPaymentErr('At least one service is required');
     setPaymentSaving(true);
@@ -288,6 +291,9 @@ export default function AppointmentsPage() {
         customer_name: paymentAppt.customer_name,
         splits: [{ method: paymentMethod, amount: Number(paymentAmt) }],
       });
+      if (paymentAppt?.id) {
+        await api.patch(`/appointments/${paymentAppt.id}/status`, { status: 'completed' });
+      }
       setPaymentOk(true);
       load();
       setTimeout(() => { setShowPayment(false); setPaymentOk(false); }, 1200);
@@ -625,7 +631,7 @@ export default function AppointmentsPage() {
         footer={canEdit&&detailItem&&(
           <div style={{ display:'flex', gap:8 }}>
             {detailItem.status!=='completed'&&detailItem.status!=='cancelled'&&<Button variant="primary" onClick={()=>{setShowDetail(false);openEdit(detailItem);}} style={{ display:'flex', alignItems:'center', gap:6 }}><IconEdit /> Edit</Button>}
-            {detailItem.status!=='cancelled'&&<Button variant="primary" onClick={()=>{setShowDetail(false);openPayment(detailItem);}} style={{ display:'flex', alignItems:'center', gap:6, background:'#059669' }}><IconMoney /> Collect Payment</Button>}
+            {detailItem.status==='confirmed'&&<Button variant="primary" onClick={()=>{setShowDetail(false);openPayment(detailItem);}} style={{ display:'flex', alignItems:'center', gap:6, background:'#059669' }}><IconMoney /> Collect Payment</Button>}
           </div>
         )}>
         {detailItem && (

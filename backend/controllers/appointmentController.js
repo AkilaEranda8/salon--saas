@@ -155,8 +155,9 @@ const update = async (req, res) => {
     }
     if (updates.status) updates.status = normalizeStatusForDb(updates.status);
 
-    // Auto-update amount from service price when service changes
-    if (updates.service_id) {
+    // Auto-update amount from service price only when amount is not explicitly provided.
+    // This is important for multi-service appointments where the frontend sends a total amount.
+    if (updates.service_id && (updates.amount === undefined || updates.amount === null || updates.amount === '')) {
       const svc = await Service.findByPk(updates.service_id, { attributes: ['price'] });
       if (svc) updates.amount = svc.price;
     }

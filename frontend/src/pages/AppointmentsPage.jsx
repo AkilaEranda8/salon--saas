@@ -35,7 +35,7 @@ const STATUS_META = {
   cancelled: { color:'#DC2626', bg:'#FEF2F2', label:'Cancelled' },
   no_show:   { color:'#64748B', bg:'#F8FAFC', label:'No Show'   },
 };
-const EMPTY = { branch_id:'', customer_name:'', phone:'', service_id:'', staff_id:'', date:'', time:'', amount:'', notes:'', status:'pending' };
+const EMPTY = { branch_id:'', customer_id:'', customer_name:'', phone:'', service_id:'', staff_id:'', date:'', time:'', amount:'', notes:'', status:'pending' };
 const LIMIT = 20;
 
 function StatusBadge({ status }) {
@@ -207,6 +207,7 @@ export default function AppointmentsPage() {
   const [branches, setBranches]   = useState([]);
   const [services, setServices]   = useState([]);
   const [staffList, setStaffList] = useState([]);
+  const [customers, setCustomers] = useState([]);
   const [loading, setLoading]     = useState(true);
   const [search, setSearch]       = useState('');
   const [filterBranch, setFilterBranch] = useState(isSuperAdmin ? '' : user?.branch_id||'');
@@ -232,15 +233,19 @@ export default function AppointmentsPage() {
   const [paymentOk, setPaymentOk]         = useState(false);
   const [paymentServices, setPaymentServices] = useState([]);
   const [apptServiceIds, setApptServiceIds] = useState([]);
+  const [customerSearch, setCustomerSearch] = useState('');
+  const [customerLoading, setCustomerLoading] = useState(false);
+  const [showCustomerDrop, setShowCustomerDrop] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [apR, brR, svR, stR] = await Promise.all([
+      const [apR, brR, svR, stR, cuR] = await Promise.all([
         api.get('/appointments', { params:{ page, limit:LIMIT, ...(filterBranch?{branchId:filterBranch}:{}), ...(filterStatus?{status:filterStatus}:{}), ...(filterDate?{date:filterDate}:{}) } }),
         api.get('/branches',     { params:{ limit:100 } }),
         api.get('/services',     { params:{ limit:200 } }),
         api.get('/staff',        { params:{ limit:200, ...(filterBranch?{branchId:filterBranch}:{}) } }),
+        api.get('/customers',    { params:{ limit:500, ...(filterBranch?{branchId:filterBranch}:{}) } }),
       ]);
       const d = apR.data?.data ?? apR.data ?? [];
       setAppts(Array.isArray(d) ? d : []);
@@ -248,10 +253,20 @@ export default function AppointmentsPage() {
       setBranches(Array.isArray(brR.data) ? brR.data : (brR.data?.data??[]));
       setServices(Array.isArray(svR.data) ? svR.data : (svR.data?.data??[]));
       setStaffList(Array.isArray(stR.data) ? stR.data : (stR.data?.data??[]));
+      setCustomers(Array.isArray(cuR.data) ? cuR.data : (cuR.data?.data??[]));
     } catch {}
     setLoading(false);
   }, [filterBranch, filterStatus, filterDate, page]);
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    if (!showForm) return;
+    setCustomerLoading(true);
+    api.get('/customers', { params: { limit: 500, ...(form.branch_id ? { branchId: form.branch_id } : {}) } })
+      .then((r) => setCustomers(Array.isArray(r.data) ? r.data : (r.data?.data ?? [])))
+      .catch(() => setCustomers([]))
+      .finally(() => setCustomerLoading(false));
+  }, [showForm, form.branch_id]);
 
   const calcServiceTotal = (ids) => ids.reduce((sum, sid) => { const s = services.find(x => Number(x.id) === Number(sid)); return sum + Number(s?.price || 0); }, 0);
   const openPayment = (row) => {
@@ -301,7 +316,7 @@ export default function AppointmentsPage() {
     setPaymentSaving(false);
   };
 
-  const openAdd    = () => { setEditItem(null); setForm({...EMPTY, branch_id:user?.branch_id||'', date:today}); setApptServiceIds([]); setFormErr(''); setShowForm(true); };
+  const openAdd    = () => { setEditItem(null); setForm({...EMPTY, branch_id:user?.branch_id||'', date:today}); setApptServiceIds([]); setCustomerSearch(''); setShowCustomerDrop(false); setFormErr(''); setShowForm(true); };
   const openEdit   = row => {
     const sid = Number(row.service?.id || row.service_id || 0);
     const extraNames = parseAdditionalServiceNames(row.notes || '');
@@ -313,12 +328,15 @@ export default function AppointmentsPage() {
     setEditItem(row);
     setForm({
       ...row,
+      customer_id: row.customer?.id || row.customer_id || '',
       service_id: row.service?.id || row.service_id,
       staff_id: row.staff?.id || row.staff_id,
       date: row.date?.slice(0,10) || '',
       notes: stripAdditionalServicesLine(row.notes || ''),
     });
     setApptServiceIds(selectedIds);
+    setCustomerSearch(row.customer_name || '');
+    setShowCustomerDrop(false);
     setFormErr('');
     setShowForm(true);
   };
@@ -362,6 +380,16 @@ export default function AppointmentsPage() {
       }));
       return next;
     });
+  };
+  const filteredCustomers = customers.filter(c => {
+    const q = customerSearch.trim().toLowerCase();
+    if (!q) return true;
+    return c.name?.toLowerCase().includes(q) || c.phone?.includes(q);
+  });
+  const selectCustomer = (c) => {
+    setForm(f => ({ ...f, customer_id: c.id, customer_name: c.name || '', phone: c.phone || f.phone }));
+    setCustomerSearch(c.name || '');
+    setShowCustomerDrop(false);
   };
 
   const filteredStaff = form.branch_id ? staffList.filter(s => s.branch_id==form.branch_id) : staffList;
@@ -492,7 +520,7 @@ export default function AppointmentsPage() {
         {formErr && <div style={{ background:'#FEF2F2', color:'#DC2626', padding:'9px 13px', borderRadius:9, marginBottom:16, fontSize:13, border:'1px solid #FEE2E2' }}> {formErr}</div>}
         <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
           <FormGroup label="Customer" required>
-            {form.customer_name ? (
+            {form.customer_id && form.customer_name ? (
               <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:10, border:'1px solid #86EFAC', background:'#ECFDF3', borderRadius:10, padding:'10px 12px' }}>
                 <div style={{ display:'flex', alignItems:'center', gap:10, minWidth:0 }}>
                   <div style={{ width:34, height:34, borderRadius:8, background:'#16A34A', color:'#fff', display:'flex', alignItems:'center', justifyContent:'center', fontWeight:800 }}>
@@ -503,10 +531,39 @@ export default function AppointmentsPage() {
                     {form.phone && <div style={{ fontSize:12, color:'#64748B' }}>{form.phone}</div>}
                   </div>
                 </div>
-                <button type="button" onClick={() => setForm(f=>({...f, customer_name:'', phone:''}))} style={{ border:'none', background:'none', color:'#94A3B8', cursor:'pointer', fontSize:18, lineHeight:1 }}>×</button>
+                <button type="button" onClick={() => { setForm(f=>({...f, customer_id:'', customer_name:'', phone:''})); setCustomerSearch(''); setShowCustomerDrop(true); }} style={{ border:'none', background:'none', color:'#94A3B8', cursor:'pointer', fontSize:18, lineHeight:1 }}>×</button>
               </div>
             ) : (
-              <Input value={form.customer_name||''} onChange={e=>setForm(f=>({...f,customer_name:e.target.value}))} placeholder="Type customer name" />
+              <div style={{ position:'relative' }}>
+                <Input
+                  value={customerSearch}
+                  onChange={e => {
+                    const v = e.target.value;
+                    setCustomerSearch(v);
+                    setForm(f=>({...f, customer_id:'', customer_name:v}));
+                    setShowCustomerDrop(true);
+                  }}
+                  onFocus={() => setShowCustomerDrop(true)}
+                  onBlur={() => setTimeout(() => setShowCustomerDrop(false), 200)}
+                  placeholder={customerLoading ? 'Loading customers...' : 'Search customer name or phone'}
+                />
+                {showCustomerDrop && (
+                  <div style={{ position:'absolute', top:'calc(100% + 4px)', left:0, right:0, zIndex:20, background:'#fff', border:'1.5px solid #E4E7EC', borderRadius:10, boxShadow:'0 8px 24px rgba(16,24,40,0.12)', maxHeight:220, overflowY:'auto' }}>
+                    {customerLoading ? (
+                      <div style={{ padding:'10px 12px', fontSize:12, color:'#98A2B3' }}>Loading...</div>
+                    ) : filteredCustomers.length === 0 ? (
+                      <div style={{ padding:'10px 12px', fontSize:12, color:'#98A2B3' }}>No customer found</div>
+                    ) : (
+                      filteredCustomers.slice(0, 80).map(c => (
+                        <div key={c.id} onMouseDown={() => selectCustomer(c)} style={{ padding:'9px 12px', cursor:'pointer', borderBottom:'1px solid #F2F4F7' }}>
+                          <div style={{ fontSize:13, fontWeight:600, color:'#101828' }}>{c.name}</div>
+                          <div style={{ fontSize:11, color:'#98A2B3' }}>{c.phone || 'No phone'}</div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
             )}
           </FormGroup>
           <FormGroup label="Phone"><Input value={form.phone||''} onChange={e=>setForm(f=>({...f,phone:e.target.value}))} placeholder="0300-0000000" /></FormGroup>

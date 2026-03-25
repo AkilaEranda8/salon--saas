@@ -36,6 +36,8 @@ const allowedOrigins = [
   'https://main.zanesalon.com',
   'http://api.zanesalon.com',
   'https://api.zanesalon.com',
+  'http://157.180.113.249',
+  'http://157.180.113.249:80',
 ];
 const corsOptions = {
   origin: (origin, cb) => {

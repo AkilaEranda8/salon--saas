@@ -20,9 +20,16 @@ const EMPTY_FORM    = { customerName: '', phone: '', serviceId: '', branchId: ''
 const DARK          = '#101828';
 const MUTED         = '#64748B';
 const ACTIVE_PILL   = '#1e293b';
+const ADDITIONAL_SERVICES_PREFIX = 'Additional services:';
 
 /*  Helpers  */
 const fmtTime = (t) => { if (!t) return ''; const [h, m] = t.split(':'); const hr = +h % 12 || 12; return `${hr}:${m} ${+h >= 12 ? 'PM' : 'AM'}`; };
+const removeAdditionalServicesLine = (note = '') =>
+  String(note)
+    .split('\n')
+    .filter((line) => !line.trim().startsWith(ADDITIONAL_SERVICES_PREFIX))
+    .join('\n')
+    .trim();
 
 /*  Print CSS injected once  */
 const PRINT_CSS = `@media print { body > *:not(#walkin-print-root) { display: none !important; } #walkin-print-root { display: block !important; } }`;
@@ -41,6 +48,7 @@ export default function WalkInPage() {
   const [showCheckin,    setShowCheckin]    = useState(false);
   const [showToken,      setShowToken]      = useState(null);
   const [form,           setForm]           = useState({ ...EMPTY_FORM, branchId: defaultBranch });
+  const [checkinExtraServiceIds, setCheckinExtraServiceIds] = useState([]);
   const [formError,      setFormError]      = useState('');
   const [saving,         setSaving]         = useState(false);
   const [loading,        setLoading]        = useState(true);
@@ -55,12 +63,9 @@ export default function WalkInPage() {
   const [paymentServices,setPaymentServices]= useState([]);
   const [editEntry,      setEditEntry]      = useState(null);
   const [editForm,       setEditForm]       = useState({ customerName: '', phone: '', serviceId: '', note: '' });
+  const [editExtraServiceIds, setEditExtraServiceIds] = useState([]);
   const [editSaving,     setEditSaving]     = useState(false);
   const [editError,      setEditError]      = useState('');
-  const [showNewService, setShowNewService] = useState(false);
-  const [newServiceForm, setNewServiceForm] = useState({ name: '', category: '', duration_minutes: 30, price: '' });
-  const [newServiceSaving, setNewServiceSaving] = useState(false);
-  const [newServiceError, setNewServiceError] = useState('');
 
   const [custSearch,     setCustSearch]     = useState('');
   const [custResults,    setCustResults]    = useState([]);
@@ -136,13 +141,22 @@ export default function WalkInPage() {
   const removeEntry = async (id) => {
     try { await api.delete(`/walkin/${id}`); } catch { /* socket refreshes */ }
   };
+  const parseAdditionalServiceIds = (note = '') => {
+    const line = String(note).split('\n').find((l) => l.trim().startsWith(ADDITIONAL_SERVICES_PREFIX));
+    if (!line) return [];
+    const rawNames = line.replace(ADDITIONAL_SERVICES_PREFIX, '').split(',').map((s) => s.trim()).filter(Boolean);
+    return rawNames
+      .map((name) => services.find((s) => s.name === name)?.id)
+      .filter(Boolean);
+  };
   const calcServiceTotal = (ids) => ids.reduce((sum, sid) => {
     const svc = services.find((x) => Number(x.id) === Number(sid));
     return sum + Number(svc?.price || 0);
   }, 0);
   const openPayment = (entry) => {
     const svcId = Number(entry?.service_id || entry?.service?.id);
-    const ids = svcId ? [svcId] : [];
+    const extraIds = parseAdditionalServiceIds(entry?.note);
+    const ids = Array.from(new Set([...(svcId ? [svcId] : []), ...extraIds.map((x) => Number(x))]));
     const baseAmount = calcServiceTotal(ids);
     setPaymentEntry(entry);
     setPaymentMethod('Cash');
@@ -195,14 +209,28 @@ export default function WalkInPage() {
     }
   };
   const openEdit = (entry) => {
+    const extraIds = parseAdditionalServiceIds(entry.note);
     setEditEntry(entry);
     setEditForm({
       customerName: entry.customer_name || '',
       phone: entry.phone || '',
       serviceId: entry.service_id || entry.service?.id || '',
-      note: entry.note || '',
+      note: removeAdditionalServicesLine(entry.note || ''),
     });
+    setEditExtraServiceIds(extraIds);
     setEditError('');
+  };
+  const toggleEditExtraService = (id) => {
+    const nid = Number(id);
+    setEditExtraServiceIds((prev) => (
+      prev.includes(nid) ? prev.filter((x) => x !== nid) : [...prev, nid]
+    ));
+  };
+  const toggleCheckinExtraService = (id) => {
+    const nid = Number(id);
+    setCheckinExtraServiceIds((prev) => (
+      prev.includes(nid) ? prev.filter((x) => x !== nid) : [...prev, nid]
+    ));
   };
   const handleEditSave = async () => {
     if (!editEntry) return;
@@ -213,11 +241,19 @@ export default function WalkInPage() {
     setEditSaving(true);
     setEditError('');
     try {
+      const baseNote = removeAdditionalServicesLine(editForm.note || '');
+      const extraServiceNames = services
+        .filter((s) => editExtraServiceIds.includes(Number(s.id)))
+        .map((s) => s.name);
+      const fullNote = [
+        baseNote,
+        extraServiceNames.length ? `${ADDITIONAL_SERVICES_PREFIX} ${extraServiceNames.join(', ')}` : '',
+      ].filter(Boolean).join('\n');
       await api.patch(`/walkin/${editEntry.id}`, {
         customerName: editForm.customerName.trim(),
         phone: editForm.phone || '',
         serviceId: Number(editForm.serviceId),
-        note: editForm.note || '',
+        note: fullNote,
       });
       toast('Walk-in entry updated.', 'success');
       setEditEntry(null);
@@ -227,47 +263,29 @@ export default function WalkInPage() {
       setEditSaving(false);
     }
   };
-  const handleCreateService = async () => {
-    if (!newServiceForm.name.trim()) {
-      setNewServiceError('Service name is required.');
-      return;
-    }
-    setNewServiceSaving(true);
-    setNewServiceError('');
-    try {
-      const payload = {
-        name: newServiceForm.name.trim(),
-        category: newServiceForm.category.trim() || null,
-        duration_minutes: Number(newServiceForm.duration_minutes) || 30,
-        price: Number(newServiceForm.price || 0),
-      };
-      const res = await api.post('/services', payload);
-      const created = res.data;
-      setServices((prev) => [...prev, created].sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''))));
-      setEditForm((f) => ({ ...f, serviceId: created.id }));
-      setShowNewService(false);
-      setNewServiceForm({ name: '', category: '', duration_minutes: 30, price: '' });
-      toast('Service created successfully.', 'success');
-    } catch (e) {
-      setNewServiceError(e.response?.data?.message || 'Failed to create service.');
-    } finally {
-      setNewServiceSaving(false);
-    }
-  };
 
   /*  Check-in submit  */
   const handleCheckin = async () => {
     setSaving(true); setFormError('');
     try {
+      const baseNote = removeAdditionalServicesLine(form.note || '');
+      const extraServiceNames = services
+        .filter((s) => checkinExtraServiceIds.includes(Number(s.id)))
+        .map((s) => s.name);
+      const fullNote = [
+        baseNote,
+        extraServiceNames.length ? `${ADDITIONAL_SERVICES_PREFIX} ${extraServiceNames.join(', ')}` : '',
+      ].filter(Boolean).join('\n');
       const res = await api.post('/walkin/checkin', {
         customerName: form.customerName,
         phone:        form.phone      || undefined,
         branchId:     form.branchId   || selectedBranch,
         serviceId:    +form.serviceId,
-        note:         form.note       || undefined,
+        note:         fullNote        || undefined,
       });
       setShowCheckin(false);
       setForm({ ...EMPTY_FORM, branchId: selectedBranch });
+      setCheckinExtraServiceIds([]);
       setShowToken(res.data);
     } catch (err) {
       setFormError(err.response?.data?.message || 'Check-in failed.');
@@ -318,7 +336,7 @@ export default function WalkInPage() {
       <Button variant="ghost" size="sm" onClick={() => window.open(`/token-display?branchId=${selectedBranch}`, '_blank')}>
         Token Display
       </Button>
-      <Button size="sm" onClick={() => { setFormError(''); setForm({ ...EMPTY_FORM, branchId: selectedBranch }); setCustSearch(''); setCustResults([]); setCustAll([]); setShowCustDrop(false); setShowCheckin(true); }}>
+      <Button size="sm" onClick={() => { setFormError(''); setForm({ ...EMPTY_FORM, branchId: selectedBranch }); setCheckinExtraServiceIds([]); setCustSearch(''); setCustResults([]); setCustAll([]); setShowCustDrop(false); setShowCheckin(true); }}>
         + New Walk-in
       </Button>
     </div>
@@ -523,7 +541,7 @@ export default function WalkInPage() {
       )}
 
       {/*  CHECK-IN MODAL  */}
-      <Modal open={showCheckin} onClose={() => { setShowCheckin(false); setCustSearch(''); setCustResults([]); setCustAll([]); setShowCustDrop(false); }} title="New Walk-in Check-in" size="md">
+      <Modal open={showCheckin} onClose={() => { setShowCheckin(false); setCheckinExtraServiceIds([]); setCustSearch(''); setCustResults([]); setCustAll([]); setShowCustDrop(false); }} title="New Walk-in Check-in" size="md">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           {formError && (
             <div style={{ background: '#FEE2E2', border: '1px solid #FECACA', borderRadius: 8, padding: '10px 14px', color: '#B91C1C', fontSize: 13 }}>{formError}</div>
@@ -543,7 +561,7 @@ export default function WalkInPage() {
           {/* CUSTOMER SEARCH */}
           <div style={{ position: 'relative' }} ref={custSearchRef}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-              <Label style={{ margin: 0 }}>Select Customer from Database</Label>
+              <Label style={{ margin: 0 }}>Select Customer</Label>
               {custLoading && (
                 <span style={{ fontSize: 11, color: '#6366f1', fontWeight: 600 }}>Loading…</span>
               )}
@@ -560,18 +578,12 @@ export default function WalkInPage() {
                 onChange={(e) => { setCustSearch(e.target.value); setShowCustDrop(true); }}
                 onBlur={(e) => { e.target.style.borderColor = '#D0D5DD'; setTimeout(() => setShowCustDrop(false), 200); }}
                 style={{
-                  width: '100%', padding: '9px 38px 9px 12px', borderRadius: 10,
+                  width: '100%', padding: '9px 12px', borderRadius: 10,
                   border: '1.5px solid #D0D5DD', fontSize: 14, fontFamily: 'inherit',
                   background: '#FAFAFA', color: DARK, outline: 'none', boxSizing: 'border-box',
                 }}
                 onFocus={(e) => { e.target.style.borderColor = '#6366f1'; setShowCustDrop(true); }}
               />
-              <span style={{
-                position: 'absolute', right: 11, top: '50%', transform: 'translateY(-50%)',
-                fontSize: 15, color: '#94A3B8', pointerEvents: 'none',
-              }}>
-                {custLoading ? '⏳' : '🔍'}
-              </span>
             </div>
 
             {/* DROPDOWN — shows all or filtered */}
@@ -672,6 +684,27 @@ export default function WalkInPage() {
                 <option key={s.id} value={s.id}>{s.name} — {s.duration_minutes} min</option>
               ))}
             </select>
+          </div>
+          <div>
+            <Label>Additional Services (Optional)</Label>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
+              {services
+                .filter((s) => s.is_active !== false && Number(s.id) !== Number(form.serviceId))
+                .map((s) => {
+                  const active = checkinExtraServiceIds.includes(Number(s.id));
+                  return (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => toggleCheckinExtraService(s.id)}
+                      style={{ padding: '7px 12px', borderRadius: 10, border: `1.5px solid ${active ? '#2563EB' : '#E4E7EC'}`, background: active ? '#EFF6FF' : '#fff', color: active ? '#2563EB' : '#667085', fontWeight: active ? 700 : 500, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}
+                    >
+                      {s.name}
+                      {s.price ? <span style={{ marginLeft: 6, opacity: 0.65 }}>Rs.{Number(s.price).toLocaleString()}</span> : ''}
+                    </button>
+                  );
+                })}
+            </div>
           </div>
 
           {waitPreview != null && (
@@ -823,18 +856,7 @@ export default function WalkInPage() {
             />
           </div>
           <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Label style={{ margin: 0 }}>Service *</Label>
-              {isAdmin && (
-                <button
-                  type="button"
-                  onClick={() => { setShowNewService(true); setNewServiceError(''); }}
-                  style={{ border: 'none', background: 'none', color: '#2563EB', fontSize: 12, fontWeight: 700, cursor: 'pointer', padding: 0 }}
-                >
-                  + New Service
-                </button>
-              )}
-            </div>
+            <Label>Service *</Label>
             <select
               value={editForm.serviceId}
               onChange={(e) => setEditForm((f) => ({ ...f, serviceId: e.target.value }))}
@@ -845,6 +867,27 @@ export default function WalkInPage() {
                 <option key={s.id} value={s.id}>{s.name} — {s.duration_minutes} min</option>
               ))}
             </select>
+          </div>
+          <div>
+            <Label>Additional Services (Optional)</Label>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
+              {services
+                .filter((s) => s.is_active !== false && Number(s.id) !== Number(editForm.serviceId))
+                .map((s) => {
+                  const active = editExtraServiceIds.includes(Number(s.id));
+                  return (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => toggleEditExtraService(s.id)}
+                      style={{ padding: '7px 12px', borderRadius: 10, border: `1.5px solid ${active ? '#2563EB' : '#E4E7EC'}`, background: active ? '#EFF6FF' : '#fff', color: active ? '#2563EB' : '#667085', fontWeight: active ? 700 : 500, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}
+                    >
+                      {s.name}
+                      {s.price ? <span style={{ marginLeft: 6, opacity: 0.65 }}>Rs.{Number(s.price).toLocaleString()}</span> : ''}
+                    </button>
+                  );
+                })}
+            </div>
           </div>
           <div>
             <Label>Notes</Label>
@@ -860,60 +903,6 @@ export default function WalkInPage() {
           <Button variant="secondary" onClick={() => setEditEntry(null)}>Cancel</Button>
           <Button onClick={handleEditSave} loading={editSaving} disabled={editSaving || !editForm.customerName.trim() || !editForm.serviceId}>
             Save Changes
-          </Button>
-        </div>
-      </Modal>
-
-      {/*  NEW SERVICE MODAL (ADMIN)  */}
-      <Modal open={showNewService} onClose={() => setShowNewService(false)} title="Add New Service" size="sm">
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {newServiceError && (
-            <div style={{ background: '#FEE2E2', border: '1px solid #FECACA', borderRadius: 8, padding: '10px 14px', color: '#B91C1C', fontSize: 13 }}>
-              {newServiceError}
-            </div>
-          )}
-          <div>
-            <Label>Service Name *</Label>
-            <Input
-              value={newServiceForm.name}
-              onChange={(e) => setNewServiceForm((f) => ({ ...f, name: e.target.value }))}
-              placeholder="e.g. Hair Spa"
-            />
-          </div>
-          <div>
-            <Label>Category</Label>
-            <Input
-              value={newServiceForm.category}
-              onChange={(e) => setNewServiceForm((f) => ({ ...f, category: e.target.value }))}
-              placeholder="Optional"
-            />
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-            <div>
-              <Label>Duration (min)</Label>
-              <Input
-                type="number"
-                min="1"
-                value={newServiceForm.duration_minutes}
-                onChange={(e) => setNewServiceForm((f) => ({ ...f, duration_minutes: e.target.value }))}
-              />
-            </div>
-            <div>
-              <Label>Price (Rs.)</Label>
-              <Input
-                type="number"
-                min="0"
-                value={newServiceForm.price}
-                onChange={(e) => setNewServiceForm((f) => ({ ...f, price: e.target.value }))}
-                placeholder="0"
-              />
-            </div>
-          </div>
-        </div>
-        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 20 }}>
-          <Button variant="secondary" onClick={() => setShowNewService(false)}>Cancel</Button>
-          <Button onClick={handleCreateService} loading={newServiceSaving} disabled={newServiceSaving || !newServiceForm.name.trim()}>
-            Create Service
           </Button>
         </div>
       </Modal>

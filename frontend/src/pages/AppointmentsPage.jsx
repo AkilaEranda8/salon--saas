@@ -705,20 +705,28 @@ export default function AppointmentsPage() {
               </div>
               <StatusBadge status={detailItem.status} />
             </div>
-            {[
-              { icon:'', label:'Service', value:detailItem.service?.name||'' },
-              { icon:'', label:'Staff',   value:detailItem.staff?.name||'' },
-              { icon:'', label:'Date',    value:detailItem.date?new Date(detailItem.date).toLocaleDateString('en-US',{weekday:'long',year:'numeric',month:'long',day:'numeric'}):'' },
-              { icon:'', label:'Time',    value:detailItem.time||'' },
-              { icon:'', label:'Branch',  value:detailItem.branch?.name||'' },
-              { icon:'', label:'Amount',  value:`Rs. ${Number(detailItem.amount||detailItem.service?.price||0).toLocaleString()}`, highlight:true },
-            ].map(({icon,label,value,highlight})=>(
-              <div key={label} style={{ display:'flex', alignItems:'center', padding:'12px 0', borderBottom:'1px solid #F2F4F7' }}>
-                <span style={{ fontSize:16, width:28, flexShrink:0 }}>{icon}</span>
-                <span style={{ fontSize:12, fontWeight:600, color:'#98A2B3', textTransform:'uppercase', width:80, flexShrink:0 }}>{label}</span>
-                <span style={{ fontSize:14, color:highlight?'#059669':'#101828', fontWeight:highlight?700:500 }}>{value}</span>
-              </div>
-            ))}
+            {(() => {
+              const extraServiceNames = parseAdditionalServiceNames(detailItem.notes || '');
+              const allServiceNames = Array.from(new Set([detailItem.service?.name, ...extraServiceNames].filter(Boolean)));
+              return (
+                <>
+                  {[
+                    { icon:'', label:'Services', value: allServiceNames.join(', ') || '' },
+                    { icon:'', label:'Staff',   value:detailItem.staff?.name||'' },
+                    { icon:'', label:'Date',    value:detailItem.date?new Date(detailItem.date).toLocaleDateString('en-US',{weekday:'long',year:'numeric',month:'long',day:'numeric'}):'' },
+                    { icon:'', label:'Time',    value:detailItem.time||'' },
+                    { icon:'', label:'Branch',  value:detailItem.branch?.name||'' },
+                    { icon:'', label:'Amount',  value:`Rs. ${Number(detailItem.amount||detailItem.service?.price||0).toLocaleString()}`, highlight:true },
+                  ].map(({icon,label,value,highlight})=>(
+                    <div key={label} style={{ display:'flex', alignItems:'center', padding:'12px 0', borderBottom:'1px solid #F2F4F7' }}>
+                      <span style={{ fontSize:16, width:28, flexShrink:0 }}>{icon}</span>
+                      <span style={{ fontSize:12, fontWeight:600, color:'#98A2B3', textTransform:'uppercase', width:80, flexShrink:0 }}>{label}</span>
+                      <span style={{ fontSize:14, color:highlight?'#059669':'#101828', fontWeight:highlight?700:500 }}>{value}</span>
+                    </div>
+                  ))}
+                </>
+              );
+            })()}
             {detailItem.notes && (
               <div style={{ marginTop:20, padding:'14px 16px', background:'#FFFBEB', borderRadius:10, border:'1px solid #FDE68A' }}>
                 <div style={{ fontSize:11, fontWeight:700, color:'#D97706', textTransform:'uppercase', marginBottom:6 }}> Notes</div>

@@ -13,6 +13,7 @@ deploy_cmd = (
     "cd /root/zane_salon && "
     "git pull origin master && "
     "docker compose up -d --build && "
+    "docker compose restart proxy && "
     "echo '=== DEPLOY DONE ==='"
 )
 
@@ -39,7 +40,7 @@ if not connected:
 try:
     stdin, stdout, stderr = client.exec_command(deploy_cmd, get_pty=True, timeout=300)
     for line in iter(stdout.readline, ''):
-        print(line, end='', flush=True)
+        print(line, end='', flush=True, file=open(sys.stdout.fileno(), mode='w', encoding='utf-8', errors='replace', closefd=False))
     exit_code = stdout.channel.recv_exit_status()
     print(f'\nExit code: {exit_code}')
     if exit_code != 0:

@@ -103,12 +103,16 @@ export function ToastProvider({ children }) {
     setToasts(prev => prev.filter(t => t.id !== id));
   }, []);
 
-  const toast = {
-    success: msg => addToast('success', msg),
-    error:   msg => addToast('error',   msg),
-    warn:    msg => addToast('warn',     msg),
-    info:    msg => addToast('info',     msg),
-  };
+  // Support both: toast('msg', 'type')  AND  toast.success('msg')
+  const toast = Object.assign(
+    (msg, type = 'info') => addToast(type, msg),
+    {
+      success: msg => addToast('success', msg),
+      error:   msg => addToast('error',   msg),
+      warn:    msg => addToast('warn',     msg),
+      info:    msg => addToast('info',     msg),
+    }
+  );
 
   return (
     <ToastContext.Provider value={{ toast }}>

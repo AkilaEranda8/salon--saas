@@ -180,7 +180,7 @@ function ApptRow({ row, idx, canEdit, onView, onEdit, onDelete, onStatusChange, 
         {!canEdit||s==='completed'||s==='cancelled' ? <StatusBadge status={s} /> : (
           <select value={s} onChange={e => onStatusChange(e.target.value)}
             style={{ padding:'4px 10px', borderRadius:20, border:`1.5px solid ${meta.color}40`, background:meta.bg, color:meta.color, fontWeight:700, fontSize:12, fontFamily:"'Inter',sans-serif", outline:'none', cursor:'pointer' }}>
-            {APPT_STATUSES.map(st => <option key={st} value={st}>{STATUS_META[st].label}</option>)}
+            {APPT_STATUSES.filter(st => st !== 'completed').map(st => <option key={st} value={st}>{STATUS_META[st].label}</option>)}
           </select>
         )}
       </td>
@@ -481,7 +481,7 @@ export default function AppointmentsPage() {
       </div>
 
       {/* New / Edit Modal */}
-      <Modal open={showForm} onClose={()=>setShowForm(false)} title={editItem?'Edit Appointment':'New Appointment'} size="md"
+      <Modal open={showForm} onClose={()=>setShowForm(false)} title={editItem?'Edit Appointment':'New Appointment'} size="lg"
         footer={<><Button variant="secondary" onClick={()=>setShowForm(false)}>Cancel</Button><Button variant="primary" loading={saving} onClick={handleSave}>{editItem?'Save Changes':'Create Appointment'}</Button></>}>
         {formErr && <div style={{ background:'#FEF2F2', color:'#DC2626', padding:'9px 13px', borderRadius:9, marginBottom:16, fontSize:13, border:'1px solid #FEE2E2' }}> {formErr}</div>}
         <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
@@ -541,7 +541,7 @@ export default function AppointmentsPage() {
           </div>
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
             <FormGroup label="Status"><Select value={form.status||'pending'} onChange={e=>setForm(f=>({...f,status:e.target.value}))}>
-              {APPT_STATUSES.map(s=><option key={s} value={s}>{STATUS_META[s].label}</option>)}
+              {APPT_STATUSES.filter(s => s !== 'completed').map(s=><option key={s} value={s}>{STATUS_META[s].label}</option>)}
             </Select></FormGroup>
             <FormGroup label="Notes"><Input value={form.notes||''} onChange={e=>setForm(f=>({...f,notes:e.target.value}))} placeholder="Special requests..." /></FormGroup>
           </div>

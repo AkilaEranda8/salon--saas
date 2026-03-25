@@ -19,7 +19,7 @@ require('./models');
 const app = express();
 const server = http.createServer(app);
 
-// Trust nginx reverse proxy (fixes X-Forwarded-For rate-limit validation)
+// Trust Nginx reverse proxy (fixes X-Forwarded-For for rate limiting)
 app.set('trust proxy', 1);
 
 // ── Middleware ────────────────────────────────────────────────────────────────

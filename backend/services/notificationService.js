@@ -1,4 +1,4 @@
-﻿'use strict';
+'use strict';
 
 const nodemailer = require('nodemailer');
 const twilio     = require('twilio');
@@ -10,30 +10,75 @@ function getModels() {
   return _models;
 }
 
-// ── Transporter (lazy) ────────────────────────────────────────────────────────
-let _transporter = null;
-function getTransporter() {
-  if (_transporter) return _transporter;
-  if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) return null;
-  _transporter = nodemailer.createTransport({
+// ── SMTP credentials loader (DB first, then .env) ─────────────────────────────
+async function getSmtpCreds() {
+  try {
+    const { NotificationSettings } = getModels();
+    const row = await NotificationSettings.findOne({ where: { branch_id: null } });
+    if (row && row.smtp_user && row.smtp_pass) {
+      return {
+        host: row.smtp_host?.trim() || 'smtp.gmail.com',
+        port: row.smtp_port         || 587,
+        user: row.smtp_user.trim(),
+        pass: row.smtp_pass.trim(),
+        from: row.smtp_from?.trim() || `Zane Salon <${row.smtp_user.trim()}>`,
+        source: 'db',
+      };
+    }
+  } catch { /* fall through */ }
+  const user = process.env.EMAIL_USER;
+  const pass = process.env.EMAIL_PASS;
+  if (!user || !pass) return null;
+  return {
     host:   process.env.EMAIL_HOST || 'smtp.gmail.com',
     port:   parseInt(process.env.EMAIL_PORT) || 587,
-    secure: false,
-    auth: {
-      user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASS,
-    },
-  });
-  return _transporter;
+    user,
+    pass,
+    from:   process.env.EMAIL_FROM || `Zane Salon <${user}>`,
+    source: 'env',
+  };
 }
 
-// ── Twilio client (lazy) ──────────────────────────────────────────────────────
-let _twilioClient = null;
-function getTwilio() {
-  if (_twilioClient) return _twilioClient;
-  if (!process.env.TWILIO_ACCOUNT_SID || !process.env.TWILIO_AUTH_TOKEN) return null;
-  _twilioClient = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
-  return _twilioClient;
+// ── Transporter (per-request, reads DB each time) ────────────────────────────
+async function getTransporter() {
+  const creds = await getSmtpCreds();
+  if (!creds) return null;
+  return nodemailer.createTransport({
+    host:   creds.host,
+    port:   creds.port,
+    secure: creds.port === 465,
+    auth:   { user: creds.user, pass: creds.pass },
+  });
+}
+
+// ── Twilio credentials loader (DB first, then .env) ───────────────────────────
+async function getTwilioCreds() {
+  try {
+    const { NotificationSettings } = getModels();
+    const row = await NotificationSettings.findOne({ where: { branch_id: null } });
+    if (row && row.twilio_account_sid && row.twilio_auth_token) {
+      return {
+        accountSid:    row.twilio_account_sid.trim(),
+        authToken:     row.twilio_auth_token.trim(),
+        whatsappFrom:  row.twilio_whatsapp_from?.trim() || process.env.TWILIO_WHATSAPP_FROM || 'whatsapp:+14155238886',
+      };
+    }
+  } catch { /* fall through */ }
+  const sid   = process.env.TWILIO_ACCOUNT_SID;
+  const token = process.env.TWILIO_AUTH_TOKEN;
+  if (!sid || !token) return null;
+  return {
+    accountSid:   sid,
+    authToken:    token,
+    whatsappFrom: process.env.TWILIO_WHATSAPP_FROM || 'whatsapp:+14155238886',
+  };
+}
+
+// ── Twilio client (per-request, reads DB each time) ───────────────────────────
+async function getTwilio() {
+  const creds = await getTwilioCreds();
+  if (!creds) return null;
+  return { client: twilio(creds.accountSid, creds.authToken), whatsappFrom: creds.whatsappFrom };
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -41,6 +86,12 @@ function formatWhatsApp(phone) {
   if (!phone) return null;
   if (phone.startsWith('whatsapp:')) return phone;
   return `whatsapp:+${phone.replace(/\D/g, '')}`;
+}
+
+function formatPhone(phone) {
+  if (!phone) return null;
+  const digits = phone.replace(/\D/g, '');
+  return digits.startsWith('+') ? digits : `+${digits}`;
 }
 
 function loyaltyTier(points) {
@@ -55,8 +106,8 @@ async function writeLog({ customer_name, phone, email, event_type, channel, mess
     const { NotificationLog } = getModels();
     await NotificationLog.create({
       customer_name:   customer_name  || null,
-      phone:           channel === 'whatsapp' ? (phone  || null) : null,
-      email:           channel === 'email'    ? (email  || null) : null,
+      phone:           ['whatsapp', 'sms'].includes(channel) ? (phone || null) : null,
+      email:           channel === 'email'                   ? (email || null) : null,
       event_type,
       channel,
       message_preview: String(message_preview || '').slice(0, 255),
@@ -73,9 +124,12 @@ async function writeLog({ customer_name, phone, email, event_type, channel, mess
 const DEFAULT_FLAGS = {
   appt_confirmed_email:     true,
   appt_confirmed_whatsapp:  true,
+  appt_confirmed_sms:       false,
   payment_receipt_email:    true,
   payment_receipt_whatsapp: true,
+  payment_receipt_sms:      false,
   loyalty_points_whatsapp:  true,
+  loyalty_points_sms:       false,
 };
 
 async function getChannelFlags() {
@@ -100,19 +154,15 @@ async function getChannelFlags() {
  */
 async function sendEmail({ to, subject, html, meta = {} }) {
   if (!to) return;
-  const transporter = getTransporter();
-  if (!transporter) {
-    console.warn('[Notifications] Email skipped — EMAIL_USER/EMAIL_PASS not configured.');
+  const creds = await getSmtpCreds();
+  if (!creds) {
+    console.warn('[Notifications] Email skipped — SMTP credentials not configured.');
     return;
   }
+  const transporter = await getTransporter();
   let status = 'sent', errorMsg = null;
   try {
-    await transporter.sendMail({
-      from:    process.env.EMAIL_FROM || `Zane Salon <${process.env.EMAIL_USER}>`,
-      to,
-      subject,
-      html,
-    });
+    await transporter.sendMail({ from: creds.from, to, subject, html });
     console.log(`[Notifications] Email sent → ${to}`);
   } catch (err) {
     status   = 'failed';
@@ -135,17 +185,17 @@ async function sendEmail({ to, subject, html, meta = {} }) {
  */
 async function sendWhatsApp({ to, message, meta = {} }) {
   if (!to) return;
-  const client = getTwilio();
-  if (!client) {
+  const twilioCx = await getTwilio();
+  if (!twilioCx) {
     console.warn('[Notifications] WhatsApp skipped — Twilio credentials not configured.');
     return;
   }
-  const from        = process.env.TWILIO_WHATSAPP_FROM || 'whatsapp:+14155238886';
+  const from        = twilioCx.whatsappFrom;
   const toFormatted = formatWhatsApp(to);
   if (!toFormatted) return;
   let status = 'sent', errorMsg = null;
   try {
-    await client.messages.create({ from, to: toFormatted, body: message });
+    await twilioCx.client.messages.create({ from, to: toFormatted, body: message });
     console.log(`[Notifications] WhatsApp sent → ${toFormatted}`);
   } catch (err) {
     status   = 'failed';
@@ -155,6 +205,86 @@ async function sendWhatsApp({ to, message, meta = {} }) {
   await writeLog({
     ...meta,
     channel:         'whatsapp',
+    phone:           to,
+    message_preview: message.slice(0, 255),
+    status,
+    error_message:   errorMsg,
+  });
+}
+
+/**
+ * Load SMS gateway credentials from DB (Notify.lk / compatible).
+ * Returns { userId, apiKey, senderId } or null if not configured.
+ */
+async function getSMSCreds() {
+  try {
+    const { NotificationSettings } = getModels();
+    const row = await NotificationSettings.findOne({ where: { branch_id: null } });
+    if (row && row.sms_user_id && row.sms_api_key) {
+      return {
+        userId:   row.sms_user_id.trim(),
+        apiKey:   row.sms_api_key.trim(),
+        senderId: row.sms_sender_id?.trim() || process.env.SMS_SENDER_ID || null,
+      };
+    }
+  } catch { /* fall through */ }
+  // env fallback
+  if (process.env.SMS_USER_ID && process.env.SMS_API_KEY) {
+    return {
+      userId:   process.env.SMS_USER_ID,
+      apiKey:   process.env.SMS_API_KEY,
+      senderId: process.env.SMS_SENDER_ID || null,
+    };
+  }
+  return null;
+}
+
+/**
+ * Send SMS via Notify.lk HTTP API (or compatible gateway).
+ * API: POST https://app.notify.lk/api/v1/send
+ * Logs result. Never throws.
+ * @param {{ to, message, meta? }} opts
+ */
+async function sendSMS({ to, message, meta = {} }) {
+  if (!to) return;
+  const creds = await getSMSCreds();
+  if (!creds) {
+    console.warn('[Notifications] SMS skipped — SMS credentials not configured (set User ID & API Key in Notification Settings).');
+    return;
+  }
+  if (!creds.senderId) {
+    console.warn('[Notifications] SMS skipped — SMS Sender ID not configured.');
+    return;
+  }
+  // Normalize to local format (e.g. 0771234567 or 94771234567 → 94771234567)
+  const digits = to.replace(/\D/g, '');
+  const toFormatted = digits.startsWith('94') ? digits : digits.startsWith('0') ? '94' + digits.slice(1) : '94' + digits;
+  let status = 'sent', errorMsg = null;
+  try {
+    const res = await fetch('https://app.notify.lk/api/v1/send', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({
+        user_id:    creds.userId,
+        api_key:    creds.apiKey,
+        service_id: creds.senderId,
+        to:         toFormatted,
+        message,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.status === 'error') {
+      throw new Error(data.message || `HTTP ${res.status}`);
+    }
+    console.log(`[Notifications] SMS sent → ${toFormatted}`);
+  } catch (err) {
+    status   = 'failed';
+    errorMsg = err.message;
+    console.error(`[Notifications] SMS failed → ${toFormatted}:`, err.message);
+  }
+  await writeLog({
+    ...meta,
+    channel:         'sms',
     phone:           to,
     message_preview: message.slice(0, 255),
     status,
@@ -278,6 +408,15 @@ async function notifyAppointmentConfirmed(appointment, branch, service) {
       `Please arrive 5 mins early. See you soon! 😊`;
     await sendWhatsApp({ to: phone, message: msg, meta });
   }
+
+  if (phone && flags.appt_confirmed_sms) {
+    const msg =
+      `Zane Salon - Appt Confirmed!\n` +
+      `Hi ${appointment.customer_name}, booking confirmed:\n` +
+      `Date: ${date} ${time}\nService: ${svcName}\nBranch: ${brName}\nAmt: ${amount}\n` +
+      `Please arrive 5 mins early.`;
+    await sendSMS({ to: phone, message: msg, meta });
+  }
 }
 
 // ── 2. Payment Receipt ────────────────────────────────────────────────────────
@@ -347,6 +486,17 @@ async function notifyPaymentReceipt(payment, branch, service, customer) {
     msg += `\n\nThank you for choosing Zane Salon! 💜`;
     await sendWhatsApp({ to: phone, message: msg, meta });
   }
+
+  if (phone && flags.payment_receipt_sms) {
+    let msg =
+      `Zane Salon - Receipt\n` +
+      `Hi ${customerName}! Total Paid: ${total}\n` +
+      `Service: ${svcName} | ${date}`;
+    if (discount > 0)     msg += `\nDiscount: Rs. ${discount.toFixed(2)}`;
+    if (pointsEarned > 0) msg += `\nEarned: +${pointsEarned} pts`;
+    msg += `\nThank you!`;
+    await sendSMS({ to: phone, message: msg, meta });
+  }
 }
 
 // ── 3. Loyalty Points Update ──────────────────────────────────────────────────
@@ -370,6 +520,15 @@ async function notifyLoyaltyPoints(customer, pointsEarned, totalPoints, branch) 
     `💡 Tip: Every 10 pts = Rs. 1 discount on your next visit!\n\nKeep visiting Zane Salon to unlock more rewards. 🛍️`;
 
   await sendWhatsApp({ to: phone, message: msg, meta });
+
+  if (flags.loyalty_points_sms) {
+    const smsMsg =
+      `Zane Salon - Loyalty Update\n` +
+      `Hi ${name}! You earned +${pointsEarned} pts at ${brName}.\n` +
+      `Balance: ${totalPoints} pts (${tier.name.replace(/[^\w\s]/g, '').trim()})\n` +
+      `10 pts = Rs. 1 discount on next visit!`;
+    await sendSMS({ to: phone, message: smsMsg, meta });
+  }
 }
 
 // ── 4. Review Request ─────────────────────────────────────────────────────────
@@ -428,6 +587,7 @@ async function notifyReviewRequest(payment, customer, service, branch, token) {
 module.exports = {
   sendEmail,
   sendWhatsApp,
+  sendSMS,
   notifyAppointmentConfirmed,
   notifyPaymentReceipt,
   notifyLoyaltyPoints,

@@ -15,7 +15,6 @@ const CAT_COLOR = { Hair: '#2563EB', Beard: '#7C3AED', Skin: '#EA580C', Nail: '#
 const CAT_BG    = { Hair: '#EFF6FF', Beard: '#F5F3FF', Skin: '#FFF7ED', Nail: '#FFFBEB', Massage: '#ECFDF5', Other: '#F8FAFC' };
 const EMPTY = { name: '', category: 'Hair', duration_minutes: 30, price: '', description: '', is_active: true };
 
-
 export default function ServicesPage() {
   const { user }  = useAuth();
   const canEdit   = ['superadmin', 'admin'].includes(user?.role);
@@ -33,7 +32,7 @@ export default function ServicesPage() {
   const [formErr, setFormErr]   = useState('');
   const [newCatMode, setNewCatMode] = useState(false);
   const [newCatName, setNewCatName] = useState('');
-  const [deleteId, setDeleteId] = useState(null);
+
   // Build dynamic categories list from defaults + any custom ones from existing services
   const CATS = [...new Set([...DEFAULT_CATS, ...allSvcs.map(s => s.category).filter(Boolean)])];
 
@@ -53,32 +52,19 @@ export default function ServicesPage() {
 
   const catCounts  = allSvcs.reduce((acc, s) => { acc[s.category] = (acc[s.category] || 0) + 1; return acc; }, {});
   const openAdd    = () => { setEditItem(null); setForm(EMPTY); setFormErr(''); setNewCatMode(false); setNewCatName(''); setShowForm(true); };
-  const openEdit   = async row => {
-    setEditItem(row); setForm({ ...row }); setFormErr(''); setNewCatMode(false); setNewCatName(''); setShowForm(true);
-  };
+  const openEdit   = row => { setEditItem(row); setForm({ ...row }); setFormErr(''); setNewCatMode(false); setNewCatName(''); setShowForm(true); };
   const openView   = row => { setViewItem(row); setShowView(true); };
 
   const handleSave = async () => {
     if (!form.name || !form.price) return setFormErr('Name and price are required');
     setSaving(true);
     try {
-      const saved = editItem
-        ? await api.put(`/services/${editItem.id}`, form)
-        : await api.post('/services', form);
+      editItem ? await api.put(`/services/${editItem.id}`, form) : await api.post('/services', form);
       setShowForm(false); load();
     } catch (e) { setFormErr(e.response?.data?.message || 'Save failed'); }
     setSaving(false);
   };
-  const handleDelete = async () => {
-    if (!deleteId) return;
-    try {
-      await api.delete(`/services/${deleteId}`);
-      setDeleteId(null);
-      load();
-    } catch (e) {
-      window.alert(e.response?.data?.message || 'Delete failed');
-    }
-  };
+  const handleDelete = async id => { if (!window.confirm('Delete this service?')) return; await api.delete(`/services/${id}`); load(); };
 
   const displayed = services.filter(s => {
     if (!search) return true;
@@ -133,7 +119,7 @@ export default function ServicesPage() {
         <div style={{ display: 'flex', gap: 4, justifyContent: 'center' }}>
           <ActionBtn onClick={() => openView(row)} title="View" color="#2563EB"><IconEye /></ActionBtn>
           {canEdit && <ActionBtn onClick={() => openEdit(row)} title="Edit" color="#D97706"><IconEdit /></ActionBtn>}
-          {canEdit && <ActionBtn onClick={() => setDeleteId(row.id)} title="Delete" color="#DC2626"><IconTrash /></ActionBtn>}
+          {canEdit && <ActionBtn onClick={() => handleDelete(row.id)} title="Delete" color="#DC2626"><IconTrash /></ActionBtn>}
         </div>
       ),
     },
@@ -236,24 +222,6 @@ export default function ServicesPage() {
             {canEdit && <div style={{ marginTop: 16 }}><Button variant="primary" onClick={() => { setShowView(false); openEdit(viewItem); }}>Edit Service</Button></div>}
           </div>
         )}
-      </Modal>
-
-      <Modal
-        open={!!deleteId}
-        onClose={() => setDeleteId(null)}
-        title="Delete Service"
-        size="sm"
-        footer={(
-          <>
-            <Button variant="secondary" onClick={() => setDeleteId(null)}>No</Button>
-            <Button variant="danger" onClick={handleDelete} style={{ background:'#DC2626', color:'#fff' }}>Yes, Delete</Button>
-          </>
-        )}
-      >
-        <div style={{ textAlign:'center', padding:'10px 0' }}>
-          <div style={{ fontSize:15, fontWeight:600, color:'#101828', marginBottom:6 }}>Are you sure?</div>
-          <div style={{ fontSize:13, color:'#667085' }}>This service will be deleted permanently.</div>
-        </div>
       </Modal>
     </PageWrapper>
   );

@@ -12,6 +12,7 @@ router.get('/log',      ctrl.getLogs);
 // Settings + test — admin/superadmin only
 router.get('/settings', requireRole('superadmin', 'admin'), ctrl.getSettings);
 router.put('/settings', requireRole('superadmin', 'admin'), ctrl.updateSettings);
-router.post('/test',    requireRole('superadmin', 'admin'), ctrl.sendTest);
+router.post('/test',         requireRole('superadmin', 'admin'), ctrl.sendTest);
+router.post('/test-provider', requireRole('superadmin', 'admin'), ctrl.testProvider);
 
 module.exports = router;

@@ -44,7 +44,7 @@ const Appointment = sequelize.define('Appointment', {
     defaultValue: 0,
   },
   status: {
-    type: DataTypes.ENUM('pending', 'confirmed', 'in_service', 'completed', 'cancelled', 'no_show'),
+    type: DataTypes.ENUM('pending', 'confirmed', 'completed', 'cancelled'),
     defaultValue: 'pending',
   },
   commission_paid: {
@@ -54,18 +54,6 @@ const Appointment = sequelize.define('Appointment', {
   notes: {
     type: DataTypes.TEXT,
     allowNull: true,
-  },
-  additional_service_ids: {
-    type: DataTypes.TEXT,
-    allowNull: true,
-    get() {
-      const raw = this.getDataValue('additional_service_ids');
-      if (!raw) return [];
-      try { return JSON.parse(raw); } catch { return []; }
-    },
-    set(val) {
-      this.setDataValue('additional_service_ids', val && val.length ? JSON.stringify(val.map(Number)) : null);
-    },
   },
   is_recurring: {
     type: DataTypes.BOOLEAN,

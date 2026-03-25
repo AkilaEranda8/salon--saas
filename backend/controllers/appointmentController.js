@@ -28,7 +28,7 @@ const list = async (req, res) => {
       where,
       limit,
       offset,
-      order: [['id', 'DESC']],
+      order: [['date', 'DESC'], ['time', 'DESC']],
       include: [
         { model: Branch,   as: 'branch',   attributes: ['id', 'name', 'color'] },
         { model: Customer, as: 'customer', attributes: ['id', 'name', 'phone'] },
@@ -37,20 +37,7 @@ const list = async (req, res) => {
       ],
     });
 
-    // Attach additional service details
-    const data = await Promise.all(rows.map(async (r) => {
-      const plain = r.toJSON();
-      const extraIds = plain.additional_service_ids || [];
-      if (extraIds.length) {
-        const svcs = await Service.findAll({ where: { id: extraIds }, attributes: ['id','name','price','duration_minutes'] });
-        plain.additional_services = svcs;
-      } else {
-        plain.additional_services = [];
-      }
-      return plain;
-    }));
-
-    return res.json({ total: count, page, limit, data });
+    return res.json({ total: count, page, limit, data: rows });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ message: 'Server error.' });
@@ -115,54 +102,37 @@ const getOne = async (req, res) => {
 
 const create = async (req, res) => {
   try {
-    const { branch_id, customer_id, staff_id, service_id, customer_name, phone, date, time, amount, notes, is_recurring, recurrence_frequency, additional_service_ids } = req.body;
+    const { branch_id, customer_id, staff_id, service_id, customer_name, phone, date, time, amount, notes, is_recurring, recurrence_frequency } = req.body;
 
     if (!branch_id || !service_id || !customer_name || !date || !time) {
       return res.status(400).json({ message: 'branch_id, service_id, customer_name, date and time are required.' });
     }
 
-    // Sanitize FK fields — empty string → null to avoid DB type errors
-    const safeCustomerId = customer_id ? Number(customer_id) : null;
-    const safeStaffId    = staff_id    ? Number(staff_id)    : null;
-    const safeBranchId   = Number(branch_id);
-    const safeServiceId  = Number(service_id);
-
-    const extraSvcIds = Array.isArray(additional_service_ids) ? additional_service_ids.map(Number).filter(Boolean) : [];
-
-    // Use provided amount, or calculate from all selected services
-    let finalAmount = (amount !== undefined && amount !== '') ? Number(amount) : null;
-    if (finalAmount === null) {
-      const allSvcIds = [safeServiceId, ...extraSvcIds].filter(Boolean);
-      if (allSvcIds.length) {
-        const svcs = await Service.findAll({ where: { id: allSvcIds }, attributes: ['price'] });
-        finalAmount = svcs.reduce((sum, s) => sum + Number(s.price || 0), 0);
-      }
+    // Auto-fetch service price if amount not provided
+    let finalAmount = amount;
+    if (!finalAmount && service_id) {
+      const svc = await Service.findByPk(service_id, { attributes: ['price'] });
+      if (svc) finalAmount = svc.price;
     }
+
     const appt = await Appointment.create({
-      branch_id:   safeBranchId,
-      customer_id: safeCustomerId,
-      staff_id:    safeStaffId,
-      service_id:  safeServiceId,
-      customer_name, phone: phone || null, date, time,
-      amount: finalAmount, notes: notes || null,
+      branch_id, customer_id, staff_id, service_id, customer_name, phone, date, time, amount: finalAmount, notes,
       is_recurring: is_recurring || false,
       recurrence_frequency: is_recurring ? (recurrence_frequency || 'weekly') : null,
-      additional_service_ids: extraSvcIds,
     });
 
     // Fire-and-forget notification (only if phone provided)
     if (phone) {
       const [branch, service] = await Promise.all([
-        Branch.findByPk(safeBranchId,  { attributes: ['id', 'name', 'phone'] }),
-        Service.findByPk(safeServiceId, { attributes: ['id', 'name'] }),
+        Branch.findByPk(branch_id,   { attributes: ['id', 'name', 'phone'] }),
+        Service.findByPk(service_id, { attributes: ['id', 'name'] }),
       ]);
       notifyAppointmentConfirmed(appt, branch, service);
     }
 
     return res.status(201).json(appt);
   } catch (err) {
-    console.error('[Appointment.create] Error:', err.message, err.stack);
-    return res.status(500).json({ message: 'Server error.', detail: err.message });
+    return res.status(500).json({ message: 'Server error.' });
   }
 };
 
@@ -176,44 +146,29 @@ const update = async (req, res) => {
       return res.status(403).json({ message: 'Access denied. Appointment belongs to a different branch.' });
     }
 
-    const allowed = ['service_id', 'customer_name', 'phone', 'date', 'time', 'amount', 'notes', 'status'];
+    const allowed = ['staff_id', 'service_id', 'customer_name', 'phone', 'date', 'time', 'amount', 'notes', 'status'];
     const updates = {};
     for (const field of allowed) {
-      if (req.body[field] !== undefined) updates[field] = req.body[field] === '' ? null : req.body[field];
-    }
-    // Sanitize FK integer fields
-    if (req.body.staff_id !== undefined)   updates.staff_id   = req.body.staff_id   ? Number(req.body.staff_id)   : null;
-    if (req.body.service_id !== undefined) updates.service_id = req.body.service_id ? Number(req.body.service_id) : null;
-    if (req.body.customer_id !== undefined) updates.customer_id = req.body.customer_id ? Number(req.body.customer_id) : null;
-
-    // Handle additional services
-    if (req.body.additional_service_ids !== undefined) {
-      updates.additional_service_ids = Array.isArray(req.body.additional_service_ids)
-        ? req.body.additional_service_ids.map(Number).filter(Boolean)
-        : [];
+      if (req.body[field] !== undefined) updates[field] = req.body[field];
     }
 
-    // Auto-calculate amount from service prices only when services change AND amount was not explicitly provided
-    if ((updates.service_id || updates.additional_service_ids !== undefined) && updates.amount === undefined) {
-      const primaryId  = updates.service_id || appt.service_id;
-      const extraIds   = updates.additional_service_ids ?? (appt.additional_service_ids || []);
-      const allIds     = [primaryId, ...extraIds].filter(Boolean);
-      const svcs       = await Service.findAll({ where: { id: allIds }, attributes: ['id','price'] });
-      updates.amount   = svcs.reduce((sum, s) => sum + Number(s.price || 0), 0);
+    // Auto-update amount from service price when service changes
+    if (updates.service_id) {
+      const svc = await Service.findByPk(updates.service_id, { attributes: ['price'] });
+      if (svc) updates.amount = svc.price;
     }
 
     await appt.update(updates);
     return res.json(appt);
   } catch (err) {
-    console.error('[Appointment.update] Error:', err.message, err.stack);
-    return res.status(500).json({ message: 'Server error.', detail: err.message });
+    return res.status(500).json({ message: 'Server error.' });
   }
 };
 
 const changeStatus = async (req, res) => {
   try {
     const { status } = req.body;
-    const allowed = ['pending', 'confirmed', 'in_service', 'completed', 'cancelled', 'no_show'];
+    const allowed = ['pending', 'confirmed', 'completed', 'cancelled'];
     if (!allowed.includes(status)) {
       return res.status(400).json({ message: `Status must be one of: ${allowed.join(', ')}.` });
     }

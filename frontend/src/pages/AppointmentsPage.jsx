@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
@@ -15,16 +15,15 @@ const IconCalendar = () => <svg width="15" height="15" viewBox="0 0 24 24" fill=
 const IconPlus     = () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>;
 const IconMoney    = () => <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>;
 
-const APPT_STATUSES = ['pending','confirmed','in_service','completed','cancelled','no_show'];
+const APPT_STATUSES = ['pending','confirmed','completed','cancelled','no_show'];
 const STATUS_META = {
-  pending:    { color:'#D97706', bg:'#FFFBEB', label:'Pending'    },
-  confirmed:  { color:'#2563EB', bg:'#EFF6FF', label:'Confirmed'  },
-  in_service: { color:'#7C3AED', bg:'#F5F3FF', label:'In Service' },
-  completed:  { color:'#059669', bg:'#ECFDF5', label:'Completed'  },
-  cancelled:  { color:'#DC2626', bg:'#FEF2F2', label:'Cancelled'  },
-  no_show:    { color:'#64748B', bg:'#F8FAFC', label:'No Show'    },
+  pending:   { color:'#D97706', bg:'#FFFBEB', label:'Pending'   },
+  confirmed: { color:'#2563EB', bg:'#EFF6FF', label:'Confirmed' },
+  completed: { color:'#059669', bg:'#ECFDF5', label:'Completed' },
+  cancelled: { color:'#DC2626', bg:'#FEF2F2', label:'Cancelled' },
+  no_show:   { color:'#64748B', bg:'#F8FAFC', label:'No Show'   },
 };
-const EMPTY = { branch_id:'', customer_id:'', customer_name:'', phone:'', service_id:'', additional_service_ids:[], staff_id:'', date:'', time:'', amount:'', notes:'', status:'pending' };
+const EMPTY = { branch_id:'', customer_name:'', phone:'', service_id:'', staff_id:'', date:'', time:'', amount:'', notes:'', status:'pending' };
 const LIMIT = 20;
 
 function StatusBadge({ status }) {
@@ -148,12 +147,7 @@ function ApptRow({ row, idx, canEdit, onView, onEdit, onDelete, onStatusChange, 
         {row.phone && <div style={{ fontSize:12, color:'#98A2B3', marginTop:1 }}>{row.phone}</div>}
       </td>
       <td style={{ padding:'13px 16px' }}>
-        <div style={{ display:'flex', flexWrap:'wrap', gap:4 }}>
-          {row.service?.name && <span style={{ background:'#F2F4F7', padding:'3px 9px', borderRadius:6, fontSize:12, fontWeight:600, color:'#475467' }}>{row.service.name}</span>}
-          {(row.additional_services||[]).map(s=>(
-            <span key={s.id} style={{ background:'#EDE9FE', padding:'3px 9px', borderRadius:6, fontSize:12, fontWeight:500, color:'#5B21B6' }}>{s.name}</span>
-          ))}
-        </div>
+        <span style={{ background:'#F2F4F7', padding:'3px 9px', borderRadius:6, fontSize:13, fontWeight:500, color:'#475467' }}>{row.service?.name||''}</span>
       </td>
       <td style={{ padding:'13px 16px' }}>
         {row.staff?.name ? (
@@ -168,7 +162,7 @@ function ApptRow({ row, idx, canEdit, onView, onEdit, onDelete, onStatusChange, 
         {row.time && <div style={{ fontSize:12, color:'#98A2B3', marginTop:1 }}>{row.time}</div>}
       </td>
       <td style={{ padding:'13px 16px', textAlign:'right' }}>
-        <span style={{ fontWeight:700, color:'#059669', fontSize:14 }}>Rs. {Number(row.amount||0).toLocaleString()}</span>
+        <span style={{ fontWeight:700, color:'#059669', fontSize:14 }}>Rs. {Number(row.service?.price||row.amount||0).toLocaleString()}</span>
       </td>
       <td style={{ padding:'13px 16px' }}>
         {!canEdit||s==='completed'||s==='cancelled' ? <StatusBadge status={s} /> : (
@@ -181,7 +175,7 @@ function ApptRow({ row, idx, canEdit, onView, onEdit, onDelete, onStatusChange, 
       <td style={{ padding:'13px 16px', textAlign:'center' }}>
         <div style={{ display:'flex', gap:4, justifyContent:'center' }}>
           <ActionBtn onClick={onView} title="View" color="#2563EB"><IconEye /></ActionBtn>
-          {canEdit && s==='in_service' && <ActionBtn onClick={onPayment} title="Collect Payment" color="#059669"><IconMoney /></ActionBtn>}
+          {canEdit && s!=='cancelled' && <ActionBtn onClick={onPayment} title="Collect Payment" color="#059669"><IconMoney /></ActionBtn>}
           {canEdit && <ActionBtn onClick={onEdit} title="Edit" color="#D97706"><IconEdit /></ActionBtn>}
           {canEdit && <ActionBtn onClick={onDelete} title="Delete" color="#DC2626"><IconTrash /></ActionBtn>}
         </div>
@@ -214,18 +208,9 @@ export default function AppointmentsPage() {
   const [form, setForm]               = useState(EMPTY);
   const [saving, setSaving]           = useState(false);
   const [formErr, setFormErr]         = useState('');
-  const [sortKey, setSortKey]   = useState('id');
+  const [sortKey, setSortKey]   = useState('date');
   const [sortDir, setSortDir]   = useState('desc');
   const [deleteId, setDeleteId] = useState(null);
-  // Customer search for form
-  const [custSearch, setCustSearch]     = useState('');
-  const [custResults, setCustResults]   = useState([]);
-  const [custLoading, setCustLoading]   = useState(false);
-  const [showCustDrop, setShowCustDrop] = useState(false);
-  const [selectedCust, setSelectedCust] = useState(null);
-  const custRef = useRef(null);
-
-
   const [showPayment, setShowPayment]     = useState(false);
   const [paymentAppt, setPaymentAppt]     = useState(null);
   const [paymentMethod, setPaymentMethod] = useState('Cash');
@@ -255,51 +240,14 @@ export default function AppointmentsPage() {
   }, [filterBranch, filterStatus, filterDate, page]);
   useEffect(() => { load(); }, [load]);
 
-  // Customer search
-  useEffect(() => {
-    if (!custSearch || custSearch.length < 1) { setCustResults([]); return; }
-    const t = setTimeout(async () => {
-      setCustLoading(true);
-      try {
-        const r = await api.get('/customers', { params: { search: custSearch, limit: 10 } });
-        setCustResults(r.data?.data || r.data || []);
-      } catch { setCustResults([]); }
-      setCustLoading(false);
-    }, 250);
-    return () => clearTimeout(t);
-  }, [custSearch]);
-
-  // Close customer dropdown on outside click
-  useEffect(() => {
-    const handler = e => { if (custRef.current && !custRef.current.contains(e.target)) setShowCustDrop(false); };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, []);
-
-
-  const selectCust = (c) => {
-    setSelectedCust(c);
-    setForm(f => ({ ...f, customer_id: c.id, customer_name: c.name, phone: c.phone || f.phone }));
-    setCustSearch(''); setShowCustDrop(false);
-  };
-  const clearCust = () => {
-    setSelectedCust(null);
-    setForm(f => ({ ...f, customer_id: '', customer_name: '', phone: '' }));
-  };
-
   const calcServiceTotal = (ids) => ids.reduce((sum, sid) => { const s = services.find(x => Number(x.id) === Number(sid)); return sum + Number(s?.price || 0); }, 0);
   const openPayment = (row) => {
     setPaymentAppt(row);
-    const primaryId = Number(row.service_id || row.service?.id);
-    const extraIds = Array.isArray(row.additional_service_ids)
-      ? row.additional_service_ids.map(Number).filter(Boolean)
-      : [];
-    const ids = [primaryId, ...extraIds].filter(Boolean);
+    const svcId = Number(row.service_id || row.service?.id);
+    const ids = svcId ? [svcId] : [];
     setPaymentServices(ids);
     const total = calcServiceTotal(ids);
-    // Prefer the appointment's saved amount (source of truth), fallback to live service totals.
-    const apptAmount = Number(row.amount || 0);
-    setPaymentAmt(apptAmount > 0 ? apptAmount : (total > 0 ? total : ''));
+    setPaymentAmt(total > 0 ? total : (row.amount || ''));
     setPaymentMethod('Cash');
     setPaymentErr('');
     setPaymentOk(false);
@@ -327,8 +275,6 @@ export default function AppointmentsPage() {
         customer_name: paymentAppt.customer_name,
         splits: [{ method: paymentMethod, amount: Number(paymentAmt) }],
       });
-      // Auto-mark appointment as completed
-      await api.patch(`/appointments/${paymentAppt.id}/status`, { status: 'completed' });
       setPaymentOk(true);
       load();
       setTimeout(() => { setShowPayment(false); setPaymentOk(false); }, 1200);
@@ -336,18 +282,15 @@ export default function AppointmentsPage() {
     setPaymentSaving(false);
   };
 
-  const openAdd    = () => { setEditItem(null); setForm({...EMPTY, branch_id:user?.branch_id||'', date:today}); setFormErr(''); setSelectedCust(null); setCustSearch(''); setShowForm(true); };
-  const openEdit   = row => { setEditItem(row); setForm({...row, service_id:row.service?.id||row.service_id, additional_service_ids:row.additional_service_ids||[], staff_id:row.staff?.id||row.staff_id, date:row.date?.slice(0,10)||''}); setFormErr(''); setSelectedCust(null); setCustSearch(''); setShowForm(true); };
+  const openAdd    = () => { setEditItem(null); setForm({...EMPTY, branch_id:user?.branch_id||'', date:today}); setFormErr(''); setShowForm(true); };
+  const openEdit   = row => { setEditItem(row); setForm({...row, service_id:row.service?.id||row.service_id, staff_id:row.staff?.id||row.staff_id, date:row.date?.slice(0,10)||''}); setFormErr(''); setShowForm(true); };
   const openDetail = row => { setDetailItem(row); setShowDetail(true); };
 
   const handleSave = async () => {
     if (!form.customer_name||!form.service_id||!form.date||!form.time) return setFormErr('Customer, service, date and time are required');
     setSaving(true);
     try {
-      const payload = { ...form, additional_service_ids: form.additional_service_ids || [] };
-      const res = editItem
-        ? await api.put(`/appointments/${editItem.id}`, payload)
-        : await api.post('/appointments', payload);
+      editItem ? await api.put(`/appointments/${editItem.id}`, form) : await api.post('/appointments', form);
       setShowForm(false); load();
     } catch (e) { setFormErr(e.response?.data?.message||'Save failed'); }
     setSaving(false);
@@ -483,117 +426,25 @@ export default function AppointmentsPage() {
       </div>
 
       {/* New / Edit Modal */}
-      <Modal open={showForm} onClose={()=>setShowForm(false)} title={editItem?'Edit Appointment':'New Appointment'} size="lg"
+      <Modal open={showForm} onClose={()=>setShowForm(false)} title={editItem?'Edit Appointment':'New Appointment'} size="md"
         footer={<><Button variant="secondary" onClick={()=>setShowForm(false)}>Cancel</Button><Button variant="primary" loading={saving} onClick={handleSave}>{editItem?'Save Changes':'Create Appointment'}</Button></>}>
         {formErr && <div style={{ background:'#FEF2F2', color:'#DC2626', padding:'9px 13px', borderRadius:9, marginBottom:16, fontSize:13, border:'1px solid #FEE2E2' }}> {formErr}</div>}
         <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
-          {/* Customer Search */}
-          <FormGroup label="Customer" required>
-            {selectedCust ? (
-              <div style={{ display:'flex', alignItems:'center', gap:10, background:'#F0FDF4', border:'1.5px solid #86EFAC', borderRadius:10, padding:'9px 14px' }}>
-                <div style={{ width:36, height:36, borderRadius:8, background:'#16a34a', color:'#fff', display:'flex', alignItems:'center', justifyContent:'center', fontSize:15, fontWeight:800, flexShrink:0 }}>
-                  {selectedCust.name?.charAt(0)?.toUpperCase()}
-                </div>
-                <div style={{ flex:1, minWidth:0 }}>
-                  <div style={{ fontSize:13, fontWeight:700, color:'#101828' }}>{selectedCust.name}</div>
-                  {selectedCust.phone && <div style={{ fontSize:11, color:'#667085' }}>{selectedCust.phone}</div>}
-                </div>
-                <button type="button" onClick={clearCust} style={{ background:'none', border:'none', cursor:'pointer', color:'#64748b', fontSize:18, lineHeight:1, padding:2 }}>×</button>
-              </div>
-            ) : (
-              <div style={{ position:'relative' }} ref={custRef}>
-                <input value={custSearch} onChange={e=>{setCustSearch(e.target.value); setForm(f=>({...f,customer_name:e.target.value,customer_id:''})); setShowCustDrop(true);}}
-                  onFocus={()=>setShowCustDrop(true)}
-                  placeholder="Type to search or enter name..."
-                  style={{ width:'100%', padding:'8px 12px', borderRadius:9, border:'1.5px solid #D0D5DD', fontSize:13, fontFamily:"'Inter',sans-serif", outline:'none', boxSizing:'border-box', color:'#101828' }}
-                  onFocusCap={e=>e.target.style.borderColor='#2563EB'} onBlur={e=>e.target.style.borderColor='#D0D5DD'} />
-                {custLoading && <span style={{ position:'absolute', right:10, top:'50%', transform:'translateY(-50%)', fontSize:12, color:'#98A2B3' }}>⏳</span>}
-                {showCustDrop && custResults.length>0 && (
-                  <div style={{ position:'absolute', top:'calc(100% + 4px)', left:0, right:0, background:'#fff', border:'1.5px solid #E4E7EC', borderRadius:10, boxShadow:'0 8px 24px rgba(16,24,40,0.12)', zIndex:200, maxHeight:180, overflowY:'auto' }}>
-                    {custResults.map(c=>(
-                      <div key={c.id} onMouseDown={()=>selectCust(c)} style={{ padding:'9px 14px', cursor:'pointer', borderBottom:'1px solid #F2F4F7', display:'flex', alignItems:'center', gap:10 }}
-                        onMouseEnter={e=>e.currentTarget.style.background='#F8FAFC'} onMouseLeave={e=>e.currentTarget.style.background='#fff'}>
-                        <div style={{ width:28, height:28, borderRadius:6, background:'#2563EB', color:'#fff', display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, fontWeight:700, flexShrink:0 }}>{c.name?.charAt(0)?.toUpperCase()}</div>
-                        <div>
-                          <div style={{ fontSize:13, fontWeight:600, color:'#101828' }}>{c.name}</div>
-                          {c.phone && <div style={{ fontSize:11, color:'#98A2B3' }}>{c.phone}</div>}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-          </FormGroup>
-          {/* Phone (manual only when no customer selected) */}
-          {!selectedCust && (
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
-              <FormGroup label="Name (manual)" required>
-                <Input value={form.customer_name||''} onChange={e=>setForm(f=>({...f,customer_name:e.target.value}))} placeholder="Full name" />
-              </FormGroup>
-              <FormGroup label="Phone"><Input value={form.phone||''} onChange={e=>setForm(f=>({...f,phone:e.target.value}))} placeholder="0300-0000000" /></FormGroup>
-            </div>
-          )}
-          {selectedCust && (
-            <FormGroup label="Phone">
-              <Input value={form.phone||''} onChange={e=>setForm(f=>({...f,phone:e.target.value}))} placeholder="0300-0000000" />
-            </FormGroup>
-          )}
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
+            <FormGroup label="Customer Name" required><Input value={form.customer_name||''} onChange={e=>setForm(f=>({...f,customer_name:e.target.value}))} placeholder="Full name" /></FormGroup>
+            <FormGroup label="Phone"><Input value={form.phone||''} onChange={e=>setForm(f=>({...f,phone:e.target.value}))} placeholder="0300-0000000" /></FormGroup>
+          </div>
           {isSuperAdmin && <FormGroup label="Branch"><Select value={form.branch_id||''} onChange={e=>setForm(f=>({...f,branch_id:e.target.value,staff_id:''}))}>
             <option value="">Select branch</option>{branches.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}
           </Select></FormGroup>}
-          {/* Services multi-select */}
-          <FormGroup label="Services" required>
-            <div style={{ display:'flex', flexDirection:'column', gap:5, maxHeight:180, overflowY:'auto', border:'1.5px solid #E4E7EC', borderRadius:10, padding:'8px 10px' }}>
-              {services.map(s => {
-                const isPrimary = String(form.service_id) === String(s.id);
-                const isExtra   = (form.additional_service_ids||[]).map(Number).includes(Number(s.id));
-                const isSel     = isPrimary || isExtra;
-                return (
-                  <label key={s.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'6px 8px', borderRadius:8, cursor:'pointer', background: isSel ? '#F0FDF4' : 'transparent', transition:'background 0.1s' }}>
-                    <input type="checkbox" checked={isSel} onChange={() => {
-                      setForm(f => {
-                        const cur = (f.additional_service_ids||[]).map(Number);
-                        const svcPrice = (id) => { const sv = services.find(x=>Number(x.id)===Number(id)); return Number(sv?.price||0); };
-                        if (isPrimary) {
-                          if (cur.length > 0) {
-                            const [newPrimary, ...rest] = cur;
-                            return { ...f, service_id: String(newPrimary), additional_service_ids: rest, amount: rest.reduce((sum,id)=>sum+svcPrice(id),0) + svcPrice(newPrimary) };
-                          }
-                          return { ...f, service_id: '', additional_service_ids: [], amount: '' };
-                        }
-                        if (isExtra) {
-                          const next = cur.filter(x => x !== Number(s.id));
-                          return { ...f, additional_service_ids: next, amount: [f.service_id, ...next].filter(Boolean).reduce((sum,id)=>sum+svcPrice(id),0) };
-                        }
-                        if (!f.service_id) return { ...f, service_id: String(s.id), amount: svcPrice(s.id) };
-                        const next = [...cur, Number(s.id)];
-                        return { ...f, additional_service_ids: next, amount: [f.service_id, ...next].filter(Boolean).reduce((sum,id)=>sum+svcPrice(id),0) };
-                      });
-                    }} style={{ accentColor:'#059669', width:15, height:15, flexShrink:0 }} />
-                    <div style={{ flex:1, minWidth:0, display:'flex', alignItems:'center', gap:6 }}>
-                      <span style={{ fontSize:13, fontWeight:isSel?700:500, color:isSel?'#059669':'#101828' }}>{s.name}</span>
-                      {isPrimary && <span style={{ fontSize:10, color:'#059669', fontWeight:700, background:'#DCFCE7', padding:'1px 6px', borderRadius:4 }}>Primary</span>}
-                    </div>
-                    <span style={{ fontSize:12, color:'#059669', fontWeight:600, flexShrink:0 }}>Rs.{Number(s.price||0).toLocaleString()}</span>
-                  </label>
-                );
-              })}
-            </div>
-            {(form.service_id || (form.additional_service_ids||[]).length>0) && (
-              <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginTop:6 }}>
-                {[form.service_id, ...(form.additional_service_ids||[])].filter(Boolean).map((id,i) => {
-                  const svc = services.find(x=>String(x.id)===String(id));
-                  if (!svc) return null;
-                  return <span key={id} style={{ fontSize:11, background:'#DCFCE7', color:'#059669', padding:'2px 9px', borderRadius:20, fontWeight:600 }}>{i===0?'★ ':''}{svc.name}</span>;
-                })}
-                <span style={{ fontSize:11, color:'#059669', fontWeight:700, padding:'2px 0', alignSelf:'center' }}>Total: Rs. {Number(form.amount||0).toLocaleString()}</span>
-              </div>
-            )}
-          </FormGroup>
-          <FormGroup label="Staff"><Select value={form.staff_id||''} onChange={e=>setForm(f=>({...f,staff_id:e.target.value}))}>
-            <option value="">Any available</option>{filteredStaff.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
-          </Select></FormGroup>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
+            <FormGroup label="Service" required><Select value={form.service_id||''} onChange={e=>{const sid=e.target.value; const svc=services.find(x=>Number(x.id)===Number(sid)); setForm(f=>({...f,service_id:sid,amount:svc?Number(svc.price):f.amount}));}}>
+              <option value="">Select service</option>{services.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
+            </Select></FormGroup>
+            <FormGroup label="Staff"><Select value={form.staff_id||''} onChange={e=>setForm(f=>({...f,staff_id:e.target.value}))}>
+              <option value="">Any available</option>{filteredStaff.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
+            </Select></FormGroup>
+          </div>
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:14 }}>
             <FormGroup label="Date" required><Input type="date" value={form.date||''} onChange={e=>setForm(f=>({...f,date:e.target.value}))} /></FormGroup>
             <FormGroup label="Time" required><Input type="time" value={form.time||''} onChange={e=>setForm(f=>({...f,time:e.target.value}))} /></FormGroup>
@@ -624,86 +475,56 @@ export default function AppointmentsPage() {
       </Modal>
 
       {/* Collect Payment Modal */}
-      <Modal open={showPayment} onClose={()=>setShowPayment(false)} title="Collect Payment" size="sm">
+      <Modal open={showPayment} onClose={()=>setShowPayment(false)} title="Collect Payment" size="md"
+        footer={!paymentOk&&<><Button variant="secondary" onClick={()=>setShowPayment(false)}>Cancel</Button><Button variant="primary" loading={paymentSaving} onClick={handlePayment}>Confirm Payment</Button></>}>
         {paymentAppt && (
           paymentOk ? (
             <div style={{ textAlign:'center', padding:'28px 0' }}>
-              <div style={{ width:64, height:64, borderRadius:'50%', background:'#ECFDF5', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 16px' }}>
-                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#059669" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+              <div style={{ width:56, height:56, borderRadius:'50%', background:'#ECFDF5', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 14px' }}>
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#059669" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
               </div>
-              <div style={{ fontSize:17, fontWeight:700, color:'#059669' }}>Payment Collected!</div>
-              <div style={{ fontSize:13, color:'#667085', marginTop:6 }}>Rs. {Number(paymentAmt||0).toLocaleString()} via {paymentMethod}</div>
+              <div style={{ fontSize:16, fontWeight:700, color:'#059669' }}>Payment Recorded!</div>
             </div>
           ) : (
-            <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
-              {paymentErr && <div style={{ background:'#FEE2E2', border:'1px solid #FECACA', borderRadius:8, padding:'9px 14px', color:'#B91C1C', fontSize:13 }}>{paymentErr}</div>}
-
-              {/* Customer info */}
-              <div style={{ background:'#F8FAFC', borderRadius:10, padding:'12px 16px', display:'flex', alignItems:'center', gap:12 }}>
-                <div style={{ width:42, height:42, borderRadius:10, background:'#1e293b', color:'#fff', display:'flex', alignItems:'center', justifyContent:'center', fontSize:16, fontWeight:800, flexShrink:0 }}>
-                  {paymentAppt.customer_name?.charAt(0)?.toUpperCase()}
-                </div>
-                <div style={{ flex:1, minWidth:0 }}>
-                  <div style={{ fontSize:14, fontWeight:700, color:'#101828' }}>{paymentAppt.customer_name}</div>
-                  <div style={{ display:'flex', gap:10, marginTop:2, flexWrap:'wrap' }}>
-                    {paymentAppt.phone && <span style={{ fontSize:12, color:'#667085' }}>📞 {paymentAppt.phone}</span>}
-                    {paymentAppt.staff?.name && <span style={{ fontSize:12, color:'#667085' }}>✂ {paymentAppt.staff.name}</span>}
+            <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
+              {paymentErr && <div style={{ background:'#FEF2F2', color:'#DC2626', padding:'9px 13px', borderRadius:9, fontSize:13, border:'1px solid #FEE2E2' }}>{paymentErr}</div>}
+              <div style={{ background:'#F9FAFB', borderRadius:12, padding:'14px 16px' }}>
+                <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+                  <div>
+                    <div style={{ fontSize:15, fontWeight:700, color:'#101828' }}>{paymentAppt.customer_name}</div>
+                    <div style={{ fontSize:13, color:'#667085', marginTop:2 }}>{paymentAppt.phone||''}</div>
                   </div>
+                  {paymentAppt.staff?.name && <span style={{ background:'#F3F4F6', color:'#475467', padding:'4px 12px', borderRadius:8, fontSize:12, fontWeight:500 }}>{paymentAppt.staff.name}</span>}
                 </div>
               </div>
-
-              {/* Service breakdown */}
-              {paymentServices.length > 0 && (
-                <div style={{ border:'1px solid #E4E7EC', borderRadius:10, overflow:'hidden' }}>
-                  {services.filter(s => paymentServices.includes(Number(s.id))).map((s, i, arr) => (
-                    <div key={s.id} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'9px 14px', borderBottom: i < arr.length-1 ? '1px solid #F2F4F7' : 'none' }}>
-                      <div>
-                        <span style={{ fontSize:13, fontWeight:600, color:'#101828' }}>{s.name}</span>
-                        {s.duration_minutes && <span style={{ fontSize:11, color:'#98A2B3', marginLeft:8 }}>{s.duration_minutes} min</span>}
-                      </div>
-                      <span style={{ fontSize:13, fontWeight:700, color:'#059669' }}>
-                        {s.price ? `Rs. ${Number(s.price).toLocaleString()}` : '—'}
-                      </span>
-                    </div>
-                  ))}
-                  <div style={{ display:'flex', justifyContent:'space-between', padding:'10px 14px', background:'#F9FAFB', borderTop:'1.5px solid #E4E7EC' }}>
-                    <span style={{ fontSize:13, fontWeight:700, color:'#101828' }}>Total</span>
-                    <span style={{ fontSize:15, fontWeight:800, color:'#059669' }}>Rs. {Number(paymentAmt||0).toLocaleString()}</span>
-                  </div>
+              <FormGroup label="Services" required>
+                <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+                  {services.map(s => {
+                    const active = paymentServices.includes(Number(s.id));
+                    return (
+                      <button key={s.id} onClick={()=>togglePaymentService(s.id)} style={{ padding:'7px 14px', borderRadius:10, border:`1.5px solid ${active?'#2563EB':'#E4E7EC'}`, background:active?'#EFF6FF':'#fff', color:active?'#2563EB':'#667085', fontWeight:active?700:500, fontSize:12, cursor:'pointer', fontFamily:"'Inter',sans-serif", transition:'all 0.15s', display:'flex', alignItems:'center', gap:6 }}>
+                        {active && <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>}
+                        {s.name}
+                        {s.price ? <span style={{ opacity:0.6, marginLeft:2 }}>Rs.{Number(s.price).toLocaleString()}</span> : ''}
+                      </button>
+                    );
+                  })}
                 </div>
-              )}
-
-              {/* Payment method toggle */}
-              <div>
-                <div style={{ fontSize:11, fontWeight:700, color:'#98A2B3', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:8 }}>Payment Method</div>
-                <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
-                  {['Cash','Card','Online Transfer'].map(m => (
-                    <button key={m} type="button" onClick={()=>setPaymentMethod(m)} style={{
-                      padding:'7px 16px', borderRadius:8, fontSize:13, fontWeight:600,
-                      cursor:'pointer', fontFamily:"'Inter',sans-serif", transition:'all 0.15s',
-                      border:`1.5px solid ${paymentMethod===m?'#10b981':'#D0D5DD'}`,
-                      background:paymentMethod===m?'#F0FDF4':'#fff',
-                      color:paymentMethod===m?'#065F46':'#101828',
-                    }}>{m}</button>
-                  ))}
-                </div>
+                {paymentServices.length===0 && <div style={{ fontSize:12, color:'#DC2626', marginTop:4 }}>Select at least one service</div>}
+              </FormGroup>
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
+                <FormGroup label="Amount (Rs.)" required>
+                  <Input type="number" value={paymentAmt} onChange={e=>setPaymentAmt(e.target.value)} placeholder="0" />
+                </FormGroup>
+                <FormGroup label="Payment Method" required>
+                  <Select value={paymentMethod} onChange={e=>setPaymentMethod(e.target.value)}>
+                    {['Cash','Card','Bank Transfer','Online'].map(m=><option key={m} value={m}>{m}</option>)}
+                  </Select>
+                </FormGroup>
               </div>
-
-              {/* Amount */}
-              <div>
-                <div style={{ fontSize:11, fontWeight:700, color:'#98A2B3', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:6 }}>Amount (Rs.) *</div>
-                <input type="number" min="0" value={paymentAmt} onChange={e=>setPaymentAmt(e.target.value)}
-                  style={{ width:'100%', padding:'9px 12px', borderRadius:10, border:'1.5px solid #D0D5DD', fontSize:14, fontFamily:"'Inter',sans-serif", background:'#fff', color:'#101828', outline:'none', boxSizing:'border-box' }}
-                  onFocus={e=>e.target.style.borderColor='#10b981'} onBlur={e=>e.target.style.borderColor='#D0D5DD'} />
-              </div>
-
-              {/* Actions */}
-              <div style={{ display:'flex', gap:10, justifyContent:'flex-end', marginTop:6 }}>
-                <Button variant="secondary" onClick={()=>setShowPayment(false)}>Cancel</Button>
-                <Button loading={paymentSaving} disabled={paymentSaving||!paymentAmt} onClick={handlePayment}
-                  style={{ background:'#10b981', border:'none', fontWeight:700 }}>
-                  Collect Rs. {Number(paymentAmt||0).toLocaleString()}
-                </Button>
+              <div style={{ background:'#F0FDF4', borderRadius:10, padding:'12px 16px', display:'flex', alignItems:'center', justifyContent:'space-between', border:'1px solid #BBF7D0' }}>
+                <span style={{ fontSize:13, fontWeight:600, color:'#166534' }}>Total</span>
+                <span style={{ fontSize:18, fontWeight:800, color:'#059669' }}>Rs. {Number(paymentAmt||0).toLocaleString()}</span>
               </div>
             </div>
           )

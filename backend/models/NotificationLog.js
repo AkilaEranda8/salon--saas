@@ -25,7 +25,7 @@ const NotificationLog = sequelize.define('NotificationLog', {
     allowNull: false,
   },
   channel: {
-    type: DataTypes.ENUM('email', 'whatsapp'),
+    type: DataTypes.ENUM('email', 'whatsapp', 'sms'),
     allowNull: false,
   },
   message_preview: {

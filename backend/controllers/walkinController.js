@@ -68,65 +68,45 @@ exports.stats = async (req, res) => {
 // ── POST /api/walkin/checkin ──────────────────────────────────────────────────
 exports.checkin = async (req, res) => {
   try {
-    const { customerName, phone, branchId, serviceId, serviceIds, note } = req.body;
+    const { customerName, phone, branchId, serviceId, note } = req.body;
 
-    // Accept either serviceIds (array) or legacy serviceId (single)
-    const ids = Array.isArray(serviceIds) && serviceIds.length > 0
-      ? serviceIds.map(Number).filter(Boolean)
-      : serviceId ? [Number(serviceId)] : [];
-
-    if (!customerName || !branchId || ids.length === 0) {
-      return res.status(400).json({ message: 'customerName, branchId, and at least one serviceId are required.' });
+    if (!customerName || !branchId || !serviceId) {
+      return res.status(400).json({ message: 'customerName, branchId, and serviceId are required.' });
     }
 
-    const primaryServiceId = ids[0];
     const dateStr = today();
 
     const result = await sequelize.transaction(async (t) => {
       const token = await generateToken(branchId, dateStr, t);
 
-      // Load all selected services to get total duration
-      const services = await Service.findAll({
-        where: { id: ids },
-        transaction: t,
-      });
-      if (services.length === 0) throw Object.assign(new Error('Service not found.'), { status: 404 });
-
-      const totalDuration = services.reduce((sum, s) => sum + (s.duration_minutes || 30), 0);
+      // Calculate estimated wait
+      const service = await Service.findByPk(serviceId, { transaction: t });
+      if (!service) throw Object.assign(new Error('Service not found.'), { status: 404 });
 
       const waitingCount = await WalkIn.count({
         where: { branch_id: branchId, check_in_date: dateStr, status: 'waiting' },
         transaction: t,
       });
-      const estimatedWait = waitingCount * totalDuration;
-
-      // Build extra_services note suffix if multiple services selected
-      const extraNote = ids.length > 1
-        ? `[services:${ids.join(',')}]`
-        : '';
-      const fullNote = [extraNote, note].filter(Boolean).join(' ');
+      const estimatedWait = waitingCount * (service.duration_minutes || 30);
 
       const entry = await WalkIn.create({
         token,
         customer_name: customerName,
         phone: phone || null,
         branch_id: branchId,
-        service_id: primaryServiceId,
+        service_id: serviceId,
         staff_id: null,
         status: 'waiting',
         check_in_time: new Date().toTimeString().slice(0, 8),
         check_in_date: dateStr,
         estimated_wait: estimatedWait,
-        note: fullNote || null,
+        note: note || null,
       }, { transaction: t });
 
       return WalkIn.findByPk(entry.id, { include: defaultInclude, transaction: t });
     });
 
-    // Attach all service details to response
-    const allServices = await Service.findAll({ where: { id: ids }, attributes: ['id', 'name', 'duration_minutes', 'price'] });
-    const full = result.toJSON ? result.toJSON() : result;
-    full.services = allServices;
+    const full = result;
 
     emitQueueUpdate(branchId, { action: 'checkin', entry: full });
     res.status(201).json(full);
@@ -134,41 +114,6 @@ exports.checkin = async (req, res) => {
     if (err.status === 404) return res.status(404).json({ message: err.message });
     console.error('walkin.checkin error:', err);
     res.status(500).json({ message: 'Failed to check in walk-in customer.' });
-  }
-};
-
-// ── PUT /api/walkin/:id ────────────────────────────────────────────────────────
-exports.update = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { customerName, phone, serviceId, serviceIds, staffId, note } = req.body;
-
-    const entry = await WalkIn.findByPk(id);
-    if (!entry) return res.status(404).json({ message: 'Walk-in entry not found.' });
-
-    // Resolve primary service
-    const ids = Array.isArray(serviceIds) && serviceIds.length > 0
-      ? serviceIds.map(Number).filter(Boolean)
-      : serviceId ? [Number(serviceId)] : null;
-
-    const extraNote = ids && ids.length > 1 ? `[services:${ids.join(',')}]` : '';
-    const baseNote  = (note !== undefined ? note : (entry.note || '').replace(/\[services:[\d,]+\]\s*/g, '').trim());
-    const fullNote  = [extraNote, baseNote].filter(Boolean).join(' ');
-
-    await entry.update({
-      ...(customerName !== undefined && { customer_name: customerName }),
-      ...(phone        !== undefined && { phone: phone || null }),
-      ...(ids          && { service_id: ids[0] }),
-      ...(staffId      !== undefined && { staff_id: staffId || null }),
-      note: fullNote || null,
-    });
-
-    const full = await WalkIn.findByPk(id, { include: defaultInclude });
-    emitQueueUpdate(entry.branch_id, { action: 'update', entry: full });
-    res.json(full);
-  } catch (err) {
-    console.error('walkin.update error:', err);
-    res.status(500).json({ message: 'Failed to update walk-in entry.' });
   }
 };
 

@@ -1,8 +1,9 @@
-﻿import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
 import PageWrapper from '../components/layout/PageWrapper';
 import { useToast } from '../components/ui/Toast';
+import AiInsightsPanel from '../components/ui/AiInsightsPanel';
 import {
   IconPlus, IconDollar, IconCalendar, IconCheck, IconBell,
   StatCard, FilterBar, SearchBar, DataTable,
@@ -368,6 +369,16 @@ export default function ReportsPage() {
           }
         </Card>
       </div>
+
+      {/* AI Insights */}
+      <AiInsightsPanel reportData={{
+        revenue:      revenue,
+        services:     services,
+        staff:        staffRep,
+        appointments: apptStats,
+        expenses:     expenses,
+        customers:    customers,
+      }} />
     </>
   );
 

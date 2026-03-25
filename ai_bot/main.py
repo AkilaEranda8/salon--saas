@@ -9,6 +9,7 @@ import uuid
 
 from intent_classifier import classifier
 from conversation import handle_message, reset_session
+from insights import analyze
 
 app = FastAPI(title="Zane Salon AI Bot", version="1.0.0")
 
@@ -63,6 +64,16 @@ async def chat(req: ChatRequest):
 async def clear_session(session_id: str):
     reset_session(session_id)
     return {"message": "Session cleared"}
+
+
+@app.post("/insights")
+async def insights(data: dict):
+    """
+    Accepts report data and returns AI-generated insights.
+    Payload: { revenue, services, staff, appointments, expenses, customers }
+    """
+    results = analyze(data)
+    return {"insights": results, "count": len(results)}
 
 
 @app.get("/health")

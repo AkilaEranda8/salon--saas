@@ -283,7 +283,11 @@ async function sendSMS({ to, message, meta = {} }) {
     const data = await res.json().catch(() => ({}));
     console.log(`[Notifications] SMS API response → ${toFormatted}:`, JSON.stringify(data));
     if (!res.ok || data.status === 'error') {
-      throw new Error(data.message || `HTTP ${res.status}`);
+      // Notify.lk returns errors in data.errors[] array
+      const errMsg = data.message
+        || (Array.isArray(data.errors) && data.errors.length ? data.errors[0] : null)
+        || `HTTP ${res.status}`;
+      throw new Error(errMsg);
     }
     console.log(`[Notifications] SMS sent → ${toFormatted}`);
   } catch (err) {

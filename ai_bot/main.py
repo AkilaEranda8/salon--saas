@@ -15,7 +15,13 @@ app = FastAPI(title="Zane Salon AI Bot", version="1.0.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://main.zanesalon.com", "http://localhost:5173", "http://localhost:3000"],
+    allow_origins=[
+        "https://zanesalon.com",
+        "https://www.zanesalon.com",
+        "https://main.zanesalon.com",
+        "http://localhost:5173",
+        "http://localhost:3000",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

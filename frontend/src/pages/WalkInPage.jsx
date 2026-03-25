@@ -511,7 +511,7 @@ export default function WalkInPage() {
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, flexWrap: 'wrap' }}>
                     <Badge variant={entry.status} dot>{STATUS_LABELS[entry.status] || entry.status}</Badge>
                     {entry.status === 'completed' && (
-                      <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 99, background: '#ECFDF5', color: '#15803D', fontWeight: 700 }}>
+                      <span style={{ fontSize: 12, padding: '3px 10px', borderRadius: 99, background: '#FEF2F2', color: '#DC2626', fontWeight: 800 }}>
                         Paid
                       </span>
                     )}

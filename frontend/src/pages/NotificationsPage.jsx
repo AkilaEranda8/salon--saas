@@ -98,8 +98,11 @@ export default function NotificationsPage() {
       setEditingSmsKey(false); setNewSmsKey('');
       setEditingSmtpPass(false); setNewSmtpPass('');
       toast('Settings saved.', 'success');
-    } catch { toast('Failed to save settings.', 'error'); }
-    setSettingsBusy(false);
+    } catch (err) {
+      toast(err?.response?.data?.message || 'Failed to save settings.', 'error');
+    } finally {
+      setSettingsBusy(false);
+    }
   };
 
   const sendTestProvider = async (provider) => {
@@ -111,8 +114,9 @@ export default function NotificationsPage() {
       toast(res.data.message || 'Test sent!', 'success');
     } catch (err) {
       toast(err?.response?.data?.message || 'Test failed.', 'error');
+    } finally {
+      setTestBusy(b => ({ ...b, [provider]: false }));
     }
-    setTestBusy(b => ({ ...b, [provider]: false }));
   };
 
   const logPages = Math.ceil(logTotal / 20);

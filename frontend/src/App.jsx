@@ -32,6 +32,7 @@ import ReviewFormPage   from './pages/ReviewFormPage';
 import PackagesPage     from './pages/PackagesPage';
 import RecurringPage    from './pages/RecurringPage';
 import CategoriesPage   from './pages/CategoriesPage';
+import AiChatPage       from './pages/AiChatPage';
 
 // ── Auth guards ────────────────────────────────────────────────────────
 
@@ -131,6 +132,7 @@ function AppShell() {
             } />
 
             {/* ── INSIGHTS ────────────────────────────────── */}
+            <Route path="/ai-chat"      element={<AiChatPage />} />
             <Route path="/reports"      element={<ReportsPage />} />
             <Route path="/reviews"      element={
               <RoleRoute roles={['superadmin', 'admin', 'manager']}>

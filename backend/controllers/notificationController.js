@@ -158,12 +158,19 @@ const updateSettings = async (req, res) => {
       update.smtp_pass = req.body.smtp_pass.trim() || null;
     }
 
+    console.log('[updateSettings] update object:', JSON.stringify(update));
+
     const [row, created] = await NotificationSettings.findOrCreate({
       where:    { branch_id: null },
       defaults: { ...DEFAULT_SETTINGS, ...update },
     });
 
-    if (!created) await row.update(update);
+    console.log('[updateSettings] created:', created, '| row id:', row.id);
+
+    if (!created) {
+      await row.update(update);
+      console.log('[updateSettings] after update, appt_confirmed_sms:', row.appt_confirmed_sms);
+    }
 
     const envDef = {
       sms_sender_id: process.env.SMS_SENDER_ID || '', sms_user_id: process.env.SMS_USER_ID || '', sms_api_key: process.env.SMS_API_KEY || '',

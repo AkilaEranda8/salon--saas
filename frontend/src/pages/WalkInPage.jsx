@@ -512,6 +512,13 @@ export default function WalkInPage() {
                   {entry.status === 'waiting' && entry.estimated_wait != null && (
                     <div style={{ fontSize: 11, color: MUTED, marginTop: 4 }}>~{entry.estimated_wait} min wait</div>
                   )}
+                  {entry.status === 'completed' && (
+                    <div style={{ marginTop: 6 }}>
+                      <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 99, background: '#ECFDF5', color: '#15803D', fontWeight: 700 }}>
+                        Paid
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 {/* ACTIONS */}
@@ -525,15 +532,9 @@ export default function WalkInPage() {
                   {entry.status === 'serving' && (
                     <Button size="sm" onClick={() => openPayment(entry)}>Done & Collect</Button>
                   )}
-                  {entry.status === 'completed' && (
-                    <Button size="sm" variant="ghost" onClick={() => openPayment(entry)}>Collect Payment</Button>
-                  )}
                   <Button size="sm" variant="ghost" onClick={() => setShowToken(entry)}>Token</Button>
                   {(entry.status === 'waiting' || entry.status === 'serving') && (
                     <Button size="sm" variant="danger" onClick={() => changeStatus(entry.id, 'cancelled')}>Cancel</Button>
-                  )}
-                  {entry.status === 'completed' && (
-                    <Button size="sm" variant="ghost" onClick={() => removeEntry(entry.id)}>Clear</Button>
                   )}
                 </div>
               </div>

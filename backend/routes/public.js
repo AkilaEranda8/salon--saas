@@ -115,46 +115,110 @@ router.get('/availability', async (req, res) => {
   }
 });
 
-// ── POST /api/public/bookings — create appointment (pending) ─────────────────
+const toMinutes = (hhmm) => {
+  const [h, m] = hhmm.substring(0, 5).split(':').map(Number);
+  return h * 60 + m;
+};
+
+const toHHMM = (minutes) => {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+};
+
+// ── POST /api/public/bookings — create one or many appointments (pending) ────
 router.post('/bookings', async (req, res) => {
   try {
-    const { branch_id, service_id, staff_id, customer_name, phone, email, date, time, notes } = req.body;
+    const {
+      branch_id, service_id, service_ids, staff_id, customer_name, phone, email, date, time, notes,
+    } = req.body;
 
-    if (!branch_id || !service_id || !staff_id || !customer_name || !phone || !date || !time) {
+    if (!branch_id || !staff_id || !customer_name || !phone || !date || !time) {
       return res.status(400).json({ message: 'Missing required fields' });
     }
 
-    // Fetch service price
-    const service = await Service.findByPk(service_id, { attributes: ['price'] });
-    if (!service) return res.status(404).json({ message: 'Service not found' });
+    const selectedServiceIds = Array.isArray(service_ids) && service_ids.length > 0
+      ? service_ids
+      : (service_id ? [service_id] : []);
 
-    // Check for double-booking
-    const existing = await Appointment.findOne({
+    if (selectedServiceIds.length === 0) {
+      return res.status(400).json({ message: 'At least one service is required' });
+    }
+
+    const services = await Service.findAll({
+      where: { id: selectedServiceIds, is_active: true },
+      attributes: ['id', 'price', 'duration_minutes'],
+    });
+    if (services.length !== selectedServiceIds.length) {
+      return res.status(404).json({ message: 'One or more selected services were not found' });
+    }
+
+    const serviceMap = new Map(services.map((s) => [s.id, s]));
+    const orderedServices = selectedServiceIds.map((id) => serviceMap.get(id));
+
+    const startMin = toMinutes(time);
+    let cursor = startMin;
+    const requestedRanges = orderedServices.map((s) => {
+      const duration = s.duration_minutes || 30;
+      const range = { start: cursor, end: cursor + duration, service: s };
+      cursor += duration;
+      return range;
+    });
+
+    if (requestedRanges[requestedRanges.length - 1].end > 18 * 60 + 30) {
+      return res.status(400).json({ message: 'Selected services exceed salon working hours' });
+    }
+
+    const existingAppointments = await Appointment.findAll({
       where: {
         staff_id,
         date,
-        time,
         status: { [Op.in]: ['pending', 'confirmed'] },
       },
+      attributes: ['time'],
+      include: [{ model: Service, as: 'service', attributes: ['duration_minutes'] }],
     });
-    if (existing) {
-      return res.status(409).json({ message: 'This time slot is already booked' });
+
+    const existingRanges = existingAppointments.map((a) => {
+      const s = toMinutes(a.time);
+      const d = (a.service && a.service.duration_minutes) ? a.service.duration_minutes : 30;
+      return [s, s + d];
+    });
+
+    const hasOverlap = requestedRanges.some(({ start, end }) =>
+      existingRanges.some(([bStart, bEnd]) => start < bEnd && end > bStart));
+    if (hasOverlap) {
+      return res.status(409).json({ message: 'Selected time is not available for all chosen services' });
     }
 
-    const appointment = await Appointment.create({
-      branch_id,
-      service_id,
-      staff_id,
-      customer_name: customer_name.trim(),
-      phone: phone.trim(),
-      date,
-      time,
-      amount: service.price,
-      status: 'pending',
-      notes: notes ? notes.trim() : null,
-    });
-
-    res.status(201).json({ message: 'Booking created successfully', id: appointment.id });
+    const tx = await Appointment.sequelize.transaction();
+    try {
+      const created = [];
+      for (const r of requestedRanges) {
+        const appointment = await Appointment.create({
+          branch_id,
+          service_id: r.service.id,
+          staff_id,
+          customer_name: customer_name.trim(),
+          phone: phone.trim(),
+          date,
+          time: toHHMM(r.start),
+          amount: r.service.price,
+          status: 'pending',
+          notes: notes ? notes.trim() : null,
+        }, { transaction: tx });
+        created.push(appointment);
+      }
+      await tx.commit();
+      res.status(201).json({
+        message: 'Booking created successfully',
+        ids: created.map((a) => a.id),
+        count: created.length,
+      });
+    } catch (e) {
+      await tx.rollback();
+      throw e;
+    }
   } catch (err) {
     console.error('Public booking error:', err);
     res.status(500).json({ message: 'Server error' });

@@ -745,6 +745,39 @@ export default function AppointmentsPage() {
           {isSuperAdmin && <FormGroup label="Branch"><Select value={form.branch_id||''} onChange={e=>setForm(f=>({...f,branch_id:e.target.value,staff_id:''}))}>
             <option value="">Select branch</option>{branches.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}
           </Select></FormGroup>}
+          <div style={{ background:'#F8FAFC', border:'1px solid #E2E8F0', borderRadius:10, padding:'10px 12px' }}>
+            <label style={{ display:'flex', alignItems:'center', gap:10, cursor:'pointer' }}>
+              <input
+                type="checkbox"
+                checked={!!form.is_recurring}
+                onChange={e => setForm(f => ({
+                  ...f,
+                  is_recurring: e.target.checked,
+                  recurrence_frequency: e.target.checked ? (f.recurrence_frequency || 'weekly') : 'weekly',
+                }))}
+                style={{ width:16, height:16, accentColor:'#2563EB' }}
+              />
+              <span style={{ fontSize:14, fontWeight:600, color:'#0F172A' }}>Recurring Appointment</span>
+            </label>
+            {form.is_recurring && (
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginTop:8 }}>
+                <div>
+                  <div style={{ fontSize:12, color:'#64748B', marginBottom:4, fontWeight:600 }}>Repeat</div>
+                  <select
+                    value={form.recurrence_frequency || 'weekly'}
+                    onChange={e => setForm(f => ({ ...f, recurrence_frequency: e.target.value }))}
+                    style={{ width:'100%', padding:'7px 10px', borderRadius:8, border:'1.5px solid #D0D5DD', fontSize:13, fontFamily:'inherit', background:'#fff', color:'#344054' }}
+                  >
+                    <option value="weekly">Weekly</option>
+                    <option value="monthly">Monthly</option>
+                  </select>
+                </div>
+                <div style={{ fontSize:12, color:'#64748B', alignSelf:'end' }}>
+                  Next appointment auto-create වෙන්නේ current appointment එක completed උනාමයි.
+                </div>
+              </div>
+            )}
+          </div>
           <FormGroup label="Services" required>
             <div style={{ border:'1px solid #DCE6F3', borderRadius:12, overflow:'hidden', maxHeight:180, overflowY:'auto' }}>
               {services.filter(s => s.is_active !== false).map((s, idx, arr) => {
@@ -782,39 +815,6 @@ export default function AppointmentsPage() {
               {APPT_STATUSES.filter(s => s !== 'completed').map(s=><option key={s} value={s}>{STATUS_META[s].label}</option>)}
             </Select></FormGroup>
             <FormGroup label="Notes"><Input value={form.notes||''} onChange={e=>setForm(f=>({...f,notes:e.target.value}))} placeholder="Special requests..." /></FormGroup>
-          </div>
-          <div style={{ background:'#F8FAFC', border:'1px solid #E2E8F0', borderRadius:10, padding:'10px 12px' }}>
-            <label style={{ display:'flex', alignItems:'center', gap:10, cursor:'pointer' }}>
-              <input
-                type="checkbox"
-                checked={!!form.is_recurring}
-                onChange={e => setForm(f => ({
-                  ...f,
-                  is_recurring: e.target.checked,
-                  recurrence_frequency: e.target.checked ? (f.recurrence_frequency || 'weekly') : 'weekly',
-                }))}
-                style={{ width:16, height:16, accentColor:'#2563EB' }}
-              />
-              <span style={{ fontSize:14, fontWeight:600, color:'#0F172A' }}>Recurring Appointment</span>
-            </label>
-            {form.is_recurring && (
-              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginTop:8 }}>
-                <div>
-                  <div style={{ fontSize:12, color:'#64748B', marginBottom:4, fontWeight:600 }}>Repeat</div>
-                  <select
-                    value={form.recurrence_frequency || 'weekly'}
-                    onChange={e => setForm(f => ({ ...f, recurrence_frequency: e.target.value }))}
-                    style={{ width:'100%', padding:'7px 10px', borderRadius:8, border:'1.5px solid #D0D5DD', fontSize:13, fontFamily:'inherit', background:'#fff', color:'#344054' }}
-                  >
-                    <option value="weekly">Weekly</option>
-                    <option value="monthly">Monthly</option>
-                  </select>
-                </div>
-                <div style={{ fontSize:12, color:'#64748B', alignSelf:'end' }}>
-                  Next appointment auto-create වෙන්නේ current appointment එක completed උනාමයි.
-                </div>
-              </div>
-            )}
           </div>
         </div>
       </Modal>

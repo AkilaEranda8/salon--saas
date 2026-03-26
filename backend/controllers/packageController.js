@@ -209,7 +209,7 @@ const activePackages = async (req, res) => {
 const purchase = async (req, res) => {
   const t = await sequelize.transaction();
   try {
-    const { Package, CustomerPackage, Customer } = require('../models');
+    const { Package, CustomerPackage, Customer, Payment, PaymentSplit } = require('../models');
     const customerId    = req.body.customerId    || req.body.customer_id;
     const packageId     = req.body.packageId     || req.body.package_id;
     const branchId      = req.body.branchId      || req.body.branch_id;
@@ -228,6 +228,10 @@ const purchase = async (req, res) => {
     }
 
     const effectiveBranchId = branchId || pkg.branch_id || req.userBranchId;
+    if (!effectiveBranchId) {
+      await t.rollback();
+      return res.status(400).json({ message: 'branchId is required for package purchase.' });
+    }
 
     const customer = await Customer.findByPk(customerId, { transaction: t });
     if (!customer) {
@@ -238,6 +242,17 @@ const purchase = async (req, res) => {
     const today      = new Date().toISOString().slice(0, 10);
     const expiryDate = new Date();
     expiryDate.setDate(expiryDate.getDate() + pkg.validity_days);
+
+    const normalizeSplitMethod = (method) => {
+      const value = String(method || '').trim().toLowerCase();
+      if (value === 'cash') return 'Cash';
+      if (value === 'card') return 'Card';
+      if (value === 'online transfer' || value === 'bank transfer') return 'Online Transfer';
+      if (value === 'loyalty points') return 'Loyalty Points';
+      if (value === 'package') return 'Package';
+      return 'Cash';
+    };
+    const splitMethod = normalizeSplitMethod(paymentMethod);
 
     const cp = await CustomerPackage.create({
       customer_id:    customerId,
@@ -252,6 +267,27 @@ const purchase = async (req, res) => {
       amount_paid:    pkg.package_price,
       payment_method: paymentMethod || null,
       notes:          notes || null,
+    }, { transaction: t });
+
+    // Mirror package sale in payments so finance reports include package purchases.
+    const payment = await Payment.create({
+      branch_id:         effectiveBranchId,
+      customer_id:       customerId,
+      service_id:        null,
+      appointment_id:    null,
+      customer_name:     customer.name || null,
+      total_amount:      pkg.package_price,
+      loyalty_discount:  0,
+      points_earned:     0,
+      commission_amount: 0,
+      date:              today,
+      status:            'paid',
+    }, { transaction: t });
+    await PaymentSplit.create({
+      payment_id: payment.id,
+      method: splitMethod,
+      amount: pkg.package_price,
+      customer_package_id: null,
     }, { transaction: t });
 
     await t.commit();
@@ -269,6 +305,133 @@ const purchase = async (req, res) => {
     });
 
     return res.status(201).json(result);
+  } catch (err) {
+    await t.rollback();
+    console.error(err);
+    return res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+const purchaseForAllCustomers = async (req, res) => {
+  const t = await sequelize.transaction();
+  try {
+    const { Package, CustomerPackage, Customer, Payment, PaymentSplit } = require('../models');
+    const packageId = req.body.packageId || req.body.package_id;
+    const branchId = req.body.branchId || req.body.branch_id;
+    const paymentMethod = req.body.paymentMethod || req.body.payment_method;
+    const notes = req.body.notes;
+
+    if (!packageId) {
+      await t.rollback();
+      return res.status(400).json({ message: 'packageId is required.' });
+    }
+
+    const pkg = await Package.findByPk(packageId, { transaction: t });
+    if (!pkg || !pkg.is_active) {
+      await t.rollback();
+      return res.status(404).json({ message: 'Package not found or inactive.' });
+    }
+
+    const effectiveBranchId = branchId || pkg.branch_id || req.userBranchId || null;
+    if (!effectiveBranchId) {
+      await t.rollback();
+      return res.status(400).json({ message: 'branchId is required to activate package for all customers.' });
+    }
+
+    const normalizeSplitMethod = (method) => {
+      const value = String(method || '').trim().toLowerCase();
+      if (value === 'cash') return 'Cash';
+      if (value === 'card') return 'Card';
+      if (value === 'online transfer' || value === 'bank transfer') return 'Online Transfer';
+      if (value === 'loyalty points') return 'Loyalty Points';
+      if (value === 'package') return 'Package';
+      return 'Cash';
+    };
+    const splitMethod = normalizeSplitMethod(paymentMethod);
+
+    const customers = await Customer.findAll({
+      where: { branch_id: effectiveBranchId },
+      attributes: ['id', 'name'],
+      transaction: t,
+    });
+    if (!customers.length) {
+      await t.rollback();
+      return res.status(400).json({ message: 'No customers found in selected branch.' });
+    }
+
+    const customerIds = customers.map((c) => c.id);
+    const today = new Date().toISOString().slice(0, 10);
+    const activeExisting = await CustomerPackage.findAll({
+      where: {
+        customer_id: customerIds,
+        package_id: packageId,
+        status: 'active',
+        expiry_date: { [Op.gte]: today },
+      },
+      attributes: ['customer_id'],
+      transaction: t,
+    });
+    const alreadyActiveCustomerIds = new Set(activeExisting.map((row) => row.customer_id));
+    const targets = customers.filter((c) => !alreadyActiveCustomerIds.has(c.id));
+    if (!targets.length) {
+      await t.rollback();
+      return res.status(200).json({ message: 'Package is already active for all customers in this branch.', totalCustomers: customers.length, activatedCount: 0, skippedCount: customers.length });
+    }
+
+    const expiryDate = new Date();
+    expiryDate.setDate(expiryDate.getDate() + pkg.validity_days);
+    const expiryDateStr = expiryDate.toISOString().slice(0, 10);
+
+    const customerPackages = await CustomerPackage.bulkCreate(
+      targets.map((c) => ({
+        customer_id: c.id,
+        package_id: packageId,
+        branch_id: effectiveBranchId,
+        purchase_date: today,
+        expiry_date: expiryDateStr,
+        sessions_total: pkg.sessions_count ?? null,
+        sessions_used: 0,
+        status: 'active',
+        amount_paid: pkg.package_price,
+        payment_method: paymentMethod || null,
+        notes: notes || null,
+      })),
+      { transaction: t, returning: true }
+    );
+
+    const payments = await Payment.bulkCreate(
+      targets.map((c) => ({
+        branch_id: effectiveBranchId,
+        customer_id: c.id,
+        service_id: null,
+        appointment_id: null,
+        customer_name: c.name || null,
+        total_amount: pkg.package_price,
+        loyalty_discount: 0,
+        points_earned: 0,
+        commission_amount: 0,
+        date: today,
+        status: 'paid',
+      })),
+      { transaction: t, returning: true }
+    );
+    await PaymentSplit.bulkCreate(
+      payments.map((p) => ({
+        payment_id: p.id,
+        method: splitMethod,
+        amount: pkg.package_price,
+        customer_package_id: null,
+      })),
+      { transaction: t }
+    );
+
+    await t.commit();
+    return res.status(201).json({
+      message: 'Package activated for all eligible customers.',
+      totalCustomers: customers.length,
+      activatedCount: customerPackages.length,
+      skippedCount: customers.length - customerPackages.length,
+    });
   } catch (err) {
     await t.rollback();
     console.error(err);
@@ -391,4 +554,4 @@ const listAllCustomerPackages = async (req, res) => {
   }
 };
 
-module.exports = { list, getOne, create, update, remove, customerPackages, activePackages, purchase, redeem, listAllCustomerPackages };
+module.exports = { list, getOne, create, update, remove, customerPackages, activePackages, purchase, purchaseForAllCustomers, redeem, listAllCustomerPackages };

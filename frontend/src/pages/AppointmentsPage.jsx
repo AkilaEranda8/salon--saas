@@ -17,12 +17,25 @@ const IconMoney    = () => <svg width="15" height="15" viewBox="0 0 24 24" fill=
 
 const APPT_STATUSES = ['pending','confirmed','completed','cancelled','no_show'];
 const APPT_EXTRA_SERVICES_PREFIX = 'Additional services:';
+const APPT_PACKAGE_PREFIX = 'Package:';
 const stripAdditionalServicesLine = (notes = '') =>
   String(notes)
     .split('\n')
     .filter((line) => !/^\s*additional\s+services?\s*[:\-]?\s*/i.test(line))
     .join('\n')
     .trim();
+const stripPackageLine = (notes = '') =>
+  String(notes)
+    .split('\n')
+    .filter((line) => !/^\s*package\s*[:\-]?\s*/i.test(line))
+    .join('\n')
+    .trim();
+const parsePackageSelection = (notes = '') => {
+  const line = String(notes).split('\n').find((l) => /^\s*package\s*[:\-]?\s*/i.test(l));
+  if (!line) return { id: null, label: '' };
+  const match = line.match(/#(\d+)/);
+  return { id: match ? Number(match[1]) : null, label: line.replace(/^\s*package\s*[:\-]?\s*/i, '').trim() };
+};
 const parseAdditionalServiceNames = (notes = '') => {
   const line = String(notes).split('\n').find((line) => /^\s*additional\s+services?\s*[:\-]?\s*/i.test(line));
   if (!line) return [];
@@ -100,7 +113,21 @@ const STATUS_META = {
   cancelled: { color:'#DC2626', bg:'#FEF2F2', label:'Cancelled' },
   no_show:   { color:'#64748B', bg:'#F8FAFC', label:'No Show'   },
 };
-const EMPTY = { branch_id:'', customer_id:'', customer_name:'', phone:'', service_id:'', staff_id:'', date:'', time:'', amount:'', notes:'', status:'pending' };
+const EMPTY = {
+  branch_id: '',
+  customer_id: '',
+  customer_name: '',
+  phone: '',
+  service_id: '',
+  staff_id: '',
+  date: '',
+  time: '',
+  amount: '',
+  notes: '',
+  status: 'pending',
+  is_recurring: false,
+  recurrence_frequency: 'weekly',
+};
 const LIMIT = 20;
 
 function StatusBadge({ status }) {
@@ -303,6 +330,9 @@ export default function AppointmentsPage() {
   const [customerSearch, setCustomerSearch] = useState('');
   const [customerLoading, setCustomerLoading] = useState(false);
   const [showCustomerDrop, setShowCustomerDrop] = useState(false);
+  const [customerPackages, setCustomerPackages] = useState([]);
+  const [loadingCustomerPackages, setLoadingCustomerPackages] = useState(false);
+  const [selectedCustomerPackageId, setSelectedCustomerPackageId] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -405,7 +435,7 @@ export default function AppointmentsPage() {
     setPaymentSaving(false);
   };
 
-  const openAdd    = () => { setEditItem(null); setForm({...EMPTY, branch_id:user?.branch_id||'', date:today}); setApptServiceIds([]); setCustomerSearch(''); setShowCustomerDrop(false); setFormErr(''); setShowForm(true); };
+  const openAdd    = () => { setEditItem(null); setForm({...EMPTY, branch_id:user?.branch_id||'', date:today}); setApptServiceIds([]); setCustomerSearch(''); setShowCustomerDrop(false); setFormErr(''); setCustomerPackages([]); setSelectedCustomerPackageId(''); setShowForm(true); };
   const openEdit   = row => {
     const sid = Number(row.service?.id || row.service_id || 0);
     const extraNames = parseAdditionalServiceNames(row.notes || '');
@@ -427,9 +457,21 @@ export default function AppointmentsPage() {
       date: row.date?.slice(0,10) || '',
       amount: totalAmount || row.amount || '',
       notes: stripAdditionalServicesLine(row.notes || ''),
+      is_recurring: Boolean(row.is_recurring),
+      recurrence_frequency: row.recurrence_frequency || 'weekly',
     });
     setApptServiceIds(selectedIds);
     setCustomerSearch(row.customer_name || '');
+    const pkgSel = parsePackageSelection(row.notes || '');
+    setSelectedCustomerPackageId(pkgSel.id ? String(pkgSel.id) : '');
+    setCustomerPackages([]);
+    if (row.customer?.id || row.customer_id) {
+      setLoadingCustomerPackages(true);
+      api.get(`/packages/customer/${row.customer?.id || row.customer_id}/active`)
+        .then((r) => setCustomerPackages(Array.isArray(r.data) ? r.data : []))
+        .catch(() => setCustomerPackages([]))
+        .finally(() => setLoadingCustomerPackages(false));
+    }
     setShowCustomerDrop(false);
     setFormErr('');
     setShowForm(true);
@@ -448,8 +490,15 @@ export default function AppointmentsPage() {
         service_id: primary?.id || form.service_id,
         service_ids: apptServiceIds,
         amount: selectedSvcs.reduce((sum, s) => sum + Number(s.price || 0), 0) || form.amount,
-        notes: [stripAdditionalServicesLine(form.notes || ''), extraNote].filter(Boolean).join('\n'),
+        notes: [
+          stripPackageLine(stripAdditionalServicesLine(form.notes || '')),
+          selectedCustomerPackageId
+            ? `${APPT_PACKAGE_PREFIX} #${selectedCustomerPackageId} - ${customerPackages.find((cp) => String(cp.id) === String(selectedCustomerPackageId))?.package?.name || 'Selected Package'}`
+            : '',
+          extraNote,
+        ].filter(Boolean).join('\n'),
       };
+      if (!payload.is_recurring) payload.recurrence_frequency = null;
       editItem ? await api.put(`/appointments/${editItem.id}`, payload) : await api.post('/appointments', payload);
       setShowForm(false); load();
     } catch (e) { setFormErr(e.response?.data?.message||'Save failed'); }
@@ -485,6 +534,25 @@ export default function AppointmentsPage() {
     setForm(f => ({ ...f, customer_id: c.id, customer_name: c.name || '', phone: c.phone || f.phone }));
     setCustomerSearch(c.name || '');
     setShowCustomerDrop(false);
+    setSelectedCustomerPackageId('');
+    setLoadingCustomerPackages(true);
+    api.get(`/packages/customer/${c.id}/active`)
+      .then((r) => setCustomerPackages(Array.isArray(r.data) ? r.data : []))
+      .catch(() => setCustomerPackages([]))
+      .finally(() => setLoadingCustomerPackages(false));
+  };
+  const applySelectedPackage = (customerPackageId) => {
+    setSelectedCustomerPackageId(customerPackageId);
+    const cp = customerPackages.find((p) => String(p.id) === String(customerPackageId));
+    if (!cp) return;
+    const pkgServiceIds = (cp.package?.services || []).map(Number).filter(Boolean);
+    if (!pkgServiceIds.length) return;
+    const availableSvcIds = services.filter((s) => s.is_active !== false).map((s) => Number(s.id));
+    const nextIds = pkgServiceIds.filter((id) => availableSvcIds.includes(id));
+    if (!nextIds.length) return;
+    const total = calcServiceTotal(nextIds);
+    setApptServiceIds(nextIds);
+    setForm((f) => ({ ...f, service_id: nextIds[0] || '', amount: total || f.amount }));
   };
 
   const filteredStaff = form.branch_id ? staffList.filter(s => s.branch_id==form.branch_id) : staffList;
@@ -626,7 +694,7 @@ export default function AppointmentsPage() {
                     {form.phone && <div style={{ fontSize:12, color:'#64748B' }}>{form.phone}</div>}
                   </div>
                 </div>
-                <button type="button" onClick={() => { setForm(f=>({...f, customer_id:'', customer_name:'', phone:''})); setCustomerSearch(''); setShowCustomerDrop(true); }} style={{ border:'none', background:'none', color:'#94A3B8', cursor:'pointer', fontSize:18, lineHeight:1 }}>×</button>
+                <button type="button" onClick={() => { setForm(f=>({...f, customer_id:'', customer_name:'', phone:''})); setCustomerSearch(''); setShowCustomerDrop(true); setCustomerPackages([]); setSelectedCustomerPackageId(''); }} style={{ border:'none', background:'none', color:'#94A3B8', cursor:'pointer', fontSize:18, lineHeight:1 }}>×</button>
               </div>
             ) : (
               <div style={{ position:'relative' }}>
@@ -636,6 +704,8 @@ export default function AppointmentsPage() {
                     const v = e.target.value;
                     setCustomerSearch(v);
                     setForm(f=>({...f, customer_id:'', customer_name:v}));
+                    setCustomerPackages([]);
+                    setSelectedCustomerPackageId('');
                     setShowCustomerDrop(true);
                   }}
                   onFocus={() => setShowCustomerDrop(true)}
@@ -662,6 +732,16 @@ export default function AppointmentsPage() {
             )}
           </FormGroup>
           <FormGroup label="Phone"><Input value={form.phone||''} onChange={e=>setForm(f=>({...f,phone:e.target.value}))} placeholder="0300-0000000" /></FormGroup>
+          <FormGroup label="Customer Package (Optional)">
+            <Select value={selectedCustomerPackageId} onChange={e => applySelectedPackage(e.target.value)} disabled={!form.customer_id || loadingCustomerPackages}>
+              <option value="">{!form.customer_id ? 'Select customer first' : loadingCustomerPackages ? 'Loading packages...' : 'No package / normal appointment'}</option>
+              {customerPackages.map(cp => (
+                <option key={cp.id} value={cp.id}>
+                  {cp.package?.name || 'Package'} - {(cp.sessions_remaining ?? ((cp.sessions_total || 0) - (cp.sessions_used || 0)))} left
+                </option>
+              ))}
+            </Select>
+          </FormGroup>
           {isSuperAdmin && <FormGroup label="Branch"><Select value={form.branch_id||''} onChange={e=>setForm(f=>({...f,branch_id:e.target.value,staff_id:''}))}>
             <option value="">Select branch</option>{branches.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}
           </Select></FormGroup>}
@@ -702,6 +782,39 @@ export default function AppointmentsPage() {
               {APPT_STATUSES.filter(s => s !== 'completed').map(s=><option key={s} value={s}>{STATUS_META[s].label}</option>)}
             </Select></FormGroup>
             <FormGroup label="Notes"><Input value={form.notes||''} onChange={e=>setForm(f=>({...f,notes:e.target.value}))} placeholder="Special requests..." /></FormGroup>
+          </div>
+          <div style={{ background:'#F8FAFC', border:'1px solid #E2E8F0', borderRadius:10, padding:'10px 12px' }}>
+            <label style={{ display:'flex', alignItems:'center', gap:10, cursor:'pointer' }}>
+              <input
+                type="checkbox"
+                checked={!!form.is_recurring}
+                onChange={e => setForm(f => ({
+                  ...f,
+                  is_recurring: e.target.checked,
+                  recurrence_frequency: e.target.checked ? (f.recurrence_frequency || 'weekly') : 'weekly',
+                }))}
+                style={{ width:16, height:16, accentColor:'#2563EB' }}
+              />
+              <span style={{ fontSize:14, fontWeight:600, color:'#0F172A' }}>Recurring Appointment</span>
+            </label>
+            {form.is_recurring && (
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginTop:8 }}>
+                <div>
+                  <div style={{ fontSize:12, color:'#64748B', marginBottom:4, fontWeight:600 }}>Repeat</div>
+                  <select
+                    value={form.recurrence_frequency || 'weekly'}
+                    onChange={e => setForm(f => ({ ...f, recurrence_frequency: e.target.value }))}
+                    style={{ width:'100%', padding:'7px 10px', borderRadius:8, border:'1.5px solid #D0D5DD', fontSize:13, fontFamily:'inherit', background:'#fff', color:'#344054' }}
+                  >
+                    <option value="weekly">Weekly</option>
+                    <option value="monthly">Monthly</option>
+                  </select>
+                </div>
+                <div style={{ fontSize:12, color:'#64748B', alignSelf:'end' }}>
+                  Next appointment auto-create වෙන්නේ current appointment එක completed උනාමයි.
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </Modal>

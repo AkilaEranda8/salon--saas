@@ -12,6 +12,7 @@ router.get('/customer-packages',           ctrl.listAllCustomerPackages);
 router.get('/customer/:customerId',        ctrl.customerPackages);
 router.get('/customer/:customerId/active', ctrl.activePackages);
 router.post('/purchase', ctrl.purchase);
+router.post('/purchase-all', requireRole('superadmin', 'admin', 'manager'), ctrl.purchaseForAllCustomers);
 router.post('/redeem',   ctrl.redeem);
 
 // Package templates (admin+ for CUD, all roles can list)

@@ -472,6 +472,7 @@ async function notifyPaymentReceipt(payment, branch, service, customer) {
   const total        = `Rs. ${parseFloat(payment.total_amount || 0).toFixed(2)}`;
   const discount     = parseFloat(payment.loyalty_discount || 0);
   const pointsEarned = payment.points_earned || 0;
+  const pointsTotal  = Number(customer?.loyalty_points || 0);
   const date         = payment.date || new Date().toISOString().slice(0, 10);
   const splits       = payment.splits || [];
   const meta         = {
@@ -504,7 +505,10 @@ async function notifyPaymentReceipt(payment, branch, service, customer) {
       </table>
       ${pointsEarned > 0 ? `
       <div style="margin:24px 0;padding:16px 20px;background:#f0fdf4;border-left:4px solid #22c55e;border-radius:4px;">
-        <p style="margin:0;font-size:14px;color:#166534;">🌟 You earned <strong>${pointsEarned} loyalty points</strong> on this visit!</p>
+        <p style="margin:0;font-size:14px;color:#166534;">
+          🌟 You earned <strong>${pointsEarned} loyalty points</strong> on this visit!
+          ${pointsTotal > 0 ? `<br/>🎯 Total Loyalty Points: <strong>${pointsTotal}</strong>` : ''}
+        </p>
       </div>` : ''}
       <p style="margin:0;font-size:15px;color:#475569;">Thank you for visiting <strong>Zane Salon</strong>! 💜</p>`;
     await sendEmail({
@@ -522,6 +526,7 @@ async function notifyPaymentReceipt(payment, branch, service, customer) {
       `💇 Service: ${svcName}\n🏠 Branch: ${brName}\n📅 Date: ${date}\n💰 Total Paid: ${total}\n`;
     if (discount > 0)     msg += `🎁 Loyalty Discount: Rs. ${discount.toFixed(2)}\n`;
     if (pointsEarned > 0) msg += `\n🌟 You earned *${pointsEarned} loyalty points*!`;
+    if (pointsTotal > 0)  msg += `\n🎯 Total Loyalty Points: *${pointsTotal}*`;
     msg += `\n\nThank you for choosing Zane Salon! 💜`;
     await sendWhatsApp({ to: phone, message: msg, meta });
   }
@@ -533,6 +538,7 @@ async function notifyPaymentReceipt(payment, branch, service, customer) {
       `Service: ${svcName} | ${date}`;
     if (discount > 0)     msg += `\nDiscount: Rs. ${discount.toFixed(2)}`;
     if (pointsEarned > 0) msg += `\nEarned: +${pointsEarned} pts`;
+    if (pointsTotal > 0)  msg += `\nTotal Points: ${pointsTotal} pts`;
     msg += `\nThank you!`;
     await sendSMS({ to: phone, message: msg, meta });
   }
@@ -559,15 +565,6 @@ async function notifyLoyaltyPoints(customer, pointsEarned, totalPoints, branch) 
     `💡 Tip: Every 10 pts = Rs. 1 discount on your next visit!\n\nKeep visiting Zane Salon to unlock more rewards. 🛍️`;
 
   await sendWhatsApp({ to: phone, message: msg, meta });
-
-  if (flags.loyalty_points_sms) {
-    const smsMsg =
-      `Zane Salon - Loyalty Update\n` +
-      `Hi ${name}! You earned +${pointsEarned} pts at ${brName}.\n` +
-      `Balance: ${totalPoints} pts (${tier.name.replace(/[^\w\s]/g, '').trim()})\n` +
-      `10 pts = Rs. 1 discount on next visit!`;
-    await sendSMS({ to: phone, message: smsMsg, meta });
-  }
 }
 
 // ── 4. Review Request ─────────────────────────────────────────────────────────

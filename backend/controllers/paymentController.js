@@ -383,8 +383,10 @@ const summary = async (req, res) => {
         [fn('SUM', col('commission_amount')), 'commission'],
         [fn('COUNT', col('id')),            'count'],
       ],
-      group: ['Payment.branch_id', 'branch.id', 'branch.name', 'branch.color'],
-      include: [{ model: Branch, as: 'branch', attributes: ['id', 'name', 'color'] }],
+      // Keep summary resilient across environments where optional branch fields
+      // (like color) may not exist yet in DB schema.
+      group: ['Payment.branch_id', 'branch.id', 'branch.name'],
+      include: [{ model: Branch, as: 'branch', attributes: ['id', 'name'] }],
     });
 
     return res.json(totals);

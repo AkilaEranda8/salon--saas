@@ -7,6 +7,10 @@ const Service = require('../models/Service');
 const Staff = require('../models/Staff');
 const Appointment = require('../models/Appointment');
 const Customer = require('../models/Customer');
+const Package = require('../models/Package');
+const CustomerPackage = require('../models/CustomerPackage');
+const Payment = require('../models/Payment');
+const PaymentSplit = require('../models/PaymentSplit');
 const { sendSMS } = require('../services/notificationService');
 
 // ── GET /api/public/branches — active branches only ──────────────────────────
@@ -298,6 +302,143 @@ router.post('/customer-portal/rebook', portalAuth, async (req, res) => {
   } catch (err) {
     console.error('portal.rebook error:', err);
     return res.status(500).json({ message: 'Failed to rebook appointment.' });
+  }
+});
+
+router.get('/customer-portal/packages', portalAuth, async (req, res) => {
+  try {
+    const variants = buildPhoneVariants(req.portalPhone);
+    const latestAppt = await Appointment.findOne({
+      where: { phone: { [Op.or]: variants } },
+      attributes: ['branch_id'],
+      order: [['createdAt', 'DESC']],
+    });
+    const preferredBranch = latestAppt?.branch_id || null;
+    const where = {
+      is_active: true,
+      type: req.query.type === 'membership' ? 'membership' : 'bundle',
+      [Op.or]: [{ branch_id: null }],
+    };
+    if (preferredBranch) where[Op.or].push({ branch_id: preferredBranch });
+
+    const rows = await Package.findAll({
+      where,
+      order: [['package_price', 'ASC']],
+    });
+    return res.json(rows);
+  } catch (err) {
+    console.error('portal.packages error:', err);
+    return res.status(500).json({ message: 'Failed to load packages.' });
+  }
+});
+
+router.post('/customer-portal/purchase', portalAuth, async (req, res) => {
+  const t = await Appointment.sequelize.transaction();
+  try {
+    const { packageId, paymentMethod } = req.body || {};
+    if (!packageId) {
+      await t.rollback();
+      return res.status(400).json({ message: 'packageId is required.' });
+    }
+
+    const variants = buildPhoneVariants(req.portalPhone);
+    let customer = await Customer.findOne({
+      where: { phone: { [Op.or]: variants } },
+      transaction: t,
+    });
+    const latestAppt = await Appointment.findOne({
+      where: { phone: { [Op.or]: variants } },
+      attributes: ['customer_name', 'branch_id', 'phone'],
+      order: [['createdAt', 'DESC']],
+      transaction: t,
+    });
+
+    if (!customer && !latestAppt) {
+      await t.rollback();
+      return res.status(404).json({ message: 'Customer profile not found for this phone.' });
+    }
+
+    if (!customer) {
+      customer = await Customer.create({
+        name: latestAppt.customer_name || 'Portal Customer',
+        phone: latestAppt.phone || req.portalPhone,
+        branch_id: latestAppt.branch_id || null,
+      }, { transaction: t });
+    }
+
+    const pkg = await Package.findByPk(packageId, { transaction: t });
+    if (!pkg || !pkg.is_active) {
+      await t.rollback();
+      return res.status(404).json({ message: 'Package not found or inactive.' });
+    }
+
+    const effectiveBranchId = pkg.branch_id || customer.branch_id || latestAppt?.branch_id || null;
+    if (!effectiveBranchId) {
+      await t.rollback();
+      return res.status(400).json({ message: 'Could not determine branch for purchase.' });
+    }
+
+    if (pkg.type === 'membership') {
+      const today = new Date().toISOString().slice(0, 10);
+      const existingActive = await CustomerPackage.findOne({
+        where: {
+          customer_id: customer.id,
+          package_id: pkg.id,
+          status: 'active',
+          expiry_date: { [Op.gte]: today },
+        },
+        transaction: t,
+      });
+      if (existingActive) {
+        await t.rollback();
+        return res.status(409).json({ message: 'This membership is already active.' });
+      }
+    }
+
+    const today = new Date().toISOString().slice(0, 10);
+    const expiryDate = new Date();
+    expiryDate.setDate(expiryDate.getDate() + Number(pkg.validity_days || 0));
+    const cp = await CustomerPackage.create({
+      customer_id: customer.id,
+      package_id: pkg.id,
+      branch_id: effectiveBranchId,
+      purchase_date: today,
+      expiry_date: expiryDate.toISOString().slice(0, 10),
+      sessions_total: pkg.sessions_count ?? null,
+      sessions_used: 0,
+      status: 'active',
+      amount_paid: pkg.package_price,
+      payment_method: paymentMethod || 'Cash',
+      notes: 'Purchased from customer portal',
+    }, { transaction: t });
+
+    const payment = await Payment.create({
+      branch_id: effectiveBranchId,
+      customer_id: customer.id,
+      service_id: null,
+      appointment_id: null,
+      customer_name: customer.name,
+      total_amount: pkg.package_price,
+      loyalty_discount: 0,
+      points_earned: 0,
+      commission_amount: 0,
+      date: today,
+      status: 'paid',
+    }, { transaction: t });
+
+    await PaymentSplit.create({
+      payment_id: payment.id,
+      method: paymentMethod || 'Cash',
+      amount: pkg.package_price,
+      customer_package_id: cp.id,
+    }, { transaction: t });
+
+    await t.commit();
+    return res.status(201).json({ message: `${pkg.type === 'membership' ? 'Membership' : 'Package'} purchased successfully.` });
+  } catch (err) {
+    await t.rollback();
+    console.error('portal.purchase error:', err);
+    return res.status(500).json({ message: 'Failed to complete purchase.' });
   }
 });
 

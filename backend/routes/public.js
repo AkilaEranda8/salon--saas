@@ -5,6 +5,7 @@ const Branch = require('../models/Branch');
 const Service = require('../models/Service');
 const Staff = require('../models/Staff');
 const Appointment = require('../models/Appointment');
+const { sendSMS } = require('../services/notificationService');
 
 // ── GET /api/public/branches — active branches only ──────────────────────────
 router.get('/branches', async (req, res) => {
@@ -210,10 +211,40 @@ router.post('/bookings', async (req, res) => {
         created.push(appointment);
       }
       await tx.commit();
+
       res.status(201).json({
         message: 'Booking created successfully',
         ids: created.map((a) => a.id),
         count: created.length,
+      });
+
+      // Send SMS in background so web booking response is immediate.
+      setImmediate(async () => {
+        try {
+          const branch = await Branch.findByPk(branch_id, { attributes: ['id', 'name'] });
+          const firstTime = created[0] ? created[0].time : time;
+          const endTime = toHHMM(requestedRanges[requestedRanges.length - 1].end);
+          const totalAmount = orderedServices.reduce((sum, s) => sum + (parseFloat(s.price) || 0), 0);
+          const summaryMsg =
+            `Zane Salon - Booking Received\n` +
+            `Hi ${customer_name.trim()}, your booking is pending confirmation.\n` +
+            `Date: ${date} ${firstTime}-${endTime}\n` +
+            `Services: ${orderedServices.length} item(s)\n` +
+            `Branch: ${branch?.name || 'Zane Salon'}\n` +
+            `Total: Rs. ${totalAmount.toFixed(2)}`;
+
+          await sendSMS({
+            to: phone.trim(),
+            message: summaryMsg,
+            meta: {
+              customer_name: customer_name.trim(),
+              event_type: 'appointment_confirmed',
+              branch_id: branch_id || null,
+            },
+          });
+        } catch (smsErr) {
+          console.error('Public booking SMS error:', smsErr.message || smsErr);
+        }
       });
     } catch (e) {
       await tx.rollback();

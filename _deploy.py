@@ -10,8 +10,19 @@ passwords = [
 ]
 
 deploy_cmd = (
-    "cd /root/zane_salon && "
-    "git pull origin master && "
+    # Rename old dir if it exists, clone fresh if neither exists
+    "if [ -d /root/zane_salon ] && [ ! -d /root/xanesalon ]; then "
+    "  mv /root/zane_salon /root/xanesalon && echo '>>> Renamed zane_salon -> xanesalon'; "
+    "fi && "
+    "if [ ! -d /root/xanesalon ]; then "
+    "  git clone https://github.com/AkilaEranda8/zane_saloon_.git /root/xanesalon && echo '>>> Cloned fresh'; "
+    "fi && "
+    # Kill any container using port 5001, then bring everything down cleanly
+    "docker ps -q | xargs -r docker stop 2>/dev/null || true && "
+    "docker ps -aq | xargs -r docker rm 2>/dev/null || true && "
+    "cd /root/xanesalon && "
+    "git fetch origin master && "
+    "git reset --hard origin/master && "
     "docker compose up -d --build && "
     "docker compose restart proxy && "
     "echo '=== DEPLOY DONE ==='"

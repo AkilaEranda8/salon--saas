@@ -2,6 +2,33 @@ const { Op } = require('sequelize');
 const { Customer, Branch, Appointment, Service } = require('../models');
 const { notifyCustomerRegistered } = require('../services/notificationService');
 
+const handleCustomerWriteError = (err, res) => {
+  if (!err) return false;
+
+  if (err.name === 'SequelizeValidationError') {
+    const message = err.errors?.[0]?.message || 'Validation failed.';
+    res.status(400).json({ message });
+    return true;
+  }
+
+  if (err.name === 'SequelizeUniqueConstraintError') {
+    const conflictField = err.errors?.[0]?.path;
+    if (conflictField === 'phone') {
+      res.status(409).json({ message: 'A customer with this phone already exists for this branch.' });
+      return true;
+    }
+    res.status(409).json({ message: 'Customer already exists.' });
+    return true;
+  }
+
+  if (err.name === 'SequelizeForeignKeyConstraintError') {
+    res.status(400).json({ message: 'Invalid branch selected.' });
+    return true;
+  }
+
+  return false;
+};
+
 const getBranchWhere = (req) => {
   const where = {};
   if (req.userBranchId)    where.branch_id = req.userBranchId;
@@ -73,6 +100,7 @@ const create = async (req, res) => {
 
     return res.status(201).json(cust);
   } catch (err) {
+    if (handleCustomerWriteError(err, res)) return;
     return res.status(500).json({ message: 'Server error.' });
   }
 };
@@ -90,6 +118,7 @@ const update = async (req, res) => {
     await cust.update(updates);
     return res.json(cust);
   } catch (err) {
+    if (handleCustomerWriteError(err, res)) return;
     return res.status(500).json({ message: 'Server error.' });
   }
 };

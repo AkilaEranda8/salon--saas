@@ -1,9 +1,14 @@
 const { Op } = require('sequelize');
-const { Appointment, Branch, Customer, Staff, Service } = require('../models');
+const { Appointment, AppointmentService, Branch, Customer, Staff, Service } = require('../models');
 const { notifyAppointmentConfirmed } = require('../services/notificationService');
 const { createNextRecurring } = require('../services/recurringService');
 
-const normalizeStatusForDb = (status) => (status === 'in_service' ? 'confirmed' : status);
+const normalizeStatusForDb = (status) => {
+  if (status === 'in_service') return 'confirmed';
+  if (status === 'no_show') return 'cancelled';
+  return status;
+};
+const APPT_EXTRA_SERVICES_PREFIX = 'Additional services:';
 
 const getBranchWhere = (req) => {
   const where = {};
@@ -13,6 +18,104 @@ const getBranchWhere = (req) => {
     where.branch_id = req.query.branchId;
   }
   return where;
+};
+
+const parseAdditionalServiceNames = (notes = '') => {
+  const line = String(notes).split('\n').find((l) => /^\s*additional\s+services?\s*[:\-]?\s*/i.test(l));
+  if (!line) return [];
+  return line
+    .replace(/^\s*additional\s+services?\s*[:\-]?\s*/i, '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+};
+const getSelectedServiceIdsForAppointment = async (apptLike) => {
+  const appointmentId = Number(apptLike?.id || 0);
+  if (appointmentId) {
+    const rows = await AppointmentService.findAll({
+      where: { appointment_id: appointmentId },
+      attributes: ['service_id', 'sort_order'],
+      order: [['sort_order', 'ASC'], ['id', 'ASC']],
+    });
+    if (rows.length) {
+      return rows
+        .map((r) => Number(r.service_id))
+        .filter((id) => Number.isInteger(id) && id > 0);
+    }
+  }
+  const primaryId = Number(apptLike?.service_id || 0);
+  const extraNames = parseAdditionalServiceNames(apptLike?.notes || '');
+  if (!extraNames.length) return primaryId ? [primaryId] : [];
+  const extras = await Service.findAll({
+    where: { name: { [Op.in]: extraNames } },
+    attributes: ['id'],
+  });
+  const extraIds = extras.map((s) => Number(s.id)).filter(Boolean);
+  return Array.from(new Set([...(primaryId ? [primaryId] : []), ...extraIds]));
+};
+const syncAppointmentServices = async (appointmentId, serviceIds, transaction = null) => {
+  const normalized = normalizeServiceIds(serviceIds);
+  await AppointmentService.destroy({ where: { appointment_id: appointmentId }, transaction });
+  if (!normalized.length) return;
+  await AppointmentService.bulkCreate(
+    normalized.map((serviceId, idx) => ({
+      appointment_id: appointmentId,
+      service_id: serviceId,
+      sort_order: idx,
+    })),
+    { transaction },
+  );
+};
+
+const stripAdditionalServicesLine = (notes = '') =>
+  String(notes)
+    .split('\n')
+    .filter((line) => !/^\s*additional\s+services?\s*[:\-]?\s*/i.test(line))
+    .join('\n')
+    .trim();
+
+const normalizeServiceIds = (serviceIds = []) => {
+  if (!Array.isArray(serviceIds)) return [];
+  return Array.from(new Set(
+    serviceIds
+      .map((id) => Number(id))
+      .filter((id) => Number.isInteger(id) && id > 0),
+  ));
+};
+
+const buildNotificationPayload = async (apptLike) => {
+  const primaryService = apptLike.service_id
+    ? await Service.findByPk(apptLike.service_id, { attributes: ['id', 'name', 'price'] })
+    : null;
+  const extraServiceNames = parseAdditionalServiceNames(apptLike.notes || '');
+  const extraServices = extraServiceNames.length
+    ? await Service.findAll({
+      where: { name: { [Op.in]: extraServiceNames } },
+      attributes: ['id', 'name', 'price'],
+    })
+    : [];
+
+  const seen = new Set();
+  const allServices = [];
+  if (primaryService) {
+    allServices.push(primaryService);
+    seen.add(primaryService.id);
+  }
+  for (const svc of extraServices) {
+    if (!seen.has(svc.id)) {
+      allServices.push(svc);
+      seen.add(svc.id);
+    }
+  }
+
+  const computedAmount = allServices.reduce((sum, svc) => sum + Number(svc.price || 0), 0);
+  const serviceNameForMsg = allServices.map((svc) => svc.name).filter(Boolean).join(', ') || '—';
+  const amountForMsg = Number(apptLike.amount || 0) > 0 ? apptLike.amount : computedAmount;
+
+  return {
+    appointmentForNotify: { ...apptLike, amount: amountForMsg },
+    serviceForNotify: { id: primaryService?.id || null, name: serviceNameForMsg },
+  };
 };
 
 const list = async (req, res) => {
@@ -39,7 +142,15 @@ const list = async (req, res) => {
       ],
     });
 
-    return res.json({ total: count, page, limit, data: rows });
+    const dataWithServiceIds = await Promise.all(
+      rows.map(async (row) => {
+        const plain = row.get({ plain: true });
+        plain.service_ids = await getSelectedServiceIdsForAppointment(plain);
+        return plain;
+      }),
+    );
+
+    return res.json({ total: count, page, limit, data: dataWithServiceIds });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ message: 'Server error.' });
@@ -96,7 +207,9 @@ const getOne = async (req, res) => {
       ],
     });
     if (!appt) return res.status(404).json({ message: 'Appointment not found.' });
-    return res.json(appt);
+    const plain = appt.get({ plain: true });
+    plain.service_ids = await getSelectedServiceIdsForAppointment(plain);
+    return res.json(plain);
   } catch (err) {
     return res.status(500).json({ message: 'Server error.' });
   }
@@ -104,32 +217,71 @@ const getOne = async (req, res) => {
 
 const create = async (req, res) => {
   try {
-    const { branch_id, customer_id, staff_id, service_id, customer_name, phone, date, time, amount, notes, is_recurring, recurrence_frequency } = req.body;
+    const {
+      branch_id, customer_id, staff_id, service_id, service_ids, customer_name, phone,
+      date, time, amount, notes, is_recurring, recurrence_frequency,
+    } = req.body;
 
-    if (!branch_id || !service_id || !customer_name || !date || !time) {
+    const normalizedServiceIds = normalizeServiceIds(service_ids);
+    const effectiveServiceId = Number(service_id) || normalizedServiceIds[0];
+
+    if (!branch_id || !effectiveServiceId || !customer_name || !date || !time) {
       return res.status(400).json({ message: 'branch_id, service_id, customer_name, date and time are required.' });
     }
 
+    // Build service selection in order: primary first, then extras.
+    const selectedServiceIds = normalizedServiceIds.length
+      ? [effectiveServiceId, ...normalizedServiceIds.filter((id) => id !== effectiveServiceId)]
+      : [effectiveServiceId];
+    const selectedServices = await Service.findAll({
+      where: { id: { [Op.in]: selectedServiceIds } },
+      attributes: ['id', 'name', 'price'],
+    });
+    const serviceById = new Map(selectedServices.map((s) => [Number(s.id), s]));
+
     // Auto-fetch service price if amount not provided
     let finalAmount = amount;
-    if (!finalAmount && service_id) {
-      const svc = await Service.findByPk(service_id, { attributes: ['price'] });
-      if (svc) finalAmount = svc.price;
+    if (finalAmount === undefined || finalAmount === null || finalAmount === '') {
+      const computed = selectedServiceIds.reduce((sum, id) => sum + Number(serviceById.get(id)?.price || 0), 0);
+      if (computed > 0) finalAmount = computed;
     }
 
+    const baseNote = stripAdditionalServicesLine(notes || '');
+    const extraNames = selectedServiceIds
+      .slice(1)
+      .map((id) => serviceById.get(id)?.name)
+      .filter(Boolean);
+    const fullNotes = [baseNote, extraNames.length ? `${APPT_EXTRA_SERVICES_PREFIX} ${extraNames.join(', ')}` : '']
+      .filter(Boolean)
+      .join('\n');
+
     const appt = await Appointment.create({
-      branch_id, customer_id, staff_id, service_id, customer_name, phone, date, time, amount: finalAmount, notes,
+      branch_id,
+      customer_id,
+      staff_id,
+      service_id: effectiveServiceId,
+      customer_name,
+      phone,
+      date,
+      time,
+      amount: finalAmount,
+      notes: fullNotes || null,
       is_recurring: is_recurring || false,
       recurrence_frequency: is_recurring ? (recurrence_frequency || 'weekly') : null,
     });
+    await syncAppointmentServices(appt.id, selectedServiceIds);
 
-    // Fire-and-forget notification (only if phone provided)
+    // Send notification using all selected services captured in notes.
     if (phone) {
-      const [branch, service] = await Promise.all([
-        Branch.findByPk(branch_id,   { attributes: ['id', 'name', 'phone'] }),
-        Service.findByPk(service_id, { attributes: ['id', 'name'] }),
+      const [branch, notifyPayload] = await Promise.all([
+        Branch.findByPk(branch_id, { attributes: ['id', 'name', 'phone'] }),
+        buildNotificationPayload(appt.get({ plain: true })),
       ]);
-      notifyAppointmentConfirmed(appt, branch, service);
+      await notifyAppointmentConfirmed(
+        notifyPayload.appointmentForNotify,
+        branch,
+        notifyPayload.serviceForNotify,
+      );
     }
 
     return res.status(201).json(appt);
@@ -155,6 +307,31 @@ const update = async (req, res) => {
     }
     if (updates.status) updates.status = normalizeStatusForDb(updates.status);
 
+    const normalizedServiceIds = normalizeServiceIds(req.body.service_ids);
+    if (normalizedServiceIds.length) {
+      const primary = Number(updates.service_id || appt.service_id || normalizedServiceIds[0]);
+      updates.service_id = primary;
+      const selectedServiceIds = [primary, ...normalizedServiceIds.filter((id) => id !== primary)];
+      const selectedServices = await Service.findAll({
+        where: { id: { [Op.in]: selectedServiceIds } },
+        attributes: ['id', 'name', 'price'],
+      });
+      const serviceById = new Map(selectedServices.map((s) => [Number(s.id), s]));
+      if (req.body.amount === undefined || req.body.amount === null || req.body.amount === '') {
+        updates.amount = selectedServiceIds.reduce((sum, id) => sum + Number(serviceById.get(id)?.price || 0), 0);
+      }
+      const baseNote = stripAdditionalServicesLine(
+        updates.notes !== undefined ? (updates.notes || '') : (appt.notes || ''),
+      );
+      const extraNames = selectedServiceIds
+        .slice(1)
+        .map((id) => serviceById.get(id)?.name)
+        .filter(Boolean);
+      updates.notes = [baseNote, extraNames.length ? `${APPT_EXTRA_SERVICES_PREFIX} ${extraNames.join(', ')}` : '']
+        .filter(Boolean)
+        .join('\n');
+    }
+
     // Auto-update amount from service price only when amount is not explicitly provided.
     // This is important for multi-service appointments where the frontend sends a total amount.
     if (updates.service_id && (updates.amount === undefined || updates.amount === null || updates.amount === '')) {
@@ -163,6 +340,11 @@ const update = async (req, res) => {
     }
 
     await appt.update(updates);
+    if (normalizedServiceIds.length) {
+      const finalPrimary = Number(updates.service_id || appt.service_id || normalizedServiceIds[0]);
+      const finalServiceIds = [finalPrimary, ...normalizedServiceIds.filter((id) => id !== finalPrimary)];
+      await syncAppointmentServices(appt.id, finalServiceIds);
+    }
     return res.json(appt);
   } catch (err) {
     return res.status(500).json({ message: 'Server error.' });
@@ -172,7 +354,7 @@ const update = async (req, res) => {
 const changeStatus = async (req, res) => {
   try {
     const { status } = req.body;
-    const allowed = ['pending', 'confirmed', 'in_service', 'completed', 'cancelled'];
+    const allowed = ['pending', 'confirmed', 'in_service', 'completed', 'cancelled', 'no_show'];
     if (!allowed.includes(status)) {
       return res.status(400).json({ message: `Status must be one of: ${allowed.join(', ')}.` });
     }
@@ -190,11 +372,15 @@ const changeStatus = async (req, res) => {
 
     // Send confirmation notification when status changes to 'confirmed'
     if (dbStatus === 'confirmed' && appt.phone) {
-      const [branch, service] = await Promise.all([
-        Branch.findByPk(appt.branch_id,   { attributes: ['id', 'name', 'phone'] }),
-        Service.findByPk(appt.service_id, { attributes: ['id', 'name'] }),
+      const [branch, notifyPayload] = await Promise.all([
+        Branch.findByPk(appt.branch_id, { attributes: ['id', 'name', 'phone'] }),
+        buildNotificationPayload(appt.get({ plain: true })),
       ]);
-      notifyAppointmentConfirmed(appt, branch, service);
+      await notifyAppointmentConfirmed(
+        notifyPayload.appointmentForNotify,
+        branch,
+        notifyPayload.serviceForNotify,
+      );
     }
 
     // Auto-create next recurring appointment when completed
@@ -218,6 +404,7 @@ const remove = async (req, res) => {
       return res.status(403).json({ message: 'Access denied. Appointment belongs to a different branch.' });
     }
 
+    await AppointmentService.destroy({ where: { appointment_id: appt.id } });
     await appt.destroy();
     return res.json({ message: 'Appointment deleted.' });
   } catch (err) {

@@ -20,13 +20,78 @@ const APPT_EXTRA_SERVICES_PREFIX = 'Additional services:';
 const stripAdditionalServicesLine = (notes = '') =>
   String(notes)
     .split('\n')
-    .filter(line => !line.trim().startsWith(APPT_EXTRA_SERVICES_PREFIX))
+    .filter((line) => !/^\s*additional\s+services?\s*[:\-]?\s*/i.test(line))
     .join('\n')
     .trim();
 const parseAdditionalServiceNames = (notes = '') => {
-  const line = String(notes).split('\n').find(line => line.trim().startsWith(APPT_EXTRA_SERVICES_PREFIX));
+  const line = String(notes).split('\n').find((line) => /^\s*additional\s+services?\s*[:\-]?\s*/i.test(line));
   if (!line) return [];
-  return line.replace(APPT_EXTRA_SERVICES_PREFIX, '').split(',').map(s => s.trim()).filter(Boolean);
+  const raw = line.replace(/^\s*additional\s+services?\s*[:\-]?\s*/i, '');
+  return raw.split(',').map(s => s.trim()).filter(Boolean);
+};
+const normalizeServiceName = (name = '') =>
+  String(name)
+    .toLowerCase()
+    .replace(/rs\.?\s*[\d,]+/gi, '')
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+const getAllServiceNamesForAppt = (row) => {
+  const primary = row.service?.name || '';
+  const extra = parseAdditionalServiceNames(row.notes || '');
+  return Array.from(new Set([primary, ...extra].filter(Boolean)));
+};
+const inferExtraServiceIdsFromAmount = ({ primaryId, totalAmount, services }) => {
+  const target = Number(totalAmount || 0);
+  if (!target || target <= 0) return [];
+  const primaryPrice = Number(services.find((s) => Number(s.id) === Number(primaryId))?.price || 0);
+  const remaining = target - primaryPrice;
+  if (remaining <= 0) return [];
+
+  const candidates = services
+    .filter((s) => Number(s.id) !== Number(primaryId) && Number(s.price || 0) > 0)
+    .map((s) => ({ id: Number(s.id), price: Number(s.price || 0) }));
+
+  // Exact 1-service match
+  const single = candidates.find((c) => c.price === remaining);
+  if (single) return [single.id];
+
+  // Exact 2-service match fallback
+  for (let i = 0; i < candidates.length; i += 1) {
+    for (let j = i + 1; j < candidates.length; j += 1) {
+      if ((candidates[i].price + candidates[j].price) === remaining) {
+        return [candidates[i].id, candidates[j].id];
+      }
+    }
+  }
+  return [];
+};
+const getInitialPaymentServiceIds = (row, services) => {
+  const svcId = Number(row?.service_id || row?.service?.id || 0);
+  if (Array.isArray(row?.service_ids) && row.service_ids.length) {
+    const fromApi = Array.from(new Set(
+      row.service_ids
+        .map((id) => Number(id))
+        .filter((id) => Number.isInteger(id) && id > 0),
+    ));
+    const mergedFromApi = Array.from(new Set([...(svcId ? [svcId] : []), ...fromApi]));
+    const inferred = inferExtraServiceIdsFromAmount({
+      primaryId: svcId,
+      totalAmount: row?.amount,
+      services,
+    });
+    return Array.from(new Set([...mergedFromApi, ...inferred]));
+  }
+  const extraNames = parseAdditionalServiceNames(row?.notes || '');
+  const byExactName = extraNames
+    .map((name) => services.find((s) => String(s.name || '').trim().toLowerCase() === String(name || '').trim().toLowerCase())?.id)
+    .filter(Boolean)
+    .map(Number)
+    .filter((id) => id !== svcId);
+  const fallbackExtraIds = byExactName.length
+    ? []
+    : inferExtraServiceIdsFromAmount({ primaryId: svcId, totalAmount: row?.amount, services });
+  return Array.from(new Set([...(svcId ? [svcId] : []), ...byExactName, ...fallbackExtraIds]));
 };
 const STATUS_META = {
   pending:   { color:'#D97706', bg:'#FFFBEB', label:'Pending'   },
@@ -159,7 +224,9 @@ function ApptRow({ row, idx, canEdit, onView, onEdit, onDelete, onStatusChange, 
         {row.phone && <div style={{ fontSize:12, color:'#98A2B3', marginTop:1 }}>{row.phone}</div>}
       </td>
       <td style={{ padding:'13px 16px' }}>
-        <span style={{ background:'#F2F4F7', padding:'3px 9px', borderRadius:6, fontSize:13, fontWeight:500, color:'#475467' }}>{row.service?.name||''}</span>
+        <span style={{ background:'#F2F4F7', padding:'3px 9px', borderRadius:6, fontSize:13, fontWeight:500, color:'#475467' }}>
+          {getAllServiceNamesForAppt(row).join(', ')}
+        </span>
       </td>
       <td style={{ padding:'13px 16px' }}>
         {row.staff?.name ? (
@@ -269,13 +336,18 @@ export default function AppointmentsPage() {
   }, [showForm, form.branch_id]);
 
   const calcServiceTotal = (ids) => ids.reduce((sum, sid) => { const s = services.find(x => Number(x.id) === Number(sid)); return sum + Number(s?.price || 0); }, 0);
-  const openPayment = (row) => {
+  const openPayment = async (row) => {
     setPaymentAppt(row);
-    const svcId = Number(row.service_id || row.service?.id);
-    const ids = svcId ? [svcId] : [];
+    let sourceRow = row;
+    try {
+      // Use latest appointment data so payment modal always reflects saved services.
+      const r = await api.get(`/appointments/${row.id}`);
+      if (r?.data?.id) sourceRow = r.data;
+    } catch { /* fallback to row data */ }
+    const ids = getInitialPaymentServiceIds(sourceRow, services);
     setPaymentServices(ids);
     const total = calcServiceTotal(ids);
-    setPaymentAmt(Number(row.amount || 0) > 0 ? row.amount : (total > 0 ? total : ''));
+    setPaymentAmt(Number(sourceRow.amount || 0) > 0 ? sourceRow.amount : (total > 0 ? total : ''));
     setPaymentMethod('Cash');
     setPaymentErr('');
     setPaymentOk(false);
@@ -302,11 +374,28 @@ export default function AppointmentsPage() {
         staff_id: paymentAppt.staff_id || paymentAppt.staff?.id || null,
         customer_id: paymentAppt.customer_id || null,
         service_id: paymentServices[0] || null,
+        service_ids: paymentServices,
         appointment_id: paymentAppt.id,
         customer_name: paymentAppt.customer_name,
         splits: [{ method: paymentMethod, amount: Number(paymentAmt) }],
       });
       if (paymentAppt?.id) {
+        const primaryId = Number(paymentServices[0] || 0);
+        const extraNames = paymentServices
+          .slice(1)
+          .map((id) => services.find((s) => Number(s.id) === Number(id))?.name)
+          .filter(Boolean);
+        const updatedNotes = [
+          stripAdditionalServicesLine(paymentAppt.notes || ''),
+          extraNames.length ? `${APPT_EXTRA_SERVICES_PREFIX} ${extraNames.join(', ')}` : '',
+        ].filter(Boolean).join('\n');
+        // Persist service selection back to appointment so future collect/edit screens match.
+        await api.put(`/appointments/${paymentAppt.id}`, {
+          service_id: primaryId || paymentAppt.service_id,
+          service_ids: paymentServices,
+          amount: Number(paymentAmt),
+          notes: updatedNotes,
+        });
         await api.patch(`/appointments/${paymentAppt.id}/status`, { status: 'completed' });
       }
       setPaymentOk(true);
@@ -357,6 +446,7 @@ export default function AppointmentsPage() {
       const payload = {
         ...form,
         service_id: primary?.id || form.service_id,
+        service_ids: apptServiceIds,
         amount: selectedSvcs.reduce((sum, s) => sum + Number(s.price || 0), 0) || form.amount,
         notes: [stripAdditionalServicesLine(form.notes || ''), extraNote].filter(Boolean).join('\n'),
       };
@@ -655,15 +745,15 @@ export default function AppointmentsPage() {
                 </div>
               </div>
               <FormGroup label="Services" required>
-                <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
-                  {services.map(s => {
+                <div style={{ border:'1px solid #DCE6F3', borderRadius:12, overflow:'hidden', maxHeight:180, overflowY:'auto' }}>
+                  {services.filter(s => s.is_active !== false).map((s, idx, arr) => {
                     const active = paymentServices.includes(Number(s.id));
                     return (
-                      <button key={s.id} onClick={()=>togglePaymentService(s.id)} style={{ padding:'7px 14px', borderRadius:10, border:`1.5px solid ${active?'#2563EB':'#E4E7EC'}`, background:active?'#EFF6FF':'#fff', color:active?'#2563EB':'#667085', fontWeight:active?700:500, fontSize:12, cursor:'pointer', fontFamily:"'Inter',sans-serif", transition:'all 0.15s', display:'flex', alignItems:'center', gap:6 }}>
-                        {active && <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>}
-                        {s.name}
-                        {s.price ? <span style={{ opacity:0.6, marginLeft:2 }}>Rs.{Number(s.price).toLocaleString()}</span> : ''}
-                      </button>
+                      <label key={s.id} style={{ display:'grid', gridTemplateColumns:'24px 1fr auto', alignItems:'center', gap:10, padding:'9px 12px', borderBottom:idx!==arr.length-1?'1px solid #EEF2F6':'none', background:active?'#F0F9FF':'#fff', cursor:'pointer' }}>
+                        <input type="checkbox" checked={active} onChange={() => togglePaymentService(s.id)} style={{ width:16, height:16, accentColor:'#2563EB' }} />
+                        <span style={{ fontSize:14, color:'#0F172A', fontWeight:active?700:500 }}>{s.name}</span>
+                        <span style={{ fontSize:14, color:'#059669', fontWeight:800 }}>Rs.{Number(s.price||0).toLocaleString()}</span>
+                      </label>
                     );
                   })}
                 </div>

@@ -1,7 +1,44 @@
 const { Op, fn, col, literal } = require('sequelize');
 const { sequelize } = require('../config/database');
-const { Payment, PaymentSplit, Branch, Staff, Customer, Service, Appointment, CustomerPackage, Package: PkgModel, PackageRedemption } = require('../models');
+const { Payment, PaymentSplit, Branch, Staff, Customer, Service, Appointment, AppointmentService, CustomerPackage, Package: PkgModel, PackageRedemption } = require('../models');
 const { notifyPaymentReceipt, notifyLoyaltyPoints, notifyReviewRequest } = require('../services/notificationService');
+const FIXED_POINTS_PER_PAYMENT = 5;
+const APPT_EXTRA_SERVICES_PREFIX = 'Additional services:';
+
+const parseAdditionalServiceNames = (notes = '') => {
+  const line = String(notes).split('\n').find((l) => l.trim().startsWith(APPT_EXTRA_SERVICES_PREFIX));
+  if (!line) return [];
+  return line
+    .replace(APPT_EXTRA_SERVICES_PREFIX, '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+};
+const stripAdditionalServicesLine = (notes = '') =>
+  String(notes)
+    .split('\n')
+    .filter((line) => !/^\s*additional\s+services?\s*[:\-]?\s*/i.test(line))
+    .join('\n')
+    .trim();
+const normalizeServiceIds = (ids = []) => {
+  if (!Array.isArray(ids)) return [];
+  return Array.from(new Set(
+    ids.map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0),
+  ));
+};
+const syncAppointmentServices = async (appointmentId, serviceIds, transaction = null) => {
+  const normalized = normalizeServiceIds(serviceIds);
+  await AppointmentService.destroy({ where: { appointment_id: appointmentId }, transaction });
+  if (!normalized.length) return;
+  await AppointmentService.bulkCreate(
+    normalized.map((serviceId, idx) => ({
+      appointment_id: appointmentId,
+      service_id: serviceId,
+      sort_order: idx,
+    })),
+    { transaction },
+  );
+};
 
 const getBranchWhere = (req) => {
   const where = {};
@@ -70,8 +107,14 @@ const create = async (req, res) => {
   try {
     const {
       branch_id, staff_id, customer_id, service_id, appointment_id,
-      customer_name, splits = [], loyalty_discount = 0, usePoints = false,
+      customer_name, phone, service_ids = [], splits = [], loyalty_discount = 0, usePoints = false,
     } = req.body;
+    const normalizedServiceIds = normalizeServiceIds(service_ids);
+    const primaryServiceId = Number(service_id) || normalizedServiceIds[0] || null;
+    const selectedServiceIds = normalizedServiceIds.length
+      ? [primaryServiceId, ...normalizedServiceIds.filter((id) => id !== primaryServiceId)]
+      : (primaryServiceId ? [primaryServiceId] : []);
+
 
     if (!branch_id) {
       await t.rollback();
@@ -84,7 +127,8 @@ const create = async (req, res) => {
     }
 
     const total_amount = splits.reduce((sum, s) => sum + parseFloat(s.amount || 0), 0);
-    const points_earned = Math.floor((total_amount - loyalty_discount) / 10);
+    // Business rule: award a fixed 5 loyalty points per successful payment.
+    const points_earned = FIXED_POINTS_PER_PAYMENT;
 
     // Fetch staff to calculate commission
     let commission_amount = 0;
@@ -105,7 +149,7 @@ const create = async (req, res) => {
       branch_id,
       staff_id:       staff_id       || null,
       customer_id:    customer_id    || null,
-      service_id:     service_id     || null,
+      service_id:     primaryServiceId,
       appointment_id: appointment_id || null,
       customer_name, total_amount, loyalty_discount, points_earned,
       commission_amount, date: today, status: 'paid',
@@ -131,7 +175,7 @@ const create = async (req, res) => {
           await PackageRedemption.create({
             customer_package_id: cp.id,
             payment_id: payment.id,
-            service_id: service_id || null,
+            service_id: primaryServiceId,
             redeemed_at: new Date(),
             redeemed_by: staff_id || null,
           }, { transaction: t });
@@ -165,38 +209,151 @@ const create = async (req, res) => {
     // Mark appointment commission
     if (appointment_id) {
       const { Appointment: ApptModel } = require('../models');
-      await ApptModel.update({ commission_paid: commission_amount }, {
-        where: { id: appointment_id },
-        transaction: t,
-      });
+      if (selectedServiceIds.length) {
+        const appt = await ApptModel.findByPk(appointment_id, { transaction: t, attributes: ['id', 'notes'] });
+        const selectedServices = await Service.findAll({
+          where: { id: { [Op.in]: selectedServiceIds } },
+          attributes: ['id', 'name'],
+          transaction: t,
+        });
+        const nameById = new Map(selectedServices.map((s) => [Number(s.id), s.name]));
+        const extraNames = selectedServiceIds
+          .slice(1)
+          .map((id) => nameById.get(id))
+          .filter(Boolean);
+        const baseNote = stripAdditionalServicesLine(appt?.notes || '');
+        const mergedNotes = [
+          baseNote,
+          extraNames.length ? `${APPT_EXTRA_SERVICES_PREFIX} ${extraNames.join(', ')}` : '',
+        ].filter(Boolean).join('\n');
+
+        await ApptModel.update({
+          service_id: selectedServiceIds[0],
+          amount: total_amount,
+          notes: mergedNotes || null,
+          commission_paid: commission_amount,
+        }, {
+          where: { id: appointment_id },
+          transaction: t,
+        });
+        await syncAppointmentServices(appointment_id, selectedServiceIds, t);
+      } else {
+        await ApptModel.update({ commission_paid: commission_amount }, {
+          where: { id: appointment_id },
+          transaction: t,
+        });
+      }
     }
 
     await t.commit();
 
-    // Fire-and-forget notifications (after transaction commits successfully)
-    if (customer_id) {
-      const [branch, service, customer] = await Promise.all([
+    // Fire-and-forget notifications (after transaction commits successfully).
+    // Important: Appointment page may submit payment without customer_id.
+    // In that case, fall back to appointment phone/customer details.
+    {
+      const [branch, customer, appointmentForNotify] = await Promise.all([
         Branch.findByPk(branch_id,   { attributes: ['id', 'name', 'phone'] }),
-        Service.findByPk(service_id, { attributes: ['id', 'name'] }),
         (async () => {
+          if (!customer_id) return null;
           const { Customer: CustModel } = require('../models');
           return CustModel.findByPk(customer_id, { attributes: ['id', 'name', 'phone', 'email', 'loyalty_points'] });
         })(),
+        (async () => {
+          if (!appointment_id) return null;
+          return Appointment.findByPk(appointment_id, {
+            attributes: ['id', 'customer_id', 'customer_name', 'phone', 'notes', 'service_id'],
+            include: [{ model: Customer, as: 'customer', attributes: ['id', 'name', 'phone', 'email', 'loyalty_points'] }],
+          });
+        })(),
       ]);
-      if (customer) {
-        const updatedPoints = (customer.loyalty_points || 0);
-        notifyPaymentReceipt(
-          { ...payment.toJSON(), splits: await PaymentSplit.findAll({ where: { payment_id: payment.id } }) },
-          branch, service, customer
-        );
-        if (points_earned > 0) {
-          notifyLoyaltyPoints(customer, points_earned, updatedPoints, branch);
+
+      const toPlain = (row) => {
+        if (!row) return null;
+        return row.get && typeof row.get === 'function' ? row.get({ plain: true }) : { ...row };
+      };
+
+      let recipient = toPlain(customer)
+        || toPlain(appointmentForNotify?.customer)
+        || (appointmentForNotify
+          ? {
+              id: appointmentForNotify.customer_id || null,
+              name: appointmentForNotify.customer_name || customer_name || 'Valued Customer',
+              phone: appointmentForNotify.phone || null,
+              email: null,
+              loyalty_points: 0,
+            }
+          : null);
+
+      // Customer profile often has no phone; appointment row usually has the number (walk-in / web).
+      const apptPhone = appointmentForNotify?.phone ? String(appointmentForNotify.phone).trim() : '';
+      const reqPhone = phone ? String(phone).trim() : '';
+      if (!recipient) {
+        recipient = {
+          id: null,
+          name: customer_name || 'Valued Customer',
+          phone: reqPhone || null,
+          email: null,
+          loyalty_points: 0,
+        };
+      }
+      if (recipient && reqPhone && !String(recipient.phone || '').trim()) {
+        recipient = { ...recipient, phone: reqPhone };
+      }
+      if (recipient && apptPhone && !String(recipient.phone || '').trim()) {
+        recipient = { ...recipient, phone: apptPhone };
+      }
+
+      if (recipient && (recipient.phone || recipient.email)) {
+        let servicesForNotify = [];
+        if (normalizedServiceIds.length) {
+          servicesForNotify = await Service.findAll({
+            where: { id: { [Op.in]: normalizedServiceIds } },
+            attributes: ['id', 'name'],
+          });
+        } else if (appointmentForNotify) {
+          const apptPrimaryId = Number(appointmentForNotify.service_id || 0);
+          const extraNames = parseAdditionalServiceNames(appointmentForNotify.notes || '');
+          const [apptPrimary, apptExtras] = await Promise.all([
+            apptPrimaryId ? Service.findByPk(apptPrimaryId, { attributes: ['id', 'name'] }) : null,
+            extraNames.length
+              ? Service.findAll({ where: { name: { [Op.in]: extraNames } }, attributes: ['id', 'name'] })
+              : [],
+          ]);
+          servicesForNotify = [apptPrimary, ...apptExtras].filter(Boolean);
+        } else if (primaryServiceId) {
+          const one = await Service.findByPk(primaryServiceId, { attributes: ['id', 'name'] });
+          if (one) servicesForNotify = [one];
         }
-        // Generate review token and send review request
+
+        const serviceNames = Array.from(new Set(
+          servicesForNotify
+            .map((s) => (s.get ? s.get('name') : s.name))
+            .filter(Boolean),
+        ));
+        const serviceForNotify = {
+          id: primaryServiceId,
+          name: serviceNames.join(', ') || '—',
+        };
+
+        const splitsForNotify = await PaymentSplit.findAll({ where: { payment_id: payment.id } });
+        notifyPaymentReceipt(
+          { ...payment.toJSON(), splits: splitsForNotify },
+          branch, serviceForNotify, recipient
+        );
+
+        if (customer_id && points_earned > 0) {
+          const { Customer: CustModel } = require('../models');
+          const freshCust = await CustModel.findByPk(customer_id, { attributes: ['id', 'name', 'phone', 'email', 'loyalty_points'] });
+          if (freshCust) {
+            notifyLoyaltyPoints(freshCust, points_earned, freshCust.loyalty_points || 0, branch);
+          }
+        }
+
+        // Generate review token and send review request when we have at least a reachable recipient.
         const { randomUUID } = require('crypto');
         const reviewToken = randomUUID();
         await Payment.update({ review_token: reviewToken }, { where: { id: payment.id } });
-        notifyReviewRequest(payment.toJSON(), customer, service, branch, reviewToken);
+        notifyReviewRequest(payment.toJSON(), recipient, serviceForNotify, branch, reviewToken);
       }
     }
 

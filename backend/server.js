@@ -9,6 +9,7 @@ const path         = require('path');
 const { sequelize } = require('./config/database');
 const validateEnv  = require('./config/validateEnv');
 const { initSocket } = require('./socket');
+const { runAppointmentServicesMigration } = require('./services/appointmentServicesMigration');
 
 // Validate required env vars on startup
 validateEnv();
@@ -142,6 +143,7 @@ connectWithRetry().then(async () => {
   // Create any new tables (CREATE IF NOT EXISTS — never alters or drops existing)
   try {
     await sequelize.sync({ force: false });
+    await runAppointmentServicesMigration();
   } catch (err) {
     console.warn('⚠  Table sync warning:', err.message);
   }

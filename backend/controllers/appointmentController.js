@@ -82,6 +82,8 @@ const normalizeServiceIds = (serviceIds = []) => {
       .filter((id) => Number.isInteger(id) && id > 0),
   ));
 };
+const ensureServicesExist = (selectedServiceIds, serviceById) =>
+  selectedServiceIds.filter((id) => !serviceById.has(Number(id)));
 
 const buildNotificationPayload = async (apptLike) => {
   const primaryService = apptLike.service_id
@@ -238,6 +240,10 @@ const create = async (req, res) => {
       attributes: ['id', 'name', 'price'],
     });
     const serviceById = new Map(selectedServices.map((s) => [Number(s.id), s]));
+    const missingServiceIds = ensureServicesExist(selectedServiceIds, serviceById);
+    if (missingServiceIds.length) {
+      return res.status(400).json({ message: `Invalid service_ids: ${missingServiceIds.join(', ')}` });
+    }
 
     // Auto-fetch service price if amount not provided
     let finalAmount = amount;
@@ -286,6 +292,7 @@ const create = async (req, res) => {
 
     return res.status(201).json(appt);
   } catch (err) {
+    console.error('appointment.create error:', err);
     return res.status(500).json({ message: 'Server error.' });
   }
 };
@@ -317,6 +324,10 @@ const update = async (req, res) => {
         attributes: ['id', 'name', 'price'],
       });
       const serviceById = new Map(selectedServices.map((s) => [Number(s.id), s]));
+      const missingServiceIds = ensureServicesExist(selectedServiceIds, serviceById);
+      if (missingServiceIds.length) {
+        return res.status(400).json({ message: `Invalid service_ids: ${missingServiceIds.join(', ')}` });
+      }
       if (req.body.amount === undefined || req.body.amount === null || req.body.amount === '') {
         updates.amount = selectedServiceIds.reduce((sum, id) => sum + Number(serviceById.get(id)?.price || 0), 0);
       }
@@ -347,6 +358,7 @@ const update = async (req, res) => {
     }
     return res.json(appt);
   } catch (err) {
+    console.error('appointment.update error:', err);
     return res.status(500).json({ message: 'Server error.' });
   }
 };
@@ -370,8 +382,8 @@ const changeStatus = async (req, res) => {
 
     await appt.update({ status: dbStatus });
 
-    // Send confirmation notification when status changes to 'confirmed'
-    if (dbStatus === 'confirmed' && appt.phone) {
+    // Send confirmation notification only when the requested status is explicitly 'confirmed'
+    if (status === 'confirmed' && appt.phone) {
       const [branch, notifyPayload] = await Promise.all([
         Branch.findByPk(appt.branch_id, { attributes: ['id', 'name', 'phone'] }),
         buildNotificationPayload(appt.get({ plain: true })),

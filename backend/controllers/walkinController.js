@@ -1,7 +1,8 @@
 const { Op } = require('sequelize');
 const { sequelize } = require('../config/database');
-const { WalkIn, Service, Staff } = require('../models');
+const { WalkIn, Service, Staff, Branch } = require('../models');
 const { emitQueueUpdate } = require('../socket');
+const { sendSMS } = require('../services/notificationService');
 
 // Helper: today as YYYY-MM-DD
 const today = () => new Date().toISOString().slice(0, 10);
@@ -107,6 +108,42 @@ exports.checkin = async (req, res) => {
     });
 
     const full = result;
+
+    // Send token SMS to customer (non-blocking)
+    const customerPhone = full?.phone || phone || null;
+    if (!customerPhone) {
+      console.warn('[WalkIn] Token SMS skipped — customer phone not provided.');
+    } else if (full?.token) {
+      try {
+        const [branch, service] = await Promise.all([
+          Branch.findByPk(branchId, { attributes: ['name'] }),
+          Service.findByPk(full.service_id, { attributes: ['name'] }),
+        ]);
+        const customerName = full.customer_name || 'Customer';
+        const branchName = branch?.name || 'Zane Salon';
+        const serviceName = service?.name || 'Service';
+        const waitMins = Number(full.estimated_wait || 0);
+        const sms =
+          `Zane Salon Walk-In Token\n` +
+          `Hi ${customerName}, your token is ${full.token}.\n` +
+          `Service: ${serviceName}\n` +
+          `Branch: ${branchName}\n` +
+          (waitMins > 0 ? `Estimated wait: ~${waitMins} min\n` : '') +
+          `Please keep this token number.`;
+        console.log(`[WalkIn] Sending token SMS → ${customerPhone} (${full.token})`);
+        await sendSMS({
+          to: customerPhone,
+          message: sms,
+          meta: {
+            customer_name: customerName,
+            event_type: 'walkin_token',
+            branch_id: Number(branchId) || null,
+          },
+        });
+      } catch (smsErr) {
+        console.error('walkin.checkin token sms error:', smsErr.message);
+      }
+    }
 
     emitQueueUpdate(branchId, { action: 'checkin', entry: full });
     res.status(201).json(full);

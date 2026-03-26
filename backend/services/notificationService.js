@@ -272,10 +272,12 @@ async function sendSMS({ to, message, meta = {} }) {
         headers: { 'Content-Type': 'application/json' },
         signal:  controller.signal,
         body:    JSON.stringify({
-          user_id:    creds.userId,
-          api_key:    creds.apiKey,
+          user_id:   creds.userId,
+          api_key:   creds.apiKey,
+          // Notify.lk v1 expects sender_id; keep service_id for legacy compatibility.
+          sender_id: creds.senderId,
           service_id: creds.senderId,
-          to:         toFormatted,
+          to:        toFormatted,
           message,
         }),
       });
@@ -285,9 +287,10 @@ async function sendSMS({ to, message, meta = {} }) {
     const data = await res.json().catch(() => ({}));
     console.log(`[Notifications] SMS API response → ${toFormatted}:`, JSON.stringify(data));
     if (!res.ok || data.status === 'error') {
-      // Notify.lk returns errors in data.errors[] array
+      // Notify.lk returns error text in message or errors (string/array).
       const errMsg = data.message
         || (Array.isArray(data.errors) && data.errors.length ? data.errors[0] : null)
+        || (typeof data.errors === 'string' ? data.errors : null)
         || `HTTP ${res.status}`;
       throw new Error(errMsg);
     }
@@ -371,6 +374,26 @@ function detailRow(label, value) {
   </tr>`;
 }
 
+function parseAdditionalServiceNames(notes = '') {
+  const line = String(notes)
+    .split('\n')
+    .find((l) => /^\s*additional\s+services?\s*[:\-]?\s*/i.test(l));
+  if (!line) return [];
+  return line
+    .replace(/^\s*additional\s+services?\s*[:\-]?\s*/i, '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+function getServiceNameForNotification(service, appointment) {
+  const primaryName = String(service?.name || '').trim();
+  const additional = parseAdditionalServiceNames(appointment?.notes || '');
+  if (!primaryName && !additional.length) return '—';
+  const all = [primaryName, ...additional].filter(Boolean);
+  return Array.from(new Set(all)).join(', ');
+}
+
 // ── 1. Appointment Confirmed ──────────────────────────────────────────────────
 async function notifyAppointmentConfirmed(appointment, branch, service) {
   const flags = await getChannelFlags();
@@ -381,7 +404,7 @@ async function notifyAppointmentConfirmed(appointment, branch, service) {
   const date    = appointment.date   || '—';
   const time    = appointment.time   ? appointment.time.slice(0, 5) : '—';
   const amount  = appointment.amount ? `Rs. ${parseFloat(appointment.amount).toFixed(2)}` : '—';
-  const svcName = service?.name      || '—';
+  const svcName = getServiceNameForNotification(service, appointment);
   const brName  = branch?.name       || '—';
   const brPhone = branch?.phone      || '';
   const meta    = {
@@ -429,7 +452,7 @@ async function notifyAppointmentConfirmed(appointment, branch, service) {
     const msg =
       `Zane Salon - Appt Confirmed!\n` +
       `Hi ${appointment.customer_name}, booking confirmed:\n` +
-      `Date: ${date} ${time}\nService: ${svcName}\nBranch: ${brName}\nAmt: ${amount}\n` +
+      `Date: ${date} ${time}\nService: ${svcName}\nBranch: ${brName}\n` +
       `Please arrive 5 mins early.`;
     await sendSMS({ to: phone, message: msg, meta });
   }

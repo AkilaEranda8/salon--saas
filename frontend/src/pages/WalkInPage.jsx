@@ -30,6 +30,15 @@ const removeAdditionalServicesLine = (note = '') =>
     .filter((line) => !line.trim().startsWith(ADDITIONAL_SERVICES_PREFIX))
     .join('\n')
     .trim();
+const getCustomerPhone = (customer = {}) => (
+  customer.phone
+  || customer.phone_number
+  || customer.mobile
+  || customer.mobile_number
+  || customer.contact
+  || customer.contact_number
+  || ''
+);
 
 /*  Print CSS injected once  */
 const PRINT_CSS = `@media print { body > *:not(#walkin-print-root) { display: none !important; } #walkin-print-root { display: block !important; } }`;
@@ -191,7 +200,9 @@ export default function WalkInPage() {
         branch_id: paymentEntry.branch_id || selectedBranch,
         staff_id: paymentEntry.staff_id || paymentEntry.staff?.id || null,
         service_id: paymentServices[0] || paymentEntry.service_id || paymentEntry.service?.id || null,
+        service_ids: paymentServices,
         customer_name: paymentEntry.customer_name || 'Walk-in',
+        phone: paymentEntry.phone || '',
         splits: [{ method: paymentMethod, amount: Number(paymentAmount) }],
       });
       if (paymentEntry.status !== 'completed') {
@@ -320,7 +331,7 @@ export default function WalkInPage() {
       ].filter(Boolean).join('\n');
       const res = await api.post('/walkin/checkin', {
         customerName: form.customerName,
-        phone:        form.phone      || undefined,
+        phone:        form.phone || getCustomerPhone(selectedCustomer) || undefined,
         branchId:     form.branchId   || selectedBranch,
         serviceId:    Number(selectedServiceIds[0]),
         note:         fullNote        || undefined,
@@ -355,13 +366,13 @@ export default function WalkInPage() {
     const q = custSearch.toLowerCase();
     setCustResults(
       custAll.filter((c) =>
-        c.name?.toLowerCase().includes(q) || c.phone?.includes(q)
+        c.name?.toLowerCase().includes(q) || String(getCustomerPhone(c)).includes(q)
       )
     );
   }, [custSearch, custAll]);
 
   const selectCustomer = (c) => {
-    setForm((f) => ({ ...f, customerName: c.name, phone: c.phone || '' }));
+    setForm((f) => ({ ...f, customerName: c.name, phone: getCustomerPhone(c) }));
     setCustSearch(c.name);
     setSelectedCustomer(c);
     setShowCustDrop(false);
@@ -491,7 +502,7 @@ export default function WalkInPage() {
                 border: '1px solid #EAECF0',
                 borderLeft: `5px solid ${STATUS_BORDER[entry.status] || '#E4E7EC'}`,
                 padding: '16px 20px',
-                display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap',
+                display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap',
               }}>
 
                 {/* TOKEN */}
@@ -525,63 +536,61 @@ export default function WalkInPage() {
                   )}
                 </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginLeft: 'auto', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                  {/* STAFF */}
-                  <div style={{ minWidth: 150 }}>
-                    {stf ? (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <StaffAvatar name={stf.name} size={32} />
-                        <div>
-                          <div style={{ fontSize: 13, fontWeight: 600, color: DARK }}>{stf.name}</div>
-                          {stf.role_title && <div style={{ fontSize: 11, color: MUTED }}>{stf.role_title}</div>}
-                        </div>
+                {/* STAFF */}
+                <div style={{ flex: '0 0 170px' }}>
+                  {stf ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <StaffAvatar name={stf.name} size={32} />
+                      <div>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: DARK }}>{stf.name}</div>
+                        {stf.role_title && <div style={{ fontSize: 11, color: MUTED }}>{stf.role_title}</div>}
                       </div>
-                    ) : (
-                      <select
-                        style={{ width: '100%', padding: '7px 10px', borderRadius: 8, border: '1px solid #D0D5DD', fontSize: 13, fontFamily: 'inherit', background: '#fff', color: DARK }}
-                        value="" onChange={(e) => assignStaff(entry.id, e.target.value)}
-                      >
-                        <option value="" disabled>Assign staff…</option>
-                        {staffList.filter((s) => s.is_active !== false).map((s) => (
-                          <option key={s.id} value={s.id} disabled={busyStaffIds.has(s.id)}>
-                            {s.name}{busyStaffIds.has(s.id) ? ' (Busy)' : ''}
-                          </option>
-                        ))}
-                      </select>
-                    )}
-                  </div>
-
-                  {/* STATUS + WAIT */}
-                  <div style={{ minWidth: 140, textAlign: 'center' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, flexWrap: 'wrap' }}>
-                      <Badge variant={entry.status} dot>{STATUS_LABELS[entry.status] || entry.status}</Badge>
-                      {entry.status === 'completed' && (
-                        <span style={{ fontSize: 12, padding: '3px 10px', borderRadius: 99, background: '#FEF2F2', color: '#DC2626', fontWeight: 800 }}>
-                          Paid
-                        </span>
-                      )}
                     </div>
-                    {entry.status === 'waiting' && entry.estimated_wait != null && (
-                      <div style={{ fontSize: 11, color: MUTED, marginTop: 4 }}>~{entry.estimated_wait} min wait</div>
-                    )}
-                  </div>
+                  ) : (
+                    <select
+                      style={{ width: '100%', padding: '7px 10px', borderRadius: 8, border: '1px solid #D0D5DD', fontSize: 13, fontFamily: 'inherit', background: '#fff', color: DARK }}
+                      value="" onChange={(e) => assignStaff(entry.id, e.target.value)}
+                    >
+                      <option value="" disabled>Assign staff…</option>
+                      {staffList.filter((s) => s.is_active !== false).map((s) => (
+                        <option key={s.id} value={s.id} disabled={busyStaffIds.has(s.id)}>
+                          {s.name}{busyStaffIds.has(s.id) ? ' (Busy)' : ''}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
 
-                  {/* ACTIONS */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                    {entry.status !== 'completed' && (
-                      <Button size="sm" variant="ghost" onClick={() => openEdit(entry)}>Edit</Button>
-                    )}
-                    {entry.status === 'waiting' && (
-                      <Button size="sm" onClick={() => changeStatus(entry.id, 'serving')}>Start</Button>
-                    )}
-                    {entry.status === 'serving' && (
-                      <Button size="sm" onClick={() => openPayment(entry)}>Done & Collect</Button>
-                    )}
-                    <Button size="sm" variant="ghost" onClick={() => setShowToken(entry)}>Token</Button>
-                    {(entry.status === 'waiting' || entry.status === 'serving') && (
-                      <Button size="sm" variant="danger" onClick={() => changeStatus(entry.id, 'cancelled')}>Cancel</Button>
+                {/* STATUS + WAIT */}
+                <div style={{ flexShrink: 0, minWidth: 90, textAlign: 'center' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, flexWrap: 'wrap' }}>
+                    <Badge variant={entry.status} dot>{STATUS_LABELS[entry.status] || entry.status}</Badge>
+                    {entry.status === 'completed' && (
+                      <span style={{ fontSize: 12, padding: '3px 10px', borderRadius: 99, background: '#FEF2F2', color: '#DC2626', fontWeight: 800 }}>
+                        Paid
+                      </span>
                     )}
                   </div>
+                  {entry.status === 'waiting' && entry.estimated_wait != null && (
+                    <div style={{ fontSize: 11, color: MUTED, marginTop: 4 }}>~{entry.estimated_wait} min wait</div>
+                  )}
+                </div>
+
+                {/* ACTIONS */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0, flexWrap: 'wrap' }}>
+                  {entry.status !== 'completed' && (
+                    <Button size="sm" variant="ghost" onClick={() => openEdit(entry)}>Edit</Button>
+                  )}
+                  {entry.status === 'waiting' && (
+                    <Button size="sm" onClick={() => changeStatus(entry.id, 'serving')}>Start</Button>
+                  )}
+                  {entry.status === 'serving' && (
+                    <Button size="sm" onClick={() => openPayment(entry)}>Done & Collect</Button>
+                  )}
+                  <Button size="sm" variant="ghost" onClick={() => setShowToken(entry)}>Token</Button>
+                  {(entry.status === 'waiting' || entry.status === 'serving') && (
+                    <Button size="sm" variant="danger" onClick={() => changeStatus(entry.id, 'cancelled')}>Cancel</Button>
+                  )}
                 </div>
               </div>
             );
@@ -627,7 +636,7 @@ export default function WalkInPage() {
                   </div>
                   <div style={{ minWidth: 0 }}>
                     <div style={{ fontSize: 14, fontWeight: 700, color: '#065F46' }}>{selectedCustomer.name}</div>
-                    <div style={{ fontSize: 12, color: '#047857' }}>{selectedCustomer.phone || 'No phone'}</div>
+                    <div style={{ fontSize: 12, color: '#047857' }}>{getCustomerPhone(selectedCustomer) || 'No phone'}</div>
                   </div>
                 </div>
                 <Button
@@ -705,7 +714,7 @@ export default function WalkInPage() {
                         </div>
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ fontSize: 13, fontWeight: 600, color: DARK }}>{c.name}</div>
-                          {c.phone && <div style={{ fontSize: 11, color: MUTED }}>{c.phone}</div>}
+                          {getCustomerPhone(c) && <div style={{ fontSize: 11, color: MUTED }}>{getCustomerPhone(c)}</div>}
                         </div>
                         {c.loyalty_points > 0 && (
                           <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 99, background: '#FEF9C3', color: '#854D0E', fontWeight: 700 }}>

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../api/axios';
+import salonLogo from '/salon-logo.png';
 
 /* ─── Flat nav label map ─────────────────────────────────────────────── */
 
@@ -190,6 +191,17 @@ export default function Topbar({ onMenuClick }) {
           </button>
 
           <div style={{ display:'flex', alignItems:'center', gap:8, minWidth:0 }}>
+            <img
+              src={salonLogo}
+              alt="Zane Salon logo"
+              style={{
+                width: 24,
+                height: 24,
+                borderRadius: 6,
+                objectFit: 'cover',
+                background: '#000',
+              }}
+            />
             <span style={{ fontSize:14, color:'#667085', fontWeight:500, whiteSpace:'nowrap' }}>Zane Salon</span>
             <span style={{ color:'#D0D5DD', fontSize:14, fontWeight:400 }}>/</span>
             <span style={{

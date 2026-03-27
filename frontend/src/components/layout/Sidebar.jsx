@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth }       from '../../context/AuthContext';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
+import salonLogo from '/salon-logo.png';
 
 /*  SVG icon helper  */
 const Ico = ({ d, size = 18 }) => (
@@ -274,16 +275,18 @@ export default function Sidebar({ collapsed, onToggle, currentUser, mobileOpen, 
         gap:            8,
       }}>
         <div style={{ display:'flex', alignItems:'center', gap:10, overflow:'hidden' }}>
-          {/* Brand icon */}
-          <div style={{
-            width: 36, height: 36, borderRadius: 10,
-            background: C.logoBg, display:'flex', alignItems:'center', justifyContent:'center',
-            flexShrink: 0, color: C.logoColor,
-          }}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M14.121 14.121L19 19m-7-7l7-7m-7 7l-2.879 2.879M12 12L9.121 9.121m0 5.758a3 3 0 10-4.243 4.243 3 3 0 004.243-4.243zm0-5.758a3 3 0 10-4.243-4.243 3 3 0 004.243 4.243z" />
-            </svg>
-          </div>
+          <img
+            src={salonLogo}
+            alt="Zane Salon logo"
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 10,
+              objectFit: 'cover',
+              flexShrink: 0,
+              background: '#000',
+            }}
+          />
           {!ec && (
             <div style={{ overflow:'hidden' }}>
               <div style={{ fontSize:15, fontWeight:800, color:C.text, fontFamily:"'Outfit','Inter',sans-serif", letterSpacing:'-0.02em', lineHeight:1.2, whiteSpace:'nowrap' }}>

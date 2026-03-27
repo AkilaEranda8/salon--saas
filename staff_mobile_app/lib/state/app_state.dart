@@ -291,9 +291,18 @@ class AppState extends ChangeNotifier {
     );
   }
 
+  Future<MyCommissionResult> loadMyCommission({String? month}) async {
+    final token = _currentUser?.authToken;
+    if (token == null || token.isEmpty) {
+      throw Exception('Missing auth token (cannot load commission).');
+    }
+    return _api.fetchMyCommission(token: token, month: month);
+  }
+
   Future<bool> addManualPayment({
     required String branchId,
     required String serviceId,
+    List<String>? serviceIds,
     String? staffId,
     String? customerId,
     String? customerName,
@@ -312,6 +321,7 @@ class AppState extends ChangeNotifier {
         token: token,
         branchId: branchId,
         serviceId: serviceId,
+        serviceIds: serviceIds,
         staffId: staffId,
         customerId: customerId,
         customerName: customerName,

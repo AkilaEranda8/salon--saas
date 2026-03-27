@@ -9,7 +9,7 @@ class AddPaymentModalResult {
     required this.branchId,
     required this.customerId,
     required this.staffId,
-    required this.serviceId,
+    required this.serviceIds,
     required this.totalAmount,
     required this.loyaltyDiscount,
     required this.method,
@@ -20,7 +20,7 @@ class AddPaymentModalResult {
   final String branchId;
   final String customerId;
   final String staffId;
-  final String serviceId;
+  final List<String> serviceIds;
   final String totalAmount;
   final String loyaltyDiscount;
   final String method;
@@ -72,13 +72,14 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
   static const _methods = <String>['Cash', 'Card', 'Online Transfer', 'Loyalty Points', 'Package'];
 
   final _formKey = GlobalKey<FormState>();
+  final _customerNameController = TextEditingController();
   final _totalAmountController = TextEditingController();
   final _loyaltyDiscountController = TextEditingController(text: '0');
   final _paidAmountController = TextEditingController();
   String? _branchId;
   String? _customerId;
   String? _staffId;
-  String? _serviceId;
+  final Set<String> _selectedServiceIds = <String>{};
   String _method = _methods.first;
 
   @override
@@ -89,6 +90,7 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
 
   @override
   void dispose() {
+    _customerNameController.dispose();
     _totalAmountController.dispose();
     _loyaltyDiscountController.dispose();
     _paidAmountController.dispose();
@@ -105,6 +107,25 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
     }
   }
 
+  void _recalculateTotalFromServices() {
+    var total = 0.0;
+    for (final id in _selectedServiceIds) {
+      final svc = widget.services.firstWhere(
+        (s) => s.id == id,
+        orElse: () => SalonService(
+          id: id,
+          name: '',
+          category: 'Other',
+          price: 0,
+          durationMinutes: 30,
+        ),
+      );
+      total += svc.price;
+    }
+    _totalAmountController.text = total <= 0 ? '' : total.toStringAsFixed(2);
+    _paidAmountController.text = total <= 0 ? '' : total.toStringAsFixed(2);
+  }
+
   void _submit() {
     if (!_formKey.currentState!.validate()) return;
     final selectedCustomer = widget.customers.firstWhere(
@@ -116,12 +137,12 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
         branchId: (_branchId ?? '').trim(),
         customerId: (_customerId ?? '').trim(),
         staffId: (_staffId ?? '').trim(),
-        serviceId: (_serviceId ?? '').trim(),
+        serviceIds: _selectedServiceIds.toList(),
         totalAmount: _totalAmountController.text.trim(),
         loyaltyDiscount: _loyaltyDiscountController.text.trim(),
         method: _method,
         paidAmount: _paidAmountController.text.trim(),
-        customerName: selectedCustomer.name,
+        customerName: _customerNameController.text.trim().isEmpty ? selectedCustomer.name : _customerNameController.text.trim(),
       ),
     );
   }
@@ -161,7 +182,22 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
                   const DropdownMenuItem<String>(value: '', child: Text('Walk-in')),
                   ...widget.customers.map((c) => DropdownMenuItem<String>(value: c.id, child: Text('${c.name} (${c.phone})'))),
                 ],
-                onChanged: (value) => setState(() => _customerId = value),
+                onChanged: (value) {
+                  setState(() {
+                    _customerId = value;
+                    final selected = widget.customers.firstWhere(
+                      (c) => c.id == value,
+                      orElse: () => Customer(id: '', name: '', phone: '', email: ''),
+                    );
+                    if (selected.name.isNotEmpty) {
+                      _customerNameController.text = selected.name;
+                    }
+                  });
+                },
+              ),
+              TextFormField(
+                controller: _customerNameController,
+                decoration: const InputDecoration(labelText: 'Customer Name (Walk-in)'),
               ),
               DropdownButtonFormField<String>(
                 initialValue: _staffId,
@@ -172,14 +208,45 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
                 ],
                 onChanged: (value) => setState(() => _staffId = value),
               ),
-              DropdownButtonFormField<String>(
-                initialValue: _serviceId,
-                decoration: const InputDecoration(labelText: 'Service'),
-                items: activeServices
-                    .map((s) => DropdownMenuItem<String>(value: s.id, child: Text('${s.name} (LKR ${s.price.toStringAsFixed(0)})')))
-                    .toList(),
-                onChanged: (value) => setState(() => _serviceId = value),
-                validator: (value) => value == null || value.trim().isEmpty ? 'Service required' : null,
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 10, bottom: 6),
+                  child: Text(
+                    'Services',
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                ),
+              ),
+              Container(
+                constraints: const BoxConstraints(maxHeight: 180),
+                decoration: BoxDecoration(
+                  border: Border.all(color: Theme.of(context).dividerColor),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: ListView(
+                  shrinkWrap: true,
+                  children: activeServices
+                      .map(
+                        (s) => CheckboxListTile(
+                          value: _selectedServiceIds.contains(s.id),
+                          dense: true,
+                          title: Text('${s.name} (LKR ${s.price.toStringAsFixed(0)})'),
+                          controlAffinity: ListTileControlAffinity.leading,
+                          onChanged: (checked) {
+                            setState(() {
+                              if (checked == true) {
+                                _selectedServiceIds.add(s.id);
+                              } else {
+                                _selectedServiceIds.remove(s.id);
+                              }
+                              _recalculateTotalFromServices();
+                            });
+                          },
+                        ),
+                      )
+                      .toList(),
+                ),
               ),
               TextFormField(
                 controller: _totalAmountController,
@@ -187,6 +254,7 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
                 keyboardType: TextInputType.number,
                 onChanged: (_) => _syncPaidAmountIfEmpty(),
                 validator: (value) {
+                  if (_selectedServiceIds.isEmpty) return 'Select at least one service';
                   if (value == null || value.trim().isEmpty) return 'Total amount required';
                   if ((double.tryParse(value.trim()) ?? 0) <= 0) return 'Enter valid amount';
                   return null;

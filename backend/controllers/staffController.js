@@ -1,4 +1,4 @@
-const { Op, fn, col, literal } = require('sequelize');
+const { Op, fn, col, literal, where: sequelizeWhere } = require('sequelize');
 const { Staff, Branch, StaffSpecialization, Service, Appointment, Payment, User } = require('../models');
 
 // Helper: resolve branch filter from role
@@ -260,6 +260,79 @@ const commissionReport = async (req, res) => {
   }
 };
 
+const myCommission = async (req, res) => {
+  try {
+    const branchId = req.userBranchId || req.user?.branchId || null;
+    const staffName = String(req.user?.name || '').trim();
+    if (!staffName) {
+      return res.status(400).json({ message: 'Authenticated user name is missing.' });
+    }
+
+    const staffWhere = {};
+    if (branchId) staffWhere.branch_id = branchId;
+
+    let staff = await Staff.findOne({
+      where: {
+        ...staffWhere,
+        [Op.and]: [sequelizeWhere(fn('LOWER', col('name')), staffName.toLowerCase())],
+      },
+    });
+
+    if (!staff && req.user?.id) {
+      const user = await User.findByPk(req.user.id, { attributes: ['name', 'branch_id'] });
+      if (user?.name) {
+        staff = await Staff.findOne({
+          where: {
+            ...(user.branch_id ? { branch_id: user.branch_id } : {}),
+            [Op.and]: [sequelizeWhere(fn('LOWER', col('name')), String(user.name).trim().toLowerCase())],
+          },
+        });
+      }
+    }
+
+    if (!staff) {
+      return res.json({
+        total: 0,
+        data: [],
+        staff: null,
+        message: 'No matching staff profile found for this user.',
+      });
+    }
+
+    const paymentWhere = { staff_id: staff.id };
+    if (req.query.month) {
+      const [year, month] = String(req.query.month).split('-');
+      const start = `${year}-${month}-01`;
+      const last = new Date(Number(year), Number(month), 0).getDate();
+      const end = `${year}-${month}-${last}`;
+      paymentWhere.date = { [Op.between]: [start, end] };
+    }
+
+    const payments = await Payment.findAll({
+      where: paymentWhere,
+      include: [
+        { model: Service, as: 'service', attributes: ['id', 'name'] },
+        { model: Appointment, as: 'appointment', attributes: ['id', 'date', 'time', 'customer_name'] },
+      ],
+      order: [['date', 'DESC']],
+    });
+
+    const total = payments.reduce((acc, p) => acc + parseFloat(p.commission_amount || 0), 0);
+    return res.json({
+      total,
+      data: payments,
+      staff: {
+        id: staff.id,
+        name: staff.name,
+        branch_id: staff.branch_id,
+      },
+    });
+  } catch (err) {
+    console.error('my commission error:', err);
+    return res.status(500).json({ message: 'Server error.' });
+  }
+};
+
 const setSpecializations = async (req, res) => {
   try {
     const { serviceIds } = req.body;
@@ -287,4 +360,4 @@ const setSpecializations = async (req, res) => {
   }
 };
 
-module.exports = { list, getOne, create, update, remove, commissionSummary, commissionReport, setSpecializations };
+module.exports = { list, getOne, create, update, remove, commissionSummary, commissionReport, myCommission, setSpecializations };

@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import '../models/appointment.dart';
+import '../models/commission_record.dart';
 import '../models/customer.dart';
 import '../models/payment_record.dart';
 import '../models/salon_service.dart';
@@ -21,6 +22,18 @@ class AppointmentListResult {
   final int page;
   final int limit;
   final List<Appointment> data;
+}
+
+class MyCommissionResult {
+  MyCommissionResult({
+    required this.total,
+    required this.records,
+    this.staffName,
+  });
+
+  final double total;
+  final List<CommissionRecord> records;
+  final String? staffName;
 }
 
 class MobileApi {
@@ -371,6 +384,7 @@ class MobileApi {
     required String token,
     required String branchId,
     required String serviceId,
+    List<String>? serviceIds,
     String? staffId,
     String? customerId,
     String? customerName,
@@ -385,6 +399,8 @@ class MobileApi {
       body: jsonEncode({
         'branch_id': int.tryParse(branchId) ?? branchId,
         'service_id': int.tryParse(serviceId) ?? serviceId,
+        if (serviceIds != null && serviceIds.isNotEmpty)
+          'service_ids': serviceIds.map((id) => int.tryParse(id) ?? id).toList(),
         if (staffId != null && staffId.isNotEmpty) 'staff_id': int.tryParse(staffId) ?? staffId,
         if (customerId != null && customerId.isNotEmpty) 'customer_id': int.tryParse(customerId) ?? customerId,
         if (customerName != null && customerName.trim().isNotEmpty) 'customer_name': customerName.trim(),
@@ -424,6 +440,34 @@ class MobileApi {
         .whereType<Map>()
         .map((row) => WalkInEntry.fromJson(Map<String, dynamic>.from(row)))
         .toList();
+  }
+
+  Future<MyCommissionResult> fetchMyCommission({
+    required String token,
+    String? month,
+  }) async {
+    final qp = <String, String>{
+      if (month != null && month.isNotEmpty) 'month': month,
+    };
+    final uri = Uri.parse('$baseUrl/api/staff/me/commission').replace(
+      queryParameters: qp.isEmpty ? null : qp,
+    );
+    final response = await http.get(uri, headers: _authHeaders(token));
+    final body = _decode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['message'] ?? 'Commission load failed');
+    }
+    final list = (body['data'] as List? ?? const []);
+    final staffMap = body['staff'] is Map ? Map<String, dynamic>.from(body['staff']) : const <String, dynamic>{};
+    final totalRaw = body['total'];
+    return MyCommissionResult(
+      total: totalRaw is num ? totalRaw.toDouble() : double.tryParse('$totalRaw') ?? 0,
+      records: list
+          .whereType<Map>()
+          .map((row) => CommissionRecord.fromJson(Map<String, dynamic>.from(row)))
+          .toList(),
+      staffName: '${staffMap['name'] ?? ''}'.trim().isEmpty ? null : '${staffMap['name']}',
+    );
   }
 
   Future<void> createWalkInCheckIn({

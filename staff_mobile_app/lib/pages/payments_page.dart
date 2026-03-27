@@ -67,8 +67,34 @@ class _PaymentsPageState extends State<PaymentsPage> {
 
   Future<void> _openAddPayment() async {
     final appState = AppStateScope.of(context);
+    var customers = _customers;
+    var services = _services;
+    var staff = _staff;
     var branchOptions = _branches;
     final fixedBranchId = appState.currentUser?.branchId;
+
+    if (customers.isEmpty) {
+      try {
+        customers = await appState.loadCustomers();
+      } catch (_) {
+        customers = const [];
+      }
+    }
+    if (services.isEmpty) {
+      try {
+        services = await appState.loadServices();
+      } catch (_) {
+        services = const [];
+      }
+    }
+    if (staff.isEmpty) {
+      try {
+        staff = await appState.loadStaffList(branchId: fixedBranchId);
+      } catch (_) {
+        staff = const [];
+      }
+    }
+
     if (branchOptions.isEmpty) {
       try {
         if (fixedBranchId == null || fixedBranchId.isEmpty) {
@@ -89,16 +115,26 @@ class _PaymentsPageState extends State<PaymentsPage> {
       );
       return;
     }
+    if (!mounted) return;
+    if (services.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(appState.lastError ?? 'No services available for payment')),
+      );
+      return;
+    }
     setState(() {
+      _customers = customers;
+      _services = services;
+      _staff = staff;
       _branches = branchOptions;
     });
 
     final payload = await AddPaymentModal.show(
       context,
       branches: branchOptions,
-      customers: _customers,
-      staff: _staff,
-      services: _services,
+      customers: customers,
+      staff: staff,
+      services: services,
       initialBranchId: fixedBranchId,
     );
     if (payload == null) return;
@@ -106,7 +142,8 @@ class _PaymentsPageState extends State<PaymentsPage> {
 
     final ok = await appState.addManualPayment(
       branchId: payload.branchId,
-      serviceId: payload.serviceId,
+      serviceId: payload.serviceIds.first,
+      serviceIds: payload.serviceIds,
       staffId: payload.staffId.isEmpty ? null : payload.staffId,
       customerId: payload.customerId.isEmpty ? null : payload.customerId,
       customerName: payload.customerName,

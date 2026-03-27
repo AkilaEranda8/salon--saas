@@ -24,6 +24,7 @@ deploy_cmd = (
     "git fetch origin master && "
     "git reset --hard origin/master && "
     "docker compose up -d --build && "
+    "docker compose exec -T backend node scripts/ensureSuperadmin.js && "
     "docker compose restart proxy && "
     "echo '=== DEPLOY DONE ==='"
 )

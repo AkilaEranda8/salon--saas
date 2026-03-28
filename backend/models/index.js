@@ -2,6 +2,7 @@ const Branch             = require('./Branch');
 const User               = require('./User');
 const Service            = require('./Service');
 const Staff              = require('./Staff');
+const StaffBranch        = require('./StaffBranch');
 const StaffSpecialization = require('./StaffSpecialization');
 const Customer           = require('./Customer');
 const Appointment        = require('./Appointment');
@@ -36,6 +37,13 @@ User.belongsTo(Branch, { foreignKey: 'branch_id', as: 'branch' });
 
 // ── Staff ─────────────────────────────────────────────────────────────────────
 Staff.belongsTo(Branch,             { foreignKey: 'branch_id', as: 'branch' });
+Staff.belongsToMany(Branch, {
+  through: StaffBranch,
+  foreignKey: 'staff_id',
+  otherKey: 'branch_id',
+  as: 'branches',
+});
+StaffBranch.belongsTo(Branch, { foreignKey: 'branch_id', as: 'branch' });
 Staff.hasMany(StaffSpecialization,  { foreignKey: 'staff_id',  as: 'specializations' });
 Staff.hasMany(Appointment,          { foreignKey: 'staff_id',  as: 'appointments' });
 Staff.hasMany(Attendance,           { foreignKey: 'staff_id',  as: 'attendances' });
@@ -137,6 +145,7 @@ module.exports = {
   User,
   Service,
   Staff,
+  StaffBranch,
   StaffSpecialization,
   Customer,
   Appointment,

@@ -10,7 +10,7 @@ import {
   FilterBar, SearchBar, DataTable,
 } from '../components/ui/PageKit';
 
-const EMPTY = { name:'', phone:'', role_title:'', branch_id:'', commission_type:'percentage', commission_value:'', join_date:'', is_active:true };
+const EMPTY = { name:'', phone:'', role_title:'', branch_ids:[], commission_type:'percentage', commission_value:'', join_date:'', is_active:true };
 
 function CommBadge({ type, value }) {
   return (
@@ -60,27 +60,41 @@ export default function StaffPage() {
     ? branches
     : branches.filter((b) => String(b.id) === String(myBranchId ?? ''));
 
-  const openAdd  = () => { setEditItem(null); setForm({ ...EMPTY, branch_id: myBranchId != null ? String(myBranchId) : '', join_date: new Date().toISOString().slice(0,10) }); setSpecs([]); setFormErr(''); setShowForm(true); };
+  const openAdd  = () => { setEditItem(null); setForm({ ...EMPTY, branch_ids: myBranchId != null ? [String(myBranchId)] : [], join_date: new Date().toISOString().slice(0,10) }); setSpecs([]); setFormErr(''); setShowForm(true); };
   const openEdit = row => {
-    const bid = row.branch_id ?? row.branch?.id;
+    const fromM2m = (row.branches && row.branches.length)
+      ? row.branches.map((b) => String(b.id))
+      : (row.branch_id != null || row.branch?.id != null ? [String(row.branch_id ?? row.branch?.id)] : []);
     setEditItem(row);
-    setForm({ ...row, branch_id: bid != null ? String(bid) : '', join_date: row.join_date?.slice(0,10)||'' });
+    setForm({ ...row, branch_ids: fromM2m, join_date: row.join_date?.slice(0,10)||'' });
     setSpecs((row.specializations||[]).map(s=>s.service_id));
     setFormErr('');
     setShowForm(true);
   };
   const openProfile = row => { setProfileItem(row); setShowProfile(true); };
   const toggleSpec  = id => setSpecs(sp => sp.includes(id) ? sp.filter(x=>x!==id) : [...sp, id]);
+  const toggleBranch = (id) => {
+    const s = String(id);
+    setForm((f) => {
+      if (user?.role === 'manager' && branchChoices.length <= 1) {
+        return { ...f, branch_ids: myBranchId != null ? [String(myBranchId)] : [] };
+      }
+      const set = new Set(f.branch_ids || []);
+      if (set.has(s)) set.delete(s); else set.add(s);
+      return { ...f, branch_ids: [...set] };
+    });
+  };
 
   const handleSave = async () => {
-    if (!form.name || !form.branch_id) return setFormErr('Name and branch are required');
+    if (!form.name || !form.branch_ids?.length) return setFormErr('Name and at least one branch are required');
     setSaving(true);
     try {
       const payload = {
         ...form,
-        branch_id: form.branch_id ? Number(form.branch_id) : null,
+        branch_ids: form.branch_ids.map((x) => Number(x)).filter((n) => Number.isFinite(n)),
         specializations: specs,
       };
+      delete payload.branch_id;
       editItem ? await api.put(`/staff/${editItem.id}`, payload) : await api.post('/staff', payload);
       setShowForm(false); load();
     } catch (e) { setFormErr(e.response?.data?.message || 'Save failed'); }
@@ -115,15 +129,23 @@ export default function StaffPage() {
     },
     {
       id: 'branch',
-      header: 'Branch',
-      accessorFn: row => row.branch?.name,
-      meta: { width: '16%' },
-      cell: ({ row: { original: row } }) => row.branch ? (
-        <span style={{ display:'flex', alignItems:'center', gap:5 }}>
-          <span style={{ width:8, height:8, borderRadius:'50%', background:row.branch.color||'#2563EB', display:'inline-block' }} />
-          <span style={{ fontSize:13, color:'#475467' }}>{row.branch.name}</span>
-        </span>
-      ) : null,
+      header: 'Branches',
+      accessorFn: row => (row.branches && row.branches.length ? row.branches.map(b=>b.name).join(', ') : row.branch?.name),
+      meta: { width: '18%' },
+      cell: ({ row: { original: row } }) => {
+        const list = (row.branches && row.branches.length) ? row.branches : (row.branch ? [row.branch] : []);
+        if (!list.length) return null;
+        return (
+          <span style={{ display:'flex', flexWrap:'wrap', alignItems:'center', gap:6 }}>
+            {list.map((b) => (
+              <span key={b.id} style={{ display:'inline-flex', alignItems:'center', gap:4 }}>
+                <span style={{ width:8, height:8, borderRadius:'50%', background:b.color||'#2563EB', display:'inline-block' }} />
+                <span style={{ fontSize:13, color:'#475467' }}>{b.name}</span>
+              </span>
+            ))}
+          </span>
+        );
+      },
     },
     {
       id: 'phone',
@@ -184,7 +206,7 @@ export default function StaffPage() {
         <StatCard label="Total Staff"  value={staff.length}  color="#2563EB" icon={<IconUsers />} />
         <StatCard label="Active"       value={activeCount}   color="#059669" icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>} />
         <StatCard label="Inactive"     value={staff.length - activeCount} color="#DC2626" icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>} />
-        <StatCard label="Branches"     value={[...new Set(staff.map(s=>s.branch_id).filter(Boolean))].length} color="#D97706" icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>} />
+        <StatCard label="Branches"     value={[...new Set(staff.flatMap(s => [...(s.branches||[]).map(b=>b.id), s.branch_id].filter(Boolean)))].length} color="#D97706" icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>} />
       </div>
 
       {/* Filter Bar */}
@@ -219,11 +241,20 @@ export default function StaffPage() {
           </div>
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
             <FormGroup label="Role / Title"><Input value={form.role_title||''} onChange={e => setForm(f=>({...f, role_title:e.target.value}))} placeholder="e.g. Senior Stylist" /></FormGroup>
-            <FormGroup label="Branch" required>
-              <Select value={form.branch_id||''} onChange={e => setForm(f=>({...f, branch_id:e.target.value}))} disabled={user?.role === 'manager' && branchChoices.length <= 1}>
-                <option value="">Select branch</option>
-                {branchChoices.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-              </Select>
+            <FormGroup label="Branches" required>
+              <div style={{ display:'flex', flexDirection:'column', gap:8, marginTop:4 }}>
+                {branchChoices.map(b => (
+                  <label key={b.id} style={{ display:'flex', alignItems:'center', gap:8, cursor:(user?.role === 'manager' && branchChoices.length <= 1)?'default':'pointer', fontSize:13, color:'#344054' }}>
+                    <input
+                      type="checkbox"
+                      checked={(form.branch_ids||[]).includes(String(b.id))}
+                      onChange={() => toggleBranch(b.id)}
+                      disabled={user?.role === 'manager' && branchChoices.length <= 1}
+                    />
+                    {b.name}
+                  </label>
+                ))}
+              </div>
             </FormGroup>
           </div>
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:10 }}>
@@ -263,7 +294,7 @@ export default function StaffPage() {
             </div>
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:20 }}>
               {[
-                { label:'Branch',  value: p.branch?.name||'' },
+                { label:'Branches',  value: (p.branches && p.branches.length) ? p.branches.map(b=>b.name).join(', ') : (p.branch?.name||'') },
                 { label:'Phone',   value: p.phone||'' },
                 { label:'Joined',  value: p.join_date ? new Date(p.join_date).toLocaleDateString() : '' },
                 { label:'Status',  value: p.is_active!==false ? 'Active' : 'Inactive' },

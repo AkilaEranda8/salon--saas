@@ -5,6 +5,7 @@ const jwt = require('jsonwebtoken');
 const Branch = require('../models/Branch');
 const Service = require('../models/Service');
 const Staff = require('../models/Staff');
+const { staffWhereForBranch } = require('../utils/staffBranchFilter');
 const Appointment = require('../models/Appointment');
 const Customer = require('../models/Customer');
 const Package = require('../models/Package');
@@ -48,7 +49,9 @@ router.get('/staff', async (req, res) => {
   try {
     const where = { is_active: true };
     if (req.query.branchId) {
-      where.branch_id = parseInt(req.query.branchId, 10);
+      const bid = parseInt(req.query.branchId, 10);
+      const branchPart = await staffWhereForBranch(bid);
+      Object.assign(where, branchPart);
     }
     const staff = await Staff.findAll({
       where,

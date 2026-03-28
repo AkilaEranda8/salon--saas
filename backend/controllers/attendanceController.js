@@ -1,5 +1,6 @@
 const { Op, fn, col } = require('sequelize');
 const { Attendance, Staff, Branch } = require('../models');
+const { staffWhereForBranch } = require('../utils/staffBranchFilter');
 
 const list = async (req, res) => {
   try {
@@ -15,9 +16,9 @@ const list = async (req, res) => {
       where.date  = { [Op.between]: [start, `${year}-${month}-${last}`] };
     }
 
-    const staffWhere = {};
-    if (req.userBranchId) staffWhere.branch_id = req.userBranchId;
-    else if (req.query.branchId) staffWhere.branch_id = req.query.branchId;
+    let staffWhere = {};
+    if (req.userBranchId) staffWhere = await staffWhereForBranch(req.userBranchId);
+    else if (req.query.branchId) staffWhere = await staffWhereForBranch(req.query.branchId);
 
     const rows = await Attendance.findAll({
       where,
@@ -77,9 +78,9 @@ const update = async (req, res) => {
 
 const summary = async (req, res) => {
   try {
-    const staffWhere = {};
-    if (req.userBranchId) staffWhere.branch_id = req.userBranchId;
-    else if (req.query.branchId) staffWhere.branch_id = req.query.branchId;
+    let staffWhere = {};
+    if (req.userBranchId) staffWhere = await staffWhereForBranch(req.userBranchId);
+    else if (req.query.branchId) staffWhere = await staffWhereForBranch(req.query.branchId);
 
     const where = {};
     if (req.query.month) {

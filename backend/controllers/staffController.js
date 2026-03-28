@@ -1,37 +1,108 @@
 const { Op, fn, col, literal, where: sequelizeWhere } = require('sequelize');
-const { Staff, Branch, StaffSpecialization, Service, Appointment, Payment, User } = require('../models');
+const {
+  Staff,
+  StaffBranch,
+  Branch,
+  StaffSpecialization,
+  Service,
+  Appointment,
+  Payment,
+  User,
+} = require('../models');
+const { staffWhereForBranch, staffBelongsToBranch } = require('../utils/staffBranchFilter');
 
-// Helper: resolve branch filter from role
-const getBranchWhere = (req) => {
-  const where = {};
-  if (req.userBranchId) {
-    where.branch_id = req.userBranchId;
-  } else if (req.query.branchId) {
-    where.branch_id = req.query.branchId;
+function normalizeBranchIds(body) {
+  if (Array.isArray(body.branch_ids) && body.branch_ids.length) {
+    return [...new Set(body.branch_ids.map((x) => parseInt(x, 10)).filter((n) => Number.isFinite(n)))];
   }
-  return where;
-};
+  if (body.branch_id != null && body.branch_id !== '') {
+    const n = parseInt(body.branch_id, 10);
+    return Number.isFinite(n) ? [n] : [];
+  }
+  return [];
+}
+
+async function setStaffBranches(staffId, branchIds) {
+  await StaffBranch.destroy({ where: { staff_id: staffId } });
+  if (branchIds.length) {
+    await StaffBranch.bulkCreate(
+      branchIds.map((bid) => ({ staff_id: staffId, branch_id: bid })),
+      { ignoreDuplicates: true },
+    );
+  }
+}
+
+const staffIncludeList = () => [
+  { model: Branch, as: 'branch', attributes: ['id', 'name', 'color'] },
+  {
+    model: StaffSpecialization,
+    as: 'specializations',
+    separate: true,
+    include: [{ model: Service, as: 'service', attributes: ['id', 'name', 'category'] }],
+  },
+];
+
+const staffIncludeDetail = () => [
+  { model: Branch, as: 'branch', attributes: ['id', 'name', 'color'] },
+  {
+    model: Branch,
+    as: 'branches',
+    attributes: ['id', 'name', 'color'],
+    through: { attributes: [] },
+  },
+  {
+    model: StaffSpecialization,
+    as: 'specializations',
+    separate: true,
+    include: [{ model: Service, as: 'service', attributes: ['id', 'name', 'category'] }],
+  },
+];
+
+async function attachBranchesForStaffRows(rows) {
+  const ids = rows.map((r) => r.id);
+  if (!ids.length) return [];
+  const links = await StaffBranch.findAll({
+    where: { staff_id: { [Op.in]: ids } },
+    include: [{ model: Branch, as: 'branch', attributes: ['id', 'name', 'color'] }],
+  });
+  const byStaff = {};
+  for (const l of links) {
+    const b = l.branch;
+    if (!b) continue;
+    if (!byStaff[l.staff_id]) byStaff[l.staff_id] = [];
+    byStaff[l.staff_id].push(b.toJSON());
+  }
+  return rows.map((row) => {
+    const j = row.toJSON();
+    j.branches =
+      byStaff[row.id] && byStaff[row.id].length ? byStaff[row.id] : j.branch ? [j.branch] : [];
+    return j;
+  });
+}
+
+async function getStaffListBranchWhere(req) {
+  const branchFilter = req.userBranchId || req.query.branchId;
+  if (!branchFilter) return {};
+  return staffWhereForBranch(branchFilter);
+}
 
 const list = async (req, res) => {
   try {
-    const page   = Math.max(parseInt(req.query.page)  || 1, 1);
-    const limit  = Math.min(parseInt(req.query.limit) || 20, 100);
+    const page = Math.max(parseInt(req.query.page) || 1, 1);
+    const limit = Math.min(parseInt(req.query.limit) || 20, 100);
     const offset = (page - 1) * limit;
 
-    const where = getBranchWhere(req);
+    const where = await getStaffListBranchWhere(req);
     if (req.query.active !== undefined) where.is_active = req.query.active !== 'false';
 
-    // If the staff table is empty for the selected scope, bootstrap from active users
-    // so mobile clients can still load assignable staff members.
+    const branchFilter = req.userBranchId || req.query.branchId;
     const existingCount = await Staff.count({ where });
-    if (existingCount === 0) {
+    if (existingCount === 0 && branchFilter) {
       const userWhere = {
         is_active: true,
         role: { [Op.in]: ['staff', 'manager', 'admin'] },
+        branch_id: branchFilter,
       };
-      if (where.branch_id !== undefined) {
-        userWhere.branch_id = where.branch_id;
-      }
 
       const users = await User.findAll({
         where: userWhere,
@@ -49,25 +120,25 @@ const list = async (req, res) => {
               is_active: u.is_active,
             })),
         );
+        const scoped = await Staff.findAll({ where: { branch_id: branchFilter } });
+        for (const s of scoped) {
+          const cnt = await StaffBranch.count({ where: { staff_id: s.id } });
+          if (!cnt) await setStaffBranches(s.id, [s.branch_id]);
+        }
       }
     }
 
-    const { count, rows } = await Staff.findAndCountAll({
+    const total = await Staff.count({ where });
+    const rows = await Staff.findAll({
       where,
       limit,
       offset,
       order: [['name', 'ASC']],
-      include: [
-        { model: Branch, as: 'branch', attributes: ['id', 'name', 'color'] },
-        {
-          model: StaffSpecialization,
-          as: 'specializations',
-          include: [{ model: Service, as: 'service', attributes: ['id', 'name', 'category'] }],
-        },
-      ],
+      include: staffIncludeList(),
     });
+    const data = await attachBranchesForStaffRows(rows);
 
-    return res.json({ total: count, page, limit, data: rows });
+    return res.json({ total, page, limit, data });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ message: 'Server error.' });
@@ -77,24 +148,16 @@ const list = async (req, res) => {
 const getOne = async (req, res) => {
   try {
     const staff = await Staff.findByPk(req.params.id, {
-      include: [
-        { model: Branch, as: 'branch', attributes: ['id', 'name', 'color'] },
-        {
-          model: StaffSpecialization,
-          as: 'specializations',
-          include: [{ model: Service, as: 'service', attributes: ['id', 'name', 'category'] }],
-        },
-      ],
+      include: staffIncludeDetail(),
     });
 
     if (!staff) return res.status(404).json({ message: 'Staff not found.' });
-    if (req.userBranchId && staff.branch_id !== req.userBranchId) {
+    if (req.userBranchId && !(await staffBelongsToBranch(staff.id, req.userBranchId))) {
       return res.status(403).json({ message: 'Access denied. Staff belongs to a different branch.' });
     }
 
-    // Appointment count & total commission
     const apptCount = await Appointment.count({ where: { staff_id: staff.id } });
-    const commSum   = await Payment.sum('commission_amount', { where: { staff_id: staff.id } });
+    const commSum = await Payment.sum('commission_amount', { where: { staff_id: staff.id } });
 
     return res.json({ ...staff.toJSON(), apptCount, totalCommission: commSum || 0 });
   } catch (err) {
@@ -104,23 +167,39 @@ const getOne = async (req, res) => {
 
 const create = async (req, res) => {
   try {
-    const { name, phone, role_title, branch_id, commission_type, commission_value, join_date, specializations } = req.body;
+    const { name, phone, role_title, commission_type, commission_value, join_date, specializations } = req.body;
 
-    if (!name || !branch_id) {
-      return res.status(400).json({ message: 'Name and branch_id are required.' });
-    }
-    if (req.userBranchId && Number(branch_id) !== Number(req.userBranchId)) {
-      return res.status(403).json({ message: 'Access denied. You can only create staff for your own branch.' });
+    const branchIds = normalizeBranchIds(req.body);
+    if (!name || !branchIds.length) {
+      return res.status(400).json({ message: 'Name and at least one branch are required.' });
     }
 
-    const staff = await Staff.create({ name, phone, role_title, branch_id, commission_type, commission_value, join_date });
+    if (req.userBranchId) {
+      const mb = Number(req.userBranchId);
+      if (!branchIds.every((id) => id === mb)) {
+        return res.status(403).json({ message: 'Access denied. You can only create staff for your own branch.' });
+      }
+    }
+
+    const staff = await Staff.create({
+      name,
+      phone,
+      role_title,
+      branch_id: branchIds[0],
+      commission_type,
+      commission_value,
+      join_date,
+    });
+
+    await setStaffBranches(staff.id, branchIds);
 
     if (Array.isArray(specializations) && specializations.length) {
       const specs = specializations.map((sid) => ({ staff_id: staff.id, service_id: sid }));
       await StaffSpecialization.bulkCreate(specs, { ignoreDuplicates: true });
     }
 
-    return res.status(201).json(staff);
+    const full = await Staff.findByPk(staff.id, { include: staffIncludeDetail() });
+    return res.status(201).json(full);
   } catch (err) {
     console.error('Staff create error:', err);
     return res.status(500).json({ message: err.message || 'Server error.' });
@@ -132,20 +211,17 @@ const update = async (req, res) => {
     const staff = await Staff.findByPk(req.params.id);
     if (!staff) return res.status(404).json({ message: 'Staff not found.' });
 
-    // Prevent cross-branch updates for non-superadmin/admin
-    if (req.userBranchId && staff.branch_id !== req.userBranchId) {
+    if (req.userBranchId && !(await staffBelongsToBranch(staff.id, req.userBranchId))) {
       return res.status(403).json({ message: 'Access denied. Staff belongs to a different branch.' });
     }
 
     const allowed = ['name', 'phone', 'role_title', 'commission_type', 'commission_value', 'join_date', 'is_active'];
-    // Superadmin/admin: any branch. Manager: only their branch (validated below).
     if (['superadmin', 'admin', 'manager'].includes(req.user?.role)) allowed.push('branch_id');
     const updates = {};
     for (const field of allowed) {
       if (req.body[field] !== undefined) updates[field] = req.body[field];
     }
 
-    // Avoid MySQL/Sequelize errors: empty strings are invalid for DECIMAL / DATEONLY
     if (Object.prototype.hasOwnProperty.call(updates, 'join_date')) {
       const j = updates.join_date;
       updates.join_date = j === '' || j == null ? null : j;
@@ -176,7 +252,25 @@ const update = async (req, res) => {
       updates.is_active = updates.is_active === 'true' || updates.is_active === '1';
     }
 
+    const branchIdsFromBody = normalizeBranchIds(req.body);
+    if (branchIdsFromBody.length) {
+      if (req.user?.role === 'manager' && req.userBranchId) {
+        const mb = Number(req.userBranchId);
+        if (!branchIdsFromBody.every((id) => id === mb)) {
+          return res.status(403).json({ message: 'Managers can only assign staff to their own branch.' });
+        }
+      }
+      updates.branch_id = branchIdsFromBody[0];
+    }
+
     await staff.update(updates);
+
+    if (branchIdsFromBody.length) {
+      await setStaffBranches(staff.id, branchIdsFromBody);
+    } else if (Object.prototype.hasOwnProperty.call(updates, 'branch_id') && updates.branch_id != null) {
+      const bid = parseInt(updates.branch_id, 10);
+      if (Number.isFinite(bid)) await setStaffBranches(staff.id, [bid]);
+    }
 
     const { specializations } = req.body;
     if (Array.isArray(specializations)) {
@@ -188,7 +282,8 @@ const update = async (req, res) => {
       }
     }
 
-    return res.json(staff);
+    const full = await Staff.findByPk(staff.id, { include: staffIncludeDetail() });
+    return res.json(full);
   } catch (err) {
     console.error('Staff update error:', err);
     return res.status(500).json({ message: err.message || 'Server error.' });
@@ -199,10 +294,11 @@ const remove = async (req, res) => {
   try {
     const staff = await Staff.findByPk(req.params.id);
     if (!staff) return res.status(404).json({ message: 'Staff not found.' });
-    if (req.userBranchId && staff.branch_id !== req.userBranchId) {
+    if (req.userBranchId && !(await staffBelongsToBranch(staff.id, req.userBranchId))) {
       return res.status(403).json({ message: 'Access denied. Staff belongs to a different branch.' });
     }
 
+    await StaffBranch.destroy({ where: { staff_id: staff.id } });
     await staff.destroy();
     return res.json({ message: 'Staff deleted.' });
   } catch (err) {
@@ -213,9 +309,8 @@ const remove = async (req, res) => {
 const commissionSummary = async (req, res) => {
   try {
     const { month, year, branchId } = req.query;
-    const staffWhere = {};
-    if (req.userBranchId) staffWhere.branch_id = req.userBranchId;
-    else if (branchId) staffWhere.branch_id = branchId;
+    const bid = req.userBranchId || branchId;
+    const staffWhere = bid ? await staffWhereForBranch(bid) : {};
 
     const paymentWhere = {};
     if (month && year) {
@@ -226,7 +321,6 @@ const commissionSummary = async (req, res) => {
       paymentWhere.date = { [Op.between]: [start, end] };
     }
 
-    // Fetch all staff first
     const staffRows = await Staff.findAll({
       where: staffWhere,
       include: [{ model: Branch, as: 'branch', attributes: ['id', 'name'] }],
@@ -234,37 +328,35 @@ const commissionSummary = async (req, res) => {
 
     if (!staffRows.length) return res.json([]);
 
-    // Single aggregated query for payment totals (avoids N+1)
     const staffIds = staffRows.map((s) => s.id);
     const paymentsAgg = await Payment.findAll({
       where: { ...paymentWhere, staff_id: { [Op.in]: staffIds } },
       attributes: [
         'staff_id',
-        [fn('SUM', col('total_amount')),     'totalRevenue'],
+        [fn('SUM', col('total_amount')), 'totalRevenue'],
         [fn('SUM', col('commission_amount')), 'totalCommission'],
-        [fn('COUNT', col('id')),             'appointmentCount'],
+        [fn('COUNT', col('id')), 'appointmentCount'],
       ],
       group: ['staff_id'],
       raw: true,
     });
 
-    // Build lookup map
     const aggMap = {};
     for (const row of paymentsAgg) {
       aggMap[row.staff_id] = row;
     }
 
-    const results = staffRows.map((staff) => {
-      const agg = aggMap[staff.id] || { totalRevenue: 0, totalCommission: 0, appointmentCount: 0 };
+    const results = staffRows.map((s) => {
+      const agg = aggMap[s.id] || { totalRevenue: 0, totalCommission: 0, appointmentCount: 0 };
       return {
-        staffId:         staff.id,
-        staffName:       staff.name,
-        role:            staff.role_title,
-        branchName:      staff.branch?.name || '',
-        commissionType:  staff.commission_type,
-        commissionValue: staff.commission_value,
+        staffId: s.id,
+        staffName: s.name,
+        role: s.role_title,
+        branchName: s.branch?.name || '',
+        commissionType: s.commission_type,
+        commissionValue: s.commission_value,
         appointmentCount: parseInt(agg.appointmentCount) || 0,
-        totalRevenue:    parseFloat(agg.totalRevenue)    || 0,
+        totalRevenue: parseFloat(agg.totalRevenue) || 0,
         totalCommission: parseFloat(agg.totalCommission) || 0,
       };
     });
@@ -282,15 +374,15 @@ const commissionReport = async (req, res) => {
     if (req.query.month) {
       const [year, month] = req.query.month.split('-');
       const start = `${year}-${month}-01`;
-      const last  = new Date(year, month, 0).getDate();
-      const end   = `${year}-${month}-${last}`;
-      where.date  = { [Op.between]: [start, end] };
+      const last = new Date(year, month, 0).getDate();
+      const end = `${year}-${month}-${last}`;
+      where.date = { [Op.between]: [start, end] };
     }
 
     const payments = await Payment.findAll({
       where,
       include: [
-        { model: Service,     as: 'service',     attributes: ['id', 'name'] },
+        { model: Service, as: 'service', attributes: ['id', 'name'] },
         { model: Appointment, as: 'appointment', attributes: ['id', 'date', 'time', 'customer_name'] },
       ],
       order: [['date', 'DESC']],
@@ -312,25 +404,19 @@ const myCommission = async (req, res) => {
       return res.status(400).json({ message: 'Authenticated user name is missing.' });
     }
 
-    const staffWhere = {};
-    if (branchId) staffWhere.branch_id = branchId;
+    const nameCond = sequelizeWhere(fn('LOWER', col('name')), staffName.toLowerCase());
+    const branchPart = branchId ? await staffWhereForBranch(branchId) : {};
+    const where = Object.keys(branchPart).length ? { [Op.and]: [nameCond, branchPart] } : nameCond;
 
-    let staff = await Staff.findOne({
-      where: {
-        ...staffWhere,
-        [Op.and]: [sequelizeWhere(fn('LOWER', col('name')), staffName.toLowerCase())],
-      },
-    });
+    let staff = await Staff.findOne({ where });
 
     if (!staff && req.user?.id) {
       const user = await User.findByPk(req.user.id, { attributes: ['name', 'branch_id'] });
       if (user?.name) {
-        staff = await Staff.findOne({
-          where: {
-            ...(user.branch_id ? { branch_id: user.branch_id } : {}),
-            [Op.and]: [sequelizeWhere(fn('LOWER', col('name')), String(user.name).trim().toLowerCase())],
-          },
-        });
+        const n2 = sequelizeWhere(fn('LOWER', col('name')), String(user.name).trim().toLowerCase());
+        const bp = user.branch_id ? await staffWhereForBranch(user.branch_id) : {};
+        const w2 = Object.keys(bp).length ? { [Op.and]: [n2, bp] } : n2;
+        staff = await Staff.findOne({ where: w2 });
       }
     }
 
@@ -385,7 +471,6 @@ const setSpecializations = async (req, res) => {
       return res.status(400).json({ message: 'serviceIds must be an array.' });
     }
 
-    // Replace all existing specializations
     await StaffSpecialization.destroy({ where: { staff_id: req.params.id } });
 
     if (serviceIds.length) {

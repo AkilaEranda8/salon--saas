@@ -14,6 +14,7 @@ const { ensureUsersStaffIdColumn } = require('./services/ensureUsersStaffIdColum
 const { ensureWalkInTotalAmountColumn } = require('./services/ensureWalkInTotalAmountColumn');
 const { runWalkInQueueServicesMigration } = require('./services/walkInQueueServicesMigration');
 const { ensureCustomerPhoneUniqueIndex } = require('./services/ensureCustomerPhoneUniqueIndex');
+const { ensureStaffBranchesBackfill } = require('./services/ensureStaffBranchesBackfill');
 
 // Validate required env vars on startup
 validateEnv();
@@ -150,6 +151,7 @@ connectWithRetry().then(async () => {
     await ensureWalkInTotalAmountColumn();
     await runWalkInQueueServicesMigration();
     await sequelize.sync({ force: false });
+    await ensureStaffBranchesBackfill();
     await ensureCustomerPhoneUniqueIndex();
     await runAppointmentServicesMigration();
   } catch (err) {

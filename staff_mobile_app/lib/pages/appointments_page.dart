@@ -1992,7 +1992,8 @@ class _PaySheetState extends State<_PaySheet> {
               const SizedBox(height: 14),
               _label('PROMO DISCOUNT'),
               DropdownButtonFormField<String>(
-                value: _discountId.isEmpty
+                key: ValueKey<String>('appt_promo_$_discountId'),
+                initialValue: _discountId.isEmpty
                     ? ''
                     : widget.discounts.any((d) => '${d['id']}' == _discountId)
                         ? _discountId
@@ -2056,7 +2057,7 @@ class _PaySheetState extends State<_PaySheet> {
                   TextField(
                       controller: _amtCtrl,
                     keyboardType: TextInputType.number,
-                      decoration: _deco('After promo', Icons.edit_rounded),
+                      decoration: _deco('After promo', Icons.account_balance_wallet_rounded),
                     ),
                   ],
                 ),

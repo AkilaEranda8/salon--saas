@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/customer.dart';
 import '../models/salon_service.dart';
 import '../models/staff_member.dart';
+import '../widgets/walk_in_service_dropdown_section.dart';
 
 // ── Palette ───────────────────────────────────────────────────────────────────
 const Color _pGreen  = Color(0xFF059669);
@@ -99,6 +100,7 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
 
   final _formKey               = GlobalKey<FormState>();
   final _customerNameCtrl      = TextEditingController();
+  final _staffNameCtrl         = TextEditingController();
   final _totalAmountCtrl       = TextEditingController();
   final _loyaltyDiscountCtrl   = TextEditingController(text: '0');
   final _paidAmountCtrl        = TextEditingController();
@@ -107,7 +109,9 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
   String _customerId = '';
   Customer? _linkedCustomer;
   String? _staffId;
-  final Set<String> _selectedServiceIds = {};
+  StaffMember? _linkedStaff;
+  String? _primaryServiceId;
+  final List<String> _extraServiceIds = [];
   String _method = _methods.first;
   String _discountId = '';
 
@@ -120,6 +124,7 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
   @override
   void dispose() {
     _customerNameCtrl.dispose();
+    _staffNameCtrl.dispose();
     _totalAmountCtrl.dispose();
     _loyaltyDiscountCtrl.dispose();
     _paidAmountCtrl.dispose();
@@ -162,9 +167,15 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
     _paidAmountCtrl.text = net > 0 ? net.toStringAsFixed(0) : '';
   }
 
+  List<String> _orderedServiceIds() {
+    final p = _primaryServiceId?.trim();
+    if (p == null || p.isEmpty) return const [];
+    return [p, ..._extraServiceIds];
+  }
+
   void _recalcTotal() {
     var total = 0.0;
-    for (final id in _selectedServiceIds) {
+    for (final id in _orderedServiceIds()) {
       for (final s in widget.services) {
         if (s.id == id) total += s.price;
       }
@@ -192,7 +203,7 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
       branchId:       (_branchId ?? '').trim(),
       customerId:     _customerId.trim(),
       staffId:        (_staffId ?? '').trim(),
-      serviceIds:     _selectedServiceIds.toList(),
+      serviceIds:     _orderedServiceIds(),
       totalAmount:    _totalAmountCtrl.text.trim(),
       loyaltyDiscount: _loyaltyDiscountCtrl.text.trim(),
       method:         _method,
@@ -335,8 +346,12 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
                                 overflow: TextOverflow.ellipsis),
                           ))
                       .toList(),
-                  onChanged: (v) =>
-                      setState(() { _branchId = v; _staffId = null; }),
+                  onChanged: (v) => setState(() {
+                    _branchId = v;
+                    _staffId = null;
+                    _linkedStaff = null;
+                    _staffNameCtrl.clear();
+                  }),
                   validator: (v) =>
                       v == null || v.trim().isEmpty ? 'Branch required' : null,
                 ),
@@ -449,91 +464,159 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
 
               const SizedBox(height: 12),
 
-              // ── Staff ────────────────────────────────────────────────
+              // ── Staff (search + select — same idea as customer) ─────
               _label('STAFF *'),
-              DropdownButtonFormField<String>(
-                key: ValueKey<String>('staff_${_branchId ?? ''}_${_staffId ?? ''}'),
-                initialValue: _staffId ?? '',
-                isExpanded: true,
-                decoration: _deco('Select staff', Icons.badge_outlined),
-                items: [
-                  const DropdownMenuItem(
-                    value: '',
-                    child: Text('Select staff'),
-                  ),
-                  ...filteredStaff.map((s) => DropdownMenuItem(
-                        value: s.id,
-                        child: Text(s.name,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontSize: 13)),
-                      )),
-                ],
-                onChanged: (v) => setState(() => _staffId = v),
-                validator: (v) =>
-                    v == null || v.trim().isEmpty ? 'Select staff' : null,
+              Autocomplete<StaffMember>(
+                optionsBuilder: (val) {
+                  final q = val.text.trim().toLowerCase();
+                  final all = filteredStaff;
+                  if (q.isEmpty) return all.take(12);
+                  return all
+                      .where((s) {
+                        final name = s.name.toLowerCase();
+                        final email = (s.email ?? '').toLowerCase();
+                        return name.contains(q) || email.contains(q);
+                      })
+                      .take(15);
+                },
+                displayStringForOption: (s) => s.name,
+                onSelected: (s) {
+                  setState(() {
+                    _linkedStaff = s;
+                    _staffId = s.id;
+                    _staffNameCtrl.text = s.name;
+                  });
+                },
+                fieldViewBuilder: (ctx, ctrl, fn, _) {
+                  if (_staffNameCtrl.text.isNotEmpty &&
+                      ctrl.text != _staffNameCtrl.text) {
+                    ctrl.text = _staffNameCtrl.text;
+                  }
+                  return TextFormField(
+                    controller: ctrl,
+                    focusNode: fn,
+                    textCapitalization: TextCapitalization.words,
+                    decoration: _deco(
+                      filteredStaff.isEmpty
+                          ? 'No staff for this branch'
+                          : 'Search staff name, tap to select',
+                      Icons.badge_outlined,
+                    ),
+                    onChanged: (v) {
+                      _staffNameCtrl.text = v;
+                      if (_linkedStaff != null &&
+                          v.trim() != _linkedStaff!.name) {
+                        setState(() {
+                          _linkedStaff = null;
+                          _staffId = null;
+                        });
+                      }
+                    },
+                    validator: (_) =>
+                        (_staffId == null || _staffId!.trim().isEmpty)
+                            ? 'Select staff'
+                            : null,
+                  );
+                },
+                optionsViewBuilder: filteredStaff.isEmpty
+                    ? null
+                    : (ctx, onSel, opts) => Align(
+                          alignment: Alignment.topLeft,
+                          child: Material(
+                            elevation: 8,
+                            borderRadius: BorderRadius.circular(14),
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(
+                                maxHeight: 220,
+                                maxWidth: 420,
+                              ),
+                              child: ListView.builder(
+                                shrinkWrap: true,
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 6),
+                                itemCount: opts.length,
+                                itemBuilder: (_, i) {
+                                  final s = opts.elementAt(i);
+                                  final init = s.name.isNotEmpty
+                                      ? s.name[0].toUpperCase()
+                                      : '?';
+                                  return ListTile(
+                                    dense: true,
+                                    leading: CircleAvatar(
+                                      radius: 16,
+                                      backgroundColor: _pGreenL,
+                                      child: Text(
+                                        init,
+                                        style: const TextStyle(
+                                          color: _pGreen,
+                                          fontWeight: FontWeight.w800,
+                                          fontSize: 13,
+                                        ),
+                                      ),
+                                    ),
+                                    title: Text(
+                                      s.name,
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                    subtitle: (s.email ?? '').isNotEmpty
+                                        ? Text(
+                                            s.email!,
+                                            style: const TextStyle(
+                                              fontSize: 11,
+                                            ),
+                                          )
+                                        : null,
+                                    onTap: () => onSel(s),
+                                  );
+                                },
+                              ),
+                            ),
+                          ),
+                        ),
               ),
 
               const SizedBox(height: 12),
 
-              // ── Services ─────────────────────────────────────────────
-              _label('SERVICES'),
-              Wrap(
-                spacing: 7,
-                runSpacing: 7,
-                children: activeServices.map((s) {
-                  final on = _selectedServiceIds.contains(s.id);
-                  return GestureDetector(
-                    onTap: () {
-                      setState(() {
-                        if (on) {
-                          _selectedServiceIds.remove(s.id);
-                        } else {
-                          _selectedServiceIds.add(s.id);
-                        }
-                        _recalcTotal();
-                      });
-                    },
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 140),
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 11, vertical: 7),
-                      decoration: BoxDecoration(
-                        color: on ? _pGreenL : _pBg,
-                        borderRadius: BorderRadius.circular(9),
-                        border: Border.all(
-                            color: on ? _pGreen : _pBorder,
-                            width: on ? 1.5 : 1),
-                      ),
-                      child: Row(mainAxisSize: MainAxisSize.min, children: [
-                        if (on)
-                          const Padding(
-                            padding: EdgeInsets.only(right: 5),
-                            child: Icon(Icons.check_circle_rounded,
-                                size: 13, color: _pGreen),
-                          ),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(s.name,
-                                style: TextStyle(
-                                    color: on
-                                        ? _pGreen
-                                        : const Color(0xFF374151),
-                                    fontSize: 12.5,
-                                    fontWeight: FontWeight.w700)),
-                            Text('LKR ${s.price.toStringAsFixed(0)}',
-                                style: TextStyle(
-                                    color: on
-                                        ? _pGreen.withValues(alpha: 0.70)
-                                        : const Color(0xFFADB5BD),
-                                    fontSize: 10.5,
-                                    fontWeight: FontWeight.w600)),
-                          ],
-                        ),
-                      ]),
-                    ),
-                  );
-                }).toList(),
+              // ── Services (dropdowns — same pattern as Walk-in Collect Payment) ──
+              WalkInServiceDropdownSection(
+                activeServices: activeServices,
+                primaryServiceId: _primaryServiceId,
+                orderedServiceIds: _orderedServiceIds(),
+                onPrimaryChanged: (v) {
+                  setState(() {
+                    _primaryServiceId = v;
+                    _recalcTotal();
+                  });
+                },
+                onAddExtra: (id) {
+                  setState(() {
+                    final p = _primaryServiceId?.trim();
+                    if (p == null || p.isEmpty) {
+                      _primaryServiceId = id;
+                    } else {
+                      _extraServiceIds.add(id);
+                    }
+                    _recalcTotal();
+                  });
+                },
+                onRemoveExtraAt: (i) {
+                  setState(() {
+                    if (i >= 0 && i < _extraServiceIds.length) {
+                      _extraServiceIds.removeAt(i);
+                    }
+                    _recalcTotal();
+                  });
+                },
+                label: 'SERVICES',
+                helperText:
+                    'Primary first; add lines below — same service can be added more than once.',
+                accentColor: _pGreen,
+                borderColor: _pBorder,
+                bgColor: _pBg,
+                mutedColor: const Color(0xFF6B7280),
               ),
 
               const SizedBox(height: 12),
@@ -552,7 +635,7 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
                             'Total', Icons.receipt_long_rounded),
                         onChanged: (_) => setState(_applyNetToPaid),
                         validator: (v) {
-                          if (_selectedServiceIds.isEmpty) {
+                          if (_orderedServiceIds().isEmpty) {
                             return 'Select service';
                           }
                           if (v == null || v.trim().isEmpty) {
@@ -577,7 +660,7 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
                         controller: _paidAmountCtrl,
                         keyboardType: TextInputType.number,
                         decoration: _deco(
-                            'Paid', Icons.currency_rupee_rounded),
+                            'Paid', Icons.account_balance_wallet_rounded),
                         validator: (v) {
                           if (v == null || v.trim().isEmpty) {
                             return 'Required';

@@ -11,7 +11,7 @@ class WalkInServiceDropdownSection extends StatefulWidget {
     required this.orderedServiceIds,
     required this.onPrimaryChanged,
     required this.onAddExtra,
-    required this.onRemoveTap,
+    required this.onRemoveExtraAt,
     required this.label,
     required this.helperText,
     required this.accentColor,
@@ -25,7 +25,8 @@ class WalkInServiceDropdownSection extends StatefulWidget {
   final List<String> orderedServiceIds;
   final ValueChanged<String?> onPrimaryChanged;
   final ValueChanged<String> onAddExtra;
-  final ValueChanged<String> onRemoveTap;
+  /// Index into the **extras** list only (0 = first row under primary).
+  final ValueChanged<int> onRemoveExtraAt;
   final String label;
   final String helperText;
   final Color accentColor;
@@ -80,11 +81,6 @@ class _WalkInServiceDropdownSectionState
     return null;
   }
 
-  List<SalonService> _availableToAdd() {
-    final sel = widget.orderedServiceIds.toSet();
-    return widget.activeServices.where((s) => !sel.contains(s.id)).toList();
-  }
-
   @override
   Widget build(BuildContext context) {
     final w = widget;
@@ -130,7 +126,8 @@ class _WalkInServiceDropdownSectionState
         ? w.primaryServiceId
         : null;
 
-    final availableExtras = _availableToAdd();
+    final hasPrimary = w.primaryServiceId != null &&
+        w.primaryServiceId!.trim().isNotEmpty;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -179,7 +176,8 @@ class _WalkInServiceDropdownSectionState
         ),
         if (w.orderedServiceIds.length > 1) ...[
           const SizedBox(height: 8),
-          ...w.orderedServiceIds.skip(1).map((id) {
+          ...List.generate(w.orderedServiceIds.length - 1, (extraIndex) {
+            final id = w.orderedServiceIds[extraIndex + 1];
             final s = _serviceById(id);
             if (s == null) return const SizedBox.shrink();
             return Padding(
@@ -217,7 +215,7 @@ class _WalkInServiceDropdownSectionState
                       ),
                       IconButton(
                         visualDensity: VisualDensity.compact,
-                        onPressed: () => w.onRemoveTap(id),
+                        onPressed: () => w.onRemoveExtraAt(extraIndex),
                         icon: Icon(Icons.close_rounded,
                             size: 18, color: muted.withValues(alpha: 0.9)),
                         tooltip: 'Remove',
@@ -229,23 +227,23 @@ class _WalkInServiceDropdownSectionState
             );
           }),
         ],
-        if (availableExtras.isNotEmpty) ...[
+        if (hasPrimary && w.activeServices.isNotEmpty) ...[
           const SizedBox(height: 10),
           InputDecorator(
             decoration: _fieldDeco(
-                'Add another service', Icons.add_circle_outline),
+                'Add same or other service', Icons.add_circle_outline),
             child: DropdownButtonHideUnderline(
               child: DropdownButton<String>(
                 key: ValueKey(_extraDropdownKey),
                 isExpanded: true,
                 value: null,
                 hint: const Text(
-                  'Add another service',
+                  'Add line (can repeat a service)',
                   overflow: TextOverflow.ellipsis,
                 ),
                 icon: Icon(Icons.arrow_drop_down_rounded,
                     color: muted.withValues(alpha: 0.85)),
-                items: availableExtras
+                items: w.activeServices
                     .map(
                       (s) => DropdownMenuItem<String>(
                         value: s.id,

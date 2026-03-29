@@ -111,7 +111,7 @@ class _AddWalkInModalState extends State<AddWalkInModal> {
   List<String> _orderedSelectedServiceIds() {
     final p = _primaryServiceId?.trim();
     if (p == null || p.isEmpty) return const [];
-    return [p, ..._extraServiceIds.where((id) => id != p)];
+    return [p, ..._extraServiceIds];
   }
 
   /// Sum of selected service prices (matches API `total_amount` for multi-service).
@@ -128,40 +128,12 @@ class _AddWalkInModalState extends State<AddWalkInModal> {
     return sum;
   }
 
-  void _toggleService(String id) {
-    final primary = _primaryServiceId?.trim();
-    final selected = _orderedSelectedServiceIds();
-    final isSelected = selected.contains(id);
-
-    if (!isSelected) {
-      if (primary == null || primary.isEmpty) {
-        setState(() => _primaryServiceId = id);
-      } else {
-        setState(() {
-          if (!_extraServiceIds.contains(id)) _extraServiceIds.add(id);
-        });
+  void _removeExtraAt(int index) {
+    setState(() {
+      if (index >= 0 && index < _extraServiceIds.length) {
+        _extraServiceIds.removeAt(index);
       }
-      return;
-    }
-
-    if (primary == id) {
-      final remaining = selected.where((x) => x != id).toList();
-      if (remaining.isEmpty) {
-        setState(() {
-          _primaryServiceId = null;
-          _extraServiceIds.clear();
-        });
-      } else {
-        setState(() {
-          _primaryServiceId = remaining.first;
-          _extraServiceIds
-            ..clear()
-            ..addAll(remaining.skip(1));
-        });
-      }
-    } else {
-      setState(() => _extraServiceIds.remove(id));
-    }
+    });
   }
 
   void _onPrimaryDropdownChanged(String? v) {
@@ -171,9 +143,8 @@ class _AddWalkInModalState extends State<AddWalkInModal> {
         _primaryServiceId = null;
         return;
       }
-      _extraServiceIds.remove(v);
-      if (prev != null && prev != v && !_extraServiceIds.contains(prev)) {
-        _extraServiceIds.add(prev);
+      if (prev != null && prev.isNotEmpty && prev != v) {
+        _extraServiceIds.insert(0, prev);
       }
       _primaryServiceId = v;
     });
@@ -184,7 +155,7 @@ class _AddWalkInModalState extends State<AddWalkInModal> {
       final p = _primaryServiceId?.trim();
       if (p == null || p.isEmpty) {
         _primaryServiceId = id;
-      } else if (id != p && !_extraServiceIds.contains(id)) {
+      } else {
         _extraServiceIds.add(id);
       }
     });
@@ -476,10 +447,10 @@ class _AddWalkInModalState extends State<AddWalkInModal> {
                 orderedServiceIds: _orderedSelectedServiceIds(),
                 onPrimaryChanged: _onPrimaryDropdownChanged,
                 onAddExtra: _onAddExtraFromDropdown,
-                onRemoveTap: _toggleService,
+                onRemoveExtraAt: _removeExtraAt,
                 label: 'SERVICES',
                 helperText:
-                    'Pick the main service from the dropdown; add more with “Add another service”.',
+                    'Pick the main service; add lines below — you can add the same service more than once.',
                 accentColor: _cForest,
                 borderColor: _cBorder,
                 bgColor: _cBg,

@@ -131,7 +131,7 @@ class _AddWalkInPaymentModalState extends State<AddWalkInPaymentModal> {
   List<String> _orderedSelectedServiceIds() {
     final p = _primaryServiceId?.trim();
     if (p == null || p.isEmpty) return const [];
-    return [p, ..._extraServiceIds.where((id) => id != p)];
+    return [p, ..._extraServiceIds];
   }
 
   double _totalSelectedAmount() {
@@ -186,47 +186,13 @@ class _AddWalkInPaymentModalState extends State<AddWalkInPaymentModal> {
     _amtCtrl.text = net > 0 ? net.toStringAsFixed(0) : '';
   }
 
-  void _toggleService(String id) {
-    final primary = _primaryServiceId?.trim();
-    final selected = _orderedSelectedServiceIds();
-    final isSelected = selected.contains(id);
-
-    void apply(void Function() fn) {
-      setState(() {
-        fn();
-        _syncAmountFromServices();
-      });
-    }
-
-    if (!isSelected) {
-      if (primary == null || primary.isEmpty) {
-        apply(() => _primaryServiceId = id);
-      } else {
-        apply(() {
-          if (!_extraServiceIds.contains(id)) _extraServiceIds.add(id);
-        });
+  void _removeExtraAt(int index) {
+    setState(() {
+      if (index >= 0 && index < _extraServiceIds.length) {
+        _extraServiceIds.removeAt(index);
       }
-      return;
-    }
-
-    if (primary == id) {
-      final remaining = selected.where((x) => x != id).toList();
-      if (remaining.isEmpty) {
-        apply(() {
-          _primaryServiceId = null;
-          _extraServiceIds.clear();
-        });
-      } else {
-        apply(() {
-          _primaryServiceId = remaining.first;
-          _extraServiceIds
-            ..clear()
-            ..addAll(remaining.skip(1));
-        });
-      }
-    } else {
-      apply(() => _extraServiceIds.remove(id));
-    }
+    });
+    _syncAmountFromServices();
   }
 
   void _onPrimaryDropdownChanged(String? v) {
@@ -236,9 +202,8 @@ class _AddWalkInPaymentModalState extends State<AddWalkInPaymentModal> {
         _primaryServiceId = null;
         return;
       }
-      _extraServiceIds.remove(v);
-      if (prev != null && prev != v && !_extraServiceIds.contains(prev)) {
-        _extraServiceIds.add(prev);
+      if (prev != null && prev.isNotEmpty && prev != v) {
+        _extraServiceIds.insert(0, prev);
       }
       _primaryServiceId = v;
     });
@@ -250,7 +215,7 @@ class _AddWalkInPaymentModalState extends State<AddWalkInPaymentModal> {
       final p = _primaryServiceId?.trim();
       if (p == null || p.isEmpty) {
         _primaryServiceId = id;
-      } else if (id != p && !_extraServiceIds.contains(id)) {
+      } else {
         _extraServiceIds.add(id);
       }
     });
@@ -430,10 +395,10 @@ class _AddWalkInPaymentModalState extends State<AddWalkInPaymentModal> {
                 orderedServiceIds: _orderedSelectedServiceIds(),
                 onPrimaryChanged: _onPrimaryDropdownChanged,
                 onAddExtra: _onAddExtraFromDropdown,
-                onRemoveTap: (id) => _toggleService(id),
+                onRemoveExtraAt: _removeExtraAt,
                 label: 'SERVICES (ADDITIONAL ALLOWED)',
                 helperText:
-                    'Pick services from the dropdowns. Paid amount follows prices and promo — you can still edit.',
+                    'Primary + extra lines; same service can be added multiple times. Amount follows prices and promo.',
                 accentColor: _pGreen,
                 borderColor: _pBorder,
                 bgColor: _pBg,
@@ -444,7 +409,8 @@ class _AddWalkInPaymentModalState extends State<AddWalkInPaymentModal> {
                 const SizedBox(height: 18),
                 _label('PROMO DISCOUNT'),
                 DropdownButtonFormField<String>(
-                  value: _discountId.isEmpty
+                  key: ValueKey<String>('walkin_promo_$_discountId'),
+                  initialValue: _discountId.isEmpty
                       ? ''
                       : widget.discounts.any((d) => '${d['id']}' == _discountId)
                           ? _discountId
@@ -506,7 +472,7 @@ class _AddWalkInPaymentModalState extends State<AddWalkInPaymentModal> {
                   hintText: '0',
                   hintStyle:
                       const TextStyle(color: Color(0xFFB0B8B0), fontSize: 18),
-                  prefixIcon: const Icon(Icons.payments_outlined,
+                  prefixIcon: const Icon(Icons.account_balance_wallet_rounded,
                       color: _pGreen, size: 20),
                   filled: true,
                   fillColor: _pBg,

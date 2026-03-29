@@ -98,7 +98,11 @@ class _PaymentsPageState extends State<PaymentsPage> {
     });
   }
 
-  void _refresh() => setState(() => _future = _load());
+  void _refresh() {
+    setState(() {
+      _future = _load();
+    });
+  }
 
   Future<void> _openAdd() async {
     final app = AppStateScope.of(context);

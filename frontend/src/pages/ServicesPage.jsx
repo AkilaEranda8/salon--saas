@@ -4,6 +4,7 @@ import api from '../api/axios';
 import Button from '../components/ui/Button';
 import { Input, Select, FormGroup } from '../components/ui/FormElements';
 import PageWrapper from '../components/layout/PageWrapper';
+import { useToast } from '../components/ui/Toast';
 import {
   IconEye, IconEdit, IconTrash, IconPlus, IconTag,
   ActionBtn, StatCard, PKModal as Modal,
@@ -16,6 +17,7 @@ const EMPTY = { name: '', category: '', duration_minutes: 30, price: '', descrip
 
 export default function ServicesPage() {
   const { user }  = useAuth();
+  const { toast } = useToast();
   const canEdit   = ['superadmin', 'admin'].includes(user?.role);
   const [services, setServices] = useState([]);
   const [allSvcs, setAllSvcs]   = useState([]);
@@ -36,20 +38,40 @@ export default function ServicesPage() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    try {
-      const [filtered, all, cats] = await Promise.all([
-        api.get('/services', { params: { limit: 200, ...(filterCat !== 'All' ? { category: filterCat } : {}) } }),
-        api.get('/services', { params: { limit: 500 } }),
-        api.get('/services/categories'),
-      ]);
-      setServices(Array.isArray(filtered.data) ? filtered.data : (filtered.data?.data ?? []));
-      setAllSvcs(Array.isArray(all.data) ? all.data : (all.data?.data ?? []));
-      const catRows = Array.isArray(cats.data) ? cats.data : [];
-      const catNames = catRows.map(c => c.category).filter(Boolean);
-      setCategories(catNames);
-    } catch { }
+    const [filteredRes, allRes, catsRes] = await Promise.allSettled([
+      api.get('/services', { params: { limit: 200, ...(filterCat !== 'All' ? { category: filterCat } : {}) } }),
+      api.get('/services', { params: { limit: 500 } }),
+      api.get('/services/categories'),
+    ]);
+
+    if (filteredRes.status === 'fulfilled') {
+      setServices(Array.isArray(filteredRes.value.data) ? filteredRes.value.data : (filteredRes.value.data?.data ?? []));
+    } else {
+      setServices([]);
+    }
+
+    const allRows = allRes.status === 'fulfilled'
+      ? (Array.isArray(allRes.value.data) ? allRes.value.data : (allRes.value.data?.data ?? []))
+      : [];
+    setAllSvcs(allRows);
+
+    let catNames = [];
+    if (catsRes.status === 'fulfilled') {
+      const catRows = Array.isArray(catsRes.value.data) ? catsRes.value.data : [];
+      catNames = catRows.map(c => c.category).filter(Boolean);
+    }
+    if (!catNames.length) {
+      catNames = Array.from(new Set(allRows.map(s => s?.category).filter(Boolean)));
+    }
+    setCategories(catNames);
+
+    if (filteredRes.status !== 'fulfilled') {
+      toast('Could not load services from server.', 'error');
+    } else if (catsRes.status !== 'fulfilled') {
+      toast('Service categories failed to load. Using fallback list.', 'warn');
+    }
     setLoading(false);
-  }, [filterCat]);
+  }, [filterCat, toast]);
   useEffect(() => { load(); }, [load]);
 
   useEffect(() => {

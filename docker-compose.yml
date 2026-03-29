@@ -56,6 +56,11 @@ services:
       DB_NAME: ${DB_NAME:-zanesalon}
       JWT_SECRET: ${JWT_SECRET:-zanesalon_docker_jwt_secret_change_me}
       PORT: 5000
+      # Monthly staff earnings PDF emails (1st of month, prev month). SMTP must be configured.
+      # Set to false to turn off automatic monthly emails
+      STAFF_MONTHLY_EARNINGS_CRON: ${STAFF_MONTHLY_EARNINGS_CRON:-true}
+      STAFF_MONTHLY_EARNINGS_TZ: ${STAFF_MONTHLY_EARNINGS_TZ:-Asia/Colombo}
+      STAFF_MONTHLY_EARNINGS_HOUR: ${STAFF_MONTHLY_EARNINGS_HOUR:-8}
     expose:
       - "5000"
     ports:

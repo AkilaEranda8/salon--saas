@@ -16,6 +16,7 @@ const { runWalkInQueueServicesMigration } = require('./services/walkInQueueServi
 const { ensureCustomerPhoneUniqueIndex } = require('./services/ensureCustomerPhoneUniqueIndex');
 const { ensureStaffBranchesBackfill } = require('./services/ensureStaffBranchesBackfill');
 const { ensureStaffEmailColumn } = require('./services/ensureStaffEmailColumn');
+const { startStaffMonthlyEarningsCron, isCronEnabled } = require('./services/staffMonthlyEarningsCron');
 
 // Validate required env vars on startup
 validateEnv();
@@ -159,9 +160,11 @@ connectWithRetry().then(async () => {
   } catch (err) {
     console.warn('⚠  Table sync warning:', err.message);
   }
-  server.listen(PORT, () =>
-    console.log(`✓ Zane Salon server running on http://localhost:${PORT}`)
-  );
+  server.listen(PORT, () => {
+    console.log(`✓ Zane Salon server running on http://localhost:${PORT}`);
+    if (isCronEnabled()) startStaffMonthlyEarningsCron();
+    else console.log('○ Staff monthly earnings cron disabled (STAFF_MONTHLY_EARNINGS_CRON=false)');
+  });
 });
 
 module.exports = app;

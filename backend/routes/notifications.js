@@ -14,6 +14,12 @@ router.get('/settings', requireRole('superadmin', 'admin'), ctrl.getSettings);
 router.put('/settings', requireRole('superadmin', 'admin'), ctrl.updateSettings);
 router.post('/test',         requireRole('superadmin', 'admin'), ctrl.sendTest);
 router.post('/test-provider', requireRole('superadmin', 'admin'), ctrl.testProvider);
+router.post('/test-staff-earnings-pdf', requireRole('superadmin', 'admin'), ctrl.testStaffEarningsPdf);
 router.post('/offer-sms', requireRole('superadmin', 'admin', 'manager'), ctrl.sendOfferSms);
+router.post(
+  '/staff-monthly-earnings',
+  requireRole('superadmin', 'admin', 'manager'),
+  ctrl.sendStaffMonthlyEarnings,
+);
 
 module.exports = router;

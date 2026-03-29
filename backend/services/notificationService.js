@@ -10,18 +10,27 @@ function getModels() {
   return _models;
 }
 
-// ── SMTP credentials loader (DB first, then .env) ─────────────────────────────
+// ── SMTP credentials loader (DB first — Notification settings UI / notification_settings table, then .env) ──
 async function getSmtpCreds() {
   try {
     const { NotificationSettings } = getModels();
-    const row = await NotificationSettings.findOne({ where: { branch_id: null } });
-    if (row && row.smtp_user && row.smtp_pass) {
+    let row = await NotificationSettings.findOne({ where: { branch_id: null } });
+    const rowHasSmtp = (r) =>
+      r && String(r.smtp_user || '').trim() && String(r.smtp_pass || '').trim();
+    if (!rowHasSmtp(row)) {
+      const rows = await NotificationSettings.findAll({ order: [['id', 'ASC']] });
+      row = rows.find((r) => rowHasSmtp(r));
+    }
+    if (rowHasSmtp(row)) {
+      const p = Number(row.smtp_port);
+      const port = Number.isFinite(p) && p > 0 ? p : 587;
+      const user = String(row.smtp_user).trim();
       return {
         host: row.smtp_host?.trim() || 'smtp.gmail.com',
-        port: row.smtp_port         || 587,
-        user: row.smtp_user.trim(),
-        pass: row.smtp_pass.trim(),
-        from: row.smtp_from?.trim() || `Zane Salon <${row.smtp_user.trim()}>`,
+        port,
+        user,
+        pass: String(row.smtp_pass).trim(),
+        from: row.smtp_from?.trim() || `Zane Salon <${user}>`,
         source: 'db',
       };
     }
@@ -31,7 +40,7 @@ async function getSmtpCreds() {
   if (!user || !pass) return null;
   return {
     host:   process.env.EMAIL_HOST || 'smtp.gmail.com',
-    port:   parseInt(process.env.EMAIL_PORT) || 587,
+    port:   parseInt(process.env.EMAIL_PORT, 10) || 587,
     user,
     pass,
     from:   process.env.EMAIL_FROM || `Zane Salon <${user}>`,
@@ -151,23 +160,28 @@ async function getChannelFlags() {
 
 /**
  * Send an HTML email. Logs result to notification_logs. Never throws.
- * @param {{ to, subject, html, meta? }} opts
+ * @param {{ to, subject, html, meta?, attachments? }} opts
+ *   attachments = nodemailer format: [{ filename, content, contentType? }]
  *   meta = { customer_name, event_type, branch_id } used for the log row
+ * @returns {Promise<{ ok: boolean, skipped?: boolean, error?: string }|undefined>}
  */
-async function sendEmail({ to, subject, html, meta = {} }) {
-  if (!to) return;
+async function sendEmail({ to, subject, html, meta = {}, attachments }) {
+  if (!to) return { ok: false, skipped: true, error: 'no recipient' };
   const creds = await getSmtpCreds();
   if (!creds) {
     console.warn('[Notifications] Email skipped — SMTP credentials not configured.');
-    return;
+    return { ok: false, skipped: true, error: 'SMTP not configured' };
   }
   const transporter = await getTransporter();
-  let status = 'sent', errorMsg = null;
+  let status = 'sent';
+  let errorMsg = null;
+  const mail = { from: creds.from, to, subject, html };
+  if (attachments && attachments.length) mail.attachments = attachments;
   try {
-    await transporter.sendMail({ from: creds.from, to, subject, html });
+    await transporter.sendMail(mail);
     console.log(`[Notifications] Email sent → ${to}`);
   } catch (err) {
-    status   = 'failed';
+    status = 'failed';
     errorMsg = err.message;
     console.error(`[Notifications] Email failed → ${to}:`, err.message);
   }
@@ -179,6 +193,7 @@ async function sendEmail({ to, subject, html, meta = {} }) {
     status,
     error_message:   errorMsg,
   });
+  return status === 'sent' ? { ok: true } : { ok: false, error: errorMsg || 'send failed' };
 }
 
 /**

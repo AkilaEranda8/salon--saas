@@ -2,6 +2,8 @@
 const { Op } = require('sequelize');
 const { NotificationLog, NotificationSettings, Customer, Branch } = require('../models');
 const { sendEmail, sendWhatsApp, sendSMS } = require('../services/notificationService');
+const { runStaffMonthlyEarningsEmails } = require('../services/sendStaffMonthlyEarningsEmails');
+const { buildStaffEarningsPdfBuffer } = require('../services/staffEarningsPdf');
 
 const DEFAULT_SETTINGS = {
   appt_confirmed_email:       true,
@@ -412,4 +414,95 @@ const sendOfferSms = async (req, res) => {
   }
 };
 
-module.exports = { getLogs, getSettings, updateSettings, sendTest, testProvider, sendOfferSms };
+/**
+ * POST /api/notifications/staff-monthly-earnings
+ * Body: { year?: number, month?: number } — omit both to use previous calendar month.
+ * Sends a PDF earnings report by email to each active staff member who has an email.
+ * Managers: only staff in their branch. SMTP must be configured (DB or .env).
+ */
+const sendStaffMonthlyEarnings = async (req, res) => {
+  try {
+    const year = req.body.year != null ? parseInt(req.body.year, 10) : null;
+    const month = req.body.month != null ? parseInt(req.body.month, 10) : null;
+    const out = await runStaffMonthlyEarningsEmails({
+      year: Number.isFinite(year) ? year : undefined,
+      month: Number.isFinite(month) ? month : undefined,
+      userRole: req.user?.role,
+      userBranchId: req.userBranchId,
+    });
+    return res.json(out);
+  } catch (err) {
+    console.error('[sendStaffMonthlyEarnings]', err);
+    return res.status(400).json({ message: err.message || 'Server error.' });
+  }
+};
+
+/**
+ * POST /api/notifications/test-staff-earnings-pdf
+ * Body: { to: "email@..." } — sends one sample PDF (demo data, previous month label) to verify SMTP + PDF.
+ */
+const testStaffEarningsPdf = async (req, res) => {
+  try {
+    const to = String(req.body.to || '').trim();
+    if (!to || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) {
+      return res.status(400).json({ message: 'Valid email address (to) is required.' });
+    }
+    const d = new Date();
+    d.setDate(1);
+    d.setMonth(d.getMonth() - 1);
+    const year = d.getFullYear();
+    const month = d.getMonth() + 1;
+    const mm = String(month).padStart(2, '0');
+
+    const buffer = await buildStaffEarningsPdfBuffer({
+      staff: {
+        name: 'Test / Sample Staff',
+        email: to,
+        role_title: 'Stylist',
+        branch: { name: 'Sample Branch' },
+      },
+      payments: [],
+      year,
+      month,
+      totalCommission: 0,
+    });
+
+    const result = await sendEmail({
+      to,
+      subject: `[TEST] Staff earnings report (sample PDF) — ${year}-${mm}`,
+      html: `<div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.5;color:#111;">
+        <p>This is a <strong>test email</strong> with a sample PDF (same layout as real monthly staff reports).</p>
+        <p style="color:#64748B;font-size:13px;">Label period: <strong>${year}-${mm}</strong> (previous calendar month). Demo only — no real payments.</p>
+      </div>`,
+      attachments: [{ filename: `Earnings_TEST_${year}-${mm}.pdf`, content: buffer, contentType: 'application/pdf' }],
+      meta: {
+        customer_name: 'Test',
+        event_type: 'staff_earnings_pdf_test',
+        branch_id: null,
+      },
+    });
+
+    if (!result?.ok) {
+      return res.status(400).json({
+        message: result?.skipped
+          ? 'SMTP not configured. Save SMTP in Notification settings or set EMAIL_USER / EMAIL_PASS in .env.'
+          : (result?.error || 'Email failed.'),
+      });
+    }
+    return res.json({ message: `Test earnings PDF sent to ${to}` });
+  } catch (err) {
+    console.error('[testStaffEarningsPdf]', err);
+    return res.status(500).json({ message: err.message || 'Server error.' });
+  }
+};
+
+module.exports = {
+  getLogs,
+  getSettings,
+  updateSettings,
+  sendTest,
+  testProvider,
+  sendOfferSms,
+  sendStaffMonthlyEarnings,
+  testStaffEarningsPdf,
+};

@@ -6,7 +6,7 @@ import Button from '../components/ui/Button';
 import { useToast } from '../components/ui/Toast';
 import { FilterBar, DataTable, IconBell } from '../components/ui/PageKit';
 
-const EVENTS = ['customer_registered','appointment_confirmed','payment_receipt','loyalty_points','test','review_request'];
+const EVENTS = ['customer_registered','appointment_confirmed','payment_receipt','loyalty_points','test','review_request','staff_earnings_pdf_test','staff_monthly_earnings'];
 const EVENT_LABELS = {
   customer_registered: 'Customer Registered',
   appointment_confirmed: 'Appointment Confirmed',
@@ -14,6 +14,8 @@ const EVENT_LABELS = {
   loyalty_points: 'Loyalty Points',
   test: 'Test / Offer SMS',
   review_request: 'Review Request',
+  staff_earnings_pdf_test: 'Staff Earnings PDF (test)',
+  staff_monthly_earnings: 'Staff Monthly Earnings',
 };
 const EVENT_CHANNELS = { customer_registered:['email','sms'], appointment_confirmed:['email','whatsapp','sms'], payment_receipt:['email','whatsapp','sms'], loyalty_points:['whatsapp','sms'] };
 const SETTINGS_KEY = {
@@ -59,7 +61,7 @@ export default function NotificationsPage() {
   const [newSmtpPass, setNewSmtpPass]         = useState('');
   const [showSmtpPass, setShowSmtpPass]       = useState(false);
   const [testTo, setTestTo]               = useState({ smtp:'', sms:'', whatsapp:'' });
-  const [testBusy, setTestBusy]           = useState({ smtp:false, sms:false, whatsapp:false });
+  const [testBusy, setTestBusy]           = useState({ smtp:false, sms:false, whatsapp:false, earningsPdf:false });
   const [logs, setLogs]                   = useState([]);
   const [logTotal, setLogTotal]           = useState(0);
   const [logPage, setLogPage]             = useState(1);
@@ -124,6 +126,20 @@ export default function NotificationsPage() {
       toast(err?.response?.data?.message || 'Test failed.', 'error');
     } finally {
       setTestBusy(b => ({ ...b, [provider]: false }));
+    }
+  };
+
+  const sendTestStaffEarningsPdf = async () => {
+    const to = testTo.smtp?.trim();
+    if (!to) { toast('Enter an email above (same field as SMTP test).', 'error'); return; }
+    setTestBusy(b => ({ ...b, earningsPdf: true }));
+    try {
+      const res = await api.post('/notifications/test-staff-earnings-pdf', { to });
+      toast(res.data.message || 'Test PDF sent!', 'success');
+    } catch (err) {
+      toast(err?.response?.data?.message || 'Test failed.', 'error');
+    } finally {
+      setTestBusy(b => ({ ...b, earningsPdf: false }));
     }
   };
 
@@ -389,13 +405,24 @@ export default function NotificationsPage() {
                     </div>
 
                     {/* Test */}
-                    <div style={{ display:'flex', gap:8, alignItems:'center', paddingTop:4, borderTop:'1px dashed #BBF7D0' }}>
-                      <input type="email" value={testTo.smtp} onChange={e => setTestTo(t => ({ ...t, smtp: e.target.value }))}
-                        placeholder="Test recipient email" style={{ ...inputStyle, flex:1 }} />
-                      <button type="button" disabled={testBusy.smtp} onClick={() => sendTestProvider('smtp')}
-                        style={{ padding:'8px 16px', borderRadius:8, border:'none', background: testBusy.smtp ? '#D1FAE5' : '#16A34A', color:'#fff', fontWeight:700, fontSize:12, cursor: testBusy.smtp ? 'not-allowed' : 'pointer', whiteSpace:'nowrap', fontFamily:"'Inter',sans-serif" }}>
-                        {testBusy.smtp ? 'Sending…' : '▶ Send Test Email'}
-                      </button>
+                    <div style={{ display:'flex', flexDirection:'column', gap:10, paddingTop:4, borderTop:'1px dashed #BBF7D0' }}>
+                      <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+                        <input type="email" value={testTo.smtp} onChange={e => setTestTo(t => ({ ...t, smtp: e.target.value }))}
+                          placeholder="Test recipient email" style={{ ...inputStyle, flex:1 }} />
+                        <button type="button" disabled={testBusy.smtp} onClick={() => sendTestProvider('smtp')}
+                          style={{ padding:'8px 16px', borderRadius:8, border:'none', background: testBusy.smtp ? '#D1FAE5' : '#16A34A', color:'#fff', fontWeight:700, fontSize:12, cursor: testBusy.smtp ? 'not-allowed' : 'pointer', whiteSpace:'nowrap', fontFamily:"'Inter',sans-serif" }}>
+                          {testBusy.smtp ? 'Sending…' : '▶ Send Test Email'}
+                        </button>
+                      </div>
+                      <p style={{ margin:0, fontSize:11, color:'#15803D' }}>
+                        <strong>Staff earnings report:</strong> sends a <strong>sample PDF</strong> (demo data, same layout as the real monthly email) to the address above — use this to verify SMTP + attachments.
+                      </p>
+                      <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+                        <button type="button" disabled={testBusy.earningsPdf || testBusy.smtp} onClick={sendTestStaffEarningsPdf}
+                          style={{ padding:'8px 16px', borderRadius:8, border:'1.5px solid #15803D', background: testBusy.earningsPdf ? '#DCFCE7' : '#fff', color:'#14532D', fontWeight:700, fontSize:12, cursor: (testBusy.earningsPdf || testBusy.smtp) ? 'not-allowed' : 'pointer', whiteSpace:'nowrap', fontFamily:"'Inter',sans-serif" }}>
+                          {testBusy.earningsPdf ? 'Sending PDF…' : '▶ Send test earnings PDF (report)'}
+                        </button>
+                      </div>
                     </div>
                   </div>
                 )}

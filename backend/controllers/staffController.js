@@ -23,6 +23,8 @@ function safeUnlinkUpload(relPath = '') {
 function toPublicUrl(req, relPath = '') {
   if (!relPath || typeof relPath !== 'string') return relPath;
   if (/^https?:\/\//i.test(relPath)) return relPath;
+  const storageBase = String(process.env.STORAGE_BASE_URL || '').trim().replace(/\/+$/, '');
+  if (storageBase) return `${storageBase}${relPath.startsWith('/') ? relPath : `/${relPath}`}`;
   const host = req.get('x-forwarded-host') || req.get('host');
   const protoHdr = String(req.get('x-forwarded-proto') || req.protocol || 'http');
   const proto = protoHdr.split(',')[0].trim() || 'http';

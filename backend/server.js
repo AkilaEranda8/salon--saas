@@ -57,7 +57,12 @@ const corsOptions = {
   credentials: true,
 };
 app.use(cors(corsOptions));
-app.use(helmet({ contentSecurityPolicy: false }));
+app.use(
+  helmet({
+    contentSecurityPolicy: false,
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+  }),
+);
 
 // Rate limiting — auth endpoints most restrictive
 const authLimiter = rateLimit({

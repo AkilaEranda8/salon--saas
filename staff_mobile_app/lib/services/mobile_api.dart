@@ -72,6 +72,19 @@ class MobileApi {
     return body;
   }
 
+  /// GET /api/auth/me — resolves [branchId] from linked Staff when portal row has no branch.
+  Future<Map<String, dynamic>> fetchMe({required String token}) async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/api/auth/me'),
+      headers: _authHeaders(token),
+    );
+    final body = _decode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['message'] ?? 'Session refresh failed');
+    }
+    return body;
+  }
+
   Future<List<Customer>> fetchCustomers({
     required String token,
     String? branchId,

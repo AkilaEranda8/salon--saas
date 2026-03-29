@@ -96,9 +96,46 @@ class AppState extends ChangeNotifier {
       try {
         await loadStaffList();
       } catch (_) {}
+      await _refreshCurrentUserFromServer();
       notifyListeners();
     } catch (_) {
       await _clearPersistedSession();
+    }
+  }
+
+  /// Updates [_currentUser] from GET /api/auth/me (branch from linked Staff, role, name).
+  Future<void> _refreshCurrentUserFromServer() async {
+    final prev = _currentUser;
+    final token = prev?.authToken?.trim();
+    if (prev == null || token == null || token.isEmpty) return;
+    try {
+      final body = await _api.fetchMe(token: token);
+      final user = Map<String, dynamic>.from(body['user'] as Map? ?? {});
+      if (user.isEmpty) return;
+      final role = '${user['role'] ?? 'staff'}';
+      final branchMap = user['branch'] is Map
+          ? Map<String, dynamic>.from(user['branch'])
+          : const <String, dynamic>{};
+      final rawBranchId =
+          user['branchId'] ?? user['branch_id'] ?? branchMap['id'];
+      final branchId = '${rawBranchId ?? ''}'.trim();
+      _currentUser = StaffUser(
+        id: '${user['id'] ?? prev.id}',
+        username: '${user['username'] ?? prev.username}',
+        password: '',
+        displayName:
+            '${user['name'] ?? user['username'] ?? prev.displayName}',
+        isActive: true,
+        role: role,
+        branchId: (branchId.isEmpty || branchId.toLowerCase() == 'null')
+            ? null
+            : branchId,
+        authToken: token,
+        permissions: _permissionsFromRole(role),
+      );
+      await _persistSession(_currentUser!);
+    } catch (_) {
+      /* keep restored session */
     }
   }
 
@@ -823,7 +860,7 @@ class AppState extends ChangeNotifier {
   }
 
   Set<StaffPermission> _permissionsFromRole(String role) {
-    switch (role) {
+    switch (role.trim().toLowerCase()) {
       case 'superadmin':
       case 'admin':
         return {

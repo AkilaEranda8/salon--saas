@@ -96,7 +96,8 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
   final _paidAmountCtrl        = TextEditingController();
 
   String? _branchId;
-  String? _customerId;
+  String _customerId = '';
+  Customer? _linkedCustomer;
   String? _staffId;
   final Set<String> _selectedServiceIds = {};
   String _method = _methods.first;
@@ -143,7 +144,7 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
     );
     Navigator.of(context).pop(AddPaymentModalResult(
       branchId:       (_branchId ?? '').trim(),
-      customerId:     (_customerId ?? '').trim(),
+      customerId:     _customerId.trim(),
       staffId:        (_staffId ?? '').trim(),
       serviceIds:     _selectedServiceIds.toList(),
       totalAmount:    _totalAmountCtrl.text.trim(),
@@ -295,42 +296,108 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
                 const SizedBox(height: 12),
               ],
 
-              // ── Customer ────────────────────────────────────────────
+              // ── Customer (search by name / phone, or type walk-in) ───
               _label('CUSTOMER'),
-              DropdownButtonFormField<String>(
-                initialValue: _customerId,
-                isExpanded: true,
-                decoration: _deco('Select customer',
-                    Icons.person_search_rounded),
-                items: [
-                  const DropdownMenuItem(
-                      value: '', child: Text('Walk-in customer')),
-                  ...widget.customers.map((c) => DropdownMenuItem(
-                        value: c.id,
-                        child: Text('${c.name}  ${c.phone}',
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontSize: 13)),
-                      )),
-                ],
-                onChanged: (v) {
+              Autocomplete<Customer>(
+                optionsBuilder: (val) {
+                  final q = val.text.trim().toLowerCase();
+                  final all = widget.customers;
+                  if (q.isEmpty) return all.take(10);
+                  return all
+                      .where((c) {
+                        final name = c.name.toLowerCase();
+                        final phone = c.phone.replaceAll(RegExp(r'\s'), '');
+                        final email = c.email.toLowerCase();
+                        final qq = q.replaceAll(RegExp(r'\s'), '');
+                        return name.contains(q) ||
+                            phone.contains(qq) ||
+                            email.contains(q);
+                      })
+                      .take(15);
+                },
+                displayStringForOption: (c) => c.name,
+                onSelected: (c) {
                   setState(() {
-                    _customerId = v;
-                    final sel = widget.customers.firstWhere(
-                      (c) => c.id == v,
-                      orElse: () =>
-                          Customer(id: '', name: '', phone: '', email: ''),
-                    );
-                    if (sel.name.isNotEmpty) {
-                      _customerNameCtrl.text = sel.name;
-                    }
+                    _linkedCustomer = c;
+                    _customerId = c.id;
+                    _customerNameCtrl.text = c.name;
                   });
                 },
-              ),
-              const SizedBox(height: 10),
-              TextFormField(
-                controller: _customerNameCtrl,
-                decoration: _deco(
-                    'Walk-in name (optional)', Icons.person_outline_rounded),
+                fieldViewBuilder: (ctx, ctrl, fn, _) {
+                  if (_customerNameCtrl.text.isNotEmpty &&
+                      ctrl.text != _customerNameCtrl.text) {
+                    ctrl.text = _customerNameCtrl.text;
+                  }
+                  return TextFormField(
+                    controller: ctrl,
+                    focusNode: fn,
+                    textCapitalization: TextCapitalization.words,
+                    decoration: _deco(
+                        widget.customers.isEmpty
+                            ? 'Walk-in name'
+                            : 'Search name, phone — or type walk-in',
+                        Icons.person_search_rounded),
+                    onChanged: (v) {
+                      _customerNameCtrl.text = v;
+                      if (_linkedCustomer != null &&
+                          v.trim() != _linkedCustomer!.name) {
+                        setState(() {
+                          _linkedCustomer = null;
+                          _customerId = '';
+                        });
+                      }
+                    },
+                  );
+                },
+                optionsViewBuilder: widget.customers.isEmpty
+                    ? null
+                    : (ctx, onSel, opts) => Align(
+                          alignment: Alignment.topLeft,
+                          child: Material(
+                            elevation: 8,
+                            borderRadius: BorderRadius.circular(14),
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(
+                                  maxHeight: 220, maxWidth: 420),
+                              child: ListView.builder(
+                                shrinkWrap: true,
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 6),
+                                itemCount: opts.length,
+                                itemBuilder: (_, i) {
+                                  final c = opts.elementAt(i);
+                                  final init = c.name.isNotEmpty
+                                      ? c.name[0].toUpperCase()
+                                      : '?';
+                                  return ListTile(
+                                    dense: true,
+                                    leading: CircleAvatar(
+                                      radius: 16,
+                                      backgroundColor: _pGreenL,
+                                      child: Text(init,
+                                          style: const TextStyle(
+                                              color: _pGreen,
+                                              fontWeight: FontWeight.w800,
+                                              fontSize: 13)),
+                                    ),
+                                    title: Text(c.name,
+                                        style: const TextStyle(
+                                            fontWeight: FontWeight.w700,
+                                            fontSize: 13)),
+                                    subtitle: Text(
+                                        c.phone.isNotEmpty
+                                            ? c.phone
+                                            : (c.email.isNotEmpty
+                                                ? c.email
+                                                : ''),
+                                        style: const TextStyle(fontSize: 11)),
+                                    onTap: () => onSel(c),
+                                  );
+                                },
+                              ),
+                            ),
+                          ),
+                        ),
               ),
 
               const SizedBox(height: 12),

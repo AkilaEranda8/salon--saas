@@ -76,11 +76,19 @@ class _WalkInPageState extends State<WalkInPage> {
     final app = AppStateScope.of(context);
     final uid = app.currentUser?.branchId;
     final services = await app.loadServices();
-    final branches = (uid == null || uid.isEmpty)
-        ? await app.loadBranches()
-        : [app.branches.firstWhere(
-            (b) => b['id'] == uid,
-            orElse: () => {'id': uid, 'name': 'My Branch'})];
+    final List<Map<String, String>> branches;
+    if (uid != null && uid.isNotEmpty) {
+      await app.loadBranches();
+      final match =
+          app.branches.where((b) => b['id'] == uid).toList(growable: false);
+      branches = match.isNotEmpty
+          ? [match.first]
+          : [
+              {'id': uid, 'name': 'My Branch'},
+            ];
+    } else {
+      branches = await app.loadBranches();
+    }
 
     if (branches.isEmpty) {
       if (!mounted) return;

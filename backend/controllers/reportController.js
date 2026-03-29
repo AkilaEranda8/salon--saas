@@ -292,6 +292,7 @@ const exportExcel = async (req, res) => {
       'Total (Rs)': Number(p.total_amount || 0),
       'Commission (Rs)': Number(p.commission_amount || 0),
       'Loyalty Discount': Number(p.loyalty_discount || 0),
+      'Promo Discount': Number(p.promo_discount || 0),
       'Points Earned': p.points_earned || 0,
       'Payment Methods': (p.splits || []).map(s => `${s.method}: Rs.${s.amount}`).join(', '),
       Status: p.status,

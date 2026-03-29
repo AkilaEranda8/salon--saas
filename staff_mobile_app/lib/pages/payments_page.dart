@@ -108,6 +108,7 @@ class _PaymentsPageState extends State<PaymentsPage> {
     var branches     = _branches;
     final uid        = app.currentUser?.branchId;
 
+    List<Map<String, dynamic>> discounts = const [];
     try {
       if (customers.isEmpty) customers = await app.loadCustomers();
       if (services.isEmpty)  services  = await app.loadServices();
@@ -116,6 +117,13 @@ class _PaymentsPageState extends State<PaymentsPage> {
         branches = (uid == null || uid.isEmpty)
             ? await app.loadBranches()
             : [{'id': uid, 'name': 'My Branch'}];
+      }
+      final bid = (uid != null && uid.isNotEmpty)
+          ? uid
+          : (branches.isNotEmpty ? branches.first['id'] : null);
+      final branchKey = bid?.toString().trim() ?? '';
+      if (branchKey.isNotEmpty) {
+        discounts = await app.loadDiscountsForPayment(branchKey);
       }
     } catch (_) {}
 
@@ -136,6 +144,7 @@ class _PaymentsPageState extends State<PaymentsPage> {
       context,
       branches: branches, customers: customers,
       staff: staff, services: services,
+      discounts: discounts,
       initialBranchId: uid,
     );
     if (payload == null || !mounted) return;
@@ -151,6 +160,7 @@ class _PaymentsPageState extends State<PaymentsPage> {
       loyaltyDiscount: payload.loyaltyDiscount,
       method:         payload.method,
       paidAmount:     payload.paidAmount,
+      discountId:     payload.discountId.isEmpty ? null : payload.discountId,
     );
     if (!mounted) return;
     _toast(ok ? 'Payment recorded!' : (app.lastError ?? 'Failed to add payment'));

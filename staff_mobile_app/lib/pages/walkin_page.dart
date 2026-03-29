@@ -347,6 +347,14 @@ class _WalkInPageState extends State<WalkInPage> {
     final selectedForModal = preIds.isNotEmpty
         ? preIds
         : (e.serviceId.isNotEmpty ? [e.serviceId] : <String>[]);
+    final bid = e.branchId.trim().isNotEmpty
+        ? e.branchId
+        : (app.currentUser?.branchId ?? '');
+    final discounts = bid.isNotEmpty
+        ? await app.loadDiscountsForPayment(bid)
+        : const <Map<String, dynamic>>[];
+    if (!mounted) return;
+
     final payload = await AddWalkInPaymentModal.show(
       context,
       customerName: e.customerName,
@@ -354,6 +362,7 @@ class _WalkInPageState extends State<WalkInPage> {
       initialAmount: initialPay,
       services: _services,
       selectedServiceIds: selectedForModal,
+      discounts: discounts,
     );
     if (payload == null || !mounted) return;
 
@@ -365,10 +374,12 @@ class _WalkInPageState extends State<WalkInPage> {
       staffId:        e.staffId.isEmpty ? null : e.staffId,
       customerName:   e.customerName,
       phone:          e.phone.trim().isEmpty ? null : e.phone.trim(),
-      totalAmount:    payload.amount,
+      totalAmount:    payload.subtotal,
       loyaltyDiscount: '0',
       method:         payload.method,
       paidAmount:     payload.amount,
+      discountId:
+          payload.discountId.isNotEmpty ? payload.discountId : null,
     );
     if (!mounted) return;
     if (!ok) { _toast(app.lastError ?? 'Payment failed'); return; }

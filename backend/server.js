@@ -16,6 +16,7 @@ const { runWalkInQueueServicesMigration } = require('./services/walkInQueueServi
 const { ensureCustomerPhoneUniqueIndex } = require('./services/ensureCustomerPhoneUniqueIndex');
 const { ensureStaffBranchesBackfill } = require('./services/ensureStaffBranchesBackfill');
 const { ensureStaffEmailColumn } = require('./services/ensureStaffEmailColumn');
+const { ensurePaymentDiscountColumns } = require('./services/ensurePaymentDiscountColumns');
 const { startStaffMonthlyEarningsCron, isCronEnabled } = require('./services/staffMonthlyEarningsCron');
 
 // Validate required env vars on startup
@@ -115,6 +116,7 @@ app.use('/api/expenses',     require('./routes/expenses'));
 app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/reviews',      require('./routes/reviews'));
 app.use('/api/packages',     require('./routes/packages'));
+app.use('/api/discounts',    require('./routes/discounts'));
 
 // ── 404 handler ───────────────────────────────────────────────────────────────
 app.use((_req, res) => res.status(404).json({ message: 'Route not found.' }));
@@ -151,6 +153,7 @@ connectWithRetry().then(async () => {
   try {
     await ensureUsersStaffIdColumn();
     await ensureStaffEmailColumn();
+    await ensurePaymentDiscountColumns();
     await ensureWalkInTotalAmountColumn();
     await runWalkInQueueServicesMigration();
     await sequelize.sync({ force: false });

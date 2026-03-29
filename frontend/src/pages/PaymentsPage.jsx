@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
@@ -11,10 +11,11 @@ import {
   ActionBtn, StatCard, PKModal as Modal, FilterBar, SearchBar,
   DataTable,
 } from '../components/ui/PageKit';
+import { computePromoFromDiscount } from '../utils/promoDiscount';
 
 const METHODS = ['Cash','Card','Online Transfer','Loyalty Points','Package'];
 const METHOD_LABEL = { 'Cash':'Cash', 'Card':'Card', 'Online Transfer':'Bank Transfer', 'Loyalty Points':'Loyalty Pts', 'Package':'Package' };
-const EMPTY_FORM = { branch_id:'', staff_id:'', customer_id:'', service_ids:[], total_amount:'', loyalty_discount:0, splits:[{ method:'Cash', amount:'' }] };
+const EMPTY_FORM = { branch_id:'', staff_id:'', customer_id:'', service_ids:[], total_amount:'', loyalty_discount:0, discount_id:'', splits:[{ method:'Cash', amount:'' }] };
 
 function PrintIcon() {
   return <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>;
@@ -58,11 +59,12 @@ function printReceipt(payment) {
     ${dash()}
     ${line('Subtotal', 'Rs. ' + Number(payment.total_amount||0).toLocaleString())}
     ${Number(payment.loyalty_discount||0) > 0 ? line('Loyalty Disc.', '- Rs. ' + Number(payment.loyalty_discount).toLocaleString()) : ''}
+    ${Number(payment.promo_discount||0) > 0 ? line('Promo Disc.', '- Rs. ' + Number(payment.promo_discount).toLocaleString()) : ''}
     ${dash()}
     <tr><td colspan="2"><div style="border-top:1px dashed #bbb;margin:4px 0;"></div></td></tr>
     <tr class="total-row">
       <td>NET TOTAL</td>
-      <td>Rs. ${(Number(payment.total_amount||0) - Number(payment.loyalty_discount||0)).toLocaleString()}</td>
+      <td>Rs. ${(Number(payment.total_amount||0) - Number(payment.loyalty_discount||0) - Number(payment.promo_discount||0)).toLocaleString()}</td>
     </tr>
     ${dash()}
     ${splits}
@@ -78,7 +80,7 @@ function printReceipt(payment) {
 
 function InvoiceModal({ open, onClose, payment }) {
   if (!open || !payment) return null;
-  const net = Number(payment.total_amount||0) - Number(payment.loyalty_discount||0);
+  const net = Number(payment.total_amount||0) - Number(payment.loyalty_discount||0) - Number(payment.promo_discount||0);
   return createPortal(
     <div style={{ position:'fixed', inset:0, zIndex:9000, display:'flex', alignItems:'center', justifyContent:'center', background:'rgba(16,24,40,0.55)', backdropFilter:'blur(2px)' }}>
       <div style={{ background:'#fff', borderRadius:20, width:340, maxWidth:'95vw', boxShadow:'0 24px 64px rgba(16,24,40,0.25)', fontFamily:"'Courier New',monospace", overflow:'hidden' }}>
@@ -124,6 +126,12 @@ function InvoiceModal({ open, onClose, payment }) {
             <div style={{ display:'flex', justifyContent:'space-between', marginBottom:5, fontSize:12 }}>
               <span style={{ color:'#D97706' }}>Loyalty Disc.</span>
               <span style={{ fontWeight:600, color:'#D97706' }}>- Rs. {Number(payment.loyalty_discount).toLocaleString()}</span>
+            </div>
+          )}
+          {Number(payment.promo_discount||0) > 0 && (
+            <div style={{ display:'flex', justifyContent:'space-between', marginBottom:5, fontSize:12 }}>
+              <span style={{ color:'#7C3AED' }}>Promo {payment.discount?.name ? `(${payment.discount.name})` : ''}</span>
+              <span style={{ fontWeight:600, color:'#7C3AED' }}>- Rs. {Number(payment.promo_discount).toLocaleString()}</span>
             </div>
           )}
 
@@ -235,6 +243,7 @@ export default function PaymentsPage() {
   const [formErr, setFormErr]     = useState('');
   const [custPackages, setCustPackages] = useState([]);
   const [loadingPkgs, setLoadingPkgs]   = useState(false);
+  const [discounts, setDiscounts]       = useState([]);
 
   // Load reference data once on mount (independent of payment filters)
   useEffect(() => {
@@ -250,6 +259,14 @@ export default function PaymentsPage() {
       if (svR.status === 'fulfilled') setServices(Array.isArray(svR.value.data) ? svR.value.data : (svR.value.data?.data ?? []));
     });
   }, []);
+
+  const effectiveBranchForDiscounts = form.branch_id || user?.branchId || '';
+  useEffect(() => {
+    if (!effectiveBranchForDiscounts || !showForm) return;
+    api.get('/discounts/payment', { params: { branchId: effectiveBranchForDiscounts } })
+      .then(r => setDiscounts(Array.isArray(r.data?.data) ? r.data.data : []))
+      .catch(() => setDiscounts([]));
+  }, [effectiveBranchForDiscounts, showForm]);
 
   // Load payments + summary whenever filters change
   const load = useCallback(async () => {
@@ -295,19 +312,50 @@ export default function PaymentsPage() {
 
   const handleSave = async () => {
     if (!form.total_amount || !form.service_ids.length) return setFormErr('Total amount and at least one service are required');
+    const subtotal = Number(form.total_amount);
+    const loyalty = Number(form.loyalty_discount || 0);
+    const selDisc = form.discount_id ? discounts.find(d => String(d.id) === String(form.discount_id)) : null;
+    const promo = selDisc ? computePromoFromDiscount(selDisc, subtotal) : 0;
+    const net = subtotal - loyalty - promo;
     const splitTotal = form.splits.reduce((s, sp) => s + Number(sp.amount||0), 0);
-    if (Math.abs(splitTotal - Number(form.total_amount)) > 0.01 && form.splits.length > 0)
-      return setFormErr(`Split total (Rs. ${splitTotal.toLocaleString()}) must equal total (Rs. ${Number(form.total_amount).toLocaleString()})`);
+    if (Math.abs(splitTotal - net) > 0.02)
+      return setFormErr(`Split total (Rs. ${splitTotal.toLocaleString()}) must equal net after discounts (Rs. ${net.toLocaleString()})`);
     setSaving(true);
     try {
       const { service_ids, ...rest } = form;
-      // Include customer_package_id in splits payload
-      const payload = { ...rest, service_id: service_ids[0] || null };
+      const payload = {
+        ...rest,
+        service_id: service_ids[0] || null,
+        subtotal,
+        discount_id: form.discount_id || null,
+      };
       await api.post('/payments', payload); setShowForm(false); load();
       toast('Payment recorded successfully!', 'success');
     } catch (e) { setFormErr(e.response?.data?.message || 'Save failed'); }
     setSaving(false);
   };
+
+  const promoPreview = useMemo(() => {
+    const sub = Number(form.total_amount || 0);
+    const d = form.discount_id ? discounts.find(x => String(x.id) === String(form.discount_id)) : null;
+    return d ? computePromoFromDiscount(d, sub) : 0;
+  }, [form.total_amount, form.discount_id, discounts]);
+
+  useEffect(() => {
+    if (!showForm || form.splits.length !== 1) return;
+    const sub = Number(form.total_amount || 0);
+    if (!sub) return;
+    const loyalty = Number(form.loyalty_discount || 0);
+    const d = form.discount_id ? discounts.find(x => String(x.id) === String(form.discount_id)) : null;
+    const promo = d ? computePromoFromDiscount(d, sub) : 0;
+    const net = Math.max(0, sub - loyalty - promo);
+    const cur = Number(form.splits[0].amount || 0);
+    if (Math.abs(cur - net) < 0.02) return;
+    setForm(f => {
+      if (f.splits.length !== 1) return f;
+      return { ...f, splits: [{ ...f.splits[0], amount: String(net) }] };
+    });
+  }, [showForm, form.total_amount, form.loyalty_discount, form.discount_id, discounts, form.splits.length]);
 
   const displayed = payments.filter(p => {
     if (!search) return true;
@@ -514,14 +562,23 @@ export default function PaymentsPage() {
                 <Input type="number" value={form.loyalty_discount||0} onChange={e => setForm(f=>({...f, loyalty_discount:Number(e.target.value)}))} />
               </FormGroup>
             </div>
+            <FormGroup label="Promo discount" style={{ marginTop:10 }}>
+              <Select value={form.discount_id||''} onChange={e => setForm(f=>({...f, discount_id:e.target.value}))}>
+                <option value="">None</option>
+                {discounts.map(d => (
+                  <option key={d.id} value={d.id}>{d.name} ({d.discount_type === 'fixed' ? `Rs.${d.value}` : `${d.value}%`})</option>
+                ))}
+              </Select>
+            </FormGroup>
             {form.total_amount && (
               <div style={{ marginTop:12, background: 'linear-gradient(135deg,#EFF6FF 0%,#F0FDF4 100%)', borderRadius:10, padding:'10px 14px', display:'flex', justifyContent:'space-between', alignItems:'center', border:'1px solid #BFDBFE' }}>
                 <div style={{ fontSize:12, color:'#3B82F6' }}>
                   Rs. {Number(form.total_amount||0).toLocaleString()}
                   {Number(form.loyalty_discount||0) > 0 && <span style={{ color:'#EF4444', marginLeft:6 }}>− Rs. {Number(form.loyalty_discount).toLocaleString()}</span>}
+                  {promoPreview > 0 && <span style={{ color:'#7C3AED', marginLeft:6 }}>− Rs. {promoPreview.toLocaleString()} promo</span>}
                 </div>
                 <div style={{ fontSize:14, fontWeight:800, color:'#1D4ED8', fontFamily:"'Outfit',sans-serif" }}>
-                  Net: Rs. {(Number(form.total_amount||0) - Number(form.loyalty_discount||0)).toLocaleString()}
+                  Net: Rs. {(Number(form.total_amount||0) - Number(form.loyalty_discount||0) - promoPreview).toLocaleString()}
                 </div>
               </div>
             )}
@@ -578,7 +635,7 @@ export default function PaymentsPage() {
             </div>
             {form.splits.length > 0 && form.total_amount && (() => {
               const splitTotal = form.splits.reduce((s,sp)=>s+Number(sp.amount||0),0);
-              const net = Number(form.total_amount||0) - Number(form.loyalty_discount||0);
+              const net = Number(form.total_amount||0) - Number(form.loyalty_discount||0) - promoPreview;
               const diff = net - splitTotal;
               const ok = Math.abs(diff) < 0.01;
               return (

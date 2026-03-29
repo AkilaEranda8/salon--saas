@@ -33,6 +33,7 @@ import ExpensesPage     from './pages/ExpensesPage';
 import ReviewsPage      from './pages/ReviewsPage';
 import ReviewFormPage   from './pages/ReviewFormPage';
 import PackagesPage     from './pages/PackagesPage';
+import DiscountsPage    from './pages/DiscountsPage';
 import RecurringPage    from './pages/RecurringPage';
 import CategoriesPage   from './pages/CategoriesPage';
 import AiChatPage       from './pages/AiChatPage';
@@ -109,6 +110,11 @@ function AppShell() {
             <Route path="/recurring"    element={
               <RoleRoute roles={['superadmin', 'admin', 'manager']}>
                 <RecurringPage />
+              </RoleRoute>
+            } />
+            <Route path="/discounts"    element={
+              <RoleRoute roles={['superadmin', 'admin', 'manager']}>
+                <DiscountsPage />
               </RoleRoute>
             } />
 

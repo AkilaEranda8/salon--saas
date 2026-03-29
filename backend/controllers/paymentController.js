@@ -1,6 +1,7 @@
 const { Op, fn, col, literal } = require('sequelize');
 const { sequelize } = require('../config/database');
-const { Payment, PaymentSplit, Branch, Staff, Customer, Service, Appointment, AppointmentService, CustomerPackage, Package: PkgModel, PackageRedemption } = require('../models');
+const { Payment, PaymentSplit, Branch, Staff, Customer, Service, Appointment, AppointmentService, CustomerPackage, Package: PkgModel, PackageRedemption, Discount } = require('../models');
+const { computePromoAmount, isDiscountActive } = require('../services/discountHelpers');
 const { notifyPaymentReceipt, notifyLoyaltyPoints, notifyReviewRequest } = require('../services/notificationService');
 const FIXED_POINTS_PER_PAYMENT = 5;
 const APPT_EXTRA_SERVICES_PREFIX = 'Additional services:';
@@ -71,6 +72,7 @@ const list = async (req, res) => {
         { model: Staff,    as: 'staff',    attributes: ['id', 'name'] },
         { model: Customer, as: 'customer', attributes: ['id', 'name'] },
         { model: Service,  as: 'service',  attributes: ['id', 'name'] },
+        { model: Discount, as: 'discount', attributes: ['id', 'name', 'discount_type', 'value'], required: false },
         { model: PaymentSplit, as: 'splits' },
       ],
     });
@@ -91,6 +93,7 @@ const getOne = async (req, res) => {
         { model: Customer,    as: 'customer'    },
         { model: Service,     as: 'service'     },
         { model: Appointment, as: 'appointment' },
+        { model: Discount,    as: 'discount', required: false },
         { model: PaymentSplit, as: 'splits'     },
       ],
     });
@@ -108,6 +111,7 @@ const create = async (req, res) => {
     const {
       branch_id, staff_id, customer_id, service_id, appointment_id,
       customer_name, phone, service_ids = [], splits = [], loyalty_discount = 0, usePoints = false,
+      discount_id: discountIdBody, subtotal: subtotalBody,
     } = req.body;
     const normalizedServiceIds = normalizeServiceIds(service_ids);
     const primaryServiceId = Number(service_id) || normalizedServiceIds[0] || null;
@@ -130,7 +134,50 @@ const create = async (req, res) => {
       return res.status(400).json({ message: 'At least one payment split is required.' });
     }
 
-    const total_amount = splits.reduce((sum, s) => sum + parseFloat(s.amount || 0), 0);
+    const splitTotal = splits.reduce((sum, s) => sum + parseFloat(s.amount || 0), 0);
+    const loyaltyDisc = parseFloat(loyalty_discount || 0);
+
+    let promo_discount = 0;
+    let discount_id_saved = null;
+    if (discountIdBody) {
+      const disc = await Discount.findByPk(discountIdBody, { transaction: t });
+      if (!disc) {
+        await t.rollback();
+        return res.status(400).json({ message: 'Invalid discount.' });
+      }
+      if (!isDiscountActive(disc, branch_id)) {
+        await t.rollback();
+        return res.status(400).json({ message: 'This discount is not active for this branch or date.' });
+      }
+      const subIn = parseFloat(subtotalBody || 0);
+      const grossForPromo = subIn > 0 ? subIn : splitTotal + loyaltyDisc;
+      promo_discount = computePromoAmount(disc, grossForPromo);
+      if (promo_discount <= 0) {
+        await t.rollback();
+        return res.status(400).json({ message: 'Discount does not apply to this bill (min. bill or rules).' });
+      }
+      discount_id_saved = disc.id;
+    }
+
+    let grossBill = parseFloat(subtotalBody || 0);
+    if (!(grossBill > 0)) {
+      grossBill = splitTotal + loyaltyDisc + promo_discount;
+    }
+
+    const netExpected = Math.max(0, grossBill - loyaltyDisc - promo_discount);
+    if (Math.abs(netExpected - splitTotal) > 0.05) {
+      await t.rollback();
+      return res.status(400).json({
+        message: `Payment splits (Rs. ${splitTotal.toFixed(2)}) must equal net (Rs. ${netExpected.toFixed(2)}) after discounts. Adjust splits or amounts.`,
+      });
+    }
+
+    if (loyaltyDisc + promo_discount > grossBill + 0.05) {
+      await t.rollback();
+      return res.status(400).json({ message: 'Discounts cannot exceed bill amount.' });
+    }
+
+    const total_amount = grossBill;
     // Business rule: award a fixed 5 loyalty points per successful payment.
     const points_earned = FIXED_POINTS_PER_PAYMENT;
 
@@ -139,7 +186,7 @@ const create = async (req, res) => {
     if (staff_id) {
       const staffMember = await Staff.findByPk(staff_id, { transaction: t });
       if (staffMember) {
-        const commissionBase = Math.max(0, total_amount - loyalty_discount);
+        const commissionBase = Math.max(0, total_amount - loyaltyDisc - promo_discount);
         commission_amount = staffMember.commission_type === 'percentage'
           ? (commissionBase * parseFloat(staffMember.commission_value)) / 100
           : parseFloat(staffMember.commission_value);
@@ -154,8 +201,15 @@ const create = async (req, res) => {
       customer_id:    customer_id    || null,
       service_id:     primaryServiceId,
       appointment_id: appointment_id || null,
-      customer_name, total_amount, loyalty_discount, points_earned,
-      commission_amount, date: today, status: 'paid',
+      customer_name,
+      total_amount,
+      discount_id:    discount_id_saved,
+      promo_discount,
+      loyalty_discount: loyaltyDisc,
+      points_earned,
+      commission_amount,
+      date: today,
+      status: 'paid',
     }, { transaction: t });
 
     // Save splits
@@ -195,8 +249,8 @@ const create = async (req, res) => {
       const cust = await Customer.findByPk(customer_id, { transaction: t });
       if (cust) {
         let newPoints = cust.loyalty_points + points_earned;
-        if (usePoints && loyalty_discount > 0) {
-          const pointsUsed = Math.floor(loyalty_discount);
+        if (usePoints && loyaltyDisc > 0) {
+          const pointsUsed = Math.floor(loyaltyDisc);
           newPoints = Math.max(0, cust.loyalty_points - pointsUsed) + points_earned;
         }
         await cust.update({

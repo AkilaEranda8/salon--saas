@@ -6,7 +6,8 @@ import PageWrapper from '../components/layout/PageWrapper';
 import Button from '../components/ui/Button';
 import Badge from '../components/ui/Badge';
 import { useToast } from '../components/ui/Toast';
-import { Input, Label, Textarea } from '../components/ui/FormElements';
+import { Input, Label, Textarea, Select } from '../components/ui/FormElements';
+import { computePromoFromDiscount } from '../utils/promoDiscount';
 import {
   PKModal as Modal, StatCard, StaffAvatar,
   IconUsers, IconCheck, IconClock, IconCalendar,
@@ -75,6 +76,8 @@ export default function WalkInPage() {
   const [paymentError,   setPaymentError]   = useState('');
   const [paymentOk,      setPaymentOk]      = useState(false);
   const [paymentServices,setPaymentServices]= useState([]);
+  const [paymentDiscountId, setPaymentDiscountId] = useState('');
+  const [paymentDiscounts, setPaymentDiscounts] = useState([]);
   const [editEntry,      setEditEntry]      = useState(null);
   const [editForm,       setEditForm]       = useState({ customerName: '', phone: '', serviceId: '', note: '' });
   const [editExtraServiceIds, setEditExtraServiceIds] = useState([]);
@@ -161,25 +164,44 @@ export default function WalkInPage() {
     const svc = services.find((x) => Number(x.id) === Number(sid));
     return sum + Number(svc?.price || 0);
   }, 0);
-  const openPayment = (entry) => {
+  const openPayment = async (entry) => {
     const ids = getWalkInOrderedServiceIds(entry, services);
-    const fromApi = Number(entry?.total_amount);
-    const baseAmount = fromApi > 0 ? fromApi : calcServiceTotal(ids);
     setPaymentEntry(entry);
     setPaymentMethod('Cash');
-    setPaymentAmount(baseAmount > 0 ? String(baseAmount) : '');
+    setPaymentDiscountId('');
     setPaymentError('');
     setPaymentOk(false);
     setPaymentServices(ids);
+    const bid = entry.branch_id || selectedBranch;
+    if (bid) {
+      try {
+        const dr = await api.get('/discounts/payment', { params: { branchId: bid } });
+        setPaymentDiscounts(Array.isArray(dr.data) ? dr.data : (dr.data?.data ?? []));
+      } catch {
+        setPaymentDiscounts([]);
+      }
+    } else {
+      setPaymentDiscounts([]);
+    }
   };
   const togglePaymentService = (id) => {
     const nid = Number(id);
     setPaymentServices((prev) => {
       const next = prev.includes(nid) ? prev.filter((x) => x !== nid) : [...prev, nid];
-      setPaymentAmount(String(calcServiceTotal(next)));
       return next;
     });
   };
+
+  useEffect(() => {
+    if (!paymentEntry) return;
+    const gross = calcServiceTotal(paymentServices);
+    const sel = paymentDiscountId
+      ? paymentDiscounts.find((d) => String(d.id) === String(paymentDiscountId))
+      : null;
+    const promo = sel ? computePromoFromDiscount(sel, gross) : 0;
+    const net = Math.max(0, gross - promo);
+    setPaymentAmount(net > 0 ? String(net) : '');
+  }, [paymentEntry, paymentServices, paymentDiscountId, paymentDiscounts, services]);
   const handleCollectPayment = async () => {
     if (!paymentEntry) return;
     if (!paymentAmount || Number(paymentAmount) <= 0) {
@@ -193,6 +215,7 @@ export default function WalkInPage() {
     setPaymentSaving(true);
     setPaymentError('');
     try {
+      const subtotal = calcServiceTotal(paymentServices);
       await api.post('/payments', {
         branch_id: paymentEntry.branch_id || selectedBranch,
         staff_id: paymentEntry.staff_id || paymentEntry.staff?.id || null,
@@ -200,6 +223,9 @@ export default function WalkInPage() {
         service_ids: paymentServices,
         customer_name: paymentEntry.customer_name || 'Walk-in',
         phone: paymentEntry.phone || '',
+        subtotal,
+        loyalty_discount: 0,
+        ...(paymentDiscountId ? { discount_id: Number(paymentDiscountId) } : {}),
         splits: [{ method: paymentMethod, amount: Number(paymentAmount) }],
       });
       if (paymentEntry.status !== 'completed') {
@@ -920,11 +946,43 @@ export default function WalkInPage() {
                     </div>
                   ))}
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: '#F8FAFC', borderTop: '1px solid #EEF2F6' }}>
-                    <span style={{ fontWeight: 700, color: '#0F172A' }}>Total</span>
-                    <span style={{ fontSize: 30, fontWeight: 900, color: '#059669', lineHeight: 1 }}>Rs. {Number(paymentAmount || 0).toLocaleString()}</span>
+                    <span style={{ fontWeight: 700, color: '#0F172A' }}>Subtotal</span>
+                    <span style={{ fontSize: 16, fontWeight: 800, color: '#0F172A' }}>Rs. {calcServiceTotal(paymentServices).toLocaleString()}</span>
+                  </div>
+                  {(() => {
+                    const g = calcServiceTotal(paymentServices);
+                    const sd = paymentDiscountId ? paymentDiscounts.find((d) => String(d.id) === String(paymentDiscountId)) : null;
+                    const pr = sd ? computePromoFromDiscount(sd, g) : 0;
+                    return pr > 0 ? (
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 12px', background: '#FAF5FF', borderTop: '1px solid #E9D5FF' }}>
+                        <span style={{ fontWeight: 600, color: '#6B21A8', fontSize: 13 }}>Promo</span>
+                        <span style={{ fontWeight: 800, color: '#7C3AED', fontSize: 14 }}>− Rs. {pr.toLocaleString()}</span>
+                      </div>
+                    ) : null;
+                  })()}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', background: '#ECFDF5', borderTop: '1px solid #BBF7D0' }}>
+                    <span style={{ fontWeight: 700, color: '#065F46' }}>Collect</span>
+                    <span style={{ fontSize: 28, fontWeight: 900, color: '#059669', lineHeight: 1 }}>Rs. {Number(paymentAmount || 0).toLocaleString()}</span>
                   </div>
                 </div>
               </div>
+              {paymentDiscounts.length > 0 && (
+                <div>
+                  <Label>Promo discount</Label>
+                  <Select
+                    value={paymentDiscountId || ''}
+                    onChange={(e) => setPaymentDiscountId(e.target.value)}
+                    style={{ width: '100%', marginTop: 4 }}
+                  >
+                    <option value="">None</option>
+                    {paymentDiscounts.map((d) => (
+                      <option key={d.id} value={d.id}>
+                        {d.name} ({d.discount_type === 'fixed' ? `Rs.${d.value}` : `${d.value}%`})
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+              )}
               <div>
                 <Label>Payment Method</Label>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
@@ -955,7 +1013,7 @@ export default function WalkInPage() {
               </div>
               <div>
                 <div>
-                  <Label>Amount (Rs.) *</Label>
+                  <Label>Paid (Rs.) *</Label>
                   <Input
                     type="number"
                     min="0"

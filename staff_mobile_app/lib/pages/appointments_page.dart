@@ -387,6 +387,15 @@ class _ApptState extends State<AppointmentsPage> with SingleTickerProviderStateM
     }
     final initialAmt = a.displayAmount > 0 ? a.displayAmount.toStringAsFixed(0) : '';
 
+    final branchKey = a.branchId.trim().isNotEmpty
+        ? a.branchId
+        : (app.currentUser?.branchId ?? '');
+    var discounts = const <Map<String, dynamic>>[];
+    if (branchKey.isNotEmpty) {
+      discounts = await app.loadDiscountsForPayment(branchKey);
+    }
+    if (!mounted) return;
+
     final result = await showModalBottomSheet<_PayResult>(
       context: context,
       isScrollControlled: true,
@@ -396,13 +405,20 @@ class _ApptState extends State<AppointmentsPage> with SingleTickerProviderStateM
         services: svcs,
         preSelected: ids,
         initialAmount: initialAmt,
+        discounts: discounts,
       ),
     );
 
     if (result == null || !mounted) return;
     final success = await app.collectAppointmentPayment(
-      appointment: a, amount: result.amount, method: result.method,
-      paymentServiceIds: result.serviceIds);
+      appointment: a,
+      amount: result.amount,
+      method: result.method,
+      paymentServiceIds: result.serviceIds,
+      subtotal: result.subtotal,
+      discountId:
+          result.discountId.isNotEmpty ? result.discountId : null,
+    );
     if (!mounted) return;
     if (!success) { _toast(app.lastError ?? 'Payment failed'); return; }
     _toast('Payment recorded');
@@ -1591,10 +1607,16 @@ class _PayResult {
     required this.amount,
     required this.method,
     required this.serviceIds,
+    required this.subtotal,
+    this.discountId = '',
   });
+  /// Net collected (after promo).
   final String amount;
   final String method;
   final List<String> serviceIds;
+  /// Gross before promo.
+  final String subtotal;
+  final String discountId;
 }
 
 class _PaySheet extends StatefulWidget {
@@ -1603,11 +1625,13 @@ class _PaySheet extends StatefulWidget {
     required this.services,
     required this.preSelected,
     required this.initialAmount,
+    this.discounts = const [],
   });
   final Appointment appointment;
   final List<SalonService> services;
   final List<int> preSelected;
   final String initialAmount;
+  final List<Map<String, dynamic>> discounts;
 
   @override
   State<_PaySheet> createState() => _PaySheetState();
@@ -1636,6 +1660,7 @@ class _PaySheetState extends State<_PaySheet> {
   late final TextEditingController _amtCtrl;
   String _method = 'Cash';
   String _calcTotal = '';
+  String _discountId = '';
 
   @override
   void initState() {
@@ -1643,6 +1668,9 @@ class _PaySheetState extends State<_PaySheet> {
     _sel = List<int>.from(widget.preSelected);
     _calcTotal = widget.initialAmount;
     _amtCtrl = TextEditingController(text: widget.initialAmount);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _recalc();
+    });
   }
 
   @override
@@ -1651,23 +1679,80 @@ class _PaySheetState extends State<_PaySheet> {
     super.dispose();
   }
 
-  void _recalc() {
+  double _grossFromSelection() {
     var sum = 0.0;
     for (final x in _sel) {
       for (final sv in widget.services) {
         if (int.tryParse(sv.id) == x) sum += sv.price;
       }
     }
+    return sum;
+  }
+
+  double _computedPromo() {
+    if (_discountId.isEmpty) return 0;
+    Map<String, dynamic>? d;
+    for (final raw in widget.discounts) {
+      if ('${raw['id']}' == _discountId) {
+        d = raw;
+        break;
+      }
+    }
+    if (d == null) return 0;
+    final total = _grossFromSelection();
+    final minBill = double.tryParse('${d['min_bill'] ?? 0}') ?? 0;
+    if (total < minBill) return 0;
+    final type = '${d['discount_type'] ?? 'percent'}';
+    if (type == 'fixed') {
+      final v = double.tryParse('${d['value']}') ?? 0;
+      return v.clamp(0, total);
+    }
+    final pct = (double.tryParse('${d['value']}') ?? 0).clamp(0, 100);
+    var off = total * pct / 100;
+    final cap = d['max_discount_amount'];
+    if (cap != null && '$cap'.trim().isNotEmpty) {
+      final c = double.tryParse('$cap');
+      if (c != null) off = off.clamp(0, c);
+    }
+    return (off * 100).round() / 100;
+  }
+
+  void _recalc() {
+    final sum = _grossFromSelection();
     final val = sum > 0 ? sum.toStringAsFixed(0) : '';
-    setState(() => _calcTotal = val);
-    if (val.isNotEmpty) _amtCtrl.text = val;
+    final promo = _computedPromo();
+    final net = (sum - promo).clamp(0, double.infinity);
+    setState(() {
+      _calcTotal = val;
+      if (val.isNotEmpty) {
+        _amtCtrl.text = net > 0 ? net.toStringAsFixed(0) : '';
+      } else {
+        _amtCtrl.text = '';
+      }
+    });
   }
 
   void _confirm() {
+    if (_sel.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Select at least one service')),
+      );
+      return;
+    }
+    final paid = double.tryParse(_amtCtrl.text.trim()) ?? 0;
+    if (paid <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enter a valid amount')),
+      );
+      return;
+    }
+    final gross = _grossFromSelection();
     Navigator.of(context).pop(_PayResult(
       amount: _amtCtrl.text.trim(),
       method: _method,
       serviceIds: _sel.map((e) => e.toString()).toList(),
+      subtotal: gross > 0 ? gross.toStringAsFixed(0) : _calcTotal,
+      discountId: _discountId,
     ));
   }
 
@@ -1854,10 +1939,14 @@ class _PaySheetState extends State<_PaySheet> {
                       if (id == null) return const SizedBox.shrink();
                 final on = _sel.contains(id);
                 return GestureDetector(
-                  onTap: () => setState(() {
-                    if (on) { _sel.remove(id); } else { _sel.add(id); }
+                  onTap: () {
+                    if (on) {
+                      _sel.remove(id);
+                    } else {
+                      _sel.add(id);
+                    }
                     _recalc();
-                  }),
+                  },
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 140),
                     padding: const EdgeInsets.symmetric(
@@ -1899,6 +1988,35 @@ class _PaySheetState extends State<_PaySheet> {
                     }).toList(),
             ),
 
+            if (widget.discounts.isNotEmpty) ...[
+              const SizedBox(height: 14),
+              _label('PROMO DISCOUNT'),
+              DropdownButtonFormField<String>(
+                value: _discountId.isEmpty
+                    ? ''
+                    : widget.discounts.any((d) => '${d['id']}' == _discountId)
+                        ? _discountId
+                        : '',
+                isExpanded: true,
+                decoration: _deco('Select promo (optional)', Icons.local_offer_rounded),
+                items: [
+                  const DropdownMenuItem(value: '', child: Text('None')),
+                  ...widget.discounts.map((d) => DropdownMenuItem(
+                        value: '${d['id']}',
+                        child: Text(
+                          '${d['name'] ?? ''} (${d['discount_type'] == 'fixed' ? 'Rs. ${d['value']}' : '${d['value']}% off'})',
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 13),
+                        ),
+                      )),
+                ],
+                onChanged: (v) {
+                  setState(() => _discountId = v ?? '');
+                  _recalc();
+                },
+              ),
+            ],
+
             const SizedBox(height: 14),
 
             // ── Amount row ─────────────────────────────────────────────
@@ -1934,11 +2052,11 @@ class _PaySheetState extends State<_PaySheet> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _label('AMOUNT (LKR)'),
+                    _label('PAID (LKR)'),
                   TextField(
                       controller: _amtCtrl,
                     keyboardType: TextInputType.number,
-                      decoration: _deco('Override', Icons.edit_rounded),
+                      decoration: _deco('After promo', Icons.edit_rounded),
                     ),
                   ],
                 ),

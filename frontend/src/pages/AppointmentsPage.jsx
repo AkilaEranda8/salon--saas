@@ -5,6 +5,7 @@ import api from '../api/axios';
 import Button from '../components/ui/Button';
 import { Input, Select, FormGroup } from '../components/ui/FormElements';
 import PageWrapper from '../components/layout/PageWrapper';
+import { computePromoFromDiscount } from '../utils/promoDiscount';
 
 const IconEye      = () => <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>;
 const IconEdit     = () => <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>;
@@ -326,6 +327,8 @@ export default function AppointmentsPage() {
   const [paymentErr, setPaymentErr]       = useState('');
   const [paymentOk, setPaymentOk]         = useState(false);
   const [paymentServices, setPaymentServices] = useState([]);
+  const [paymentDiscountId, setPaymentDiscountId] = useState('');
+  const [paymentDiscounts, setPaymentDiscounts] = useState([]);
   const [apptServiceIds, setApptServiceIds] = useState([]);
   const [customerSearch, setCustomerSearch] = useState('');
   const [customerLoading, setCustomerLoading] = useState(false);
@@ -376,21 +379,41 @@ export default function AppointmentsPage() {
     } catch { /* fallback to row data */ }
     const ids = getInitialPaymentServiceIds(sourceRow, services);
     setPaymentServices(ids);
-    const total = calcServiceTotal(ids);
-    setPaymentAmt(Number(sourceRow.amount || 0) > 0 ? sourceRow.amount : (total > 0 ? total : ''));
     setPaymentMethod('Cash');
+    setPaymentDiscountId('');
     setPaymentErr('');
     setPaymentOk(false);
+    const bid = sourceRow.branch_id || sourceRow.branch?.id || user?.branch_id;
+    if (bid) {
+      try {
+        const dr = await api.get('/discounts/payment', { params: { branchId: bid } });
+        setPaymentDiscounts(Array.isArray(dr.data) ? dr.data : (dr.data?.data ?? []));
+      } catch {
+        setPaymentDiscounts([]);
+      }
+    } else {
+      setPaymentDiscounts([]);
+    }
     setShowPayment(true);
   };
   const togglePaymentService = (id) => {
     const nid = Number(id);
-    setPaymentServices(prev => {
-      const next = prev.includes(nid) ? prev.filter(x => x !== nid) : [...prev, nid];
-      setPaymentAmt(calcServiceTotal(next));
+    setPaymentServices((prev) => {
+      const next = prev.includes(nid) ? prev.filter((x) => x !== nid) : [...prev, nid];
       return next;
     });
   };
+
+  useEffect(() => {
+    if (!showPayment || !paymentAppt) return;
+    const gross = calcServiceTotal(paymentServices);
+    const sel = paymentDiscountId
+      ? paymentDiscounts.find((d) => String(d.id) === String(paymentDiscountId))
+      : null;
+    const promo = sel ? computePromoFromDiscount(sel, gross) : 0;
+    const net = Math.max(0, gross - promo);
+    setPaymentAmt(net > 0 ? String(net) : '');
+  }, [showPayment, paymentAppt, paymentServices, paymentDiscountId, paymentDiscounts, services]);
   const handlePayment = async () => {
     if (!(paymentAppt?.status === 'confirmed' || paymentAppt?.status === 'in_service')) {
       return setPaymentErr('Payment can be collected only when status is In Service.');
@@ -399,6 +422,7 @@ export default function AppointmentsPage() {
     if (!paymentServices.length) return setPaymentErr('At least one service is required');
     setPaymentSaving(true);
     try {
+      const subtotal = calcServiceTotal(paymentServices);
       await api.post('/payments', {
         branch_id: paymentAppt.branch_id || paymentAppt.branch?.id || user?.branch_id,
         staff_id: paymentAppt.staff_id || paymentAppt.staff?.id || null,
@@ -407,6 +431,9 @@ export default function AppointmentsPage() {
         service_ids: paymentServices,
         appointment_id: paymentAppt.id,
         customer_name: paymentAppt.customer_name,
+        subtotal,
+        loyalty_discount: 0,
+        ...(paymentDiscountId ? { discount_id: Number(paymentDiscountId) } : {}),
         splits: [{ method: paymentMethod, amount: Number(paymentAmt) }],
       });
       if (paymentAppt?.id) {
@@ -872,8 +899,27 @@ export default function AppointmentsPage() {
                 </div>
                 {paymentServices.length===0 && <div style={{ fontSize:12, color:'#DC2626', marginTop:4 }}>Select at least one service</div>}
               </FormGroup>
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14, alignItems:'start' }}>
+                <FormGroup label="Subtotal (Rs.)">
+                  <div style={{ padding:'10px 12px', background:'#F9FAFB', borderRadius:10, border:'1px solid #E5E7EB', fontWeight:800, color:'#059669' }}>
+                    Rs. {calcServiceTotal(paymentServices).toLocaleString()}
+                  </div>
+                </FormGroup>
+                {paymentDiscounts.length > 0 && (
+                  <FormGroup label="Promo discount">
+                    <Select value={paymentDiscountId || ''} onChange={e => setPaymentDiscountId(e.target.value)}>
+                      <option value="">None</option>
+                      {paymentDiscounts.map((d) => (
+                        <option key={d.id} value={d.id}>
+                          {d.name} ({d.discount_type === 'fixed' ? `Rs.${d.value}` : `${d.value}%`})
+                        </option>
+                      ))}
+                    </Select>
+                  </FormGroup>
+                )}
+              </div>
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
-                <FormGroup label="Amount (Rs.)" required>
+                <FormGroup label="Paid (Rs.)" required>
                   <Input type="number" value={paymentAmt} onChange={e=>setPaymentAmt(e.target.value)} placeholder="0" />
                 </FormGroup>
                 <FormGroup label="Payment Method" required>
@@ -883,7 +929,7 @@ export default function AppointmentsPage() {
                 </FormGroup>
               </div>
               <div style={{ background:'#F0FDF4', borderRadius:10, padding:'12px 16px', display:'flex', alignItems:'center', justifyContent:'space-between', border:'1px solid #BBF7D0' }}>
-                <span style={{ fontSize:13, fontWeight:600, color:'#166534' }}>Total</span>
+                <span style={{ fontSize:13, fontWeight:600, color:'#166534' }}>Collected</span>
                 <span style={{ fontSize:18, fontWeight:800, color:'#059669' }}>Rs. {Number(paymentAmt||0).toLocaleString()}</span>
               </div>
             </div>

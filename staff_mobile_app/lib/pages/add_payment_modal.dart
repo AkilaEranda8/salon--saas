@@ -22,6 +22,7 @@ class AddPaymentModalResult {
     required this.method,
     required this.paidAmount,
     required this.customerName,
+    this.discountId = '',
   });
 
   final String branchId;
@@ -33,6 +34,8 @@ class AddPaymentModalResult {
   final String method;
   final String paidAmount;
   final String customerName;
+  /// Promo catalog discount id (optional).
+  final String discountId;
 }
 
 class AddPaymentModal extends StatefulWidget {
@@ -41,6 +44,7 @@ class AddPaymentModal extends StatefulWidget {
     required this.customers,
     required this.staff,
     required this.services,
+    this.discounts = const [],
     this.initialBranchId,
     super.key,
   });
@@ -49,6 +53,8 @@ class AddPaymentModal extends StatefulWidget {
   final List<Customer> customers;
   final List<StaffMember> staff;
   final List<SalonService> services;
+  /// Active promo rows from GET /api/discounts/payment
+  final List<Map<String, dynamic>> discounts;
   final String? initialBranchId;
 
   static Future<AddPaymentModalResult?> show(
@@ -57,6 +63,7 @@ class AddPaymentModal extends StatefulWidget {
     required List<Customer> customers,
     required List<StaffMember> staff,
     required List<SalonService> services,
+    List<Map<String, dynamic>> discounts = const [],
     String? initialBranchId,
   }) {
     return showModalBottomSheet<AddPaymentModalResult>(
@@ -68,6 +75,7 @@ class AddPaymentModal extends StatefulWidget {
         customers: customers,
         staff: staff,
         services: services,
+        discounts: discounts,
         initialBranchId: initialBranchId,
       ),
     );
@@ -101,6 +109,7 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
   String? _staffId;
   final Set<String> _selectedServiceIds = {};
   String _method = _methods.first;
+  String _discountId = '';
 
   @override
   void initState() {
@@ -117,11 +126,39 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
     super.dispose();
   }
 
-  void _syncPaid() {
-    if (_paidAmountCtrl.text.trim().isNotEmpty) return;
-    final total    = double.tryParse(_totalAmountCtrl.text.trim()) ?? 0;
-    final discount = double.tryParse(_loyaltyDiscountCtrl.text.trim()) ?? 0;
-    final net      = (total - discount).clamp(0, double.infinity);
+  double _computedPromo() {
+    if (_discountId.isEmpty) return 0;
+    Map<String, dynamic>? d;
+    for (final raw in widget.discounts) {
+      if ('${raw['id']}' == _discountId) {
+        d = raw;
+        break;
+      }
+    }
+    if (d == null) return 0;
+    final total = double.tryParse(_totalAmountCtrl.text.trim()) ?? 0;
+    final minBill = double.tryParse('${d['min_bill'] ?? 0}') ?? 0;
+    if (total < minBill) return 0;
+    final type = '${d['discount_type'] ?? 'percent'}';
+    if (type == 'fixed') {
+      final v = double.tryParse('${d['value']}') ?? 0;
+      return v.clamp(0, total);
+    }
+    final pct = (double.tryParse('${d['value']}') ?? 0).clamp(0, 100);
+    var off = total * pct / 100;
+    final cap = d['max_discount_amount'];
+    if (cap != null && '$cap'.trim().isNotEmpty) {
+      final c = double.tryParse('$cap');
+      if (c != null) off = off.clamp(0, c);
+    }
+    return (off * 100).round() / 100;
+  }
+
+  void _applyNetToPaid() {
+    final total = double.tryParse(_totalAmountCtrl.text.trim()) ?? 0;
+    final loyalty = double.tryParse(_loyaltyDiscountCtrl.text.trim()) ?? 0;
+    final promo = _computedPromo();
+    final net = (total - loyalty - promo).clamp(0, double.infinity);
     _paidAmountCtrl.text = net > 0 ? net.toStringAsFixed(0) : '';
   }
 
@@ -132,8 +169,8 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
         if (s.id == id) total += s.price;
       }
     }
-    _totalAmountCtrl.text  = total > 0 ? total.toStringAsFixed(0) : '';
-    _paidAmountCtrl.text   = total > 0 ? total.toStringAsFixed(0) : '';
+    _totalAmountCtrl.text = total > 0 ? total.toStringAsFixed(0) : '';
+    _applyNetToPaid();
   }
 
   void _submit() {
@@ -151,6 +188,7 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
       loyaltyDiscount: _loyaltyDiscountCtrl.text.trim(),
       method:         _method,
       paidAmount:     _paidAmountCtrl.text.trim(),
+      discountId:     _discountId,
       customerName:   _customerNameCtrl.text.trim().isEmpty
                           ? cust.name
                           : _customerNameCtrl.text.trim(),
@@ -497,7 +535,7 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
                         keyboardType: TextInputType.number,
                         decoration: _deco(
                             'Total', Icons.receipt_long_rounded),
-                        onChanged: (_) => _syncPaid(),
+                        onChanged: (_) => setState(_applyNetToPaid),
                         validator: (v) {
                           if (_selectedServiceIds.isEmpty) {
                             return 'Select service';
@@ -548,11 +586,35 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
                 controller: _loyaltyDiscountCtrl,
                 keyboardType: TextInputType.number,
                 decoration: _deco('0', Icons.discount_outlined),
-                onChanged: (_) {
-                  _paidAmountCtrl.clear();
-                  _syncPaid();
-                },
+                onChanged: (_) => setState(_applyNetToPaid),
               ),
+
+              if (widget.discounts.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                _label('PROMO DISCOUNT'),
+                DropdownButtonFormField<String>(
+                  value: _discountId,
+                  isExpanded: true,
+                  decoration: _deco('Select promo (optional)', Icons.local_offer_rounded),
+                  items: [
+                    const DropdownMenuItem(value: '', child: Text('None')),
+                    ...widget.discounts.map((d) => DropdownMenuItem(
+                          value: '${d['id']}',
+                          child: Text(
+                            '${d['name'] ?? ''} (${d['discount_type'] == 'fixed' ? 'Rs. ${d['value']}' : '${d['value']}% off'})',
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 13),
+                          ),
+                        )),
+                  ],
+                  onChanged: (v) {
+                    setState(() {
+                      _discountId = v ?? '';
+                      _applyNetToPaid();
+                    });
+                  },
+                ),
+              ],
 
               const SizedBox(height: 12),
 

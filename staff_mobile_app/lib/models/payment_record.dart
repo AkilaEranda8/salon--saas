@@ -25,6 +25,7 @@ class PaymentRecord {
     required this.serviceName,
     required this.totalAmount,
     required this.loyaltyDiscount,
+    required this.promoDiscount,
     required this.commissionAmount,
     required this.date,
     required this.splits,
@@ -36,15 +37,17 @@ class PaymentRecord {
   final String serviceName;
   final double totalAmount;
   final double loyaltyDiscount;
+  final double promoDiscount;
   final double commissionAmount;
   final String date;
   final List<PaymentSplitRecord> splits;
 
-  double get netAmount => totalAmount - loyaltyDiscount;
+  double get netAmount => totalAmount - loyaltyDiscount - promoDiscount;
 
   factory PaymentRecord.fromJson(Map<String, dynamic> json) {
     final rawTotal = json['total_amount'];
     final rawLoyalty = json['loyalty_discount'];
+    final rawPromo = json['promo_discount'];
     final rawCommission = json['commission_amount'];
     final splitRows = (json['splits'] as List? ?? const []);
     final customerMap = json['customer'] is Map ? Map<String, dynamic>.from(json['customer']) : const <String, dynamic>{};
@@ -57,6 +60,7 @@ class PaymentRecord {
       serviceName: '${serviceMap['name'] ?? ''}',
       totalAmount: rawTotal is num ? rawTotal.toDouble() : double.tryParse('$rawTotal') ?? 0,
       loyaltyDiscount: rawLoyalty is num ? rawLoyalty.toDouble() : double.tryParse('$rawLoyalty') ?? 0,
+      promoDiscount: rawPromo is num ? rawPromo.toDouble() : double.tryParse('$rawPromo') ?? 0,
       commissionAmount: rawCommission is num ? rawCommission.toDouble() : double.tryParse('$rawCommission') ?? 0,
       date: '${json['date'] ?? ''}',
       splits: splitRows

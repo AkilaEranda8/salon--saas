@@ -85,6 +85,26 @@ class MobileApi {
     return body;
   }
 
+  /// Active promo discounts for Record Payment (GET /api/discounts/payment).
+  Future<List<Map<String, dynamic>>> fetchDiscountsForPayment({
+    required String token,
+    required String branchId,
+  }) async {
+    final uri = Uri.parse('$baseUrl/api/discounts/payment').replace(
+      queryParameters: {'branchId': branchId},
+    );
+    final response = await http.get(uri, headers: _authHeaders(token));
+    final body = _decode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['message'] ?? 'Discounts load failed');
+    }
+    final list = (body['data'] as List? ?? const []);
+    return list
+        .whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
+  }
+
   Future<List<Customer>> fetchCustomers({
     required String token,
     String? branchId,
@@ -344,8 +364,12 @@ class MobileApi {
     required String method,
     String? staffId,
     String? customerId,
+    String subtotal = '',
+    String loyaltyDiscount = '0',
+    String? discountId,
   }) async {
     final parsedAmount = double.tryParse(amount.trim()) ?? 0;
+    final sub = double.tryParse(subtotal.trim()) ?? 0;
     final bodyMap = <String, dynamic>{
       'branch_id': int.tryParse(branchId) ?? branchId,
       'appointment_id': int.tryParse(appointmentId) ?? appointmentId,
@@ -353,6 +377,10 @@ class MobileApi {
       'service_id': int.tryParse(serviceId) ?? serviceId,
       if (serviceIds != null && serviceIds.isNotEmpty)
         'service_ids': serviceIds.map((id) => int.tryParse(id) ?? id).toList(),
+      if (sub > 0) 'subtotal': sub,
+      'loyalty_discount': double.tryParse(loyaltyDiscount.trim()) ?? 0,
+      if (discountId != null && discountId.trim().isNotEmpty)
+        'discount_id': int.tryParse(discountId.trim()) ?? discountId.trim(),
       'splits': [
         {'method': method, 'amount': parsedAmount}
       ],
@@ -407,7 +435,10 @@ class MobileApi {
     required String loyaltyDiscount,
     required String method,
     required String paidAmount,
+    String? discountId,
   }) async {
+    final subtotal = double.tryParse(totalAmount.trim()) ?? 0;
+    final paid = double.tryParse(paidAmount.trim()) ?? 0;
     final response = await http.post(
       Uri.parse('$baseUrl/api/payments'),
       headers: _authHeaders(token),
@@ -420,14 +451,16 @@ class MobileApi {
         if (customerId != null && customerId.isNotEmpty) 'customer_id': int.tryParse(customerId) ?? customerId,
         if (customerName != null && customerName.trim().isNotEmpty) 'customer_name': customerName.trim(),
         if (phone != null && phone.trim().isNotEmpty) 'phone': phone.trim(),
+        'subtotal': subtotal,
+        if (discountId != null && discountId.trim().isNotEmpty)
+          'discount_id': int.tryParse(discountId.trim()) ?? discountId.trim(),
         'loyalty_discount': double.tryParse(loyaltyDiscount.trim()) ?? 0,
         'splits': [
           {
             'method': method,
-            'amount': double.tryParse(paidAmount.trim()) ?? 0,
+            'amount': paid,
           },
         ],
-        'total_amount': double.tryParse(totalAmount.trim()) ?? 0,
       }),
     );
     final body = _decode(response.body);

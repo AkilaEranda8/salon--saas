@@ -21,6 +21,7 @@ const Review               = require('./Review');
 const Package              = require('./Package');
 const CustomerPackage      = require('./CustomerPackage');
 const PackageRedemption    = require('./PackageRedemption');
+const Discount             = require('./Discount');
 
 // ── Branch ────────────────────────────────────────────────────────────────────
 Branch.hasMany(User,        { foreignKey: 'branch_id', as: 'users' });
@@ -28,6 +29,7 @@ Branch.hasMany(Staff,       { foreignKey: 'branch_id', as: 'staffMembers' });
 Branch.hasMany(Customer,    { foreignKey: 'branch_id', as: 'customers' });
 Branch.hasMany(Appointment, { foreignKey: 'branch_id', as: 'appointments' });
 Branch.hasMany(Payment,     { foreignKey: 'branch_id', as: 'payments' });
+Branch.hasMany(Discount,    { foreignKey: 'branch_id', as: 'discounts' });
 Branch.hasMany(Inventory,   { foreignKey: 'branch_id', as: 'inventory' });
 Branch.hasMany(Reminder,    { foreignKey: 'branch_id', as: 'reminders' });
 Branch.hasMany(NotificationLog, { foreignKey: 'branch_id', as: 'notificationLogs' });
@@ -85,7 +87,9 @@ Payment.belongsTo(Staff,       { foreignKey: 'staff_id',       as: 'staff' });
 Payment.belongsTo(Customer,    { foreignKey: 'customer_id',    as: 'customer' });
 Payment.belongsTo(Service,     { foreignKey: 'service_id',     as: 'service' });
 Payment.belongsTo(Appointment, { foreignKey: 'appointment_id', as: 'appointment' });
+Payment.belongsTo(Discount,    { foreignKey: 'discount_id',    as: 'discount' });
 Payment.hasMany(PaymentSplit,  { foreignKey: 'payment_id',     as: 'splits' });
+Discount.belongsTo(Branch,     { foreignKey: 'branch_id',      as: 'branch' });
 
 // ── PaymentSplit ──────────────────────────────────────────────────────────────
 PaymentSplit.belongsTo(Payment, { foreignKey: 'payment_id', as: 'payment' });
@@ -164,4 +168,5 @@ module.exports = {
   Package,
   CustomerPackage,
   PackageRedemption,
+  Discount,
 };

@@ -18,11 +18,17 @@ class AddWalkInPaymentModalResult {
   const AddWalkInPaymentModalResult({
     required this.method,
     required this.amount,
+    required this.subtotal,
+    required this.discountId,
     required this.serviceIds,
   });
 
   final String method;
+  /// Net paid (after promo).
   final String amount;
+  /// Gross before promo (service sum).
+  final String subtotal;
+  final String discountId;
   /// Ordered: primary first, then additional — sent to `/api/payments` as `service_ids`.
   final List<String> serviceIds;
 }
@@ -35,6 +41,7 @@ class AddWalkInPaymentModal extends StatefulWidget {
     required this.selectedServiceIds,
     this.customerName = '',
     this.serviceName = '',
+    this.discounts = const [],
     super.key,
   });
 
@@ -44,6 +51,7 @@ class AddWalkInPaymentModal extends StatefulWidget {
   final List<String> selectedServiceIds;
   final String customerName;
   final String serviceName;
+  final List<Map<String, dynamic>> discounts;
 
   static Future<AddWalkInPaymentModalResult?> show(
     BuildContext context, {
@@ -52,6 +60,7 @@ class AddWalkInPaymentModal extends StatefulWidget {
     required List<String> selectedServiceIds,
     String customerName = '',
     String serviceName = '',
+    List<Map<String, dynamic>> discounts = const [],
   }) {
     return showModalBottomSheet<AddWalkInPaymentModalResult>(
       context: context,
@@ -63,6 +72,7 @@ class AddWalkInPaymentModal extends StatefulWidget {
         selectedServiceIds: selectedServiceIds,
         customerName: customerName,
         serviceName: serviceName,
+        discounts: discounts,
       ),
     );
   }
@@ -87,6 +97,7 @@ class _AddWalkInPaymentModalState extends State<AddWalkInPaymentModal> {
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _amtCtrl;
   String _method = 'Cash';
+  String _discountId = '';
 
   String? _primaryServiceId;
   final List<String> _extraServiceIds = [];
@@ -95,12 +106,10 @@ class _AddWalkInPaymentModalState extends State<AddWalkInPaymentModal> {
   void initState() {
     super.initState();
     _hydrateSelection();
-    final sum = _totalSelectedAmount();
-    final initial = widget.initialAmount.trim();
-    final text = sum > 0
-        ? sum.toStringAsFixed(0)
-        : (initial.isNotEmpty ? initial : '0');
-    _amtCtrl = TextEditingController(text: text);
+    _amtCtrl = TextEditingController(text: '0');
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _syncAmountFromServices();
+    });
   }
 
   void _hydrateSelection() {
@@ -138,13 +147,43 @@ class _AddWalkInPaymentModalState extends State<AddWalkInPaymentModal> {
     return sum;
   }
 
+  double _computedPromo() {
+    if (_discountId.isEmpty) return 0;
+    Map<String, dynamic>? d;
+    for (final raw in widget.discounts) {
+      if ('${raw['id']}' == _discountId) {
+        d = raw;
+        break;
+      }
+    }
+    if (d == null) return 0;
+    final total = _totalSelectedAmount();
+    final minBill = double.tryParse('${d['min_bill'] ?? 0}') ?? 0;
+    if (total < minBill) return 0;
+    final type = '${d['discount_type'] ?? 'percent'}';
+    if (type == 'fixed') {
+      final v = double.tryParse('${d['value']}') ?? 0;
+      return v.clamp(0, total);
+    }
+    final pct = (double.tryParse('${d['value']}') ?? 0).clamp(0, 100);
+    var off = total * pct / 100;
+    final cap = d['max_discount_amount'];
+    if (cap != null && '$cap'.trim().isNotEmpty) {
+      final c = double.tryParse('$cap');
+      if (c != null) off = off.clamp(0, c);
+    }
+    return (off * 100).round() / 100;
+  }
+
   void _syncAmountFromServices() {
     if (_orderedSelectedServiceIds().isEmpty) {
       _amtCtrl.text = '0';
       return;
     }
-    final sum = _totalSelectedAmount();
-    _amtCtrl.text = sum > 0 ? sum.toStringAsFixed(0) : _amtCtrl.text;
+    final gross = _totalSelectedAmount();
+    final promo = _computedPromo();
+    final net = (gross - promo).clamp(0, double.infinity);
+    _amtCtrl.text = net > 0 ? net.toStringAsFixed(0) : '';
   }
 
   void _toggleService(String id) {
@@ -232,9 +271,12 @@ class _AddWalkInPaymentModalState extends State<AddWalkInPaymentModal> {
       );
       return;
     }
+    final gross = _totalSelectedAmount();
     Navigator.of(context).pop(AddWalkInPaymentModalResult(
       method: _method,
       amount: _amtCtrl.text.trim(),
+      subtotal: gross > 0 ? gross.toStringAsFixed(0) : '0',
+      discountId: _discountId,
       serviceIds: List<String>.from(_orderedSelectedServiceIds()),
     ));
   }
@@ -391,16 +433,67 @@ class _AddWalkInPaymentModalState extends State<AddWalkInPaymentModal> {
                 onRemoveTap: (id) => _toggleService(id),
                 label: 'SERVICES (ADDITIONAL ALLOWED)',
                 helperText:
-                    'Pick services from the dropdowns. Amount follows prices — you can still edit.',
+                    'Pick services from the dropdowns. Paid amount follows prices and promo — you can still edit.',
                 accentColor: _pGreen,
                 borderColor: _pBorder,
                 bgColor: _pBg,
                 mutedColor: _pMuted,
               ),
 
+              if (widget.discounts.isNotEmpty) ...[
+                const SizedBox(height: 18),
+                _label('PROMO DISCOUNT'),
+                DropdownButtonFormField<String>(
+                  value: _discountId.isEmpty
+                      ? ''
+                      : widget.discounts.any((d) => '${d['id']}' == _discountId)
+                          ? _discountId
+                          : '',
+                  isExpanded: true,
+                  decoration: InputDecoration(
+                    hintText: 'Select promo (optional)',
+                    hintStyle:
+                        const TextStyle(color: Color(0xFFB0B8B0), fontSize: 14),
+                    prefixIcon:
+                        const Icon(Icons.local_offer_rounded, color: _pGreen, size: 19),
+                    filled: true,
+                    fillColor: _pBg,
+                    contentPadding:
+                        const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(color: _pBorder),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(color: _pBorder),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(color: _pGreen, width: 1.8),
+                    ),
+                  ),
+                  items: [
+                    const DropdownMenuItem(value: '', child: Text('None')),
+                    ...widget.discounts.map((d) => DropdownMenuItem(
+                          value: '${d['id']}',
+                          child: Text(
+                            '${d['name'] ?? ''} (${d['discount_type'] == 'fixed' ? 'Rs. ${d['value']}' : '${d['value']}% off'})',
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 13),
+                          ),
+                        )),
+                  ],
+                  onChanged: (v) {
+                    setState(() => _discountId = v ?? '');
+                    _syncAmountFromServices();
+                  },
+                ),
+              ],
+
               const SizedBox(height: 18),
 
-              _label('AMOUNT (LKR)'),
+              _label('PAID (LKR)'),
               TextFormField(
                 controller: _amtCtrl,
                 keyboardType: TextInputType.number,

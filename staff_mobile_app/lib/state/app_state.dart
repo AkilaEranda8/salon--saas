@@ -461,6 +461,16 @@ class AppState extends ChangeNotifier {
     return '${n.year}-${n.month.toString().padLeft(2, '0')}';
   }
 
+  Future<List<Map<String, dynamic>>> loadDiscountsForPayment(String branchId) async {
+    final token = _currentUser?.authToken;
+    if (token == null || token.isEmpty) return const [];
+    try {
+      return await _api.fetchDiscountsForPayment(token: token, branchId: branchId);
+    } catch (_) {
+      return const [];
+    }
+  }
+
   Future<bool> addManualPayment({
     required String branchId,
     required String serviceId,
@@ -473,6 +483,7 @@ class AppState extends ChangeNotifier {
     required String loyaltyDiscount,
     required String method,
     required String paidAmount,
+    String? discountId,
   }) async {
     final token = _currentUser?.authToken;
     if (token == null || token.isEmpty) {
@@ -493,6 +504,7 @@ class AppState extends ChangeNotifier {
         loyaltyDiscount: loyaltyDiscount,
         method: method,
         paidAmount: paidAmount,
+        discountId: discountId,
       );
       return true;
     } catch (e) {
@@ -812,6 +824,9 @@ class AppState extends ChangeNotifier {
     required String amount,
     required String method,
     required List<String> paymentServiceIds,
+    String subtotal = '',
+    String loyaltyDiscount = '0',
+    String? discountId,
   }) async {
     final token = _currentUser?.authToken;
     if (token == null || token.isEmpty) {
@@ -845,6 +860,9 @@ class AppState extends ChangeNotifier {
         customerId: appointment.customerId.isNotEmpty ? appointment.customerId : null,
         amount: amount,
         method: method,
+        subtotal: subtotal,
+        loyaltyDiscount: loyaltyDiscount,
+        discountId: discountId,
       );
       await _api.updateAppointmentStatus(
         token: token,

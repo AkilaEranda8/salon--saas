@@ -175,6 +175,15 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
 
   void _submit() {
     if (!_formKey.currentState!.validate()) return;
+    if (_customerId.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Select a customer from the list before recording payment.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
     final cust = widget.customers.firstWhere(
       (c) => c.id == _customerId,
       orElse: () => Customer(id: '', name: 'Walk-in', phone: '', email: ''),
@@ -334,8 +343,8 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
                 const SizedBox(height: 12),
               ],
 
-              // ── Customer (search by name / phone, or type walk-in) ───
-              _label('CUSTOMER'),
+              // ── Customer (must pick from list — same rule as web Record Payment) ───
+              _label('CUSTOMER *'),
               Autocomplete<Customer>(
                 optionsBuilder: (val) {
                   final q = val.text.trim().toLowerCase();
@@ -372,8 +381,8 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
                     textCapitalization: TextCapitalization.words,
                     decoration: _deco(
                         widget.customers.isEmpty
-                            ? 'Walk-in name'
-                            : 'Search name, phone — or type walk-in',
+                            ? 'No customers — add customers first'
+                            : 'Search name or phone, then tap to select',
                         Icons.person_search_rounded),
                     onChanged: (v) {
                       _customerNameCtrl.text = v;
@@ -441,13 +450,17 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
               const SizedBox(height: 12),
 
               // ── Staff ────────────────────────────────────────────────
-              _label('STAFF'),
+              _label('STAFF *'),
               DropdownButtonFormField<String>(
-                initialValue: _staffId,
+                key: ValueKey<String>('staff_${_branchId ?? ''}_${_staffId ?? ''}'),
+                initialValue: _staffId ?? '',
                 isExpanded: true,
-                decoration: _deco('Any staff', Icons.badge_outlined),
+                decoration: _deco('Select staff', Icons.badge_outlined),
                 items: [
-                  const DropdownMenuItem(value: '', child: Text('None')),
+                  const DropdownMenuItem(
+                    value: '',
+                    child: Text('Select staff'),
+                  ),
                   ...filteredStaff.map((s) => DropdownMenuItem(
                         value: s.id,
                         child: Text(s.name,
@@ -456,6 +469,8 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
                       )),
                 ],
                 onChanged: (v) => setState(() => _staffId = v),
+                validator: (v) =>
+                    v == null || v.trim().isEmpty ? 'Select staff' : null,
               ),
 
               const SizedBox(height: 12),
@@ -593,7 +608,8 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
                 const SizedBox(height: 12),
                 _label('PROMO DISCOUNT'),
                 DropdownButtonFormField<String>(
-                  value: _discountId,
+                  key: ValueKey<String>('promo_$_discountId'),
+                  initialValue: _discountId,
                   isExpanded: true,
                   decoration: _deco('Select promo (optional)', Icons.local_offer_rounded),
                   items: [

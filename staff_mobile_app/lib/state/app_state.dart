@@ -513,6 +513,44 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  Future<bool> updateManualPayment({
+    required String paymentId,
+    required String serviceId,
+    List<String>? serviceIds,
+    String? staffId,
+    String? customerId,
+    required String totalAmount,
+    required String loyaltyDiscount,
+    required String method,
+    required String paidAmount,
+    String? discountId,
+  }) async {
+    final token = _currentUser?.authToken;
+    if (token == null || token.isEmpty) {
+      _lastError = 'Missing auth token (cannot update payment).';
+      return false;
+    }
+    try {
+      await _api.updateManualPayment(
+        token: token,
+        paymentId: paymentId,
+        serviceId: serviceId,
+        serviceIds: serviceIds,
+        staffId: staffId,
+        customerId: customerId,
+        totalAmount: totalAmount,
+        loyaltyDiscount: loyaltyDiscount,
+        method: method,
+        paidAmount: paidAmount,
+        discountId: discountId,
+      );
+      return true;
+    } catch (e) {
+      _lastError = e.toString().replaceFirst('Exception: ', '');
+      return false;
+    }
+  }
+
   Future<List<WalkInEntry>> loadWalkIns({
     required String branchId,
     String? date,

@@ -33,7 +33,15 @@ const list = async (req, res) => {
 /** Active discounts for payment form (branch + date). */
 const listForPayment = async (req, res) => {
   try {
-    const branchId = req.userBranchId || req.query.branchId;
+    const qRaw = req.query.branchId;
+    const q = qRaw === undefined || qRaw === null || qRaw === ''
+      ? null
+      : (Array.isArray(qRaw) ? qRaw[0] : qRaw);
+    // Staff/manager: always use JWT branch; admins use query.branchId
+    let branchId = req.userBranchId != null && req.userBranchId !== ''
+      ? Number(req.userBranchId)
+      : (q != null && q !== '' ? Number(q) : null);
+    if (branchId != null && Number.isNaN(branchId)) branchId = null;
     if (!branchId) {
       return res.status(400).json({ message: 'branchId is required.' });
     }

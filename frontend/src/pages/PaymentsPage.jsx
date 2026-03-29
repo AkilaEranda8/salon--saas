@@ -7,7 +7,7 @@ import { Input, Select, FormGroup } from '../components/ui/FormElements';
 import PageWrapper from '../components/layout/PageWrapper';
 import { useToast } from '../components/ui/Toast';
 import {
-  IconEye, IconPlus, IconDollar, IconReceipt, IconCalendar,
+  IconEye, IconEdit, IconPlus, IconDollar, IconReceipt, IconCalendar,
   ActionBtn, StatCard, PKModal as Modal, FilterBar, SearchBar,
   DataTable,
 } from '../components/ui/PageKit';
@@ -236,6 +236,7 @@ export default function PaymentsPage() {
   const [filterMonth, setFilterMonth]   = useState(curMonth);
   const [search, setSearch]       = useState('');
   const [showForm, setShowForm]   = useState(false);
+  const [editId, setEditId]       = useState(null);
   const [showInvoice, setShowInvoice] = useState(false);
   const [invoiceItem, setInvoiceItem] = useState(null);
   const [form, setForm]           = useState(EMPTY_FORM);
@@ -244,6 +245,8 @@ export default function PaymentsPage() {
   const [custPackages, setCustPackages] = useState([]);
   const [loadingPkgs, setLoadingPkgs]   = useState(false);
   const [discounts, setDiscounts]       = useState([]);
+  const [discountsLoading, setDiscountsLoading] = useState(false);
+  const [discountsLoadError, setDiscountsLoadError] = useState(false);
 
   // Load reference data once on mount (independent of payment filters)
   useEffect(() => {
@@ -260,12 +263,32 @@ export default function PaymentsPage() {
     });
   }, []);
 
-  const effectiveBranchForDiscounts = form.branch_id || user?.branchId || '';
+  // Branch for promo list: form row, logged-in user's branch, or Payments page filter
+  const effectiveBranchForDiscounts = useMemo(
+    () => String(form.branch_id || user?.branchId || filterBranch || '').trim(),
+    [form.branch_id, user?.branchId, filterBranch],
+  );
   useEffect(() => {
     if (!effectiveBranchForDiscounts || !showForm) return;
+    let cancelled = false;
+    setDiscountsLoading(true);
+    setDiscountsLoadError(false);
     api.get('/discounts/payment', { params: { branchId: effectiveBranchForDiscounts } })
-      .then(r => setDiscounts(Array.isArray(r.data?.data) ? r.data.data : []))
-      .catch(() => setDiscounts([]));
+      .then((r) => {
+        if (!cancelled) setDiscounts(Array.isArray(r.data?.data) ? r.data.data : []);
+      })
+      .catch((e) => {
+        if (!cancelled) {
+          setDiscounts([]);
+          setDiscountsLoadError(true);
+          const msg = e.response?.data?.message || 'Could not load promos';
+          toast(msg, 'error');
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setDiscountsLoading(false);
+      });
+    return () => { cancelled = true; };
   }, [effectiveBranchForDiscounts, showForm]);
 
   // Load payments + summary whenever filters change
@@ -297,7 +320,48 @@ export default function PaymentsPage() {
   }, [filterBranch, filterMonth]);
   useEffect(() => { load(); }, [load]);
 
-  const openAdd = () => { setForm({ ...EMPTY_FORM, branch_id: user?.branchId||'' }); setFormErr(''); setCustPackages([]); setShowForm(true); };
+  const openAdd = () => {
+    setEditId(null);
+    setForm({ ...EMPTY_FORM, branch_id: user?.branchId || filterBranch || '' });
+    setFormErr('');
+    setCustPackages([]);
+    setShowForm(true);
+  };
+
+  const openEdit = async (row) => {
+    setFormErr('');
+    try {
+      const { data: p } = await api.get(`/payments/${row.id}`);
+      const sid = p.service_id ?? p.service?.id;
+      const serviceIds = sid ? [Number(sid)] : [];
+      setForm({
+        branch_id: String(p.branch_id || ''),
+        staff_id: String(p.staff_id || ''),
+        customer_id: String(p.customer_id || ''),
+        service_ids: serviceIds.filter((x) => Number.isFinite(x) && x > 0),
+        total_amount: p.total_amount != null ? String(p.total_amount) : '',
+        loyalty_discount: Number(p.loyalty_discount || 0),
+        discount_id: p.discount_id ? String(p.discount_id) : '',
+        splits: (p.splits || []).map((sp) => ({
+          method: sp.method,
+          amount: sp.amount != null ? String(Number(sp.amount)) : '',
+          customer_package_id: sp.customer_package_id,
+        })),
+      });
+      setCustPackages([]);
+      if (p.customer_id) {
+        setLoadingPkgs(true);
+        api.get(`/packages/customer/${p.customer_id}/active`)
+          .then((r) => { setCustPackages(Array.isArray(r.data) ? r.data : []); })
+          .catch(() => {})
+          .finally(() => setLoadingPkgs(false));
+      }
+      setEditId(row.id);
+      setShowForm(true);
+    } catch (e) {
+      toast(e.response?.data?.message || 'Could not load payment', 'error');
+    }
+  };
   const setSplit = (idx, field, val) => {
     setForm(f => {
       const s = [...f.splits];
@@ -311,6 +375,8 @@ export default function PaymentsPage() {
   const removeSplit = idx => setForm(f => ({ ...f, splits: f.splits.filter((_,i) => i!==idx) }));
 
   const handleSave = async () => {
+    if (!String(form.customer_id || '').trim()) return setFormErr('Select a customer before recording payment.');
+    if (!String(form.staff_id || '').trim()) return setFormErr('Select staff before recording payment.');
     if (!form.total_amount || !form.service_ids.length) return setFormErr('Total amount and at least one service are required');
     const subtotal = Number(form.total_amount);
     const loyalty = Number(form.loyalty_discount || 0);
@@ -326,11 +392,20 @@ export default function PaymentsPage() {
       const payload = {
         ...rest,
         service_id: service_ids[0] || null,
+        service_ids,
         subtotal,
         discount_id: form.discount_id || null,
       };
-      await api.post('/payments', payload); setShowForm(false); load();
-      toast('Payment recorded successfully!', 'success');
+      if (editId) {
+        await api.put(`/payments/${editId}`, payload);
+        toast('Payment updated successfully!', 'success');
+      } else {
+        await api.post('/payments', payload);
+        toast('Payment recorded successfully!', 'success');
+      }
+      setShowForm(false);
+      setEditId(null);
+      load();
     } catch (e) { setFormErr(e.response?.data?.message || 'Save failed'); }
     setSaving(false);
   };
@@ -435,9 +510,12 @@ export default function PaymentsPage() {
           { accessorKey:'commission_amount', header:'Commission', meta:{ width:'12%', align:'right' },
             cell: ({ getValue }) => <span style={{ fontWeight:800, color:'#D97706', fontFamily:"'Outfit',sans-serif", fontSize:15 }}>Rs. {Number(getValue()||0).toLocaleString()}</span>
           },
-          { id:'invoice', header:'Actions', meta:{ width:'12%', align:'center' },
+          { id:'invoice', header:'Actions', meta:{ width:'14%', align:'center' },
             cell: ({ row }) => (
-              <div style={{ display:'flex', gap:4, justifyContent:'center' }}>
+              <div style={{ display:'flex', gap:4, justifyContent:'center', flexWrap:'wrap' }}>
+                {canEdit && (
+                  <ActionBtn onClick={() => openEdit(row.original)} title="Edit payment" color="#D97706"><IconEdit /></ActionBtn>
+                )}
                 <ActionBtn onClick={() => { setInvoiceItem(row.original); setShowInvoice(true); }} title="View Receipt" color="#2563EB"><IconEye /></ActionBtn>
                 <ActionBtn onClick={() => printReceipt(row.original)} title="Print Receipt" color="#059669"><PrintIcon /></ActionBtn>
               </div>
@@ -451,13 +529,18 @@ export default function PaymentsPage() {
       />
 
       {/* Record Payment Modal */}
-      <Modal open={showForm} onClose={() => setShowForm(false)} title="Record Payment" size="lg"
+      <Modal open={showForm} onClose={() => { setShowForm(false); setEditId(null); }} title={editId ? 'Edit Payment' : 'Record Payment'} size="lg"
         footer={
           <div style={{ display:'flex', gap:10, justifyContent:'flex-end', width:'100%' }}>
-            <Button variant="secondary" onClick={() => setShowForm(false)}>Cancel</Button>
-            <Button variant="primary" loading={saving} onClick={handleSave}>
+            <Button variant="secondary" onClick={() => { setShowForm(false); setEditId(null); }}>Cancel</Button>
+            <Button
+              variant="primary"
+              loading={saving}
+              disabled={saving || !String(form.customer_id || '').trim() || !String(form.staff_id || '').trim()}
+              onClick={handleSave}
+            >
               <span style={{ display:'flex', alignItems:'center', gap:6 }}>
-                <IconDollar />Record Payment
+                <IconDollar />{editId ? 'Save changes' : 'Record Payment'}
               </span>
             </Button>
           </div>
@@ -478,14 +561,14 @@ export default function PaymentsPage() {
             </div>
             {(isAdmin && !hasFixedBranch) && (
               <FormGroup label="Branch" style={{ marginBottom:10 }}>
-                <Select value={form.branch_id||''} onChange={e => setForm(f=>({...f, branch_id:e.target.value, staff_id:''}))}>
+                <Select value={form.branch_id||''} disabled={!!editId} onChange={e => setForm(f=>({...f, branch_id:e.target.value, staff_id:''}))}>
                   <option value="">Select branch</option>
                   {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
                 </Select>
               </FormGroup>
             )}
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
-              <FormGroup label="Customer">
+              <FormGroup label="Customer *">
                 <Select value={form.customer_id||''} onChange={e => {
                   const cid = e.target.value;
                   setForm(f=>({...f, customer_id:cid}));
@@ -497,11 +580,11 @@ export default function PaymentsPage() {
                     }).catch(() => {}).finally(() => setLoadingPkgs(false));
                   }
                 }}>
-                  <option value="">Walk-in / select</option>
+                  <option value="">Select customer</option>
                   {customers.map(c => <option key={c.id} value={c.id}>{c.name} ({c.phone})</option>)}
                 </Select>
               </FormGroup>
-              <FormGroup label="Staff">
+              <FormGroup label="Staff *">
                 <Select value={form.staff_id||''} onChange={e => setForm(f=>({...f, staff_id:e.target.value}))}>
                   <option value="">Select staff</option>
                   {(form.branch_id ? staffList.filter(s => s.branch_id == form.branch_id) : staffList).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
@@ -569,6 +652,19 @@ export default function PaymentsPage() {
                   <option key={d.id} value={d.id}>{d.name} ({d.discount_type === 'fixed' ? `Rs.${d.value}` : `${d.value}%`})</option>
                 ))}
               </Select>
+              {discountsLoading && (
+                <div style={{ fontSize:12, color:'#64748B', marginTop:6 }}>Loading promos…</div>
+              )}
+              {!discountsLoading && showForm && !effectiveBranchForDiscounts && (
+                <div style={{ fontSize:12, color:'#B45309', marginTop:6 }}>
+                  Select branch (above) or pick a branch in the Payments filter on this page, then reopen Record Payment — promos load per branch.
+                </div>
+              )}
+              {!discountsLoading && !discountsLoadError && effectiveBranchForDiscounts && discounts.length === 0 && (
+                <div style={{ fontSize:12, color:'#64748B', marginTop:6 }}>
+                  No active promos for this branch. Add them under <strong>Discounts</strong> (dates, active, min bill).
+                </div>
+              )}
             </FormGroup>
             {form.total_amount && (
               <div style={{ marginTop:12, background: 'linear-gradient(135deg,#EFF6FF 0%,#F0FDF4 100%)', borderRadius:10, padding:'10px 14px', display:'flex', justifyContent:'space-between', alignItems:'center', border:'1px solid #BFDBFE' }}>

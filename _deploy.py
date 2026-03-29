@@ -48,6 +48,8 @@ passwords.extend(
     if p not in passwords
 )
 
+# Do NOT run global `docker stop`/`rm` on all containers — that can hang or break
+# other stacks. Only this repo's compose stack is rebuilt below.
 deploy_cmd = (
     f"if [ -d /root/zane_salon ] && [ ! -d {app_path} ]; then "
     f"  mv /root/zane_salon {app_path} && echo '>>> Renamed zane_salon -> {app_path}'; "
@@ -56,13 +58,15 @@ deploy_cmd = (
     "  git clone https://github.com/AkilaEranda8/zane_saloon_.git "
     f"{app_path} && echo '>>> Cloned fresh'; "
     "fi && "
-    "docker ps -q | xargs -r docker stop 2>/dev/null || true && "
-    "docker ps -aq | xargs -r docker rm 2>/dev/null || true && "
     f"cd {app_path} && "
+    "echo '>>> git fetch + reset' && "
     "git fetch origin master && "
     "git reset --hard origin/master && "
-    "docker compose up -d --build && "
+    "echo '>>> docker compose up --build (may take several minutes)...' && "
+    "DOCKER_BUILDKIT=1 docker compose up -d --build && "
+    "echo '>>> ensureSuperadmin' && "
     "docker compose exec -T backend node scripts/ensureSuperadmin.js && "
+    "echo '>>> restart proxy' && "
     "docker compose restart proxy && "
     "echo '=== DEPLOY DONE ==='"
 )

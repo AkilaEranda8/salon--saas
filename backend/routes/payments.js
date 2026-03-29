@@ -9,6 +9,7 @@ router.use(verifyToken, branchAccess);
 router.get('/summary', ctrl.summary);
 router.get('/',        ctrl.list);
 router.get('/:id',     ctrl.getOne);
+router.put('/:id',     requireRole('superadmin', 'admin', 'manager', 'staff'), ctrl.update);
 router.post('/',       requireRole('superadmin', 'admin', 'manager', 'staff'), ctrl.create);
 
 module.exports = router;

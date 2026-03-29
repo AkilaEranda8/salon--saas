@@ -99,6 +99,9 @@ const getOne = async (req, res) => {
     });
 
     if (!payment) return res.status(404).json({ message: 'Payment not found.' });
+    if (req.userBranchId && Number(payment.branch_id) !== Number(req.userBranchId)) {
+      return res.status(403).json({ message: 'Access denied.' });
+    }
     return res.json(payment);
   } catch (err) {
     return res.status(500).json({ message: 'Server error.' });
@@ -427,6 +430,206 @@ const create = async (req, res) => {
   }
 };
 
+/**
+ * Update an existing payment (amounts, customer, staff, services, splits, discounts).
+ * Does not re-send SMS, change loyalty points, or change payment date.
+ * Blocked when the payment includes a package redemption (cannot safely reverse sessions here).
+ */
+const update = async (req, res) => {
+  const t = await sequelize.transaction();
+  try {
+    const { id } = req.params;
+    const payment = await Payment.findByPk(id, {
+      include: [{ model: PaymentSplit, as: 'splits' }],
+      transaction: t,
+    });
+    if (!payment) {
+      await t.rollback();
+      return res.status(404).json({ message: 'Payment not found.' });
+    }
+    if (req.userBranchId && Number(payment.branch_id) !== Number(req.userBranchId)) {
+      await t.rollback();
+      return res.status(403).json({ message: 'Access denied. You can only edit payments for your own branch.' });
+    }
+
+    const existingSplits = payment.splits || [];
+    if (existingSplits.some((s) => s.method === 'Package')) {
+      await t.rollback();
+      return res.status(400).json({
+        message: 'Cannot edit payments that include a package redemption. Contact an administrator if you need a correction.',
+      });
+    }
+
+    const {
+      staff_id, customer_id, service_id,
+      service_ids = [], splits = [], loyalty_discount = 0,
+      discount_id: discountIdBody, subtotal: subtotalBody,
+    } = req.body;
+
+    if (splits.some((s) => s.method === 'Package')) {
+      await t.rollback();
+      return res.status(400).json({
+        message: 'Package payment splits cannot be added when editing. Record a new payment instead.',
+      });
+    }
+
+    const branch_id_used = payment.branch_id;
+
+    const normalizedServiceIds = normalizeServiceIds(service_ids);
+    const primaryServiceId = Number(service_id) || normalizedServiceIds[0] || null;
+    const selectedServiceIds = normalizedServiceIds.length
+      ? [primaryServiceId, ...normalizedServiceIds.filter((sid) => sid !== primaryServiceId)]
+      : (primaryServiceId ? [primaryServiceId] : []);
+
+    if (!primaryServiceId) {
+      await t.rollback();
+      return res.status(400).json({ message: 'At least one service is required.' });
+    }
+
+    if (!splits.length) {
+      await t.rollback();
+      return res.status(400).json({ message: 'At least one payment split is required.' });
+    }
+
+    const splitTotal = splits.reduce((sum, s) => sum + parseFloat(s.amount || 0), 0);
+    const loyaltyDisc = parseFloat(loyalty_discount || 0);
+
+    let promo_discount = 0;
+    let discount_id_saved = null;
+    if (discountIdBody) {
+      const disc = await Discount.findByPk(discountIdBody, { transaction: t });
+      if (!disc) {
+        await t.rollback();
+        return res.status(400).json({ message: 'Invalid discount.' });
+      }
+      if (!isDiscountActive(disc, branch_id_used)) {
+        await t.rollback();
+        return res.status(400).json({ message: 'This discount is not active for this branch or date.' });
+      }
+      const subIn = parseFloat(subtotalBody || 0);
+      const grossForPromo = subIn > 0 ? subIn : splitTotal + loyaltyDisc;
+      promo_discount = computePromoAmount(disc, grossForPromo);
+      if (promo_discount <= 0) {
+        await t.rollback();
+        return res.status(400).json({ message: 'Discount does not apply to this bill (min. bill or rules).' });
+      }
+      discount_id_saved = disc.id;
+    }
+
+    let grossBill = parseFloat(subtotalBody || 0);
+    if (!(grossBill > 0)) {
+      grossBill = splitTotal + loyaltyDisc + promo_discount;
+    }
+
+    const netExpected = Math.max(0, grossBill - loyaltyDisc - promo_discount);
+    if (Math.abs(netExpected - splitTotal) > 0.05) {
+      await t.rollback();
+      return res.status(400).json({
+        message: `Payment splits (Rs. ${splitTotal.toFixed(2)}) must equal net (Rs. ${netExpected.toFixed(2)}) after discounts. Adjust splits or amounts.`,
+      });
+    }
+
+    if (loyaltyDisc + promo_discount > grossBill + 0.05) {
+      await t.rollback();
+      return res.status(400).json({ message: 'Discounts cannot exceed bill amount.' });
+    }
+
+    const total_amount = grossBill;
+
+    let commission_amount = 0;
+    if (staff_id) {
+      const staffMember = await Staff.findByPk(staff_id, { transaction: t });
+      if (staffMember) {
+        const commissionBase = Math.max(0, total_amount - loyaltyDisc - promo_discount);
+        commission_amount = staffMember.commission_type === 'percentage'
+          ? (commissionBase * parseFloat(staffMember.commission_value)) / 100
+          : parseFloat(staffMember.commission_value);
+      }
+    }
+
+    let resolvedCustomerName = payment.customer_name;
+    if (customer_id) {
+      const cust = await Customer.findByPk(customer_id, { transaction: t });
+      if (cust) resolvedCustomerName = cust.name;
+    }
+
+    await payment.update({
+      staff_id: staff_id || null,
+      customer_id: customer_id || null,
+      service_id: primaryServiceId,
+      customer_name: resolvedCustomerName,
+      total_amount,
+      discount_id: discount_id_saved,
+      promo_discount,
+      loyalty_discount: loyaltyDisc,
+      commission_amount,
+    }, { transaction: t });
+
+    await PaymentSplit.destroy({ where: { payment_id: payment.id }, transaction: t });
+    const splitRows = splits.map((s) => ({
+      payment_id: payment.id,
+      method: s.method,
+      amount: s.amount,
+      customer_package_id: s.customer_package_id || null,
+    }));
+    await PaymentSplit.bulkCreate(splitRows, { transaction: t });
+
+    if (payment.appointment_id && selectedServiceIds.length) {
+      const appt = await Appointment.findByPk(payment.appointment_id, { transaction: t, attributes: ['id', 'notes', 'branch_id'] });
+      if (appt) {
+        if (req.userBranchId && Number(appt.branch_id) !== Number(req.userBranchId)) {
+          await t.rollback();
+          return res.status(403).json({ message: 'Access denied. Appointment belongs to a different branch.' });
+        }
+        const selectedServices = await Service.findAll({
+          where: { id: { [Op.in]: selectedServiceIds } },
+          attributes: ['id', 'name'],
+          transaction: t,
+        });
+        const nameById = new Map(selectedServices.map((s) => [Number(s.id), s.name]));
+        const extraNames = selectedServiceIds
+          .slice(1)
+          .map((sid) => nameById.get(sid))
+          .filter(Boolean);
+        const baseNote = stripAdditionalServicesLine(appt?.notes || '');
+        const mergedNotes = [
+          baseNote,
+          extraNames.length ? `${APPT_EXTRA_SERVICES_PREFIX} ${extraNames.join(', ')}` : '',
+        ].filter(Boolean).join('\n');
+
+        await Appointment.update({
+          service_id: selectedServiceIds[0],
+          amount: total_amount,
+          notes: mergedNotes || null,
+          commission_paid: commission_amount,
+        }, {
+          where: { id: payment.appointment_id },
+          transaction: t,
+        });
+        await syncAppointmentServices(payment.appointment_id, selectedServiceIds, t);
+      }
+    }
+
+    await t.commit();
+
+    const updated = await Payment.findByPk(id, {
+      include: [
+        { model: Branch, as: 'branch', attributes: ['id', 'name'] },
+        { model: Staff, as: 'staff', attributes: ['id', 'name'] },
+        { model: Customer, as: 'customer', attributes: ['id', 'name'] },
+        { model: Service, as: 'service', attributes: ['id', 'name'] },
+        { model: Discount, as: 'discount', required: false },
+        { model: PaymentSplit, as: 'splits' },
+      ],
+    });
+    return res.json(updated);
+  } catch (err) {
+    await t.rollback();
+    console.error(err);
+    return res.status(500).json({ message: 'Server error.' });
+  }
+};
+
 const summary = async (req, res) => {
   try {
     const where = getBranchWhere(req);
@@ -458,4 +661,4 @@ const summary = async (req, res) => {
   }
 };
 
-module.exports = { list, getOne, create, summary };
+module.exports = { list, getOne, create, update, summary };

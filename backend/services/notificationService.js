@@ -484,12 +484,17 @@ async function notifyPaymentReceipt(payment, branch, service, customer) {
   const brName       = branch?.name   || '—';
   const brPhone      = branch?.phone  || '';
   const svcName      = service?.name  || '—';
-  const total        = `Rs. ${parseFloat(payment.total_amount || 0).toFixed(2)}`;
-  const discount     = parseFloat(payment.loyalty_discount || 0);
+  const gross        = parseFloat(payment.total_amount || 0);
+  const loyaltyDisc  = parseFloat(payment.loyalty_discount || 0);
+  const promoDisc    = parseFloat(payment.promo_discount || 0);
+  const splits       = payment.splits || [];
+  const splitSum     = splits.reduce((acc, s) => acc + parseFloat(s.amount || 0), 0);
+  const netPaid      = splitSum > 0 ? splitSum : Math.max(0, gross - loyaltyDisc - promoDisc);
+  const totalStr     = `Rs. ${netPaid.toFixed(2)}`;
+  const grossStr     = `Rs. ${gross.toFixed(2)}`;
   const pointsEarned = payment.points_earned || 0;
   const pointsTotal  = Number(customer?.loyalty_points || 0);
   const date         = payment.date || new Date().toISOString().slice(0, 10);
-  const splits       = payment.splits || [];
   const meta         = {
     customer_name: customerName,
     event_type:    'payment_receipt',
@@ -498,7 +503,7 @@ async function notifyPaymentReceipt(payment, branch, service, customer) {
 
   const splitRows = splits.length
     ? splits.map((s) => detailRow(`💳 ${s.method}`, `Rs. ${parseFloat(s.amount).toFixed(2)}`)).join('')
-    : detailRow('💳 Payment', total);
+    : detailRow('💳 Payment', totalStr);
 
   if (email && flags.payment_receipt_email) {
     const body = `
@@ -510,11 +515,13 @@ async function notifyPaymentReceipt(payment, branch, service, customer) {
         ${detailRow('📅 Date',    date)}
         ${detailRow('💇 Service', svcName)}
         ${detailRow('🏠 Branch',  brName)}
+        ${(loyaltyDisc > 0 || promoDisc > 0) ? detailRow('📋 Subtotal (bill)', grossStr) : ''}
+        ${promoDisc > 0 ? detailRow('🎟️ Promo discount', `- Rs. ${promoDisc.toFixed(2)}`) : ''}
+        ${loyaltyDisc > 0 ? detailRow('🎁 Loyalty discount', `- Rs. ${loyaltyDisc.toFixed(2)}`) : ''}
         ${splitRows}
-        ${discount > 0 ? detailRow('🎁 Loyalty Discount', `- Rs. ${discount.toFixed(2)}`) : ''}
         <tr>
           <td style="padding:14px 0 4px;font-size:16px;color:#1e293b;font-weight:700;border-top:2px solid #e2e8f0;" colspan="2">
-            Total Paid: <span style="float:right;color:#1e3a8a;">Rs. ${parseFloat(payment.total_amount || 0).toFixed(2)}</span>
+            Net paid: <span style="float:right;color:#1e3a8a;">Rs. ${netPaid.toFixed(2)}</span>
           </td>
         </tr>
       </table>
@@ -538,8 +545,13 @@ async function notifyPaymentReceipt(payment, branch, service, customer) {
     let msg =
       `🧾 *Zane Salon — Payment Receipt*\n\n` +
       `Hi ${customerName}! Payment confirmed:\n\n` +
-      `💇 Service: ${svcName}\n🏠 Branch: ${brName}\n📅 Date: ${date}\n💰 Total Paid: ${total}\n`;
-    if (discount > 0)     msg += `🎁 Loyalty Discount: Rs. ${discount.toFixed(2)}\n`;
+      `💇 Service: ${svcName}\n🏠 Branch: ${brName}\n📅 Date: ${date}\n`;
+    if (loyaltyDisc > 0 || promoDisc > 0) {
+      msg += `📋 Bill: ${grossStr}\n`;
+      if (promoDisc > 0) msg += `🎟️ Promo off: Rs. ${promoDisc.toFixed(2)}\n`;
+      if (loyaltyDisc > 0) msg += `🎁 Loyalty off: Rs. ${loyaltyDisc.toFixed(2)}\n`;
+    }
+    msg += `💰 *Net paid: ${totalStr}*\n`;
     if (pointsEarned > 0) msg += `\n🌟 You earned *${pointsEarned} loyalty points*!`;
     if (pointsTotal > 0)  msg += `\n🎯 Total Loyalty Points: *${pointsTotal}*`;
     msg += `\n\nThank you for choosing Zane Salon! 💜`;
@@ -551,9 +563,13 @@ async function notifyPaymentReceipt(payment, branch, service, customer) {
   if (phone) {
     let msg =
       `Zane Salon - Receipt\n` +
-      `Hi ${customerName}! Total Paid: ${total}\n` +
+      `Hi ${customerName}! Paid: ${totalStr}\n` +
       `Service: ${svcName} | ${date}`;
-    if (discount > 0)     msg += `\nDiscount: Rs. ${discount.toFixed(2)}`;
+    if (loyaltyDisc > 0 || promoDisc > 0) {
+      msg += `\nBill: ${grossStr}`;
+      if (promoDisc > 0) msg += `\nPromo -Rs.${promoDisc.toFixed(0)}`;
+      if (loyaltyDisc > 0) msg += `\nLoyalty -Rs.${loyaltyDisc.toFixed(0)}`;
+    }
     if (pointsEarned > 0) msg += `\nEarned: +${pointsEarned} pts`;
     if (pointsTotal > 0)  msg += `\nTotal Points: ${pointsTotal} pts`;
     msg += `\nThank you!`;

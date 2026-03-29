@@ -908,7 +908,7 @@ export default function WalkInPage() {
       )}
 
       {/*  PAYMENT MODAL  */}
-      <Modal open={!!paymentEntry} onClose={() => setPaymentEntry(null)} title="Collect Walk-in Payment" size="sm">
+      <Modal open={!!paymentEntry} onClose={() => setPaymentEntry(null)} title="Collect Walk-in Payment" size="lg">
         {paymentEntry && (
           paymentOk ? (
             <div style={{ textAlign: 'center', padding: '24px 0' }}>

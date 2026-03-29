@@ -469,6 +469,65 @@ class MobileApi {
     }
   }
 
+  /// GET /api/payments/:id — full row for edit (branch-scoped for staff).
+  Future<Map<String, dynamic>> fetchPayment({
+    required String token,
+    required String paymentId,
+  }) async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/api/payments/$paymentId'),
+      headers: _authHeaders(token),
+    );
+    final body = _decode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['message'] ?? 'Payment load failed');
+    }
+    return Map<String, dynamic>.from(body as Map);
+  }
+
+  /// PUT /api/payments/:id — same shape as create (no branch change; no package splits).
+  Future<void> updateManualPayment({
+    required String token,
+    required String paymentId,
+    required String serviceId,
+    List<String>? serviceIds,
+    String? staffId,
+    String? customerId,
+    required String totalAmount,
+    required String loyaltyDiscount,
+    required String method,
+    required String paidAmount,
+    String? discountId,
+  }) async {
+    final subtotal = double.tryParse(totalAmount.trim()) ?? 0;
+    final paid = double.tryParse(paidAmount.trim()) ?? 0;
+    final response = await http.put(
+      Uri.parse('$baseUrl/api/payments/$paymentId'),
+      headers: _authHeaders(token),
+      body: jsonEncode({
+        'service_id': int.tryParse(serviceId) ?? serviceId,
+        if (serviceIds != null && serviceIds.isNotEmpty)
+          'service_ids': serviceIds.map((id) => int.tryParse(id) ?? id).toList(),
+        if (staffId != null && staffId.isNotEmpty) 'staff_id': int.tryParse(staffId) ?? staffId,
+        if (customerId != null && customerId.isNotEmpty) 'customer_id': int.tryParse(customerId) ?? customerId,
+        'subtotal': subtotal,
+        if (discountId != null && discountId.trim().isNotEmpty)
+          'discount_id': int.tryParse(discountId.trim()) ?? discountId.trim(),
+        'loyalty_discount': double.tryParse(loyaltyDiscount.trim()) ?? 0,
+        'splits': [
+          {
+            'method': method,
+            'amount': paid,
+          },
+        ],
+      }),
+    );
+    final body = _decode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['message'] ?? 'Payment update failed');
+    }
+  }
+
   Future<List<WalkInEntry>> fetchWalkIns({
     required String token,
     required String branchId,

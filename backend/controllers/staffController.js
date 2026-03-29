@@ -167,7 +167,7 @@ const getOne = async (req, res) => {
 
 const create = async (req, res) => {
   try {
-    const { name, phone, role_title, commission_type, commission_value, join_date, specializations } = req.body;
+    const { name, phone, email, role_title, commission_type, commission_value, join_date, specializations } = req.body;
 
     const branchIds = normalizeBranchIds(req.body);
     if (!name || !branchIds.length) {
@@ -184,6 +184,7 @@ const create = async (req, res) => {
     const staff = await Staff.create({
       name,
       phone,
+      email: email != null && String(email).trim() !== '' ? String(email).trim() : null,
       role_title,
       branch_id: branchIds[0],
       commission_type,
@@ -215,7 +216,7 @@ const update = async (req, res) => {
       return res.status(403).json({ message: 'Access denied. Staff belongs to a different branch.' });
     }
 
-    const allowed = ['name', 'phone', 'role_title', 'commission_type', 'commission_value', 'join_date', 'is_active'];
+    const allowed = ['name', 'phone', 'email', 'role_title', 'commission_type', 'commission_value', 'join_date', 'is_active'];
     if (['superadmin', 'admin', 'manager'].includes(req.user?.role)) allowed.push('branch_id');
     const updates = {};
     for (const field of allowed) {
@@ -228,6 +229,10 @@ const update = async (req, res) => {
     }
     if (Object.prototype.hasOwnProperty.call(updates, 'phone')) {
       if (updates.phone === '') updates.phone = null;
+    }
+    if (Object.prototype.hasOwnProperty.call(updates, 'email')) {
+      const e = updates.email;
+      updates.email = e === '' || e == null ? null : String(e).trim();
     }
     if (Object.prototype.hasOwnProperty.call(updates, 'commission_value')) {
       const raw = updates.commission_value;

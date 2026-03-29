@@ -10,7 +10,7 @@ import {
   FilterBar, SearchBar, DataTable,
 } from '../components/ui/PageKit';
 
-const EMPTY = { name:'', phone:'', role_title:'', branch_ids:[], commission_type:'percentage', commission_value:'', join_date:'', is_active:true };
+const EMPTY = { name:'', phone:'', email:'', role_title:'', branch_ids:[], commission_type:'percentage', commission_value:'', join_date:'', is_active:true };
 
 function CommBadge({ type, value }) {
   return (
@@ -106,7 +106,7 @@ export default function StaffPage() {
   const displayed   = staff.filter(s => {
     if (!search) return true;
     const q = search.toLowerCase();
-    return s.name?.toLowerCase().includes(q) || s.role_title?.toLowerCase().includes(q) || s.phone?.includes(q);
+    return s.name?.toLowerCase().includes(q) || s.role_title?.toLowerCase().includes(q) || s.phone?.includes(q) || (s.email && String(s.email).toLowerCase().includes(q));
   });
 
   const p = profileItem;
@@ -151,8 +151,15 @@ export default function StaffPage() {
       id: 'phone',
       header: 'Phone',
       accessorFn: row => row.phone,
-      meta: { width: '13%' },
+      meta: { width: '12%' },
       cell: ({ row: { original: row } }) => <span style={{ fontSize:13, color:'#475467' }}>{row.phone||''}</span>,
+    },
+    {
+      id: 'email',
+      header: 'Email',
+      accessorFn: row => row.email,
+      meta: { width: '16%' },
+      cell: ({ row: { original: row } }) => <span style={{ fontSize:13, color:'#475467' }}>{row.email||''}</span>,
     },
     {
       id: 'commission',
@@ -239,6 +246,7 @@ export default function StaffPage() {
             <FormGroup label="Full Name" required><Input value={form.name||''} onChange={e => setForm(f=>({...f, name:e.target.value}))} /></FormGroup>
             <FormGroup label="Phone"><Input value={form.phone||''} onChange={e => setForm(f=>({...f, phone:e.target.value}))} /></FormGroup>
           </div>
+          <FormGroup label="Email"><Input type="email" value={form.email||''} onChange={e => setForm(f=>({...f, email:e.target.value}))} placeholder="name@example.com" /></FormGroup>
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
             <FormGroup label="Role / Title"><Input value={form.role_title||''} onChange={e => setForm(f=>({...f, role_title:e.target.value}))} placeholder="e.g. Senior Stylist" /></FormGroup>
             <FormGroup label="Branches" required>
@@ -296,6 +304,7 @@ export default function StaffPage() {
               {[
                 { label:'Branches',  value: (p.branches && p.branches.length) ? p.branches.map(b=>b.name).join(', ') : (p.branch?.name||'') },
                 { label:'Phone',   value: p.phone||'' },
+                { label:'Email',   value: p.email||'' },
                 { label:'Joined',  value: p.join_date ? new Date(p.join_date).toLocaleDateString() : '' },
                 { label:'Status',  value: p.is_active!==false ? 'Active' : 'Inactive' },
               ].map(({ label, value }) => (

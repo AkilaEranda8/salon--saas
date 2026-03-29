@@ -13,6 +13,7 @@ const CustomerPackage = require('../models/CustomerPackage');
 const Payment = require('../models/Payment');
 const PaymentSplit = require('../models/PaymentSplit');
 const { sendSMS } = require('../services/notificationService');
+const WEB_BOOKING_BRANCH_NAME = 'Zane Salon (VIP)';
 
 function toPublicUrl(req, relPath = '') {
   if (!relPath || typeof relPath !== 'string') return relPath;
@@ -26,9 +27,24 @@ function toPublicUrl(req, relPath = '') {
   return `${proto}://${host}${relPath.startsWith('/') ? relPath : `/${relPath}`}`;
 }
 
+async function resolveWebBookingBranchId(fallbackBranchId = null) {
+  const vip = await Branch.findOne({
+    where: { name: WEB_BOOKING_BRANCH_NAME, status: 'active' },
+    attributes: ['id'],
+  });
+  if (vip?.id) return vip.id;
+  return fallbackBranchId ? Number(fallbackBranchId) : null;
+}
+
 // ── GET /api/public/branches — active branches only ──────────────────────────
 router.get('/branches', async (req, res) => {
   try {
+    const vip = await Branch.findOne({
+      where: { name: WEB_BOOKING_BRANCH_NAME, status: 'active' },
+      attributes: ['id', 'name', 'address', 'phone', 'color'],
+    });
+    if (vip) return res.json([vip]);
+
     const branches = await Branch.findAll({
       where: { status: 'active' },
       attributes: ['id', 'name', 'address', 'phone', 'color'],
@@ -100,7 +116,7 @@ router.get('/availability', async (req, res) => {
       where: {
         staff_id: parseInt(staffId, 10),
         date,
-        status: { [Op.in]: ['pending', 'confirmed'] },
+        status: { [Op.in]: ['pending', 'confirmed', 'in_service'] },
       },
       attributes: ['time', 'service_id'],
       include: [{ model: Service, as: 'service', attributes: ['duration_minutes'] }],
@@ -470,8 +486,12 @@ router.post('/bookings', async (req, res) => {
       branch_id, service_id, service_ids, staff_id, customer_name, phone, email, date, time, notes,
     } = req.body;
 
-    if (!branch_id || !staff_id || !customer_name || !phone || !date || !time) {
+    if (!staff_id || !customer_name || !phone || !date || !time) {
       return res.status(400).json({ message: 'Missing required fields' });
+    }
+    const effectiveBranchId = await resolveWebBookingBranchId(branch_id);
+    if (!effectiveBranchId) {
+      return res.status(400).json({ message: 'No active booking branch is configured.' });
     }
 
     const selectedServiceIds = Array.isArray(service_ids) && service_ids.length > 0
@@ -513,7 +533,7 @@ router.post('/bookings', async (req, res) => {
       where: {
         staff_id,
         date,
-        status: { [Op.in]: ['pending', 'confirmed'] },
+        status: { [Op.in]: ['pending', 'confirmed', 'in_service'] },
       },
       attributes: ['time'],
       include: [{ model: Service, as: 'service', attributes: ['duration_minutes'] }],
@@ -548,20 +568,20 @@ router.post('/bookings', async (req, res) => {
           name: bookingName,
           phone: bookingPhone,
           email: bookingEmail || null,
-          branch_id: branch_id || null,
+          branch_id: effectiveBranchId || null,
         }, { transaction: tx });
       } else {
         const updates = {};
         if (!String(linkedCustomer.name || '').trim() && bookingName) updates.name = bookingName;
         if (!String(linkedCustomer.email || '').trim() && bookingEmail) updates.email = bookingEmail;
-        if (!linkedCustomer.branch_id && branch_id) updates.branch_id = branch_id;
+        if (!linkedCustomer.branch_id && effectiveBranchId) updates.branch_id = effectiveBranchId;
         if (Object.keys(updates).length) await linkedCustomer.update(updates, { transaction: tx });
       }
 
       const created = [];
       for (const r of requestedRanges) {
         const appointment = await Appointment.create({
-          branch_id,
+          branch_id: effectiveBranchId,
           customer_id: linkedCustomer?.id || null,
           service_id: r.service.id,
           staff_id,
@@ -586,7 +606,7 @@ router.post('/bookings', async (req, res) => {
       // Send SMS in background so web booking response is immediate.
       setImmediate(async () => {
         try {
-          const branch = await Branch.findByPk(branch_id, { attributes: ['id', 'name'] });
+          const branch = await Branch.findByPk(effectiveBranchId, { attributes: ['id', 'name'] });
           const firstTime = created[0] ? created[0].time : time;
           const endTime = toHHMM(requestedRanges[requestedRanges.length - 1].end);
           const totalAmount = orderedServices.reduce((sum, s) => sum + (parseFloat(s.price) || 0), 0);
@@ -604,7 +624,7 @@ router.post('/bookings', async (req, res) => {
             meta: {
               customer_name: bookingName,
               event_type: 'appointment_confirmed',
-              branch_id: branch_id || null,
+              branch_id: effectiveBranchId || null,
             },
           });
         } catch (smsErr) {

@@ -18,6 +18,7 @@ const { ensureStaffBranchesBackfill } = require('./services/ensureStaffBranchesB
 const { ensureStaffEmailColumn } = require('./services/ensureStaffEmailColumn');
 const { ensureStaffPhotoColumn } = require('./services/ensureStaffPhotoColumn');
 const { ensurePaymentDiscountColumns } = require('./services/ensurePaymentDiscountColumns');
+const { ensureAppointmentInServiceStatus } = require('./services/ensureAppointmentInServiceStatus');
 const { startStaffMonthlyEarningsCron, isCronEnabled } = require('./services/staffMonthlyEarningsCron');
 
 // Validate required env vars on startup
@@ -161,6 +162,7 @@ connectWithRetry().then(async () => {
     await ensureStaffEmailColumn();
     await ensureStaffPhotoColumn();
     await ensurePaymentDiscountColumns();
+    await ensureAppointmentInServiceStatus();
     await ensureWalkInTotalAmountColumn();
     await runWalkInQueueServicesMigration();
     await sequelize.sync({ force: false });

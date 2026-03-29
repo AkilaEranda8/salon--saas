@@ -16,7 +16,7 @@ const IconCalendar = () => <svg width="15" height="15" viewBox="0 0 24 24" fill=
 const IconPlus     = () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>;
 const IconMoney    = () => <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>;
 
-const APPT_STATUSES = ['pending','confirmed','completed','cancelled','no_show'];
+const APPT_STATUSES = ['pending','confirmed','in_service','completed','cancelled','no_show'];
 const APPT_EXTRA_SERVICES_PREFIX = 'Additional services:';
 const APPT_PACKAGE_PREFIX = 'Package:';
 const stripAdditionalServicesLine = (notes = '') =>
@@ -109,7 +109,8 @@ const getInitialPaymentServiceIds = (row, services) => {
 };
 const STATUS_META = {
   pending:   { color:'#D97706', bg:'#FFFBEB', label:'Pending'   },
-  confirmed: { color:'#2563EB', bg:'#EFF6FF', label:'In Service' },
+  confirmed: { color:'#2563EB', bg:'#EFF6FF', label:'Confirmed' },
+  in_service:{ color:'#1D4ED8', bg:'#DBEAFE', label:'In Service' },
   completed: { color:'#059669', bg:'#ECFDF5', label:'Completed' },
   cancelled: { color:'#DC2626', bg:'#FEF2F2', label:'Cancelled' },
   no_show:   { color:'#64748B', bg:'#F8FAFC', label:'No Show'   },
@@ -282,7 +283,7 @@ function ApptRow({ row, idx, canEdit, onView, onEdit, onDelete, onStatusChange, 
       <td style={{ padding:'13px 16px', textAlign:'center' }}>
         <div style={{ display:'flex', gap:4, justifyContent:'center' }}>
           <ActionBtn onClick={onView} title="View" color="#2563EB"><IconEye /></ActionBtn>
-          {canEdit && s==='confirmed' && <ActionBtn onClick={onPayment} title="Collect Payment" color="#059669"><IconMoney /></ActionBtn>}
+          {canEdit && s==='in_service' && <ActionBtn onClick={onPayment} title="Collect Payment" color="#059669"><IconMoney /></ActionBtn>}
           {canEdit && <ActionBtn onClick={onEdit} title="Edit" color="#D97706"><IconEdit /></ActionBtn>}
           {canEdit && <ActionBtn onClick={onDelete} title="Delete" color="#DC2626"><IconTrash /></ActionBtn>}
         </div>
@@ -415,7 +416,7 @@ export default function AppointmentsPage() {
     setPaymentAmt(net > 0 ? String(net) : '');
   }, [showPayment, paymentAppt, paymentServices, paymentDiscountId, paymentDiscounts, services]);
   const handlePayment = async () => {
-    if (!(paymentAppt?.status === 'confirmed' || paymentAppt?.status === 'in_service')) {
+    if (paymentAppt?.status !== 'in_service') {
       return setPaymentErr('Payment can be collected only when status is In Service.');
     }
     if (!paymentAmt || Number(paymentAmt) <= 0) return setPaymentErr('Amount is required');
@@ -942,7 +943,7 @@ export default function AppointmentsPage() {
         footer={canEdit&&detailItem&&(
           <div style={{ display:'flex', gap:8 }}>
             {detailItem.status!=='completed'&&detailItem.status!=='cancelled'&&<Button variant="primary" onClick={()=>{setShowDetail(false);openEdit(detailItem);}} style={{ display:'flex', alignItems:'center', gap:6 }}><IconEdit /> Edit</Button>}
-            {detailItem.status==='confirmed'&&<Button variant="primary" onClick={()=>{setShowDetail(false);openPayment(detailItem);}} style={{ display:'flex', alignItems:'center', gap:6, background:'#059669' }}><IconMoney /> Collect Payment</Button>}
+            {detailItem.status==='in_service'&&<Button variant="primary" onClick={()=>{setShowDetail(false);openPayment(detailItem);}} style={{ display:'flex', alignItems:'center', gap:6, background:'#059669' }}><IconMoney /> Collect Payment</Button>}
           </div>
         )}>
         {detailItem && (

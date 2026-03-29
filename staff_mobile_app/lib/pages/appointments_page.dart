@@ -32,6 +32,7 @@ class _SM {
 _SM _sm(String s) {
   switch (s.toLowerCase()) {
     case 'confirmed':
+      return const _SM('Confirmed',  Color(0xFF1E40AF), Color(0xFFDBEAFE), Color(0xFF3B82F6));
     case 'in_service':
       return const _SM('In Service', Color(0xFF1E40AF), Color(0xFFDBEAFE), Color(0xFF3B82F6));
     case 'completed':
@@ -47,8 +48,8 @@ String _sl(String s) => _sm(s).label;
 
 // ─────────────────────────────────────────────────────────────────────────────
 const int    _kLimit   = 20;
-const List<String> _kFilters  = ['pending', 'confirmed', 'completed', 'cancelled'];
-const List<String> _kForms    = ['pending', 'confirmed', 'cancelled'];
+const List<String> _kFilters  = ['pending', 'confirmed', 'in_service', 'completed', 'cancelled'];
+const List<String> _kForms    = ['pending', 'confirmed', 'in_service', 'cancelled'];
 
 // ─────────────────────────────────────────────────────────────────────────────
 class AppointmentsPage extends StatefulWidget {
@@ -329,7 +330,7 @@ class _ApptState extends State<AppointmentsPage> with SingleTickerProviderStateM
     final s        = a.status.toLowerCase();
     final canEdit  = ['superadmin','admin','manager','staff']
         .contains(AppStateScope.of(context).currentUser?.role ?? '');
-    final canPay   = canEdit && (s == 'confirmed' || s == 'in_service');
+    final canPay   = canEdit && (s == 'in_service');
     final canChg   = canEdit && s != 'completed' && s != 'cancelled';
 
     final services = AppStateScope.of(context).services;
@@ -444,7 +445,7 @@ class _Header extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final pending   = counts['pending']   ?? 0;
-    final inService = counts['confirmed'] ?? 0;
+    final confirmed = counts['confirmed'] ?? 0;
     final completed = counts['completed'] ?? 0;
 
     return Container(
@@ -534,7 +535,7 @@ class _Header extends StatelessWidget {
                     Row(children: [
                       _StatPill(label: 'Pending',    val: pending,   color: const Color(0xFFFBBF24)),
         const SizedBox(width: 8),
-                      _StatPill(label: 'In Service', val: inService, color: const Color(0xFF60A5FA)),
+                      _StatPill(label: 'Confirmed', val: confirmed, color: const Color(0xFF60A5FA)),
         const SizedBox(width: 8),
                       _StatPill(label: 'Done',       val: completed, color: const Color(0xFF34D399)),
                     ]),

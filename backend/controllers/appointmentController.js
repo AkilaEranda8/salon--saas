@@ -4,7 +4,6 @@ const { notifyAppointmentConfirmed } = require('../services/notificationService'
 const { createNextRecurring } = require('../services/recurringService');
 
 const normalizeStatusForDb = (status) => {
-  if (status === 'in_service') return 'confirmed';
   if (status === 'no_show') return 'cancelled';
   return status;
 };
@@ -459,7 +458,7 @@ const listRecurring = async (req, res) => {
       });
 
       const allInChain = [parent, ...children];
-      const nextScheduled = allInChain.find((a) => ['pending', 'confirmed'].includes(a.status));
+      const nextScheduled = allInChain.find((a) => ['pending', 'confirmed', 'in_service'].includes(a.status));
       const completedCount = allInChain.filter((a) => a.status === 'completed').length;
 
       return {
@@ -492,7 +491,7 @@ const stopRecurring = async (req, res) => {
     // Cancel the next scheduled appointment if it exists and is still upcoming
     if (appt.next_appointment_id) {
       const nextAppt = await Appointment.findByPk(appt.next_appointment_id);
-      if (nextAppt && ['pending', 'confirmed'].includes(nextAppt.status)) {
+      if (nextAppt && ['pending', 'confirmed', 'in_service'].includes(nextAppt.status)) {
         await nextAppt.update({ status: 'cancelled', is_recurring: false });
       }
     }
@@ -501,7 +500,7 @@ const stopRecurring = async (req, res) => {
     const parentId = appt.recurrence_parent_id || appt.id;
     await Appointment.update(
       { is_recurring: false },
-      { where: { recurrence_parent_id: parentId, status: { [Op.in]: ['pending', 'confirmed'] } } }
+      { where: { recurrence_parent_id: parentId, status: { [Op.in]: ['pending', 'confirmed', 'in_service'] } } }
     );
 
     return res.json({ message: 'Recurring series stopped.' });

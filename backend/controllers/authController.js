@@ -1,27 +1,6 @@
 const bcrypt = require('bcryptjs');
 const jwt    = require('jsonwebtoken');
-const { User, Branch, Staff } = require('../models');
-
-/**
- * Portal `User.branch_id` may be unset while the linked `Staff` row has a branch.
- * Mobile + JWT need a single effective branch for scoping.
- */
-async function resolveEffectiveBranchId(user) {
-  if (user.branch_id != null && user.branch_id !== '') {
-    return user.branch_id;
-  }
-  if (!user.staff_id) return null;
-  const st = await Staff.findByPk(user.staff_id, { attributes: ['branch_id'] });
-  return st?.branch_id ?? null;
-}
-
-async function branchPayloadFor(effectiveBranchId, existingBranch) {
-  if (!effectiveBranchId) return null;
-  if (existingBranch && Number(existingBranch.id) === Number(effectiveBranchId)) {
-    return existingBranch;
-  }
-  return Branch.findByPk(effectiveBranchId, { attributes: ['id', 'name', 'color'] });
-}
+const { User, Branch } = require('../models');
 
 // ─── POST /api/auth/register ─────────────────────────────────────────────────
 const register = async (req, res) => {
@@ -113,14 +92,11 @@ const login = async (req, res) => {
       return res.status(401).json({ message: 'Invalid credentials.' });
     }
 
-    const effectiveBranchId = await resolveEffectiveBranchId(user);
-    const branchJson = await branchPayloadFor(effectiveBranchId, user.branch);
-
     const payload = {
       id:       user.id,
       username: user.username,
       role:     user.role,
-      branchId: effectiveBranchId,
+      branchId: user.branch_id,
       name:     user.name,
     };
 
@@ -139,10 +115,10 @@ const login = async (req, res) => {
         name:     user.name,
         username: user.username,
         role:     user.role,
-        branchId: effectiveBranchId,
+        branchId: user.branch_id,
         avatar:   user.avatar,
         color:    user.color,
-        branch:   branchJson,
+        branch:   user.branch,
       },
     });
   } catch (err) {
@@ -173,14 +149,7 @@ const getMe = async (req, res) => {
       return res.status(404).json({ message: 'User not found.' });
     }
 
-    const effectiveBranchId = await resolveEffectiveBranchId(user);
-    const branchJson = await branchPayloadFor(effectiveBranchId, user.branch);
-
-    const plain = user.get({ plain: true });
-    plain.branchId = effectiveBranchId;
-    plain.branch = branchJson;
-
-    return res.json({ user: plain });
+    return res.json({ user });
   } catch (err) {
     console.error('getMe error:', err);
     return res.status(500).json({ message: 'Server error.' });

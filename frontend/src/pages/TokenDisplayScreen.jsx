@@ -2,7 +2,6 @@ import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { io } from 'socket.io-client';
 import api from '../api/axios';
-import { getWalkInServicesTitle } from '../utils/walkInHelpers';
 const C = {
   bg1: '#0a0f1e', bg2: '#0f172a', card: '#141b2d', cardHover: '#1a2340',
   border: '#1e293b', blue: '#2563eb', purple: '#7c3aed', gold: '#fbbf24',
@@ -211,8 +210,8 @@ export default function TokenDisplayScreen() {
                 {serving.customer_name}
               </div>
 
-              <div style={{ fontSize: 'clamp(16px, 2vw, 24px)', color: C.blue, marginTop: 8, fontWeight: 500, textAlign: 'center', maxWidth: '90vw', lineHeight: 1.35 }}>
-                {getWalkInServicesTitle(serving) || serving.service?.name || 'Service'}
+              <div style={{ fontSize: 'clamp(16px, 2vw, 24px)', color: C.blue, marginTop: 8, fontWeight: 500 }}>
+                {serving.service?.name || 'Service'}
               </div>
 
               {serving.staff && (
@@ -306,7 +305,7 @@ export default function TokenDisplayScreen() {
                         </span>
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 12, color: C.muted }}>
-                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{getWalkInServicesTitle(entry) || entry.service?.name || 'Service'}</span>
+                        <span>{entry.service?.name || 'Service'}</span>
                         <span>·</span>
                         <span>{fmtTime(entry.check_in_time)}</span>
                       </div>

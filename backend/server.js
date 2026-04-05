@@ -9,17 +9,6 @@ const path         = require('path');
 const { sequelize } = require('./config/database');
 const validateEnv  = require('./config/validateEnv');
 const { initSocket } = require('./socket');
-const { runAppointmentServicesMigration } = require('./services/appointmentServicesMigration');
-const { ensureUsersStaffIdColumn } = require('./services/ensureUsersStaffIdColumn');
-const { ensureWalkInTotalAmountColumn } = require('./services/ensureWalkInTotalAmountColumn');
-const { runWalkInQueueServicesMigration } = require('./services/walkInQueueServicesMigration');
-const { ensureCustomerPhoneUniqueIndex } = require('./services/ensureCustomerPhoneUniqueIndex');
-const { ensureStaffBranchesBackfill } = require('./services/ensureStaffBranchesBackfill');
-const { ensureStaffEmailColumn } = require('./services/ensureStaffEmailColumn');
-const { ensureStaffPhotoColumn } = require('./services/ensureStaffPhotoColumn');
-const { ensurePaymentDiscountColumns } = require('./services/ensurePaymentDiscountColumns');
-const { ensureAppointmentInServiceStatus } = require('./services/ensureAppointmentInServiceStatus');
-const { startStaffMonthlyEarningsCron, isCronEnabled } = require('./services/staffMonthlyEarningsCron');
 
 // Validate required env vars on startup
 validateEnv();
@@ -30,25 +19,16 @@ require('./models');
 const app = express();
 const server = http.createServer(app);
 
-// Trust Nginx reverse proxy (fixes X-Forwarded-For for rate limiting)
-app.set('trust proxy', 1);
-
 // ── Middleware ────────────────────────────────────────────────────────────────
 const allowedOrigins = [
   'http://localhost:5173',
   'http://localhost:3000',
   'http://localhost',        // Docker nginx (port 80)
   'http://localhost:80',
-  'http://zanesalon.com',
-  'https://zanesalon.com',
-  'http://www.zanesalon.com',
-  'https://www.zanesalon.com',
   'http://main.zanesalon.com',
   'https://main.zanesalon.com',
   'http://api.zanesalon.com',
   'https://api.zanesalon.com',
-  'http://157.180.113.249',
-  'http://157.180.113.249:80',
 ];
 const corsOptions = {
   origin: (origin, cb) => {
@@ -58,12 +38,7 @@ const corsOptions = {
   credentials: true,
 };
 app.use(cors(corsOptions));
-app.use(
-  helmet({
-    contentSecurityPolicy: false,
-    crossOriginResourcePolicy: { policy: 'cross-origin' },
-  }),
-);
+app.use(helmet({ contentSecurityPolicy: false }));
 
 // Rate limiting — auth endpoints most restrictive
 const authLimiter = rateLimit({
@@ -123,7 +98,6 @@ app.use('/api/expenses',     require('./routes/expenses'));
 app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/reviews',      require('./routes/reviews'));
 app.use('/api/packages',     require('./routes/packages'));
-app.use('/api/discounts',    require('./routes/discounts'));
 
 // ── 404 handler ───────────────────────────────────────────────────────────────
 app.use((_req, res) => res.status(404).json({ message: 'Route not found.' }));
@@ -158,25 +132,13 @@ async function connectWithRetry(retries = 10, delay = 3000) {
 connectWithRetry().then(async () => {
   // Create any new tables (CREATE IF NOT EXISTS — never alters or drops existing)
   try {
-    await ensureUsersStaffIdColumn();
-    await ensureStaffEmailColumn();
-    await ensureStaffPhotoColumn();
-    await ensurePaymentDiscountColumns();
-    await ensureAppointmentInServiceStatus();
-    await ensureWalkInTotalAmountColumn();
-    await runWalkInQueueServicesMigration();
     await sequelize.sync({ force: false });
-    await ensureStaffBranchesBackfill();
-    await ensureCustomerPhoneUniqueIndex();
-    await runAppointmentServicesMigration();
   } catch (err) {
     console.warn('⚠  Table sync warning:', err.message);
   }
-  server.listen(PORT, () => {
-    console.log(`✓ Zane Salon server running on http://localhost:${PORT}`);
-    if (isCronEnabled()) startStaffMonthlyEarningsCron();
-    else console.log('○ Staff monthly earnings cron disabled (STAFF_MONTHLY_EARNINGS_CRON=false)');
-  });
+  server.listen(PORT, () =>
+    console.log(`✓ Zane Salon server running on http://localhost:${PORT}`)
+  );
 });
 
 module.exports = app;

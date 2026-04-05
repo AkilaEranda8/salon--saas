@@ -3,8 +3,8 @@ const { Op } = require('sequelize');
 const { sequelize } = require('../config/database');
 
 /**
- * Create the next recurring appointment after one is completed.
- * Supports weekly/monthly recurrence. Returns null on conflicts/failures.
+ * Create the next recurring appointment (weekly) after one is completed.
+ * Returns the new appointment or null if the slot is unavailable.
  */
 async function createNextRecurring(appointment) {
   try {
@@ -16,14 +16,9 @@ async function createNextRecurring(appointment) {
     // Idempotency: skip if a next appointment has already been created
     if (appointment.next_appointment_id) return null;
 
-    // Calculate next date based on recurrence frequency
-    const recurrenceFrequency = appointment.recurrence_frequency === 'monthly' ? 'monthly' : 'weekly';
+    // Calculate next date (+7 days)
     const currentDate = new Date(appointment.date);
-    if (recurrenceFrequency === 'monthly') {
-      currentDate.setMonth(currentDate.getMonth() + 1);
-    } else {
-      currentDate.setDate(currentDate.getDate() + 7);
-    }
+    currentDate.setDate(currentDate.getDate() + 7);
     const nextDate = currentDate.toISOString().slice(0, 10);
 
     // Determine the root parent id
@@ -65,7 +60,7 @@ async function createNextRecurring(appointment) {
         notes:                appointment.notes,
         status:               'confirmed',
         is_recurring:         true,
-        recurrence_frequency: recurrenceFrequency,
+        recurrence_frequency: 'weekly',
         recurrence_parent_id: parentId,
       }, { transaction: t });
 

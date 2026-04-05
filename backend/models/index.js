@@ -2,18 +2,15 @@ const Branch             = require('./Branch');
 const User               = require('./User');
 const Service            = require('./Service');
 const Staff              = require('./Staff');
-const StaffBranch        = require('./StaffBranch');
 const StaffSpecialization = require('./StaffSpecialization');
 const Customer           = require('./Customer');
 const Appointment        = require('./Appointment');
-const AppointmentService = require('./AppointmentService');
 const Payment            = require('./Payment');
 const PaymentSplit       = require('./PaymentSplit');
 const Inventory          = require('./Inventory');
 const Attendance         = require('./Attendance');
 const Reminder           = require('./Reminder');
 const WalkIn             = require('./WalkIn');
-const WalkInQueueService = require('./WalkInQueueService');
 const Expense            = require('./Expense');
 const NotificationLog      = require('./NotificationLog');
 const NotificationSettings = require('./NotificationSettings');
@@ -21,7 +18,6 @@ const Review               = require('./Review');
 const Package              = require('./Package');
 const CustomerPackage      = require('./CustomerPackage');
 const PackageRedemption    = require('./PackageRedemption');
-const Discount             = require('./Discount');
 
 // ── Branch ────────────────────────────────────────────────────────────────────
 Branch.hasMany(User,        { foreignKey: 'branch_id', as: 'users' });
@@ -29,23 +25,14 @@ Branch.hasMany(Staff,       { foreignKey: 'branch_id', as: 'staffMembers' });
 Branch.hasMany(Customer,    { foreignKey: 'branch_id', as: 'customers' });
 Branch.hasMany(Appointment, { foreignKey: 'branch_id', as: 'appointments' });
 Branch.hasMany(Payment,     { foreignKey: 'branch_id', as: 'payments' });
-Branch.hasMany(Discount,    { foreignKey: 'branch_id', as: 'discounts' });
 Branch.hasMany(Inventory,   { foreignKey: 'branch_id', as: 'inventory' });
 Branch.hasMany(Reminder,    { foreignKey: 'branch_id', as: 'reminders' });
-Branch.hasMany(NotificationLog, { foreignKey: 'branch_id', as: 'notificationLogs' });
 
 // ── User ──────────────────────────────────────────────────────────────────────
 User.belongsTo(Branch, { foreignKey: 'branch_id', as: 'branch' });
 
 // ── Staff ─────────────────────────────────────────────────────────────────────
 Staff.belongsTo(Branch,             { foreignKey: 'branch_id', as: 'branch' });
-Staff.belongsToMany(Branch, {
-  through: StaffBranch,
-  foreignKey: 'staff_id',
-  otherKey: 'branch_id',
-  as: 'branches',
-});
-StaffBranch.belongsTo(Branch, { foreignKey: 'branch_id', as: 'branch' });
 Staff.hasMany(StaffSpecialization,  { foreignKey: 'staff_id',  as: 'specializations' });
 Staff.hasMany(Appointment,          { foreignKey: 'staff_id',  as: 'appointments' });
 Staff.hasMany(Attendance,           { foreignKey: 'staff_id',  as: 'attendances' });
@@ -55,7 +42,6 @@ Staff.hasMany(Payment,              { foreignKey: 'staff_id',  as: 'payments' })
 Service.hasMany(StaffSpecialization, { foreignKey: 'service_id', as: 'staffSpecializations' });
 Service.hasMany(Appointment,         { foreignKey: 'service_id', as: 'appointments' });
 Service.hasMany(Payment,             { foreignKey: 'service_id', as: 'payments' });
-Service.hasMany(AppointmentService,  { foreignKey: 'service_id', as: 'appointmentServices' });
 
 // ── StaffSpecialization ───────────────────────────────────────────────────────
 StaffSpecialization.belongsTo(Staff,   { foreignKey: 'staff_id',   as: 'staff' });
@@ -72,14 +58,9 @@ Appointment.belongsTo(Customer, { foreignKey: 'customer_id', as: 'customer' });
 Appointment.belongsTo(Staff,    { foreignKey: 'staff_id',    as: 'staff' });
 Appointment.belongsTo(Service,  { foreignKey: 'service_id',  as: 'service' });
 Appointment.hasMany(Payment,    { foreignKey: 'appointment_id', as: 'payments' });
-Appointment.hasMany(AppointmentService, { foreignKey: 'appointment_id', as: 'appointmentServices' });
 Appointment.belongsTo(Appointment, { foreignKey: 'recurrence_parent_id', as: 'recurrenceParent' });
 Appointment.hasMany(Appointment,   { foreignKey: 'recurrence_parent_id', as: 'recurrenceChildren' });
 Appointment.belongsTo(Appointment, { foreignKey: 'next_appointment_id',  as: 'nextAppointment' });
-
-// ── AppointmentService ────────────────────────────────────────────────────────
-AppointmentService.belongsTo(Appointment, { foreignKey: 'appointment_id', as: 'appointment' });
-AppointmentService.belongsTo(Service,     { foreignKey: 'service_id',     as: 'service' });
 
 // ── Payment ───────────────────────────────────────────────────────────────────
 Payment.belongsTo(Branch,      { foreignKey: 'branch_id',      as: 'branch' });
@@ -87,9 +68,7 @@ Payment.belongsTo(Staff,       { foreignKey: 'staff_id',       as: 'staff' });
 Payment.belongsTo(Customer,    { foreignKey: 'customer_id',    as: 'customer' });
 Payment.belongsTo(Service,     { foreignKey: 'service_id',     as: 'service' });
 Payment.belongsTo(Appointment, { foreignKey: 'appointment_id', as: 'appointment' });
-Payment.belongsTo(Discount,    { foreignKey: 'discount_id',    as: 'discount' });
 Payment.hasMany(PaymentSplit,  { foreignKey: 'payment_id',     as: 'splits' });
-Discount.belongsTo(Branch,     { foreignKey: 'branch_id',      as: 'branch' });
 
 // ── PaymentSplit ──────────────────────────────────────────────────────────────
 PaymentSplit.belongsTo(Payment, { foreignKey: 'payment_id', as: 'payment' });
@@ -102,8 +81,6 @@ Attendance.belongsTo(Staff, { foreignKey: 'staff_id', as: 'staff' });
 
 // ── Reminder ──────────────────────────────────────────────────────────────────
 Reminder.belongsTo(Branch, { foreignKey: 'branch_id', as: 'branch' });
-// ── NotificationLog ───────────────────────────────────────────────────────────
-NotificationLog.belongsTo(Branch, { foreignKey: 'branch_id', as: 'branch' });
 // ── Expense ───────────────────────────────────────────────────────────────
 Expense.belongsTo(Branch, { foreignKey: 'branch_id',  as: 'branch' });
 Expense.belongsTo(User,   { foreignKey: 'created_by', as: 'creator' });
@@ -117,10 +94,6 @@ WalkIn.belongsTo(Staff,   { foreignKey: 'staff_id',   as: 'staff' });
 Branch.hasMany(WalkIn,    { foreignKey: 'branch_id',  as: 'walkIns' });
 Service.hasMany(WalkIn,   { foreignKey: 'service_id', as: 'walkIns' });
 Staff.hasMany(WalkIn,     { foreignKey: 'staff_id',   as: 'walkIns' });
-WalkIn.hasMany(WalkInQueueService, { foreignKey: 'walk_in_id', as: 'walkInServices' });
-WalkInQueueService.belongsTo(WalkIn,   { foreignKey: 'walk_in_id', as: 'walkIn' });
-WalkInQueueService.belongsTo(Service, { foreignKey: 'service_id', as: 'service' });
-Service.hasMany(WalkInQueueService, { foreignKey: 'service_id', as: 'walkInQueueServices' });
 // ── Review ────────────────────────────────────────────────────────────────
 Review.belongsTo(Branch,  { foreignKey: 'branch_id',  as: 'branch' });
 Review.belongsTo(Payment, { foreignKey: 'payment_id', as: 'payment' });
@@ -149,18 +122,15 @@ module.exports = {
   User,
   Service,
   Staff,
-  StaffBranch,
   StaffSpecialization,
   Customer,
   Appointment,
-  AppointmentService,
   Payment,
   PaymentSplit,
   Inventory,
   Attendance,
   Reminder,
   WalkIn,
-  WalkInQueueService,
   Expense,
   NotificationLog,
   NotificationSettings,
@@ -168,5 +138,4 @@ module.exports = {
   Package,
   CustomerPackage,
   PackageRedemption,
-  Discount,
 };

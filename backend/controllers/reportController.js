@@ -1,7 +1,6 @@
 const { Op, fn, col, literal } = require('sequelize');
 const { sequelize } = require('../config/database');
 const { Appointment, Payment, PaymentSplit, Branch, Staff, Service, Inventory, Reminder, Customer, Expense, WalkIn } = require('../models');
-const { staffWhereForBranch } = require('../utils/staffBranchFilter');
 const XLSX = require('xlsx');
 
 const getBranchWhere = (req) => {
@@ -69,13 +68,11 @@ const services = async (req, res) => {
 // GET /api/reports/staff — staff performance
 const staffReport = async (req, res) => {
   try {
-    let staffBranchWhere = {};
-    if (req.userBranchId) staffBranchWhere = await staffWhereForBranch(req.userBranchId);
-    else if (req.query.branchId) staffBranchWhere = await staffWhereForBranch(req.query.branchId);
+    const branchWhere = {};
+    if (req.userBranchId) branchWhere.branch_id = req.userBranchId;
+    else if (req.query.branchId) branchWhere.branch_id = req.query.branchId;
 
-    const payWhere = {};
-    if (req.userBranchId) payWhere.branch_id = req.userBranchId;
-    else if (req.query.branchId) payWhere.branch_id = req.query.branchId;
+    const payWhere = { ...branchWhere };
     if (req.query.month) {
       const [year, month] = req.query.month.split('-');
       const lastDay = new Date(year, month, 0).getDate();
@@ -83,7 +80,7 @@ const staffReport = async (req, res) => {
     }
 
     const rows = await Staff.findAll({
-      where: staffBranchWhere,
+      where: branchWhere,
       attributes: {
         include: [
           [fn('COUNT', col('appointments.id')), 'apptCount'],
@@ -263,14 +260,10 @@ const exportExcel = async (req, res) => {
         include: [{ model: Branch, as: 'branch', attributes: ['name'] }],
         order: [['date', 'DESC']],
       }),
-      (async () => {
-        let sw = {};
-        if (branchWhere.branch_id) sw = await staffWhereForBranch(branchWhere.branch_id);
-        return Staff.findAll({
-          where: sw,
-          include: [{ model: Branch, as: 'branch', attributes: ['name'] }],
-        });
-      })(),
+      Staff.findAll({
+        where: branchWhere.branch_id ? { branch_id: branchWhere.branch_id } : {},
+        include: [{ model: Branch, as: 'branch', attributes: ['name'] }],
+      }),
       Customer.findAll({
         where: branchWhere.branch_id ? { branch_id: branchWhere.branch_id } : {},
         include: [{ model: Branch, as: 'branch', attributes: ['name'] }],
@@ -292,7 +285,6 @@ const exportExcel = async (req, res) => {
       'Total (Rs)': Number(p.total_amount || 0),
       'Commission (Rs)': Number(p.commission_amount || 0),
       'Loyalty Discount': Number(p.loyalty_discount || 0),
-      'Promo Discount': Number(p.promo_discount || 0),
       'Points Earned': p.points_earned || 0,
       'Payment Methods': (p.splits || []).map(s => `${s.method}: Rs.${s.amount}`).join(', '),
       Status: p.status,

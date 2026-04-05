@@ -41,22 +41,10 @@ export const AVATAR_PALETTES = [
 ];
 
 /* ─── StaffAvatar ─────────────────────────────────────────────────────────── */
-export function StaffAvatar({ name = '', size = 32, photoUrl = '' }) {
+export function StaffAvatar({ name = '', size = 32 }) {
   const idx = name.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0) % AVATAR_PALETTES.length;
   const { bg, color } = AVATAR_PALETTES[idx];
   const initials = name.trim().split(/\s+/).slice(0, 2).map(w => w[0]?.toUpperCase() ?? '').join('');
-  if (photoUrl) {
-    return (
-      <img
-        src={photoUrl}
-        alt={name || 'Staff photo'}
-        style={{
-          width: size, height: size, borderRadius: '50%', objectFit: 'cover', flexShrink: 0,
-          border: '2px solid #ffffff', boxShadow: '0 1px 6px rgba(16,24,40,.18)',
-        }}
-      />
-    );
-  }
   return (
     <div style={{
       width: size, height: size, borderRadius: '50%', background: bg, color,

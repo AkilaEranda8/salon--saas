@@ -15,14 +15,6 @@ const Staff = sequelize.define('Staff', {
     type: DataTypes.STRING(30),
     allowNull: true,
   },
-  email: {
-    type: DataTypes.STRING(191),
-    allowNull: true,
-  },
-  photo_url: {
-    type: DataTypes.STRING(255),
-    allowNull: true,
-  },
   role_title: {
     type: DataTypes.STRING(100),
     allowNull: true,

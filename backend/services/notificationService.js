@@ -10,84 +10,30 @@ function getModels() {
   return _models;
 }
 
-// ── SMTP credentials loader (DB first — Notification settings UI / notification_settings table, then .env) ──
-async function getSmtpCreds() {
-  try {
-    const { NotificationSettings } = getModels();
-    let row = await NotificationSettings.findOne({ where: { branch_id: null } });
-    const rowHasSmtp = (r) =>
-      r && String(r.smtp_user || '').trim() && String(r.smtp_pass || '').trim();
-    if (!rowHasSmtp(row)) {
-      const rows = await NotificationSettings.findAll({ order: [['id', 'ASC']] });
-      row = rows.find((r) => rowHasSmtp(r));
-    }
-    if (rowHasSmtp(row)) {
-      const p = Number(row.smtp_port);
-      const port = Number.isFinite(p) && p > 0 ? p : 587;
-      const user = String(row.smtp_user).trim();
-      return {
-        host: row.smtp_host?.trim() || 'smtp.gmail.com',
-        port,
-        user,
-        pass: String(row.smtp_pass).trim(),
-        from: row.smtp_from?.trim() || `Zane Salon <${user}>`,
-        source: 'db',
-      };
-    }
-  } catch { /* fall through */ }
-  const user = process.env.EMAIL_USER;
-  const pass = process.env.EMAIL_PASS;
-  if (!user || !pass) return null;
-  return {
+// ── Transporter (lazy) ────────────────────────────────────────────────────────
+let _transporter = null;
+function getTransporter() {
+  if (_transporter) return _transporter;
+  if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) return null;
+  _transporter = nodemailer.createTransport({
     host:   process.env.EMAIL_HOST || 'smtp.gmail.com',
-    port:   parseInt(process.env.EMAIL_PORT, 10) || 587,
-    user,
-    pass,
-    from:   process.env.EMAIL_FROM || `Zane Salon <${user}>`,
-    source: 'env',
-  };
-}
-
-// ── Transporter (per-request, reads DB each time) ────────────────────────────
-async function getTransporter() {
-  const creds = await getSmtpCreds();
-  if (!creds) return null;
-  return nodemailer.createTransport({
-    host:   creds.host,
-    port:   creds.port,
-    secure: creds.port === 465,
-    auth:   { user: creds.user, pass: creds.pass },
+    port:   parseInt(process.env.EMAIL_PORT) || 587,
+    secure: false,
+    auth: {
+      user: process.env.EMAIL_USER,
+      pass: process.env.EMAIL_PASS,
+    },
   });
+  return _transporter;
 }
 
-// ── Twilio credentials loader (DB first, then .env) ───────────────────────────
-async function getTwilioCreds() {
-  try {
-    const { NotificationSettings } = getModels();
-    const row = await NotificationSettings.findOne({ where: { branch_id: null } });
-    if (row && row.twilio_account_sid && row.twilio_auth_token) {
-      return {
-        accountSid:    row.twilio_account_sid.trim(),
-        authToken:     row.twilio_auth_token.trim(),
-        whatsappFrom:  row.twilio_whatsapp_from?.trim() || process.env.TWILIO_WHATSAPP_FROM || 'whatsapp:+14155238886',
-      };
-    }
-  } catch { /* fall through */ }
-  const sid   = process.env.TWILIO_ACCOUNT_SID;
-  const token = process.env.TWILIO_AUTH_TOKEN;
-  if (!sid || !token) return null;
-  return {
-    accountSid:   sid,
-    authToken:    token,
-    whatsappFrom: process.env.TWILIO_WHATSAPP_FROM || 'whatsapp:+14155238886',
-  };
-}
-
-// ── Twilio client (per-request, reads DB each time) ───────────────────────────
-async function getTwilio() {
-  const creds = await getTwilioCreds();
-  if (!creds) return null;
-  return { client: twilio(creds.accountSid, creds.authToken), whatsappFrom: creds.whatsappFrom };
+// ── Twilio client (lazy) ──────────────────────────────────────────────────────
+let _twilioClient = null;
+function getTwilio() {
+  if (_twilioClient) return _twilioClient;
+  if (!process.env.TWILIO_ACCOUNT_SID || !process.env.TWILIO_AUTH_TOKEN) return null;
+  _twilioClient = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+  return _twilioClient;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -95,12 +41,6 @@ function formatWhatsApp(phone) {
   if (!phone) return null;
   if (phone.startsWith('whatsapp:')) return phone;
   return `whatsapp:+${phone.replace(/\D/g, '')}`;
-}
-
-function formatPhone(phone) {
-  if (!phone) return null;
-  const digits = phone.replace(/\D/g, '');
-  return digits.startsWith('+') ? digits : `+${digits}`;
 }
 
 function loyaltyTier(points) {
@@ -115,8 +55,8 @@ async function writeLog({ customer_name, phone, email, event_type, channel, mess
     const { NotificationLog } = getModels();
     await NotificationLog.create({
       customer_name:   customer_name  || null,
-      phone:           ['whatsapp', 'sms'].includes(channel) ? (phone || null) : null,
-      email:           channel === 'email'                   ? (email || null) : null,
+      phone:           channel === 'whatsapp' ? (phone  || null) : null,
+      email:           channel === 'email'    ? (email  || null) : null,
       event_type,
       channel,
       message_preview: String(message_preview || '').slice(0, 255),
@@ -131,16 +71,11 @@ async function writeLog({ customer_name, phone, email, event_type, channel, mess
 
 // ── Settings loader ───────────────────────────────────────────────────────────
 const DEFAULT_FLAGS = {
-  appt_confirmed_email:       true,
-  appt_confirmed_whatsapp:    true,
-  appt_confirmed_sms:         false,
-  payment_receipt_email:      true,
-  payment_receipt_whatsapp:   true,
-  payment_receipt_sms:        true,
-  loyalty_points_whatsapp:    true,
-  loyalty_points_sms:         false,
-  customer_registered_sms:    false,
-  customer_registered_email:  false,
+  appt_confirmed_email:     true,
+  appt_confirmed_whatsapp:  true,
+  payment_receipt_email:    true,
+  payment_receipt_whatsapp: true,
+  loyalty_points_whatsapp:  true,
 };
 
 async function getChannelFlags() {
@@ -160,28 +95,27 @@ async function getChannelFlags() {
 
 /**
  * Send an HTML email. Logs result to notification_logs. Never throws.
- * @param {{ to, subject, html, meta?, attachments? }} opts
- *   attachments = nodemailer format: [{ filename, content, contentType? }]
+ * @param {{ to, subject, html, meta? }} opts
  *   meta = { customer_name, event_type, branch_id } used for the log row
- * @returns {Promise<{ ok: boolean, skipped?: boolean, error?: string }|undefined>}
  */
-async function sendEmail({ to, subject, html, meta = {}, attachments }) {
-  if (!to) return { ok: false, skipped: true, error: 'no recipient' };
-  const creds = await getSmtpCreds();
-  if (!creds) {
-    console.warn('[Notifications] Email skipped — SMTP credentials not configured.');
-    return { ok: false, skipped: true, error: 'SMTP not configured' };
+async function sendEmail({ to, subject, html, meta = {} }) {
+  if (!to) return;
+  const transporter = getTransporter();
+  if (!transporter) {
+    console.warn('[Notifications] Email skipped — EMAIL_USER/EMAIL_PASS not configured.');
+    return;
   }
-  const transporter = await getTransporter();
-  let status = 'sent';
-  let errorMsg = null;
-  const mail = { from: creds.from, to, subject, html };
-  if (attachments && attachments.length) mail.attachments = attachments;
+  let status = 'sent', errorMsg = null;
   try {
-    await transporter.sendMail(mail);
+    await transporter.sendMail({
+      from:    process.env.EMAIL_FROM || `Zane Salon <${process.env.EMAIL_USER}>`,
+      to,
+      subject,
+      html,
+    });
     console.log(`[Notifications] Email sent → ${to}`);
   } catch (err) {
-    status = 'failed';
+    status   = 'failed';
     errorMsg = err.message;
     console.error(`[Notifications] Email failed → ${to}:`, err.message);
   }
@@ -193,7 +127,6 @@ async function sendEmail({ to, subject, html, meta = {}, attachments }) {
     status,
     error_message:   errorMsg,
   });
-  return status === 'sent' ? { ok: true } : { ok: false, error: errorMsg || 'send failed' };
 }
 
 /**
@@ -202,17 +135,17 @@ async function sendEmail({ to, subject, html, meta = {}, attachments }) {
  */
 async function sendWhatsApp({ to, message, meta = {} }) {
   if (!to) return;
-  const twilioCx = await getTwilio();
-  if (!twilioCx) {
+  const client = getTwilio();
+  if (!client) {
     console.warn('[Notifications] WhatsApp skipped — Twilio credentials not configured.');
     return;
   }
-  const from        = twilioCx.whatsappFrom;
+  const from        = process.env.TWILIO_WHATSAPP_FROM || 'whatsapp:+14155238886';
   const toFormatted = formatWhatsApp(to);
   if (!toFormatted) return;
   let status = 'sent', errorMsg = null;
   try {
-    await twilioCx.client.messages.create({ from, to: toFormatted, body: message });
+    await client.messages.create({ from, to: toFormatted, body: message });
     console.log(`[Notifications] WhatsApp sent → ${toFormatted}`);
   } catch (err) {
     status   = 'failed';
@@ -227,103 +160,6 @@ async function sendWhatsApp({ to, message, meta = {} }) {
     status,
     error_message:   errorMsg,
   });
-}
-
-/**
- * Load SMS gateway credentials from DB (Notify.lk / compatible).
- * Returns { userId, apiKey, senderId } or null if not configured.
- */
-async function getSMSCreds() {
-  try {
-    const { NotificationSettings } = getModels();
-    const row = await NotificationSettings.findOne({ where: { branch_id: null } });
-    if (row && row.sms_user_id && row.sms_api_key) {
-      return {
-        userId:   row.sms_user_id.trim(),
-        apiKey:   row.sms_api_key.trim(),
-        senderId: row.sms_sender_id?.trim() || process.env.SMS_SENDER_ID || null,
-      };
-    }
-  } catch { /* fall through */ }
-  // env fallback
-  if (process.env.SMS_USER_ID && process.env.SMS_API_KEY) {
-    return {
-      userId:   process.env.SMS_USER_ID,
-      apiKey:   process.env.SMS_API_KEY,
-      senderId: process.env.SMS_SENDER_ID || null,
-    };
-  }
-  return null;
-}
-
-/**
- * Send SMS via Notify.lk HTTP API (or compatible gateway).
- * API: POST https://app.notify.lk/api/v1/send
- * Logs result. Never throws.
- * @param {{ to, message, meta? }} opts
- */
-async function sendSMS({ to, message, meta = {} }) {
-  if (!to) return;
-  const creds = await getSMSCreds();
-  if (!creds) {
-    console.warn('[Notifications] SMS skipped — SMS credentials not configured (set User ID & API Key in Notification Settings).');
-    return null;
-  }
-  if (!creds.senderId) {
-    console.warn('[Notifications] SMS skipped — SMS Sender ID not configured.');
-    return null;
-  }
-  // Normalize to local format (e.g. 0771234567 or 94771234567 → 94771234567)
-  const digits = to.replace(/\D/g, '');
-  const toFormatted = digits.startsWith('94') ? digits : digits.startsWith('0') ? '94' + digits.slice(1) : '94' + digits;
-  let status = 'sent', errorMsg = null;
-  try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 15000); // 15s timeout
-    let res;
-    try {
-      res = await fetch('https://app.notify.lk/api/v1/send', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        signal:  controller.signal,
-        body:    JSON.stringify({
-          user_id:   creds.userId,
-          api_key:   creds.apiKey,
-          // Notify.lk v1 expects sender_id; keep service_id for legacy compatibility.
-          sender_id: creds.senderId,
-          service_id: creds.senderId,
-          to:        toFormatted,
-          message,
-        }),
-      });
-    } finally {
-      clearTimeout(timer);
-    }
-    const data = await res.json().catch(() => ({}));
-    console.log(`[Notifications] SMS API response → ${toFormatted}:`, JSON.stringify(data));
-    if (!res.ok || data.status === 'error') {
-      // Notify.lk returns error text in message or errors (string/array).
-      const errMsg = data.message
-        || (Array.isArray(data.errors) && data.errors.length ? data.errors[0] : null)
-        || (typeof data.errors === 'string' ? data.errors : null)
-        || `HTTP ${res.status}`;
-      throw new Error(errMsg);
-    }
-    console.log(`[Notifications] SMS sent → ${toFormatted}`);
-  } catch (err) {
-    status   = 'failed';
-    errorMsg = err.name === 'AbortError' ? 'SMS gateway timeout (15s)' : err.message;
-    console.error(`[Notifications] SMS failed → ${toFormatted}:`, errorMsg);
-  }
-  await writeLog({
-    ...meta,
-    channel:         'sms',
-    phone:           to,
-    message_preview: message.slice(0, 255),
-    status,
-    error_message:   errorMsg,
-  });
-  return { status, error: errorMsg };
 }
 
 // ── HTML escaping helper ─────────────────────────────────────────────────────
@@ -389,26 +225,6 @@ function detailRow(label, value) {
   </tr>`;
 }
 
-function parseAdditionalServiceNames(notes = '') {
-  const line = String(notes)
-    .split('\n')
-    .find((l) => /^\s*additional\s+services?\s*[:\-]?\s*/i.test(l));
-  if (!line) return [];
-  return line
-    .replace(/^\s*additional\s+services?\s*[:\-]?\s*/i, '')
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean);
-}
-
-function getServiceNameForNotification(service, appointment) {
-  const primaryName = String(service?.name || '').trim();
-  const additional = parseAdditionalServiceNames(appointment?.notes || '');
-  if (!primaryName && !additional.length) return '—';
-  const all = [primaryName, ...additional].filter(Boolean);
-  return Array.from(new Set(all)).join(', ');
-}
-
 // ── 1. Appointment Confirmed ──────────────────────────────────────────────────
 async function notifyAppointmentConfirmed(appointment, branch, service) {
   const flags = await getChannelFlags();
@@ -419,7 +235,7 @@ async function notifyAppointmentConfirmed(appointment, branch, service) {
   const date    = appointment.date   || '—';
   const time    = appointment.time   ? appointment.time.slice(0, 5) : '—';
   const amount  = appointment.amount ? `Rs. ${parseFloat(appointment.amount).toFixed(2)}` : '—';
-  const svcName = getServiceNameForNotification(service, appointment);
+  const svcName = service?.name      || '—';
   const brName  = branch?.name       || '—';
   const brPhone = branch?.phone      || '';
   const meta    = {
@@ -462,39 +278,24 @@ async function notifyAppointmentConfirmed(appointment, branch, service) {
       `Please arrive 5 mins early. See you soon! 😊`;
     await sendWhatsApp({ to: phone, message: msg, meta });
   }
-
-  if (phone && flags.appt_confirmed_sms) {
-    const msg =
-      `Zane Salon - Appt Confirmed!\n` +
-      `Hi ${appointment.customer_name}, booking confirmed:\n` +
-      `Date: ${date} ${time}\nService: ${svcName}\nBranch: ${brName}\n` +
-      `Please arrive 5 mins early.`;
-    await sendSMS({ to: phone, message: msg, meta });
-  }
 }
 
 // ── 2. Payment Receipt ────────────────────────────────────────────────────────
 async function notifyPaymentReceipt(payment, branch, service, customer) {
   const flags = await getChannelFlags();
-  const phone = customer?.phone ? String(customer.phone).trim() || null : null;
-  const email = customer?.email ? String(customer.email).trim() || null : null;
+  const phone = customer?.phone || null;
+  const email = customer?.email || null;
   if (!phone && !email) return;
 
   const customerName = customer?.name || payment.customer_name || 'Valued Customer';
   const brName       = branch?.name   || '—';
   const brPhone      = branch?.phone  || '';
   const svcName      = service?.name  || '—';
-  const gross        = parseFloat(payment.total_amount || 0);
-  const loyaltyDisc  = parseFloat(payment.loyalty_discount || 0);
-  const promoDisc    = parseFloat(payment.promo_discount || 0);
-  const splits       = payment.splits || [];
-  const splitSum     = splits.reduce((acc, s) => acc + parseFloat(s.amount || 0), 0);
-  const netPaid      = splitSum > 0 ? splitSum : Math.max(0, gross - loyaltyDisc - promoDisc);
-  const totalStr     = `Rs. ${netPaid.toFixed(2)}`;
-  const grossStr     = `Rs. ${gross.toFixed(2)}`;
+  const total        = `Rs. ${parseFloat(payment.total_amount || 0).toFixed(2)}`;
+  const discount     = parseFloat(payment.loyalty_discount || 0);
   const pointsEarned = payment.points_earned || 0;
-  const pointsTotal  = Number(customer?.loyalty_points || 0);
   const date         = payment.date || new Date().toISOString().slice(0, 10);
+  const splits       = payment.splits || [];
   const meta         = {
     customer_name: customerName,
     event_type:    'payment_receipt',
@@ -503,7 +304,7 @@ async function notifyPaymentReceipt(payment, branch, service, customer) {
 
   const splitRows = splits.length
     ? splits.map((s) => detailRow(`💳 ${s.method}`, `Rs. ${parseFloat(s.amount).toFixed(2)}`)).join('')
-    : detailRow('💳 Payment', totalStr);
+    : detailRow('💳 Payment', total);
 
   if (email && flags.payment_receipt_email) {
     const body = `
@@ -515,22 +316,17 @@ async function notifyPaymentReceipt(payment, branch, service, customer) {
         ${detailRow('📅 Date',    date)}
         ${detailRow('💇 Service', svcName)}
         ${detailRow('🏠 Branch',  brName)}
-        ${(loyaltyDisc > 0 || promoDisc > 0) ? detailRow('📋 Subtotal (bill)', grossStr) : ''}
-        ${promoDisc > 0 ? detailRow('🎟️ Promo discount', `- Rs. ${promoDisc.toFixed(2)}`) : ''}
-        ${loyaltyDisc > 0 ? detailRow('🎁 Loyalty discount', `- Rs. ${loyaltyDisc.toFixed(2)}`) : ''}
         ${splitRows}
+        ${discount > 0 ? detailRow('🎁 Loyalty Discount', `- Rs. ${discount.toFixed(2)}`) : ''}
         <tr>
           <td style="padding:14px 0 4px;font-size:16px;color:#1e293b;font-weight:700;border-top:2px solid #e2e8f0;" colspan="2">
-            Net paid: <span style="float:right;color:#1e3a8a;">Rs. ${netPaid.toFixed(2)}</span>
+            Total Paid: <span style="float:right;color:#1e3a8a;">Rs. ${parseFloat(payment.total_amount || 0).toFixed(2)}</span>
           </td>
         </tr>
       </table>
       ${pointsEarned > 0 ? `
       <div style="margin:24px 0;padding:16px 20px;background:#f0fdf4;border-left:4px solid #22c55e;border-radius:4px;">
-        <p style="margin:0;font-size:14px;color:#166534;">
-          🌟 You earned <strong>${pointsEarned} loyalty points</strong> on this visit!
-          ${pointsTotal > 0 ? `<br/>🎯 Total Loyalty Points: <strong>${pointsTotal}</strong>` : ''}
-        </p>
+        <p style="margin:0;font-size:14px;color:#166534;">🌟 You earned <strong>${pointsEarned} loyalty points</strong> on this visit!</p>
       </div>` : ''}
       <p style="margin:0;font-size:15px;color:#475569;">Thank you for visiting <strong>Zane Salon</strong>! 💜</p>`;
     await sendEmail({
@@ -545,35 +341,11 @@ async function notifyPaymentReceipt(payment, branch, service, customer) {
     let msg =
       `🧾 *Zane Salon — Payment Receipt*\n\n` +
       `Hi ${customerName}! Payment confirmed:\n\n` +
-      `💇 Service: ${svcName}\n🏠 Branch: ${brName}\n📅 Date: ${date}\n`;
-    if (loyaltyDisc > 0 || promoDisc > 0) {
-      msg += `📋 Bill: ${grossStr}\n`;
-      if (promoDisc > 0) msg += `🎟️ Promo off: Rs. ${promoDisc.toFixed(2)}\n`;
-      if (loyaltyDisc > 0) msg += `🎁 Loyalty off: Rs. ${loyaltyDisc.toFixed(2)}\n`;
-    }
-    msg += `💰 *Net paid: ${totalStr}*\n`;
+      `💇 Service: ${svcName}\n🏠 Branch: ${brName}\n📅 Date: ${date}\n💰 Total Paid: ${total}\n`;
+    if (discount > 0)     msg += `🎁 Loyalty Discount: Rs. ${discount.toFixed(2)}\n`;
     if (pointsEarned > 0) msg += `\n🌟 You earned *${pointsEarned} loyalty points*!`;
-    if (pointsTotal > 0)  msg += `\n🎯 Total Loyalty Points: *${pointsTotal}*`;
     msg += `\n\nThank you for choosing Zane Salon! 💜`;
     await sendWhatsApp({ to: phone, message: msg, meta });
-  }
-
-  // SMS receipt: same rule as walk-in token SMS — send when phone + Notify.lk creds (sendSMS).
-  // Do not gate on payment_receipt_sms: that flag stayed false in many DBs while token SMS worked.
-  if (phone) {
-    let msg =
-      `Zane Salon - Receipt\n` +
-      `Hi ${customerName}! Paid: ${totalStr}\n` +
-      `Service: ${svcName} | ${date}`;
-    if (loyaltyDisc > 0 || promoDisc > 0) {
-      msg += `\nBill: ${grossStr}`;
-      if (promoDisc > 0) msg += `\nPromo -Rs.${promoDisc.toFixed(0)}`;
-      if (loyaltyDisc > 0) msg += `\nLoyalty -Rs.${loyaltyDisc.toFixed(0)}`;
-    }
-    if (pointsEarned > 0) msg += `\nEarned: +${pointsEarned} pts`;
-    if (pointsTotal > 0)  msg += `\nTotal Points: ${pointsTotal} pts`;
-    msg += `\nThank you!`;
-    await sendSMS({ to: phone, message: msg, meta });
   }
 }
 
@@ -653,57 +425,12 @@ async function notifyReviewRequest(payment, customer, service, branch, token) {
   }
 }
 
-// ── 5. Customer Registered ────────────────────────────────────────────────────
-async function notifyCustomerRegistered(customer, branch) {
-  const flags = await getChannelFlags();
-  const phone = customer?.phone || null;
-  const email = customer?.email || null;
-  if (!phone && !email) return;
-
-  const customerName = customer?.name || 'Valued Customer';
-  const brName       = branch?.name  || 'Zane Salon';
-  const brPhone      = branch?.phone || '';
-  const meta         = {
-    customer_name: customerName,
-    event_type:    'customer_registered',
-    branch_id:     branch?.id || customer?.branch_id || null,
-  };
-
-  if (email && flags.customer_registered_email) {
-    const body = `
-      <h2 style="margin:0 0 8px;font-size:22px;color:#1e3a8a;">Welcome to ${brName}! 🎉</h2>
-      <p style="margin:0 0 16px;font-size:15px;color:#475569;">
-        Hi <strong>${customerName}</strong>, you've been registered at <strong>${brName}</strong>.
-        We're excited to have you as a valued customer!
-      </p>
-      <p style="margin:0;font-size:15px;color:#475569;">
-        Book your next appointment or visit us at any time. We look forward to serving you! 💜
-      </p>`;
-    await sendEmail({
-      to:      email,
-      subject: `Welcome to ${brName}!`,
-      html:    buildEmailWrapper('Welcome!', body, brName, brPhone),
-      meta,
-    });
-  }
-
-  if (phone && flags.customer_registered_sms) {
-    const msg =
-      `Welcome to ${brName}! 🎉\n` +
-      `Hi ${customerName}, you're now registered as a valued customer.\n` +
-      `We look forward to serving you!`;
-    await sendSMS({ to: phone, message: msg, meta });
-  }
-}
-
 module.exports = {
   sendEmail,
   sendWhatsApp,
-  sendSMS,
   notifyAppointmentConfirmed,
   notifyPaymentReceipt,
   notifyLoyaltyPoints,
   notifyReviewRequest,
-  notifyCustomerRegistered,
 };
 

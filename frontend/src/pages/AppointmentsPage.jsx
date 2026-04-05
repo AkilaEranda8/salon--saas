@@ -5,7 +5,6 @@ import api from '../api/axios';
 import Button from '../components/ui/Button';
 import { Input, Select, FormGroup } from '../components/ui/FormElements';
 import PageWrapper from '../components/layout/PageWrapper';
-import { computePromoFromDiscount } from '../utils/promoDiscount';
 
 const IconEye      = () => <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>;
 const IconEdit     = () => <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>;
@@ -16,120 +15,15 @@ const IconCalendar = () => <svg width="15" height="15" viewBox="0 0 24 24" fill=
 const IconPlus     = () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>;
 const IconMoney    = () => <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>;
 
-const APPT_STATUSES = ['pending','confirmed','in_service','completed','cancelled','no_show'];
-const APPT_EXTRA_SERVICES_PREFIX = 'Additional services:';
-const APPT_PACKAGE_PREFIX = 'Package:';
-const stripAdditionalServicesLine = (notes = '') =>
-  String(notes)
-    .split('\n')
-    .filter((line) => !/^\s*additional\s+services?\s*[:\-]?\s*/i.test(line))
-    .join('\n')
-    .trim();
-const stripPackageLine = (notes = '') =>
-  String(notes)
-    .split('\n')
-    .filter((line) => !/^\s*package\s*[:\-]?\s*/i.test(line))
-    .join('\n')
-    .trim();
-const parsePackageSelection = (notes = '') => {
-  const line = String(notes).split('\n').find((l) => /^\s*package\s*[:\-]?\s*/i.test(l));
-  if (!line) return { id: null, label: '' };
-  const match = line.match(/#(\d+)/);
-  return { id: match ? Number(match[1]) : null, label: line.replace(/^\s*package\s*[:\-]?\s*/i, '').trim() };
-};
-const parseAdditionalServiceNames = (notes = '') => {
-  const line = String(notes).split('\n').find((line) => /^\s*additional\s+services?\s*[:\-]?\s*/i.test(line));
-  if (!line) return [];
-  const raw = line.replace(/^\s*additional\s+services?\s*[:\-]?\s*/i, '');
-  return raw.split(',').map(s => s.trim()).filter(Boolean);
-};
-const normalizeServiceName = (name = '') =>
-  String(name)
-    .toLowerCase()
-    .replace(/rs\.?\s*[\d,]+/gi, '')
-    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-const getAllServiceNamesForAppt = (row) => {
-  const primary = row.service?.name || '';
-  const extra = parseAdditionalServiceNames(row.notes || '');
-  return Array.from(new Set([primary, ...extra].filter(Boolean)));
-};
-const inferExtraServiceIdsFromAmount = ({ primaryId, totalAmount, services }) => {
-  const target = Number(totalAmount || 0);
-  if (!target || target <= 0) return [];
-  const primaryPrice = Number(services.find((s) => Number(s.id) === Number(primaryId))?.price || 0);
-  const remaining = target - primaryPrice;
-  if (remaining <= 0) return [];
-
-  const candidates = services
-    .filter((s) => Number(s.id) !== Number(primaryId) && Number(s.price || 0) > 0)
-    .map((s) => ({ id: Number(s.id), price: Number(s.price || 0) }));
-
-  // Exact 1-service match
-  const single = candidates.find((c) => c.price === remaining);
-  if (single) return [single.id];
-
-  // Exact 2-service match fallback
-  for (let i = 0; i < candidates.length; i += 1) {
-    for (let j = i + 1; j < candidates.length; j += 1) {
-      if ((candidates[i].price + candidates[j].price) === remaining) {
-        return [candidates[i].id, candidates[j].id];
-      }
-    }
-  }
-  return [];
-};
-const getInitialPaymentServiceIds = (row, services) => {
-  const svcId = Number(row?.service_id || row?.service?.id || 0);
-  if (Array.isArray(row?.service_ids) && row.service_ids.length) {
-    const fromApi = Array.from(new Set(
-      row.service_ids
-        .map((id) => Number(id))
-        .filter((id) => Number.isInteger(id) && id > 0),
-    ));
-    const mergedFromApi = Array.from(new Set([...(svcId ? [svcId] : []), ...fromApi]));
-    const inferred = inferExtraServiceIdsFromAmount({
-      primaryId: svcId,
-      totalAmount: row?.amount,
-      services,
-    });
-    return Array.from(new Set([...mergedFromApi, ...inferred]));
-  }
-  const extraNames = parseAdditionalServiceNames(row?.notes || '');
-  const byExactName = extraNames
-    .map((name) => services.find((s) => String(s.name || '').trim().toLowerCase() === String(name || '').trim().toLowerCase())?.id)
-    .filter(Boolean)
-    .map(Number)
-    .filter((id) => id !== svcId);
-  const fallbackExtraIds = byExactName.length
-    ? []
-    : inferExtraServiceIdsFromAmount({ primaryId: svcId, totalAmount: row?.amount, services });
-  return Array.from(new Set([...(svcId ? [svcId] : []), ...byExactName, ...fallbackExtraIds]));
-};
+const APPT_STATUSES = ['pending','confirmed','completed','cancelled','no_show'];
 const STATUS_META = {
   pending:   { color:'#D97706', bg:'#FFFBEB', label:'Pending'   },
   confirmed: { color:'#2563EB', bg:'#EFF6FF', label:'Confirmed' },
-  in_service:{ color:'#1D4ED8', bg:'#DBEAFE', label:'In Service' },
   completed: { color:'#059669', bg:'#ECFDF5', label:'Completed' },
   cancelled: { color:'#DC2626', bg:'#FEF2F2', label:'Cancelled' },
   no_show:   { color:'#64748B', bg:'#F8FAFC', label:'No Show'   },
 };
-const EMPTY = {
-  branch_id: '',
-  customer_id: '',
-  customer_name: '',
-  phone: '',
-  service_id: '',
-  staff_id: '',
-  date: '',
-  time: '',
-  amount: '',
-  notes: '',
-  status: 'pending',
-  is_recurring: false,
-  recurrence_frequency: 'weekly',
-};
+const EMPTY = { branch_id:'', customer_name:'', phone:'', service_id:'', staff_id:'', date:'', time:'', amount:'', notes:'', status:'pending' };
 const LIMIT = 20;
 
 function StatusBadge({ status }) {
@@ -253,9 +147,7 @@ function ApptRow({ row, idx, canEdit, onView, onEdit, onDelete, onStatusChange, 
         {row.phone && <div style={{ fontSize:12, color:'#98A2B3', marginTop:1 }}>{row.phone}</div>}
       </td>
       <td style={{ padding:'13px 16px' }}>
-        <span style={{ background:'#F2F4F7', padding:'3px 9px', borderRadius:6, fontSize:13, fontWeight:500, color:'#475467' }}>
-          {getAllServiceNamesForAppt(row).join(', ')}
-        </span>
+        <span style={{ background:'#F2F4F7', padding:'3px 9px', borderRadius:6, fontSize:13, fontWeight:500, color:'#475467' }}>{row.service?.name||''}</span>
       </td>
       <td style={{ padding:'13px 16px' }}>
         {row.staff?.name ? (
@@ -270,20 +162,20 @@ function ApptRow({ row, idx, canEdit, onView, onEdit, onDelete, onStatusChange, 
         {row.time && <div style={{ fontSize:12, color:'#98A2B3', marginTop:1 }}>{row.time}</div>}
       </td>
       <td style={{ padding:'13px 16px', textAlign:'right' }}>
-        <span style={{ fontWeight:700, color:'#059669', fontSize:14 }}>Rs. {Number(row.amount||row.service?.price||0).toLocaleString()}</span>
+        <span style={{ fontWeight:700, color:'#059669', fontSize:14 }}>Rs. {Number(row.service?.price||row.amount||0).toLocaleString()}</span>
       </td>
       <td style={{ padding:'13px 16px' }}>
         {!canEdit||s==='completed'||s==='cancelled' ? <StatusBadge status={s} /> : (
           <select value={s} onChange={e => onStatusChange(e.target.value)}
             style={{ padding:'4px 10px', borderRadius:20, border:`1.5px solid ${meta.color}40`, background:meta.bg, color:meta.color, fontWeight:700, fontSize:12, fontFamily:"'Inter',sans-serif", outline:'none', cursor:'pointer' }}>
-            {APPT_STATUSES.filter(st => st !== 'completed').map(st => <option key={st} value={st}>{STATUS_META[st].label}</option>)}
+            {APPT_STATUSES.map(st => <option key={st} value={st}>{STATUS_META[st].label}</option>)}
           </select>
         )}
       </td>
       <td style={{ padding:'13px 16px', textAlign:'center' }}>
         <div style={{ display:'flex', gap:4, justifyContent:'center' }}>
           <ActionBtn onClick={onView} title="View" color="#2563EB"><IconEye /></ActionBtn>
-          {canEdit && s==='in_service' && <ActionBtn onClick={onPayment} title="Collect Payment" color="#059669"><IconMoney /></ActionBtn>}
+          {canEdit && s!=='cancelled' && <ActionBtn onClick={onPayment} title="Collect Payment" color="#059669"><IconMoney /></ActionBtn>}
           {canEdit && <ActionBtn onClick={onEdit} title="Edit" color="#D97706"><IconEdit /></ActionBtn>}
           {canEdit && <ActionBtn onClick={onDelete} title="Delete" color="#DC2626"><IconTrash /></ActionBtn>}
         </div>
@@ -303,7 +195,6 @@ export default function AppointmentsPage() {
   const [branches, setBranches]   = useState([]);
   const [services, setServices]   = useState([]);
   const [staffList, setStaffList] = useState([]);
-  const [customers, setCustomers] = useState([]);
   const [loading, setLoading]     = useState(true);
   const [search, setSearch]       = useState('');
   const [filterBranch, setFilterBranch] = useState(isSuperAdmin ? '' : user?.branch_id||'');
@@ -328,25 +219,15 @@ export default function AppointmentsPage() {
   const [paymentErr, setPaymentErr]       = useState('');
   const [paymentOk, setPaymentOk]         = useState(false);
   const [paymentServices, setPaymentServices] = useState([]);
-  const [paymentDiscountId, setPaymentDiscountId] = useState('');
-  const [paymentDiscounts, setPaymentDiscounts] = useState([]);
-  const [apptServiceIds, setApptServiceIds] = useState([]);
-  const [customerSearch, setCustomerSearch] = useState('');
-  const [customerLoading, setCustomerLoading] = useState(false);
-  const [showCustomerDrop, setShowCustomerDrop] = useState(false);
-  const [customerPackages, setCustomerPackages] = useState([]);
-  const [loadingCustomerPackages, setLoadingCustomerPackages] = useState(false);
-  const [selectedCustomerPackageId, setSelectedCustomerPackageId] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [apR, brR, svR, stR, cuR] = await Promise.all([
+      const [apR, brR, svR, stR] = await Promise.all([
         api.get('/appointments', { params:{ page, limit:LIMIT, ...(filterBranch?{branchId:filterBranch}:{}), ...(filterStatus?{status:filterStatus}:{}), ...(filterDate?{date:filterDate}:{}) } }),
         api.get('/branches',     { params:{ limit:100 } }),
         api.get('/services',     { params:{ limit:200 } }),
         api.get('/staff',        { params:{ limit:200, ...(filterBranch?{branchId:filterBranch}:{}) } }),
-        api.get('/customers',    { params:{ limit:500, ...(filterBranch?{branchId:filterBranch}:{}) } }),
       ]);
       const d = apR.data?.data ?? apR.data ?? [];
       setAppts(Array.isArray(d) ? d : []);
@@ -354,108 +235,46 @@ export default function AppointmentsPage() {
       setBranches(Array.isArray(brR.data) ? brR.data : (brR.data?.data??[]));
       setServices(Array.isArray(svR.data) ? svR.data : (svR.data?.data??[]));
       setStaffList(Array.isArray(stR.data) ? stR.data : (stR.data?.data??[]));
-      setCustomers(Array.isArray(cuR.data) ? cuR.data : (cuR.data?.data??[]));
     } catch {}
     setLoading(false);
   }, [filterBranch, filterStatus, filterDate, page]);
   useEffect(() => { load(); }, [load]);
 
-  useEffect(() => {
-    if (!showForm) return;
-    setCustomerLoading(true);
-    api.get('/customers', { params: { limit: 500, ...(form.branch_id ? { branchId: form.branch_id } : {}) } })
-      .then((r) => setCustomers(Array.isArray(r.data) ? r.data : (r.data?.data ?? [])))
-      .catch(() => setCustomers([]))
-      .finally(() => setCustomerLoading(false));
-  }, [showForm, form.branch_id]);
-
   const calcServiceTotal = (ids) => ids.reduce((sum, sid) => { const s = services.find(x => Number(x.id) === Number(sid)); return sum + Number(s?.price || 0); }, 0);
-  const openPayment = async (row) => {
+  const openPayment = (row) => {
     setPaymentAppt(row);
-    let sourceRow = row;
-    try {
-      // Use latest appointment data so payment modal always reflects saved services.
-      const r = await api.get(`/appointments/${row.id}`);
-      if (r?.data?.id) sourceRow = r.data;
-    } catch { /* fallback to row data */ }
-    const ids = getInitialPaymentServiceIds(sourceRow, services);
+    const svcId = Number(row.service_id || row.service?.id);
+    const ids = svcId ? [svcId] : [];
     setPaymentServices(ids);
+    const total = calcServiceTotal(ids);
+    setPaymentAmt(total > 0 ? total : (row.amount || ''));
     setPaymentMethod('Cash');
-    setPaymentDiscountId('');
     setPaymentErr('');
     setPaymentOk(false);
-    const bid = sourceRow.branch_id || sourceRow.branch?.id || user?.branch_id;
-    if (bid) {
-      try {
-        const dr = await api.get('/discounts/payment', { params: { branchId: bid } });
-        setPaymentDiscounts(Array.isArray(dr.data) ? dr.data : (dr.data?.data ?? []));
-      } catch {
-        setPaymentDiscounts([]);
-      }
-    } else {
-      setPaymentDiscounts([]);
-    }
     setShowPayment(true);
   };
   const togglePaymentService = (id) => {
     const nid = Number(id);
-    setPaymentServices((prev) => {
-      const next = prev.includes(nid) ? prev.filter((x) => x !== nid) : [...prev, nid];
+    setPaymentServices(prev => {
+      const next = prev.includes(nid) ? prev.filter(x => x !== nid) : [...prev, nid];
+      setPaymentAmt(calcServiceTotal(next));
       return next;
     });
   };
-
-  useEffect(() => {
-    if (!showPayment || !paymentAppt) return;
-    const gross = calcServiceTotal(paymentServices);
-    const sel = paymentDiscountId
-      ? paymentDiscounts.find((d) => String(d.id) === String(paymentDiscountId))
-      : null;
-    const promo = sel ? computePromoFromDiscount(sel, gross) : 0;
-    const net = Math.max(0, gross - promo);
-    setPaymentAmt(net > 0 ? String(net) : '');
-  }, [showPayment, paymentAppt, paymentServices, paymentDiscountId, paymentDiscounts, services]);
   const handlePayment = async () => {
-    if (paymentAppt?.status !== 'in_service') {
-      return setPaymentErr('Payment can be collected only when status is In Service.');
-    }
     if (!paymentAmt || Number(paymentAmt) <= 0) return setPaymentErr('Amount is required');
     if (!paymentServices.length) return setPaymentErr('At least one service is required');
     setPaymentSaving(true);
     try {
-      const subtotal = calcServiceTotal(paymentServices);
       await api.post('/payments', {
         branch_id: paymentAppt.branch_id || paymentAppt.branch?.id || user?.branch_id,
         staff_id: paymentAppt.staff_id || paymentAppt.staff?.id || null,
         customer_id: paymentAppt.customer_id || null,
         service_id: paymentServices[0] || null,
-        service_ids: paymentServices,
         appointment_id: paymentAppt.id,
         customer_name: paymentAppt.customer_name,
-        subtotal,
-        loyalty_discount: 0,
-        ...(paymentDiscountId ? { discount_id: Number(paymentDiscountId) } : {}),
         splits: [{ method: paymentMethod, amount: Number(paymentAmt) }],
       });
-      if (paymentAppt?.id) {
-        const primaryId = Number(paymentServices[0] || 0);
-        const extraNames = paymentServices
-          .slice(1)
-          .map((id) => services.find((s) => Number(s.id) === Number(id))?.name)
-          .filter(Boolean);
-        const updatedNotes = [
-          stripAdditionalServicesLine(paymentAppt.notes || ''),
-          extraNames.length ? `${APPT_EXTRA_SERVICES_PREFIX} ${extraNames.join(', ')}` : '',
-        ].filter(Boolean).join('\n');
-        // Persist service selection back to appointment so future collect/edit screens match.
-        await api.put(`/appointments/${paymentAppt.id}`, {
-          service_id: primaryId || paymentAppt.service_id,
-          service_ids: paymentServices,
-          amount: Number(paymentAmt),
-          notes: updatedNotes,
-        });
-        await api.patch(`/appointments/${paymentAppt.id}/status`, { status: 'completed' });
-      }
       setPaymentOk(true);
       load();
       setTimeout(() => { setShowPayment(false); setPaymentOk(false); }, 1200);
@@ -463,71 +282,15 @@ export default function AppointmentsPage() {
     setPaymentSaving(false);
   };
 
-  const openAdd    = () => { setEditItem(null); setForm({...EMPTY, branch_id:user?.branch_id||'', date:today}); setApptServiceIds([]); setCustomerSearch(''); setShowCustomerDrop(false); setFormErr(''); setCustomerPackages([]); setSelectedCustomerPackageId(''); setShowForm(true); };
-  const openEdit   = row => {
-    const sid = Number(row.service?.id || row.service_id || 0);
-    const extraNames = parseAdditionalServiceNames(row.notes || '');
-    const extraIds = extraNames
-      .map(name => services.find(s => s.name === name)?.id)
-      .filter(Boolean)
-      .map(Number);
-    const selectedIds = Array.from(new Set([...(sid ? [sid] : []), ...extraIds]));
-    const totalAmount = selectedIds.reduce((sum, id) => {
-      const s = services.find(x => Number(x.id) === Number(id));
-      return sum + Number(s?.price || 0);
-    }, 0);
-    setEditItem(row);
-    setForm({
-      ...row,
-      customer_id: row.customer?.id || row.customer_id || '',
-      service_id: row.service?.id || row.service_id,
-      staff_id: row.staff?.id || row.staff_id,
-      date: row.date?.slice(0,10) || '',
-      amount: totalAmount || row.amount || '',
-      notes: stripAdditionalServicesLine(row.notes || ''),
-      is_recurring: Boolean(row.is_recurring),
-      recurrence_frequency: row.recurrence_frequency || 'weekly',
-    });
-    setApptServiceIds(selectedIds);
-    setCustomerSearch(row.customer_name || '');
-    const pkgSel = parsePackageSelection(row.notes || '');
-    setSelectedCustomerPackageId(pkgSel.id ? String(pkgSel.id) : '');
-    setCustomerPackages([]);
-    if (row.customer?.id || row.customer_id) {
-      setLoadingCustomerPackages(true);
-      api.get(`/packages/customer/${row.customer?.id || row.customer_id}/active`)
-        .then((r) => setCustomerPackages(Array.isArray(r.data) ? r.data : []))
-        .catch(() => setCustomerPackages([]))
-        .finally(() => setLoadingCustomerPackages(false));
-    }
-    setShowCustomerDrop(false);
-    setFormErr('');
-    setShowForm(true);
-  };
+  const openAdd    = () => { setEditItem(null); setForm({...EMPTY, branch_id:user?.branch_id||'', date:today}); setFormErr(''); setShowForm(true); };
+  const openEdit   = row => { setEditItem(row); setForm({...row, service_id:row.service?.id||row.service_id, staff_id:row.staff?.id||row.staff_id, date:row.date?.slice(0,10)||''}); setFormErr(''); setShowForm(true); };
   const openDetail = row => { setDetailItem(row); setShowDetail(true); };
 
   const handleSave = async () => {
-    if (!form.customer_name||!apptServiceIds.length||!form.date||!form.time) return setFormErr('Customer, service, date and time are required');
+    if (!form.customer_name||!form.service_id||!form.date||!form.time) return setFormErr('Customer, service, date and time are required');
     setSaving(true);
     try {
-      const selectedSvcs = services.filter(s => apptServiceIds.includes(Number(s.id)));
-      const [primary, ...extras] = selectedSvcs;
-      const extraNote = extras.length ? `${APPT_EXTRA_SERVICES_PREFIX} ${extras.map(s => s.name).join(', ')}` : '';
-      const payload = {
-        ...form,
-        service_id: primary?.id || form.service_id,
-        service_ids: apptServiceIds,
-        amount: selectedSvcs.reduce((sum, s) => sum + Number(s.price || 0), 0) || form.amount,
-        notes: [
-          stripPackageLine(stripAdditionalServicesLine(form.notes || '')),
-          selectedCustomerPackageId
-            ? `${APPT_PACKAGE_PREFIX} #${selectedCustomerPackageId} - ${customerPackages.find((cp) => String(cp.id) === String(selectedCustomerPackageId))?.package?.name || 'Selected Package'}`
-            : '',
-          extraNote,
-        ].filter(Boolean).join('\n'),
-      };
-      if (!payload.is_recurring) payload.recurrence_frequency = null;
-      editItem ? await api.put(`/appointments/${editItem.id}`, payload) : await api.post('/appointments', payload);
+      editItem ? await api.put(`/appointments/${editItem.id}`, form) : await api.post('/appointments', form);
       setShowForm(false); load();
     } catch (e) { setFormErr(e.response?.data?.message||'Save failed'); }
     setSaving(false);
@@ -538,49 +301,6 @@ export default function AppointmentsPage() {
     if (!deleteId) return;
     try { await api.delete(`/appointments/${deleteId}`); } catch {}
     setDeleteId(null); load();
-  };
-
-  const toggleApptService = (id) => {
-    const nid = Number(id);
-    setApptServiceIds(prev => {
-      const next = prev.includes(nid) ? prev.filter(x => x !== nid) : [...prev, nid];
-      const total = calcServiceTotal(next);
-      setForm(f => ({
-        ...f,
-        service_id: next[0] || '',
-        amount: total || '',
-      }));
-      return next;
-    });
-  };
-  const filteredCustomers = customers.filter(c => {
-    const q = customerSearch.trim().toLowerCase();
-    if (!q) return true;
-    return c.name?.toLowerCase().includes(q) || c.phone?.includes(q);
-  });
-  const selectCustomer = (c) => {
-    setForm(f => ({ ...f, customer_id: c.id, customer_name: c.name || '', phone: c.phone || f.phone }));
-    setCustomerSearch(c.name || '');
-    setShowCustomerDrop(false);
-    setSelectedCustomerPackageId('');
-    setLoadingCustomerPackages(true);
-    api.get(`/packages/customer/${c.id}/active`)
-      .then((r) => setCustomerPackages(Array.isArray(r.data) ? r.data : []))
-      .catch(() => setCustomerPackages([]))
-      .finally(() => setLoadingCustomerPackages(false));
-  };
-  const applySelectedPackage = (customerPackageId) => {
-    setSelectedCustomerPackageId(customerPackageId);
-    const cp = customerPackages.find((p) => String(p.id) === String(customerPackageId));
-    if (!cp) return;
-    const pkgServiceIds = (cp.package?.services || []).map(Number).filter(Boolean);
-    if (!pkgServiceIds.length) return;
-    const availableSvcIds = services.filter((s) => s.is_active !== false).map((s) => Number(s.id));
-    const nextIds = pkgServiceIds.filter((id) => availableSvcIds.includes(id));
-    if (!nextIds.length) return;
-    const total = calcServiceTotal(nextIds);
-    setApptServiceIds(nextIds);
-    setForm((f) => ({ ...f, service_id: nextIds[0] || '', amount: total || f.amount }));
   };
 
   const filteredStaff = form.branch_id ? staffList.filter(s => s.branch_id==form.branch_id) : staffList;
@@ -706,133 +426,25 @@ export default function AppointmentsPage() {
       </div>
 
       {/* New / Edit Modal */}
-      <Modal open={showForm} onClose={()=>setShowForm(false)} title={editItem?'Edit Appointment':'New Appointment'} size="lg"
+      <Modal open={showForm} onClose={()=>setShowForm(false)} title={editItem?'Edit Appointment':'New Appointment'} size="md"
         footer={<><Button variant="secondary" onClick={()=>setShowForm(false)}>Cancel</Button><Button variant="primary" loading={saving} onClick={handleSave}>{editItem?'Save Changes':'Create Appointment'}</Button></>}>
         {formErr && <div style={{ background:'#FEF2F2', color:'#DC2626', padding:'9px 13px', borderRadius:9, marginBottom:16, fontSize:13, border:'1px solid #FEE2E2' }}> {formErr}</div>}
         <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
-          <FormGroup label="Customer" required>
-            {form.customer_id && form.customer_name ? (
-              <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:10, border:'1px solid #86EFAC', background:'#ECFDF3', borderRadius:10, padding:'10px 12px' }}>
-                <div style={{ display:'flex', alignItems:'center', gap:10, minWidth:0 }}>
-                  <div style={{ width:34, height:34, borderRadius:8, background:'#16A34A', color:'#fff', display:'flex', alignItems:'center', justifyContent:'center', fontWeight:800 }}>
-                    {form.customer_name?.charAt(0)?.toUpperCase() || 'C'}
-                  </div>
-                  <div style={{ minWidth:0 }}>
-                    <div style={{ fontSize:14, fontWeight:700, color:'#0F172A', lineHeight:1.2 }}>{form.customer_name}</div>
-                    {form.phone && <div style={{ fontSize:12, color:'#64748B' }}>{form.phone}</div>}
-                  </div>
-                </div>
-                <button type="button" onClick={() => { setForm(f=>({...f, customer_id:'', customer_name:'', phone:''})); setCustomerSearch(''); setShowCustomerDrop(true); setCustomerPackages([]); setSelectedCustomerPackageId(''); }} style={{ border:'none', background:'none', color:'#94A3B8', cursor:'pointer', fontSize:18, lineHeight:1 }}>×</button>
-              </div>
-            ) : (
-              <div style={{ position:'relative' }}>
-                <Input
-                  value={customerSearch}
-                  onChange={e => {
-                    const v = e.target.value;
-                    setCustomerSearch(v);
-                    setForm(f=>({...f, customer_id:'', customer_name:v}));
-                    setCustomerPackages([]);
-                    setSelectedCustomerPackageId('');
-                    setShowCustomerDrop(true);
-                  }}
-                  onFocus={() => setShowCustomerDrop(true)}
-                  onBlur={() => setTimeout(() => setShowCustomerDrop(false), 200)}
-                  placeholder={customerLoading ? 'Loading customers...' : 'Search customer name or phone'}
-                />
-                {showCustomerDrop && (
-                  <div style={{ position:'absolute', top:'calc(100% + 4px)', left:0, right:0, zIndex:20, background:'#fff', border:'1.5px solid #E4E7EC', borderRadius:10, boxShadow:'0 8px 24px rgba(16,24,40,0.12)', maxHeight:220, overflowY:'auto' }}>
-                    {customerLoading ? (
-                      <div style={{ padding:'10px 12px', fontSize:12, color:'#98A2B3' }}>Loading...</div>
-                    ) : filteredCustomers.length === 0 ? (
-                      <div style={{ padding:'10px 12px', fontSize:12, color:'#98A2B3' }}>No customer found</div>
-                    ) : (
-                      filteredCustomers.slice(0, 80).map(c => (
-                        <div key={c.id} onMouseDown={() => selectCustomer(c)} style={{ padding:'9px 12px', cursor:'pointer', borderBottom:'1px solid #F2F4F7' }}>
-                          <div style={{ fontSize:13, fontWeight:600, color:'#101828' }}>{c.name}</div>
-                          <div style={{ fontSize:11, color:'#98A2B3' }}>{c.phone || 'No phone'}</div>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-          </FormGroup>
-          <FormGroup label="Phone"><Input value={form.phone||''} onChange={e=>setForm(f=>({...f,phone:e.target.value}))} placeholder="0300-0000000" /></FormGroup>
-          <FormGroup label="Customer Package (Optional)">
-            <Select value={selectedCustomerPackageId} onChange={e => applySelectedPackage(e.target.value)} disabled={!form.customer_id || loadingCustomerPackages}>
-              <option value="">{!form.customer_id ? 'Select customer first' : loadingCustomerPackages ? 'Loading packages...' : 'No package / normal appointment'}</option>
-              {customerPackages.map(cp => (
-                <option key={cp.id} value={cp.id}>
-                  {cp.package?.name || 'Package'} - {(cp.sessions_remaining ?? ((cp.sessions_total || 0) - (cp.sessions_used || 0)))} left
-                </option>
-              ))}
-            </Select>
-          </FormGroup>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
+            <FormGroup label="Customer Name" required><Input value={form.customer_name||''} onChange={e=>setForm(f=>({...f,customer_name:e.target.value}))} placeholder="Full name" /></FormGroup>
+            <FormGroup label="Phone"><Input value={form.phone||''} onChange={e=>setForm(f=>({...f,phone:e.target.value}))} placeholder="0300-0000000" /></FormGroup>
+          </div>
           {isSuperAdmin && <FormGroup label="Branch"><Select value={form.branch_id||''} onChange={e=>setForm(f=>({...f,branch_id:e.target.value,staff_id:''}))}>
             <option value="">Select branch</option>{branches.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}
           </Select></FormGroup>}
-          <div style={{ background:'#F8FAFC', border:'1px solid #E2E8F0', borderRadius:10, padding:'10px 12px' }}>
-            <label style={{ display:'flex', alignItems:'center', gap:10, cursor:'pointer' }}>
-              <input
-                type="checkbox"
-                checked={!!form.is_recurring}
-                onChange={e => setForm(f => ({
-                  ...f,
-                  is_recurring: e.target.checked,
-                  recurrence_frequency: e.target.checked ? (f.recurrence_frequency || 'weekly') : 'weekly',
-                }))}
-                style={{ width:16, height:16, accentColor:'#2563EB' }}
-              />
-              <span style={{ fontSize:14, fontWeight:600, color:'#0F172A' }}>Recurring Appointment</span>
-            </label>
-            {form.is_recurring && (
-              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginTop:8 }}>
-                <div>
-                  <div style={{ fontSize:12, color:'#64748B', marginBottom:4, fontWeight:600 }}>Repeat</div>
-                  <select
-                    value={form.recurrence_frequency || 'weekly'}
-                    onChange={e => setForm(f => ({ ...f, recurrence_frequency: e.target.value }))}
-                    style={{ width:'100%', padding:'7px 10px', borderRadius:8, border:'1.5px solid #D0D5DD', fontSize:13, fontFamily:'inherit', background:'#fff', color:'#344054' }}
-                  >
-                    <option value="weekly">Weekly</option>
-                    <option value="monthly">Monthly</option>
-                  </select>
-                </div>
-                <div style={{ fontSize:12, color:'#64748B', alignSelf:'end' }}>
-                  Next appointment auto-create වෙන්නේ current appointment එක completed උනාමයි.
-                </div>
-              </div>
-            )}
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
+            <FormGroup label="Service" required><Select value={form.service_id||''} onChange={e=>{const sid=e.target.value; const svc=services.find(x=>Number(x.id)===Number(sid)); setForm(f=>({...f,service_id:sid,amount:svc?Number(svc.price):f.amount}));}}>
+              <option value="">Select service</option>{services.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
+            </Select></FormGroup>
+            <FormGroup label="Staff"><Select value={form.staff_id||''} onChange={e=>setForm(f=>({...f,staff_id:e.target.value}))}>
+              <option value="">Any available</option>{filteredStaff.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
+            </Select></FormGroup>
           </div>
-          <FormGroup label="Services" required>
-            <div style={{ border:'1px solid #DCE6F3', borderRadius:12, overflow:'hidden', maxHeight:180, overflowY:'auto' }}>
-              {services.filter(s => s.is_active !== false).map((s, idx, arr) => {
-                const active = apptServiceIds.includes(Number(s.id));
-                return (
-                  <label key={s.id} style={{ display:'grid', gridTemplateColumns:'24px 1fr auto', alignItems:'center', gap:10, padding:'9px 12px', borderBottom:idx!==arr.length-1?'1px solid #EEF2F6':'none', background:active?'#F0F9FF':'#fff', cursor:'pointer' }}>
-                    <input type="checkbox" checked={active} onChange={() => toggleApptService(s.id)} style={{ width:16, height:16, accentColor:'#2563EB' }} />
-                    <span style={{ fontSize:14, color:'#0F172A', fontWeight:active?700:500 }}>{s.name}</span>
-                    <span style={{ fontSize:14, color:'#059669', fontWeight:800 }}>Rs.{Number(s.price||0).toLocaleString()}</span>
-                  </label>
-                );
-              })}
-            </div>
-            {apptServiceIds.length > 0 && (
-              <div style={{ marginTop:8, display:'flex', gap:6, flexWrap:'wrap', alignItems:'center' }}>
-                {services.filter(s => apptServiceIds.includes(Number(s.id))).map(s => (
-                  <span key={s.id} style={{ fontSize:12, color:'#047857', background:'#D1FAE5', border:'1px solid #A7F3D0', padding:'2px 8px', borderRadius:999, fontWeight:700 }}>
-                    {s.name}
-                  </span>
-                ))}
-                <span style={{ fontSize:13, color:'#047857', fontWeight:800 }}>Total: Rs. {Number(form.amount||0).toLocaleString()}</span>
-              </div>
-            )}
-          </FormGroup>
-          <FormGroup label="Staff"><Select value={form.staff_id||''} onChange={e=>setForm(f=>({...f,staff_id:e.target.value}))}>
-            <option value="">Any available</option>{filteredStaff.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
-          </Select></FormGroup>
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:14 }}>
             <FormGroup label="Date" required><Input type="date" value={form.date||''} onChange={e=>setForm(f=>({...f,date:e.target.value}))} /></FormGroup>
             <FormGroup label="Time" required><Input type="time" value={form.time||''} onChange={e=>setForm(f=>({...f,time:e.target.value}))} /></FormGroup>
@@ -840,7 +452,7 @@ export default function AppointmentsPage() {
           </div>
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
             <FormGroup label="Status"><Select value={form.status||'pending'} onChange={e=>setForm(f=>({...f,status:e.target.value}))}>
-              {APPT_STATUSES.filter(s => s !== 'completed').map(s=><option key={s} value={s}>{STATUS_META[s].label}</option>)}
+              {APPT_STATUSES.map(s=><option key={s} value={s}>{STATUS_META[s].label}</option>)}
             </Select></FormGroup>
             <FormGroup label="Notes"><Input value={form.notes||''} onChange={e=>setForm(f=>({...f,notes:e.target.value}))} placeholder="Special requests..." /></FormGroup>
           </div>
@@ -886,41 +498,22 @@ export default function AppointmentsPage() {
                 </div>
               </div>
               <FormGroup label="Services" required>
-                <div style={{ border:'1px solid #DCE6F3', borderRadius:12, overflow:'hidden', maxHeight:180, overflowY:'auto' }}>
-                  {services.filter(s => s.is_active !== false).map((s, idx, arr) => {
+                <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+                  {services.map(s => {
                     const active = paymentServices.includes(Number(s.id));
                     return (
-                      <label key={s.id} style={{ display:'grid', gridTemplateColumns:'24px 1fr auto', alignItems:'center', gap:10, padding:'9px 12px', borderBottom:idx!==arr.length-1?'1px solid #EEF2F6':'none', background:active?'#F0F9FF':'#fff', cursor:'pointer' }}>
-                        <input type="checkbox" checked={active} onChange={() => togglePaymentService(s.id)} style={{ width:16, height:16, accentColor:'#2563EB' }} />
-                        <span style={{ fontSize:14, color:'#0F172A', fontWeight:active?700:500 }}>{s.name}</span>
-                        <span style={{ fontSize:14, color:'#059669', fontWeight:800 }}>Rs.{Number(s.price||0).toLocaleString()}</span>
-                      </label>
+                      <button key={s.id} onClick={()=>togglePaymentService(s.id)} style={{ padding:'7px 14px', borderRadius:10, border:`1.5px solid ${active?'#2563EB':'#E4E7EC'}`, background:active?'#EFF6FF':'#fff', color:active?'#2563EB':'#667085', fontWeight:active?700:500, fontSize:12, cursor:'pointer', fontFamily:"'Inter',sans-serif", transition:'all 0.15s', display:'flex', alignItems:'center', gap:6 }}>
+                        {active && <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>}
+                        {s.name}
+                        {s.price ? <span style={{ opacity:0.6, marginLeft:2 }}>Rs.{Number(s.price).toLocaleString()}</span> : ''}
+                      </button>
                     );
                   })}
                 </div>
                 {paymentServices.length===0 && <div style={{ fontSize:12, color:'#DC2626', marginTop:4 }}>Select at least one service</div>}
               </FormGroup>
-              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14, alignItems:'start' }}>
-                <FormGroup label="Subtotal (Rs.)">
-                  <div style={{ padding:'10px 12px', background:'#F9FAFB', borderRadius:10, border:'1px solid #E5E7EB', fontWeight:800, color:'#059669' }}>
-                    Rs. {calcServiceTotal(paymentServices).toLocaleString()}
-                  </div>
-                </FormGroup>
-                {paymentDiscounts.length > 0 && (
-                  <FormGroup label="Promo discount">
-                    <Select value={paymentDiscountId || ''} onChange={e => setPaymentDiscountId(e.target.value)}>
-                      <option value="">None</option>
-                      {paymentDiscounts.map((d) => (
-                        <option key={d.id} value={d.id}>
-                          {d.name} ({d.discount_type === 'fixed' ? `Rs.${d.value}` : `${d.value}%`})
-                        </option>
-                      ))}
-                    </Select>
-                  </FormGroup>
-                )}
-              </div>
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
-                <FormGroup label="Paid (Rs.)" required>
+                <FormGroup label="Amount (Rs.)" required>
                   <Input type="number" value={paymentAmt} onChange={e=>setPaymentAmt(e.target.value)} placeholder="0" />
                 </FormGroup>
                 <FormGroup label="Payment Method" required>
@@ -930,7 +523,7 @@ export default function AppointmentsPage() {
                 </FormGroup>
               </div>
               <div style={{ background:'#F0FDF4', borderRadius:10, padding:'12px 16px', display:'flex', alignItems:'center', justifyContent:'space-between', border:'1px solid #BBF7D0' }}>
-                <span style={{ fontSize:13, fontWeight:600, color:'#166534' }}>Collected</span>
+                <span style={{ fontSize:13, fontWeight:600, color:'#166534' }}>Total</span>
                 <span style={{ fontSize:18, fontWeight:800, color:'#059669' }}>Rs. {Number(paymentAmt||0).toLocaleString()}</span>
               </div>
             </div>
@@ -943,7 +536,7 @@ export default function AppointmentsPage() {
         footer={canEdit&&detailItem&&(
           <div style={{ display:'flex', gap:8 }}>
             {detailItem.status!=='completed'&&detailItem.status!=='cancelled'&&<Button variant="primary" onClick={()=>{setShowDetail(false);openEdit(detailItem);}} style={{ display:'flex', alignItems:'center', gap:6 }}><IconEdit /> Edit</Button>}
-            {detailItem.status==='in_service'&&<Button variant="primary" onClick={()=>{setShowDetail(false);openPayment(detailItem);}} style={{ display:'flex', alignItems:'center', gap:6, background:'#059669' }}><IconMoney /> Collect Payment</Button>}
+            {detailItem.status!=='cancelled'&&<Button variant="primary" onClick={()=>{setShowDetail(false);openPayment(detailItem);}} style={{ display:'flex', alignItems:'center', gap:6, background:'#059669' }}><IconMoney /> Collect Payment</Button>}
           </div>
         )}>
         {detailItem && (
@@ -955,28 +548,20 @@ export default function AppointmentsPage() {
               </div>
               <StatusBadge status={detailItem.status} />
             </div>
-            {(() => {
-              const extraServiceNames = parseAdditionalServiceNames(detailItem.notes || '');
-              const allServiceNames = Array.from(new Set([detailItem.service?.name, ...extraServiceNames].filter(Boolean)));
-              return (
-                <>
-                  {[
-                    { icon:'', label:'Services', value: allServiceNames.join(', ') || '' },
-                    { icon:'', label:'Staff',   value:detailItem.staff?.name||'' },
-                    { icon:'', label:'Date',    value:detailItem.date?new Date(detailItem.date).toLocaleDateString('en-US',{weekday:'long',year:'numeric',month:'long',day:'numeric'}):'' },
-                    { icon:'', label:'Time',    value:detailItem.time||'' },
-                    { icon:'', label:'Branch',  value:detailItem.branch?.name||'' },
-                    { icon:'', label:'Amount',  value:`Rs. ${Number(detailItem.amount||detailItem.service?.price||0).toLocaleString()}`, highlight:true },
-                  ].map(({icon,label,value,highlight})=>(
-                    <div key={label} style={{ display:'flex', alignItems:'center', padding:'12px 0', borderBottom:'1px solid #F2F4F7' }}>
-                      <span style={{ fontSize:16, width:28, flexShrink:0 }}>{icon}</span>
-                      <span style={{ fontSize:12, fontWeight:600, color:'#98A2B3', textTransform:'uppercase', width:80, flexShrink:0 }}>{label}</span>
-                      <span style={{ fontSize:14, color:highlight?'#059669':'#101828', fontWeight:highlight?700:500 }}>{value}</span>
-                    </div>
-                  ))}
-                </>
-              );
-            })()}
+            {[
+              { icon:'', label:'Service', value:detailItem.service?.name||'' },
+              { icon:'', label:'Staff',   value:detailItem.staff?.name||'' },
+              { icon:'', label:'Date',    value:detailItem.date?new Date(detailItem.date).toLocaleDateString('en-US',{weekday:'long',year:'numeric',month:'long',day:'numeric'}):'' },
+              { icon:'', label:'Time',    value:detailItem.time||'' },
+              { icon:'', label:'Branch',  value:detailItem.branch?.name||'' },
+              { icon:'', label:'Amount',  value:`Rs. ${Number(detailItem.service?.price||detailItem.amount||0).toLocaleString()}`, highlight:true },
+            ].map(({icon,label,value,highlight})=>(
+              <div key={label} style={{ display:'flex', alignItems:'center', padding:'12px 0', borderBottom:'1px solid #F2F4F7' }}>
+                <span style={{ fontSize:16, width:28, flexShrink:0 }}>{icon}</span>
+                <span style={{ fontSize:12, fontWeight:600, color:'#98A2B3', textTransform:'uppercase', width:80, flexShrink:0 }}>{label}</span>
+                <span style={{ fontSize:14, color:highlight?'#059669':'#101828', fontWeight:highlight?700:500 }}>{value}</span>
+              </div>
+            ))}
             {detailItem.notes && (
               <div style={{ marginTop:20, padding:'14px 16px', background:'#FFFBEB', borderRadius:10, border:'1px solid #FDE68A' }}>
                 <div style={{ fontSize:11, fontWeight:700, color:'#D97706', textTransform:'uppercase', marginBottom:6 }}> Notes</div>

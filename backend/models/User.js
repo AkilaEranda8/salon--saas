@@ -29,11 +29,6 @@ const User = sequelize.define('User', {
     type: DataTypes.INTEGER,
     allowNull: true,
   },
-  /** Links portal login to a Staff row for commission / reporting (optional). */
-  staff_id: {
-    type: DataTypes.INTEGER,
-    allowNull: true,
-  },
   avatar: {
     type: DataTypes.STRING(255),
     allowNull: true,

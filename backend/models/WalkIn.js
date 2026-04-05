@@ -52,10 +52,6 @@ const WalkIn = sequelize.define('WalkIn', {
     type: DataTypes.TEXT,
     allowNull: true,
   },
-  total_amount: {
-    type: DataTypes.DECIMAL(10, 2),
-    allowNull: true,
-  },
 }, {
   tableName: 'walk_in_queue',
   timestamps: true,

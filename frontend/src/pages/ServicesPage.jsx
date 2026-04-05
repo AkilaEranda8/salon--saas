@@ -4,27 +4,25 @@ import api from '../api/axios';
 import Button from '../components/ui/Button';
 import { Input, Select, FormGroup } from '../components/ui/FormElements';
 import PageWrapper from '../components/layout/PageWrapper';
-import { useToast } from '../components/ui/Toast';
 import {
   IconEye, IconEdit, IconTrash, IconPlus, IconTag,
   ActionBtn, StatCard, PKModal as Modal,
   FilterBar, SearchBar, DataTable,
 } from '../components/ui/PageKit';
 
+const DEFAULT_CATS = ['Hair', 'Beard', 'Skin', 'Nail', 'Massage', 'Other'];
 const CAT_COLOR = { Hair: '#2563EB', Beard: '#7C3AED', Skin: '#EA580C', Nail: '#D97706', Massage: '#059669', Other: '#64748B' };
 const CAT_BG    = { Hair: '#EFF6FF', Beard: '#F5F3FF', Skin: '#FFF7ED', Nail: '#FFFBEB', Massage: '#ECFDF5', Other: '#F8FAFC' };
-const EMPTY = { name: '', category: '', duration_minutes: 30, price: '', description: '', is_active: true };
+const EMPTY = { name: '', category: 'Hair', duration_minutes: 30, price: '', description: '', is_active: true };
 
 export default function ServicesPage() {
   const { user }  = useAuth();
-  const { toast } = useToast();
   const canEdit   = ['superadmin', 'admin'].includes(user?.role);
   const [services, setServices] = useState([]);
   const [allSvcs, setAllSvcs]   = useState([]);
   const [loading, setLoading]   = useState(true);
   const [filterCat, setFilterCat] = useState('All');
   const [search, setSearch]     = useState('');
-  const [categories, setCategories] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [showView, setShowView] = useState(false);
   const [editItem, setEditItem] = useState(null);
@@ -32,57 +30,29 @@ export default function ServicesPage() {
   const [form, setForm]         = useState(EMPTY);
   const [saving, setSaving]     = useState(false);
   const [formErr, setFormErr]   = useState('');
+  const [newCatMode, setNewCatMode] = useState(false);
+  const [newCatName, setNewCatName] = useState('');
 
-  // Category list comes from API (hardcoded list removed)
-  const CATS = categories.length ? categories : ['Other'];
+  // Build dynamic categories list from defaults + any custom ones from existing services
+  const CATS = [...new Set([...DEFAULT_CATS, ...allSvcs.map(s => s.category).filter(Boolean)])];
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [filteredRes, allRes, catsRes] = await Promise.allSettled([
-      api.get('/services', { params: { limit: 200, ...(filterCat !== 'All' ? { category: filterCat } : {}) } }),
-      api.get('/services', { params: { limit: 500 } }),
-      api.get('/services/categories'),
-    ]);
-
-    if (filteredRes.status === 'fulfilled') {
-      setServices(Array.isArray(filteredRes.value.data) ? filteredRes.value.data : (filteredRes.value.data?.data ?? []));
-    } else {
-      setServices([]);
-    }
-
-    const allRows = allRes.status === 'fulfilled'
-      ? (Array.isArray(allRes.value.data) ? allRes.value.data : (allRes.value.data?.data ?? []))
-      : [];
-    setAllSvcs(allRows);
-
-    let catNames = [];
-    if (catsRes.status === 'fulfilled') {
-      const catRows = Array.isArray(catsRes.value.data) ? catsRes.value.data : [];
-      catNames = catRows.map(c => c.category).filter(Boolean);
-    }
-    if (!catNames.length) {
-      catNames = Array.from(new Set(allRows.map(s => s?.category).filter(Boolean)));
-    }
-    setCategories(catNames);
-
-    if (filteredRes.status !== 'fulfilled') {
-      toast('Could not load services from server.', 'error');
-    } else if (catsRes.status !== 'fulfilled') {
-      toast('Service categories failed to load. Using fallback list.', 'warn');
-    }
+    try {
+      const [filtered, all] = await Promise.all([
+        api.get('/services', { params: { limit: 200, ...(filterCat !== 'All' ? { category: filterCat } : {}) } }),
+        api.get('/services', { params: { limit: 500 } }),
+      ]);
+      setServices(Array.isArray(filtered.data) ? filtered.data : (filtered.data?.data ?? []));
+      setAllSvcs(Array.isArray(all.data) ? all.data : (all.data?.data ?? []));
+    } catch { }
     setLoading(false);
-  }, [filterCat, toast]);
+  }, [filterCat]);
   useEffect(() => { load(); }, [load]);
 
-  useEffect(() => {
-    if (!form.category && CATS.length > 0) {
-      setForm(f => ({ ...f, category: CATS[0] }));
-    }
-  }, [form.category, CATS]);
-
   const catCounts  = allSvcs.reduce((acc, s) => { acc[s.category] = (acc[s.category] || 0) + 1; return acc; }, {});
-  const openAdd    = () => { setEditItem(null); setForm({ ...EMPTY, category: CATS[0] || 'Other' }); setFormErr(''); setShowForm(true); };
-  const openEdit   = row => { setEditItem(row); setForm({ ...row }); setFormErr(''); setShowForm(true); };
+  const openAdd    = () => { setEditItem(null); setForm(EMPTY); setFormErr(''); setNewCatMode(false); setNewCatName(''); setShowForm(true); };
+  const openEdit   = row => { setEditItem(row); setForm({ ...row }); setFormErr(''); setNewCatMode(false); setNewCatName(''); setShowForm(true); };
   const openView   = row => { setViewItem(row); setShowView(true); };
 
   const handleSave = async () => {
@@ -101,8 +71,6 @@ export default function ServicesPage() {
     const q = search.toLowerCase();
     return s.name?.toLowerCase().includes(q) || s.category?.toLowerCase().includes(q) || s.description?.toLowerCase().includes(q);
   });
-
-  const selectCats = [...new Set([...(form.category ? [form.category] : []), ...CATS])];
 
   const columns = [
     {
@@ -205,9 +173,26 @@ export default function ServicesPage() {
           <FormGroup label="Service Name" required><Input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="e.g. Hair Cut & Style" /></FormGroup>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
             <FormGroup label="Category">
-              <Select value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))} style={{ flex: 1 }}>
-                {selectCats.map(c => <option key={c} value={c}>{c}</option>)}
-              </Select>
+              {newCatMode ? (
+                <div style={{ display:'flex', gap:6, alignItems:'center' }}>
+                  <Input value={newCatName} onChange={e => setNewCatName(e.target.value)} placeholder="New category name" style={{ flex:1 }} autoFocus />
+                  <Button variant="primary" size="sm" onClick={() => {
+                    if (newCatName.trim()) {
+                      setForm(f => ({ ...f, category: newCatName.trim() }));
+                      setNewCatMode(false); setNewCatName('');
+                    }
+                  }}>Add</Button>
+                  <Button variant="secondary" size="sm" onClick={() => { setNewCatMode(false); setNewCatName(''); }}>Cancel</Button>
+                </div>
+              ) : (
+                <div style={{ display:'flex', gap:6, alignItems:'center' }}>
+                  <Select value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))} style={{ flex:1 }}>
+                    {CATS.map(c => <option key={c} value={c}>{c}</option>)}
+                  </Select>
+                  <Button variant="ghost" size="sm" onClick={() => setNewCatMode(true)} title="Add new category"
+                    style={{ padding:'6px 10px', fontSize:16, fontWeight:700, color:'#2563EB', whiteSpace:'nowrap' }}>+</Button>
+                </div>
+              )}
             </FormGroup>
             <FormGroup label="Duration (min)">
               <Input type="number" value={form.duration_minutes} min="5" onChange={e => setForm(f => ({ ...f, duration_minutes: e.target.value }))} />

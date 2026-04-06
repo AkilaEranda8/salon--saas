@@ -208,6 +208,21 @@ const create = async (req, res) => {
   }
 };
 
+const update = async (req, res) => {
+  try {
+    const payment = await Payment.findByPk(req.params.id);
+    if (!payment) return res.status(404).json({ message: 'Payment not found.' });
+    const allowed = ['status', 'note', 'date', 'total_amount', 'method'];
+    const fields  = {};
+    for (const k of allowed) { if (req.body[k] !== undefined) fields[k] = req.body[k]; }
+    await payment.update(fields);
+    return res.json(payment);
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: 'Server error.' });
+  }
+};
+
 const summary = async (req, res) => {
   try {
     const where = getBranchWhere(req);
@@ -236,4 +251,4 @@ const summary = async (req, res) => {
   }
 };
 
-module.exports = { list, getOne, create, summary };
+module.exports = { list, getOne, create, update, summary };

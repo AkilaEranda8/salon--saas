@@ -84,7 +84,7 @@ const create = async (req, res) => {
     }
 
     const total_amount = splits.reduce((sum, s) => sum + parseFloat(s.amount || 0), 0);
-    const points_earned = Math.floor((total_amount - loyalty_discount) / 10);
+    const points_earned = 5;
 
     // Fetch staff to calculate commission
     let commission_amount = 0;

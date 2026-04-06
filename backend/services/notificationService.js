@@ -172,10 +172,11 @@ async function sendSMS({ to, message, meta = {} }) {
     console.warn('[Notifications] SMS skipped — SMS Sender ID not configured.');
     return null;
   }
-  const digits      = to.replace(/\D/g, '');
-  const toFormatted = digits.startsWith('94') ? digits
-                    : digits.startsWith('0')  ? '94' + digits.slice(1)
-                    : '94' + digits;
+  const digits  = to.replace(/\D/g, '');
+  const local   = digits.startsWith('94') ? digits.slice(2)
+                : digits.startsWith('0')  ? digits.slice(1)
+                : digits;
+  const toFormatted = '94' + local.slice(-9);
   let status = 'sent', errorMsg = null;
   try {
     const controller = new AbortController();

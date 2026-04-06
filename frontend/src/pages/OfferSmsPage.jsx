@@ -17,12 +17,16 @@ export default function OfferSmsPage() {
   const [selectedIds, setSelectedIds] = useState([]);
   const [message, setMessage] = useState('');
 
-  const isUnicode = /[^\u0000-\u007F]/.test(message);
-  const maxLen    = isUnicode ? 335 : 480;
-  const charsLeft = maxLen - message.length;
-  const smsParts  = isUnicode
-    ? Math.ceil(message.length / 70)  || 1
-    : Math.ceil(message.length / 160) || 1;
+  const isUnicode  = /[^\u0000-\u007F]/.test(message);
+  const maxLen     = isUnicode ? 335 : 480;
+  // Code-point length: emojis = 1, Sinhala = 1, ASCII = 1 (for display)
+  const cpLen      = [...message].length;
+  // UCS-2 length: emojis outside BMP cost 2, used for SMS part calculation
+  const ucs2Len    = message.length;
+  const charsLeft  = maxLen - cpLen;
+  const smsParts   = isUnicode
+    ? Math.ceil(ucs2Len / 70)  || 1
+    : Math.ceil(ucs2Len / 160) || 1;
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
 
@@ -71,6 +75,13 @@ export default function OfferSmsPage() {
       if (allVisibleSelected) return prev.filter((id) => !visibleIds.includes(id));
       return Array.from(new Set([...prev, ...visibleIds]));
     });
+  };
+
+  const handleChangeMessage = (e) => {
+    const val = e.target.value;
+    const isUni = /[^\u0000-\u007F]/.test(val);
+    const limit = isUni ? 335 : 480;
+    if ([...val].length <= limit) setMessage(val);
   };
 
   const handleSend = async () => {
@@ -174,9 +185,8 @@ export default function OfferSmsPage() {
           </div>
           <textarea
             value={message}
-            onChange={(e) => setMessage(e.target.value)}
-            placeholder="Type your offer message here... (supports Sinhala / සිංහල)"
-            maxLength={maxLen}
+            onChange={handleChangeMessage}
+            placeholder="Type your offer message here... (supports Sinhala / සිංහල / emojis 😊)"
             rows={12}
             style={{
               width: '100%',
@@ -193,14 +203,14 @@ export default function OfferSmsPage() {
               marginTop: 6, padding: '8px 10px', borderRadius: 8,
               background: '#FFFBEB', border: '1px solid #FDE68A', fontSize: 12, color: '#92400E',
             }}>
-              ⚠️ Unicode SMS: 70 chars per part · Max 335 chars (5 parts) · Standard SMS: 160 chars/part
+              ⚠️ Unicode SMS: 70 chars per part · Max 335 chars · Emojis count as 2 chars in SMS
             </div>
           )}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8, fontSize: 12, color: '#667085' }}>
             <span>Selected: <strong>{selectedIds.length}</strong> customers</span>
             <span style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
               <span style={{ color: charsLeft < 20 ? '#DC2626' : '#667085' }}>
-                {message.length}/{maxLen}
+                {cpLen}/{maxLen}
               </span>
               <span style={{
                 padding: '1px 8px', borderRadius: 20, fontSize: 11, fontWeight: 600,

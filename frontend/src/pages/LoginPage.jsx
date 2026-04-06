@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import salonLogo from '/salon-logo.png';
 
 /* ── Palette ── */
 const P = {
@@ -46,7 +47,10 @@ export default function LoginPage() {
     setLoading(true);
     setError('');
     try {
-      await login(form);
+      await login({
+        username: form.username.trim(),
+        password: form.password,
+      });
       navigate('/dashboard');
     } catch (err) {
       setError(err?.response?.data?.message || 'Login failed. Please try again.');
@@ -81,16 +85,21 @@ export default function LoginPage() {
       }}>
         {/* ── Brand ── */}
         <div style={{ textAlign: 'center', marginBottom: 36 }}>
-          <div style={{
-            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-            width: 72, height: 72, borderRadius: 22,
-            background: `linear-gradient(145deg, ${P.gold}, ${P.goldDim})`,
-            fontSize: 32, marginBottom: 16,
-            boxShadow: `0 12px 36px rgba(201,169,110,.25)`,
-            animation: 'float 4s ease-in-out infinite',
-          }}>
-            <span role="img" aria-label="scissors">✂️</span>
-          </div>
+          <img
+            src={salonLogo}
+            alt="Zane Salon logo"
+            style={{
+              width: 120,
+              height: 120,
+              objectFit: 'contain',
+              borderRadius: 18,
+              marginBottom: 16,
+              boxShadow: `0 12px 36px rgba(201,169,110,.18)`,
+              animation: 'float 4s ease-in-out infinite',
+              background: '#000',
+              padding: 8,
+            }}
+          />
           <h1 style={{
             fontFamily: "'Cormorant Garamond', serif",
             fontSize: 42, fontWeight: 700, color: P.text,

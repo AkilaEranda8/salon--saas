@@ -23,15 +23,20 @@ import ReportsPage     from './pages/ReportsPage';
 import BranchesPage    from './pages/BranchesPage';
 import UsersPage       from './pages/UsersPage';
 import BookingPage     from './pages/BookingPage';
+import CustomerPortalPage from './pages/CustomerPortalPage';
+import CustomerPortalLoginPage from './pages/CustomerPortalLoginPage';
 import WalkInPage      from './pages/WalkInPage';
 import TokenDisplayScreen from './pages/TokenDisplayScreen';
 import NotificationsPage from './pages/NotificationsPage';
+import OfferSmsPage from './pages/OfferSmsPage';
 import ExpensesPage     from './pages/ExpensesPage';
 import ReviewsPage      from './pages/ReviewsPage';
 import ReviewFormPage   from './pages/ReviewFormPage';
 import PackagesPage     from './pages/PackagesPage';
+import DiscountsPage    from './pages/DiscountsPage';
 import RecurringPage    from './pages/RecurringPage';
 import CategoriesPage   from './pages/CategoriesPage';
+import AiChatPage       from './pages/AiChatPage';
 
 // ── Auth guards ────────────────────────────────────────────────────────
 
@@ -107,6 +112,11 @@ function AppShell() {
                 <RecurringPage />
               </RoleRoute>
             } />
+            <Route path="/discounts"    element={
+              <RoleRoute roles={['superadmin', 'admin', 'manager']}>
+                <DiscountsPage />
+              </RoleRoute>
+            } />
 
             {/* ── CATALOGUE ───────────────────────────────── */}
             <Route path="/services"     element={<ServicesPage />} />
@@ -131,6 +141,7 @@ function AppShell() {
             } />
 
             {/* ── INSIGHTS ────────────────────────────────── */}
+            <Route path="/ai-chat"      element={<AiChatPage />} />
             <Route path="/reports"      element={<ReportsPage />} />
             <Route path="/reviews"      element={
               <RoleRoute roles={['superadmin', 'admin', 'manager']}>
@@ -142,6 +153,11 @@ function AppShell() {
             <Route path="/notifications" element={
               <RoleRoute roles={['superadmin', 'admin']}>
                 <NotificationsPage />
+              </RoleRoute>
+            } />
+            <Route path="/offer-sms" element={
+              <RoleRoute roles={['superadmin', 'admin', 'manager']}>
+                <OfferSmsPage />
               </RoleRoute>
             } />
 
@@ -186,6 +202,8 @@ export default function App() {
         element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <LoginPage />}
       />
       <Route path="/booking"       element={<BookingPage />} />
+      <Route path="/customer-portal/login" element={<CustomerPortalLoginPage />} />
+      <Route path="/customer-portal" element={<CustomerPortalPage />} />
       <Route path="/token-display" element={<TokenDisplayScreen />} />
       <Route path="/review/:token" element={<ReviewFormPage />} />
 

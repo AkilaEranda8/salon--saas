@@ -28,7 +28,11 @@ export const AuthProvider = ({ children }) => {
    * @returns {Promise<object>} server response data
    */
   const login = async (credentials) => {
-    const response = await api.post('/auth/login', credentials);
+    const normalized = {
+      username: String(credentials?.username ?? '').trim(),
+      password: String(credentials?.password ?? ''),
+    };
+    const response = await api.post('/auth/login', normalized);
     setUser(response.data.user);
     return response.data;
   };

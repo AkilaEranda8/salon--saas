@@ -72,47 +72,58 @@ const staffReport = async (req, res) => {
     if (req.userBranchId) branchWhere.branch_id = req.userBranchId;
     else if (req.query.branchId) branchWhere.branch_id = req.query.branchId;
 
-    const payWhere = { ...branchWhere };
+    let dateWhere = {};
     if (req.query.month) {
       const [year, month] = req.query.month.split('-');
       const lastDay = new Date(year, month, 0).getDate();
-      payWhere.date = { [Op.between]: [`${year}-${month}-01`, `${year}-${month}-${lastDay}`] };
+      dateWhere = { date: { [Op.between]: [`${year}-${month}-01`, `${year}-${month}-${lastDay}`] } };
     }
 
-    const rows = await Staff.findAll({
+    // 1. All staff (with branch info)
+    const staffRows = await Staff.findAll({
       where: branchWhere,
-      attributes: {
-        include: [
-          [fn('COUNT', col('appointments.id')), 'apptCount'],
-          [fn('SUM',   col('payments.commission_amount')), 'totalCommission'],
-          [fn('SUM',   col('payments.total_amount')), 'totalRevenue'],
-        ],
-      },
-      include: [
-        {
-          model: Branch,
-          as: 'branch',
-          attributes: ['id', 'name'],
-        },
-        {
-          model: Payment,
-          as: 'payments',
-          where: payWhere,
-          required: false,
-          attributes: [],
-        },
-        {
-          model: Appointment,
-          as: 'appointments',
-          where: payWhere.date ? { date: payWhere.date } : {},
-          required: false,
-          attributes: [],
-        },
-      ],
-      group: ['Staff.id', 'branch.id'],
+      include: [{ model: Branch, as: 'branch', attributes: ['id', 'name'] }],
     });
 
-    return res.json(rows);
+    if (!staffRows.length) return res.json([]);
+
+    const staffIds = staffRows.map((s) => s.id);
+
+    // 2. Appointment counts — separate query to avoid cartesian product
+    const apptAgg = await Appointment.findAll({
+      where: { staff_id: { [Op.in]: staffIds }, ...dateWhere },
+      attributes: ['staff_id', [fn('COUNT', col('id')), 'apptCount']],
+      group: ['staff_id'],
+      raw: true,
+    });
+
+    // 3. Payment sums — separate query
+    const payAgg = await Payment.findAll({
+      where: { staff_id: { [Op.in]: staffIds }, ...branchWhere, ...dateWhere },
+      attributes: [
+        'staff_id',
+        [fn('SUM', col('commission_amount')), 'totalCommission'],
+        [fn('SUM', col('total_amount')),      'totalRevenue'],
+      ],
+      group: ['staff_id'],
+      raw: true,
+    });
+
+    // Build lookup maps
+    const apptMap = {};
+    for (const r of apptAgg) apptMap[r.staff_id] = r;
+    const payMap = {};
+    for (const r of payAgg)  payMap[r.staff_id]  = r;
+
+    // Merge and return
+    const result = staffRows.map((staff) => ({
+      ...staff.toJSON(),
+      apptCount:       parseInt(apptMap[staff.id]?.apptCount       || 0),
+      totalCommission: parseFloat(payMap[staff.id]?.totalCommission || 0),
+      totalRevenue:    parseFloat(payMap[staff.id]?.totalRevenue    || 0),
+    }));
+
+    return res.json(result);
   } catch (err) {
     console.error(err);
     return res.status(500).json({ message: 'Server error.' });

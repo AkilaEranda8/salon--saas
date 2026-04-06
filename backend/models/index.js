@@ -19,6 +19,11 @@ const Package              = require('./Package');
 const CustomerPackage      = require('./CustomerPackage');
 const PackageRedemption    = require('./PackageRedemption');
 const StaffFcmToken        = require('./StaffFcmToken');
+const Discount             = require('./Discount');
+
+// ── Discount ─────────────────────────────────────────────────────────────────
+Discount.belongsTo(Branch, { foreignKey: 'branch_id', as: 'branch' });
+Branch.hasMany(Discount,   { foreignKey: 'branch_id', as: 'discounts' });
 
 // ── Branch ────────────────────────────────────────────────────────────────────
 Branch.hasMany(User,        { foreignKey: 'branch_id', as: 'users' });
@@ -140,4 +145,5 @@ module.exports = {
   CustomerPackage,
   PackageRedemption,
   StaffFcmToken,
+  Discount,
 };

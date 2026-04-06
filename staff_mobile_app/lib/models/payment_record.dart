@@ -42,7 +42,7 @@ class PaymentRecord {
   final String date;
   final List<PaymentSplitRecord> splits;
 
-  double get netAmount => totalAmount - loyaltyDiscount - promoDiscount;
+  double get netAmount => totalAmount; // totalAmount = splits sum = net paid
 
   factory PaymentRecord.fromJson(Map<String, dynamic> json) {
     final rawTotal = json['total_amount'];

@@ -154,14 +154,14 @@ function printReceipt(payment) {
     ${line('Branch', payment.branch?.name)}
     ${line('Service', payment.service?.name)}
     ${dash()}
-    ${line('Subtotal', 'Rs. ' + Number(payment.total_amount||0).toLocaleString())}
+    ${line('Bill', 'Rs. ' + (Number(payment.total_amount||0)+Number(payment.loyalty_discount||0)+Number(payment.promo_discount||0)).toLocaleString())}
     ${Number(payment.loyalty_discount||0) > 0 ? line('Loyalty Disc.', '- Rs. ' + Number(payment.loyalty_discount).toLocaleString()) : ''}
     ${Number(payment.promo_discount||0) > 0 ? line('Promo Disc.', '- Rs. ' + Number(payment.promo_discount).toLocaleString()) : ''}
     ${dash()}
     <tr><td colspan="2"><div style="border-top:1px dashed #bbb;margin:4px 0;"></div></td></tr>
     <tr class="total-row">
       <td>NET TOTAL</td>
-      <td>Rs. ${(Number(payment.total_amount||0) - Number(payment.loyalty_discount||0) - Number(payment.promo_discount||0)).toLocaleString()}</td>
+      <td>Rs. ${Number(payment.total_amount||0).toLocaleString()}</td>
     </tr>
     ${dash()}
     ${splits}
@@ -177,7 +177,9 @@ function printReceipt(payment) {
 
 function InvoiceModal({ open, onClose, payment }) {
   if (!open || !payment) return null;
-  const net = Number(payment.total_amount||0) - Number(payment.loyalty_discount||0) - Number(payment.promo_discount||0);
+  const totalDisc = Number(payment.loyalty_discount||0) + Number(payment.promo_discount||0);
+  const net = Number(payment.total_amount||0);
+  const grossBill = net + totalDisc;
   return createPortal(
     <div style={{ position:'fixed', inset:0, zIndex:9000, display:'flex', alignItems:'center', justifyContent:'center', background:'rgba(16,24,40,0.55)', backdropFilter:'blur(2px)' }}>
       <div style={{ background:'#fff', borderRadius:20, width:340, maxWidth:'95vw', boxShadow:'0 24px 64px rgba(16,24,40,0.25)', fontFamily:"'Courier New',monospace", overflow:'hidden' }}>
@@ -216,8 +218,8 @@ function InvoiceModal({ open, onClose, payment }) {
 
           {/* Amounts */}
           <div style={{ display:'flex', justifyContent:'space-between', marginBottom:5, fontSize:12 }}>
-            <span style={{ color:'#667085' }}>Subtotal</span>
-            <span style={{ fontWeight:600 }}>Rs. {Number(payment.total_amount||0).toLocaleString()}</span>
+            <span style={{ color:'#667085' }}>Bill</span>
+            <span style={{ fontWeight:600 }}>Rs. {grossBill.toLocaleString()}</span>
           </div>
           {Number(payment.loyalty_discount||0) > 0 && (
             <div style={{ display:'flex', justifyContent:'space-between', marginBottom:5, fontSize:12 }}>

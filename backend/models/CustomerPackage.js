@@ -57,7 +57,9 @@ const CustomerPackage = sequelize.define('CustomerPackage', {
   timestamps: true,
   getterMethods: {
     sessions_remaining() {
-      return Math.max(0, (this.getDataValue('sessions_total') || 0) - (this.getDataValue('sessions_used') || 0));
+      const total = this.getDataValue('sessions_total');
+      if (total === null || total === undefined) return null; // unlimited
+      return Math.max(0, total - (this.getDataValue('sessions_used') || 0));
     },
   },
 });

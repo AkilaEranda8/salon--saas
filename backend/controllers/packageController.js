@@ -197,8 +197,8 @@ const activePackages = async (req, res) => {
       order: [['expiry_date', 'ASC']],
     });
 
-    // Filter to only those with remaining sessions
-    const active = rows.filter((cp) => cp.sessions_remaining > 0);
+    // Filter to only those with remaining sessions (null sessions_total = unlimited)
+    const active = rows.filter((cp) => cp.sessions_total === null || cp.sessions_remaining > 0);
     return res.json(active);
   } catch (err) {
     console.error(err);

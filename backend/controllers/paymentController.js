@@ -70,7 +70,7 @@ const create = async (req, res) => {
   try {
     const {
       branch_id, staff_id, customer_id, service_id, appointment_id,
-      customer_name, splits = [], loyalty_discount = 0, promo_discount = 0, usePoints = false,
+      customer_name, phone, splits = [], loyalty_discount = 0, promo_discount = 0, usePoints = false,
     } = req.body;
 
     if (!branch_id) {
@@ -174,6 +174,18 @@ const create = async (req, res) => {
     await t.commit();
 
     // Fire-and-forget notifications (after transaction commits successfully)
+    // Walk-in: send SMS if phone provided even without customer_id
+    if (!customer_id && phone) {
+      const [branch, service] = await Promise.all([
+        Branch.findByPk(branch_id,   { attributes: ['id', 'name', 'phone'] }),
+        Service.findByPk(service_id, { attributes: ['id', 'name'] }),
+      ]);
+      const walkinCustomer = { name: customer_name || 'Guest', phone, email: null, loyalty_points: 0 };
+      notifyPaymentReceipt(
+        { ...payment.toJSON(), splits: await PaymentSplit.findAll({ where: { payment_id: payment.id } }) },
+        branch, service, walkinCustomer
+      );
+    }
     if (customer_id) {
       const [branch, service, customer] = await Promise.all([
         Branch.findByPk(branch_id,   { attributes: ['id', 'name', 'phone'] }),

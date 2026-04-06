@@ -23,6 +23,7 @@ class AddPaymentModalResult {
     required this.serviceIds,
     required this.totalAmount,
     required this.loyaltyDiscount,
+    required this.promoDiscount,
     required this.method,
     required this.paidAmount,
     required this.customerName,
@@ -35,6 +36,7 @@ class AddPaymentModalResult {
   final List<String> serviceIds;
   final String totalAmount;
   final String loyaltyDiscount;
+  final String promoDiscount;
   final String method;
   final String paidAmount;
   final String customerName;
@@ -242,6 +244,7 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
       (c) => c.id == _customerId,
       orElse: () => Customer(id: '', name: 'Walk-in', phone: '', email: ''),
     );
+    final promo = _computedPromo();
     Navigator.of(context).pop(AddPaymentModalResult(
       branchId:       (_branchId ?? '').trim(),
       customerId:     _customerId.trim(),
@@ -249,6 +252,7 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
       serviceIds:     _orderedServiceIds(),
       totalAmount:    _totalAmountCtrl.text.trim(),
       loyaltyDiscount: '0',
+      promoDiscount:  promo.toStringAsFixed(2),
       method:         _method,
       paidAmount:     _paidAmountCtrl.text.trim(),
       discountId:     _discountId,

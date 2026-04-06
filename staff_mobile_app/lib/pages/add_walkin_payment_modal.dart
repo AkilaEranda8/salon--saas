@@ -22,6 +22,7 @@ class AddWalkInPaymentModalResult {
     required this.discountId,
     required this.serviceIds,
     this.loyaltyDiscount = '0',
+    this.promoDiscount = '0',
   });
 
   final String method;
@@ -34,6 +35,7 @@ class AddWalkInPaymentModalResult {
   final List<String> serviceIds;
   /// Manual discount entered by staff (LKR).
   final String loyaltyDiscount;
+  final String promoDiscount;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -240,6 +242,7 @@ class _AddWalkInPaymentModalState extends State<AddWalkInPaymentModal> {
       return;
     }
     final gross = _totalSelectedAmount();
+    final promo = _computedPromo();
     Navigator.of(context).pop(AddWalkInPaymentModalResult(
       method: _method,
       amount: _amtCtrl.text.trim(),
@@ -247,6 +250,7 @@ class _AddWalkInPaymentModalState extends State<AddWalkInPaymentModal> {
       discountId: _discountId,
       serviceIds: List<String>.from(_orderedSelectedServiceIds()),
       loyaltyDiscount: '0',
+      promoDiscount: promo.toStringAsFixed(2),
     ));
   }
 

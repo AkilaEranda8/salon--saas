@@ -168,6 +168,7 @@ class _PaymentsPageState extends State<PaymentsPage> {
       customerName:   payload.customerName,
       totalAmount:    payload.totalAmount,
       loyaltyDiscount: payload.loyaltyDiscount,
+      promoDiscount:   payload.promoDiscount,
       method:         payload.method,
       paidAmount:     payload.paidAmount,
       discountId:     payload.discountId.isEmpty ? null : payload.discountId,

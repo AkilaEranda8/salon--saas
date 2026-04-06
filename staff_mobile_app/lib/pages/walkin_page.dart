@@ -382,6 +382,7 @@ class _WalkInPageState extends State<WalkInPage> {
       phone:          e.phone.trim().isEmpty ? null : e.phone.trim(),
       totalAmount:    payload.subtotal,
       loyaltyDiscount: payload.loyaltyDiscount,
+      promoDiscount:   payload.promoDiscount,
       method:         payload.method,
       paidAmount:     payload.amount,
       discountId:

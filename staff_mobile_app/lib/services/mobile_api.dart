@@ -461,6 +461,7 @@ class MobileApi {
     String? phone,
     required String totalAmount,
     required String loyaltyDiscount,
+    String promoDiscount = '0',
     required String method,
     required String paidAmount,
     String? discountId,
@@ -483,6 +484,7 @@ class MobileApi {
         if (discountId != null && discountId.trim().isNotEmpty)
           'discount_id': int.tryParse(discountId.trim()) ?? discountId.trim(),
         'loyalty_discount': double.tryParse(loyaltyDiscount.trim()) ?? 0,
+        'promo_discount': double.tryParse(promoDiscount.trim()) ?? 0,
         'splits': [
           {
             'method': method,

@@ -840,10 +840,9 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
                 onChanged: (_) => setState(_applyNetToPaid),
               ),
 
-              if (widget.discounts.isNotEmpty) ...[
-                const SizedBox(height: 12),
-                _label('PROMO DISCOUNT'),
-                DropdownButtonFormField<String>(
+              const SizedBox(height: 12),
+              _label('PROMO DISCOUNT'),
+              DropdownButtonFormField<String>(
                   key: ValueKey<String>('promo_$_discountId'),
                   initialValue: _discountId,
                   isExpanded: true,
@@ -866,7 +865,6 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
                     });
                   },
                 ),
-              ],
 
               const SizedBox(height: 12),
 

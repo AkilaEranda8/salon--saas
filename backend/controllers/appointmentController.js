@@ -138,18 +138,18 @@ const create = async (req, res) => {
       notifyAppointmentConfirmed({ ...appt.toJSON(), phone: notifyPhone }, branch, service);
     }
 
-    // Push notification to all branch staff
     const timeLabel = appt.time ? appt.time.slice(0, 5) : '';
-    notifyBranch(branch_id, '📅 New Appointment', `${appt.customer_name} — ${timeLabel}`, {
-      type: 'new_appointment',
-      appointment_id: String(appt.id),
-      branch_id: String(branch_id),
-    });
-
-    // If assigned to a specific staff, send them a direct push too
     if (staff_id) {
-      notifyStaffUser(staff_id, '📅 Assigned to You', `${appt.customer_name} — ${timeLabel}`, {
+      // Assigned to a specific staff — notify only them
+      notifyStaffUser(staff_id, '📅 New Appointment', `${appt.customer_name} — ${timeLabel}`, {
         type: 'appointment_assigned',
+        appointment_id: String(appt.id),
+        branch_id: String(branch_id),
+      });
+    } else {
+      // No staff assigned yet — notify the whole branch
+      notifyBranch(branch_id, '📅 New Appointment', `${appt.customer_name} — ${timeLabel}`, {
+        type: 'new_appointment',
         appointment_id: String(appt.id),
         branch_id: String(branch_id),
       });
@@ -183,7 +183,19 @@ const update = async (req, res) => {
       if (svc) updates.amount = svc.price;
     }
 
+    const prevStaffId = appt.staff_id;
     await appt.update(updates);
+
+    // If staff was newly assigned or changed, notify that staff member
+    if (updates.staff_id && updates.staff_id !== prevStaffId) {
+      const timeLabel = appt.time ? appt.time.slice(0, 5) : '';
+      notifyStaffUser(updates.staff_id, '📅 Assigned to You', `${appt.customer_name} — ${timeLabel}`, {
+        type: 'appointment_assigned',
+        appointment_id: String(appt.id),
+        branch_id: String(appt.branch_id),
+      });
+    }
+
     return res.json(appt);
   } catch (err) {
     return res.status(500).json({ message: 'Server error.' });

@@ -8,13 +8,13 @@ import { FilterBar, DataTable, IconBell } from '../components/ui/PageKit';
 
 const EVENTS = ['appointment_confirmed','payment_receipt','loyalty_points'];
 const EVENT_LABELS = { appointment_confirmed:'Appointment Confirmed', payment_receipt:'Payment Receipt', loyalty_points:'Loyalty Points' };
-const EVENT_CHANNELS = { appointment_confirmed:['email','whatsapp'], payment_receipt:['email','whatsapp'], loyalty_points:['whatsapp'] };
+const EVENT_CHANNELS = { appointment_confirmed:['email','whatsapp','sms'], payment_receipt:['email','whatsapp','sms'], loyalty_points:['whatsapp','sms'] };
 const SETTINGS_KEY = {
-  appointment_confirmed_email:'appt_confirmed_email', appointment_confirmed_whatsapp:'appt_confirmed_whatsapp',
-  payment_receipt_email:'payment_receipt_email', payment_receipt_whatsapp:'payment_receipt_whatsapp',
-  loyalty_points_whatsapp:'loyalty_points_whatsapp',
+  appointment_confirmed_email:'appt_confirmed_email', appointment_confirmed_whatsapp:'appt_confirmed_whatsapp', appointment_confirmed_sms:'appt_confirmed_sms',
+  payment_receipt_email:'payment_receipt_email', payment_receipt_whatsapp:'payment_receipt_whatsapp', payment_receipt_sms:'payment_receipt_sms',
+  loyalty_points_whatsapp:'loyalty_points_whatsapp', loyalty_points_sms:'loyalty_points_sms',
 };
-const CH_COLOR = { email:{ bg:'#EFF6FF', color:'#1D4ED8', label:'Email' }, whatsapp:{ bg:'#DCFCE7', color:'#166534', label:'WhatsApp' } };
+const CH_COLOR = { email:{ bg:'#EFF6FF', color:'#1D4ED8', label:'Email' }, whatsapp:{ bg:'#DCFCE7', color:'#166534', label:'WhatsApp' }, sms:{ bg:'#FEF3C7', color:'#B45309', label:'SMS' } };
 const ST_COLOR = { sent:{ bg:'#D1FAE5', color:'#059669' }, failed:{ bg:'#FEE2E2', color:'#DC2626' } };
 const EV_COLOR = { appointment_confirmed:{ bg:'#EFF6FF', color:'#1D4ED8' }, payment_receipt:{ bg:'#D1FAE5', color:'#059669' }, loyalty_points:{ bg:'#FEF3C7', color:'#D97706' } };
 
@@ -93,8 +93,9 @@ export default function NotificationsPage() {
                 <thead>
                   <tr style={{ borderBottom:'2px solid #F2F4F7' }}>
                     <th style={{ textAlign:'left', padding:'10px 0', fontSize:11, fontWeight:700, color:'#98A2B3', textTransform:'uppercase', letterSpacing:'0.05em', width:'55%' }}>Event</th>
-                    <th style={{ textAlign:'center', padding:'10px 0', fontSize:11, fontWeight:700, color:'#98A2B3', textTransform:'uppercase', letterSpacing:'0.05em', width:'22.5%' }}>Email</th>
-                    <th style={{ textAlign:'center', padding:'10px 0', fontSize:11, fontWeight:700, color:'#98A2B3', textTransform:'uppercase', letterSpacing:'0.05em', width:'22.5%' }}>WhatsApp</th>
+                    <th style={{ textAlign:'center', padding:'10px 0', fontSize:11, fontWeight:700, color:'#98A2B3', textTransform:'uppercase', letterSpacing:'0.05em', width:'15%' }}>Email</th>
+                    <th style={{ textAlign:'center', padding:'10px 0', fontSize:11, fontWeight:700, color:'#98A2B3', textTransform:'uppercase', letterSpacing:'0.05em', width:'15%' }}>WhatsApp</th>
+                    <th style={{ textAlign:'center', padding:'10px 0', fontSize:11, fontWeight:700, color:'#98A2B3', textTransform:'uppercase', letterSpacing:'0.05em', width:'15%' }}>SMS</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -114,6 +115,11 @@ export default function NotificationsPage() {
                           {channels.includes('whatsapp')
                             ? <Toggle checked={!!settings[waKey]} onChange={() => setSettings(s=>({...s,[waKey]:!s[waKey]}))} />
                             : <span style={{ color:'#E4E7EC', fontSize:16 }}></span>}
+                        </td>
+                        <td style={{ textAlign:'center', padding:'14px 0' }}>
+                          {(() => { const smsKey = SETTINGS_KEY[`${ev}_sms`]; return channels.includes('sms') && smsKey
+                            ? <Toggle checked={!!settings[smsKey]} onChange={() => setSettings(s=>({...s,[smsKey]:!s[smsKey]}))} />
+                            : <span style={{ color:'#E4E7EC', fontSize:16 }}></span>; })()}
                         </td>
                       </tr>
                     );
@@ -143,6 +149,7 @@ export default function NotificationsPage() {
               <option value="">All Channels</option>
               <option value="email">Email</option>
               <option value="whatsapp">WhatsApp</option>
+              <option value="sms">SMS</option>
             </select>
             <select value={filterSt} onChange={e=>{ setFilterSt(e.target.value); setLogPage(1); }}
               style={{ padding:'6px 10px', borderRadius:9, border:'1.5px solid #E4E7EC', fontSize:13, fontFamily:"'Inter',sans-serif", outline:'none', color:'#344054', background:'#fff' }}>

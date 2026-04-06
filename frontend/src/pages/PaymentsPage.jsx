@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
@@ -11,123 +11,6 @@ import {
   ActionBtn, StatCard, PKModal as Modal, FilterBar, SearchBar,
   DataTable,
 } from '../components/ui/PageKit';
-
-/*─── CustomerTypeahead ─────────────────────────────────────────────────────*/
-function CustomerTypeahead({ customers, value, onSelect, onNew, branchId }) {
-  const [query,  setQuery]  = useState('');
-  const [open,   setOpen]   = useState(false);
-  const [phone,  setPhone]  = useState('');
-  const [name,   setName]   = useState('');
-  const [adding, setAdding] = useState(false);
-  const ref = useRef(null);
-
-  const isPhone  = /^[\d+\-\s()]{3,}$/.test(query.trim());
-  const selected = customers.find(c => String(c.id) === String(value));
-  const filtered = query.length > 0
-    ? customers.filter(c =>
-        c.name?.toLowerCase().includes(query.toLowerCase()) ||
-        c.phone?.toLowerCase().includes(query.toLowerCase())
-      ).slice(0, 8)
-    : [];
-  const hasExact = isPhone
-    ? customers.some(c => c.phone === query.trim())
-    : customers.some(c => c.name?.toLowerCase() === query.trim().toLowerCase());
-  const showNew  = query.trim().length >= 2 && !hasExact;
-
-  useEffect(() => {
-    const fn = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
-    document.addEventListener('mousedown', fn);
-    return () => document.removeEventListener('mousedown', fn);
-  }, []);
-
-  const pick  = c  => { onSelect(c.id); setQuery(''); setPhone(''); setName(''); setOpen(false); };
-  const clear = e  => { e.stopPropagation(); onSelect(''); setQuery(''); setPhone(''); setName(''); setOpen(false); };
-
-  const addNew = async () => {
-    const custName  = isPhone ? name.trim()  : query.trim();
-    const custPhone = isPhone ? query.trim() : phone.trim() || null;
-    if (!custName) return;
-    setAdding(true);
-    try {
-      const res = await api.post('/customers', {
-        name: custName,
-        phone: custPhone,
-        ...(branchId ? { branch_id: branchId } : {}),
-      });
-      onNew(res.data);
-      onSelect(res.data.id);
-      setQuery(''); setPhone(''); setName(''); setOpen(false);
-    } catch { }
-    setAdding(false);
-  };
-
-  const INP = { width:'100%', padding:'8px 12px', borderRadius:9, border:'1.5px solid #E4E7EC', fontSize:13, fontFamily:"'Inter',sans-serif", outline:'none', color:'#344054', background:'#fff', boxSizing:'border-box' };
-
-  return (
-    <div ref={ref} style={{ position:'relative' }}>
-      {selected && !query ? (
-        <div style={{ display:'flex', alignItems:'center', gap:8, padding:'7px 12px', borderRadius:9, border:'1.5px solid #2563EB', background:'#EFF6FF', cursor:'pointer' }}
-          onClick={() => { setQuery(selected.name); setOpen(true); }}>
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#2563EB" strokeWidth="2.5"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-          <span style={{ flex:1, fontSize:13, fontWeight:600, color:'#1D4ED8' }}>{selected.name}</span>
-          <span style={{ fontSize:11, color:'#93C5FD' }}>{selected.phone}</span>
-          <button onClick={clear} style={{ background:'none', border:'none', cursor:'pointer', color:'#60A5FA', fontSize:18, lineHeight:1, padding:0 }}>×</button>
-        </div>
-      ) : (
-        <input value={query} onChange={e => { setQuery(e.target.value); setOpen(true); }}
-          onFocus={() => setOpen(true)} placeholder="Type name or phone…" style={INP} />
-      )}
-
-      {open && (filtered.length > 0 || showNew) && (
-        <div style={{ position:'absolute', top:'100%', left:0, right:0, zIndex:2000, background:'#fff', border:'1.5px solid #E4E7EC', borderRadius:10, boxShadow:'0 8px 24px rgba(16,24,40,0.14)', marginTop:4, maxHeight:280, overflowY:'auto' }}>
-          {filtered.map(c => (
-            <div key={c.id} onMouseDown={() => pick(c)}
-              style={{ padding:'9px 14px', cursor:'pointer', display:'flex', gap:10, alignItems:'center', borderBottom:'1px solid #F2F4F7' }}
-              onMouseEnter={e => e.currentTarget.style.background='#F9FAFB'}
-              onMouseLeave={e => e.currentTarget.style.background=''}>
-              <div style={{ width:28, height:28, borderRadius:'50%', background:'#EFF6FF', display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, fontWeight:700, color:'#2563EB', flexShrink:0 }}>
-                {c.name.charAt(0).toUpperCase()}
-              </div>
-              <div style={{ flex:1 }}>
-                <div style={{ fontSize:13, fontWeight:600, color:'#101828' }}>{c.name}</div>
-                <div style={{ fontSize:11, color:'#98A2B3' }}>{c.phone}</div>
-              </div>
-            </div>
-          ))}
-          {showNew && (
-            <div style={{ padding:'10px 14px', background:'#F0FDF4', borderTop: filtered.length ? '1px solid #E4E7EC' : 'none' }}>
-              <div style={{ fontSize:11, fontWeight:700, color:'#065F46', marginBottom:8, display:'flex', alignItems:'center', gap:5 }}>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                {isPhone ? `Register new customer (📱 ${query.trim()})` : `Register "${query.trim()}" as new customer`}
-              </div>
-              {isPhone ? (
-                <div style={{ display:'flex', gap:8 }}>
-                  <input value={name} onChange={e => setName(e.target.value)}
-                    placeholder="Full name *" onMouseDown={e => e.stopPropagation()}
-                    style={{ ...INP, flex:1, padding:'6px 10px', fontSize:12 }} />
-                  <button onMouseDown={e => { e.preventDefault(); addNew(); }} disabled={adding || !name.trim()}
-                    style={{ background:'#059669', color:'#fff', border:'none', borderRadius:8, padding:'6px 14px', fontSize:12, fontWeight:700, cursor:'pointer', whiteSpace:'nowrap', opacity:(adding || !name.trim()) ? 0.5 : 1 }}>
-                    {adding ? '…' : 'Add & Select'}
-                  </button>
-                </div>
-              ) : (
-                <div style={{ display:'flex', gap:8 }}>
-                  <input value={phone} onChange={e => setPhone(e.target.value)}
-                    placeholder="Mobile number" onMouseDown={e => e.stopPropagation()}
-                    style={{ ...INP, flex:1, padding:'6px 10px', fontSize:12 }} />
-                  <button onMouseDown={e => { e.preventDefault(); addNew(); }} disabled={adding}
-                    style={{ background:'#059669', color:'#fff', border:'none', borderRadius:8, padding:'6px 14px', fontSize:12, fontWeight:700, cursor:'pointer', whiteSpace:'nowrap', opacity: adding ? 0.7 : 1 }}>
-                    {adding ? '…' : 'Add & Select'}
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
 
 const METHODS = ['Cash','Card','Online Transfer','Loyalty Points','Package'];
 const METHOD_LABEL = { 'Cash':'Cash', 'Card':'Card', 'Online Transfer':'Bank Transfer', 'Loyalty Points':'Loyalty Pts', 'Package':'Package' };
@@ -555,22 +438,20 @@ export default function PaymentsPage() {
             )}
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
               <FormGroup label="Customer">
-                <CustomerTypeahead
-                  customers={customers}
-                  value={form.customer_id}
-                  branchId={form.branch_id || user?.branch_id}
-                  onSelect={cid => {
-                    setForm(f => ({ ...f, customer_id: cid }));
-                    setCustPackages([]);
-                    if (cid) {
-                      setLoadingPkgs(true);
-                      api.get(`/packages/customer/${cid}/active`).then(r => {
-                        setCustPackages(Array.isArray(r.data) ? r.data : []);
-                      }).catch(() => {}).finally(() => setLoadingPkgs(false));
-                    }
-                  }}
-                  onNew={newCust => setCustomers(prev => [newCust, ...prev])}
-                />
+                <Select value={form.customer_id||''} onChange={e => {
+                  const cid = e.target.value;
+                  setForm(f=>({...f, customer_id:cid}));
+                  setCustPackages([]);
+                  if (cid) {
+                    setLoadingPkgs(true);
+                    api.get(`/packages/customer/${cid}/active`).then(r => {
+                      setCustPackages(Array.isArray(r.data) ? r.data : []);
+                    }).catch(() => {}).finally(() => setLoadingPkgs(false));
+                  }
+                }}>
+                  <option value="">Walk-in / select</option>
+                  {customers.map(c => <option key={c.id} value={c.id}>{c.name} ({c.phone})</option>)}
+                </Select>
               </FormGroup>
               <FormGroup label="Staff">
                 <Select value={form.staff_id||''} onChange={e => setForm(f=>({...f, staff_id:e.target.value}))}>

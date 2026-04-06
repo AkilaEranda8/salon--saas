@@ -30,7 +30,6 @@ import ExpensesPage     from './pages/ExpensesPage';
 import ReviewsPage      from './pages/ReviewsPage';
 import ReviewFormPage   from './pages/ReviewFormPage';
 import PackagesPage     from './pages/PackagesPage';
-import DiscountsPage    from './pages/DiscountsPage';
 import RecurringPage    from './pages/RecurringPage';
 import CategoriesPage   from './pages/CategoriesPage';
 
@@ -98,11 +97,6 @@ function AppShell() {
             <Route path="/appointments" element={<AppointmentsPage />} />
             <Route path="/payments"     element={<PaymentsPage />} />
             <Route path="/customers"    element={<CustomersPage />} />
-            <Route path="/discounts"    element={
-              <RoleRoute roles={['superadmin', 'admin', 'manager']}>
-                <DiscountsPage />
-              </RoleRoute>
-            } />
             <Route path="/packages"     element={
               <RoleRoute roles={['superadmin', 'admin', 'manager']}>
                 <PackagesPage />

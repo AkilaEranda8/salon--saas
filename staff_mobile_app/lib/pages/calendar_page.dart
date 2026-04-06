@@ -1,8 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../models/appointment.dart';
 import '../models/salon_service.dart';
 import '../state/app_state.dart';
+
+// ── Palette ───────────────────────────────────────────────────────────────────
+const Color _forest  = Color(0xFF1B3A2D);
+const Color _emerald = Color(0xFF2D6A4F);
+const Color _canvas  = Color(0xFFF2F5F2);
+const Color _ink     = Color(0xFF111827);
+const Color _muted   = Color(0xFF6B7280);
+const Color _border  = Color(0xFFE5E7EB);
 
 class CalendarPage extends StatefulWidget {
   const CalendarPage({super.key});
@@ -13,292 +22,482 @@ class CalendarPage extends StatefulWidget {
 
 class _CalendarPageState extends State<CalendarPage> {
   DateTime _selectedDate = DateTime.now();
-  late DateTime _visibleMonth = DateTime(_selectedDate.year, _selectedDate.month, 1);
+  late DateTime _visibleMonth =
+      DateTime(_selectedDate.year, _selectedDate.month, 1);
 
-  @override
-  Widget build(BuildContext context) {
-    final appState = AppStateScope.of(context);
-    final dateKey = _selectedDate.toIso8601String().split('T').first;
-    final dayAppointments = appState.appointments
-        .where((a) => a.date == dateKey)
-        .toList()
-      ..sort((a, b) => a.time.compareTo(b.time));
+  // ── Helpers ──────────────────────────────────────────────────────────────────
+  String _fmt(DateTime d) =>
+      '${d.day.toString().padLeft(2, '0')} ${_fullMonth(d.month)} ${d.year}';
 
-    return Scaffold(
-      backgroundColor: const Color(0xFFF5F6FB),
-      appBar: AppBar(
-        title: const Text('Calendar'),
-        backgroundColor: const Color(0xFFF5F6FB),
-        foregroundColor: const Color(0xFF0F172A),
-        elevation: 0,
-      ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          _monthCard(),
-          const SizedBox(height: 14),
-          _dayScheduleCard(dayAppointments, appState.services),
-        ],
-      ),
-    );
-  }
+  String _fullMonth(int m) => const [
+        '', 'January', 'February', 'March', 'April', 'May', 'June',
+        'July', 'August', 'September', 'October', 'November', 'December',
+      ][m];
 
-  Widget _monthCard() {
-    final monthLabel = '${_monthName(_visibleMonth.month)} ${_visibleMonth.year}';
-    final grid = _monthGrid(_visibleMonth);
-    final selected = DateTime(_selectedDate.year, _selectedDate.month, _selectedDate.day);
-    final today = DateTime.now();
-    final todayKey = DateTime(today.year, today.month, today.day);
-    return Container(
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        boxShadow: const [
-          BoxShadow(color: Color(0x12000000), blurRadius: 16, offset: Offset(0, 8)),
-        ],
-      ),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              const CircleAvatar(
-                radius: 12,
-                backgroundColor: Color(0xFFEDE9FE),
-                child: Text('S', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800)),
-              ),
-              const SizedBox(width: 8),
-              const Text('slothui', style: TextStyle(fontWeight: FontWeight.w700)),
-              const Spacer(),
-              IconButton(
-                onPressed: () => setState(() {
-                  _visibleMonth = DateTime(_visibleMonth.year, _visibleMonth.month - 1, 1);
-                }),
-                icon: const Icon(Icons.chevron_left, size: 18),
-                visualDensity: VisualDensity.compact,
-              ),
-              Text(monthLabel, style: const TextStyle(fontWeight: FontWeight.w700)),
-              IconButton(
-                onPressed: () => setState(() {
-                  _visibleMonth = DateTime(_visibleMonth.year, _visibleMonth.month + 1, 1);
-                }),
-                icon: const Icon(Icons.chevron_right, size: 18),
-                visualDensity: VisualDensity.compact,
-              ),
-            ],
-          ),
-          const SizedBox(height: 6),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: const ['M', 'T', 'W', 'T', 'F', 'S', 'S']
-                .map(
-                  (d) => SizedBox(
-                    width: 34,
-                    child: Center(
-                      child: Text(
-                        d,
-                        style: TextStyle(fontSize: 11, color: Color(0xFF94A3B8), fontWeight: FontWeight.w700),
-                      ),
-                    ),
-                  ),
-                )
-                .toList(),
-          ),
-          const SizedBox(height: 4),
-          ...List.generate(6, (row) {
-            return Padding(
-              padding: const EdgeInsets.symmetric(vertical: 2),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: List.generate(7, (col) {
-                  final item = grid[row * 7 + col];
-                  if (item == null) return const SizedBox(width: 34, height: 34);
-                  final dateObj = DateTime(item.year, item.month, item.day);
-                  final isSel = dateObj == selected;
-                  final isToday = dateObj == todayKey;
-                  return InkWell(
-                    onTap: () => setState(() {
-                      _selectedDate = item;
-                    }),
-                    borderRadius: BorderRadius.circular(10),
-                    child: Container(
-                      width: 34,
-                      height: 34,
-                      decoration: BoxDecoration(
-                        color: isSel ? const Color(0xFF4F46E5) : (isToday ? const Color(0xFFEFF6FF) : Colors.transparent),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Center(
-                        child: Text(
-                          '${item.day}',
-                          style: TextStyle(
-                            color: isSel ? Colors.white : const Color(0xFF0F172A),
-                            fontWeight: FontWeight.w700,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ),
-                    ),
-                  );
-                }),
-              ),
-            );
-          }),
-        ],
-      ),
-    );
-  }
-
-  Widget _dayScheduleCard(
-    List<Appointment> dayAppointments,
-    List<SalonService> services,
-  ) {
-    final dateLabel =
-        '${_monthName(_selectedDate.month)} ${_selectedDate.day}, ${_selectedDate.year}';
-    return Container(
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        boxShadow: const [
-          BoxShadow(color: Color(0x12000000), blurRadius: 16, offset: Offset(0, 8)),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const CircleAvatar(
-                radius: 12,
-                backgroundColor: Color(0xFFEDE9FE),
-                child: Text('S', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800)),
-              ),
-              const SizedBox(width: 8),
-              const Text('slothui', style: TextStyle(fontWeight: FontWeight.w700)),
-              const Spacer(),
-              const Icon(Icons.search, size: 18, color: Color(0xFF64748B)),
-              const SizedBox(width: 10),
-              const Icon(Icons.more_horiz, size: 18, color: Color(0xFF64748B)),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(dateLabel, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
-          const SizedBox(height: 10),
-          if (dayAppointments.isEmpty)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 14),
-              child: Text(
-                'No appointments for this day',
-                style: TextStyle(color: Color(0xFF64748B), fontWeight: FontWeight.w600),
-              ),
-            )
-          else
-            ...dayAppointments.map(
-              (appt) {
-                final style = _statusStyle(appt.status);
-                final svc = appt.resolveServicesDisplay(services);
-                return Container(
-                  margin: const EdgeInsets.only(bottom: 8),
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: style.bgColor,
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          '${appt.customerName} ($svc)',
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: style.color,
-                            fontWeight: FontWeight.w700,
-                            fontSize: 12.5,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        _timeLabel(appt.time),
-                        style: const TextStyle(
-                          color: Color(0xFF475569),
-                          fontWeight: FontWeight.w700,
-                          fontSize: 12,
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              },
-            ),
-        ],
-      ),
-    );
-  }
-
-  String _monthName(int month) {
-    const names = [
-      'Jan',
-      'Feb',
-      'Mar',
-      'Apr',
-      'May',
-      'Jun',
-      'Jul',
-      'Aug',
-      'Sep',
-      'Oct',
-      'Nov',
-      'Dec',
-    ];
-    return names[month - 1];
-  }
-
-  List<DateTime?> _monthGrid(DateTime month) {
-    final first = DateTime(month.year, month.month, 1);
-    final start = (first.weekday + 6) % 7; // Monday-start
-    final daysInMonth = DateTime(month.year, month.month + 1, 0).day;
-    final cells = <DateTime?>[];
-    for (var i = 0; i < start; i++) {
-      cells.add(null);
-    }
-    for (var d = 1; d <= daysInMonth; d++) {
-      cells.add(DateTime(month.year, month.month, d));
-    }
-    while (cells.length < 42) {
-      cells.add(null);
-    }
-    return cells;
-  }
+  String _shortMonth(int m) => const [
+        '', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+        'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+      ][m];
 
   String _timeLabel(String raw) {
     final parts = raw.split(':');
     if (parts.length < 2) return raw;
     final h = int.tryParse(parts[0]) ?? 0;
-    final m = int.tryParse(parts[1]) ?? 0;
-    final suffix = h >= 12 ? 'pm' : 'am';
-    final hh = (h % 12 == 0) ? 12 : h % 12;
-    return '$hh:${m.toString().padLeft(2, '0')} $suffix';
+    final min = int.tryParse(parts[1]) ?? 0;
+    final suffix = h >= 12 ? 'PM' : 'AM';
+    final hh = h % 12 == 0 ? 12 : h % 12;
+    return '$hh:${min.toString().padLeft(2, '0')} $suffix';
+  }
+
+  List<DateTime?> _monthGrid(DateTime month) {
+    final first = DateTime(month.year, month.month, 1);
+    final start = (first.weekday + 6) % 7;
+    final daysInMonth = DateTime(month.year, month.month + 1, 0).day;
+    final cells = <DateTime?>[
+      for (var i = 0; i < start; i++) null,
+      for (var d = 1; d <= daysInMonth; d++) DateTime(month.year, month.month, d),
+    ];
+    while (cells.length < 42) { cells.add(null); }
+    return cells;
   }
 
   _StatusStyle _statusStyle(String status) {
     switch (status.toLowerCase()) {
       case 'confirmed':
-        return const _StatusStyle(Color(0xFF2563EB), Color(0xFFDBEAFE));
+        return const _StatusStyle(
+            Color(0xFF1D4ED8), Color(0xFFEFF6FF), Color(0xFFBFDBFE));
       case 'completed':
-        return const _StatusStyle(Color(0xFF059669), Color(0xFFD1FAE5));
+        return const _StatusStyle(
+            Color(0xFF065F46), Color(0xFFF0FDF4), Color(0xFF6EE7B7));
       case 'cancelled':
-        return const _StatusStyle(Color(0xFFDC2626), Color(0xFFFEE2E2));
+        return const _StatusStyle(
+            Color(0xFF991B1B), Color(0xFFFFF1F2), Color(0xFFFCA5A5));
       default:
-        return const _StatusStyle(Color(0xFFD97706), Color(0xFFFEF3C7));
+        return const _StatusStyle(
+            Color(0xFF92400E), Color(0xFFFFFBEB), Color(0xFFFCD34D));
     }
   }
+
+  // ── Build ─────────────────────────────────────────────────────────────────
+  @override
+  Widget build(BuildContext context) {
+    final appState = AppStateScope.of(context);
+    final dateKey =
+        '${_selectedDate.year}-${_selectedDate.month.toString().padLeft(2, '0')}-${_selectedDate.day.toString().padLeft(2, '0')}';
+    final dayAppts = appState.appointments
+        .where((a) => a.date == dateKey)
+        .toList()
+      ..sort((a, b) => a.time.compareTo(b.time));
+
+    // Days that have at least one appointment this visible month
+    final busyDays = <String>{};
+    for (final a in appState.appointments) {
+      busyDays.add(a.date);
+    }
+
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle.dark,
+      child: Scaffold(
+        backgroundColor: _canvas,
+        body: SafeArea(
+          child: CustomScrollView(
+            slivers: [
+              // ── Header ──────────────────────────────────────────────────
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 20, 20, 4),
+                  child: Row(children: [
+                    GestureDetector(
+                      onTap: () => Navigator.of(context).maybePop(),
+                      child: Container(
+                        width: 38, height: 38,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(11),
+                          border: Border.all(color: _border),
+                        ),
+                        child: const Icon(Icons.arrow_back_ios_new_rounded,
+                            size: 16, color: _forest),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      const Text('Calendar',
+                          style: TextStyle(
+                              color: _ink,
+                              fontSize: 20,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: -0.3)),
+                      Text('${_shortMonth(_visibleMonth.month)} ${_visibleMonth.year}',
+                          style: const TextStyle(
+                              color: _muted,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500)),
+                    ]),
+                  ]),
+                ),
+              ),
+
+              // ── Calendar card ────────────────────────────────────────────
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                  child: _buildCalendar(busyDays),
+                ),
+              ),
+
+              // ── Day header ───────────────────────────────────────────────
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 22, 20, 10),
+                  child: Row(children: [
+                    Expanded(
+                      child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _fmt(_selectedDate),
+                              style: const TextStyle(
+                                  color: _ink,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w800),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              dayAppts.isEmpty
+                                  ? 'No appointments'
+                                  : '${dayAppts.length} appointment${dayAppts.length == 1 ? '' : 's'}',
+                              style: const TextStyle(
+                                  color: _muted,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w500),
+                            ),
+                          ]),
+                    ),
+                    if (dayAppts.isNotEmpty)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: _forest.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(
+                          '${dayAppts.length}',
+                          style: const TextStyle(
+                              color: _forest,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w800),
+                        ),
+                      ),
+                  ]),
+                ),
+              ),
+
+              // ── Appointment list ─────────────────────────────────────────
+              if (dayAppts.isEmpty)
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 36),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: _border),
+                      ),
+                      child: Column(children: [
+                        Icon(Icons.event_available_rounded,
+                            size: 40,
+                            color: _muted.withValues(alpha: 0.35)),
+                        const SizedBox(height: 10),
+                        const Text('No appointments scheduled',
+                            style: TextStyle(
+                                color: _muted,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600)),
+                        const SizedBox(height: 4),
+                        const Text('Pick another day or book a new appointment',
+                            style: TextStyle(
+                                color: Color(0xFF9CA3AF), fontSize: 12)),
+                      ]),
+                    ),
+                  ),
+                )
+              else
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                  sliver: SliverList(
+                    delegate: SliverChildBuilderDelegate(
+                      (_, i) => _buildApptCard(
+                          dayAppts[i], appState.services),
+                      childCount: dayAppts.length,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ── Calendar grid ─────────────────────────────────────────────────────────
+  Widget _buildCalendar(Set<String> busyDays) {
+    final grid     = _monthGrid(_visibleMonth);
+    final selected = DateTime(_selectedDate.year, _selectedDate.month, _selectedDate.day);
+    final now      = DateTime.now();
+    final todayKey = DateTime(now.year, now.month, now.day);
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+              color: _forest.withValues(alpha: 0.07),
+              blurRadius: 20,
+              offset: const Offset(0, 6)),
+        ],
+      ),
+      child: Column(children: [
+
+        // Month nav row
+        Row(children: [
+          GestureDetector(
+            onTap: () => setState(() {
+              _visibleMonth =
+                  DateTime(_visibleMonth.year, _visibleMonth.month - 1, 1);
+            }),
+            child: Container(
+              width: 34, height: 34,
+              decoration: BoxDecoration(
+                color: _canvas,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: _border),
+              ),
+              child: const Icon(Icons.chevron_left_rounded,
+                  size: 18, color: _forest),
+            ),
+          ),
+          Expanded(
+            child: Center(
+              child: Text(
+                '${_fullMonth(_visibleMonth.month)} ${_visibleMonth.year}',
+                style: const TextStyle(
+                    color: _ink,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.2),
+              ),
+            ),
+          ),
+          GestureDetector(
+            onTap: () => setState(() {
+              _visibleMonth =
+                  DateTime(_visibleMonth.year, _visibleMonth.month + 1, 1);
+            }),
+            child: Container(
+              width: 34, height: 34,
+              decoration: BoxDecoration(
+                color: _canvas,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: _border),
+              ),
+              child: const Icon(Icons.chevron_right_rounded,
+                  size: 18, color: _forest),
+            ),
+          ),
+        ]),
+
+        const SizedBox(height: 14),
+
+        // Day-of-week labels
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+              .map((d) => SizedBox(
+                    width: 36,
+                    child: Center(
+                      child: Text(d,
+                          style: const TextStyle(
+                              fontSize: 10.5,
+                              color: _muted,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 0.2)),
+                    ),
+                  ))
+              .toList(),
+        ),
+
+        const SizedBox(height: 6),
+
+        // Day cells
+        ...List.generate(6, (row) {
+          final rowCells = grid.sublist(row * 7, row * 7 + 7);
+          // Skip empty trailing rows
+          if (rowCells.every((c) => c == null)) return const SizedBox.shrink();
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 2),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: rowCells.map((item) {
+                if (item == null) return const SizedBox(width: 36, height: 40);
+                final dateObj  = DateTime(item.year, item.month, item.day);
+                final isSel    = dateObj == selected;
+                final isToday  = dateObj == todayKey;
+                final dateStr  =
+                    '${item.year}-${item.month.toString().padLeft(2, '0')}-${item.day.toString().padLeft(2, '0')}';
+                final hasDot   = busyDays.contains(dateStr) && !isSel;
+
+                return GestureDetector(
+                  onTap: () => setState(() => _selectedDate = item),
+                  child: Container(
+                    width: 36, height: 40,
+                    decoration: BoxDecoration(
+                      color: isSel
+                          ? _forest
+                          : isToday
+                              ? _forest.withValues(alpha: 0.08)
+                              : Colors.transparent,
+                      borderRadius: BorderRadius.circular(10),
+                      border: isToday && !isSel
+                          ? Border.all(
+                              color: _forest.withValues(alpha: 0.35), width: 1.2)
+                          : null,
+                    ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          '${item.day}',
+                          style: TextStyle(
+                            color: isSel
+                                ? Colors.white
+                                : isToday
+                                    ? _forest
+                                    : _ink,
+                            fontWeight: isSel || isToday
+                                ? FontWeight.w800
+                                : FontWeight.w500,
+                            fontSize: 13,
+                          ),
+                        ),
+                        if (hasDot)
+                          Container(
+                            margin: const EdgeInsets.only(top: 3),
+                            width: 4, height: 4,
+                            decoration: BoxDecoration(
+                              color: _emerald.withValues(alpha: 0.7),
+                              shape: BoxShape.circle,
+                            ),
+                          )
+                        else
+                          const SizedBox(height: 7),
+                      ],
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+          );
+        }),
+      ]),
+    );
+  }
+
+  // ── Appointment card ──────────────────────────────────────────────────────
+  Widget _buildApptCard(Appointment appt, List<SalonService> services) {
+    final style = _statusStyle(appt.status);
+    final svc   = appt.resolveServicesDisplay(services);
+    final time  = _timeLabel(appt.time);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: _border),
+        boxShadow: [
+          BoxShadow(
+              color: Colors.black.withValues(alpha: 0.04),
+              blurRadius: 8,
+              offset: const Offset(0, 2)),
+        ],
+      ),
+      child: Row(children: [
+        // Left colour bar
+        Container(
+          width: 4,
+          height: 70,
+          decoration: BoxDecoration(
+            color: style.barColor,
+            borderRadius: const BorderRadius.horizontal(
+                left: Radius.circular(14)),
+          ),
+        ),
+        const SizedBox(width: 12),
+        // Time column
+        SizedBox(
+          width: 54,
+          child: Text(time,
+              style: const TextStyle(
+                  color: _ink,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800)),
+        ),
+        Container(width: 1, height: 36, color: _border),
+        const SizedBox(width: 12),
+        // Details
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(appt.customerName,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                      color: _ink,
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w700)),
+              const SizedBox(height: 3),
+              Text(svc,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                      color: _muted,
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w500)),
+            ],
+          ),
+        ),
+        const SizedBox(width: 8),
+        // Status chip
+        Container(
+          margin: const EdgeInsets.only(right: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            color: style.chipBg,
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Text(
+            appt.status.isEmpty ? 'Pending' : _capitalize(appt.status),
+            style: TextStyle(
+                color: style.textColor,
+                fontSize: 10.5,
+                fontWeight: FontWeight.w700),
+          ),
+        ),
+      ]),
+    );
+  }
+
+  String _capitalize(String s) =>
+      s.isEmpty ? s : s[0].toUpperCase() + s.substring(1).toLowerCase();
 }
 
 class _StatusStyle {
-  const _StatusStyle(this.color, this.bgColor);
-
-  final Color color;
-  final Color bgColor;
+  const _StatusStyle(this.textColor, this.chipBg, this.barColor);
+  final Color textColor;
+  final Color chipBg;
+  final Color barColor;
 }

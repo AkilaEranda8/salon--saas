@@ -64,6 +64,8 @@ deploy_cmd = (
     "git reset --hard origin/master && "
     "echo '>>> docker compose up --build (may take several minutes)...' && "
     "DOCKER_BUILDKIT=1 docker compose up -d --build && "
+    "echo '>>> syncDB (alter:true)' && "
+    "docker compose exec -T backend node scripts/syncDB.js && "
     "echo '>>> ensureSuperadmin' && "
     "docker compose exec -T backend node scripts/ensureSuperadmin.js && "
     "echo '>>> restart proxy' && "

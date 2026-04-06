@@ -18,12 +18,6 @@ const Review               = require('./Review');
 const Package              = require('./Package');
 const CustomerPackage      = require('./CustomerPackage');
 const PackageRedemption    = require('./PackageRedemption');
-const StaffFcmToken        = require('./StaffFcmToken');
-const Discount             = require('./Discount');
-
-// ── Discount ─────────────────────────────────────────────────────────────────
-Discount.belongsTo(Branch, { foreignKey: 'branch_id', as: 'branch' });
-Branch.hasMany(Discount,   { foreignKey: 'branch_id', as: 'discounts' });
 
 // ── Branch ────────────────────────────────────────────────────────────────────
 Branch.hasMany(User,        { foreignKey: 'branch_id', as: 'users' });
@@ -100,6 +94,10 @@ WalkIn.belongsTo(Staff,   { foreignKey: 'staff_id',   as: 'staff' });
 Branch.hasMany(WalkIn,    { foreignKey: 'branch_id',  as: 'walkIns' });
 Service.hasMany(WalkIn,   { foreignKey: 'service_id', as: 'walkIns' });
 Staff.hasMany(WalkIn,     { foreignKey: 'staff_id',   as: 'walkIns' });
+// ── NotificationLog ───────────────────────────────────────────────────────
+NotificationLog.belongsTo(Branch, { foreignKey: 'branch_id', as: 'branch' });
+Branch.hasMany(NotificationLog,   { foreignKey: 'branch_id', as: 'notificationLogs' });
+
 // ── Review ────────────────────────────────────────────────────────────────
 Review.belongsTo(Branch,  { foreignKey: 'branch_id',  as: 'branch' });
 Review.belongsTo(Payment, { foreignKey: 'payment_id', as: 'payment' });
@@ -144,6 +142,4 @@ module.exports = {
   Package,
   CustomerPackage,
   PackageRedemption,
-  StaffFcmToken,
-  Discount,
 };

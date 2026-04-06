@@ -4,6 +4,10 @@ import '../models/customer.dart';
 import '../models/salon_service.dart';
 import '../models/staff_member.dart';
 import '../state/app_state.dart';
+import '../widgets/walk_in_service_dropdown_section.dart';
+
+// ── Sentinel id for "Register new customer" autocomplete option ──────────────
+const String _kApptNewCustId = '__appt_register_new__';
 
 // ── Palette ───────────────────────────────────────────────────────────────────
 const Color _cDark   = Color(0xFF1D4ED8);   // blue-700
@@ -38,8 +42,11 @@ class _AddApptSheetState extends State<_AddApptSheet> {
   final _phCtrl       = TextEditingController();
   final _amtCtrl      = TextEditingController();
 
-  bool   _loading = true;
-  bool   _saving  = false;
+  bool   _loading       = true;
+  bool   _saving        = false;
+  bool   _registerMode  = false;
+  bool   _registering   = false;
+  bool   _registered    = false;
   String? _error;
 
   List<SalonService>        _services  = [];
@@ -52,7 +59,8 @@ class _AddApptSheetState extends State<_AddApptSheet> {
   String _custId   = '';
   String _date     = '';
   String _time     = '';
-  final List<String> _serviceIds = [];
+  String? _primaryServiceId;
+  final List<String> _extraServiceIds = [];
 
   bool get _isSuper =>
       AppStateScope.of(context).currentUser?.role == 'superadmin';
@@ -131,29 +139,61 @@ class _AddApptSheetState extends State<_AddApptSheet> {
     });
   }
 
+  List<String> _orderedServiceIds() {
+    final p = _primaryServiceId?.trim();
+    if (p == null || p.isEmpty) return const [];
+    return [p, ..._extraServiceIds];
+  }
+
   double get _calcTotal {
     var sum = 0.0;
-    for (final id in _serviceIds) {
+    for (final id in _orderedServiceIds()) {
       for (final s in _services) { if (s.id == id) sum += s.price; }
     }
     return sum;
   }
 
-  void _toggleService(String id) {
+  void _updateTotal() {
+    final total = _calcTotal;
+    _amtCtrl.text = total > 0 ? total.toStringAsFixed(0) : '';
+  }
+
+  void _onPrimaryChanged(String? v) {
     setState(() {
-      if (_serviceIds.contains(id)) {
-        _serviceIds.remove(id);
-      } else {
-        _serviceIds.add(id);
+      final prev = _primaryServiceId;
+      if (v == null) { _primaryServiceId = null; _updateTotal(); return; }
+      if (prev != null && prev.isNotEmpty && prev != v) {
+        _extraServiceIds.insert(0, prev);
       }
-      final total = _calcTotal;
-      _amtCtrl.text = total > 0 ? total.toStringAsFixed(0) : '';
+      _primaryServiceId = v;
+      _updateTotal();
+    });
+  }
+
+  void _onAddExtra(String id) {
+    setState(() {
+      final p = _primaryServiceId?.trim();
+      if (p == null || p.isEmpty) {
+        _primaryServiceId = id;
+      } else {
+        _extraServiceIds.add(id);
+      }
+      _updateTotal();
+    });
+  }
+
+  void _removeExtraAt(int index) {
+    setState(() {
+      if (index >= 0 && index < _extraServiceIds.length) {
+        _extraServiceIds.removeAt(index);
+      }
+      _updateTotal();
     });
   }
 
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
-    if (_serviceIds.isEmpty) {
+    if (_orderedServiceIds().isEmpty) {
       _snack('Select at least one service'); return;
     }
     if (_date.isEmpty) { _snack('Pick a date'); return; }
@@ -170,7 +210,7 @@ class _AddApptSheetState extends State<_AddApptSheet> {
       customerName: _namCtrl.text.trim(),
       phone: _phCtrl.text.trim(),
       customerId: _custId,
-      orderedServiceIds: List<String>.from(_serviceIds),
+      orderedServiceIds: _orderedServiceIds(),
       date: _date,
       time: _time,
       staffId: _staffId,
@@ -187,6 +227,33 @@ class _AddApptSheetState extends State<_AddApptSheet> {
   void _snack(String msg) =>
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text(msg)));
+
+  Future<void> _doRegister() async {
+    final app  = AppStateScope.of(context);
+    final name = _namCtrl.text.trim();
+    if (name.isEmpty) return;
+    setState(() => _registering = true);
+    final newCust = await app.registerCustomer(
+      name: name,
+      phone: _phCtrl.text.trim(),
+      branchId: _branchId.isEmpty ? null : _branchId,
+    );
+    if (!mounted) return;
+    if (newCust != null) {
+      setState(() {
+        _customers   = [newCust, ..._customers];
+        _custId      = newCust.id;
+        _namCtrl.text = newCust.name;
+        if (newCust.phone.isNotEmpty) _phCtrl.text = newCust.phone;
+        _registered   = true;
+        _registerMode = false;
+        _registering  = false;
+      });
+    } else {
+      setState(() => _registering = false);
+      _snack(app.lastError ?? 'Failed to register customer');
+    }
+  }
 
   @override
   void dispose() {
@@ -336,22 +403,79 @@ class _AddApptSheetState extends State<_AddApptSheet> {
 
                   // Customer name
                   _label('CUSTOMER'),
+
+                  if (_registered) ...[
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF0FDF4),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: const Color(0xFF86EFAC)),
+                      ),
+                      child: Row(children: [
+                        const Icon(Icons.check_circle_rounded,
+                            color: Color(0xFF15803D), size: 16),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'New customer "${_namCtrl.text}" registered!',
+                            style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                                color: Color(0xFF065F46)),
+                          ),
+                        ),
+                      ]),
+                    ),
+                  ],
+
                   Autocomplete<Customer>(
                     optionsBuilder: (val) {
-                      final q = val.text.trim().toLowerCase();
-                      if (q.isEmpty) return _customers.take(10);
-                      return _customers
-                          .where((c) =>
-                              c.name.toLowerCase().contains(q) ||
-                              c.phone.contains(q))
-                          .take(15);
+                      final q   = val.text.trim().toLowerCase();
+                      List<Customer> matches;
+                      if (q.isEmpty) {
+                        matches = _customers.take(10).toList();
+                      } else {
+                        matches = _customers
+                            .where((c) =>
+                                c.name.toLowerCase().contains(q) ||
+                                c.phone.contains(q))
+                            .take(15)
+                            .toList();
+                      }
+                      final hasExact = _customers
+                          .any((c) => c.name.toLowerCase() == q);
+                      if (q.length >= 2 && !hasExact) {
+                        matches = [
+                          ...matches,
+                          Customer(
+                              id: _kApptNewCustId,
+                              name: val.text.trim(),
+                              phone: '',
+                              email: ''),
+                        ];
+                      }
+                      return matches;
                     },
                     displayStringForOption: (c) => c.name,
                     onSelected: (c) {
+                      if (c.id == _kApptNewCustId) {
+                        setState(() {
+                          _registerMode = true;
+                          _registered   = false;
+                          _custId       = '';
+                          _namCtrl.text = c.name;
+                        });
+                        return;
+                      }
                       setState(() {
                         _namCtrl.text = c.name;
                         _phCtrl.text  = c.phone;
                         _custId       = c.id;
+                        _registerMode = false;
+                        _registered   = false;
                       });
                     },
                     fieldViewBuilder: (ctx, ctrl, fn, _) {
@@ -361,7 +485,14 @@ class _AddApptSheetState extends State<_AddApptSheet> {
                         decoration: _deco(
                             'Name or phone', Icons.person_search_rounded),
                         onChanged: (v) {
-                          _namCtrl.text = v; _custId = '';
+                          _namCtrl.text = v;
+                          _custId = '';
+                          if (_registerMode || _registered) {
+                            setState(() {
+                              _registerMode = false;
+                              _registered   = false;
+                            });
+                          }
                         },
                         validator: (v) => v == null || v.trim().isEmpty
                             ? 'Required' : null,
@@ -374,13 +505,38 @@ class _AddApptSheetState extends State<_AddApptSheet> {
                         borderRadius: BorderRadius.circular(14),
                         child: ConstrainedBox(
                           constraints: const BoxConstraints(
-                              maxHeight: 180, maxWidth: 400),
+                              maxHeight: 200, maxWidth: 400),
                           child: ListView.builder(
                             shrinkWrap: true,
                             padding: const EdgeInsets.symmetric(vertical: 6),
                             itemCount: opts.length,
                             itemBuilder: (_, i) {
                               final c = opts.elementAt(i);
+                              if (c.id == _kApptNewCustId) {
+                                return ListTile(
+                                  dense: true,
+                                  tileColor: const Color(0xFFF0FDF4),
+                                  leading: CircleAvatar(
+                                    radius: 15,
+                                    backgroundColor: const Color(0xFFDCFCE7),
+                                    child: const Icon(
+                                        Icons.person_add_alt_1_rounded,
+                                        size: 15,
+                                        color: Color(0xFF15803D)),
+                                  ),
+                                  title: Text(
+                                    'Register "${c.name}" as new customer',
+                                    style: const TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 13,
+                                        color: Color(0xFF15803D)),
+                                  ),
+                                  subtitle: const Text(
+                                      'Add phone below, then register',
+                                      style: TextStyle(fontSize: 11)),
+                                  onTap: () => onSel(c),
+                                );
+                              }
                               return ListTile(
                                 dense: true,
                                 leading: CircleAvatar(
@@ -422,73 +578,81 @@ class _AddApptSheetState extends State<_AddApptSheet> {
                         _deco('Phone number', Icons.call_outlined),
                   ),
 
-                  const SizedBox(height: 12),
-
-                  // Services (multi-select chips)
-                  _label('SERVICES'),
-                  if (active.isEmpty)
-                    const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 8),
-                      child: Text('No active services',
-                          style: TextStyle(
-                              color: Color(0xFFADB5BD), fontSize: 13)),
-                    )
-                  else
-                    Wrap(
-                      spacing: 7,
-                      runSpacing: 7,
-                      children: active.map((s) {
-                        final on = _serviceIds.contains(s.id);
-                        return GestureDetector(
-                          onTap: () => _toggleService(s.id),
-                          child: AnimatedContainer(
-                            duration: const Duration(milliseconds: 140),
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 11, vertical: 7),
-                            decoration: BoxDecoration(
-                              color: on ? _cLight : const Color(0xFFF9FAFB),
-                              borderRadius: BorderRadius.circular(9),
-                              border: Border.all(
-                                color: on ? _cMid : _cBorder,
-                                width: on ? 1.5 : 1,
+                  // Register banner
+                  if (_registerMode) ...[
+                    const SizedBox(height: 10),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF0FDF4),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0xFF86EFAC)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Register "${_namCtrl.text}" as new customer',
+                            style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                                color: Color(0xFF065F46)),
+                          ),
+                          const SizedBox(height: 4),
+                          const Text(
+                            'Phone number above will be saved. Tap to register.',
+                            style: TextStyle(
+                                fontSize: 11, color: Color(0xFF6B7280)),
+                          ),
+                          const SizedBox(height: 10),
+                          GestureDetector(
+                            onTap: _registering ? null : _doRegister,
+                            child: Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.symmetric(vertical: 11),
+                              decoration: BoxDecoration(
+                                color: _registering
+                                    ? const Color(0xFF9CA3AF)
+                                    : _cMid,
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Center(
+                                child: _registering
+                                    ? const SizedBox(
+                                        width: 16, height: 16,
+                                        child: CircularProgressIndicator(
+                                            color: Colors.white,
+                                            strokeWidth: 2))
+                                    : const Text('Add & Register Customer',
+                                        style: TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w700)),
                               ),
                             ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                if (on)
-                                  Padding(
-                                    padding: const EdgeInsets.only(right: 5),
-                                    child: Icon(Icons.check_circle_rounded,
-                                        size: 13, color: _cMid),
-                                  ),
-                                Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.start,
-                                  children: [
-                                    Text(s.name,
-                                        style: TextStyle(
-                                            color: on
-                                                ? _cDark
-                                                : const Color(0xFF374151),
-                                            fontSize: 12.5,
-                                            fontWeight: FontWeight.w700)),
-                                    Text(
-                                        'LKR ${s.price.toStringAsFixed(0)}',
-                                        style: TextStyle(
-                                            color: on
-                                                ? _cMid
-                                                : const Color(0xFFADB5BD),
-                                            fontSize: 10.5,
-                                            fontWeight: FontWeight.w600)),
-                                  ],
-                                ),
-                              ],
-                            ),
                           ),
-                        );
-                      }).toList(),
+                        ],
+                      ),
                     ),
+                  ],
+
+                  const SizedBox(height: 12),
+
+                  // Services (dropdown)
+                  WalkInServiceDropdownSection(
+                    activeServices: active,
+                    primaryServiceId: _primaryServiceId,
+                    orderedServiceIds: _orderedServiceIds(),
+                    onPrimaryChanged: _onPrimaryChanged,
+                    onAddExtra: _onAddExtra,
+                    onRemoveExtraAt: _removeExtraAt,
+                    label: 'SERVICES',
+                    helperText: 'Pick primary service; add more lines below.',
+                    accentColor: _cMid,
+                    borderColor: _cBorder,
+                    bgColor: _cBg,
+                    mutedColor: const Color(0xFF6B7280),
+                  ),
 
                   const SizedBox(height: 10),
 
@@ -502,22 +666,22 @@ class _AddApptSheetState extends State<_AddApptSheet> {
                           padding: const EdgeInsets.symmetric(
                               horizontal: 12, vertical: 13),
                           decoration: BoxDecoration(
-                            color: _serviceIds.isEmpty ? _cBg : _cLight,
+                            color: _orderedServiceIds().isEmpty ? _cBg : _cLight,
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(
-                              color: _serviceIds.isEmpty
+                              color: _orderedServiceIds().isEmpty
                                   ? _cBorder
                                   : _cLightB,
-                              width: _serviceIds.isEmpty ? 1 : 1.5,
+                              width: _orderedServiceIds().isEmpty ? 1 : 1.5,
                             ),
                           ),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                '${_serviceIds.length} service${_serviceIds.length == 1 ? '' : 's'}',
+                                '${_orderedServiceIds().length} service${_orderedServiceIds().length == 1 ? '' : 's'}',
                                 style: TextStyle(
-                                    color: _serviceIds.isEmpty
+                                    color: _orderedServiceIds().isEmpty
                                         ? const Color(0xFFADB5BD)
                                         : _cMid,
                                     fontSize: 10.5,
@@ -526,7 +690,7 @@ class _AddApptSheetState extends State<_AddApptSheet> {
                               Text(
                                 'LKR ${_calcTotal.toStringAsFixed(0)}',
                                 style: TextStyle(
-                                    color: _serviceIds.isEmpty
+                                    color: _orderedServiceIds().isEmpty
                                         ? const Color(0xFF9CA3AF)
                                         : _cDark,
                                     fontSize: 15,

@@ -236,22 +236,4 @@ const summary = async (req, res) => {
   }
 };
 
-const update = async (req, res) => {
-  try {
-    const payment = await Payment.findByPk(req.params.id);
-    if (!payment) return res.status(404).json({ message: 'Payment not found.' });
-
-    const allowed = ['status', 'notes'];
-    const updates = {};
-    for (const field of allowed) {
-      if (req.body[field] !== undefined) updates[field] = req.body[field];
-    }
-    await payment.update(updates);
-    return res.json(payment);
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ message: 'Server error.' });
-  }
-};
-
-module.exports = { list, getOne, create, summary, update };
+module.exports = { list, getOne, create, summary };

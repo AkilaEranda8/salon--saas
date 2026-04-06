@@ -54,7 +54,6 @@ services:
       DB_NAME: ${DB_NAME:-zanesalon}
       JWT_SECRET: ${JWT_SECRET:-zanesalon_docker_jwt_secret_change_me}
       PORT: 5000
-      FIREBASE_SERVICE_ACCOUNT_JSON: ${FIREBASE_SERVICE_ACCOUNT_JSON:-}
     expose:
       - "5000"
     ports:

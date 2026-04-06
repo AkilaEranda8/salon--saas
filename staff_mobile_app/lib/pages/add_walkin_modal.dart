@@ -7,6 +7,9 @@ import '../widgets/walk_in_service_dropdown_section.dart';
 /// Same as web `WalkInPage.jsx` — extra services go in `note`; API stores one `service_id`.
 const String _kAdditionalServicesLinePrefix = 'Additional services:';
 
+/// Sentinel id for the "Register new customer" autocomplete option.
+const String _kWalkInNewCustId = '__walkin_register_new__';
+
 // ── Palette ───────────────────────────────────────────────────────────────────
 const Color _cForest  = Color(0xFF1B3A2D);
 const Color _cEmerald = Color(0xFF2D6A4F);
@@ -44,6 +47,7 @@ class AddWalkInModal extends StatefulWidget {
     required this.services,
     this.customers = const [],
     this.initialBranchId,
+    this.onRegisterNewCustomer,
     super.key,
   });
 
@@ -51,6 +55,8 @@ class AddWalkInModal extends StatefulWidget {
   final List<SalonService> services;
   final List<Customer> customers;
   final String? initialBranchId;
+  /// Called when user taps "Add & Register". Returns created [Customer] or null.
+  final Future<Customer?> Function(String name, String phone, String? branchId)? onRegisterNewCustomer;
 
   static Future<AddWalkInModalResult?> show(
     BuildContext context, {
@@ -58,6 +64,7 @@ class AddWalkInModal extends StatefulWidget {
     required List<SalonService> services,
     List<Customer> customers = const [],
     String? initialBranchId,
+    Future<Customer?> Function(String name, String phone, String? branchId)? onRegisterNewCustomer,
   }) {
     return showModalBottomSheet<AddWalkInModalResult>(
       context: context,
@@ -68,6 +75,7 @@ class AddWalkInModal extends StatefulWidget {
         services: services,
         customers: customers,
         initialBranchId: initialBranchId,
+        onRegisterNewCustomer: onRegisterNewCustomer,
       ),
     );
   }
@@ -85,6 +93,10 @@ class _AddWalkInModalState extends State<AddWalkInModal> {
   String? _branchId;
   String? _primaryServiceId;
   final List<String> _extraServiceIds = [];
+
+  bool _registerMode = false;
+  bool _registering  = false;
+  bool _registered   = false;
 
   @override
   void initState() {
@@ -183,6 +195,31 @@ class _AddWalkInModalState extends State<AddWalkInModal> {
     final extraLine = '$_kAdditionalServicesLinePrefix ${extraNames.join(', ')}';
     if (base.isEmpty) return extraLine;
     return '$base\n$extraLine';
+  }
+
+  Future<void> _doRegister() async {
+    final fn = widget.onRegisterNewCustomer;
+    if (fn == null) return;
+    final name = _nameCtrl.text.trim();
+    if (name.isEmpty) return;
+    setState(() => _registering = true);
+    final newCust = await fn(name, _phoneCtrl.text.trim(), _branchId);
+    if (!mounted) return;
+    if (newCust != null) {
+      setState(() {
+        _registered   = true;
+        _registerMode = false;
+        _registering  = false;
+        _nameCtrl.text  = newCust.name;
+        _phoneCtrl.text = newCust.phone.isNotEmpty ? newCust.phone : _phoneCtrl.text;
+      });
+    } else {
+      setState(() => _registering = false);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Failed to register customer. Try again.'),
+        behavior: SnackBarBehavior.floating,
+      ));
+    }
   }
 
   void _submit() {
@@ -310,24 +347,82 @@ class _AddWalkInModalState extends State<AddWalkInModal> {
 
               const SizedBox(height: 22),
 
-              // ── Customer (autocomplete) — first ─────────────────────
+              // ── Customer (autocomplete + register new) ─────────────
               _label('CUSTOMER'),
+
+              // Registered success chip
+              if (_registered) ...[
+                Container(
+                  margin: const EdgeInsets.only(bottom: 10),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF0FDF4),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: const Color(0xFF86EFAC)),
+                  ),
+                  child: Row(children: [
+                    const Icon(Icons.check_circle_rounded,
+                        color: Color(0xFF15803D), size: 16),
+                    const SizedBox(width: 8),
+                    Text(
+                      'New customer "${_nameCtrl.text}" registered!',
+                      style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF065F46)),
+                    ),
+                  ]),
+                ),
+              ],
+
               Autocomplete<Customer>(
                 optionsBuilder: (val) {
-                  final q = val.text.trim().toLowerCase();
+                  final q   = val.text.trim().toLowerCase();
                   final all = widget.customers;
-                  if (q.isEmpty) return all.take(10);
-                  return all
-                      .where((c) =>
-                          c.name.toLowerCase().contains(q) ||
-                          c.phone.contains(q))
-                      .take(15);
+                  List<Customer> matches;
+                  if (q.isEmpty) {
+                    matches = all.take(10).toList();
+                  } else {
+                    matches = all
+                        .where((c) =>
+                            c.name.toLowerCase().contains(q) ||
+                            c.phone.contains(q))
+                        .take(15)
+                        .toList();
+                  }
+                  // Sentinel when no exact match & ≥2 chars
+                  final hasExact =
+                      all.any((c) => c.name.toLowerCase() == q);
+                  if (q.length >= 2 &&
+                      !hasExact &&
+                      widget.onRegisterNewCustomer != null) {
+                    matches = [
+                      ...matches,
+                      Customer(
+                          id: _kWalkInNewCustId,
+                          name: val.text.trim(),
+                          phone: '',
+                          email: ''),
+                    ];
+                  }
+                  return matches;
                 },
                 displayStringForOption: (c) => c.name,
                 onSelected: (c) {
+                  if (c.id == _kWalkInNewCustId) {
+                    setState(() {
+                      _registerMode = true;
+                      _registered   = false;
+                      _nameCtrl.text = c.name;
+                    });
+                    return;
+                  }
                   setState(() {
                     _nameCtrl.text  = c.name;
                     _phoneCtrl.text = c.phone;
+                    _registerMode   = false;
+                    _registered     = false;
                   });
                 },
                 fieldViewBuilder: (ctx, ctrl, fn, _) {
@@ -347,6 +442,12 @@ class _AddWalkInModalState extends State<AddWalkInModal> {
                         required: true),
                     onChanged: (v) {
                       _nameCtrl.text = v;
+                      if (_registerMode || _registered) {
+                        setState(() {
+                          _registerMode = false;
+                          _registered   = false;
+                        });
+                      }
                     },
                     validator: (v) =>
                         (v == null || v.trim().isEmpty)
@@ -354,53 +455,78 @@ class _AddWalkInModalState extends State<AddWalkInModal> {
                             : null,
                   );
                 },
-                optionsViewBuilder: widget.customers.isEmpty
-                    ? null
-                    : (ctx, onSel, opts) => Align(
-                        alignment: Alignment.topLeft,
-                        child: Material(
-                          elevation: 8,
-                          borderRadius: BorderRadius.circular(14),
-                          child: ConstrainedBox(
-                            constraints: const BoxConstraints(
-                                maxHeight: 200, maxWidth: 420),
-                            child: ListView.builder(
-                              shrinkWrap: true,
-                              padding:
-                                  const EdgeInsets.symmetric(vertical: 6),
-                              itemCount: opts.length,
-                              itemBuilder: (_, i) {
-                                final c = opts.elementAt(i);
-                                final init = c.name.isNotEmpty
-                                    ? c.name[0].toUpperCase()
-                                    : '?';
-                                return ListTile(
-                                  dense: true,
-                                  leading: CircleAvatar(
-                                    radius: 16,
-                                    backgroundColor: _cGreenL,
-                                    child: Text(init,
-                                        style: const TextStyle(
-                                            color: _cForest,
-                                            fontWeight: FontWeight.w800,
-                                            fontSize: 13)),
-                                  ),
-                                  title: Text(c.name,
-                                      style: const TextStyle(
-                                          fontWeight: FontWeight.w700,
-                                          fontSize: 13.5)),
-                                  subtitle: c.phone.isNotEmpty
-                                      ? Text(c.phone,
-                                          style: const TextStyle(
-                                              color: _cMuted, fontSize: 12))
-                                      : null,
-                                  onTap: () => onSel(c),
-                                );
-                              },
+                optionsViewBuilder: (ctx, onSel, opts) => Align(
+                  alignment: Alignment.topLeft,
+                  child: Material(
+                    elevation: 8,
+                    borderRadius: BorderRadius.circular(14),
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(
+                          maxHeight: 220, maxWidth: 420),
+                      child: ListView.builder(
+                        shrinkWrap: true,
+                        padding:
+                            const EdgeInsets.symmetric(vertical: 6),
+                        itemCount: opts.length,
+                        itemBuilder: (_, i) {
+                          final c = opts.elementAt(i);
+                          if (c.id == _kWalkInNewCustId) {
+                            return ListTile(
+                              dense: true,
+                              tileColor: const Color(0xFFF0FDF4),
+                              leading: CircleAvatar(
+                                radius: 16,
+                                backgroundColor:
+                                    const Color(0xFFDCFCE7),
+                                child: const Icon(
+                                    Icons.person_add_alt_1_rounded,
+                                    size: 16,
+                                    color: Color(0xFF15803D)),
+                              ),
+                              title: Text(
+                                'Register "${c.name}" as new customer',
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 13,
+                                    color: Color(0xFF15803D)),
+                              ),
+                              subtitle: const Text(
+                                  'Add name + phone, then register',
+                                  style: TextStyle(fontSize: 11)),
+                              onTap: () => onSel(c),
+                            );
+                          }
+                          final init = c.name.isNotEmpty
+                              ? c.name[0].toUpperCase()
+                              : '?';
+                          return ListTile(
+                            dense: true,
+                            leading: CircleAvatar(
+                              radius: 16,
+                              backgroundColor: _cGreenL,
+                              child: Text(init,
+                                  style: const TextStyle(
+                                      color: _cForest,
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 13)),
                             ),
-                          ),
-                        ),
+                            title: Text(c.name,
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 13.5)),
+                            subtitle: c.phone.isNotEmpty
+                                ? Text(c.phone,
+                                    style: const TextStyle(
+                                        color: _cMuted,
+                                        fontSize: 12))
+                                : null,
+                            onTap: () => onSel(c),
+                          );
+                        },
                       ),
+                    ),
+                  ),
+                ),
               ),
 
               const SizedBox(height: 14),
@@ -413,6 +539,67 @@ class _AddWalkInModalState extends State<AddWalkInModal> {
                 decoration:
                     _deco('e.g. 0771234567', Icons.phone_outlined),
               ),
+
+              // ── Register banner (shown after sentinel selected) ──────
+              if (_registerMode) ...[
+
+                const SizedBox(height: 10),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF0FDF4),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFF86EFAC)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Register "${_nameCtrl.text}" as new customer',
+                        style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF065F46)),
+                      ),
+                      const SizedBox(height: 4),
+                      const Text(
+                        'Phone number above will be saved. Tap the button to register.',
+                        style: TextStyle(
+                            fontSize: 11, color: Color(0xFF6B7280)),
+                      ),
+                      const SizedBox(height: 10),
+                      GestureDetector(
+                        onTap: _registering ? null : _doRegister,
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(
+                              vertical: 11),
+                          decoration: BoxDecoration(
+                            color: _registering
+                                ? const Color(0xFF9CA3AF)
+                                : const Color(0xFF059669),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Center(
+                            child: _registering
+                                ? const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                        color: Colors.white,
+                                        strokeWidth: 2))
+                                : const Text('Add & Register Customer',
+                                    style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w700)),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
 
               const SizedBox(height: 14),
 

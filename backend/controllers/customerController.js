@@ -11,7 +11,7 @@ const getBranchWhere = (req) => {
 const list = async (req, res) => {
   try {
     const page   = Math.max(parseInt(req.query.page)  || 1, 1);
-    const limit  = Math.min(parseInt(req.query.limit) || 20, 500);
+    const limit  = Math.min(parseInt(req.query.limit) || 20, 100);
     const offset = (page - 1) * limit;
 
     const where = getBranchWhere(req);

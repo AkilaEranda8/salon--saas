@@ -71,11 +71,16 @@ async function writeLog({ customer_name, phone, email, event_type, channel, mess
 
 // ── Settings loader ───────────────────────────────────────────────────────────
 const DEFAULT_FLAGS = {
-  appt_confirmed_email:     true,
-  appt_confirmed_whatsapp:  true,
-  payment_receipt_email:    true,
-  payment_receipt_whatsapp: true,
-  loyalty_points_whatsapp:  true,
+  appt_confirmed_email:      true,
+  appt_confirmed_whatsapp:   true,
+  appt_confirmed_sms:        false,
+  payment_receipt_email:     true,
+  payment_receipt_whatsapp:  true,
+  payment_receipt_sms:       true,
+  loyalty_points_whatsapp:   true,
+  loyalty_points_sms:        false,
+  customer_registered_sms:   false,
+  customer_registered_email: false,
 };
 
 async function getChannelFlags() {
@@ -432,6 +437,18 @@ async function notifyPaymentReceipt(payment, branch, service, customer) {
     if (pointsEarned > 0) msg += `\n🌟 You earned *${pointsEarned} loyalty points*!`;
     msg += `\n\nThank you for choosing Zane Salon! 💜`;
     await sendWhatsApp({ to: phone, message: msg, meta });
+  }
+
+  if (phone && flags.payment_receipt_sms) {
+    let smsMsg =
+      `Zane Salon - Payment Receipt\n` +
+      `Hi ${customerName}! Payment confirmed.\n` +
+      `Service: ${svcName} | Branch: ${brName}\n` +
+      `Date: ${date} | Total: ${total}`;
+    if (discount > 0)     smsMsg += `\nDiscount: Rs. ${discount.toFixed(2)}`;
+    if (pointsEarned > 0) smsMsg += `\nEarned: +${pointsEarned} pts`;
+    smsMsg += `\nThank you!`;
+    await sendSMS({ to: phone, message: smsMsg, meta });
   }
 }
 

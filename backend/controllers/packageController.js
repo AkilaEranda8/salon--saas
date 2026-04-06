@@ -359,6 +359,52 @@ const redeem = async (req, res) => {
   }
 };
 
+// ── PURCHASE PACKAGE FOR ALL CUSTOMERS ──────────────────────────────────────
+
+const purchaseForAllCustomers = async (req, res) => {
+  try {
+    const { Package, Customer, CustomerPackage } = require('../models');
+    const { packageId, branchId, expiryMonths = 12 } = req.body;
+    if (!packageId) return res.status(400).json({ message: 'packageId is required.' });
+
+    const pkg = await Package.findByPk(packageId);
+    if (!pkg) return res.status(404).json({ message: 'Package not found.' });
+
+    const where = {};
+    if (branchId) where.branch_id = branchId;
+    else if (req.userBranchId) where.branch_id = req.userBranchId;
+
+    const customers = await Customer.findAll({ where, attributes: ['id', 'branch_id'] });
+    if (!customers.length) return res.status(404).json({ message: 'No customers found.' });
+
+    const expiry = new Date();
+    expiry.setMonth(expiry.getMonth() + parseInt(expiryMonths));
+    const expiryStr = expiry.toISOString().slice(0, 10);
+    const today = new Date().toISOString().slice(0, 10);
+
+    let created = 0;
+    for (const c of customers) {
+      await CustomerPackage.create({
+        customer_id:       c.id,
+        package_id:        packageId,
+        branch_id:         c.branch_id || branchId || req.userBranchId,
+        purchase_date:     today,
+        expiry_date:       expiryStr,
+        sessions_total:    pkg.sessions_count || 0,
+        sessions_used:     0,
+        sessions_remaining: pkg.sessions_count || 0,
+        status:            'active',
+      });
+      created++;
+    }
+
+    return res.json({ message: `Package assigned to ${created} customers.`, created });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: 'Server error.' });
+  }
+};
+
 // ── LIST ALL CUSTOMER PACKAGES (admin view) ─────────────────────────────────
 
 const listAllCustomerPackages = async (req, res) => {
@@ -391,4 +437,4 @@ const listAllCustomerPackages = async (req, res) => {
   }
 };
 
-module.exports = { list, getOne, create, update, remove, customerPackages, activePackages, purchase, redeem, listAllCustomerPackages };
+module.exports = { list, getOne, create, update, remove, customerPackages, activePackages, purchase, purchaseForAllCustomers, redeem, listAllCustomerPackages };

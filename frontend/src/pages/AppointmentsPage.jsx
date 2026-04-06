@@ -919,6 +919,24 @@ export default function AppointmentsPage() {
                   </FormGroup>
                 )}
               </div>
+              {(() => {
+                const gross = calcServiceTotal(paymentServices);
+                const sel = paymentDiscountId ? paymentDiscounts.find(d => String(d.id) === String(paymentDiscountId)) : null;
+                const promo = sel ? computePromoFromDiscount(sel, gross) : 0;
+                return promo > 0 ? (
+                  <div style={{ background:'#FDF4FF', border:'1px solid #E9D5FF', borderRadius:10, padding:'10px 14px', fontSize:13 }}>
+                    <div style={{ display:'flex', justifyContent:'space-between', color:'#6B7280' }}>
+                      <span>Subtotal</span><span>Rs. {gross.toLocaleString()}</span>
+                    </div>
+                    <div style={{ display:'flex', justifyContent:'space-between', color:'#7C3AED', fontWeight:700, marginTop:4 }}>
+                      <span>Discount ({sel.name})</span><span>− Rs. {promo.toLocaleString()}</span>
+                    </div>
+                    <div style={{ display:'flex', justifyContent:'space-between', color:'#059669', fontWeight:800, fontSize:14, marginTop:6, borderTop:'1px solid #E9D5FF', paddingTop:6 }}>
+                      <span>Total</span><span>Rs. {Math.max(0, gross - promo).toLocaleString()}</span>
+                    </div>
+                  </div>
+                ) : null;
+              })()}
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
                 <FormGroup label="Paid (Rs.)" required>
                   <Input type="number" value={paymentAmt} onChange={e=>setPaymentAmt(e.target.value)} placeholder="0" />

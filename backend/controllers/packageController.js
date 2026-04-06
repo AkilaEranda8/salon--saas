@@ -364,41 +364,48 @@ const redeem = async (req, res) => {
 const purchaseForAllCustomers = async (req, res) => {
   try {
     const { Package, Customer, CustomerPackage } = require('../models');
-    const { packageId, branchId, expiryMonths = 12 } = req.body;
+    const packageId     = req.body.packageId     || req.body.package_id;
+    const branchId      = req.body.branchId      || req.body.branch_id;
+    const paymentMethod = req.body.paymentMethod || req.body.payment_method || 'Cash';
+    const notes         = req.body.notes || null;
+
     if (!packageId) return res.status(400).json({ message: 'packageId is required.' });
 
     const pkg = await Package.findByPk(packageId);
     if (!pkg) return res.status(404).json({ message: 'Package not found.' });
 
     const where = {};
-    if (branchId) where.branch_id = branchId;
+    if (branchId)              where.branch_id = branchId;
     else if (req.userBranchId) where.branch_id = req.userBranchId;
+    // superadmin with no branch: no where clause → all customers across all branches
 
     const customers = await Customer.findAll({ where, attributes: ['id', 'branch_id'] });
     if (!customers.length) return res.status(404).json({ message: 'No customers found.' });
 
+    const today  = new Date().toISOString().slice(0, 10);
     const expiry = new Date();
-    expiry.setMonth(expiry.getMonth() + parseInt(expiryMonths));
+    expiry.setDate(expiry.getDate() + (pkg.validity_days || 90));
     const expiryStr = expiry.toISOString().slice(0, 10);
-    const today = new Date().toISOString().slice(0, 10);
 
     let created = 0;
     for (const c of customers) {
       await CustomerPackage.create({
-        customer_id:       c.id,
-        package_id:        packageId,
-        branch_id:         c.branch_id || branchId || req.userBranchId,
-        purchase_date:     today,
-        expiry_date:       expiryStr,
-        sessions_total:    pkg.sessions_count || 0,
-        sessions_used:     0,
-        sessions_remaining: pkg.sessions_count || 0,
-        status:            'active',
+        customer_id:    c.id,
+        package_id:     packageId,
+        branch_id:      c.branch_id || branchId || req.userBranchId,
+        purchase_date:  today,
+        expiry_date:    expiryStr,
+        sessions_total: pkg.sessions_count ?? null,
+        sessions_used:  0,
+        status:         'active',
+        amount_paid:    pkg.package_price,
+        payment_method: paymentMethod,
+        notes,
       });
       created++;
     }
 
-    return res.json({ message: `Package assigned to ${created} customers.`, created });
+    return res.json({ message: `Package activated for ${created} customer${created !== 1 ? 's' : ''}.`, created });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ message: 'Server error.' });

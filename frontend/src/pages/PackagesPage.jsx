@@ -312,7 +312,7 @@ export default function PackagesPage() {
       setPkgFormError('Please select a customer to activate this package.');
       return;
     }
-    if (!editPkg && (activateForSingle || activateForAll)) {
+    if (!editPkg && activateForSingle) {
       const selectedCustomer = customers.find(c => String(c.id) === String(createActivate.customer_id));
       const preBranchId = (pkgForm.branch_id ? Number(pkgForm.branch_id) : null) || user.branchId || selectedCustomer?.branch_id || selectedCustomer?.branchId;
       if (!preBranchId) {
@@ -362,12 +362,12 @@ export default function PackagesPage() {
         });
       }
       if (!editPkg && activateForAll) {
-        const activationBranchId = payload.branch_id || user.branchId;
+        const activationBranchId = payload.branch_id || user.branchId || null;
         await api.post('/packages/purchase-all', {
-          package_id: Number(createdPkg?.id),
-          branch_id: Number(activationBranchId),
-          payment_method: createActivate.payment_method || 'Cash',
-          notes: createActivate.notes || undefined,
+          packageId:     Number(createdPkg?.id),
+          branchId:      activationBranchId ? Number(activationBranchId) : undefined,
+          paymentMethod: createActivate.payment_method || 'Cash',
+          notes:         createActivate.notes || undefined,
         });
       }
       setShowPkgModal(false);

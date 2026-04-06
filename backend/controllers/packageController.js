@@ -197,10 +197,12 @@ const activePackages = async (req, res) => {
       order: [['expiry_date', 'ASC']],
     });
 
+    console.log(`[activePackages] customerId=${req.params.customerId} today=${today} rowsFound=${rows.length}`, rows.map(r=>({id:r.id,status:r.status,expiry:r.expiry_date,sessions_total:r.sessions_total,sessions_used:r.sessions_used})));
     // sessions_total null or 0 = unlimited (0 from old broken bulk-activate code)
     const active = rows.filter((cp) =>
       cp.sessions_total === null || cp.sessions_total === 0 || cp.sessions_remaining > 0
     );
+    console.log(`[activePackages] after filter: ${active.length}`);
     return res.json(active);
   } catch (err) {
     console.error(err);

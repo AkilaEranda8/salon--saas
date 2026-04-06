@@ -517,7 +517,13 @@ export default function AppointmentsPage() {
         ...form,
         service_id: primary?.id || form.service_id,
         service_ids: apptServiceIds,
-        amount: selectedSvcs.reduce((sum, s) => sum + Number(s.price || 0), 0) || form.amount,
+        amount: (() => {
+          if (selectedCustomerPackageId) {
+            const cp = customerPackages.find((p) => String(p.id) === String(selectedCustomerPackageId));
+            if (cp?.package?.package_price) return Number(cp.package.package_price);
+          }
+          return selectedSvcs.reduce((sum, s) => sum + Number(s.price || 0), 0) || form.amount;
+        })(),
         notes: [
           stripPackageLine(stripAdditionalServicesLine(form.notes || '')),
           selectedCustomerPackageId
@@ -578,9 +584,9 @@ export default function AppointmentsPage() {
     const availableSvcIds = services.filter((s) => s.is_active !== false).map((s) => Number(s.id));
     const nextIds = pkgServiceIds.filter((id) => availableSvcIds.includes(id));
     if (!nextIds.length) return;
-    const total = calcServiceTotal(nextIds);
+    const pkgPrice = cp.package?.package_price ? Number(cp.package.package_price) : null;
     setApptServiceIds(nextIds);
-    setForm((f) => ({ ...f, service_id: nextIds[0] || '', amount: total || f.amount }));
+    setForm((f) => ({ ...f, service_id: nextIds[0] || '', amount: pkgPrice ?? calcServiceTotal(nextIds) ?? f.amount }));
   };
 
   const filteredStaff = form.branch_id ? staffList.filter(s => s.branch_id==form.branch_id) : staffList;
@@ -919,24 +925,6 @@ export default function AppointmentsPage() {
                   </FormGroup>
                 )}
               </div>
-              {(() => {
-                const gross = calcServiceTotal(paymentServices);
-                const sel = paymentDiscountId ? paymentDiscounts.find(d => String(d.id) === String(paymentDiscountId)) : null;
-                const promo = sel ? computePromoFromDiscount(sel, gross) : 0;
-                return promo > 0 ? (
-                  <div style={{ background:'#FDF4FF', border:'1px solid #E9D5FF', borderRadius:10, padding:'10px 14px', fontSize:13 }}>
-                    <div style={{ display:'flex', justifyContent:'space-between', color:'#6B7280' }}>
-                      <span>Subtotal</span><span>Rs. {gross.toLocaleString()}</span>
-                    </div>
-                    <div style={{ display:'flex', justifyContent:'space-between', color:'#7C3AED', fontWeight:700, marginTop:4 }}>
-                      <span>Discount ({sel.name})</span><span>− Rs. {promo.toLocaleString()}</span>
-                    </div>
-                    <div style={{ display:'flex', justifyContent:'space-between', color:'#059669', fontWeight:800, fontSize:14, marginTop:6, borderTop:'1px solid #E9D5FF', paddingTop:6 }}>
-                      <span>Total</span><span>Rs. {Math.max(0, gross - promo).toLocaleString()}</span>
-                    </div>
-                  </div>
-                ) : null;
-              })()}
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
                 <FormGroup label="Paid (Rs.)" required>
                   <Input type="number" value={paymentAmt} onChange={e=>setPaymentAmt(e.target.value)} placeholder="0" />

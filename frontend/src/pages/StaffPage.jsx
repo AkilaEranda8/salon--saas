@@ -10,7 +10,7 @@ import {
   FilterBar, SearchBar, DataTable,
 } from '../components/ui/PageKit';
 
-const EMPTY = { name:'', phone:'', role_title:'', branch_id:'', commission_type:'percentage', commission_value:'', join_date:'', is_active:true };
+const EMPTY = { name:'', phone:'', email:'', role_title:'', branch_ids:[], commission_type:'percentage', commission_value:'', join_date:'', is_active:true };
 
 function CommBadge({ type, value }) {
   return (
@@ -24,11 +24,15 @@ export default function StaffPage() {
   const { user }     = useAuth();
   const canEdit      = ['superadmin','admin','manager'].includes(user?.role);
   const isSuperAdmin = user?.role === 'superadmin';
+  /** Superadmin + admin should load all branches by default; a home branch_id would hide staff in other branches. */
+  const seesAllBranches = ['superadmin', 'admin'].includes(user?.role);
   const [staff, setStaff]               = useState([]);
   const [branches, setBranches]         = useState([]);
   const [services, setServices]         = useState([]);
   const [loading, setLoading]           = useState(true);
-  const [filterBranch, setFilterBranch] = useState(isSuperAdmin ? '' : user?.branch_id || '');
+  const [filterBranch, setFilterBranch] = useState(
+    seesAllBranches ? '' : (user?.branch_id ?? user?.branchId ?? ''),
+  );
   const [search, setSearch]             = useState('');
   const [showForm, setShowForm]         = useState(false);
   const [showProfile, setShowProfile]   = useState(false);
@@ -38,9 +42,14 @@ export default function StaffPage() {
   const [specs, setSpecs]               = useState([]);
   const [saving, setSaving]             = useState(false);
   const [formErr, setFormErr]           = useState('');
+  const [loadErr, setLoadErr]         = useState('');
+  const [photoFile, setPhotoFile]       = useState(null);
+  const [photoPreview, setPhotoPreview] = useState('');
+  const [removePhoto, setRemovePhoto]   = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
+    setLoadErr('');
     try {
       const [stR, brR, svR] = await Promise.all([
         api.get('/staff',    { params: { limit:200, ...(filterBranch ? { branchId: filterBranch } : {}) } }),
@@ -50,22 +59,79 @@ export default function StaffPage() {
       setStaff(Array.isArray(stR.data) ? stR.data : (stR.data?.data ?? []));
       setBranches(Array.isArray(brR.data) ? brR.data : (brR.data?.data ?? []));
       setServices(Array.isArray(svR.data) ? svR.data : (svR.data?.data ?? []));
-    } catch { }
+    } catch (e) {
+      const msg = e.response?.data?.message || e.message || 'Failed to load data';
+      setLoadErr(msg);
+      setStaff([]);
+    }
     setLoading(false);
   }, [filterBranch]);
   useEffect(() => { load(); }, [load]);
 
-  const openAdd  = () => { setEditItem(null); setForm({ ...EMPTY, branch_id: user?.branch_id||'', join_date: new Date().toISOString().slice(0,10) }); setSpecs([]); setFormErr(''); setShowForm(true); };
-  const openEdit = row => { setEditItem(row); setForm({ ...row, join_date: row.join_date?.slice(0,10)||'' }); setSpecs((row.specializations||[]).map(s=>s.service_id)); setFormErr(''); setShowForm(true); };
+  const myBranchId = user?.branch_id ?? user?.branchId;
+  const branchChoices = (isSuperAdmin || user?.role === 'admin')
+    ? branches
+    : branches.filter((b) => String(b.id) === String(myBranchId ?? ''));
+
+  const openAdd  = () => {
+    setEditItem(null);
+    setForm({ ...EMPTY, branch_ids: myBranchId != null ? [String(myBranchId)] : [], join_date: new Date().toISOString().slice(0,10) });
+    setSpecs([]);
+    setPhotoFile(null);
+    setPhotoPreview('');
+    setRemovePhoto(false);
+    setFormErr('');
+    setShowForm(true);
+  };
+  const openEdit = row => {
+    const fromM2m = (row.branches && row.branches.length)
+      ? row.branches.map((b) => String(b.id))
+      : (row.branch_id != null || row.branch?.id != null ? [String(row.branch_id ?? row.branch?.id)] : []);
+    setEditItem(row);
+    setForm({ ...row, branch_ids: fromM2m, join_date: row.join_date?.slice(0,10)||'' });
+    setSpecs((row.specializations||[]).map(s=>s.service_id));
+    setPhotoFile(null);
+    setPhotoPreview(row.photo_url || '');
+    setRemovePhoto(false);
+    setFormErr('');
+    setShowForm(true);
+  };
   const openProfile = row => { setProfileItem(row); setShowProfile(true); };
   const toggleSpec  = id => setSpecs(sp => sp.includes(id) ? sp.filter(x=>x!==id) : [...sp, id]);
+  const toggleBranch = (id) => {
+    const s = String(id);
+    setForm((f) => {
+      if (user?.role === 'manager' && branchChoices.length <= 1) {
+        return { ...f, branch_ids: myBranchId != null ? [String(myBranchId)] : [] };
+      }
+      const set = new Set(f.branch_ids || []);
+      if (set.has(s)) set.delete(s); else set.add(s);
+      return { ...f, branch_ids: [...set] };
+    });
+  };
 
   const handleSave = async () => {
-    if (!form.name || !form.branch_id) return setFormErr('Name and branch are required');
+    if (!form.name || !form.branch_ids?.length) return setFormErr('Name and at least one branch are required');
     setSaving(true);
     try {
-      const payload = { ...form, specializations: specs };
-      editItem ? await api.put(`/staff/${editItem.id}`, payload) : await api.post('/staff', payload);
+      const payload = {
+        ...form,
+        branch_ids: form.branch_ids.map((x) => Number(x)).filter((n) => Number.isFinite(n)),
+        specializations: specs,
+      };
+      delete payload.branch_id;
+      const saved = editItem ? await api.put(`/staff/${editItem.id}`, payload) : await api.post('/staff', payload);
+      const staffId = editItem?.id || saved?.data?.id;
+      if (staffId && removePhoto) {
+        await api.delete(`/staff/${staffId}/photo`);
+      }
+      if (staffId && photoFile) {
+        const fd = new FormData();
+        fd.append('photo', photoFile);
+        await api.post(`/staff/${staffId}/photo`, fd, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        });
+      }
       setShowForm(false); load();
     } catch (e) { setFormErr(e.response?.data?.message || 'Save failed'); }
     setSaving(false);
@@ -76,7 +142,7 @@ export default function StaffPage() {
   const displayed   = staff.filter(s => {
     if (!search) return true;
     const q = search.toLowerCase();
-    return s.name?.toLowerCase().includes(q) || s.role_title?.toLowerCase().includes(q) || s.phone?.includes(q);
+    return s.name?.toLowerCase().includes(q) || s.role_title?.toLowerCase().includes(q) || s.phone?.includes(q) || (s.email && String(s.email).toLowerCase().includes(q));
   });
 
   const p = profileItem;
@@ -89,7 +155,7 @@ export default function StaffPage() {
       meta: { width: '22%' },
       cell: ({ row: { original: row } }) => (
         <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-          <StaffAvatar name={row.name} size={36} />
+          <StaffAvatar name={row.name} size={36} photoUrl={row.photo_url} />
           <div>
             <div style={{ fontWeight:600, color:'#101828', fontSize:14 }}>{row.name}</div>
             <div style={{ fontSize:12, color:'#98A2B3', marginTop:1 }}>{row.role_title}</div>
@@ -99,22 +165,37 @@ export default function StaffPage() {
     },
     {
       id: 'branch',
-      header: 'Branch',
-      accessorFn: row => row.branch?.name,
-      meta: { width: '16%' },
-      cell: ({ row: { original: row } }) => row.branch ? (
-        <span style={{ display:'flex', alignItems:'center', gap:5 }}>
-          <span style={{ width:8, height:8, borderRadius:'50%', background:row.branch.color||'#2563EB', display:'inline-block' }} />
-          <span style={{ fontSize:13, color:'#475467' }}>{row.branch.name}</span>
-        </span>
-      ) : null,
+      header: 'Branches',
+      accessorFn: row => (row.branches && row.branches.length ? row.branches.map(b=>b.name).join(', ') : row.branch?.name),
+      meta: { width: '18%' },
+      cell: ({ row: { original: row } }) => {
+        const list = (row.branches && row.branches.length) ? row.branches : (row.branch ? [row.branch] : []);
+        if (!list.length) return null;
+        return (
+          <span style={{ display:'flex', flexWrap:'wrap', alignItems:'center', gap:6 }}>
+            {list.map((b) => (
+              <span key={b.id} style={{ display:'inline-flex', alignItems:'center', gap:4 }}>
+                <span style={{ width:8, height:8, borderRadius:'50%', background:b.color||'#2563EB', display:'inline-block' }} />
+                <span style={{ fontSize:13, color:'#475467' }}>{b.name}</span>
+              </span>
+            ))}
+          </span>
+        );
+      },
     },
     {
       id: 'phone',
       header: 'Phone',
       accessorFn: row => row.phone,
-      meta: { width: '13%' },
+      meta: { width: '12%' },
       cell: ({ row: { original: row } }) => <span style={{ fontSize:13, color:'#475467' }}>{row.phone||''}</span>,
+    },
+    {
+      id: 'email',
+      header: 'Email',
+      accessorFn: row => row.email,
+      meta: { width: '16%' },
+      cell: ({ row: { original: row } }) => <span style={{ fontSize:13, color:'#475467' }}>{row.email||''}</span>,
     },
     {
       id: 'commission',
@@ -168,13 +249,19 @@ export default function StaffPage() {
         <StatCard label="Total Staff"  value={staff.length}  color="#2563EB" icon={<IconUsers />} />
         <StatCard label="Active"       value={activeCount}   color="#059669" icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>} />
         <StatCard label="Inactive"     value={staff.length - activeCount} color="#DC2626" icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>} />
-        <StatCard label="Branches"     value={[...new Set(staff.map(s=>s.branch_id).filter(Boolean))].length} color="#D97706" icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>} />
+        <StatCard label="Branches"     value={[...new Set(staff.flatMap(s => [...(s.branches||[]).map(b=>b.id), s.branch_id].filter(Boolean)))].length} color="#D97706" icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>} />
       </div>
+
+      {loadErr && (
+        <div style={{ background:'#FEF2F2', color:'#B91C1C', padding:'10px 14px', borderRadius:9, marginBottom:12, fontSize:13, border:'1px solid #FECACA' }}>
+          {loadErr}
+        </div>
+      )}
 
       {/* Filter Bar */}
       <FilterBar>
         <SearchBar value={search} onChange={setSearch} placeholder="Search staff" />
-        {isSuperAdmin && (
+        {seesAllBranches && (
           <select value={filterBranch} onChange={e => setFilterBranch(e.target.value)}
             style={{ padding:'7px 12px', borderRadius:9, border:'1.5px solid #E4E7EC', fontSize:13, fontFamily:"'Inter',sans-serif", outline:'none', color:'#344054', background:'#fff' }}>
             <option value="">All Branches</option>
@@ -197,17 +284,61 @@ export default function StaffPage() {
         footer={<><Button variant="secondary" onClick={() => setShowForm(false)}>Cancel</Button><Button variant="primary" loading={saving} onClick={handleSave}>{editItem ? 'Save' : 'Add Staff'}</Button></>}>
         {formErr && <div style={{ background:'#FEF2F2', color:'#DC2626', padding:'9px 13px', borderRadius:9, marginBottom:16, fontSize:13, border:'1px solid #FEE2E2' }}>{formErr}</div>}
         <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
+          <FormGroup label="Profile Photo">
+            <div style={{ display:'flex', gap:12, alignItems:'center', flexWrap:'wrap' }}>
+              <StaffAvatar
+                name={form.name || 'Staff'}
+                size={56}
+                photoUrl={removePhoto ? '' : (photoPreview || form.photo_url || '')}
+              />
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  setPhotoFile(f || null);
+                  if (f) {
+                    setPhotoPreview(URL.createObjectURL(f));
+                    setRemovePhoto(false);
+                  }
+                }}
+              />
+              {(photoPreview || form.photo_url) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPhotoFile(null);
+                    setPhotoPreview('');
+                    setRemovePhoto(true);
+                  }}
+                  style={{ border:'1px solid #FECACA', color:'#DC2626', background:'#FEF2F2', borderRadius:8, padding:'4px 10px', cursor:'pointer' }}
+                >
+                  Remove photo
+                </button>
+              )}
+            </div>
+          </FormGroup>
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
             <FormGroup label="Full Name" required><Input value={form.name||''} onChange={e => setForm(f=>({...f, name:e.target.value}))} /></FormGroup>
             <FormGroup label="Phone"><Input value={form.phone||''} onChange={e => setForm(f=>({...f, phone:e.target.value}))} /></FormGroup>
           </div>
+          <FormGroup label="Email"><Input type="email" value={form.email||''} onChange={e => setForm(f=>({...f, email:e.target.value}))} placeholder="name@example.com" /></FormGroup>
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
             <FormGroup label="Role / Title"><Input value={form.role_title||''} onChange={e => setForm(f=>({...f, role_title:e.target.value}))} placeholder="e.g. Senior Stylist" /></FormGroup>
-            <FormGroup label="Branch" required>
-              <Select value={form.branch_id||''} onChange={e => setForm(f=>({...f, branch_id:e.target.value}))}>
-                <option value="">Select branch</option>
-                {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-              </Select>
+            <FormGroup label="Branches" required>
+              <div style={{ display:'flex', flexDirection:'column', gap:8, marginTop:4 }}>
+                {branchChoices.map(b => (
+                  <label key={b.id} style={{ display:'flex', alignItems:'center', gap:8, cursor:(user?.role === 'manager' && branchChoices.length <= 1)?'default':'pointer', fontSize:13, color:'#344054' }}>
+                    <input
+                      type="checkbox"
+                      checked={(form.branch_ids||[]).includes(String(b.id))}
+                      onChange={() => toggleBranch(b.id)}
+                      disabled={user?.role === 'manager' && branchChoices.length <= 1}
+                    />
+                    {b.name}
+                  </label>
+                ))}
+              </div>
             </FormGroup>
           </div>
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:10 }}>
@@ -238,7 +369,7 @@ export default function StaffPage() {
         {p && (
           <div style={{ fontFamily:"'Inter',sans-serif" }}>
             <div style={{ display:'flex', gap:16, alignItems:'center', marginBottom:24, padding:16, background:'#F9FAFB', borderRadius:12 }}>
-              <StaffAvatar name={p.name} size={64} />
+              <StaffAvatar name={p.name} size={64} photoUrl={p.photo_url} />
               <div>
                 <h2 style={{ margin:0, fontSize:20, fontWeight:800, color:'#101828' }}>{p.name}</h2>
                 <p style={{ margin:'4px 0 8px', color:'#475467', fontSize:14 }}>{p.role_title}</p>
@@ -247,8 +378,9 @@ export default function StaffPage() {
             </div>
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:20 }}>
               {[
-                { label:'Branch',  value: p.branch?.name||'' },
+                { label:'Branches',  value: (p.branches && p.branches.length) ? p.branches.map(b=>b.name).join(', ') : (p.branch?.name||'') },
                 { label:'Phone',   value: p.phone||'' },
+                { label:'Email',   value: p.email||'' },
                 { label:'Joined',  value: p.join_date ? new Date(p.join_date).toLocaleDateString() : '' },
                 { label:'Status',  value: p.is_active!==false ? 'Active' : 'Inactive' },
               ].map(({ label, value }) => (

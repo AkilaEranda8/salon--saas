@@ -20,6 +20,7 @@ const STATUS_BADGE  = {
 const PAYMENT_METHODS = ['Cash','Card','Online Transfer','Bank Transfer'];
 const EMPTY_PKG  = { name:'', description:'', type:'bundle', services:[], sessions_count:'', validity_days:'90', package_price:'', is_active:true, branch_id:'' };
 const EMPTY_SELL = { customer_id:'', package_id:'', branch_id:'', payment_method:'Cash', notes:'' };
+const EMPTY_CREATE_ACTIVATE = { customer_id:'', payment_method:'Cash', notes:'', activate_all:false };
 const MUTED = '#64748B';
 
 /*  helpers  */
@@ -183,6 +184,7 @@ export default function PackagesPage() {
   const [showPkgModal, setShowPkgModal] = useState(false);
   const [editPkg,      setEditPkg]      = useState(null);
   const [pkgForm,      setPkgForm]      = useState(EMPTY_PKG);
+  const [createActivate, setCreateActivate] = useState(EMPTY_CREATE_ACTIVATE);
   const [pkgSaving,    setPkgSaving]    = useState(false);
   const [pkgFormError, setPkgFormError] = useState('');
 
@@ -275,6 +277,7 @@ export default function PackagesPage() {
   const openCreatePkg = () => {
     setEditPkg(null);
     setPkgForm({ ...EMPTY_PKG, branch_id: user.branchId ? String(user.branchId) : '' });
+    setCreateActivate(EMPTY_CREATE_ACTIVATE);
     setPkgFormError('');
     setShowPkgModal(true);
   };
@@ -298,11 +301,29 @@ export default function PackagesPage() {
     const s = String(sid);
     setPkgForm(f => ({ ...f, services: f.services.includes(s) ? f.services.filter(x => x !== s) : [...f.services, s] }));
   };
-  const handleSavePkg = async () => {
+  const handleSavePkg = async (activationMode = 'none') => {
+    const activateForSingle = activationMode === 'single';
+    const activateForAll = activationMode === 'all';
     setPkgFormError('');
     if (!pkgForm.name.trim())          { setPkgFormError('Package name is required.');   return; }
     if (!pkgForm.package_price)        { setPkgFormError('Package price is required.');  return; }
     if (pkgForm.services.length === 0) { setPkgFormError('Select at least one service.'); return; }
+    if (!editPkg && activateForSingle && !createActivate.customer_id) {
+      setPkgFormError('Please select a customer to activate this package.');
+      return;
+    }
+    if (!editPkg && (activateForSingle || activateForAll)) {
+      const selectedCustomer = customers.find(c => String(c.id) === String(createActivate.customer_id));
+      const preBranchId = (pkgForm.branch_id ? Number(pkgForm.branch_id) : null) || user.branchId || selectedCustomer?.branch_id || selectedCustomer?.branchId;
+      if (!preBranchId) {
+        setPkgFormError('Please select a branch to activate this package.');
+        return;
+      }
+    }
+    if (!editPkg && activateForAll) {
+      const ok = window.confirm('Activate this package for ALL customers in the selected branch?');
+      if (!ok) return;
+    }
     setPkgSaving(true);
     try {
       const payload = {
@@ -318,8 +339,37 @@ export default function PackagesPage() {
         is_active:       pkgForm.is_active,
         branch_id:       pkgForm.branch_id ? Number(pkgForm.branch_id) : null,
       };
-      if (editPkg) await api.put(`/packages/${editPkg.id}`, payload);
-      else         await api.post('/packages', payload);
+      let createdPkg = null;
+      if (editPkg) {
+        await api.put(`/packages/${editPkg.id}`, payload);
+      } else {
+        const res = await api.post('/packages', payload);
+        createdPkg = res.data || null;
+      }
+      if (!editPkg && activateForSingle) {
+        const selectedCustomer = customers.find(c => String(c.id) === String(createActivate.customer_id));
+        const activationBranchId = payload.branch_id || user.branchId || selectedCustomer?.branch_id || selectedCustomer?.branchId;
+        if (!activationBranchId) {
+          setPkgFormError('Please select a branch to activate this package.');
+          return;
+        }
+        await api.post('/packages/purchase', {
+          customer_id: Number(createActivate.customer_id),
+          package_id: Number(createdPkg?.id),
+          branch_id: Number(activationBranchId),
+          payment_method: createActivate.payment_method || 'Cash',
+          notes: createActivate.notes || undefined,
+        });
+      }
+      if (!editPkg && activateForAll) {
+        const activationBranchId = payload.branch_id || user.branchId;
+        await api.post('/packages/purchase-all', {
+          package_id: Number(createdPkg?.id),
+          branch_id: Number(activationBranchId),
+          payment_method: createActivate.payment_method || 'Cash',
+          notes: createActivate.notes || undefined,
+        });
+      }
       setShowPkgModal(false);
       loadPackages();
     } catch (err) { setPkgFormError(err.response?.data?.message || 'Failed to save package.'); }
@@ -579,9 +629,15 @@ export default function PackagesPage() {
       )}
 
       {/*  Package Modal  */}
-      <Modal open={showPkgModal} onClose={() => setShowPkgModal(false)} title={editPkg ? 'Edit Package' : 'Create Package'} width={720}
+      <Modal open={showPkgModal} onClose={() => setShowPkgModal(false)} title={editPkg ? 'Edit Package' : 'Create Package'} width={920}
         footer={<>
           <button onClick={() => setShowPkgModal(false)} style={{ padding:'8px 20px', borderRadius:10, border:'1.5px solid #E4E7EC', background:'#fff', color:'#344054', fontWeight:600, cursor:'pointer', fontSize:13, fontFamily:"'Inter',sans-serif" }}>Cancel</button>
+          {!editPkg && (
+            <button onClick={() => handleSavePkg(createActivate.activate_all ? 'all' : 'single')} disabled={pkgSaving}
+              style={{ padding:'8px 22px', borderRadius:10, border:'1.5px solid #BFDBFE', background:pkgSaving?'#E5E7EB':'#EFF6FF', color:pkgSaving?'#64748B':'#1D4ED8', fontWeight:700, cursor:pkgSaving?'not-allowed':'pointer', fontSize:13, fontFamily:"'Inter',sans-serif" }}>
+              {pkgSaving ? 'Saving' : createActivate.activate_all ? 'Create & Activate All Customers' : 'Create & Activate'}
+            </button>
+          )}
           <button onClick={handleSavePkg} disabled={pkgSaving}
             style={{ padding:'8px 22px', borderRadius:10, border:'none', background:pkgSaving?'#93C5FD':'#2563EB', color:'#fff', fontWeight:700, cursor:pkgSaving?'not-allowed':'pointer', fontSize:13, fontFamily:"'Inter',sans-serif" }}>
             {pkgSaving ? 'Saving' : editPkg ? 'Save Changes' : 'Create Package'}
@@ -670,6 +726,34 @@ export default function PackagesPage() {
               </div>
             )}
           </div>
+          {!editPkg && (
+            <div>
+              <div style={head}>5. Activation Options</div>
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+                <div>
+                  <Lbl>Customer (for single activation)</Lbl>
+                  <select value={createActivate.customer_id} onChange={e=>setCreateActivate(f=>({...f,customer_id:e.target.value}))} style={{ ...inp, opacity:createActivate.activate_all ? 0.6 : 1 }} disabled={createActivate.activate_all}>
+                    <option value="">Select customer</option>
+                    {customers.map(c => <option key={c.id} value={c.id}>{c.name} {c.phone ? `(${c.phone})` : ''}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <Lbl>Payment Method</Lbl>
+                  <select value={createActivate.payment_method} onChange={e=>setCreateActivate(f=>({...f,payment_method:e.target.value}))} style={inp}>
+                    {PAYMENT_METHODS.map(m => <option key={m} value={m}>{m}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div style={{ marginTop:10 }}>
+                <Lbl>Activation Notes (optional)</Lbl>
+                <textarea value={createActivate.notes} onChange={e=>setCreateActivate(f=>({...f,notes:e.target.value}))} placeholder="Notes for package activation" rows={2} style={{ ...inp, resize:'vertical' }} />
+              </div>
+              <label style={{ marginTop:10, display:'flex', alignItems:'center', gap:8, fontSize:13, fontWeight:600, color:'#065F46', fontFamily:"'Inter',sans-serif" }}>
+                <input type="checkbox" checked={createActivate.activate_all} onChange={e=>setCreateActivate(f=>({...f,activate_all:e.target.checked}))} style={{ width:14, height:14, accentColor:'#059669' }} />
+                Activate for all customers in selected branch
+              </label>
+            </div>
+          )}
           {/* Active toggle */}
           <div style={{ display:'flex', alignItems:'center', gap:10, paddingTop:4, borderTop:'1px solid #F2F4F7' }}>
             <button type="button" onClick={() => setPkgForm(f=>({...f,is_active:!f.is_active}))}

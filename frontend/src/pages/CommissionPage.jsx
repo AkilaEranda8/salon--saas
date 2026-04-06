@@ -15,6 +15,7 @@ const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov
 export default function CommissionPage() {
   const { user } = useAuth();
   const isAdminRole = ['superadmin','admin','manager','staff'].includes(user?.role);
+  const canEmailPdfs = ['superadmin','admin','manager'].includes(user?.role);
   const now = new Date();
   const [month, setMonth]   = useState(now.getMonth() + 1);
   const [year, setYear]     = useState(now.getFullYear());
@@ -22,6 +23,8 @@ export default function CommissionPage() {
   const [branches, setBranches] = useState([]);
   const [data, setData]     = useState([]);
   const [loading, setLoading] = useState(true);
+  const [emailBusy, setEmailBusy] = useState(false);
+  const [emailMsg, setEmailMsg]   = useState('');
 
   useEffect(() => {
     if (isAdminRole) {
@@ -45,8 +48,30 @@ export default function CommissionPage() {
   const totalRev   = data.reduce((s, r) => s + Number(r.totalRevenue    || 0), 0);
   const totalAppts = data.reduce((s, r) => s + Number(r.appointmentCount || 0), 0);
 
+  const sendStaffPdfs = async () => {
+    if (!window.confirm(`Email PDF earnings reports for ${MONTHS[month - 1]} ${year} to each staff member who has an email?`)) return;
+    setEmailBusy(true);
+    setEmailMsg('');
+    try {
+      const res = await api.post('/notifications/staff-monthly-earnings', { year, month });
+      const s = res.data?.summary;
+      setEmailMsg(`Sent: ${s?.sent ?? 0}, skipped (no email): ${s?.skipped ?? 0}, failed: ${s?.failed ?? 0}`);
+    } catch (e) {
+      setEmailMsg(e.response?.data?.message || 'Request failed');
+    }
+    setEmailBusy(false);
+  };
+
   return (
-    <PageWrapper title="Commission" subtitle="Staff commission summary by period">
+    <PageWrapper
+      title="Commission"
+      subtitle="Staff commission summary by period"
+      actions={canEmailPdfs && (
+        <Button variant="secondary" loading={emailBusy} onClick={sendStaffPdfs} style={{ whiteSpace: 'nowrap' }}>
+          Email staff PDF reports
+        </Button>
+      )}
+    >
 
       {/* Stat Cards */}
       <div style={{ display:'flex', gap:12, flexWrap:'wrap' }}>
@@ -55,6 +80,12 @@ export default function CommissionPage() {
         <StatCard label="Staff Count"      value={data.length}   color="#2563EB" icon={<IconUsers />} />
         <StatCard label="Total Services"   value={totalAppts}    color="#7C3AED" icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>} />
       </div>
+
+      {emailMsg && (
+        <div style={{ background:'#F0FDF4', color:'#166534', padding:'10px 14px', borderRadius:9, fontSize:13, border:'1px solid #BBF7D0' }}>
+          {emailMsg}
+        </div>
+      )}
 
       {/* Filter Bar */}
       <FilterBar>

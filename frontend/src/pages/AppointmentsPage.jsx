@@ -771,7 +771,7 @@ export default function AppointmentsPage() {
               <option value="">{!form.customer_id ? 'Select customer first' : loadingCustomerPackages ? 'Loading packages...' : 'No package / normal appointment'}</option>
               {customerPackages.map(cp => (
                 <option key={cp.id} value={cp.id}>
-                  {cp.package?.name || 'Package'} - {cp.sessions_remaining === null ? 'Unlimited' : `${cp.sessions_remaining} left`}
+                  {cp.package?.name || 'Package'} - {cp.sessions_remaining == null ? 'Unlimited' : `${cp.sessions_remaining} left`}
                 </option>
               ))}
             </Select>

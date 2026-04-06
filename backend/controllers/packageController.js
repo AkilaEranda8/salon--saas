@@ -191,7 +191,7 @@ const activePackages = async (req, res) => {
         expiry_date: { [Op.gte]: today },
       },
       include: [
-        { model: Package, as: 'package', attributes: ['id', 'name', 'type', 'services'] },
+        { model: Package, as: 'package', attributes: ['id', 'name', 'type', 'services', 'package_price', 'sessions_count'] },
         { model: Branch,  as: 'branch',  attributes: ['id', 'name'] },
       ],
       order: [['expiry_date', 'ASC']],

@@ -9,6 +9,7 @@ import '../models/staff_member.dart';
 import '../models/staff_user.dart';
 import '../state/app_state.dart';
 import '../utils/appointment_notes.dart';
+import '../widgets/walk_in_service_dropdown_section.dart';
 
 // ── Palette — mirrors dashboard tokens ───────────────────────────────────────
 const Color _ink      = Color(0xFF111827);
@@ -1657,7 +1658,8 @@ class _PaySheetState extends State<_PaySheet> {
     'Package':         Icons.card_giftcard_rounded,
   };
 
-  late final List<int> _sel;
+  String? _primaryServiceId;
+  final List<String> _extraServiceIds = [];
   late final TextEditingController _amtCtrl;
   String _method = 'Cash';
   String _calcTotal = '';
@@ -1666,7 +1668,9 @@ class _PaySheetState extends State<_PaySheet> {
   @override
   void initState() {
     super.initState();
-    _sel = List<int>.from(widget.preSelected);
+    final preStrs = widget.preSelected.map((e) => e.toString()).toList();
+    _primaryServiceId = preStrs.isNotEmpty ? preStrs.first : null;
+    if (preStrs.length > 1) _extraServiceIds.addAll(preStrs.sublist(1));
     _calcTotal = widget.initialAmount;
     _amtCtrl = TextEditingController(text: widget.initialAmount);
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -1680,11 +1684,17 @@ class _PaySheetState extends State<_PaySheet> {
     super.dispose();
   }
 
+  List<String> _orderedServiceIds() {
+    final p = _primaryServiceId;
+    if (p == null || p.isEmpty) return const [];
+    return [p, ..._extraServiceIds];
+  }
+
   double _grossFromSelection() {
     var sum = 0.0;
-    for (final x in _sel) {
+    for (final id in _orderedServiceIds()) {
       for (final sv in widget.services) {
-        if (int.tryParse(sv.id) == x) sum += sv.price;
+        if (sv.id == id) sum += sv.price;
       }
     }
     return sum;
@@ -1734,7 +1744,8 @@ class _PaySheetState extends State<_PaySheet> {
   }
 
   void _confirm() {
-    if (_sel.isEmpty) {
+    final ids = _orderedServiceIds();
+    if (ids.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Select at least one service')),
       );
@@ -1751,7 +1762,7 @@ class _PaySheetState extends State<_PaySheet> {
     Navigator.of(context).pop(_PayResult(
       amount: _amtCtrl.text.trim(),
       method: _method,
-      serviceIds: _sel.map((e) => e.toString()).toList(),
+      serviceIds: ids,
       subtotal: gross > 0 ? gross.toStringAsFixed(0) : _calcTotal,
       discountId: _discountId,
     ));
@@ -1931,62 +1942,41 @@ class _PaySheetState extends State<_PaySheet> {
             const SizedBox(height: 16),
 
             // ── Services ───────────────────────────────────────────────
-            _label('SERVICES'),
-            Wrap(
-              spacing: 7,
-              runSpacing: 7,
-              children: activeServices.map((s) {
-                      final id = int.tryParse(s.id);
-                      if (id == null) return const SizedBox.shrink();
-                final on = _sel.contains(id);
-                return GestureDetector(
-                  onTap: () {
-                    if (on) {
-                      _sel.remove(id);
-                    } else {
-                      _sel.add(id);
-                    }
-                    _recalc();
-                  },
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 140),
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 11, vertical: 7),
-                    decoration: BoxDecoration(
-                      color: on ? _pGreenL : _pBg,
-                      borderRadius: BorderRadius.circular(9),
-                      border: Border.all(
-                          color: on ? _pGreen : _pBorder,
-                          width: on ? 1.5 : 1),
-                    ),
-                    child: Row(mainAxisSize: MainAxisSize.min, children: [
-                      if (on)
-                        const Padding(
-                          padding: EdgeInsets.only(right: 5),
-                          child: Icon(Icons.check_circle_rounded,
-                              size: 13, color: _pGreen),
-                        ),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(s.name,
-                            style: TextStyle(
-                              color: on ? _pGreen : const Color(0xFF374151),
-                              fontSize: 12.5,
-                              fontWeight: FontWeight.w700)),
-                          Text('LKR ${s.price.toStringAsFixed(0)}',
-                            style: TextStyle(
-                              color: on
-                                  ? _pGreen.withValues(alpha: 0.70)
-                                  : const Color(0xFFADB5BD),
-                              fontSize: 10.5,
-                              fontWeight: FontWeight.w600)),
-                        ],
-                      ),
-                    ]),
-                  ),
-                );
-                    }).toList(),
+            WalkInServiceDropdownSection(
+              activeServices: activeServices,
+              primaryServiceId: _primaryServiceId,
+              orderedServiceIds: _orderedServiceIds(),
+              onPrimaryChanged: (v) {
+                setState(() {
+                  _primaryServiceId = v;
+                  _extraServiceIds.clear();
+                  _recalc();
+                });
+              },
+              onAddExtra: (id) {
+                setState(() {
+                  if (_primaryServiceId == null || _primaryServiceId!.isEmpty) {
+                    _primaryServiceId = id;
+                  } else {
+                    _extraServiceIds.add(id);
+                  }
+                  _recalc();
+                });
+              },
+              onRemoveExtraAt: (i) {
+                setState(() {
+                  if (i >= 0 && i < _extraServiceIds.length) {
+                    _extraServiceIds.removeAt(i);
+                  }
+                  _recalc();
+                });
+              },
+              label: 'SERVICES',
+              helperText: 'Primary first; add more services below.',
+              accentColor: _pGreen,
+              borderColor: _pBorder,
+              bgColor: _pBg,
+              mutedColor: const Color(0xFF6B7280),
             ),
 
             const SizedBox(height: 14),

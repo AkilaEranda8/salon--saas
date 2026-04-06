@@ -143,10 +143,17 @@ connectWithRetry().then(async () => {
 
   // ── Column migrations (idempotent — safe to run on every start) ──────────
   try {
-    await sequelize.query(
-      `ALTER TABLE staff ADD COLUMN IF NOT EXISTS user_id INT NULL DEFAULT NULL`
+    const [cols] = await sequelize.query(
+      `SHOW COLUMNS FROM staff LIKE 'user_id'`
     );
-    console.log('✓ Migration: staff.user_id column ensured.');
+    if (cols.length === 0) {
+      await sequelize.query(
+        `ALTER TABLE staff ADD COLUMN user_id INT NULL DEFAULT NULL`
+      );
+      console.log('✓ Migration: staff.user_id column added.');
+    } else {
+      console.log('✓ Migration: staff.user_id already exists.');
+    }
   } catch (err) {
     console.warn('⚠  Migration staff.user_id:', err.message);
   }

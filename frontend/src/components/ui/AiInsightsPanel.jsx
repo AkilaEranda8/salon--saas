@@ -1,6 +1,5 @@
 import { useState } from 'react';
-
-const BOT_URL = import.meta.env.VITE_AI_BOT_URL || 'http://localhost:8000';
+import api from '../../api/axios';
 
 const TYPE_STYLES = {
   positive: { bg: '#F0FDF4', border: '#86EFAC', badge: '#16A34A', badgeBg: '#DCFCE7', label: 'Good' },
@@ -58,14 +57,8 @@ export default function AiInsightsPanel({ reportData }) {
     setLoading(true);
     setError('');
     try {
-      const res = await fetch(`${BOT_URL}/insights`, {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify(reportData),
-      });
-      if (!res.ok) throw new Error('Failed');
-      const data = await res.json();
-      setInsights(data.insights || []);
+      const res = await api.post('/ai/insights', reportData);
+      setInsights(res.data.insights || []);
       setGenerated(true);
     } catch {
       setError('Could not generate insights. Make sure the AI bot is running.');

@@ -1,7 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import PageWrapper from '../components/layout/PageWrapper';
-
-const BOT_URL = import.meta.env.VITE_AI_BOT_URL || 'http://localhost:8000';
+import api from '../api/axios';
 
 /* ── Quick reply suggestions ── */
 const SUGGESTIONS = [
@@ -126,8 +125,8 @@ export default function AiChatPage() {
 
   /* Check bot connectivity */
   useEffect(() => {
-    fetch(`${BOT_URL}/health`)
-      .then(r => r.ok ? setConnected(true) : setConnected(false))
+    api.get('/ai/health')
+      .then(() => setConnected(true))
       .catch(() => setConnected(false));
   }, []);
 
@@ -143,13 +142,7 @@ export default function AiChatPage() {
     setMessages(m => [...m, { from:'user', text: msg }]);
     setLoading(true);
     try {
-      const res  = await fetch(`${BOT_URL}/chat`, {
-        method:      'POST',
-        credentials: 'include',   // forwards JWT cookie → enables management queries
-        headers:     { 'Content-Type':'application/json' },
-        body:        JSON.stringify({ session_id: sessionId, message: msg }),
-      });
-      const data = await res.json();
+      const { data } = await api.post('/ai/chat', { session_id: sessionId, message: msg });
       setSessionId(data.session_id);
       setMessages(m => [...m, {
         from:'bot', text: data.reply,

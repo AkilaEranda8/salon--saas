@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import 'pages/session_gate.dart';
 import 'services/notification_service.dart';
+import 'services/notification_store.dart';
 import 'state/app_state.dart';
 
 void main() async {
@@ -11,6 +12,7 @@ void main() async {
   await Firebase.initializeApp();
   FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
   await NotificationService.instance.init();
+  await NotificationStore.instance.load();
   runApp(const StaffOnlyApp());
 }
 

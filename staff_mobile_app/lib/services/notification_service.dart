@@ -4,6 +4,8 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
+import 'notification_store.dart';
+
 /// Handles FCM token registration, foreground notifications and background
 /// message routing for the staff mobile app.
 class NotificationService {
@@ -80,6 +82,8 @@ class NotificationService {
     final notification = message.notification;
     if (notification == null) return;
 
+    _saveToStore(message);
+
     _localNotifications.show(
       notification.hashCode,
       notification.title,
@@ -105,8 +109,25 @@ class NotificationService {
   }
 
   void _handleMessageOpenedApp(RemoteMessage message) {
+    _saveToStore(message);
     debugPrint(
         '[NotificationService] Opened from notification: ${message.data}');
+  }
+
+  static void _saveToStore(RemoteMessage message) {
+    final n = message.notification;
+    final title = n?.title ?? message.data['title'] as String? ?? '';
+    final body  = n?.body  ?? message.data['body']  as String? ?? '';
+    if (title.isEmpty && body.isEmpty) return;
+
+    NotificationStore.instance.add(AppNotification(
+      id:        message.messageId ?? DateTime.now().millisecondsSinceEpoch.toString(),
+      title:     title,
+      body:      body,
+      type:      message.data['type'] as String? ?? 'general',
+      timestamp: message.sentTime ?? DateTime.now(),
+      data:      Map<String, dynamic>.from(message.data),
+    ));
   }
 }
 

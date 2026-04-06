@@ -5,12 +5,14 @@ import '../models/appointment.dart';
 import '../models/salon_service.dart';
 import '../models/staff_user.dart';
 import '../state/app_state.dart';
+import '../services/notification_store.dart';
 import 'ai_chat_page.dart';
 import 'appointments_page.dart';
 import 'calendar_page.dart';
 import 'commission_page.dart';
 import 'customers_page.dart';
 import 'login_page.dart';
+import 'notifications_page.dart';
 import 'payments_page.dart';
 import 'permissions_page.dart';
 import 'reminders_page.dart';
@@ -130,12 +132,13 @@ class _DashboardPageState extends State<DashboardPage>
             children: [
               // ── Header (scrolls with content) ──────────────────────────────
               _Header(
-                greeting:  _greeting(),
-                dateStr:   _dateStr(),
-                userName:  user?.displayName ?? 'Staff',
-                role:      user?.role ?? 'staff',
-                onRefresh: _refreshDashboard,
-                onLogout:  _logout,
+                greeting:        _greeting(),
+                dateStr:         _dateStr(),
+                userName:        user?.displayName ?? 'Staff',
+                role:            user?.role ?? 'staff',
+                onRefresh:       _refreshDashboard,
+                onLogout:        _logout,
+                onNotifications: () => _go(const NotificationsPage()),
               ),
 
               // ── Body ───────────────────────────────────────────────────────
@@ -333,11 +336,13 @@ class _Header extends StatelessWidget {
     required this.role,
     required this.onRefresh,
     required this.onLogout,
+    required this.onNotifications,
   });
 
   final String greeting, dateStr, userName, role;
   final Future<void> Function() onRefresh;
   final VoidCallback onLogout;
+  final VoidCallback onNotifications;
 
   @override
   Widget build(BuildContext context) {
@@ -363,6 +368,58 @@ class _Header extends StatelessWidget {
                         fontWeight: FontWeight.w800, letterSpacing: 0.2)),
               ]),
               const Spacer(),
+              // ── Bell icon with unread badge ──────────────────────────
+              ValueListenableBuilder<List<AppNotification>>(
+                valueListenable: NotificationStore.instance.notifications,
+                builder: (_, list, __) {
+                  final unread = list.where((n) => !n.isRead).length;
+                  return GestureDetector(
+                    onTap: onNotifications,
+                    child: Container(
+                      width: 36, height: 36,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Colors.white,
+                        boxShadow: [
+                          BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.08),
+                              blurRadius: 8, offset: const Offset(0, 2)),
+                        ],
+                      ),
+                      child: Stack(
+                        clipBehavior: Clip.none,
+                        alignment: Alignment.center,
+                        children: [
+                          const Icon(Icons.notifications_rounded,
+                              color: Color(0xFF6B7280), size: 19),
+                          if (unread > 0)
+                            Positioned(
+                              top: -2, right: -2,
+                              child: Container(
+                                width: 16, height: 16,
+                                decoration: const BoxDecoration(
+                                  color: Color(0xFFDC2626),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Center(
+                                  child: Text(
+                                    unread > 9 ? '9+' : '$unread',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 9,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(width: 8),
               GestureDetector(
                 onTap: () => onRefresh(),
                 child: Container(

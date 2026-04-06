@@ -197,8 +197,10 @@ const activePackages = async (req, res) => {
       order: [['expiry_date', 'ASC']],
     });
 
-    // Filter to only those with remaining sessions (null sessions_total = unlimited)
-    const active = rows.filter((cp) => cp.sessions_total === null || cp.sessions_remaining > 0);
+    // sessions_total null or 0 = unlimited (0 from old broken bulk-activate code)
+    const active = rows.filter((cp) =>
+      cp.sessions_total === null || cp.sessions_total === 0 || cp.sessions_remaining > 0
+    );
     return res.json(active);
   } catch (err) {
     console.error(err);

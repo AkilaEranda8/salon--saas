@@ -450,8 +450,10 @@ async function notifyPaymentReceipt(payment, branch, service, customer) {
       `Paid: Rs. ${paid.toFixed(2)}\n` +
       `Service: ${svcName} | ${date}`;
     if (discount > 0) {
+      const ptsUsed    = Math.floor(discount);
+      const discStr    = discount % 1 === 0 ? discount.toFixed(0) : discount.toFixed(2);
       smsMsg += `\nBill: Rs. ${grossBill.toFixed(2)}`;
-      smsMsg += `\nPromo -Rs.${discount % 1 === 0 ? discount.toFixed(0) : discount.toFixed(2)}`;
+      smsMsg += `\nPromo -Rs.${discStr} (-${ptsUsed} pts)`;
     }
     if (totalPts > 0) {
       const earnedSuffix = pointsEarned > 0 ? ` (+${pointsEarned})` : '';

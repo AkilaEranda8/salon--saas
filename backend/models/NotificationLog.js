@@ -45,6 +45,10 @@ const NotificationLog = sequelize.define('NotificationLog', {
     type: DataTypes.INTEGER,
     allowNull: true,
   },
+  tenant_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+  },
 }, {
   tableName: 'notification_logs',
   timestamps: true,

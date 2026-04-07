@@ -1,5 +1,6 @@
 'use strict';
 const { Op, fn, col } = require('sequelize');
+const { tenantWhere } = require('../utils/tenantScope');
 
 // ── Public: get review form data ──────────────────────────────────────────────
 const getForm = async (req, res) => {
@@ -76,7 +77,7 @@ const submitReview = async (req, res) => {
 const list = async (req, res) => {
   try {
     const { Review, Service, Staff, Branch } = require('../models');
-    const where = {};
+    const where = tenantWhere(req);
     if (req.userBranchId) {
       where.branch_id = req.userBranchId;
     } else if (req.query.branchId) {

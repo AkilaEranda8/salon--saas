@@ -31,6 +31,10 @@ const Service = sequelize.define('Service', {
     type: DataTypes.BOOLEAN,
     defaultValue: true,
   },
+  tenant_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+  },
 }, {
   tableName: 'services',
   timestamps: true,

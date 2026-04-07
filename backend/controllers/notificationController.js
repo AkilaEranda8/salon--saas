@@ -1,6 +1,7 @@
 'use strict';
 const { Op } = require('sequelize');
 const { NotificationLog, NotificationSettings, Customer, Branch } = require('../models');
+const { tenantWhere } = require('../utils/tenantScope');
 const { sendEmail, sendWhatsApp, sendSMS } = require('../services/notificationService');
 const { runStaffMonthlyEarningsEmails } = require('../services/sendStaffMonthlyEarningsEmails');
 const { buildStaffEarningsPdfBuffer } = require('../services/staffEarningsPdf');
@@ -30,7 +31,7 @@ const getLogs = async (req, res) => {
     const page   = Math.max(parseInt(req.query.page)  || 1, 1);
     const offset = (page - 1) * limit;
 
-    const where = {};
+    const where = tenantWhere(req);
     if (req.userBranchId)         where.branch_id  = req.userBranchId;
     else if (req.query.branchId)  where.branch_id  = req.query.branchId;
     if (req.query.channel)        where.channel    = req.query.channel;

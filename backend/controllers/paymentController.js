@@ -2,9 +2,10 @@ const { Op, fn, col, literal } = require('sequelize');
 const { sequelize } = require('../config/database');
 const { Payment, PaymentSplit, Branch, Staff, Customer, Service, Appointment, CustomerPackage, Package: PkgModel, PackageRedemption } = require('../models');
 const { notifyPaymentReceipt, notifyLoyaltyPoints, notifyReviewRequest } = require('../services/notificationService');
+const { tenantWhere } = require('../utils/tenantScope');
 
 const getBranchWhere = (req) => {
-  const where = {};
+  const where = tenantWhere(req);
   if (req.userBranchId)    where.branch_id = req.userBranchId;
   else if (req.query.branchId) where.branch_id = req.query.branchId;
   return where;

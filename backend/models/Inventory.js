@@ -39,6 +39,10 @@ const Inventory = sequelize.define('Inventory', {
     type: DataTypes.DECIMAL(10, 2),
     defaultValue: 0,
   },
+  tenant_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+  },
 }, {
   tableName: 'inventory',
   timestamps: true,

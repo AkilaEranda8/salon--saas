@@ -15,6 +15,10 @@ const StaffBranch = sequelize.define(
       primaryKey: true,
       allowNull: false,
     },
+    tenant_id: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
   },
   {
     tableName: 'staff_branches',

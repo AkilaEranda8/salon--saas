@@ -37,6 +37,10 @@ const PackageRedemption = sequelize.define('PackageRedemption', {
     type: DataTypes.TEXT,
     allowNull: true,
   },
+  tenant_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+  },
 }, {
   tableName: 'package_redemptions',
   timestamps: true,

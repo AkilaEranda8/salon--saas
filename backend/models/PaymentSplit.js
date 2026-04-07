@@ -23,6 +23,10 @@ const PaymentSplit = sequelize.define('PaymentSplit', {
     type: DataTypes.INTEGER,
     allowNull: true,
   },
+  tenant_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+  },
 }, {
   tableName: 'payment_splits',
   timestamps: false,

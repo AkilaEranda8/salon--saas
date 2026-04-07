@@ -56,6 +56,10 @@ const Expense = sequelize.define('Expense', {
     allowNull: true,
     references: { model: 'users', key: 'id' },
   },
+  tenant_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+  },
 }, {
   tableName: 'expenses',
   timestamps: true,

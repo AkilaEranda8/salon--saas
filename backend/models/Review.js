@@ -56,6 +56,10 @@ const Review = sequelize.define('Review', {
     allowNull: false,
     unique: true,
   },
+  tenant_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+  },
 }, {
   tableName: 'reviews',
   timestamps: true,

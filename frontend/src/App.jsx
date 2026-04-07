@@ -4,7 +4,15 @@ import { useAuth } from './context/AuthContext';
 import { LoadingSpinner } from './components/shared/Feedback';
 import Sidebar from './components/layout/Sidebar';
 import Topbar  from './components/layout/Topbar';
+import PlatformSidebar from './components/layout/PlatformSidebar';
+import SubscriptionBanner from './components/shared/SubscriptionBanner';
 import { useBreakpoint } from './hooks/useBreakpoint';
+import { isPlatformContext } from './utils/tenant';
+
+// Platform pages
+import PlatformDashboardPage     from './pages/platform/PlatformDashboardPage';
+import PlatformTenantsPage       from './pages/platform/PlatformTenantsPage';
+import PlatformSubscriptionsPage from './pages/platform/PlatformSubscriptionsPage';
 
 // Pages
 import LoginPage       from './pages/LoginPage';
@@ -37,6 +45,8 @@ import DiscountsPage    from './pages/DiscountsPage';
 import RecurringPage    from './pages/RecurringPage';
 import CategoriesPage   from './pages/CategoriesPage';
 import AiChatPage       from './pages/AiChatPage';
+import BillingPage      from './pages/BillingPage';
+import OnboardingPage   from './pages/OnboardingPage';
 
 // ── Auth guards ────────────────────────────────────────────────────────
 
@@ -55,8 +65,37 @@ function ProtectedRoute({ children }) {
 
 function RoleRoute({ roles, children }) {
   const { user } = useAuth();
-  if (!user || !roles.includes(user.role)) return <Navigate to="/dashboard" replace />;
+  // platform_admin has access to everything
+  if (!user || (!roles.includes(user.role) && user.role !== 'platform_admin')) {
+    return <Navigate to="/dashboard" replace />;
+  }
   return children;
+}
+
+function PlatformRoute({ children }) {
+  const { user } = useAuth();
+  if (!user || user.role !== 'platform_admin') return <Navigate to="/login" replace />;
+  return children;
+}
+
+// ── Platform Admin shell ───────────────────────────────────────────────
+
+function PlatformShell() {
+  const [collapsed, setCollapsed] = useState(false);
+
+  return (
+    <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
+      <PlatformSidebar collapsed={collapsed} onToggle={() => setCollapsed(c => !c)} />
+      <div style={{ flex: 1, overflowY: 'auto', background: '#F5F3FF' }}>
+        <Routes>
+          <Route path="platform/dashboard"     element={<PlatformDashboardPage />} />
+          <Route path="platform/tenants"        element={<PlatformTenantsPage />} />
+          <Route path="platform/subscriptions"  element={<PlatformSubscriptionsPage />} />
+          <Route path="*"                        element={<Navigate to="/platform/dashboard" replace />} />
+        </Routes>
+      </div>
+    </div>
+  );
 }
 
 // ── App shell (authenticated layout) ──────────────────────────────────
@@ -89,6 +128,9 @@ function AppShell() {
 
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <Topbar onMenuClick={handleMenuClick} />
+
+        {/* Subscription warning banner — renders only when needed */}
+        <SubscriptionBanner />
 
         <div style={{ flex: 1, overflowY: 'auto', background: '#F7F8FA' }}>
           <Routes>
@@ -173,12 +215,32 @@ function AppShell() {
               </RoleRoute>
             } />
 
+            {/* ── BILLING ─────────────────────────────────── */}
+            <Route path="/billing" element={<BillingPage />} />
+
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>
         </div>
       </div>
     </div>
   );
+}
+
+// ── Login page: redirect based on role ────────────────────────────────
+
+function LoginRedirect() {
+  const { isAuthenticated, user } = useAuth();
+  if (!isAuthenticated) return <LoginPage />;
+  if (user?.role === 'platform_admin') return <Navigate to="/platform/dashboard" replace />;
+  return <Navigate to="/dashboard" replace />;
+}
+
+// ── Routes to platform or tenant shell based on role ──────────────────
+
+function AuthShellRouter() {
+  const { user } = useAuth();
+  if (user?.role === 'platform_admin') return <PlatformShell />;
+  return <AppShell />;
 }
 
 // ── Root App ───────────────────────────────────────────────────────────
@@ -199,20 +261,21 @@ export default function App() {
       {/* ── Public (no shell) ── */}
       <Route
         path="/login"
-        element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <LoginPage />}
+        element={<LoginRedirect />}
       />
-      <Route path="/booking"       element={<BookingPage />} />
+      <Route path="/signup"         element={<OnboardingPage />} />
+      <Route path="/booking"        element={<BookingPage />} />
       <Route path="/customer-portal/login" element={<CustomerPortalLoginPage />} />
       <Route path="/customer-portal" element={<CustomerPortalPage />} />
-      <Route path="/token-display" element={<TokenDisplayScreen />} />
-      <Route path="/review/:token" element={<ReviewFormPage />} />
+      <Route path="/token-display"  element={<TokenDisplayScreen />} />
+      <Route path="/review/:token"  element={<ReviewFormPage />} />
 
       {/* ── Protected shell ── */}
       <Route
         path="/*"
         element={
           <ProtectedRoute>
-            <AppShell />
+            <AuthShellRouter />
           </ProtectedRoute>
         }
       />

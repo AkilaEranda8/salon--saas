@@ -52,6 +52,10 @@ const CustomerPackage = sequelize.define('CustomerPackage', {
     type: DataTypes.TEXT,
     allowNull: true,
   },
+  tenant_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+  },
 }, {
   tableName: 'customer_packages',
   timestamps: true,

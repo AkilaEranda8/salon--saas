@@ -1,9 +1,10 @@
 const { Op, fn, col } = require('sequelize');
 const { Attendance, Staff, Branch } = require('../models');
+const { tenantWhere } = require('../utils/tenantScope');
 
 const list = async (req, res) => {
   try {
-    const where = {};
+    const where = tenantWhere(req);
     if (req.query.staffId) where.staff_id = req.query.staffId;
     if (req.query.date)    where.date     = req.query.date;
 

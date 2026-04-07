@@ -1,0 +1,32 @@
+# ── Local development overrides ─────────────────────────────────────────
+# Usage: docker compose -f docker-compose.yml -f docker-compose.local.yml up --build
+#
+# Differences from production:
+#   - No SSL (HTTP only on port 8080)
+#   - Local nginx config (no cert paths)
+#   - CORS + tenant slug set for localhost testing
+
+services:
+  proxy:
+    ports:
+      - "8080:80"
+    volumes:
+      - ./proxy/local.conf:/etc/nginx/conf.d/default.conf:ro
+    # Override to remove the certbot volumes (not needed locally)
+    depends_on:
+      - frontend
+      - backend
+      - phpmyadmin
+
+  backend:
+    environment:
+      CORS_ORIGIN: "http://localhost:8080"
+      FRONTEND_BASE_URL: "http://localhost:8080"
+      PLATFORM_URL: "http://localhost:8080"
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        # Local dev: no tenant slug — login detects platform_admin role
+        VITE_API_URL: "http://localhost:8080"

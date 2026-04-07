@@ -1,4 +1,5 @@
 const { Service } = require('../models');
+const { tenantWhere } = require('../utils/tenantScope');
 
 const list = async (req, res) => {
   try {
@@ -6,7 +7,7 @@ const list = async (req, res) => {
     const limit  = Math.min(parseInt(req.query.limit) || 100, 200);
     const offset = (page - 1) * limit;
 
-    const where = {};
+    const where = tenantWhere(req);
     if (req.query.category) where.category = req.query.category;
     if (req.query.active !== undefined) where.is_active = req.query.active !== 'false';
 
@@ -26,7 +27,8 @@ const list = async (req, res) => {
 
 const getOne = async (req, res) => {
   try {
-    const svc = await Service.findByPk(req.params.id);
+    const where = { ...tenantWhere(req), id: req.params.id };
+    const svc = await Service.findOne({ where });
     if (!svc) return res.status(404).json({ message: 'Service not found.' });
     return res.json(svc);
   } catch (err) {
@@ -39,7 +41,8 @@ const create = async (req, res) => {
     const { name, category, duration_minutes, price, description } = req.body;
     if (!name) return res.status(400).json({ message: 'Service name is required.' });
 
-    const svc = await Service.create({ name, category, duration_minutes, price, description });
+    const tenantId = req.userTenantId ?? req.tenant?.id ?? null;
+    const svc = await Service.create({ name, category, duration_minutes, price, description, tenant_id: tenantId });
     return res.status(201).json(svc);
   } catch (err) {
     return res.status(500).json({ message: 'Server error.' });
@@ -48,7 +51,8 @@ const create = async (req, res) => {
 
 const update = async (req, res) => {
   try {
-    const svc = await Service.findByPk(req.params.id);
+    const where = { ...tenantWhere(req), id: req.params.id };
+    const svc = await Service.findOne({ where });
     if (!svc) return res.status(404).json({ message: 'Service not found.' });
 
     await svc.update(req.body);
@@ -60,7 +64,8 @@ const update = async (req, res) => {
 
 const remove = async (req, res) => {
   try {
-    const svc = await Service.findByPk(req.params.id);
+    const where = { ...tenantWhere(req), id: req.params.id };
+    const svc = await Service.findOne({ where });
     if (!svc) return res.status(404).json({ message: 'Service not found.' });
 
     await svc.destroy();
@@ -72,13 +77,14 @@ const remove = async (req, res) => {
 
 const categories = async (req, res) => {
   try {
-    const { fn, col } = require('sequelize');
+    const { fn, col, Op } = require('sequelize');
+    const where = { ...tenantWhere(req), category: { [Op.ne]: null } };
     const rows = await Service.findAll({
       attributes: [
         'category',
         [fn('COUNT', col('id')), 'count'],
       ],
-      where: { category: { [require('sequelize').Op.ne]: null } },
+      where,
       group: ['category'],
       order: [['category', 'ASC']],
       raw: true,
@@ -94,7 +100,8 @@ const renameCategory = async (req, res) => {
   try {
     const { oldName, newName } = req.body;
     if (!oldName || !newName) return res.status(400).json({ message: 'oldName and newName are required.' });
-    const [affected] = await Service.update({ category: newName }, { where: { category: oldName } });
+    const tenantFilter = tenantWhere(req);
+    const [affected] = await Service.update({ category: newName }, { where: { ...tenantFilter, category: oldName } });
     return res.json({ message: `${affected} service(s) updated.`, affected });
   } catch (err) {
     console.error(err);
@@ -106,7 +113,8 @@ const deleteCategory = async (req, res) => {
   try {
     const { name } = req.body;
     if (!name) return res.status(400).json({ message: 'Category name is required.' });
-    const [affected] = await Service.update({ category: 'Other' }, { where: { category: name } });
+    const tenantFilter = tenantWhere(req);
+    const [affected] = await Service.update({ category: 'Other' }, { where: { ...tenantFilter, category: name } });
     return res.json({ message: `${affected} service(s) moved to Other.`, affected });
   } catch (err) {
     console.error(err);

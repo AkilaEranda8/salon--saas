@@ -40,11 +40,15 @@ const Customer = sequelize.define('Customer', {
     type: DataTypes.DATEONLY,
     allowNull: true,
   },
+  tenant_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+  },
 }, {
   tableName: 'customers',
   timestamps: true,
   indexes: [
-    { unique: true, fields: ['phone', 'branch_id'], name: 'customers_phone_branch_unique' },
+    { unique: true, fields: ['phone', 'branch_id', 'tenant_id'], name: 'customers_phone_branch_tenant_unique' },
   ],
 });
 

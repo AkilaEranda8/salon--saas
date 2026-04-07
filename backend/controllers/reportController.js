@@ -2,9 +2,10 @@ const { Op, fn, col, literal } = require('sequelize');
 const { sequelize } = require('../config/database');
 const { Appointment, Payment, PaymentSplit, Branch, Staff, Service, Inventory, Reminder, Customer, Expense, WalkIn } = require('../models');
 const XLSX = require('xlsx');
+const { tenantWhere } = require('../utils/tenantScope');
 
 const getBranchWhere = (req) => {
-  const where = {};
+  const where = tenantWhere(req);
   if (req.userBranchId)    where.branch_id = req.userBranchId;
   else if (req.query.branchId) where.branch_id = req.query.branchId;
   return where;

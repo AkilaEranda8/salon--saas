@@ -1,3 +1,5 @@
+const Tenant             = require('./Tenant');
+const Subscription       = require('./Subscription');
 const Branch             = require('./Branch');
 const User               = require('./User');
 const Service            = require('./Service');
@@ -21,6 +23,18 @@ const PackageRedemption    = require('./PackageRedemption');
 const StaffFcmToken        = require('./StaffFcmToken');
 const StaffBranch          = require('./StaffBranch');
 const Discount             = require('./Discount');
+
+// ── Tenant ────────────────────────────────────────────────────────────────────
+Tenant.hasMany(Subscription, { foreignKey: 'tenant_id', as: 'subscriptions' });
+Subscription.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
+Tenant.hasMany(Branch,   { foreignKey: 'tenant_id', as: 'branches' });
+Tenant.hasMany(User,     { foreignKey: 'tenant_id', as: 'users' });
+Tenant.hasMany(Staff,    { foreignKey: 'tenant_id', as: 'staffMembers' });
+Tenant.hasMany(Customer, { foreignKey: 'tenant_id', as: 'customers' });
+Tenant.hasMany(Service,  { foreignKey: 'tenant_id', as: 'services' });
+Branch.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
+User.belongsTo(Tenant,   { foreignKey: 'tenant_id', as: 'tenant' });
+Staff.belongsTo(Tenant,  { foreignKey: 'tenant_id', as: 'tenant' });
 
 // ── Discount ─────────────────────────────────────────────────────────────────
 Discount.belongsTo(Branch, { foreignKey: 'branch_id', as: 'branch' });
@@ -133,6 +147,8 @@ PackageRedemption.belongsTo(Payment,         { foreignKey: 'payment_id',        
 PackageRedemption.belongsTo(Service,         { foreignKey: 'service_id',          as: 'service' });
 PackageRedemption.belongsTo(Staff,           { foreignKey: 'redeemed_by',         as: 'staff' });
 module.exports = {
+  Tenant,
+  Subscription,
   Branch,
   User,
   Service,

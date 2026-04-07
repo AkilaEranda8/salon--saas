@@ -26,6 +26,10 @@ const StaffFcmToken = sequelize.define('StaffFcmToken', {
     type: DataTypes.STRING(255),
     allowNull: true,
   },
+  tenant_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+  },
 }, {
   tableName: 'staff_fcm_tokens',
   timestamps: true,

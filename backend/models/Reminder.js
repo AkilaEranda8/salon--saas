@@ -31,6 +31,10 @@ const Reminder = sequelize.define('Reminder', {
     type: DataTypes.BOOLEAN,
     defaultValue: false,
   },
+  tenant_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+  },
 }, {
   tableName: 'reminders',
   timestamps: true,

@@ -45,6 +45,10 @@ const Staff = sequelize.define('Staff', {
     defaultValue: null,
     comment: 'Optional link to a users.id login account for this staff member',
   },
+  tenant_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+  },
 }, {
   tableName: 'staff',
   timestamps: true,

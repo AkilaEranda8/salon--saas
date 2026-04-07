@@ -1,6 +1,7 @@
 const { Op } = require('sequelize');
 const { Discount, Branch } = require('../models');
 const { computePromoAmount, isDiscountActive, activeDiscountWhere } = require('../services/discountHelpers');
+const { tenantWhere } = require('../utils/tenantScope');
 
 /** List discounts for admin (all or branch-scoped). */
 const list = async (req, res) => {
@@ -8,7 +9,7 @@ const list = async (req, res) => {
     const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
     const limit = Math.min(parseInt(req.query.limit, 10) || 100, 200);
     const offset = (page - 1) * limit;
-    const where = {};
+    const where = tenantWhere(req);
     if (req.query.branchId) {
       where.branch_id = req.query.branchId === 'all' ? { [Op.eq]: null } : req.query.branchId;
     } else if (req.userBranchId) {

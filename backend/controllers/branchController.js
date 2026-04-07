@@ -1,5 +1,6 @@
 const { Op } = require('sequelize');
 const { Branch, User, Staff, Customer } = require('../models');
+const { tenantWhere } = require('../utils/tenantScope');
 
 const list = async (req, res) => {
   try {
@@ -8,6 +9,7 @@ const list = async (req, res) => {
     const offset = (page - 1) * limit;
 
     const { count, rows } = await Branch.findAndCountAll({
+      where:  tenantWhere(req),
       limit,
       offset,
       order: [['name', 'ASC']],

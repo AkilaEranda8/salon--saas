@@ -10,6 +10,8 @@ const { sequelize } = require('./config/database');
 const validateEnv  = require('./config/validateEnv');
 const { initSocket } = require('./socket');
 const { startAppointmentReminderCron, startReminderDueCron } = require('./services/appointmentReminderCron');
+const { tenantScope }       = require('./middleware/tenantScope');
+const { checkSubscription } = require('./middleware/checkSubscription');
 
 // Validate required env vars on startup
 validateEnv();
@@ -21,24 +23,18 @@ const app = express();
 app.set('trust proxy', 1);
 const server = http.createServer(app);
 
-// ── Middleware ────────────────────────────────────────────────────────────────
-const allowedOrigins = [
-  'http://localhost:5173',
-  'http://localhost:3000',
-  'http://localhost',        // Docker nginx (port 80)
-  'http://localhost:80',
-  'http://zanesalon.com',
-  'https://zanesalon.com',
-  'http://www.zanesalon.com',
-  'https://www.zanesalon.com',
-  'http://main.zanesalon.com',
-  'https://main.zanesalon.com',
-  'http://api.zanesalon.com',
-  'https://api.zanesalon.com',
-];
+// ── CORS ──────────────────────────────────────────────────────────────────────
+// Allow any *.zanesalon.com subdomain (covers all tenant subdomains dynamically)
+const isAllowedOrigin = (origin) => {
+  if (!origin) return true; // server-to-server or same-origin
+  if (/^http:\/\/localhost(:\d+)?$/.test(origin)) return true;
+  if (/^https?:\/\/([a-z0-9-]+\.)?zanesalon\.com$/.test(origin)) return true;
+  return false;
+};
+
 const corsOptions = {
   origin: (origin, cb) => {
-    if (!origin || allowedOrigins.includes(origin)) return cb(null, true);
+    if (isAllowedOrigin(origin)) return cb(null, true);
     cb(new Error('Not allowed by CORS'));
   },
   credentials: true,
@@ -46,7 +42,7 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.use(helmet({ contentSecurityPolicy: false }));
 
-// Rate limiting — auth endpoints most restrictive
+// ── Rate limiting ─────────────────────────────────────────────────────────────
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max:      20,
@@ -55,7 +51,6 @@ const authLimiter = rateLimit({
   message: { message: 'Too many attempts, please try again after 15 minutes.' },
 });
 
-// General API rate limit
 const apiLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 minute
   max:      200,
@@ -63,15 +58,35 @@ const apiLimiter = rateLimit({
   legacyHeaders:   false,
 });
 
+const onboardingLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max:      3,
+  standardHeaders: true,
+  legacyHeaders:   false,
+  message: { message: 'Too many registration attempts, please try again later.' },
+});
+
 app.use('/api/auth/login',    authLimiter);
 app.use('/api/auth/register', authLimiter);
 app.use('/api/',              apiLimiter);
 
 // ── Socket.io ─────────────────────────────────────────────────────────────────
-initSocket(server, { origin: allowedOrigins, credentials: true });
+initSocket(server, {
+  origin: (origin, cb) => {
+    if (isAllowedOrigin(origin)) return cb(null, true);
+    cb(new Error('Not allowed by CORS'));
+  },
+  credentials: true,
+});
+
+// ── Stripe webhook (MUST be before express.json — needs raw body) ─────────────
+app.use('/api/billing/webhook', express.raw({ type: 'application/json' }), require('./routes/billing'));
 
 app.use(express.json());
 app.use(cookieParser());
+
+// ── Tenant scope (MUST be before all route handlers) ─────────────────────────
+app.use('/api/', tenantScope);
 
 // Static uploads folder
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
@@ -81,11 +96,17 @@ app.get('/api/health', (_req, res) =>
   res.json({ status: 'ok', message: 'Zane Salon API is running' })
 );
 
-// Public (no auth)
+// Public (no auth, no subscription check)
 app.use('/api/public',       require('./routes/public'));
+
+// Onboarding (public — new salon registration)
+app.use('/api/onboarding', onboardingLimiter, require('./routes/onboarding'));
 
 // Auth
 app.use('/api/auth',         require('./routes/auth'));
+
+// Subscription check applied to all protected routes below
+app.use('/api/', checkSubscription);
 
 // Protected resources
 app.use('/api/branches',     require('./routes/branches'));
@@ -106,6 +127,12 @@ app.use('/api/reviews',      require('./routes/reviews'));
 app.use('/api/packages',     require('./routes/packages'));
 app.use('/api/discounts',    require('./routes/discounts'));
 app.use('/api/fcm-token',    require('./routes/fcmToken'));
+
+// Billing (protected — Stripe portal, checkout)
+app.use('/api/billing',      require('./routes/billing'));
+
+// Platform admin (only platform_admin role)
+app.use('/api/platform',     require('./routes/platform'));
 
 // ── 404 handler ───────────────────────────────────────────────────────────────
 app.use((_req, res) => res.status(404).json({ message: 'Route not found.' }));

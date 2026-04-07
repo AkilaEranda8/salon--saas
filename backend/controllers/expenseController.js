@@ -1,9 +1,10 @@
 const { Op, fn, col, literal } = require('sequelize');
 const { Expense, Branch, User, Payment, Service } = require('../models');
+const { tenantWhere } = require('../utils/tenantScope');
 
 // ── Branch-scope helper (mirrors pattern used across controllers) ──────────────
 const getBranchWhere = (req) => {
-  const where = {};
+  const where = tenantWhere(req);
   if (req.userBranchId)        where.branch_id = req.userBranchId;
   else if (req.query.branchId) where.branch_id = req.query.branchId;
   return where;

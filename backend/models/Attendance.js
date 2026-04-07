@@ -31,6 +31,10 @@ const Attendance = sequelize.define('Attendance', {
     type: DataTypes.TEXT,
     allowNull: true,
   },
+  tenant_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+  },
 }, {
   tableName: 'attendance',
   timestamps: false,

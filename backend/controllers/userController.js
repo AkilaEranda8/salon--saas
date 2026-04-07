@@ -1,6 +1,7 @@
 const bcrypt = require('bcryptjs');
 const { Op } = require('sequelize');
 const { User, Branch } = require('../models');
+const { tenantWhere } = require('../utils/tenantScope');
 
 const list = async (req, res) => {
   try {
@@ -8,7 +9,7 @@ const list = async (req, res) => {
     const limit  = Math.min(parseInt(req.query.limit) || 20, 100);
     const offset = (page - 1) * limit;
 
-    const where = {};
+    const where = tenantWhere(req);
     if (req.query.role)     where.role      = req.query.role;
     if (req.query.branchId) where.branch_id = req.query.branchId;
 

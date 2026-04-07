@@ -112,6 +112,10 @@ const NotificationSettings = sequelize.define('NotificationSettings', {
     type: DataTypes.TEXT,
     allowNull: true,
   },
+  tenant_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+  },
 }, {
   tableName: 'notification_settings',
   timestamps: true,

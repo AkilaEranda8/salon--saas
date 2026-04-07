@@ -3,6 +3,7 @@ const { sequelize } = require('../config/database');
 const { WalkIn, Service, Staff } = require('../models');
 const { emitQueueUpdate } = require('../socket');
 const { notifyBranch } = require('../services/fcmService');
+const { tenantWhere } = require('../utils/tenantScope');
 
 // Helper: today as YYYY-MM-DD
 const today = () => new Date().toISOString().slice(0, 10);
@@ -28,6 +29,7 @@ const defaultInclude = [
 exports.list = async (req, res) => {
   try {
     const { branchId, date, status } = req.query;    if (!branchId) return res.status(400).json({ message: 'branchId is required.' });    const where = {
+      ...tenantWhere(req),
       branch_id: branchId,
       check_in_date: date || today(),
     };
@@ -50,6 +52,7 @@ exports.list = async (req, res) => {
 exports.stats = async (req, res) => {
   try {
     const { branchId, date } = req.query;    if (!branchId) return res.status(400).json({ message: 'branchId is required.' });    const where = {
+      ...tenantWhere(req),
       branch_id: branchId,
       check_in_date: date || today(),
     };

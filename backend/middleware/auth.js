@@ -2,10 +2,11 @@ const jwt = require('jsonwebtoken');
 
 // ─── Permissions map ──────────────────────────────────────────────────────────
 const PERMISSIONS = {
-  superadmin: { del: true,  branches: true,  users: true,  all: true,  services: true,  staff: true  },
-  admin:      { del: true,  branches: true,  users: false, all: true,  services: true,  staff: true  },
-  manager:    { del: true,  branches: false, users: false, all: false, services: false, staff: true  },
-  staff:      { del: false, branches: false, users: false, all: false, services: false, staff: false },
+  platform_admin: { del: true,  branches: true,  users: true,  all: true,  services: true,  staff: true  },
+  superadmin:     { del: true,  branches: true,  users: true,  all: true,  services: true,  staff: true  },
+  admin:          { del: true,  branches: true,  users: false, all: true,  services: true,  staff: true  },
+  manager:        { del: true,  branches: false, users: false, all: false, services: false, staff: true  },
+  staff:          { del: false, branches: false, users: false, all: false, services: false, staff: false },
 };
 
 // ─── verifyToken ──────────────────────────────────────────────────────────────

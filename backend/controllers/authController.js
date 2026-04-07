@@ -1,6 +1,6 @@
 const bcrypt = require('bcryptjs');
 const jwt    = require('jsonwebtoken');
-const { User, Branch } = require('../models');
+const { User, Branch, Tenant } = require('../models');
 
 // ─── POST /api/auth/register ─────────────────────────────────────────────────
 const register = async (req, res) => {
@@ -11,7 +11,9 @@ const register = async (req, res) => {
       return res.status(400).json({ message: 'Username, password, and name are required.' });
     }
 
-    const existing = await User.findOne({ where: { username } });
+    // Scope username uniqueness to this tenant
+    const tenantId = req.tenant?.id ?? req.user?.tenantId ?? null;
+    const existing = await User.findOne({ where: { username, tenant_id: tenantId } });
     if (existing) {
       return res.status(409).json({ message: 'Username already exists.' });
     }
@@ -21,26 +23,29 @@ const register = async (req, res) => {
     // Only allow valid roles; prevent privilege escalation
     const ALLOWED_ROLES = ['staff', 'manager', 'admin'];
     // Only superadmin can create other superadmins
-    if (role === 'superadmin' && req.user?.role !== 'superadmin') {
+    if (role === 'superadmin' && req.user?.role !== 'superadmin' && req.user?.role !== 'platform_admin') {
       return res.status(403).json({ message: 'Only superadmins can create superadmin accounts.' });
     }
     const assignedRole = ALLOWED_ROLES.includes(role) || role === 'superadmin' ? role : 'staff';
 
     const user = await User.create({
       username,
-      password: hashedPassword,
+      password:  hashedPassword,
       name,
       role:      assignedRole,
       branch_id: branch_id || null,
       color:     color || '#6366f1',
+      tenant_id: tenantId,
     });
 
     const payload = {
-      id:       user.id,
-      username: user.username,
-      role:     user.role,
-      branchId: user.branch_id,
-      name:     user.name,
+      id:         user.id,
+      username:   user.username,
+      role:       user.role,
+      branchId:   user.branch_id,
+      name:       user.name,
+      tenantId:   user.tenant_id,
+      tenantSlug: req.tenant?.slug ?? null,
     };
 
     const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '7d' });
@@ -61,6 +66,7 @@ const register = async (req, res) => {
         branchId: user.branch_id,
         avatar:   user.avatar,
         color:    user.color,
+        tenantId: user.tenant_id,
       },
     });
   } catch (err) {
@@ -78,9 +84,22 @@ const login = async (req, res) => {
       return res.status(400).json({ message: 'Username and password are required.' });
     }
 
+    const whereClause = { username, is_active: true };
+
+    if (req.tenant) {
+      // Normal tenant login — scope to this tenant
+      whereClause.tenant_id = req.tenant.id;
+    } else {
+      // No tenant slug — only platform_admin accounts can log in this way
+      whereClause.role = 'platform_admin';
+    }
+
     const user = await User.findOne({
-      where: { username, is_active: true },
-      include: [{ model: Branch, as: 'branch', attributes: ['id', 'name', 'color'] }],
+      where:   whereClause,
+      include: [
+        { model: Branch, as: 'branch', attributes: ['id', 'name', 'color'] },
+        { model: Tenant, as: 'tenant', attributes: ['id', 'slug', 'name', 'plan', 'status', 'trial_ends_at'] },
+      ],
     });
 
     if (!user) {
@@ -93,11 +112,13 @@ const login = async (req, res) => {
     }
 
     const payload = {
-      id:       user.id,
-      username: user.username,
-      role:     user.role,
-      branchId: user.branch_id,
-      name:     user.name,
+      id:         user.id,
+      username:   user.username,
+      role:       user.role,
+      branchId:   user.branch_id,
+      name:       user.name,
+      tenantId:   user.tenant_id,
+      tenantSlug: user.tenant?.slug ?? null,
     };
 
     const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '7d' });
@@ -119,6 +140,8 @@ const login = async (req, res) => {
         avatar:   user.avatar,
         color:    user.color,
         branch:   user.branch,
+        tenant:   user.tenant,
+        tenantId: user.tenant_id,
       },
     });
   } catch (err) {
@@ -142,7 +165,10 @@ const getMe = async (req, res) => {
   try {
     const user = await User.findByPk(req.user.id, {
       attributes: { exclude: ['password'] },
-      include:    [{ model: Branch, as: 'branch', attributes: ['id', 'name', 'color'] }],
+      include: [
+        { model: Branch, as: 'branch', attributes: ['id', 'name', 'color'] },
+        { model: Tenant, as: 'tenant', attributes: ['id', 'slug', 'name', 'plan', 'status', 'trial_ends_at'] },
+      ],
     });
 
     if (!user) {

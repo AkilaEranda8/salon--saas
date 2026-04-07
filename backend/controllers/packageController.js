@@ -1,13 +1,14 @@
 'use strict';
 const { Op } = require('sequelize');
 const { sequelize } = require('../config/database');
+const { tenantWhere } = require('../utils/tenantScope');
 
 // ── PACKAGE TEMPLATES ─────────────────────────────────────────────────────────
 
 const list = async (req, res) => {
   try {
     const { Package, Branch, Service } = require('../models');
-    const where = {};
+    const where = tenantWhere(req);
     if (req.query.activeOnly !== 'false') where.is_active = true;
     if (req.userBranchId) {
       where[Op.or] = [{ branch_id: req.userBranchId }, { branch_id: null }];

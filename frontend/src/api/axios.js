@@ -1,10 +1,14 @@
 import axios from 'axios';
+import { getTenantSlug } from '../utils/tenant';
+
+const tenantSlug = getTenantSlug();
 
 const api = axios.create({
   baseURL: '/api',
   withCredentials: true,
   headers: {
     'Content-Type': 'application/json',
+    ...(tenantSlug ? { 'X-Tenant-Slug': tenantSlug } : {}),
   },
 });
 

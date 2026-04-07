@@ -32,6 +32,10 @@ const Branch = sequelize.define('Branch', {
     type: DataTypes.STRING(20),
     defaultValue: '#6366f1',
   },
+  tenant_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+  },
 }, {
   tableName: 'branches',
   timestamps: true,

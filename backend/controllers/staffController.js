@@ -1,9 +1,10 @@
 const { Op, fn, col, literal } = require('sequelize');
 const { Staff, Branch, StaffBranch, StaffSpecialization, Service, Appointment, Payment, User } = require('../models');
+const { tenantWhere } = require('../utils/tenantScope');
 
 // Helper: resolve branch filter from role
 const getBranchWhere = (req) => {
-  const where = {};
+  const where = tenantWhere(req);
   if (req.userBranchId) {
     where.branch_id = req.userBranchId;
   } else if (req.query.branchId) {

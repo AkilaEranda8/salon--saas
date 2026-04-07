@@ -52,6 +52,10 @@ const WalkIn = sequelize.define('WalkIn', {
     type: DataTypes.TEXT,
     allowNull: true,
   },
+  tenant_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+  },
 }, {
   tableName: 'walk_in_queue',
   timestamps: true,

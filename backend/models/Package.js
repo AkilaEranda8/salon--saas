@@ -53,6 +53,10 @@ const Package = sequelize.define('Package', {
     type: DataTypes.INTEGER,
     allowNull: true,
   },
+  tenant_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+  },
 }, {
   tableName: 'packages',
   timestamps: true,

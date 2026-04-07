@@ -1,8 +1,9 @@
 const { Op } = require('sequelize');
 const { Customer, Branch, Appointment, Service } = require('../models');
+const { tenantWhere } = require('../utils/tenantScope');
 
 const getBranchWhere = (req) => {
-  const where = {};
+  const where = tenantWhere(req);
   if (req.userBranchId)    where.branch_id = req.userBranchId;
   else if (req.query.branchId) where.branch_id = req.query.branchId;
   return where;

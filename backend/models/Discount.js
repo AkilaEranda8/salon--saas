@@ -52,6 +52,10 @@ const Discount = sequelize.define('Discount', {
     type: DataTypes.BOOLEAN,
     defaultValue: true,
   },
+  tenant_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+  },
 }, {
   tableName: 'discounts',
   timestamps: true,

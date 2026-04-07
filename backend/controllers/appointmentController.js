@@ -3,9 +3,10 @@ const { Appointment, Branch, Customer, Staff, Service } = require('../models');
 const { notifyAppointmentConfirmed, notifyAppointmentCompleted } = require('../services/notificationService');
 const { createNextRecurring } = require('../services/recurringService');
 const { notifyBranch, notifyStaffUser } = require('../services/fcmService');
+const { tenantWhere } = require('../utils/tenantScope');
 
 const getBranchWhere = (req) => {
-  const where = {};
+  const where = tenantWhere(req);
   if (req.userBranchId) {
     where.branch_id = req.userBranchId;
   } else if (req.query.branchId) {

@@ -21,7 +21,7 @@ const User = sequelize.define('User', {
     allowNull: false,
   },
   role: {
-    type: DataTypes.ENUM('superadmin', 'admin', 'manager', 'staff'),
+    type: DataTypes.ENUM('platform_admin', 'superadmin', 'admin', 'manager', 'staff'),
     defaultValue: 'staff',
     allowNull: false,
   },
@@ -40,6 +40,11 @@ const User = sequelize.define('User', {
   is_active: {
     type: DataTypes.BOOLEAN,
     defaultValue: true,
+  },
+  tenant_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    comment: 'NULL for platform_admin accounts',
   },
 }, {
   tableName: 'users',

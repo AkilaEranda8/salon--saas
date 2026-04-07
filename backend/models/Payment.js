@@ -64,6 +64,10 @@ const Payment = sequelize.define('Payment', {
     allowNull: true,
     unique: true,
   },
+  tenant_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+  },
 }, {
   tableName: 'payments',
   timestamps: true,

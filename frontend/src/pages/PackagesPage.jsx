@@ -653,7 +653,7 @@ export default function PackagesPage() {
       )}
 
       {/*  Package Modal  */}
-      <Modal open={showPkgModal} onClose={() => setShowPkgModal(false)} title={editPkg ? 'Edit Package' : 'Create Package'} width={1100}
+      <Modal open={showPkgModal} onClose={() => setShowPkgModal(false)} title={editPkg ? 'Edit Package' : 'Create Package'} width={1280}
         footer={<>
           <button onClick={() => setShowPkgModal(false)} style={{ padding:'8px 20px', borderRadius:10, border:'1.5px solid #E4E7EC', background:'#fff', color:'#344054', fontWeight:600, cursor:'pointer', fontSize:13, fontFamily:"'Inter',sans-serif" }}>Cancel</button>
           {editPkg && (

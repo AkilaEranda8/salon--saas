@@ -159,7 +159,7 @@ export function Drawer({ open, onClose, title, children, footer, width = 480 }) 
 }
 
 /* ─── Modal ──────────────────────────────────────────────────────────────── */
-export function PKModal({ open, onClose, title, children, footer, size = 'md' }) {
+export function PKModal({ open, onClose, title, children, footer, size = 'md', width }) {
   useEffect(() => {
     if (!open) return;
     document.body.style.overflow = 'hidden';
@@ -167,11 +167,12 @@ export function PKModal({ open, onClose, title, children, footer, size = 'md' })
   }, [open]);
   if (!open) return null;
   const widths = { sm: 420, md: 560, lg: 720 };
+  const modalMaxWidth = width ?? widths[size] ?? 560;
   return createPortal(
     <div style={{ position: 'fixed', inset: 0, zIndex: 900, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
       <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'rgba(16,24,40,0.45)', backdropFilter: 'blur(2px)' }} />
       <div style={{
-        position: 'relative', width: '100%', maxWidth: widths[size] ?? 560,
+        position: 'relative', width: '100%', maxWidth: modalMaxWidth,
         background: '#fff', borderRadius: 16, display: 'flex', flexDirection: 'column',
         boxShadow: '0 20px 60px rgba(16,24,40,0.18)', maxHeight: '90vh', animation: 'pk-modal 0.18s ease',
       }}>

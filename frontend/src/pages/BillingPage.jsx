@@ -94,9 +94,12 @@ const BillingPage = () => {
   const { PLANS, upgradePlans } = useMemo(() => {
     const map = {};
     const list = [];
+    const now = new Date();
 
     for (const p of apiPlans) {
       const style = PLAN_STYLES[p.key] || DEFAULT_STYLE;
+      /* Determine if offer is live (active + not expired) */
+      const offerLive = p.offer_active && (!p.offer_ends_at || new Date(p.offer_ends_at) > now);
       map[p.key] = {
         label: p.label,
         ...style,
@@ -112,6 +115,11 @@ const BillingPage = () => {
           tagline: p.tagline || '',
           popular: !!p.is_popular,
           features: Array.isArray(p.features) ? p.features : [],
+          offerLive,
+          offerBadge: p.offer_badge || null,
+          offerLabel: p.offer_label || null,
+          offerPrice: p.offer_price_display || null,
+          offerEndsAt: p.offer_ends_at || null,
         });
       }
     }

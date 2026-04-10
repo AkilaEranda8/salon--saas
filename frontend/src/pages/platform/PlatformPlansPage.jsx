@@ -48,6 +48,11 @@ const EMPTY_FORM = {
   is_popular: false,
   is_active: true,
   sort_order: 0,
+  offer_active: false,
+  offer_label: '',
+  offer_price_display: '',
+  offer_badge: '',
+  offer_ends_at: '',
 };
 
 /* ── Modal ───────────────────────────────────────────────────────────── */
@@ -58,6 +63,11 @@ function PlanModal({ plan, onClose, onSaved }) {
       ? {
           ...plan,
           features: (plan.features || []).join('\n'),
+          offer_active: plan.offer_active || false,
+          offer_label: plan.offer_label || '',
+          offer_price_display: plan.offer_price_display || '',
+          offer_badge: plan.offer_badge || '',
+          offer_ends_at: plan.offer_ends_at ? plan.offer_ends_at.slice(0, 16) : '',
         }
       : { ...EMPTY_FORM }
   );
@@ -83,6 +93,11 @@ function PlanModal({ plan, onClose, onSaved }) {
           .split('\n')
           .map((s) => s.trim())
           .filter(Boolean),
+        offer_active:        Boolean(form.offer_active),
+        offer_label:         form.offer_label || null,
+        offer_price_display: form.offer_price_display || null,
+        offer_badge:         form.offer_badge || null,
+        offer_ends_at:       form.offer_ends_at || null,
       };
       if (isEdit) {
         await api.patch(`/platform/plans/${plan.id}`, payload);
@@ -209,6 +224,47 @@ function PlanModal({ plan, onClose, onSaved }) {
             </label>
           </div>
 
+          {/* ── Offer / Promotion Section ── */}
+          <div style={{ borderTop: '1.5px dashed #E5E7EB', paddingTop: 14 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+              <span style={{ fontSize: 18 }}>🏷️</span>
+              <span style={{ fontSize: 14, fontWeight: 800, color: '#0F172A' }}>Offer / Promotion</span>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 'auto', fontSize: 13, fontWeight: 600, color: form.offer_active ? '#059669' : '#94A3B8', cursor: 'pointer' }}>
+                <input type="checkbox" checked={form.offer_active} onChange={set('offer_active')} style={{ width: 16, height: 16, cursor: 'pointer' }} />
+                {form.offer_active ? 'Offer ON' : 'Offer OFF'}
+              </label>
+            </div>
+
+            {form.offer_active && (
+              <div style={{ display: 'grid', gap: 12 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <div style={fieldStyle}>
+                    <label style={labelStyle}>Offer Badge</label>
+                    <input style={inputStyle} value={form.offer_badge} onChange={set('offer_badge')} placeholder="e.g. 30% OFF" />
+                    <span style={{ fontSize: 11, color: '#94A3B8' }}>Badge shown on plan card</span>
+                  </div>
+                  <div style={fieldStyle}>
+                    <label style={labelStyle}>Offer Price</label>
+                    <input style={inputStyle} value={form.offer_price_display} onChange={set('offer_price_display')} placeholder="e.g. LKR 1,990" />
+                    <span style={{ fontSize: 11, color: '#94A3B8' }}>Discounted price to display</span>
+                  </div>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <div style={fieldStyle}>
+                    <label style={labelStyle}>Offer Label</label>
+                    <input style={inputStyle} value={form.offer_label} onChange={set('offer_label')} placeholder="e.g. New Year Special" />
+                    <span style={{ fontSize: 11, color: '#94A3B8' }}>Description shown under badge</span>
+                  </div>
+                  <div style={fieldStyle}>
+                    <label style={labelStyle}>Offer Ends At</label>
+                    <input style={inputStyle} type="datetime-local" value={form.offer_ends_at} onChange={set('offer_ends_at')} />
+                    <span style={{ fontSize: 11, color: '#94A3B8' }}>Leave empty for no expiry</span>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
           {err && (
             <div style={{ padding: '10px 14px', background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 9, fontSize: 13, color: '#DC2626' }}>
               {err}
@@ -253,6 +309,20 @@ function PlanCard({ plan, dark, onEdit, onDelete, onToggle }) {
     }}>
       {/* Card header gradient */}
       <div style={{ background: theme.grad, padding: '18px 20px 16px', color: '#fff', position: 'relative' }}>
+        {/* Offer badge */}
+        {plan.offer_active && plan.offer_badge && (
+          <div style={{
+            position: 'absolute', top: -1, right: 16,
+            background: 'linear-gradient(135deg, #F59E0B, #EF4444)',
+            color: '#fff', fontSize: 11, fontWeight: 800,
+            padding: '4px 14px 6px', borderRadius: '0 0 10px 10px',
+            letterSpacing: '0.04em', textTransform: 'uppercase',
+            boxShadow: '0 4px 12px rgba(239,68,68,0.35)',
+            animation: 'pulse 2s ease-in-out infinite',
+          }}>
+            🔥 {plan.offer_badge}
+          </div>
+        )}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <div>
             <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', opacity: 0.7 }}>
@@ -274,10 +344,30 @@ function PlanCard({ plan, dark, onEdit, onDelete, onToggle }) {
             )}
           </div>
         </div>
-        <div style={{ marginTop: 12 }}>
-          <span style={{ fontSize: 28, fontWeight: 900, lineHeight: 1 }}>{plan.price_display || '—'}</span>
-          <span style={{ fontSize: 13, opacity: 0.75, marginLeft: 4 }}>{plan.price_period}</span>
+        <div style={{ marginTop: 12, display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+          {plan.offer_active && plan.offer_price_display ? (
+            <>
+              <span style={{ fontSize: 28, fontWeight: 900, lineHeight: 1 }}>{plan.offer_price_display}</span>
+              <span style={{ fontSize: 15, opacity: 0.6, textDecoration: 'line-through' }}>{plan.price_display || '—'}</span>
+              <span style={{ fontSize: 13, opacity: 0.75 }}>{plan.price_period}</span>
+            </>
+          ) : (
+            <>
+              <span style={{ fontSize: 28, fontWeight: 900, lineHeight: 1 }}>{plan.price_display || '—'}</span>
+              <span style={{ fontSize: 13, opacity: 0.75, marginLeft: 4 }}>{plan.price_period}</span>
+            </>
+          )}
         </div>
+        {plan.offer_active && plan.offer_label && (
+          <div style={{ marginTop: 6, fontSize: 11, fontWeight: 700, color: '#FCD34D', display: 'flex', alignItems: 'center', gap: 5 }}>
+            🏷️ {plan.offer_label}
+            {plan.offer_ends_at && (
+              <span style={{ opacity: 0.8, fontWeight: 500 }}>
+                · Ends {new Date(plan.offer_ends_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+              </span>
+            )}
+          </div>
+        )}
         {plan.trial_days > 0 && (
           <div style={{ marginTop: 8, fontSize: 11, opacity: 0.8 }}>✓ {plan.trial_days}-day free trial</div>
         )}

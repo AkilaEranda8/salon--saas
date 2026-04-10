@@ -735,7 +735,7 @@ router.post('/bookings', async (req, res) => {
 router.get('/plans', async (_req, res) => {
   try {
     const { PlanConfig } = require('../models');
-    await PlanConfig.sync({ alter: false });
+    await PlanConfig.sync({ alter: true });
     const plans = await PlanConfig.findAll({
       where: { is_active: true },
       order: [['sort_order', 'ASC'], ['id', 'ASC']],

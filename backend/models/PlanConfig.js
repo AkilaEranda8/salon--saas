@@ -75,6 +75,32 @@ const PlanConfig = sequelize.define('PlanConfig', {
     allowNull: false,
     defaultValue: 0,
   },
+  // ── Offer / Promotion fields ──
+  offer_active: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: false,
+  },
+  offer_label: {
+    type: DataTypes.STRING(100),
+    allowNull: true,
+    defaultValue: null,
+  },
+  offer_price_display: {
+    type: DataTypes.STRING(50),
+    allowNull: true,
+    defaultValue: null,
+  },
+  offer_badge: {
+    type: DataTypes.STRING(60),
+    allowNull: true,
+    defaultValue: null,
+  },
+  offer_ends_at: {
+    type: DataTypes.DATE,
+    allowNull: true,
+    defaultValue: null,
+  },
 }, {
   tableName: 'plan_configs',
   timestamps: true,

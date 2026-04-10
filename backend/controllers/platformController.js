@@ -1385,7 +1385,7 @@ const emailInvoice = async (req, res) => {
 // ── GET /api/platform/plans ─────────────────────────────────────────────────
 const listPlans = async (req, res) => {
   try {
-    await PlanConfig.sync({ alter: false });
+    await PlanConfig.sync({ alter: true });
     const plans = await PlanConfig.findAll({ order: [['sort_order', 'ASC'], ['id', 'ASC']] });
     // If no plans in DB yet, seed from planConfig.js defaults
     if (plans.length === 0) {
@@ -1409,7 +1409,7 @@ const listPlans = async (req, res) => {
 // ── POST /api/platform/plans ─────────────────────────────────────────────────
 const createPlan = async (req, res) => {
   try {
-    const { key, label, price_display, price_period, tagline, max_branches, max_staff, max_services, features, trial_days, is_popular, is_active, sort_order } = req.body;
+    const { key, label, price_display, price_period, tagline, max_branches, max_staff, max_services, features, trial_days, is_popular, is_active, sort_order, offer_active, offer_label, offer_price_display, offer_badge, offer_ends_at } = req.body;
     if (!key || !label) return res.status(400).json({ message: 'key and label are required.' });
     const existing = await PlanConfig.findOne({ where: { key } });
     if (existing) return res.status(409).json({ message: `Plan key '${key}' already exists.` });
@@ -1427,6 +1427,11 @@ const createPlan = async (req, res) => {
       is_popular:     Boolean(is_popular),
       is_active:      is_active !== undefined ? Boolean(is_active) : true,
       sort_order:     Number(sort_order    ?? 0),
+      offer_active:        Boolean(offer_active),
+      offer_label:         offer_label         ?? null,
+      offer_price_display: offer_price_display ?? null,
+      offer_badge:         offer_badge         ?? null,
+      offer_ends_at:       offer_ends_at       ?? null,
     });
     return res.status(201).json(plan);
   } catch (err) {
@@ -1440,7 +1445,7 @@ const updatePlan = async (req, res) => {
   try {
     const plan = await PlanConfig.findByPk(req.params.id);
     if (!plan) return res.status(404).json({ message: 'Plan not found.' });
-    const allowed = ['label', 'price_display', 'price_period', 'tagline', 'max_branches', 'max_staff', 'max_services', 'features', 'trial_days', 'is_popular', 'is_active', 'sort_order'];
+    const allowed = ['label', 'price_display', 'price_period', 'tagline', 'max_branches', 'max_staff', 'max_services', 'features', 'trial_days', 'is_popular', 'is_active', 'sort_order', 'offer_active', 'offer_label', 'offer_price_display', 'offer_badge', 'offer_ends_at'];
     const updates = {};
     for (const field of allowed) {
       if (req.body[field] !== undefined) updates[field] = req.body[field];

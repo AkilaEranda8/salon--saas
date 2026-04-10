@@ -1,10 +1,12 @@
-const { Tenant, Subscription } = require('../models');
+const { Tenant, Subscription, PlatformInvoice } = require('../models');
 const { invalidateTenantCache } = require('../middleware/tenantScope');
+const { getTenantCaps } = require('../utils/planConfig');
+const { generateInvoicePdfBuffer, sendInvoiceEmail } = require('../services/invoiceDocumentService');
 
 // Lazy-load Stripe so the app still boots when STRIPE_SECRET_KEY is not set
 function getStripe() {
   if (!process.env.STRIPE_SECRET_KEY) {
-    throw new Error('STRIPE_SECRET_KEY is not configured.');
+    return null;
   }
   return require('stripe')(process.env.STRIPE_SECRET_KEY);
 }
@@ -19,6 +21,14 @@ const PRICE_IDS = {
 const createCheckout = async (req, res) => {
   try {
     const stripe = getStripe();
+    
+    // Check if Stripe is configured
+    if (!stripe) {
+      return res.status(503).json({ 
+        message: 'Billing service is temporarily unavailable. Please contact support.' 
+      });
+    }
+    
     const tenant = req.tenant;
     if (!tenant) return res.status(400).json({ message: 'Tenant context required.' });
 
@@ -42,7 +52,7 @@ const createCheckout = async (req, res) => {
 
     const baseUrl = process.env.FRONTEND_BASE_URL
       ? process.env.FRONTEND_BASE_URL.replace('{slug}', tenant.slug)
-      : `https://${tenant.slug}.zanesalon.com`;
+      : `https://${tenant.slug}.salon.hexalyte.com`;
 
     const session = await stripe.checkout.sessions.create({
       mode:       'subscription',
@@ -64,6 +74,14 @@ const createCheckout = async (req, res) => {
 const billingPortal = async (req, res) => {
   try {
     const stripe = getStripe();
+    
+    // Check if Stripe is configured
+    if (!stripe) {
+      return res.status(503).json({ 
+        message: 'Billing service is temporarily unavailable. Please contact support.' 
+      });
+    }
+    
     const tenant = req.tenant;
     if (!tenant) return res.status(400).json({ message: 'Tenant context required.' });
     if (!tenant.stripe_customer_id) {
@@ -72,7 +90,7 @@ const billingPortal = async (req, res) => {
 
     const baseUrl = process.env.FRONTEND_BASE_URL
       ? process.env.FRONTEND_BASE_URL.replace('{slug}', tenant.slug)
-      : `https://${tenant.slug}.zanesalon.com`;
+      : `https://${tenant.slug}.salon.hexalyte.com`;
 
     const session = await stripe.billingPortal.sessions.create({
       customer:   tenant.stripe_customer_id,
@@ -90,8 +108,8 @@ const billingPortal = async (req, res) => {
 // NOTE: This route is registered BEFORE express.json() in server.js
 //       so req.body contains the raw Buffer (needed for signature verification)
 const stripeWebhook = async (req, res) => {
-  if (!process.env.STRIPE_WEBHOOK_SECRET) {
-    return res.status(500).json({ message: 'STRIPE_WEBHOOK_SECRET not configured.' });
+  if (!process.env.STRIPE_WEBHOOK_SECRET || !process.env.STRIPE_SECRET_KEY) {
+    return res.status(503).json({ message: 'Stripe not configured.' });
   }
 
   let event;
@@ -160,14 +178,20 @@ async function syncSubscription(tenantId, stripeSubscription) {
 
   const priceId = stripeSubscription.items.data[0]?.price?.id;
   const plan    = getPlanFromPriceId(priceId);
-  const status  = stripeSubscription.status; // active, trialing, past_due, canceled
+  // Stripe uses 'canceled' (one l); our DB ENUM uses 'cancelled' (two l)
+  const rawStatus = stripeSubscription.status;
+  const status  = rawStatus === 'canceled' ? 'cancelled' : rawStatus;
+  const caps = getTenantCaps(plan);
 
-  const tenantStatus = (status === 'active' || status === 'trialing') ? 'active' : 'suspended';
+  const tenantStatus = (rawStatus === 'active' || rawStatus === 'trialing') ? 'active' : 'suspended';
 
   await tenant.update({
     plan,
     status:                 tenantStatus,
     stripe_subscription_id: stripeSubscription.id,
+    max_branches:           caps.max_branches,
+    max_staff:              caps.max_staff,
+    trial_ends_at:          plan === 'trial' ? tenant.trial_ends_at : null,
   });
 
   // Upsert Subscription record
@@ -186,9 +210,9 @@ async function syncSubscription(tenantId, stripeSubscription) {
 }
 
 function getPlanFromPriceId(priceId) {
-  if (priceId === PRICE_IDS.enterprise) return 'enterprise';
-  if (priceId === PRICE_IDS.pro)        return 'pro';
-  if (priceId === PRICE_IDS.basic)      return 'basic';
+  if (priceId && PRICE_IDS.enterprise && priceId === PRICE_IDS.enterprise) return 'enterprise';
+  if (priceId && PRICE_IDS.pro        && priceId === PRICE_IDS.pro)        return 'pro';
+  if (priceId && PRICE_IDS.basic      && priceId === PRICE_IDS.basic)      return 'basic';
   return 'basic'; // default
 }
 
@@ -215,4 +239,80 @@ const billingStatus = async (req, res) => {
   }
 };
 
-module.exports = { createCheckout, billingPortal, stripeWebhook, billingStatus };
+// ── GET /api/billing/invoices ───────────────────────────────────────────────
+const billingInvoices = async (req, res) => {
+  try {
+    const tenantId = req.tenant?.id || req.user?.tenantId;
+    if (!tenantId) return res.status(400).json({ message: 'Tenant context required.' });
+
+    const invoices = await PlatformInvoice.findAll({
+      where: { tenant_id: tenantId },
+      order: [['issued_at', 'DESC'], ['id', 'DESC']],
+      limit: 100,
+    });
+
+    return res.json({ invoices });
+  } catch (err) {
+    console.error('billing.billingInvoices error:', err);
+    return res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+// ── GET /api/billing/invoices/:id/pdf ───────────────────────────────────────
+const billingInvoicePdf = async (req, res) => {
+  try {
+    const tenantId = req.tenant?.id || req.user?.tenantId;
+    if (!tenantId) return res.status(400).json({ message: 'Tenant context required.' });
+
+    const invoice = await PlatformInvoice.findOne({
+      where: { id: req.params.id, tenant_id: tenantId },
+      include: [{ model: Tenant, as: 'tenant', attributes: ['id', 'name', 'slug', 'email', 'plan'] }],
+    });
+    if (!invoice) return res.status(404).json({ message: 'Invoice not found.' });
+
+    const pdf = await generateInvoicePdfBuffer({ invoice, tenant: invoice.tenant });
+    const fileName = `${invoice.invoice_number || `invoice-${invoice.id}`}.pdf`;
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+    return res.send(pdf);
+  } catch (err) {
+    console.error('billing.billingInvoicePdf error:', err);
+    return res.status(500).json({ message: 'Failed to generate invoice PDF.' });
+  }
+};
+
+// ── POST /api/billing/invoices/:id/email ────────────────────────────────────
+const billingInvoiceEmail = async (req, res) => {
+  try {
+    const tenantId = req.tenant?.id || req.user?.tenantId;
+    if (!tenantId) return res.status(400).json({ message: 'Tenant context required.' });
+
+    const invoice = await PlatformInvoice.findOne({
+      where: { id: req.params.id, tenant_id: tenantId },
+      include: [{ model: Tenant, as: 'tenant', attributes: ['id', 'name', 'slug', 'email', 'plan'] }],
+    });
+    if (!invoice) return res.status(404).json({ message: 'Invoice not found.' });
+
+    const to = req.body?.email || invoice.tenant?.email;
+    if (!to) return res.status(400).json({ message: 'Recipient email is required.' });
+
+    const pdf = await generateInvoicePdfBuffer({ invoice, tenant: invoice.tenant });
+    await sendInvoiceEmail({ to, invoice, tenant: invoice.tenant, pdfBuffer: pdf });
+
+    return res.json({ message: `Invoice emailed to ${to}.` });
+  } catch (err) {
+    console.error('billing.billingInvoiceEmail error:', err);
+    return res.status(500).json({ message: err.message || 'Failed to send invoice email.' });
+  }
+};
+
+module.exports = {
+  createCheckout,
+  billingPortal,
+  stripeWebhook,
+  billingStatus,
+  billingInvoices,
+  billingInvoicePdf,
+  billingInvoiceEmail,
+};

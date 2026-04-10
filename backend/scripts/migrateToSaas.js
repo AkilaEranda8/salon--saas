@@ -123,7 +123,7 @@ async function run() {
     zaneTenant = await Tenant.create({
       name:          'Zane Salon',
       slug:          'zane',
-      email:         'admin@zanesalon.com',
+      email:         'admin@hexalyte.com',
       plan:          'enterprise',
       status:        'active',
       trial_ends_at: null,

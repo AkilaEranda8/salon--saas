@@ -8,7 +8,7 @@ import api from '../api/axios';
  * Creates a new tenant + branch + admin user via POST /api/onboarding/register.
  * On success, redirects to the new tenant's subdomain.
  *
- * This page is served at zanesalon.com/signup or app.zanesalon.com/signup.
+ * This page is served at salon.hexalyte.com/signup or admin.hexalyte.com/signup.
  */
 const STEPS = ['Business', 'Account', 'Done'];
 
@@ -66,7 +66,7 @@ const OnboardingPage = () => {
       const res = await api.post('/onboarding/register', form);
       const { slug } = res.data.tenant;
       // Redirect to the new tenant subdomain
-      window.location.href = `https://${slug}.zanesalon.com/dashboard`;
+      window.location.href = `https://${slug}.salon.hexalyte.com/dashboard`;
     } catch (err) {
       setError(err.response?.data?.message || 'Registration failed. Please try again.');
     } finally {
@@ -123,7 +123,7 @@ const OnboardingPage = () => {
                 </button>
               </div>
               <div style={s.urlPreview}>
-                {form.slug ? `https://${form.slug}.zanesalon.com` : 'Enter a slug above'}
+                {form.slug ? `https://${form.slug}.salon.hexalyte.com` : 'Enter a slug above'}
               </div>
               {slugAvailable === true  && <div style={s.ok}>✓ Available</div>}
               {slugAvailable === false && <div style={s.bad}>✗ Already taken</div>}

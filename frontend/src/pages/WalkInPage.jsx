@@ -151,13 +151,28 @@ export default function WalkInPage() {
 
   /*  Actions  */
   const changeStatus = async (id, status) => {
-    try { await api.patch(`/walkin/${id}/status`, { status }); } catch { /* socket refreshes */ }
+    try {
+      await api.patch(`/walkin/${id}/status`, { status });
+      fetchData();
+    } catch {
+      /* socket refreshes */
+    }
   };
   const assignStaff = async (id, staffId) => {
-    try { await api.patch(`/walkin/${id}/assign`, { staffId: +staffId }); } catch { /* socket refreshes */ }
+    try {
+      await api.patch(`/walkin/${id}/assign`, { staffId: +staffId });
+      fetchData();
+    } catch {
+      /* socket refreshes */
+    }
   };
   const removeEntry = async (id) => {
-    try { await api.delete(`/walkin/${id}`); } catch { /* socket refreshes */ }
+    try {
+      await api.delete(`/walkin/${id}`);
+      fetchData();
+    } catch {
+      /* socket refreshes */
+    }
   };
   const parseAdditionalServiceIds = (note = '') => parseAdditionalServiceIdsFromNote(note, services);
   const calcServiceTotal = (ids) => ids.reduce((sum, sid) => {
@@ -383,6 +398,7 @@ export default function WalkInPage() {
         serviceIds:   selectedServiceIds.map(Number),
         note:         fullNote        || undefined,
       });
+      await fetchData();
       setShowCheckin(false);
       setForm({ ...EMPTY_FORM, branchId: selectedBranch });
       setCheckinExtraServiceIds([]);

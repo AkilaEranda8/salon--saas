@@ -1,6 +1,29 @@
 const bcrypt = require('bcryptjs');
 const jwt    = require('jsonwebtoken');
+const speakeasy = require('speakeasy');
+const qrcode    = require('qrcode');
 const { User, Branch, Tenant } = require('../models');
+const { getMaintenanceMode } = require('../services/systemSettings');
+
+const isLocalRequest = (req) => {
+  const host = String(req.get('host') || '').toLowerCase();
+  return host.startsWith('localhost') || host.startsWith('127.0.0.1');
+};
+
+const getCookieOptions = (req) => {
+  const host = String(req.get('host') || '').toLowerCase();
+  const isLocalhost = host.startsWith('localhost') || host.startsWith('127.0.0.1');
+  const forwardedProto = String(req.get('x-forwarded-proto') || '').split(',')[0].trim().toLowerCase();
+  const isSecureRequest = req.secure || forwardedProto === 'https';
+
+  return {
+    httpOnly: true,
+    secure:   isSecureRequest && !isLocalhost,
+    sameSite: 'lax',
+    path:     '/',
+    maxAge:   7 * 24 * 60 * 60 * 1000,
+  };
+};
 
 // ─── POST /api/auth/register ─────────────────────────────────────────────────
 const register = async (req, res) => {
@@ -50,12 +73,7 @@ const register = async (req, res) => {
 
     const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '7d' });
 
-    res.cookie('token', token, {
-      httpOnly: true,
-      secure:   process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge:   7 * 24 * 60 * 60 * 1000,
-    });
+    res.cookie('token', token, getCookieOptions(req));
 
     return res.status(201).json({
       user: {
@@ -80,6 +98,15 @@ const login = async (req, res) => {
   try {
     const { username, password } = req.body;
 
+    const maintenance = await getMaintenanceMode();
+    if (maintenance.enabled) {
+      return res.status(503).json({
+        message: maintenance.message,
+        code: 'MAINTENANCE_MODE',
+        maintenance,
+      });
+    }
+
     if (!username || !password) {
       return res.status(400).json({ message: 'Username and password are required.' });
     }
@@ -89,8 +116,8 @@ const login = async (req, res) => {
     if (req.tenant) {
       // Normal tenant login — scope to this tenant
       whereClause.tenant_id = req.tenant.id;
-    } else {
-      // No tenant slug — only platform_admin accounts can log in this way
+    } else if (!isLocalRequest(req) && process.env.NODE_ENV === 'production') {
+      // In production without tenant context, only platform admins can log in.
       whereClause.role = 'platform_admin';
     }
 
@@ -98,7 +125,7 @@ const login = async (req, res) => {
       where:   whereClause,
       include: [
         { model: Branch, as: 'branch', attributes: ['id', 'name', 'color'] },
-        { model: Tenant, as: 'tenant', attributes: ['id', 'slug', 'name', 'plan', 'status', 'trial_ends_at'] },
+        { model: Tenant, as: 'tenant', attributes: ['id', 'slug', 'name', 'brand_name', 'logo_sidebar_url', 'logo_header_url', 'logo_login_url', 'logo_public_url', 'primary_color', 'sidebar_style', 'font_family', 'plan', 'status', 'trial_ends_at'] },
       ],
     });
 
@@ -109,6 +136,17 @@ const login = async (req, res) => {
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
       return res.status(401).json({ message: 'Invalid credentials.' });
+    }
+
+    /* ── 2FA gate ─────────────────────────────────────────────────────── */
+    if (user.totp_enabled && user.totp_secret) {
+      // Issue a short-lived "pre-auth" token (5 min) — no session cookie yet
+      const tempToken = jwt.sign(
+        { pre2fa: true, userId: user.id, tenantId: user.tenant_id },
+        process.env.JWT_SECRET,
+        { expiresIn: '5m' },
+      );
+      return res.json({ requires2fa: true, tempToken });
     }
 
     const payload = {
@@ -123,12 +161,7 @@ const login = async (req, res) => {
 
     const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '7d' });
 
-    res.cookie('token', token, {
-      httpOnly: true,
-      secure:   process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge:   7 * 24 * 60 * 60 * 1000, // 7 days
-    });
+    res.cookie('token', token, getCookieOptions(req));
 
     return res.json({
       user: {
@@ -152,10 +185,12 @@ const login = async (req, res) => {
 
 // ─── POST /api/auth/logout ───────────────────────────────────────────────────
 const logout = (req, res) => {
+  const opts = getCookieOptions(req);
   res.clearCookie('token', {
     httpOnly: true,
-    secure:   process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
+    secure: opts.secure,
+    sameSite: opts.sameSite,
+    path: opts.path,
   });
   return res.json({ message: 'Logged out.' });
 };
@@ -167,7 +202,7 @@ const getMe = async (req, res) => {
       attributes: { exclude: ['password'] },
       include: [
         { model: Branch, as: 'branch', attributes: ['id', 'name', 'color'] },
-        { model: Tenant, as: 'tenant', attributes: ['id', 'slug', 'name', 'plan', 'status', 'trial_ends_at'] },
+        { model: Tenant, as: 'tenant', attributes: ['id', 'slug', 'name', 'brand_name', 'logo_sidebar_url', 'logo_header_url', 'logo_login_url', 'logo_public_url', 'primary_color', 'sidebar_style', 'font_family', 'plan', 'status', 'trial_ends_at'] },
       ],
     });
 
@@ -182,4 +217,256 @@ const getMe = async (req, res) => {
   }
 };
 
-module.exports = { register, login, logout, getMe };
+// ─── POST /api/auth/2fa/verify-login ─────────────────────────────────────────
+// Second step of login when 2FA is enabled. Consumes the temp token returned
+// by /api/auth/login and validates the user's TOTP code, then issues the
+// real session cookie.
+const verifyLogin2FA = async (req, res) => {
+  try {
+    const { tempToken, code } = req.body;
+    if (!tempToken || !code) {
+      return res.status(400).json({ message: 'tempToken and code are required.' });
+    }
+
+    let decoded;
+    try {
+      decoded = jwt.verify(tempToken, process.env.JWT_SECRET);
+    } catch {
+      return res.status(401).json({ message: 'Invalid or expired session. Please log in again.' });
+    }
+
+    if (!decoded.pre2fa) {
+      return res.status(401).json({ message: 'Invalid token type.' });
+    }
+
+    const user = await User.findOne({
+      where: { id: decoded.userId, is_active: true },
+      include: [
+        { model: Branch, as: 'branch', attributes: ['id', 'name', 'color'] },
+        { model: Tenant, as: 'tenant', attributes: ['id', 'slug', 'name', 'brand_name', 'logo_sidebar_url', 'logo_header_url', 'logo_login_url', 'logo_public_url', 'primary_color', 'sidebar_style', 'font_family', 'plan', 'status', 'trial_ends_at'] },
+      ],
+    });
+
+    if (!user || !user.totp_secret) {
+      return res.status(401).json({ message: 'Invalid credentials.' });
+    }
+
+    const valid = speakeasy.totp.verify({
+      secret: user.totp_secret,
+      encoding: 'base32',
+      token: String(code).replace(/\s/g, ''),
+      window: 1,
+    });
+
+    if (!valid) {
+      return res.status(401).json({ message: 'Invalid authenticator code.' });
+    }
+
+    const payload = {
+      id:         user.id,
+      username:   user.username,
+      role:       user.role,
+      branchId:   user.branch_id,
+      name:       user.name,
+      tenantId:   user.tenant_id,
+      tenantSlug: user.tenant?.slug ?? null,
+    };
+
+    const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '7d' });
+    res.cookie('token', token, getCookieOptions(req));
+
+    return res.json({
+      user: {
+        id:       user.id,
+        name:     user.name,
+        username: user.username,
+        role:     user.role,
+        branchId: user.branch_id,
+        avatar:   user.avatar,
+        color:    user.color,
+        branch:   user.branch,
+        tenant:   user.tenant,
+        tenantId: user.tenant_id,
+      },
+    });
+  } catch (err) {
+    console.error('verifyLogin2FA error:', err);
+    return res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+// ─── POST /api/auth/2fa/setup ─────────────────────────────────────────────────
+// Generates a TOTP secret for the logged-in user and returns a QR code data URL.
+// The secret is NOT saved to DB yet — user must call /enable to confirm.
+const setup2FA = async (req, res) => {
+  try {
+    const secret = speakeasy.generateSecret({
+      name: `SalonSuite (${req.user.username})`,
+      length: 20,
+    });
+
+    // Store secret temporarily in DB (not yet "enabled")
+    await User.update(
+      { totp_secret: secret.base32, totp_enabled: false },
+      { where: { id: req.user.id } },
+    );
+
+    const qrDataUrl = await qrcode.toDataURL(secret.otpauth_url);
+
+    return res.json({
+      secret: secret.base32,
+      qr: qrDataUrl,
+    });
+  } catch (err) {
+    console.error('setup2FA error:', err);
+    return res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+// ─── POST /api/auth/2fa/enable ────────────────────────────────────────────────
+// Verifies the TOTP code and marks 2FA as enabled for the logged-in user.
+const enable2FA = async (req, res) => {
+  try {
+    const { code } = req.body;
+    if (!code) return res.status(400).json({ message: 'code is required.' });
+
+    const user = await User.findByPk(req.user.id);
+    if (!user || !user.totp_secret) {
+      return res.status(400).json({ message: 'Please call /setup first.' });
+    }
+
+    const valid = speakeasy.totp.verify({
+      secret: user.totp_secret,
+      encoding: 'base32',
+      token: String(code).replace(/\s/g, ''),
+      window: 1,
+    });
+
+    if (!valid) {
+      return res.status(401).json({ message: 'Invalid code. Please try again.' });
+    }
+
+    await user.update({ totp_enabled: true });
+
+    return res.json({ message: '2FA enabled successfully.' });
+  } catch (err) {
+    console.error('enable2FA error:', err);
+    return res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+// ─── POST /api/auth/2fa/disable ───────────────────────────────────────────────
+// Verifies the TOTP code and disables 2FA, clearing the secret.
+const disable2FA = async (req, res) => {
+  try {
+    const { code } = req.body;
+    if (!code) return res.status(400).json({ message: 'code is required.' });
+
+    const user = await User.findByPk(req.user.id);
+    if (!user || !user.totp_enabled) {
+      return res.status(400).json({ message: '2FA is not enabled.' });
+    }
+
+    const valid = speakeasy.totp.verify({
+      secret: user.totp_secret,
+      encoding: 'base32',
+      token: String(code).replace(/\s/g, ''),
+      window: 1,
+    });
+
+    if (!valid) {
+      return res.status(401).json({ message: 'Invalid code.' });
+    }
+
+    await user.update({ totp_secret: null, totp_enabled: false });
+
+    return res.json({ message: '2FA disabled.' });
+  } catch (err) {
+    console.error('disable2FA error:', err);
+    return res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+// ─── GET /api/auth/2fa/status ─────────────────────────────────────────────────
+const status2FA = async (req, res) => {
+  try {
+    const user = await User.findByPk(req.user.id, { attributes: ['totp_enabled'] });
+    return res.json({ enabled: !!user?.totp_enabled });
+  } catch (err) {
+    return res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+// ─── POST /api/auth/change-password ─────────────────────────────────────────
+const changeOwnPassword = async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ message: 'Current and new password are required.' });
+    }
+    if (newPassword.length < 8) {
+      return res.status(400).json({ message: 'New password must be at least 8 characters.' });
+    }
+
+    const user = await User.findByPk(req.user.id);
+    if (!user) return res.status(404).json({ message: 'User not found.' });
+
+    const isMatch = await bcrypt.compare(currentPassword, user.password);
+    if (!isMatch) {
+      return res.status(400).json({ message: 'Current password is incorrect.' });
+    }
+
+    if (currentPassword === newPassword) {
+      return res.status(400).json({ message: 'New password must be different from the current one.' });
+    }
+
+    const hash = await bcrypt.hash(newPassword, 12);
+    await user.update({ password: hash });
+    return res.json({ message: 'Password changed successfully.' });
+  } catch (err) {
+    console.error('changeOwnPassword error:', err);
+    return res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+// ─── POST /api/auth/impersonate-session ──────────────────────────────────────
+// Exchanges a short-lived impersonation token (issued by platformController)
+// for a real session cookie so the platform admin can browse as that tenant.
+const impersonateSession = async (req, res) => {
+  try {
+    const { token: impToken } = req.body;
+    if (!impToken) return res.status(400).json({ message: 'token is required.' });
+
+    let decoded;
+    try {
+      decoded = jwt.verify(impToken, process.env.JWT_SECRET);
+    } catch {
+      return res.status(401).json({ message: 'Invalid or expired impersonation token.' });
+    }
+
+    if (!decoded.impersonated) {
+      return res.status(401).json({ message: 'Token is not an impersonation token.' });
+    }
+
+    const user = await User.findByPk(decoded.id, {
+      attributes: { exclude: ['password'] },
+      include: [
+        { model: Branch, as: 'branch', attributes: ['id', 'name', 'color'] },
+        { model: Tenant, as: 'tenant', attributes: ['id', 'slug', 'name', 'brand_name', 'logo_sidebar_url', 'logo_header_url', 'logo_login_url', 'logo_public_url', 'primary_color', 'sidebar_style', 'font_family', 'plan', 'status', 'trial_ends_at'] },
+      ],
+    });
+
+    if (!user) return res.status(404).json({ message: 'User not found.' });
+
+    // Re-issue the impersonation token as the session cookie (same expiry: 2h)
+    res.cookie('token', impToken, getCookieOptions(req));
+
+    return res.json({ user });
+  } catch (err) {
+    console.error('impersonateSession error:', err);
+    return res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+module.exports = { register, login, logout, getMe, verifyLogin2FA, setup2FA, enable2FA, disable2FA, status2FA, changeOwnPassword, impersonateSession };

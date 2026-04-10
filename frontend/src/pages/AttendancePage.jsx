@@ -81,7 +81,7 @@ const SummaryCard = ({ title, color, items }) => (
 export default function AttendancePage() {
   const { user }     = useAuth();
   const { toast }    = useToast();
-  const isSuperAdmin = user?.role === 'superadmin';
+  const isSuperAdmin = ['superadmin','admin'].includes(user?.role);
   const canEdit      = ['superadmin','admin','manager'].includes(user?.role);
   const today        = new Date().toISOString().slice(0,10);
 
@@ -121,12 +121,14 @@ export default function AttendancePage() {
     setSaving(s => ({ ...s, [staffId]: true }));
     try {
       if (existing) {
-        await api.put(`/attendance/${existing.id}`, { ...existing, status });
+        await api.put(`/attendance/${existing.id}`, { status });
       } else {
         await api.post('/attendance', { staff_id: staffId, date, status, check_in: null, check_out: null, note: '' });
       }
       await load();
-    } catch { }
+    } catch (e) {
+      toast.error(e.response?.data?.message || 'Failed to save attendance');
+    }
     setSaving(s => ({ ...s, [staffId]: false }));
   };
 
@@ -135,9 +137,11 @@ export default function AttendancePage() {
     if (!existing) return;
     setSaving(s => ({ ...s, [staffId]: true }));
     try {
-      await api.put(`/attendance/${existing.id}`, { ...existing, [field]: value });
+      await api.put(`/attendance/${existing.id}`, { [field]: value });
       await load();
-    } catch { }
+    } catch (e) {
+      toast.error(e.response?.data?.message || 'Failed to update time');
+    }
     setSaving(s => ({ ...s, [staffId]: false }));
   };
 
@@ -145,9 +149,11 @@ export default function AttendancePage() {
     const existing = getRecord(staffId);
     if (!existing) return;
     try {
-      await api.put(`/attendance/${existing.id}`, { ...existing, note });
+      await api.put(`/attendance/${existing.id}`, { note });
       await load();
-    } catch { }
+    } catch (e) {
+      toast.error(e.response?.data?.message || 'Failed to save note');
+    }
   };
 
   const handleAddAttendance = async () => {
@@ -305,7 +311,7 @@ export default function AttendancePage() {
     <PageWrapper title="Attendance"
       subtitle="Daily staff attendance tracker"
       actions={canEdit && (
-        <Button variant="primary" onClick={() => { setAddForm({ staff_id:'', status:'Present', check_in:'', check_out:'', note:'' }); setShowAdd(true); }}
+        <Button variant="primary" onClick={() => { setAddForm({ staff_id:'', status:'present', check_in:'', check_out:'', note:'' }); setShowAdd(true); }}
           style={{ display:'flex', alignItems:'center', gap:6 }}><IconPlus /> Add Attendance</Button>
       )}>
 

@@ -1,11 +1,13 @@
 const { Router } = require('express');
 const ctrl = require('../controllers/walkinController');
 const { verifyToken } = require('../middleware/auth');
+const { branchAccess } = require('../middleware/branchAccess');
 
 const router = Router();
 
 // All walkin routes require authentication
 router.use(verifyToken);
+router.use(branchAccess);
 
 router.get('/',              ctrl.list);
 router.get('/stats',         ctrl.stats);

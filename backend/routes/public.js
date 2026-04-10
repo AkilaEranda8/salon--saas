@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { Op } = require('sequelize');
+const { Op, Transaction } = require('sequelize');
 const jwt = require('jsonwebtoken');
 const Branch = require('../models/Branch');
 const Service = require('../models/Service');
@@ -13,6 +13,7 @@ const CustomerPackage = require('../models/CustomerPackage');
 const Payment = require('../models/Payment');
 const PaymentSplit = require('../models/PaymentSplit');
 const { sendSMS } = require('../services/notificationService');
+const { getMaintenanceMode } = require('../services/systemSettings');
 const WEB_BOOKING_BRANCH_NAME = 'Zane Salon (VIP)';
 
 function toPublicUrl(req, relPath = '') {
@@ -35,6 +36,31 @@ async function resolveWebBookingBranchId(fallbackBranchId = null) {
   if (vip?.id) return vip.id;
   return fallbackBranchId ? Number(fallbackBranchId) : null;
 }
+
+function buildBookingConflictWhere({ staffId, date, branchId = null }) {
+  const where = {
+    staff_id: Number(staffId),
+    date,
+    status: { [Op.in]: ['pending', 'confirmed', 'in_service'] },
+  };
+  if (branchId) where.branch_id = Number(branchId);
+  return where;
+}
+
+// ── GET /api/public/maintenance-status ──────────────────────────────────────
+router.get('/maintenance-status', async (_req, res) => {
+  try {
+    const mode = await getMaintenanceMode({ force: true });
+    return res.json({
+      enabled: !!mode.enabled,
+      message: mode.message,
+      endsAt: mode.endsAt || null,
+    });
+  } catch (err) {
+    console.error('Public maintenance-status error:', err);
+    return res.status(500).json({ message: 'Server error' });
+  }
+});
 
 // ── GET /api/public/branches — active branches only ──────────────────────────
 router.get('/branches', async (req, res) => {
@@ -104,20 +130,22 @@ router.get('/staff', async (req, res) => {
 // duration = new booking's service duration in minutes (default 30).
 router.get('/availability', async (req, res) => {
   try {
-    const { staffId, date, duration } = req.query;
+    const { staffId, date, duration, branchId } = req.query;
     if (!staffId || !date) {
       return res.status(400).json({ message: 'staffId and date are required' });
     }
 
+    const staffIdNum = Number(staffId);
+    if (!Number.isInteger(staffIdNum) || staffIdNum <= 0) {
+      return res.status(400).json({ message: 'staffId must be a valid number' });
+    }
+
     const newDuration = Math.max(30, parseInt(duration, 10) || 30);
+    const effectiveBranchId = await resolveWebBookingBranchId(branchId);
 
     // Fetch existing appointments with their service duration
     const appointments = await Appointment.findAll({
-      where: {
-        staff_id: parseInt(staffId, 10),
-        date,
-        status: { [Op.in]: ['pending', 'confirmed', 'in_service'] },
-      },
+      where: buildBookingConflictWhere({ staffId: staffIdNum, date, branchId: effectiveBranchId }),
       attributes: ['time', 'service_id'],
       include: [{ model: Service, as: 'service', attributes: ['duration_minutes'] }],
     });
@@ -320,8 +348,42 @@ router.post('/customer-portal/rebook', portalAuth, async (req, res) => {
     const variants = buildPhoneVariants(req.portalPhone);
     const source = await Appointment.findOne({
       where: { id: appointmentId, phone: { [Op.or]: variants } },
+      include: [{ model: Service, as: 'service', attributes: ['duration_minutes'] }],
     });
     if (!source) return res.status(404).json({ message: 'Booking not found.' });
+
+    const startMin = toMinutes(time);
+    if (!Number.isFinite(startMin)) {
+      return res.status(400).json({ message: 'Invalid time format.' });
+    }
+    const durationMinutes = source.service?.duration_minutes || 30;
+    const endMin = startMin + durationMinutes;
+    if (endMin > 18 * 60 + 30) {
+      return res.status(400).json({ message: 'Selected time exceeds salon working hours.' });
+    }
+
+    if (source.staff_id) {
+      const existingAppointments = await Appointment.findAll({
+        where: buildBookingConflictWhere({
+          staffId: source.staff_id,
+          date,
+          branchId: source.branch_id,
+        }),
+        attributes: ['time'],
+        include: [{ model: Service, as: 'service', attributes: ['duration_minutes'] }],
+      });
+
+      const hasOverlap = existingAppointments.some((a) => {
+        const s = toMinutes(a.time);
+        const d = a.service?.duration_minutes || 30;
+        const e = s + d;
+        return startMin < e && endMin > s;
+      });
+
+      if (hasOverlap) {
+        return res.status(409).json({ message: 'Selected time is not available for this booking.' });
+      }
+    }
 
     const created = await Appointment.create({
       branch_id: source.branch_id,
@@ -489,19 +551,27 @@ router.post('/bookings', async (req, res) => {
     if (!staff_id || !customer_name || !phone || !date || !time) {
       return res.status(400).json({ message: 'Missing required fields' });
     }
+    const staffIdNum = Number(staff_id);
+    if (!Number.isInteger(staffIdNum) || staffIdNum <= 0) {
+      return res.status(400).json({ message: 'staff_id must be a valid number' });
+    }
+
     const effectiveBranchId = await resolveWebBookingBranchId(branch_id);
     if (!effectiveBranchId) {
       return res.status(400).json({ message: 'No active booking branch is configured.' });
     }
 
-    const selectedServiceIds = Array.isArray(service_ids) && service_ids.length > 0
+    const rawServiceIds = Array.isArray(service_ids) && service_ids.length > 0
       ? service_ids
       : (service_id ? [service_id] : []);
+    const selectedServiceIds = rawServiceIds
+      .map((id) => Number(id))
+      .filter((id) => Number.isInteger(id) && id > 0);
     const bookingName = String(customer_name || '').trim();
     const bookingPhone = String(phone || '').trim();
     const bookingEmail = email ? String(email).trim() : null;
 
-    if (selectedServiceIds.length === 0) {
+    if (selectedServiceIds.length === 0 || selectedServiceIds.length !== rawServiceIds.length) {
       return res.status(400).json({ message: 'At least one service is required' });
     }
 
@@ -530,11 +600,7 @@ router.post('/bookings', async (req, res) => {
     }
 
     const existingAppointments = await Appointment.findAll({
-      where: {
-        staff_id,
-        date,
-        status: { [Op.in]: ['pending', 'confirmed', 'in_service'] },
-      },
+      where: buildBookingConflictWhere({ staffId: staffIdNum, date, branchId: effectiveBranchId }),
       attributes: ['time'],
       include: [{ model: Service, as: 'service', attributes: ['duration_minutes'] }],
     });
@@ -551,8 +617,32 @@ router.post('/bookings', async (req, res) => {
       return res.status(409).json({ message: 'Selected time is not available for all chosen services' });
     }
 
-    const tx = await Appointment.sequelize.transaction();
+    const tx = await Appointment.sequelize.transaction({
+      isolationLevel: Transaction.ISOLATION_LEVELS.SERIALIZABLE,
+    });
     try {
+      // Re-check slot availability inside transaction to reduce race-condition double bookings.
+      const existingAppointmentsTx = await Appointment.findAll({
+        where: buildBookingConflictWhere({ staffId: staffIdNum, date, branchId: effectiveBranchId }),
+        attributes: ['time'],
+        include: [{ model: Service, as: 'service', attributes: ['duration_minutes'] }],
+        transaction: tx,
+        lock: tx.LOCK.UPDATE,
+      });
+
+      const existingRangesTx = existingAppointmentsTx.map((a) => {
+        const s = toMinutes(a.time);
+        const d = (a.service && a.service.duration_minutes) ? a.service.duration_minutes : 30;
+        return [s, s + d];
+      });
+
+      const hasOverlapTx = requestedRanges.some(({ start, end }) =>
+        existingRangesTx.some(([bStart, bEnd]) => start < bEnd && end > bStart));
+      if (hasOverlapTx) {
+        await tx.rollback();
+        return res.status(409).json({ message: 'Selected time is no longer available. Please choose another slot.' });
+      }
+
       // Link web bookings to existing customer profiles by phone
       // so appointment history appears under the same customer.
       const phoneVariants = buildPhoneVariants(bookingPhone);
@@ -584,7 +674,7 @@ router.post('/bookings', async (req, res) => {
           branch_id: effectiveBranchId,
           customer_id: linkedCustomer?.id || null,
           service_id: r.service.id,
-          staff_id,
+          staff_id: staffIdNum,
           customer_name: bookingName,
           phone: bookingPhone,
           date,
@@ -638,6 +728,22 @@ router.post('/bookings', async (req, res) => {
   } catch (err) {
     console.error('Public booking error:', err);
     res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// ── GET /api/public/plans – active plan configs for the billing/onboarding pages ──
+router.get('/plans', async (_req, res) => {
+  try {
+    const { PlanConfig } = require('../models');
+    await PlanConfig.sync({ alter: false });
+    const plans = await PlanConfig.findAll({
+      where: { is_active: true },
+      order: [['sort_order', 'ASC'], ['id', 'ASC']],
+    });
+    return res.json(plans);
+  } catch (err) {
+    console.error('Public plans error:', err);
+    return res.status(500).json({ message: 'Server error.' });
   }
 });
 

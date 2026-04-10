@@ -503,6 +503,179 @@ const testStaffEarningsPdf = async (req, res) => {
   }
 };
 
+// ── Message Template defaults ─────────────────────────────────────────────────
+const DEFAULT_TEMPLATES = {
+  appointment_confirmed: {
+    email: {
+      subject: 'Appointment Confirmed — Zane Salon',
+      body: `<h2 style="margin:0 0 8px;font-size:22px;color:#1e3a8a;">Appointment Confirmed! 🎉</h2>
+<p style="margin:0 0 24px;font-size:15px;color:#475569;">Hi <strong>{customer_name}</strong>, your appointment has been confirmed. Here are the details:</p>
+<table width="100%" cellpadding="0" cellspacing="0">
+  <tr><td style="padding:10px 0;border-bottom:1px solid #f1f5f9;font-size:14px;color:#6b7280;width:40%;">📅 Date</td><td style="padding:10px 0;border-bottom:1px solid #f1f5f9;font-size:14px;color:#1e293b;font-weight:600;">{date}</td></tr>
+  <tr><td style="padding:10px 0;border-bottom:1px solid #f1f5f9;font-size:14px;color:#6b7280;">⏰ Time</td><td style="padding:10px 0;border-bottom:1px solid #f1f5f9;font-size:14px;color:#1e293b;font-weight:600;">{time}</td></tr>
+  <tr><td style="padding:10px 0;border-bottom:1px solid #f1f5f9;font-size:14px;color:#6b7280;">💇 Service</td><td style="padding:10px 0;border-bottom:1px solid #f1f5f9;font-size:14px;color:#1e293b;font-weight:600;">{service_name}</td></tr>
+  <tr><td style="padding:10px 0;border-bottom:1px solid #f1f5f9;font-size:14px;color:#6b7280;">🏠 Branch</td><td style="padding:10px 0;border-bottom:1px solid #f1f5f9;font-size:14px;color:#1e293b;font-weight:600;">{branch_name}</td></tr>
+  <tr><td style="padding:10px 0;font-size:14px;color:#6b7280;">💰 Amount</td><td style="padding:10px 0;font-size:14px;color:#1e293b;font-weight:600;">{amount}</td></tr>
+</table>
+<div style="margin:28px 0;padding:16px 20px;background:#eff6ff;border-left:4px solid #3b82f6;border-radius:4px;">
+  <p style="margin:0;font-size:14px;color:#1e40af;">📌 Please arrive 5 minutes early. Contact us if you need to reschedule.</p>
+</div>
+<p style="margin:0;font-size:15px;color:#475569;">Thank you for choosing <strong>{branch_name}</strong>! See you soon. ✨</p>`,
+    },
+    whatsapp: {
+      body: `✂️ *{branch_name} — Appointment Confirmed!*\n\nHi {customer_name}, your booking is confirmed:\n\n📅 Date: {date}\n⏰ Time: {time}\n💇 Service: {service_name}\n🏠 Branch: {branch_name}\n💰 Amount: {amount}\n\nPlease arrive 5 mins early. See you soon! 😊`,
+    },
+    sms: {
+      body: `{branch_name}\nHi {customer_name}! Appointment booked.\nService: {service_name}\nDate: {date} | {time}\nBranch: {branch_name}\nThank you!`,
+    },
+  },
+  appointment_completed: {
+    sms: {
+      body: `{branch_name}\nHi {customer_name}! Your {service_name} is done.\n{date} {time} | {branch_name}\nThank you for visiting!`,
+    },
+  },
+  payment_receipt: {
+    email: {
+      subject: 'Payment Receipt — Zane Salon',
+      body: `<h2 style="margin:0 0 8px;font-size:22px;color:#1e3a8a;">Payment Receipt 🧾</h2>
+<p style="margin:0 0 24px;font-size:15px;color:#475569;">Hi <strong>{customer_name}</strong>, thank you for your payment. Here's your receipt:</p>
+<table width="100%" cellpadding="0" cellspacing="0">
+  <tr><td style="padding:10px 0;border-bottom:1px solid #f1f5f9;font-size:14px;color:#6b7280;width:40%;">📅 Date</td><td style="padding:10px 0;border-bottom:1px solid #f1f5f9;font-size:14px;color:#1e293b;font-weight:600;">{date}</td></tr>
+  <tr><td style="padding:10px 0;border-bottom:1px solid #f1f5f9;font-size:14px;color:#6b7280;">💇 Service</td><td style="padding:10px 0;border-bottom:1px solid #f1f5f9;font-size:14px;color:#1e293b;font-weight:600;">{service_name}</td></tr>
+  <tr><td style="padding:10px 0;border-bottom:1px solid #f1f5f9;font-size:14px;color:#6b7280;">🏠 Branch</td><td style="padding:10px 0;border-bottom:1px solid #f1f5f9;font-size:14px;color:#1e293b;font-weight:600;">{branch_name}</td></tr>
+  <tr><td style="padding:10px 0;font-size:14px;color:#6b7280;">💰 Total Paid</td><td style="padding:10px 0;font-size:14px;color:#1e293b;font-weight:700;">{amount}</td></tr>
+</table>
+<p style="margin:28px 0 0;font-size:15px;color:#475569;">Thank you for visiting <strong>{branch_name}</strong>! 💜</p>`,
+    },
+    whatsapp: {
+      body: `🧾 *{branch_name} — Payment Receipt*\n\nHi {customer_name}! Payment confirmed:\n\n💇 Service: {service_name}\n🏠 Branch: {branch_name}\n📅 Date: {date}\n💰 Total Paid: {amount}\n\nThank you for choosing {branch_name}! 💜`,
+    },
+    sms: {
+      body: `{branch_name} - Receipt\nHi {customer_name}!\nPaid: {amount}\nService: {service_name} | {date}\nThank you!`,
+    },
+  },
+  loyalty_points: {
+    whatsapp: {
+      body: `🌟 *{branch_name} — Loyalty Points Update*\n\nHey {customer_name}! 🎉\n\nYou just earned *+{points_earned} points* at *{branch_name}*!\n\n📊 Points Balance:\n  • Earned this visit: +{points_earned}\n  • Total balance: *{points_total} pts*\n\n💡 Every 10 pts = Rs. 1 discount on your next visit!\n\nKeep visiting {branch_name} to unlock more rewards. 🛍️`,
+    },
+    sms: {
+      body: `{branch_name}\nHi {customer_name}! You earned +{points_earned} loyalty points.\nTotal: {points_total} pts. Every 10 pts = Rs. 1 discount!`,
+    },
+  },
+  review_request: {
+    email: {
+      subject: 'How was your visit? — Share your feedback',
+      body: `<h2 style="margin:0 0 8px;font-size:22px;color:#1e3a8a;">How was your experience? ⭐</h2>
+<p style="margin:0 0 24px;font-size:15px;color:#475569;">Hi <strong>{customer_name}</strong>, thank you for visiting <strong>{branch_name}</strong>! We'd love to hear your feedback on <strong>{service_name}</strong>.</p>
+<div style="text-align:center;margin:32px 0;">
+  <a href="{review_url}" style="display:inline-block;padding:14px 32px;background:linear-gradient(135deg,#1e3a8a,#3b82f6);color:#ffffff;text-decoration:none;border-radius:8px;font-size:16px;font-weight:700;">✍️ Leave a Review</a>
+</div>
+<p style="margin:0;font-size:13px;color:#9ca3af;text-align:center;">This link is unique to your visit and can only be used once.</p>`,
+    },
+    whatsapp: {
+      body: `⭐ *{branch_name} — Share Your Feedback!*\n\nHi {customer_name}! 😊 Thank you for visiting *{branch_name}*.\n\nHow was your *{service_name}* experience? We'd love your feedback!\n\n👉 Leave a review (takes 30 seconds):\n{review_url}\n\n_This link is unique and can only be used once._`,
+    },
+  },
+  customer_registered: {
+    email: {
+      subject: 'Welcome to {branch_name}!',
+      body: `<h2 style="margin:0 0 8px;font-size:22px;color:#1e3a8a;">Welcome to {branch_name}! 🎉</h2>
+<p style="margin:0 0 24px;font-size:15px;color:#475569;">Hi <strong>{customer_name}</strong>, your account has been created. We're excited to have you!</p>
+<p style="margin:0;font-size:15px;color:#475569;">Visit us again and earn loyalty rewards. See you soon! ✨</p>`,
+    },
+    sms: {
+      body: `Welcome to {branch_name}, {customer_name}! Your account is ready. Visit us to earn loyalty rewards!`,
+    },
+  },
+};
+
+// ── GET /api/notifications/templates ─────────────────────────────────────────
+const listTemplates = async (req, res) => {
+  try {
+    const { MessageTemplate } = require('../models');
+    const { resolveTenantId } = require('../utils/tenantScope');
+    const tenantId = resolveTenantId(req);
+
+    const rows = await MessageTemplate.findAll({ where: { tenant_id: tenantId || null } });
+    const dbMap = {};
+    for (const r of rows) {
+      if (!dbMap[r.event_type]) dbMap[r.event_type] = {};
+      dbMap[r.event_type][r.channel] = { id: r.id, subject: r.subject, body: r.body, is_active: r.is_active };
+    }
+
+    const result = [];
+    for (const [event_type, channels] of Object.entries(DEFAULT_TEMPLATES)) {
+      for (const [channel, defaults] of Object.entries(channels)) {
+        const custom = dbMap[event_type]?.[channel];
+        result.push({
+          event_type,
+          channel,
+          subject:   custom ? custom.subject  : (defaults.subject  || null),
+          body:      custom ? custom.body     : defaults.body,
+          is_active: custom ? custom.is_active : true,
+          is_custom: !!custom,
+          id:        custom ? custom.id        : null,
+        });
+      }
+    }
+
+    return res.json({ templates: result, defaults: DEFAULT_TEMPLATES });
+  } catch (err) {
+    console.error('[listTemplates]', err);
+    return res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+// ── POST /api/notifications/templates — upsert ────────────────────────────────
+const saveTemplate = async (req, res) => {
+  try {
+    const { MessageTemplate } = require('../models');
+    const { resolveTenantId } = require('../utils/tenantScope');
+    const tenantId = resolveTenantId(req);
+
+    const { event_type, channel, subject, body, is_active } = req.body;
+    if (!event_type || !channel || !body) {
+      return res.status(400).json({ message: 'event_type, channel, and body are required.' });
+    }
+    if (!DEFAULT_TEMPLATES[event_type]?.[channel]) {
+      return res.status(400).json({ message: 'Invalid event_type / channel combination.' });
+    }
+
+    const [row] = await MessageTemplate.upsert(
+      {
+        event_type,
+        channel,
+        subject: subject || null,
+        body,
+        is_active: is_active !== false,
+        tenant_id: tenantId || null,
+      },
+      { conflictFields: ['event_type', 'channel', 'tenant_id'] }
+    );
+
+    return res.json({ ok: true, template: row });
+  } catch (err) {
+    console.error('[saveTemplate]', err);
+    return res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+// ── DELETE /api/notifications/templates/:id — reset to default ────────────────
+const deleteTemplate = async (req, res) => {
+  try {
+    const { MessageTemplate } = require('../models');
+    const { resolveTenantId } = require('../utils/tenantScope');
+    const tenantId = resolveTenantId(req);
+
+    const id = parseInt(req.params.id, 10);
+    await MessageTemplate.destroy({ where: { id, tenant_id: tenantId || null } });
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error('[deleteTemplate]', err);
+    return res.status(500).json({ message: 'Server error.' });
+  }
+};
+
 module.exports = {
   getLogs,
   getSettings,
@@ -512,4 +685,8 @@ module.exports = {
   sendOfferSms,
   sendStaffMonthlyEarnings,
   testStaffEarningsPdf,
+  listTemplates,
+  saveTemplate,
+  deleteTemplate,
+  DEFAULT_TEMPLATES,
 };

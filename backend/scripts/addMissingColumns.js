@@ -53,6 +53,31 @@ async function addIfMissing(table, column, definition) {
     // ── users missing columns ────────────────────────────────────────────────
     await addIfMissing('users', 'staff_id', { type: DataTypes.INTEGER, allowNull: true });
 
+    // ── tenants theme columns ────────────────────────────────────────────────
+    await addIfMissing('tenants', 'primary_color', { type: DataTypes.STRING(20),  allowNull: true,  defaultValue: '#2563EB' });
+    await addIfMissing('tenants', 'sidebar_style', { type: DataTypes.STRING(10),  allowNull: false, defaultValue: 'light' });
+    await addIfMissing('tenants', 'font_family',   { type: DataTypes.STRING(100), allowNull: true,  defaultValue: 'Inter' });
+
+    // ── message_templates table ──────────────────────────────────────────────
+    await sequelize.query(`
+      CREATE TABLE IF NOT EXISTS message_templates (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        event_type VARCHAR(50) NOT NULL,
+        channel ENUM('email','whatsapp','sms') NOT NULL,
+        subject VARCHAR(255) NULL,
+        body TEXT NOT NULL,
+        is_active TINYINT(1) NOT NULL DEFAULT 1,
+        tenant_id INT NULL,
+        createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY uq_message_template (event_type, channel, tenant_id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `).catch(e => console.warn('  ! message_templates:', e.message));
+
+    // ── users 2FA columns ────────────────────────────────────────────────────
+    await addIfMissing('users', 'totp_secret',  { type: DataTypes.STRING(64),  allowNull: true });
+    await addIfMissing('users', 'totp_enabled', { type: DataTypes.BOOLEAN, defaultValue: false, allowNull: false });
+
     console.log('✓ Migration complete');
   } catch (err) {
     console.error('✗ Migration failed:', err.message);

@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { io } from 'socket.io-client';
 import api from '../api/axios';
 import { getWalkInServicesTitle } from '../utils/walkInHelpers';
+import { useAuth } from '../context/AuthContext';
 const C = {
   bg1: '#0a0f1e', bg2: '#0f172a', card: '#141b2d', cardHover: '#1a2340',
   border: '#1e293b', blue: '#2563eb', purple: '#7c3aed', gold: '#fbbf24',
@@ -44,8 +45,11 @@ const fmtTime = (t) => {
 const initials = (n) => (n || '?').split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase();
 
 export default function TokenDisplayScreen() {
+  const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
-  const branchId = searchParams.get('branchId');
+  const queryBranchId = searchParams.get('branchId');
+  const userBranchId = user?.branchId ? String(user.branchId) : null;
+  const branchId = userBranchId || queryBranchId;
 
   const [queue, setQueue]       = useState([]);
   const [stats, setStats]       = useState({ waiting: 0, serving: 0, completed: 0, cancelled: 0, total: 0 });
@@ -57,8 +61,29 @@ export default function TokenDisplayScreen() {
 
   // ── Fetch branches ─────────────────────────────────────────────────
   useEffect(() => {
-    api.get('/public/branches').then((r) => setBranches(r.data || [])).catch(() => {});
-  }, []);
+    api
+      .get('/branches?limit=200')
+      .then((r) => {
+        const branchRows = Array.isArray(r?.data?.data)
+          ? r.data.data
+          : Array.isArray(r?.data)
+            ? r.data
+            : [];
+        if (userBranchId) {
+          setBranches(branchRows.filter((b) => String(b.id) === userBranchId));
+          return;
+        }
+        setBranches(branchRows);
+      })
+      .catch(() => setBranches([]));
+  }, [userBranchId]);
+
+  useEffect(() => {
+    if (!userBranchId) return;
+    if (queryBranchId !== userBranchId) {
+      setSearchParams({ branchId: userBranchId }, { replace: true });
+    }
+  }, [queryBranchId, setSearchParams, userBranchId]);
 
   const currentBranch = branches.find((b) => String(b.id) === String(branchId));
 
@@ -146,7 +171,7 @@ export default function TokenDisplayScreen() {
             Zane Salon
           </span>
           <span style={{ fontSize: 13, color: C.muted, fontWeight: 500 }}>Queue Display</span>
-          {branches.length > 1 && (
+          {branches.length > 1 && !userBranchId && (
             <select
               value={branchId}
               onChange={(e) => setSearchParams({ branchId: e.target.value })}

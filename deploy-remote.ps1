@@ -2,11 +2,11 @@
 # Prerequisite: SSH key access to the server (same as: ssh root@YOUR_HOST)
 #
 # Usage:
-#   .\deploy-remote.ps1 -RemoteHost zanesalon.com
-#   $env:DEPLOY_HOST = "zanesalon.com"; $env:DEPLOY_USER = "root"; .\deploy-remote.ps1
+#   .\deploy-remote.ps1 -RemoteHost hexalyte.com
+#   $env:DEPLOY_HOST = "hexalyte.com"; $env:DEPLOY_USER = "root"; .\deploy-remote.ps1
 #
 # Optional: $env:DEPLOY_PATH = "/root/zanesalon"
-# Skip local push: .\deploy-remote.ps1 -RemoteHost zanesalon.com -SkipPush
+# Skip local push: .\deploy-remote.ps1 -RemoteHost hexalyte.com -SkipPush
 
 param(
   [string]$RemoteHost,
@@ -21,7 +21,7 @@ $h = $RemoteHost
 if (-not $h) { $h = $env:DEPLOY_HOST }
 if (-not $h) {
   Write-Host "Set the server hostname or IP, e.g.:" -ForegroundColor Yellow
-  Write-Host '  .\deploy-remote.ps1 -RemoteHost zanesalon.com' -ForegroundColor Cyan
+  Write-Host '  .\deploy-remote.ps1 -RemoteHost hexalyte.com' -ForegroundColor Cyan
   Write-Host '  $env:DEPLOY_HOST = "YOUR_SERVER_IP"; .\deploy-remote.ps1' -ForegroundColor Cyan
   exit 1
 }

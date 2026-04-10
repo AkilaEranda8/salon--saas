@@ -46,6 +46,14 @@ const User = sequelize.define('User', {
     allowNull: true,
     comment: 'NULL for platform_admin accounts',
   },
+  totp_secret: {
+    type: DataTypes.STRING(64),
+    allowNull: true,
+  },
+  totp_enabled: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+  },
 }, {
   tableName: 'users',
   timestamps: true,

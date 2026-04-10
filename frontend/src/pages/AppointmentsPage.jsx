@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../context/ThemeContext';
 import api from '../api/axios';
 import Button from '../components/ui/Button';
 import { Input, Select, FormGroup } from '../components/ui/FormElements';
@@ -142,53 +143,57 @@ function StatusBadge({ status }) {
   );
 }
 
-function StatCard({ label, value, color, icon }) {
+function StatCard({ label, value, color, icon, dark = false }) {
+  const [hov, setHov] = useState(false);
   return (
-    <div style={{ background:'#fff', borderRadius:14, padding:'16px 20px', border:'1px solid #EAECF0', flex:1, minWidth:130, display:'flex', alignItems:'center', gap:14, boxShadow:'0 1px 4px rgba(16,24,40,0.04)' }}>
-      <div style={{ width:42, height:42, borderRadius:10, background:`${color}15`, display:'flex', alignItems:'center', justifyContent:'center', color, flexShrink:0 }}>{icon}</div>
+    <div
+      onMouseEnter={() => setHov(true)}
+      onMouseLeave={() => setHov(false)}
+      style={{ background:dark?'#111827':'#fff', borderRadius:16, padding:'18px 20px', border:`1px solid ${dark?'#334155':'#EAECF0'}`, flex:1, minWidth:130, display:'flex', alignItems:'center', gap:14, boxShadow: hov ? (dark?'0 8px 20px rgba(2,6,23,0.50)':'0 8px 24px rgba(16,24,40,0.10)') : (dark?'0 8px 20px rgba(2,6,23,0.35)':'0 1px 4px rgba(16,24,40,0.04)'), transform: hov ? 'translateY(-2px)' : 'translateY(0)', transition:'all 0.2s ease', cursor:'default' }}>
+      <div style={{ width:46, height:46, borderRadius:12, background:`linear-gradient(135deg, ${color}22 0%, ${color}10 100%)`, display:'flex', alignItems:'center', justifyContent:'center', color, flexShrink:0, border:`1.5px solid ${color}20` }}>{icon}</div>
       <div>
-        <div style={{ fontSize:24, fontWeight:800, color:'#101828', lineHeight:1.1 }}>{value}</div>
-        <div style={{ fontSize:12, color:'#98A2B3', marginTop:2, fontWeight:500 }}>{label}</div>
+        <div style={{ fontSize:26, fontWeight:800, color:dark?'#E2E8F0':'#101828', lineHeight:1.1, letterSpacing:'-0.5px' }}>{value}</div>
+        <div style={{ fontSize:11, color:dark?'#94A3B8':'#98A2B3', marginTop:3, fontWeight:600, textTransform:'uppercase', letterSpacing:'0.06em' }}>{label}</div>
       </div>
     </div>
   );
 }
 
-function Modal({ open, onClose, title, children, footer, size='md' }) {
+function Modal({ open, onClose, title, children, footer, size='md', dark = false }) {
   useEffect(() => { if (!open) return; document.body.style.overflow='hidden'; return () => { document.body.style.overflow=''; }; }, [open]);
   if (!open) return null;
   const widths = { sm:420, md:560, lg:720 };
   return createPortal(
     <div style={{ position:'fixed', inset:0, zIndex:900, display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}>
       <div onClick={onClose} style={{ position:'absolute', inset:0, background:'rgba(16,24,40,0.45)', backdropFilter:'blur(2px)' }} />
-      <div style={{ position:'relative', width:'100%', maxWidth:widths[size]??560, background:'#fff', borderRadius:16, display:'flex', flexDirection:'column', boxShadow:'0 20px 60px rgba(16,24,40,0.18)', maxHeight:'90vh', animation:'modal-pop 0.18s ease' }}>
+      <div style={{ position:'relative', width:'100%', maxWidth:widths[size]??560, background:dark?'#111827':'#fff', borderRadius:16, display:'flex', flexDirection:'column', boxShadow:dark?'0 20px 60px rgba(2,6,23,0.55)':'0 20px 60px rgba(16,24,40,0.18)', maxHeight:'90vh', animation:'modal-pop 0.18s ease', border:dark?'1px solid #334155':'none' }}>
         <style>{'@keyframes modal-pop { from { opacity:0; transform:scale(0.96) translateY(8px); } to { opacity:1; transform:scale(1) translateY(0); } }'}</style>
-        <div style={{ padding:'18px 24px', borderBottom:'1px solid #EAECF0', display:'flex', alignItems:'center', justifyContent:'space-between', flexShrink:0 }}>
-          <h3 style={{ margin:0, fontSize:16, fontWeight:700, color:'#101828', fontFamily:"'Inter',sans-serif" }}>{title}</h3>
-          <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:'#98A2B3', display:'flex', alignItems:'center', borderRadius:8, padding:4 }}><IconClose /></button>
+        <div style={{ padding:'16px 24px', borderBottom:`1px solid ${dark?'#1E293B':'rgba(255,255,255,0.12)'}`, display:'flex', alignItems:'center', justifyContent:'space-between', flexShrink:0, background:dark?'#0F172A':'linear-gradient(135deg, #101828 0%, #1E3A5F 100%)', borderRadius:'16px 16px 0 0' }}>
+          <h3 style={{ margin:0, fontSize:16, fontWeight:700, color:'#fff', fontFamily:"'Inter',sans-serif" }}>{title}</h3>
+          <button onClick={onClose} style={{ background:'rgba(255,255,255,0.12)', border:'1px solid rgba(255,255,255,0.2)', cursor:'pointer', color:'#fff', display:'flex', alignItems:'center', borderRadius:8, padding:6 }}><IconClose /></button>
         </div>
         <div style={{ flex:1, overflowY:'auto', padding:'20px 24px' }}>{children}</div>
-        {footer && <div style={{ padding:'16px 24px', borderTop:'1px solid #EAECF0', display:'flex', gap:8, justifyContent:'flex-end', flexShrink:0 }}>{footer}</div>}
+        {footer && <div style={{ padding:'16px 24px', borderTop:`1px solid ${dark?'#334155':'#EAECF0'}`, display:'flex', gap:8, justifyContent:'flex-end', flexShrink:0, background:dark?'#111827':'#FAFBFC' }}>{footer}</div>}
       </div>
     </div>,
     document.body
   );
 }
 
-function Drawer({ open, onClose, title, children, footer }) {
+function Drawer({ open, onClose, title, children, footer, dark = false }) {
   useEffect(() => { if (!open) return; document.body.style.overflow='hidden'; return () => { document.body.style.overflow=''; }; }, [open]);
   if (!open) return null;
   return createPortal(
     <div style={{ position:'fixed', inset:0, zIndex:900, display:'flex', justifyContent:'flex-end' }}>
       <div onClick={onClose} style={{ position:'absolute', inset:0, background:'rgba(16,24,40,0.4)', backdropFilter:'blur(2px)' }} />
-      <div style={{ position:'relative', width:480, maxWidth:'95vw', background:'#fff', display:'flex', flexDirection:'column', boxShadow:'-8px 0 40px rgba(16,24,40,0.15)', animation:'drawer-in 0.22s ease' }}>
+      <div style={{ position:'relative', width:480, maxWidth:'95vw', background:dark?'#111827':'#fff', display:'flex', flexDirection:'column', boxShadow:dark?'-8px 0 40px rgba(2,6,23,0.55)':'-8px 0 40px rgba(16,24,40,0.15)', animation:'drawer-in 0.22s ease', borderLeft:dark?'1px solid #334155':'none' }}>
         <style>{'@keyframes drawer-in { from { transform:translateX(100%); } to { transform:translateX(0); } }'}</style>
-        <div style={{ padding:'18px 24px', borderBottom:'1px solid #EAECF0', display:'flex', alignItems:'center', justifyContent:'space-between', flexShrink:0 }}>
-          <h3 style={{ margin:0, fontSize:16, fontWeight:700, color:'#101828', fontFamily:"'Inter',sans-serif" }}>{title}</h3>
-          <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:'#98A2B3', display:'flex', alignItems:'center', borderRadius:8, padding:4 }}><IconClose /></button>
+        <div style={{ padding:'16px 24px', borderBottom:`1px solid ${dark?'#1E293B':'rgba(255,255,255,0.12)'}`, display:'flex', alignItems:'center', justifyContent:'space-between', flexShrink:0, background:dark?'#0F172A':'linear-gradient(135deg, #101828 0%, #1E3A5F 100%)' }}>
+          <h3 style={{ margin:0, fontSize:16, fontWeight:700, color:'#fff', fontFamily:"'Inter',sans-serif" }}>{title}</h3>
+          <button onClick={onClose} style={{ background:'rgba(255,255,255,0.12)', border:'1px solid rgba(255,255,255,0.2)', cursor:'pointer', color:'#fff', display:'flex', alignItems:'center', borderRadius:8, padding:6 }}><IconClose /></button>
         </div>
         <div style={{ flex:1, overflowY:'auto', padding:'20px 24px' }}>{children}</div>
-        {footer && <div style={{ padding:'16px 24px', borderTop:'1px solid #EAECF0', display:'flex', gap:8, justifyContent:'flex-end', flexShrink:0 }}>{footer}</div>}
+        {footer && <div style={{ padding:'16px 24px', borderTop:`1px solid ${dark?'#334155':'#EAECF0'}`, display:'flex', gap:8, justifyContent:'flex-end', flexShrink:0, background:dark?'#111827':'#FAFBFC' }}>{footer}</div>}
       </div>
     </div>,
     document.body
@@ -231,29 +236,29 @@ function ActionBtn({ onClick, title, color, children }) {
   );
 }
 
-function PagBtn({ onClick, disabled, active, label }) {
+function PagBtn({ onClick, disabled, active, label, dark = false }) {
   const [hov, setHov] = useState(false);
   return (
     <button onClick={onClick} disabled={disabled} onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
-      style={{ minWidth:32, height:32, padding:'0 6px', border:active?'1.5px solid #2563EB':'1px solid #E4E7EC', borderRadius:8, background:active?'#EFF6FF':hov&&!disabled?'#F2F4F7':'#fff', color:active?'#2563EB':disabled?'#D0D5DD':'#344054', fontSize:13, fontWeight:active?700:400, fontFamily:"'Inter',sans-serif", cursor:disabled?'not-allowed':'pointer', transition:'all 0.1s' }}>
+      style={{ minWidth:32, height:32, padding:'0 6px', border:active?'1.5px solid #2563EB':`1px solid ${dark?'#334155':'#E4E7EC'}`, borderRadius:8, background:active?(dark?'#1E3A8A':'#EFF6FF'):hov&&!disabled?(dark?'#1F2937':'#F2F4F7'):(dark?'#0F172A':'#fff'), color:active?'#93C5FD':disabled?(dark?'#475569':'#D0D5DD'):(dark?'#E2E8F0':'#344054'), fontSize:13, fontWeight:active?700:400, fontFamily:"'Inter',sans-serif", cursor:disabled?'not-allowed':'pointer', transition:'all 0.1s' }}>
       {label}
     </button>
   );
 }
 
-function ApptRow({ row, idx, canEdit, onView, onEdit, onDelete, onStatusChange, onPayment }) {
+function ApptRow({ row, idx, canEdit, onView, onEdit, onDelete, onStatusChange, onPayment, dark = false }) {
   const [hovered, setHovered] = useState(false);
   const s = row.status;
   const meta = STATUS_META[s] ?? STATUS_META.pending;
   return (
     <tr onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}
-      style={{ background:hovered?'#FAFBFF':idx%2===0?'#fff':'#FAFAFA', transition:'background 0.1s', borderBottom:'1px solid #F2F4F7' }}>
+      style={{ background:hovered?(dark?'#1E293B':'#EEF4FF'):idx%2===0?(dark?'#0F172A':'#fff'):(dark?'#111827':'#FAFBFC'), transition:'background 0.15s', borderBottom:`1px solid ${dark?'#334155':'#F2F4F7'}` }}>
       <td style={{ padding:'13px 16px' }}>
-        <div style={{ fontWeight:600, color:'#101828', fontSize:14 }}>{row.customer_name}</div>
-        {row.phone && <div style={{ fontSize:12, color:'#98A2B3', marginTop:1 }}>{row.phone}</div>}
+        <div style={{ fontWeight:600, color:dark?'#E2E8F0':'#101828', fontSize:14 }}>{row.customer_name}</div>
+        {row.phone && <div style={{ fontSize:12, color:dark?'#94A3B8':'#98A2B3', marginTop:1 }}>{row.phone}</div>}
       </td>
       <td style={{ padding:'13px 16px' }}>
-        <span style={{ background:'#F2F4F7', padding:'3px 9px', borderRadius:6, fontSize:13, fontWeight:500, color:'#475467' }}>
+        <span style={{ background:dark?'#1E293B':'#F2F4F7', padding:'3px 9px', borderRadius:6, fontSize:13, fontWeight:500, color:dark?'#CBD5E1':'#475467' }}>
           {getAllServiceNamesForAppt(row).join(', ')}
         </span>
       </td>
@@ -261,13 +266,13 @@ function ApptRow({ row, idx, canEdit, onView, onEdit, onDelete, onStatusChange, 
         {row.staff?.name ? (
           <div style={{ display:'flex', alignItems:'center', gap:8 }}>
             <StaffAvatar name={row.staff.name} size={32} />
-            <span style={{ fontSize:13, fontWeight:500, color:'#344054' }}>{row.staff.name}</span>
+            <span style={{ fontSize:13, fontWeight:500, color:dark?'#CBD5E1':'#344054' }}>{row.staff.name}</span>
           </div>
-        ) : <span style={{ fontSize:13, color:'#D0D5DD' }}>—</span>}
+        ) : <span style={{ fontSize:13, color:dark?'#64748B':'#D0D5DD' }}>—</span>}
       </td>
       <td style={{ padding:'13px 16px' }}>
-        <div style={{ fontWeight:600, color:'#101828', fontSize:13 }}>{row.date ? new Date(row.date).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : ''}</div>
-        {row.time && <div style={{ fontSize:12, color:'#98A2B3', marginTop:1 }}>{row.time}</div>}
+        <div style={{ fontWeight:600, color:dark?'#E2E8F0':'#101828', fontSize:13 }}>{row.date ? new Date(row.date).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : ''}</div>
+        {row.time && <div style={{ fontSize:12, color:dark?'#94A3B8':'#98A2B3', marginTop:1 }}>{row.time}</div>}
       </td>
       <td style={{ padding:'13px 16px', textAlign:'right' }}>
         <span style={{ fontWeight:700, color:'#059669', fontSize:14 }}>Rs. {Number(row.amount||row.service?.price||0).toLocaleString()}</span>
@@ -294,6 +299,7 @@ function ApptRow({ row, idx, canEdit, onView, onEdit, onDelete, onStatusChange, 
 
 export default function AppointmentsPage() {
   const { user }     = useAuth();
+  const { isDark }   = useTheme();
   const canEdit      = ['superadmin','admin','manager','staff'].includes(user?.role);
   const isSuperAdmin = user?.role === 'superadmin';
   const today        = new Date().toISOString().slice(0,10);
@@ -594,9 +600,9 @@ export default function AppointmentsPage() {
   const totalPages = Math.ceil(total/LIMIT);
 
   const handleSort = key => { if (sortKey===key) setSortDir(d=>d==='asc'?'desc':'asc'); else { setSortKey(key); setSortDir('asc'); } };
-  const SortIco = ({ col }) => sortKey!==col ? <span style={{ opacity:0.3, fontSize:10, marginLeft:4 }}></span> : <span style={{ fontSize:10, marginLeft:4, color:'#2563EB' }}>{sortDir==='asc'?'':''}</span>;
+  const SortIco = ({ col }) => sortKey!==col ? <span style={{ opacity:0.3, fontSize:10, marginLeft:4 }}></span> : <span style={{ fontSize:10, marginLeft:4, color:isDark?'#93C5FD':'#2563EB' }}>{sortDir==='asc'?'':''}</span>;
   const Th = ({ children, col, align='left', sx }) => (
-    <th onClick={col?()=>handleSort(col):undefined} style={{ padding:'11px 16px', textAlign:align, fontSize:11, fontWeight:700, color:'#98A2B3', textTransform:'uppercase', letterSpacing:'0.05em', background:'#F9FAFB', borderBottom:'1px solid #EAECF0', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', cursor:col?'pointer':'default', userSelect:'none', ...sx }}>
+    <th onClick={col?()=>handleSort(col):undefined} style={{ padding:'12px 16px', textAlign:align, fontSize:11, fontWeight:700, color:isDark?'#94A3B8':'#667085', textTransform:'uppercase', letterSpacing:'0.06em', background:isDark?'#1E293B':'linear-gradient(180deg, #F8F9FC 0%, #F1F3F9 100%)', borderBottom:`1.5px solid ${isDark?'#334155':'#E4E7EC'}`, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', cursor:col?'pointer':'default', userSelect:'none', ...sx }}>
       {children}{col&&<SortIco col={col} />}
     </th>
   );
@@ -611,40 +617,40 @@ export default function AppointmentsPage() {
 
       {/* Stat Cards */}
       <div style={{ display:'flex', gap:12, flexWrap:'wrap' }}>
-        <StatCard label="Total"     value={total}                color="#2563EB" icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>} />
-        <StatCard label="Pending"   value={counts.pending||0}   color="#D97706" icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>} />
-        <StatCard label="Confirmed" value={counts.confirmed||0} color="#2563EB" icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>} />
-        <StatCard label="Completed" value={counts.completed||0} color="#059669" icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/><path d="m9 12 2 2 4-4"/></svg>} />
+        <StatCard label="Total"     value={total}                color="#2563EB" dark={isDark} icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>} />
+        <StatCard label="Pending"   value={counts.pending||0}   color="#D97706" dark={isDark} icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>} />
+        <StatCard label="Confirmed" value={counts.confirmed||0} color="#2563EB" dark={isDark} icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>} />
+        <StatCard label="Completed" value={counts.completed||0} color="#059669" dark={isDark} icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/><path d="m9 12 2 2 4-4"/></svg>} />
       </div>
 
       {/* Filter Bar */}
-      <div style={{ background:'#fff', borderRadius:14, border:'1px solid #EAECF0', padding:'14px 16px', display:'flex', gap:10, flexWrap:'wrap', alignItems:'center', boxShadow:'0 1px 4px rgba(16,24,40,0.04)' }}>
+      <div style={{ background:isDark?'#111827':'#fff', borderRadius:14, border:`1px solid ${isDark?'#334155':'#EAECF0'}`, padding:'14px 16px', display:'flex', gap:10, flexWrap:'wrap', alignItems:'center', boxShadow:isDark?'0 8px 20px rgba(2,6,23,0.35)':'0 1px 4px rgba(16,24,40,0.04)' }}>
         <div style={{ position:'relative', flex:1, minWidth:200 }}>
-          <span style={{ position:'absolute', left:10, top:'50%', transform:'translateY(-50%)', color:'#98A2B3', pointerEvents:'none', display:'flex' }}><IconSearch /></span>
+          <span style={{ position:'absolute', left:10, top:'50%', transform:'translateY(-50%)', color:isDark?'#94A3B8':'#98A2B3', pointerEvents:'none', display:'flex' }}><IconSearch /></span>
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search appointments..."
-            style={{ width:'100%', padding:'8px 12px 8px 34px', borderRadius:9, border:'1.5px solid #E4E7EC', fontSize:13, fontFamily:"'Inter',sans-serif", outline:'none', boxSizing:'border-box', color:'#101828', background:'#FAFAFA' }}
-            onFocus={e=>e.target.style.borderColor='#2563EB'} onBlur={e=>e.target.style.borderColor='#E4E7EC'} />
+            style={{ width:'100%', padding:'8px 12px 8px 34px', borderRadius:9, border:`1.5px solid ${isDark?'#334155':'#E4E7EC'}`, fontSize:13, fontFamily:"'Inter',sans-serif", outline:'none', boxSizing:'border-box', color:isDark?'#E2E8F0':'#101828', background:isDark?'#0F172A':'#FAFAFA' }}
+            onFocus={e=>e.target.style.borderColor='#2563EB'} onBlur={e=>e.target.style.borderColor=isDark?'#334155':'#E4E7EC'} />
         </div>
         <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
           {[{val:'',label:'All'},...APPT_STATUSES.map(s=>({val:s,label:STATUS_META[s].label}))].map(({val,label}) => {
             const active=filterStatus===val, meta=val?STATUS_META[val]:null, cnt=val?counts[val]:appts.length;
             return (
-              <button key={val} onClick={()=>{setFilterStatus(val);setPage(1);}} style={{ padding:'6px 14px', borderRadius:20, border:'1.5px solid', borderColor:active?(meta?.color??'#2563EB'):'#E4E7EC', background:active?(meta?.bg??'#EFF6FF'):'#fff', color:active?(meta?.color??'#2563EB'):'#667085', fontWeight:active?700:500, fontSize:12, cursor:'pointer', fontFamily:"'Inter',sans-serif", whiteSpace:'nowrap' }}>
+              <button key={val} onClick={()=>{setFilterStatus(val);setPage(1);}} style={{ padding:'6px 14px', borderRadius:20, border:'1.5px solid', borderColor:active?(meta?.color??'#2563EB'):(isDark?'#334155':'#E4E7EC'), background:active?(meta?.bg??'#EFF6FF'):(isDark?'#0F172A':'#fff'), color:active?(meta?.color??'#2563EB'):(isDark?'#CBD5E1':'#667085'), fontWeight:active?700:500, fontSize:12, cursor:'pointer', fontFamily:"'Inter',sans-serif", whiteSpace:'nowrap' }}>
                 {label}{cnt>0?<span style={{ marginLeft:5, opacity:0.7 }}>({cnt})</span>:''}
               </button>
             );
           })}
         </div>
         <div style={{ display:'flex', alignItems:'center', gap:6, marginLeft:'auto' }}>
-          <span style={{ color:'#98A2B3', display:'flex' }}><IconCalendar /></span>
+          <span style={{ color:isDark?'#94A3B8':'#98A2B3', display:'flex' }}><IconCalendar /></span>
           <input type="date" value={filterDate} onChange={e=>{setFilterDate(e.target.value);setPage(1);}}
-            style={{ padding:'7px 10px', borderRadius:9, border:'1.5px solid #E4E7EC', fontSize:13, fontFamily:"'Inter',sans-serif", outline:'none', color:'#344054' }}
-            onFocus={e=>e.target.style.borderColor='#2563EB'} onBlur={e=>e.target.style.borderColor='#E4E7EC'} />
-          {filterDate && <button onClick={()=>setFilterDate('')} style={{ background:'none', border:'none', cursor:'pointer', color:'#98A2B3', display:'flex', padding:2 }}><IconClose /></button>}
+            style={{ padding:'7px 10px', borderRadius:9, border:`1.5px solid ${isDark?'#334155':'#E4E7EC'}`, fontSize:13, fontFamily:"'Inter',sans-serif", outline:'none', color:isDark?'#E2E8F0':'#344054', background:isDark?'#0F172A':'#fff' }}
+            onFocus={e=>e.target.style.borderColor='#2563EB'} onBlur={e=>e.target.style.borderColor=isDark?'#334155':'#E4E7EC'} />
+          {filterDate && <button onClick={()=>setFilterDate('')} style={{ background:'none', border:'none', cursor:'pointer', color:isDark?'#94A3B8':'#98A2B3', display:'flex', padding:2 }}><IconClose /></button>}
         </div>
         {isSuperAdmin && (
           <select value={filterBranch} onChange={e=>{setFilterBranch(e.target.value);setPage(1);}}
-            style={{ padding:'7px 12px', borderRadius:9, border:'1.5px solid #E4E7EC', fontSize:13, fontFamily:"'Inter',sans-serif", outline:'none', color:'#344054', background:'#fff' }}>
+            style={{ padding:'7px 12px', borderRadius:9, border:`1.5px solid ${isDark?'#334155':'#E4E7EC'}`, fontSize:13, fontFamily:"'Inter',sans-serif", outline:'none', color:isDark?'#E2E8F0':'#344054', background:isDark?'#0F172A':'#fff' }}>
             <option value="">All Branches</option>
             {branches.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}
           </select>
@@ -652,7 +658,7 @@ export default function AppointmentsPage() {
       </div>
 
       {/* Table */}
-      <div style={{ background:'#fff', borderRadius:14, border:'1px solid #EAECF0', overflow:'hidden', boxShadow:'0 1px 4px rgba(16,24,40,0.04)' }}>
+      <div style={{ background:isDark?'#111827':'#fff', borderRadius:14, border:`1px solid ${isDark?'#334155':'#EAECF0'}`, overflow:'hidden', boxShadow:isDark?'0 8px 20px rgba(2,6,23,0.35)':'0 1px 4px rgba(16,24,40,0.04)' }}>
         <div style={{ overflowX:'auto' }}>
           <table style={{ width:'100%', borderCollapse:'collapse', fontFamily:"'Inter',sans-serif", tableLayout:'fixed' }}>
             <colgroup>
@@ -679,17 +685,17 @@ export default function AppointmentsPage() {
               {loading ? Array.from({length:5}).map((_,i)=>(
                 <tr key={i}>{Array.from({length:7}).map((_,j)=>(
                   <td key={j} style={{ padding:'14px 16px' }}>
-                    <div style={{ height:13, borderRadius:6, width:`${50+(j*13)%40}%`, background:'linear-gradient(90deg,#F2F4F7 25%,#E8EAED 50%,#F2F4F7 75%)', backgroundSize:'200% 100%', animation:'shimmer 1.4s infinite' }} />
+                    <div style={{ height:13, borderRadius:6, width:`${50+(j*13)%40}%`, background:isDark?'linear-gradient(90deg,#1E293B 25%,#334155 50%,#1E293B 75%)':'linear-gradient(90deg,#F2F4F7 25%,#E8EAED 50%,#F2F4F7 75%)', backgroundSize:'200% 100%', animation:'shimmer 1.4s infinite' }} />
                   </td>
                 ))}</tr>
               )) : displayed.length===0 ? (
                 <tr><td colSpan={7} style={{ padding:'52px 16px', textAlign:'center' }}>
                   <div style={{ fontSize:40, marginBottom:12 }}></div>
-                  <div style={{ color:'#344054', fontWeight:600, fontSize:15 }}>No appointments found</div>
-                  <div style={{ color:'#98A2B3', fontSize:13, marginTop:4 }}>Try adjusting your filters or add a new appointment</div>
+                  <div style={{ color:isDark?'#E2E8F0':'#344054', fontWeight:600, fontSize:15 }}>No appointments found</div>
+                  <div style={{ color:isDark?'#94A3B8':'#98A2B3', fontSize:13, marginTop:4 }}>Try adjusting your filters or add a new appointment</div>
                 </td></tr>
               ) : displayed.map((row,idx)=>(
-                <ApptRow key={row.id} row={row} idx={idx} canEdit={canEdit}
+                <ApptRow key={row.id} row={row} idx={idx} canEdit={canEdit} dark={isDark}
                   onView={()=>openDetail(row)} onEdit={()=>openEdit(row)} onDelete={()=>confirmDelete(row.id)}
                   onStatusChange={v=>handleStatusChange(row.id,v)} onPayment={()=>openPayment(row)} />
               ))}
@@ -697,22 +703,22 @@ export default function AppointmentsPage() {
           </table>
           <style>{'@keyframes shimmer { to { background-position:-200% 0; } }'}</style>
         </div>
-        <div style={{ padding:'10px 16px', borderTop:'1px solid #F2F4F7', display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:8 }}>
-          <span style={{ fontSize:12, color:'#98A2B3' }}>Showing {displayed.length} of {total}</span>
+        <div style={{ padding:'10px 16px', borderTop:`1px solid ${isDark?'#334155':'#F2F4F7'}`, display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:8 }}>
+          <span style={{ fontSize:12, color:isDark?'#94A3B8':'#98A2B3' }}>Showing {displayed.length} of {total}</span>
           {totalPages>1 && (
             <div style={{ display:'flex', gap:4 }}>
-              <PagBtn onClick={()=>setPage(1)} disabled={page===1} label="«" />
-              <PagBtn onClick={()=>setPage(p=>p-1)} disabled={page===1} label="" />
-              {Array.from({length:Math.min(5,totalPages)},(_,i)=>{ const p=Math.max(1,Math.min(totalPages-4,page-2))+i; return <PagBtn key={p} onClick={()=>setPage(p)} active={p===page} label={p} />; })}
-              <PagBtn onClick={()=>setPage(p=>p+1)} disabled={page===totalPages} label="" />
-              <PagBtn onClick={()=>setPage(totalPages)} disabled={page===totalPages} label="»" />
+              <PagBtn onClick={()=>setPage(1)} disabled={page===1} label="«" dark={isDark} />
+              <PagBtn onClick={()=>setPage(p=>p-1)} disabled={page===1} label="" dark={isDark} />
+              {Array.from({length:Math.min(5,totalPages)},(_,i)=>{ const p=Math.max(1,Math.min(totalPages-4,page-2))+i; return <PagBtn key={p} onClick={()=>setPage(p)} active={p===page} label={p} dark={isDark} />; })}
+              <PagBtn onClick={()=>setPage(p=>p+1)} disabled={page===totalPages} label="" dark={isDark} />
+              <PagBtn onClick={()=>setPage(totalPages)} disabled={page===totalPages} label="»" dark={isDark} />
             </div>
           )}
         </div>
       </div>
 
       {/* New / Edit Modal */}
-      <Modal open={showForm} onClose={()=>setShowForm(false)} title={editItem?'Edit Appointment':'New Appointment'} size="lg"
+      <Modal open={showForm} onClose={()=>setShowForm(false)} title={editItem?'Edit Appointment':'New Appointment'} size="lg" dark={isDark}
         footer={<><Button variant="secondary" onClick={()=>setShowForm(false)}>Cancel</Button><Button variant="primary" loading={saving} onClick={handleSave}>{editItem?'Save Changes':'Create Appointment'}</Button></>}>
         {formErr && <div style={{ background:'#FEF2F2', color:'#DC2626', padding:'9px 13px', borderRadius:9, marginBottom:16, fontSize:13, border:'1px solid #FEE2E2' }}> {formErr}</div>}
         <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
@@ -854,7 +860,7 @@ export default function AppointmentsPage() {
       </Modal>
 
       {/* Delete Confirm Modal */}
-      <Modal open={!!deleteId} onClose={()=>setDeleteId(null)} title="Delete Appointment" size="sm"
+      <Modal open={!!deleteId} onClose={()=>setDeleteId(null)} title="Delete Appointment" size="sm" dark={isDark}
         footer={<>
           <Button variant="secondary" onClick={()=>setDeleteId(null)}>No</Button>
           <Button variant="danger" onClick={handleDelete} style={{ background:'#DC2626', color:'#fff' }}>Yes, Delete</Button>
@@ -863,13 +869,13 @@ export default function AppointmentsPage() {
           <div style={{ width:56, height:56, borderRadius:'50%', background:'#FEF2F2', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 16px' }}>
             <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#DC2626" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
           </div>
-          <div style={{ fontSize:15, fontWeight:600, color:'#101828', marginBottom:6 }}>Are you sure?</div>
-          <div style={{ fontSize:13, color:'#667085' }}>This appointment will be permanently deleted.<br/>This action cannot be undone.</div>
+          <div style={{ fontSize:15, fontWeight:600, color:isDark?'#E2E8F0':'#101828', marginBottom:6 }}>Are you sure?</div>
+          <div style={{ fontSize:13, color:isDark?'#94A3B8':'#667085' }}>This appointment will be permanently deleted.<br/>This action cannot be undone.</div>
         </div>
       </Modal>
 
       {/* Collect Payment Modal */}
-      <Modal open={showPayment} onClose={()=>setShowPayment(false)} title="Collect Payment" size="md"
+      <Modal open={showPayment} onClose={()=>setShowPayment(false)} title="Collect Payment" size="md" dark={isDark}
         footer={!paymentOk&&<><Button variant="secondary" onClick={()=>setShowPayment(false)}>Cancel</Button><Button variant="primary" loading={paymentSaving} onClick={handlePayment}>Confirm Payment</Button></>}>
         {paymentAppt && (
           paymentOk ? (
@@ -882,23 +888,23 @@ export default function AppointmentsPage() {
           ) : (
             <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
               {paymentErr && <div style={{ background:'#FEF2F2', color:'#DC2626', padding:'9px 13px', borderRadius:9, fontSize:13, border:'1px solid #FEE2E2' }}>{paymentErr}</div>}
-              <div style={{ background:'#F9FAFB', borderRadius:12, padding:'14px 16px' }}>
+              <div style={{ background:isDark?'#1E293B':'#F9FAFB', borderRadius:12, padding:'14px 16px', border:isDark?'1px solid #334155':'none' }}>
                 <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
                   <div>
-                    <div style={{ fontSize:15, fontWeight:700, color:'#101828' }}>{paymentAppt.customer_name}</div>
-                    <div style={{ fontSize:13, color:'#667085', marginTop:2 }}>{paymentAppt.phone||''}</div>
+                    <div style={{ fontSize:15, fontWeight:700, color:isDark?'#E2E8F0':'#101828' }}>{paymentAppt.customer_name}</div>
+                    <div style={{ fontSize:13, color:isDark?'#94A3B8':'#667085', marginTop:2 }}>{paymentAppt.phone||''}</div>
                   </div>
-                  {paymentAppt.staff?.name && <span style={{ background:'#F3F4F6', color:'#475467', padding:'4px 12px', borderRadius:8, fontSize:12, fontWeight:500 }}>{paymentAppt.staff.name}</span>}
+                  {paymentAppt.staff?.name && <span style={{ background:isDark?'#334155':'#F3F4F6', color:isDark?'#CBD5E1':'#475467', padding:'4px 12px', borderRadius:8, fontSize:12, fontWeight:500 }}>{paymentAppt.staff.name}</span>}
                 </div>
               </div>
               <FormGroup label="Services" required>
-                <div style={{ border:'1px solid #DCE6F3', borderRadius:12, overflow:'hidden', maxHeight:180, overflowY:'auto' }}>
+                <div style={{ border:`1px solid ${isDark?'#334155':'#DCE6F3'}`, borderRadius:12, overflow:'hidden', maxHeight:180, overflowY:'auto', background:isDark?'#0F172A':'#fff' }}>
                   {services.filter(s => s.is_active !== false).map((s, idx, arr) => {
                     const active = paymentServices.includes(Number(s.id));
                     return (
-                      <label key={s.id} style={{ display:'grid', gridTemplateColumns:'24px 1fr auto', alignItems:'center', gap:10, padding:'9px 12px', borderBottom:idx!==arr.length-1?'1px solid #EEF2F6':'none', background:active?'#F0F9FF':'#fff', cursor:'pointer' }}>
+                      <label key={s.id} style={{ display:'grid', gridTemplateColumns:'24px 1fr auto', alignItems:'center', gap:10, padding:'9px 12px', borderBottom:idx!==arr.length-1?`1px solid ${isDark?'#334155':'#EEF2F6'}`:'none', background:active?'#F0F9FF':(isDark?'#0F172A':'#fff'), cursor:'pointer' }}>
                         <input type="checkbox" checked={active} onChange={() => togglePaymentService(s.id)} style={{ width:16, height:16, accentColor:'#2563EB' }} />
-                        <span style={{ fontSize:14, color:'#0F172A', fontWeight:active?700:500 }}>{s.name}</span>
+                        <span style={{ fontSize:14, color:isDark?'#E2E8F0':'#0F172A', fontWeight:active?700:500 }}>{s.name}</span>
                         <span style={{ fontSize:14, color:'#059669', fontWeight:800 }}>Rs.{Number(s.price||0).toLocaleString()}</span>
                       </label>
                     );
@@ -908,7 +914,7 @@ export default function AppointmentsPage() {
               </FormGroup>
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14, alignItems:'start' }}>
                 <FormGroup label="Subtotal (Rs.)">
-                  <div style={{ padding:'10px 12px', background:'#F9FAFB', borderRadius:10, border:'1px solid #E5E7EB', fontWeight:800, color:'#059669' }}>
+                  <div style={{ padding:'10px 12px', background:isDark?'#1E293B':'#F9FAFB', borderRadius:10, border:`1px solid ${isDark?'#334155':'#E5E7EB'}`, fontWeight:800, color:'#059669' }}>
                     Rs. {calcServiceTotal(paymentServices).toLocaleString()}
                   </div>
                 </FormGroup>
@@ -945,7 +951,7 @@ export default function AppointmentsPage() {
       </Modal>
 
       {/* Detail Drawer */}
-      <Drawer open={showDetail} onClose={()=>setShowDetail(false)} title="Appointment Details"
+      <Drawer open={showDetail} onClose={()=>setShowDetail(false)} title="Appointment Details" dark={isDark}
         footer={canEdit&&detailItem&&(
           <div style={{ display:'flex', gap:8 }}>
             {detailItem.status!=='completed'&&detailItem.status!=='cancelled'&&<Button variant="primary" onClick={()=>{setShowDetail(false);openEdit(detailItem);}} style={{ display:'flex', alignItems:'center', gap:6 }}><IconEdit /> Edit</Button>}
@@ -954,10 +960,10 @@ export default function AppointmentsPage() {
         )}>
         {detailItem && (
           <div style={{ fontFamily:"'Inter',sans-serif" }}>
-            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:24, padding:'16px', background:'#F9FAFB', borderRadius:12 }}>
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:24, padding:'16px', background:isDark?'#1E293B':'#F9FAFB', borderRadius:12, border:isDark?'1px solid #334155':'none' }}>
               <div>
-                <div style={{ fontSize:18, fontWeight:700, color:'#101828' }}>{detailItem.customer_name}</div>
-                <div style={{ fontSize:13, color:'#667085', marginTop:2 }}>{detailItem.phone}</div>
+                <div style={{ fontSize:18, fontWeight:700, color:isDark?'#E2E8F0':'#101828' }}>{detailItem.customer_name}</div>
+                <div style={{ fontSize:13, color:isDark?'#94A3B8':'#667085', marginTop:2 }}>{detailItem.phone}</div>
               </div>
               <StatusBadge status={detailItem.status} />
             </div>
@@ -974,23 +980,23 @@ export default function AppointmentsPage() {
                     { icon:'', label:'Branch',  value:detailItem.branch?.name||'' },
                     { icon:'', label:'Amount',  value:`Rs. ${Number(detailItem.amount||detailItem.service?.price||0).toLocaleString()}`, highlight:true },
                   ].map(({icon,label,value,highlight})=>(
-                    <div key={label} style={{ display:'flex', alignItems:'center', padding:'12px 0', borderBottom:'1px solid #F2F4F7' }}>
+                    <div key={label} style={{ display:'flex', alignItems:'center', padding:'12px 0', borderBottom:`1px solid ${isDark?'#334155':'#F2F4F7'}` }}>
                       <span style={{ fontSize:16, width:28, flexShrink:0 }}>{icon}</span>
-                      <span style={{ fontSize:12, fontWeight:600, color:'#98A2B3', textTransform:'uppercase', width:80, flexShrink:0 }}>{label}</span>
-                      <span style={{ fontSize:14, color:highlight?'#059669':'#101828', fontWeight:highlight?700:500 }}>{value}</span>
+                      <span style={{ fontSize:12, fontWeight:600, color:isDark?'#94A3B8':'#98A2B3', textTransform:'uppercase', width:80, flexShrink:0 }}>{label}</span>
+                      <span style={{ fontSize:14, color:highlight?'#059669':(isDark?'#E2E8F0':'#101828'), fontWeight:highlight?700:500 }}>{value}</span>
                     </div>
                   ))}
                 </>
               );
             })()}
             {detailItem.notes && (
-              <div style={{ marginTop:20, padding:'14px 16px', background:'#FFFBEB', borderRadius:10, border:'1px solid #FDE68A' }}>
+              <div style={{ marginTop:20, padding:'14px 16px', background:isDark?'#422006':'#FFFBEB', borderRadius:10, border:`1px solid ${isDark?'#92400E':'#FDE68A'}` }}>
                 <div style={{ fontSize:11, fontWeight:700, color:'#D97706', textTransform:'uppercase', marginBottom:6 }}> Notes</div>
-                <div style={{ fontSize:13, color:'#475467', lineHeight:1.6 }}>{detailItem.notes}</div>
+                <div style={{ fontSize:13, color:isDark?'#FDE68A':'#475467', lineHeight:1.6 }}>{detailItem.notes}</div>
               </div>
             )}
             <div style={{ marginTop:20, textAlign:'right' }}>
-              <span style={{ fontSize:11, color:'#D0D5DD', fontFamily:'monospace' }}>ID #{detailItem.id}</span>
+              <span style={{ fontSize:11, color:isDark?'#64748B':'#D0D5DD', fontFamily:'monospace' }}>ID #{detailItem.id}</span>
             </div>
           </div>
         )}

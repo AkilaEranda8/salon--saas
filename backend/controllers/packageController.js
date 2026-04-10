@@ -1,7 +1,7 @@
 'use strict';
 const { Op } = require('sequelize');
 const { sequelize } = require('../config/database');
-const { tenantWhere } = require('../utils/tenantScope');
+const { tenantWhere, byIdWhere, resolveTenantId } = require('../utils/tenantScope');
 
 // ── PACKAGE TEMPLATES ─────────────────────────────────────────────────────────
 
@@ -25,7 +25,7 @@ const list = async (req, res) => {
     // Resolve service details for each package
     const allServiceIds = [...new Set(packages.flatMap((p) => p.services || []))];
     const services = allServiceIds.length
-      ? await Service.findAll({ where: { id: allServiceIds }, attributes: ['id', 'name', 'price', 'duration_minutes'] })
+      ? await Service.findAll({ where: { id: allServiceIds, ...tenantWhere(req) }, attributes: ['id', 'name', 'price', 'duration_minutes'] })
       : [];
     const svcMap = Object.fromEntries(services.map((s) => [s.id, s]));
 
@@ -44,7 +44,8 @@ const list = async (req, res) => {
 const getOne = async (req, res) => {
   try {
     const { Package, Branch, Service } = require('../models');
-    const pkg = await Package.findByPk(req.params.id, {
+    const pkg = await Package.findOne({
+      where: byIdWhere(req, req.params.id),
       include: [{ model: Branch, as: 'branch', attributes: ['id', 'name'] }],
     });
     if (!pkg) return res.status(404).json({ message: 'Package not found.' });
@@ -52,7 +53,7 @@ const getOne = async (req, res) => {
     // Resolve service IDs to full service objects
     const serviceIds = pkg.services || [];
     const services = serviceIds.length
-      ? await Service.findAll({ where: { id: serviceIds }, attributes: ['id', 'name', 'price', 'duration_minutes'] })
+      ? await Service.findAll({ where: { id: serviceIds, ...tenantWhere(req) }, attributes: ['id', 'name', 'price', 'duration_minutes'] })
       : [];
 
     return res.json({ ...pkg.toJSON(), serviceDetails: services });
@@ -85,6 +86,7 @@ const create = async (req, res) => {
       original_price, package_price, discount_percent,
       branch_id: branch_id || null,
       is_active: true,
+      tenant_id: resolveTenantId(req),
     });
 
     return res.status(201).json(pkg);
@@ -97,7 +99,7 @@ const create = async (req, res) => {
 const update = async (req, res) => {
   try {
     const { Package } = require('../models');
-    const pkg = await Package.findByPk(req.params.id);
+    const pkg = await Package.findOne({ where: byIdWhere(req, req.params.id) });
     if (!pkg) return res.status(404).json({ message: 'Package not found.' });
 
     const {
@@ -135,7 +137,7 @@ const update = async (req, res) => {
 const remove = async (req, res) => {
   try {
     const { Package } = require('../models');
-    const pkg = await Package.findByPk(req.params.id);
+    const pkg = await Package.findOne({ where: byIdWhere(req, req.params.id) });
     if (!pkg) return res.status(404).json({ message: 'Package not found.' });
     await pkg.update({ is_active: false });
     return res.json({ message: 'Package deactivated.' });
@@ -151,7 +153,7 @@ const customerPackages = async (req, res) => {
   try {
     const { CustomerPackage, Package, Branch } = require('../models');
     const rows = await CustomerPackage.findAll({
-      where: { customer_id: req.params.customerId },
+      where: { customer_id: req.params.customerId, ...tenantWhere(req) },
       include: [
         { model: Package, as: 'package', attributes: ['id', 'name', 'type', 'services'] },
         { model: Branch,  as: 'branch',  attributes: ['id', 'name'] },
@@ -188,6 +190,7 @@ const activePackages = async (req, res) => {
     const rows = await CustomerPackage.findAll({
       where: {
         customer_id: req.params.customerId,
+        ...tenantWhere(req),
         status: 'active',
         expiry_date: { [Op.gte]: today },
       },
@@ -222,7 +225,7 @@ const purchase = async (req, res) => {
       return res.status(400).json({ message: 'customerId and packageId are required.' });
     }
 
-    const pkg = await Package.findByPk(packageId, { transaction: t });
+    const pkg = await Package.findOne({ where: byIdWhere(req, packageId), transaction: t });
     if (!pkg || !pkg.is_active) {
       await t.rollback();
       return res.status(404).json({ message: 'Package not found or inactive.' });
@@ -230,7 +233,7 @@ const purchase = async (req, res) => {
 
     const effectiveBranchId = branchId || pkg.branch_id || req.userBranchId;
 
-    const customer = await Customer.findByPk(customerId, { transaction: t });
+    const customer = await Customer.findOne({ where: byIdWhere(req, customerId), transaction: t });
     if (!customer) {
       await t.rollback();
       return res.status(404).json({ message: 'Customer not found.' });
@@ -253,12 +256,14 @@ const purchase = async (req, res) => {
       amount_paid:    pkg.package_price,
       payment_method: paymentMethod || null,
       notes:          notes || null,
+      tenant_id:      resolveTenantId(req),
     }, { transaction: t });
 
     await t.commit();
 
     // Re-fetch with includes
-    const result = await CustomerPackage.findByPk(cp.id, {
+    const result = await CustomerPackage.findOne({
+      where: byIdWhere(req, cp.id),
       include: [
         { model: Package,  as: 'package', attributes: ['id', 'name', 'type', 'services', 'validity_days'] },
         {
@@ -288,7 +293,8 @@ const redeem = async (req, res) => {
       return res.status(400).json({ message: 'customerPackageId and serviceId are required.' });
     }
 
-    const cp = await CustomerPackage.findByPk(customerPackageId, {
+    const cp = await CustomerPackage.findOne({
+      where: byIdWhere(req, customerPackageId),
       include: [{ model: Package, as: 'package' }],
       transaction: t,
     });
@@ -335,6 +341,7 @@ const redeem = async (req, res) => {
       redeemed_at:         new Date(),
       redeemed_by:         staffId || null,
       notes:               notes || null,
+      tenant_id:           resolveTenantId(req),
     }, { transaction: t });
 
     // Increment sessions_used
@@ -346,7 +353,8 @@ const redeem = async (req, res) => {
     await t.commit();
 
     // Re-fetch
-    const result = await CustomerPackage.findByPk(customerPackageId, {
+    const result = await CustomerPackage.findOne({
+      where: byIdWhere(req, customerPackageId),
       include: [
         { model: Package, as: 'package', attributes: ['id', 'name', 'type', 'services'] },
       ],
@@ -372,10 +380,10 @@ const purchaseForAllCustomers = async (req, res) => {
     const notes = req.body.notes || null;
     if (!packageId) return res.status(400).json({ message: 'packageId is required.' });
 
-    const pkg = await Package.findByPk(packageId);
+    const pkg = await Package.findOne({ where: byIdWhere(req, packageId) });
     if (!pkg) return res.status(404).json({ message: 'Package not found.' });
 
-    const where = {};
+    const where = tenantWhere(req);
     if (branchId) where.branch_id = branchId;
     else if (req.userBranchId) where.branch_id = req.userBranchId;
 
@@ -401,6 +409,7 @@ const purchaseForAllCustomers = async (req, res) => {
         amount_paid:    pkg.package_price,
         payment_method: paymentMethod,
         notes:          notes,
+        tenant_id:      resolveTenantId(req),
       });
       created++;
     }
@@ -419,7 +428,7 @@ const listAllCustomerPackages = async (req, res) => {
     const { CustomerPackage, Package, Branch, Customer } = require('../models');
     const page  = Math.max(1, parseInt(req.query.page) || 1);
     const limit = Math.min(100, parseInt(req.query.limit) || 20);
-    const where = {};
+    const where = tenantWhere(req);
 
     if (req.query.status) where.status = req.query.status;
     if (req.query.branchId) where.branch_id = req.query.branchId;

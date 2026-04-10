@@ -33,7 +33,7 @@ String _userFacingApiError(Object e) {
 /// Same value passed to [MobileApi] (Socket.IO uses this origin).
 const String kStaffApiBaseUrl = String.fromEnvironment(
   'API_BASE_URL',
-  defaultValue: 'https://api.zanesalon.com',
+  defaultValue: 'https://api.salon.hexalyte.com',
 );
 
 class AppState extends ChangeNotifier {

@@ -1,7 +1,7 @@
 const bcrypt = require('bcryptjs');
 const { Op } = require('sequelize');
 const { User, Branch } = require('../models');
-const { tenantWhere } = require('../utils/tenantScope');
+const { tenantWhere, byIdWhere, resolveTenantId } = require('../utils/tenantScope');
 
 const list = async (req, res) => {
   try {
@@ -32,12 +32,18 @@ const list = async (req, res) => {
 const create = async (req, res) => {
   try {
     const { username, password, name, role, branch_id, is_active } = req.body;
+    const tenantId = resolveTenantId(req);
 
     if (!username || !password || !name) {
       return res.status(400).json({ message: 'Username, password and name are required.' });
     }
 
-    const existing = await User.findOne({ where: { username } });
+    const existing = await User.findOne({
+      where: {
+        username,
+        ...(tenantId ? { tenant_id: tenantId } : {}),
+      },
+    });
     if (existing) {
       return res.status(409).json({ message: 'Username already exists.' });
     }
@@ -48,6 +54,7 @@ const create = async (req, res) => {
       role: role || 'staff',
       branch_id: branch_id || null,
       is_active: is_active !== false,
+      tenant_id: tenantId,
     });
 
     const result = user.toJSON();
@@ -61,7 +68,8 @@ const create = async (req, res) => {
 
 const update = async (req, res) => {
   try {
-    const user = await User.findByPk(req.params.id);
+    const tenantId = resolveTenantId(req);
+    const user = await User.findOne({ where: byIdWhere(req, req.params.id) });
     if (!user) return res.status(404).json({ message: 'User not found.' });
 
     const { name, username, role, branch_id, is_active, password } = req.body;
@@ -81,7 +89,13 @@ const update = async (req, res) => {
 
     // Check username uniqueness before updating
     if (username !== undefined && username !== user.username) {
-      const existing = await User.findOne({ where: { username } });
+      const existing = await User.findOne({
+        where: {
+          username,
+          ...(tenantId ? { tenant_id: tenantId } : {}),
+          id: { [Op.ne]: user.id },
+        },
+      });
       if (existing) return res.status(409).json({ message: 'Username already exists.' });
     }
 
@@ -97,7 +111,7 @@ const update = async (req, res) => {
 
 const changePassword = async (req, res) => {
   try {
-    const user = await User.findByPk(req.params.id);
+    const user = await User.findOne({ where: byIdWhere(req, req.params.id) });
     if (!user) return res.status(404).json({ message: 'User not found.' });
 
     const { password } = req.body;
@@ -116,7 +130,7 @@ const changePassword = async (req, res) => {
 
 const remove = async (req, res) => {
   try {
-    const user = await User.findByPk(req.params.id);
+    const user = await User.findOne({ where: byIdWhere(req, req.params.id) });
     if (!user) return res.status(404).json({ message: 'User not found.' });
     if (user.role === 'superadmin') {
       return res.status(403).json({ message: 'Cannot delete superadmin.' });

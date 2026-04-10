@@ -17,13 +17,7 @@
  */
 
 const { Staff, Branch, Service } = require('../models');
-
-const PLAN_LIMITS = {
-  trial:      { branch: 1,  staff: 5,   service: 20  },
-  basic:      { branch: 1,  staff: 10,  service: 50  },
-  pro:        { branch: 5,  staff: 50,  service: 200 },
-  enterprise: { branch: -1, staff: -1,  service: -1  },
-};
+const { PLAN_LIMITS, getPlanLimits } = require('../utils/planConfig');
 
 const MODELS = {
   staff:   Staff,
@@ -31,12 +25,18 @@ const MODELS = {
   service: Service,
 };
 
+const COUNT_SCOPE = {
+  staff:   { is_active: true },
+  branch:  { status: 'active' },
+  service: { is_active: true },
+};
+
 const checkLimit = (resource) => async (req, res, next) => {
   const tenant = req.tenant;
   if (!tenant) return next(); // platform_admin bypasses
 
   const plan   = tenant.plan || 'trial';
-  const limits = PLAN_LIMITS[plan] ?? PLAN_LIMITS.trial;
+  const limits = getPlanLimits(plan);
   const max    = limits[resource];
 
   if (max === -1) return next(); // unlimited
@@ -46,7 +46,7 @@ const checkLimit = (resource) => async (req, res, next) => {
 
   try {
     const count = await Model.count({
-      where: { tenant_id: tenant.id, is_active: true },
+      where: { tenant_id: tenant.id, ...(COUNT_SCOPE[resource] || {}) },
     });
 
     if (count >= max) {

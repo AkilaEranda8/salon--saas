@@ -83,9 +83,7 @@ const services = async (req, res) => {
 // GET /api/reports/staff — staff performance
 const staffReport = async (req, res) => {
   try {
-    const branchWhere = {};
-    if (req.userBranchId) branchWhere.branch_id = req.userBranchId;
-    else if (req.query.branchId) branchWhere.branch_id = req.query.branchId;
+    const branchWhere = getBranchWhere(req);
 
     let dateWhere = {};
     if (req.query.month) {
@@ -96,7 +94,7 @@ const staffReport = async (req, res) => {
 
     // 1. All staff (with branch info)
     const staffRows = await Staff.findAll({
-      where: branchWhere,
+      where: { ...branchWhere, is_active: true },
       include: [{ model: Branch, as: 'branch', attributes: ['id', 'name'] }],
     });
 
@@ -106,7 +104,7 @@ const staffReport = async (req, res) => {
 
     // 2. Appointment counts — separate query to avoid cartesian product
     const apptAgg = await Appointment.findAll({
-      where: { staff_id: { [Op.in]: staffIds }, ...dateWhere },
+      where: { ...branchWhere, staff_id: { [Op.in]: staffIds }, ...dateWhere },
       attributes: ['staff_id', [fn('COUNT', col('id')), 'apptCount']],
       group: ['staff_id'],
       raw: true,
@@ -131,14 +129,33 @@ const staffReport = async (req, res) => {
     for (const r of payAgg)  payMap[r.staff_id]  = r;
 
     // Merge and return
-    const result = staffRows.map((staff) => ({
-      ...staff.toJSON(),
-      apptCount:       parseInt(apptMap[staff.id]?.apptCount       || 0),
-      totalCommission: parseFloat(payMap[staff.id]?.totalCommission || 0),
-      totalRevenue:    parseFloat(payMap[staff.id]?.totalRevenue    || 0),
-    }));
+    const mergedByUser = new Map();
+    for (const staff of staffRows) {
+      const row = {
+        ...staff.toJSON(),
+        apptCount:       parseInt(apptMap[staff.id]?.apptCount        || 0, 10),
+        totalCommission: parseFloat(payMap[staff.id]?.totalCommission || 0),
+        totalRevenue:    parseFloat(payMap[staff.id]?.totalRevenue    || 0),
+      };
+      const key = row.user_id ? `user:${row.user_id}` : `staff:${row.id}`;
+      const existing = mergedByUser.get(key);
+      if (!existing) {
+        mergedByUser.set(key, row);
+        continue;
+      }
 
-    return res.json(result);
+      existing.apptCount += row.apptCount;
+      existing.totalCommission += row.totalCommission;
+      existing.totalRevenue += row.totalRevenue;
+
+      const existingBranch = existing.branch?.name;
+      const incomingBranch = row.branch?.name;
+      if (existingBranch && incomingBranch && existingBranch !== incomingBranch) {
+        existing.branch = { ...existing.branch, name: `${existingBranch}, ${incomingBranch}` };
+      }
+    }
+
+    return res.json(Array.from(mergedByUser.values()));
   } catch (err) {
     console.error(err);
     return res.status(500).json({ message: 'Server error.' });
@@ -203,7 +220,11 @@ const dashboard = async (req, res) => {
       // Per-branch stats for admin/superadmin
       !req.userBranchId
         ? Branch.findAll({
-            where: { status: 'active' },
+            where: {
+              ...tenantWhere(req),
+              ...(req.query.branchId ? { id: req.query.branchId } : {}),
+              status: 'active',
+            },
             include: [
               {
                 model: Appointment,

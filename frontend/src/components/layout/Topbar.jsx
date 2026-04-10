@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { useTheme } from '../../context/ThemeContext';
 import api from '../../api/axios';
-import salonLogo from '/salon-logo.png';
+import { resolveBrandLogo, resolveBrandName } from '../../utils/branding';
 
 /* ─── Flat nav label map ─────────────────────────────────────────────── */
 
@@ -22,10 +23,13 @@ const PAGE_LABELS = {
   '/commission':    'Commission',
   '/attendance':    'Attendance',
   '/reports':       'Reports',
+  '/support':       'Support Tickets',
   '/reviews':       'Reviews',
   '/expenses':      'Expenses',
   '/reminders':     'Reminders',
   '/notifications': 'Notifications',
+  '/branding':      'Branding Settings',
+  '/themes':        'Theme Options',
   '/branches':      'Branches',
   '/users':         'Users',
 };
@@ -113,11 +117,15 @@ export default function Topbar({ onMenuClick }) {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, logout } = useAuth();
+  const { isDark } = useTheme();
   const [notifCount, setNotifCount] = useState(0);
   const [dropOpen, setDropOpen] = useState(false);
   const dropRef = useRef(null);
+  const tenantBranding = user?.tenant || {};
+  const brandName = resolveBrandName(tenantBranding);
+  const brandLogo = resolveBrandLogo(tenantBranding, 'header');
 
-  const pageName = PAGE_LABELS[location.pathname] ?? 'Zane Salon';
+  const pageName = PAGE_LABELS[location.pathname] ?? brandName;
 
   // Fetch unread reminder count
   useEffect(() => {
@@ -154,8 +162,8 @@ export default function Topbar({ onMenuClick }) {
     <>
       <header style={{
         height:         60,
-        background:     '#FFFFFF',
-        borderBottom:   '1px solid #EAECF0',
+        background:     isDark ? '#0B1220' : '#FFFFFF',
+        borderBottom:   `1px solid ${isDark ? '#1F2937' : '#EAECF0'}`,
         padding:        '0 28px',
         display:        'flex',
         alignItems:     'center',
@@ -175,14 +183,14 @@ export default function Topbar({ onMenuClick }) {
               cursor:       'pointer',
               padding:      '7px 8px',
               borderRadius: 8,
-              color:        '#344054',
+              color:        isDark ? '#CBD5E1' : '#344054',
               display:      'flex',
               flexDirection:'column',
               gap:          4.5,
               flexShrink:   0,
               transition:   'background 0.15s',
             }}
-            onMouseEnter={e => e.currentTarget.style.background = '#F2F4F7'}
+            onMouseEnter={e => e.currentTarget.style.background = isDark ? '#1E293B' : '#F2F4F7'}
             onMouseLeave={e => e.currentTarget.style.background = 'none'}
           >
             <span style={{ display:'block', width:19, height:2.2, background:'currentColor', borderRadius:2 }} />
@@ -192,8 +200,8 @@ export default function Topbar({ onMenuClick }) {
 
           <div style={{ display:'flex', alignItems:'center', gap:8, minWidth:0 }}>
             <img
-              src={salonLogo}
-              alt="Zane Salon logo"
+              src={brandLogo}
+              alt={`${brandName} logo`}
               style={{
                 width: 24,
                 height: 24,
@@ -202,12 +210,12 @@ export default function Topbar({ onMenuClick }) {
                 background: '#000',
               }}
             />
-            <span style={{ fontSize:14, color:'#667085', fontWeight:500, whiteSpace:'nowrap' }}>Zane Salon</span>
-            <span style={{ color:'#D0D5DD', fontSize:14, fontWeight:400 }}>/</span>
+            <span style={{ fontSize:14, color:isDark ? '#94A3B8' : '#667085', fontWeight:500, whiteSpace:'nowrap' }}>{brandName}</span>
+            <span style={{ color:isDark ? '#334155' : '#D0D5DD', fontSize:14, fontWeight:400 }}>/</span>
             <span style={{
               fontSize:     14,
               fontWeight:   700,
-              color:        '#101828',
+              color:        isDark ? '#E2E8F0' : '#101828',
               overflow:     'hidden',
               textOverflow: 'ellipsis',
               whiteSpace:   'nowrap',
@@ -229,13 +237,13 @@ export default function Topbar({ onMenuClick }) {
               cursor:       'pointer',
               padding:      '7px',
               borderRadius: 10,
-              color:        '#475467',
+              color:        isDark ? '#CBD5E1' : '#475467',
               display:      'flex',
               alignItems:   'center',
               justifyContent:'center',
               transition:   'background 0.15s',
             }}
-            onMouseEnter={e => e.currentTarget.style.background = '#F2F4F7'}
+            onMouseEnter={e => e.currentTarget.style.background = isDark ? '#1E293B' : '#F2F4F7'}
             onMouseLeave={e => e.currentTarget.style.background = 'none'}
           >
             <BellIcon />
@@ -268,7 +276,7 @@ export default function Topbar({ onMenuClick }) {
           {/* Date */}
           <span className="topbar-date" style={{
             fontSize:   13,
-            color:      '#475467',
+            color:      isDark ? '#94A3B8' : '#475467',
             fontWeight: 500,
             whiteSpace: 'nowrap',
             display:    'none',
@@ -280,7 +288,7 @@ export default function Topbar({ onMenuClick }) {
           <div className="topbar-divider" style={{
             width:      1,
             height:     28,
-            background: '#E4E7EC',
+            background: isDark ? '#1F2937' : '#E4E7EC',
             display:    'none',
           }} />
 
@@ -293,14 +301,14 @@ export default function Topbar({ onMenuClick }) {
                 alignItems:   'center',
                 gap:          10,
                 padding:      '5px 6px 5px 5px',
-                background:   dropOpen ? '#F2F4F7' : 'transparent',
+                background:   dropOpen ? (isDark ? '#1E293B' : '#F2F4F7') : 'transparent',
                 border:       'none',
                 borderRadius: 12,
                 cursor:       'pointer',
                 transition:   'background 0.15s',
               }}
-              onMouseEnter={e => { if (!dropOpen) e.currentTarget.style.background = '#F9FAFB'; }}
-              onMouseLeave={e => { if (!dropOpen) e.currentTarget.style.background = dropOpen ? '#F2F4F7' : 'transparent'; }}
+              onMouseEnter={e => { if (!dropOpen) e.currentTarget.style.background = isDark ? '#1E293B' : '#F9FAFB'; }}
+              onMouseLeave={e => { if (!dropOpen) e.currentTarget.style.background = dropOpen ? (isDark ? '#1E293B' : '#F2F4F7') : 'transparent'; }}
             >
               <div style={{
                 width:          36,

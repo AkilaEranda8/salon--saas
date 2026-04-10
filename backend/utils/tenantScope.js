@@ -13,9 +13,17 @@
  * they can see all tenants' data.
  */
 function tenantWhere(req) {
-  const tenantId = req.userTenantId ?? req.tenant?.id ?? null;
+  const tenantId = resolveTenantId(req);
   if (!tenantId) return {}; // platform_admin sees all
   return { tenant_id: tenantId };
 }
 
-module.exports = { tenantWhere };
+function resolveTenantId(req) {
+  return req.userTenantId ?? req.user?.tenantId ?? req.tenant?.id ?? null;
+}
+
+function byIdWhere(req, id) {
+  return { id, ...tenantWhere(req) };
+}
+
+module.exports = { tenantWhere, resolveTenantId, byIdWhere };

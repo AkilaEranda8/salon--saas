@@ -10,8 +10,13 @@ const { sequelize } = require('./config/database');
 const validateEnv  = require('./config/validateEnv');
 const { initSocket } = require('./socket');
 const { startAppointmentReminderCron, startReminderDueCron } = require('./services/appointmentReminderCron');
+const { startMarketingAutomationCron } = require('./services/marketingAutomationCron');
+const { apiMonitorMiddleware } = require('./services/apiMonitoring');
 const { tenantScope }       = require('./middleware/tenantScope');
 const { checkSubscription } = require('./middleware/checkSubscription');
+const { enforceMaintenanceMode } = require('./middleware/maintenanceMode');
+const { ensureCustomerProfileColumns } = require('./services/ensureCustomerProfileColumns');
+const { ensureInventorySupplierColumns } = require('./services/ensureInventorySupplierColumns');
 
 // Validate required env vars on startup
 validateEnv();
@@ -24,11 +29,12 @@ app.set('trust proxy', 1);
 const server = http.createServer(app);
 
 // ── CORS ──────────────────────────────────────────────────────────────────────
-// Allow any *.zanesalon.com subdomain (covers all tenant subdomains dynamically)
+// Allow any *.salon.hexalyte.com or *.hexalyte.com subdomain (covers all tenant subdomains dynamically)
 const isAllowedOrigin = (origin) => {
   if (!origin) return true; // server-to-server or same-origin
   if (/^http:\/\/localhost(:\d+)?$/.test(origin)) return true;
-  if (/^https?:\/\/([a-z0-9-]+\.)?zanesalon\.com$/.test(origin)) return true;
+  if (/^https?:\/\/([a-z0-9-]+\.)?salon\.hexalyte\.com$/.test(origin)) return true;
+  if (/^https?:\/\/([a-z0-9-]+\.)?hexalyte\.com$/.test(origin)) return true;
   return false;
 };
 
@@ -40,7 +46,25 @@ const corsOptions = {
   credentials: true,
 };
 app.use(cors(corsOptions));
-app.use(helmet({ contentSecurityPolicy: false }));
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc:  ["'self'"],
+      scriptSrc:   ["'self'"],
+      styleSrc:    ["'self'", "'unsafe-inline'"],
+      imgSrc:      ["'self'", 'data:', 'blob:'],
+      connectSrc:  ["'self'", 'wss:', 'https:'],
+      fontSrc:     ["'self'"],
+      objectSrc:   ["'none'"],
+      frameSrc:    ["'none'"],
+      upgradeInsecureRequests: process.env.NODE_ENV === 'production' ? [] : null,
+    },
+  },
+  hsts: process.env.NODE_ENV === 'production'
+    ? { maxAge: 63072000, includeSubDomains: true, preload: true }
+    : false,
+  crossOriginEmbedderPolicy: false,
+}));
 
 // ── Rate limiting ─────────────────────────────────────────────────────────────
 const authLimiter = rateLimit({
@@ -84,6 +108,7 @@ app.use('/api/billing/webhook', express.raw({ type: 'application/json' }), requi
 
 app.use(express.json());
 app.use(cookieParser());
+app.use(apiMonitorMiddleware);
 
 // ── Tenant scope (MUST be before all route handlers) ─────────────────────────
 app.use('/api/', tenantScope);
@@ -98,12 +123,16 @@ app.get('/api/health', (_req, res) =>
 
 // Public (no auth, no subscription check)
 app.use('/api/public',       require('./routes/public'));
+app.use('/api/branding',     require('./routes/branding'));
 
 // Onboarding (public — new salon registration)
 app.use('/api/onboarding', onboardingLimiter, require('./routes/onboarding'));
 
 // Auth
 app.use('/api/auth',         require('./routes/auth'));
+
+// Platform-controlled maintenance lock for non-platform requests
+app.use('/api/',             enforceMaintenanceMode);
 
 // Subscription check applied to all protected routes below
 app.use('/api/', checkSubscription);
@@ -127,12 +156,24 @@ app.use('/api/reviews',      require('./routes/reviews'));
 app.use('/api/packages',     require('./routes/packages'));
 app.use('/api/discounts',    require('./routes/discounts'));
 app.use('/api/fcm-token',    require('./routes/fcmToken'));
+app.use('/api/support',      require('./routes/support'));
 
 // Billing (protected — Stripe portal, checkout)
 app.use('/api/billing',      require('./routes/billing'));
 
 // Platform admin (only platform_admin role)
 app.use('/api/platform',     require('./routes/platform'));
+
+// ── NEW FEATURES: Analytics, Communication, Loyalty, Security ──────────────────
+app.use('/api/features',     require('./routes/features'));
+
+// ── NEW VERTICAL FEATURES ──────────────────────────────────────────────────────
+app.use('/api/waitlist',     require('./routes/waitlist'));
+app.use('/api/loyalty',      require('./routes/loyalty'));
+app.use('/api/membership',   require('./routes/membership'));
+app.use('/api/consent',      require('./routes/consent'));
+app.use('/api/kpi',          require('./routes/kpi'));
+app.use('/api/marketing',    require('./routes/marketing'));
 
 // ── 404 handler ───────────────────────────────────────────────────────────────
 app.use((_req, res) => res.status(404).json({ message: 'Route not found.' }));
@@ -189,8 +230,50 @@ connectWithRetry().then(async () => {
     console.warn('⚠  Migration staff.user_id:', err.message);
   }
 
+  try {
+    const [cols] = await sequelize.query(
+      `SHOW COLUMNS FROM payments LIKE 'promo_discount'`
+    );
+    if (cols.length === 0) {
+      await sequelize.query(
+        `ALTER TABLE payments ADD COLUMN promo_discount DECIMAL(10,2) NOT NULL DEFAULT 0 AFTER loyalty_discount`
+      );
+      console.log('✓ Migration: payments.promo_discount column added.');
+    } else {
+      console.log('✓ Migration: payments.promo_discount already exists.');
+    }
+  } catch (err) {
+    console.warn('⚠  Migration payments.promo_discount:', err.message);
+  }
+
+  try {
+    const brandingColumns = [
+      ['brand_name', "ALTER TABLE tenants ADD COLUMN brand_name VARCHAR(150) NULL AFTER email"],
+      ['logo_sidebar_url', "ALTER TABLE tenants ADD COLUMN logo_sidebar_url TEXT NULL AFTER brand_name"],
+      ['logo_header_url', "ALTER TABLE tenants ADD COLUMN logo_header_url TEXT NULL AFTER logo_sidebar_url"],
+      ['logo_login_url', "ALTER TABLE tenants ADD COLUMN logo_login_url TEXT NULL AFTER logo_header_url"],
+      ['logo_public_url', "ALTER TABLE tenants ADD COLUMN logo_public_url TEXT NULL AFTER logo_login_url"],
+    ];
+
+    for (const [column, alterSql] of brandingColumns) {
+      const [cols] = await sequelize.query(`SHOW COLUMNS FROM tenants LIKE '${column}'`);
+      if (cols.length === 0) {
+        await sequelize.query(alterSql);
+        console.log(`✓ Migration: tenants.${column} column added.`);
+      }
+    }
+  } catch (err) {
+    console.warn('⚠  Migration tenants.branding:', err.message);
+  }
+
   startAppointmentReminderCron();
   startReminderDueCron();
+  startMarketingAutomationCron();
+
+  // ── New column migrations ───────────────────────────────────────────────────
+  await ensureCustomerProfileColumns();
+  await ensureInventorySupplierColumns();
+
   server.listen(PORT, () =>
     console.log(`✓ Zane Salon server running on http://localhost:${PORT}`)
   );

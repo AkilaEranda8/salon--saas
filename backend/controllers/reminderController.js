@@ -1,6 +1,6 @@
 const { Reminder, Branch } = require('../models');
 const { notifyBranch } = require('../services/fcmService');
-const { tenantWhere } = require('../utils/tenantScope');
+const { tenantWhere, byIdWhere, resolveTenantId } = require('../utils/tenantScope');
 
 const getBranchWhere = (req) => {
   const where = tenantWhere(req);
@@ -33,8 +33,11 @@ const create = async (req, res) => {
     const { title, type, priority, due_date } = req.body;
     const branch_id = req.body.branch_id || req.userBranchId || req.user?.branchId;
     if (!branch_id || !title) return res.status(400).json({ message: 'branch_id and title are required.' });
+    if (req.userBranchId && Number(branch_id) !== Number(req.userBranchId)) {
+      return res.status(403).json({ message: 'You can only create reminders for your branch.' });
+    }
 
-    const reminder = await Reminder.create({ branch_id, title, type, priority, due_date });
+    const reminder = await Reminder.create({ branch_id, title, type, priority, due_date, tenant_id: resolveTenantId(req) });
 
     // Push to all branch staff
     const dueLine = due_date ? ` — Due ${due_date}` : '';
@@ -54,7 +57,7 @@ const create = async (req, res) => {
 
 const update = async (req, res) => {
   try {
-    const reminder = await Reminder.findByPk(req.params.id);
+    const reminder = await Reminder.findOne({ where: byIdWhere(req, req.params.id) });
     if (!reminder) return res.status(404).json({ message: 'Reminder not found.' });
 
     await reminder.update(req.body);
@@ -66,7 +69,7 @@ const update = async (req, res) => {
 
 const toggle = async (req, res) => {
   try {
-    const reminder = await Reminder.findByPk(req.params.id);
+    const reminder = await Reminder.findOne({ where: byIdWhere(req, req.params.id) });
     if (!reminder) return res.status(404).json({ message: 'Reminder not found.' });
 
     await reminder.update({ is_done: !reminder.is_done });
@@ -78,7 +81,7 @@ const toggle = async (req, res) => {
 
 const remove = async (req, res) => {
   try {
-    const reminder = await Reminder.findByPk(req.params.id);
+    const reminder = await Reminder.findOne({ where: byIdWhere(req, req.params.id) });
     if (!reminder) return res.status(404).json({ message: 'Reminder not found.' });
 
     await reminder.destroy();

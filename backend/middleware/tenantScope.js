@@ -42,22 +42,55 @@ function invalidateTenantCache(slug) {
 
 const tenantScope = async (req, res, next) => {
   const slug = req.headers['x-tenant-slug'];
+  const customHost = req.headers['x-tenant-host'];
 
-  if (!slug) {
-    // No tenant slug — allow through. Auth routes will check for platform_admin.
+  if (!slug && !customHost) {
+    // No tenant context — allow through. Auth routes will check for platform_admin.
     req.tenant = null;
     return next();
   }
 
-  // Check cache first
-  const cached = getCached(slug);
+  if (slug) {
+    // Check cache first
+    const cached = getCached(slug);
+    if (cached) {
+      req.tenant = cached;
+      return next();
+    }
+
+    try {
+      const tenant = await Tenant.findOne({ where: { slug } });
+
+      if (!tenant) {
+        return res.status(404).json({ message: 'Salon not found.' });
+      }
+
+      if (tenant.status === 'cancelled') {
+        return res.status(403).json({
+          message: 'This account has been cancelled.',
+          code: 'ACCOUNT_CANCELLED',
+        });
+      }
+
+      setCache(slug, tenant);
+      req.tenant = tenant;
+      return next();
+    } catch (err) {
+      console.error('tenantScope error:', err);
+      return res.status(500).json({ message: 'Server error resolving tenant.' });
+    }
+  }
+
+  // Custom domain lookup via X-Tenant-Host header
+  const cacheKey = `host:${customHost}`;
+  const cached = getCached(cacheKey);
   if (cached) {
     req.tenant = cached;
     return next();
   }
 
   try {
-    const tenant = await Tenant.findOne({ where: { slug } });
+    const tenant = await Tenant.findOne({ where: { custom_domain: customHost } });
 
     if (!tenant) {
       return res.status(404).json({ message: 'Salon not found.' });
@@ -70,11 +103,11 @@ const tenantScope = async (req, res, next) => {
       });
     }
 
-    setCache(slug, tenant);
+    setCache(cacheKey, tenant);
     req.tenant = tenant;
-    next();
+    return next();
   } catch (err) {
-    console.error('tenantScope error:', err);
+    console.error('tenantScope customHost error:', err);
     return res.status(500).json({ message: 'Server error resolving tenant.' });
   }
 };

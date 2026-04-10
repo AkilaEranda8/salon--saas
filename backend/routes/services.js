@@ -1,6 +1,7 @@
 const { Router } = require('express');
 const ctrl = require('../controllers/serviceController');
 const { verifyToken, requireRole } = require('../middleware/auth');
+const { checkLimit } = require('../middleware/planLimits');
 
 const router = Router();
 router.use(verifyToken);
@@ -11,7 +12,7 @@ router.put('/categories/rename', requireRole('superadmin', 'admin'), ctrl.rename
 router.post('/categories/delete', requireRole('superadmin', 'admin'), ctrl.deleteCategory);
 router.get('/',       ctrl.list);
 router.get('/:id',    ctrl.getOne);
-router.post('/',      requireRole('superadmin', 'admin'), ctrl.create);
+router.post('/',      requireRole('superadmin', 'admin'), checkLimit('service'), ctrl.create);
 router.put('/:id',    requireRole('superadmin', 'admin'), ctrl.update);
 router.delete('/:id', requireRole('superadmin', 'admin'), ctrl.remove);
 

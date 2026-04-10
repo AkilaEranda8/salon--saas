@@ -41,7 +41,7 @@ class _AiChatPageState extends State<AiChatPage>
   String? _sessionId;
   late AnimationController _dotCtrl;
 
-  static const _aiBotUrl = 'https://api.zanesalon.com/ai/chat';
+  static const _aiBotUrl = 'https://api.salon.hexalyte.com/ai/chat';
 
   @override
   void initState() {

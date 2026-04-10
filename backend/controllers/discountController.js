@@ -1,7 +1,7 @@
 const { Op } = require('sequelize');
 const { Discount, Branch } = require('../models');
 const { computePromoAmount, isDiscountActive, activeDiscountWhere } = require('../services/discountHelpers');
-const { tenantWhere } = require('../utils/tenantScope');
+const { tenantWhere, byIdWhere, resolveTenantId } = require('../utils/tenantScope');
 
 /** List discounts for admin (all or branch-scoped). */
 const list = async (req, res) => {
@@ -47,7 +47,7 @@ const listForPayment = async (req, res) => {
       return res.status(400).json({ message: 'branchId is required.' });
     }
     const rows = await Discount.findAll({
-      where: activeDiscountWhere(branchId),
+      where: activeDiscountWhere(branchId, resolveTenantId(req)),
       order: [['name', 'ASC']],
       include: [{ model: Branch, as: 'branch', attributes: ['id', 'name'], required: false }],
     });
@@ -60,7 +60,8 @@ const listForPayment = async (req, res) => {
 
 const getOne = async (req, res) => {
   try {
-    const row = await Discount.findByPk(req.params.id, {
+    const row = await Discount.findOne({
+      where: byIdWhere(req, req.params.id),
       include: [{ model: Branch, as: 'branch', attributes: ['id', 'name'], required: false }],
     });
     if (!row) return res.status(404).json({ message: 'Discount not found.' });
@@ -93,6 +94,7 @@ const create = async (req, res) => {
       starts_at: starts_at || null,
       ends_at: ends_at || null,
       is_active: is_active !== false,
+      tenant_id: resolveTenantId(req),
     });
     return res.status(201).json(row);
   } catch (err) {
@@ -103,7 +105,7 @@ const create = async (req, res) => {
 
 const update = async (req, res) => {
   try {
-    const row = await Discount.findByPk(req.params.id);
+    const row = await Discount.findOne({ where: byIdWhere(req, req.params.id) });
     if (!row) return res.status(404).json({ message: 'Discount not found.' });
     if (req.userBranchId && row.branch_id != null && Number(row.branch_id) !== Number(req.userBranchId)) {
       return res.status(403).json({ message: 'Access denied.' });
@@ -124,7 +126,7 @@ const update = async (req, res) => {
 
 const remove = async (req, res) => {
   try {
-    const row = await Discount.findByPk(req.params.id);
+    const row = await Discount.findOne({ where: byIdWhere(req, req.params.id) });
     if (!row) return res.status(404).json({ message: 'Discount not found.' });
     if (req.userBranchId && row.branch_id != null && Number(row.branch_id) !== Number(req.userBranchId)) {
       return res.status(403).json({ message: 'Access denied.' });
@@ -142,9 +144,9 @@ const preview = async (req, res) => {
     const { id } = req.params;
     const gross = parseFloat(req.query.gross || req.body.gross || 0);
     const branchId = req.userBranchId || req.query.branchId;
-    const disc = await Discount.findByPk(id);
+    const disc = await Discount.findOne({ where: byIdWhere(req, id) });
     if (!disc) return res.status(404).json({ message: 'Discount not found.' });
-    if (!isDiscountActive(disc, branchId)) {
+    if (!isDiscountActive(disc, branchId, resolveTenantId(req))) {
       return res.json({ amount: 0, applicable: false });
     }
     const amount = computePromoAmount(disc, gross);

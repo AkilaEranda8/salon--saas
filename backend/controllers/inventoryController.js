@@ -1,6 +1,6 @@
 const { Op } = require('sequelize');
 const { Inventory, Branch } = require('../models');
-const { tenantWhere } = require('../utils/tenantScope');
+const { tenantWhere, byIdWhere, resolveTenantId } = require('../utils/tenantScope');
 
 const getBranchWhere = (req) => {
   const where = tenantWhere(req);
@@ -49,9 +49,23 @@ const lowStock = async (req, res) => {
 const create = async (req, res) => {
   try {
     const { branch_id, name, category, quantity, min_quantity, unit, cost_price, sell_price } = req.body;
-    if (!branch_id || !name) return res.status(400).json({ message: 'branch_id and name are required.' });
+    const effectiveBranchId = req.userBranchId || branch_id || req.user?.branchId || null;
+    if (!effectiveBranchId || !name) return res.status(400).json({ message: 'branch_id and name are required.' });
+    if (req.userBranchId && Number(effectiveBranchId) !== Number(req.userBranchId)) {
+      return res.status(403).json({ message: 'You can only create inventory in your branch.' });
+    }
 
-    const item = await Inventory.create({ branch_id, name, category, quantity, min_quantity, unit, cost_price, sell_price });
+    const item = await Inventory.create({
+      branch_id: effectiveBranchId,
+      name,
+      category,
+      quantity,
+      min_quantity,
+      unit,
+      cost_price,
+      sell_price,
+      tenant_id: resolveTenantId(req),
+    });
     return res.status(201).json(item);
   } catch (err) {
     return res.status(500).json({ message: 'Server error.' });
@@ -60,7 +74,7 @@ const create = async (req, res) => {
 
 const update = async (req, res) => {
   try {
-    const item = await Inventory.findByPk(req.params.id);
+    const item = await Inventory.findOne({ where: byIdWhere(req, req.params.id) });
     if (!item) return res.status(404).json({ message: 'Inventory item not found.' });
 
     const allowed = ['name', 'category', 'quantity', 'unit', 'min_quantity', 'cost_price', 'supplier', 'notes'];
@@ -77,7 +91,7 @@ const update = async (req, res) => {
 
 const remove = async (req, res) => {
   try {
-    const item = await Inventory.findByPk(req.params.id);
+    const item = await Inventory.findOne({ where: byIdWhere(req, req.params.id) });
     if (!item) return res.status(404).json({ message: 'Inventory item not found.' });
 
     await item.destroy();
@@ -94,7 +108,7 @@ const adjust = async (req, res) => {
       return res.status(400).json({ message: 'delta must be a number.' });
     }
 
-    const item = await Inventory.findByPk(req.params.id);
+    const item = await Inventory.findOne({ where: byIdWhere(req, req.params.id) });
     if (!item) return res.status(404).json({ message: 'Inventory item not found.' });
 
     const newQty = parseFloat(item.quantity) + delta;

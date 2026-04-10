@@ -3,7 +3,20 @@ const { sequelize } = require('../config/database');
 const { WalkIn, Service, Staff } = require('../models');
 const { emitQueueUpdate } = require('../socket');
 const { notifyBranch } = require('../services/fcmService');
-const { tenantWhere } = require('../utils/tenantScope');
+const { tenantWhere, resolveTenantId } = require('../utils/tenantScope');
+
+function resolveBranchIdFromRequest(req, rawBranchId) {
+  const requested = rawBranchId != null ? Number(rawBranchId) : null;
+  const userBranchId = req.userBranchId != null ? Number(req.userBranchId) : null;
+
+  if (userBranchId) {
+    if (requested && requested !== userBranchId) return { error: 'Access denied for this branch.' };
+    return { branchId: userBranchId };
+  }
+
+  if (!requested) return { error: 'branchId is required.' };
+  return { branchId: requested };
+}
 
 // Helper: today as YYYY-MM-DD
 const today = () => new Date().toISOString().slice(0, 10);
@@ -28,9 +41,13 @@ const defaultInclude = [
 // ── GET /api/walkin ───────────────────────────────────────────────────────────
 exports.list = async (req, res) => {
   try {
-    const { branchId, date, status } = req.query;    if (!branchId) return res.status(400).json({ message: 'branchId is required.' });    const where = {
+    const { branchId, date, status } = req.query;
+    const branchResolution = resolveBranchIdFromRequest(req, branchId);
+    if (branchResolution.error) return res.status(branchResolution.error.includes('Access denied') ? 403 : 400).json({ message: branchResolution.error });
+
+    const where = {
       ...tenantWhere(req),
-      branch_id: branchId,
+      branch_id: branchResolution.branchId,
       check_in_date: date || today(),
     };
     if (status) where.status = status;
@@ -51,9 +68,13 @@ exports.list = async (req, res) => {
 // ── GET /api/walkin/stats ─────────────────────────────────────────────────────
 exports.stats = async (req, res) => {
   try {
-    const { branchId, date } = req.query;    if (!branchId) return res.status(400).json({ message: 'branchId is required.' });    const where = {
+    const { branchId, date } = req.query;
+    const branchResolution = resolveBranchIdFromRequest(req, branchId);
+    if (branchResolution.error) return res.status(branchResolution.error.includes('Access denied') ? 403 : 400).json({ message: branchResolution.error });
+
+    const where = {
       ...tenantWhere(req),
-      branch_id: branchId,
+      branch_id: branchResolution.branchId,
       check_in_date: date || today(),
     };
 
@@ -73,22 +94,25 @@ exports.stats = async (req, res) => {
 exports.checkin = async (req, res) => {
   try {
     const { customerName, phone, branchId, serviceId, note } = req.body;
+    const branchResolution = resolveBranchIdFromRequest(req, branchId);
+    if (branchResolution.error) return res.status(branchResolution.error.includes('Access denied') ? 403 : 400).json({ message: branchResolution.error });
+    const effectiveBranchId = branchResolution.branchId;
 
-    if (!customerName || !branchId || !serviceId) {
+    if (!customerName || !serviceId) {
       return res.status(400).json({ message: 'customerName, branchId, and serviceId are required.' });
     }
 
     const dateStr = today();
 
     const result = await sequelize.transaction(async (t) => {
-      const token = await generateToken(branchId, dateStr, t);
+      const token = await generateToken(effectiveBranchId, dateStr, t);
 
       // Calculate estimated wait
       const service = await Service.findByPk(serviceId, { transaction: t });
       if (!service) throw Object.assign(new Error('Service not found.'), { status: 404 });
 
       const waitingCount = await WalkIn.count({
-        where: { branch_id: branchId, check_in_date: dateStr, status: 'waiting' },
+        where: { branch_id: effectiveBranchId, check_in_date: dateStr, status: 'waiting' },
         transaction: t,
       });
       const estimatedWait = waitingCount * (service.duration_minutes || 30);
@@ -97,7 +121,7 @@ exports.checkin = async (req, res) => {
         token,
         customer_name: customerName,
         phone: phone || null,
-        branch_id: branchId,
+        branch_id: effectiveBranchId,
         service_id: serviceId,
         staff_id: null,
         status: 'waiting',
@@ -105,6 +129,7 @@ exports.checkin = async (req, res) => {
         check_in_date: dateStr,
         estimated_wait: estimatedWait,
         note: note || null,
+        tenant_id: resolveTenantId(req),
       }, { transaction: t });
 
       return WalkIn.findByPk(entry.id, { include: defaultInclude, transaction: t });
@@ -112,13 +137,13 @@ exports.checkin = async (req, res) => {
 
     const full = result;
 
-    emitQueueUpdate(branchId, { action: 'checkin', entry: full });
+    emitQueueUpdate(effectiveBranchId, { action: 'checkin', entry: full });
 
     // Push notification to all branch staff
-    notifyBranch(branchId, '🚶 New Walk-In', `${customerName} — Token ${full.token}`, {
+    notifyBranch(effectiveBranchId, '🚶 New Walk-In', `${customerName} — Token ${full.token}`, {
       type: 'new_walkin',
       walkin_id: String(full.id),
-      branch_id: String(branchId),
+      branch_id: String(effectiveBranchId),
     });
 
     res.status(201).json(full);
@@ -142,6 +167,9 @@ exports.updateStatus = async (req, res) => {
 
     const entry = await WalkIn.findByPk(id);
     if (!entry) return res.status(404).json({ message: 'Walk-in entry not found.' });
+    if (req.userBranchId && Number(entry.branch_id) !== Number(req.userBranchId)) {
+      return res.status(403).json({ message: 'Access denied for this branch.' });
+    }
 
     entry.status = status;
     if (status === 'serving') {
@@ -168,6 +196,9 @@ exports.assign = async (req, res) => {
 
     const entry = await WalkIn.findByPk(id);
     if (!entry) return res.status(404).json({ message: 'Walk-in entry not found.' });
+    if (req.userBranchId && Number(entry.branch_id) !== Number(req.userBranchId)) {
+      return res.status(403).json({ message: 'Access denied for this branch.' });
+    }
 
     entry.staff_id = staffId;
     entry.status = 'serving';
@@ -190,6 +221,9 @@ exports.remove = async (req, res) => {
 
     const entry = await WalkIn.findByPk(id);
     if (!entry) return res.status(404).json({ message: 'Walk-in entry not found.' });
+    if (req.userBranchId && Number(entry.branch_id) !== Number(req.userBranchId)) {
+      return res.status(403).json({ message: 'Access denied for this branch.' });
+    }
 
     const branchId = entry.branch_id;
     await entry.destroy();

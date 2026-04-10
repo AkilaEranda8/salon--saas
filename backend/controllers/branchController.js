@@ -1,6 +1,6 @@
 const { Op } = require('sequelize');
 const { Branch, User, Staff, Customer } = require('../models');
-const { tenantWhere } = require('../utils/tenantScope');
+const { tenantWhere, byIdWhere, resolveTenantId } = require('../utils/tenantScope');
 
 const list = async (req, res) => {
   try {
@@ -24,7 +24,7 @@ const list = async (req, res) => {
 
 const getOne = async (req, res) => {
   try {
-    const branch = await Branch.findByPk(req.params.id);
+    const branch = await Branch.findOne({ where: byIdWhere(req, req.params.id) });
     if (!branch) return res.status(404).json({ message: 'Branch not found.' });
     return res.json(branch);
   } catch (err) {
@@ -37,7 +37,14 @@ const create = async (req, res) => {
     const { name, address, phone, manager_name, color } = req.body;
     if (!name) return res.status(400).json({ message: 'Branch name is required.' });
 
-    const branch = await Branch.create({ name, address, phone, manager_name, color });
+    const branch = await Branch.create({
+      name,
+      address,
+      phone,
+      manager_name,
+      color,
+      tenant_id: resolveTenantId(req),
+    });
     return res.status(201).json(branch);
   } catch (err) {
     return res.status(500).json({ message: 'Server error.' });
@@ -46,7 +53,7 @@ const create = async (req, res) => {
 
 const update = async (req, res) => {
   try {
-    const branch = await Branch.findByPk(req.params.id);
+    const branch = await Branch.findOne({ where: byIdWhere(req, req.params.id) });
     if (!branch) return res.status(404).json({ message: 'Branch not found.' });
 
     const allowed = ['name', 'address', 'phone', 'email', 'color', 'open_time', 'close_time'];
@@ -63,7 +70,7 @@ const update = async (req, res) => {
 
 const remove = async (req, res) => {
   try {
-    const branch = await Branch.findByPk(req.params.id);
+    const branch = await Branch.findOne({ where: byIdWhere(req, req.params.id) });
     if (!branch) return res.status(404).json({ message: 'Branch not found.' });
 
     await branch.destroy();
@@ -75,7 +82,7 @@ const remove = async (req, res) => {
 
 const toggleStatus = async (req, res) => {
   try {
-    const branch = await Branch.findByPk(req.params.id);
+    const branch = await Branch.findOne({ where: byIdWhere(req, req.params.id) });
     if (!branch) return res.status(404).json({ message: 'Branch not found.' });
 
     const newStatus = branch.status === 'active' ? 'inactive' : 'active';

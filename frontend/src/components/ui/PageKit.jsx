@@ -6,6 +6,171 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useReactTable, getCoreRowModel, getSortedRowModel, flexRender } from '@tanstack/react-table';
 import { createPortal } from 'react-dom';
+import { useTheme } from '../../context/ThemeContext';
+
+/* ─── Table style tokens ─────────────────────────────────────────────────── */
+const TABLE_STYLE_TOKENS = {
+  default: {
+    shellBorder: '1px solid #EAECF0',
+    shellRadius: 16,
+    shellShadow: '0 2px 8px rgba(16,24,40,0.06)',
+    headerBg: 'linear-gradient(180deg, #F9FAFB 0%, #F3F4F6 100%)',
+    headerBorder: '1.5px solid #E4E7EC',
+    headerColor: '#667085',
+    thPadding: '12px 16px',
+    thBorderRight: 'none',
+    rowEven: '#fff',
+    rowOdd: '#FAFBFC',
+    rowHover: '#EEF4FF',
+    rowBorder: '1px solid #F2F4F7',
+    cellPadding: '13px 16px',
+    cellBorderRight: 'none',
+  },
+  minimal: {
+    shellBorder: '1px solid #F2F4F7',
+    shellRadius: 12,
+    shellShadow: '0 1px 3px rgba(16,24,40,0.03)',
+    headerBg: '#fff',
+    headerBorder: '2px solid #F0F2F5',
+    headerColor: '#98A2B3',
+    thPadding: '12px 16px',
+    thBorderRight: 'none',
+    rowEven: '#fff',
+    rowOdd: '#fff',
+    rowHover: '#F8FAFF',
+    rowBorder: '1px solid #F7F8FA',
+    cellPadding: '15px 16px',
+    cellBorderRight: 'none',
+  },
+  bordered: {
+    shellBorder: '1.5px solid #D0D5DD',
+    shellRadius: 8,
+    shellShadow: 'none',
+    headerBg: '#F3F4F6',
+    headerBorder: '2px solid #D0D5DD',
+    headerColor: '#344054',
+    thPadding: '10px 12px',
+    thBorderRight: '1px solid #E4E7EC',
+    rowEven: '#fff',
+    rowOdd: '#F9FAFB',
+    rowHover: '#EFF6FF',
+    rowBorder: '1px solid #E4E7EC',
+    cellPadding: '10px 12px',
+    cellBorderRight: '1px solid #E4E7EC',
+  },
+  card: {
+    shellBorder: 'none',
+    shellRadius: 20,
+    shellShadow: '0 4px 24px rgba(16,24,40,0.07)',
+    headerBg: 'linear-gradient(180deg, #EFF6FF 0%, #DBEAFE 100%)',
+    headerBorder: '2px solid #BFDBFE',
+    headerColor: '#1D4ED8',
+    thPadding: '13px 18px',
+    thBorderRight: 'none',
+    rowEven: '#fff',
+    rowOdd: '#F8FAFF',
+    rowHover: '#EEF4FF',
+    rowBorder: '1px solid #EFF6FF',
+    cellPadding: '15px 18px',
+    cellBorderRight: 'none',
+  },
+  ink: {
+    shellBorder: '1px solid #1E2A3A',
+    shellRadius: 10,
+    shellShadow: '0 4px 16px rgba(0,0,0,0.18)',
+    headerBg: 'linear-gradient(180deg, #1E293B 0%, #0F172A 100%)',
+    headerBorder: '2px solid #334155',
+    headerColor: '#94A3B8',
+    thPadding: '12px 16px',
+    thBorderRight: 'none',
+    rowEven: '#fff',
+    rowOdd: '#F8FAFC',
+    rowHover: '#EFF6FF',
+    rowBorder: '1px solid #E2E8F0',
+    cellPadding: '13px 16px',
+    cellBorderRight: 'none',
+  },
+  violet: {
+    shellBorder: '1px solid #EDE9FE',
+    shellRadius: 16,
+    shellShadow: '0 2px 12px rgba(124,58,237,0.08)',
+    headerBg: 'linear-gradient(180deg, #F5F3FF 0%, #EDE9FE 100%)',
+    headerBorder: '2px solid #DDD6FE',
+    headerColor: '#6D28D9',
+    thPadding: '12px 16px',
+    thBorderRight: 'none',
+    rowEven: '#fff',
+    rowOdd: '#FDFCFF',
+    rowHover: '#F5F3FF',
+    rowBorder: '1px solid #F3F0FF',
+    cellPadding: '13px 16px',
+    cellBorderRight: 'none',
+  },
+  forest: {
+    shellBorder: '1px solid #D1FAE5',
+    shellRadius: 14,
+    shellShadow: '0 2px 12px rgba(5,150,105,0.07)',
+    headerBg: 'linear-gradient(180deg, #ECFDF5 0%, #D1FAE5 100%)',
+    headerBorder: '2px solid #A7F3D0',
+    headerColor: '#065F46',
+    thPadding: '12px 16px',
+    thBorderRight: 'none',
+    rowEven: '#fff',
+    rowOdd: '#F6FEFA',
+    rowHover: '#ECFDF5',
+    rowBorder: '1px solid #ECFDF5',
+    cellPadding: '13px 16px',
+    cellBorderRight: 'none',
+  },
+  sunset: {
+    shellBorder: '1px solid #FEF3C7',
+    shellRadius: 14,
+    shellShadow: '0 2px 12px rgba(217,119,6,0.07)',
+    headerBg: 'linear-gradient(180deg, #FFFBEB 0%, #FEF3C7 100%)',
+    headerBorder: '2px solid #FDE68A',
+    headerColor: '#92400E',
+    thPadding: '12px 16px',
+    thBorderRight: 'none',
+    rowEven: '#fff',
+    rowOdd: '#FFFDF7',
+    rowHover: '#FFFBEB',
+    rowBorder: '1px solid #FFF8E6',
+    cellPadding: '13px 16px',
+    cellBorderRight: 'none',
+  },
+  rose: {
+    shellBorder: '1px solid #FCE7F3',
+    shellRadius: 16,
+    shellShadow: '0 2px 12px rgba(219,39,119,0.07)',
+    headerBg: 'linear-gradient(180deg, #FDF2F8 0%, #FCE7F3 100%)',
+    headerBorder: '2px solid #FBCFE8',
+    headerColor: '#9D174D',
+    thPadding: '12px 16px',
+    thBorderRight: 'none',
+    rowEven: '#fff',
+    rowOdd: '#FFFAFD',
+    rowHover: '#FDF2F8',
+    rowBorder: '1px solid #FDF2F8',
+    cellPadding: '13px 16px',
+    cellBorderRight: 'none',
+  },
+  arctic: {
+    shellBorder: '1px solid #E0F2FE',
+    shellRadius: 14,
+    shellShadow: '0 2px 10px rgba(14,165,233,0.07)',
+    headerBg: 'linear-gradient(180deg, #F0F9FF 0%, #E0F2FE 100%)',
+    headerBorder: '2px solid #BAE6FD',
+    headerColor: '#0C4A6E',
+    thPadding: '12px 16px',
+    thBorderRight: 'none',
+    rowEven: '#fff',
+    rowOdd: '#F7FBFF',
+    rowHover: '#F0F9FF',
+    rowBorder: '1px solid #F0F9FF',
+    cellPadding: '13px 16px',
+    cellBorderRight: 'none',
+  },
+};
 
 /* ─── Icons ─────────────────────────────────────────────────────────────── */
 export const IconEye    = () => <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>;
@@ -109,21 +274,30 @@ export function PagBtn({ onClick, disabled, active, label }) {
 
 /* ─── StatCard ───────────────────────────────────────────────────────────── */
 export function StatCard({ label, value, color, icon }) {
+  const [hov, setHov] = useState(false);
   return (
-    <div style={{
-      background: '#fff', borderRadius: 14, padding: '16px 20px',
-      border: '1px solid #EAECF0', flex: 1, minWidth: 130,
-      display: 'flex', alignItems: 'center', gap: 14,
-      boxShadow: '0 1px 4px rgba(16,24,40,0.04)',
-    }}>
+    <div
+      onMouseEnter={() => setHov(true)}
+      onMouseLeave={() => setHov(false)}
+      style={{
+        background: '#fff', borderRadius: 16, padding: '18px 20px',
+        border: '1px solid #EAECF0', flex: 1, minWidth: 130,
+        display: 'flex', alignItems: 'center', gap: 14,
+        boxShadow: hov ? '0 8px 24px rgba(16,24,40,0.10)' : '0 1px 4px rgba(16,24,40,0.04)',
+        transform: hov ? 'translateY(-2px)' : 'translateY(0)',
+        transition: 'all 0.2s ease',
+        cursor: 'default',
+      }}>
       <div style={{
-        width: 42, height: 42, borderRadius: 10, background: `${color}15`,
+        width: 46, height: 46, borderRadius: 12,
+        background: `linear-gradient(135deg, ${color}22 0%, ${color}10 100%)`,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         color, flexShrink: 0,
+        border: `1.5px solid ${color}20`,
       }}>{icon}</div>
       <div>
-        <div style={{ fontSize: 24, fontWeight: 800, color: '#101828', lineHeight: 1.1 }}>{value}</div>
-        <div style={{ fontSize: 12, color: '#98A2B3', marginTop: 2, fontWeight: 500 }}>{label}</div>
+        <div style={{ fontSize: 26, fontWeight: 800, color: '#101828', lineHeight: 1.1, letterSpacing: '-0.5px' }}>{value}</div>
+        <div style={{ fontSize: 11, color: '#98A2B3', marginTop: 3, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{label}</div>
       </div>
     </div>
   );
@@ -146,12 +320,12 @@ export function Drawer({ open, onClose, title, children, footer, width = 480 }) 
         boxShadow: '-8px 0 40px rgba(16,24,40,0.15)', animation: 'pk-drawer 0.22s ease',
       }}>
         <style>{'@keyframes pk-drawer { from { transform:translateX(100%); } to { transform:translateX(0); } }'}</style>
-        <div style={{ padding: '18px 24px', borderBottom: '1px solid #EAECF0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
-          <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#101828', fontFamily: "'Inter',sans-serif" }}>{title}</h3>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#98A2B3', display: 'flex', alignItems: 'center', borderRadius: 8, padding: 4 }}><IconClose /></button>
+        <div style={{ padding: '16px 24px', borderBottom: '1px solid rgba(255,255,255,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0, background: 'linear-gradient(135deg, #101828 0%, #1E3A5F 100%)', borderRadius: '0 0 0 0' }}>
+          <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#fff', fontFamily: "'Inter',sans-serif" }}>{title}</h3>
+          <button onClick={onClose} style={{ background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.2)', cursor: 'pointer', color: '#fff', display: 'flex', alignItems: 'center', borderRadius: 8, padding: 6 }}><IconClose /></button>
         </div>
         <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>{children}</div>
-        {footer && <div style={{ padding: '16px 24px', borderTop: '1px solid #EAECF0', display: 'flex', gap: 8, justifyContent: 'flex-end', flexShrink: 0 }}>{footer}</div>}
+        {footer && <div style={{ padding: '16px 24px', borderTop: '1px solid #EAECF0', display: 'flex', gap: 8, justifyContent: 'flex-end', flexShrink: 0, background: '#FAFBFC' }}>{footer}</div>}
       </div>
     </div>,
     document.body
@@ -177,12 +351,12 @@ export function PKModal({ open, onClose, title, children, footer, size = 'md', w
         boxShadow: '0 20px 60px rgba(16,24,40,0.18)', maxHeight: '90vh', animation: 'pk-modal 0.18s ease',
       }}>
         <style>{'@keyframes pk-modal { from { opacity:0; transform:scale(0.96) translateY(8px); } to { opacity:1; transform:scale(1) translateY(0); } }'}</style>
-        <div style={{ padding: '18px 24px', borderBottom: '1px solid #EAECF0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
-          <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#101828', fontFamily: "'Inter',sans-serif" }}>{title}</h3>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#98A2B3', display: 'flex', alignItems: 'center', borderRadius: 8, padding: 4 }}><IconClose /></button>
+        <div style={{ padding: '16px 24px', borderBottom: '1px solid rgba(255,255,255,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0, background: 'linear-gradient(135deg, #101828 0%, #1E3A5F 100%)' }}>
+          <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#fff', fontFamily: "'Inter',sans-serif" }}>{title}</h3>
+          <button onClick={onClose} style={{ background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.2)', cursor: 'pointer', color: '#fff', display: 'flex', alignItems: 'center', borderRadius: 8, padding: 6 }}><IconClose /></button>
         </div>
         <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>{children}</div>
-        {footer && <div style={{ padding: '16px 24px', borderTop: '1px solid #EAECF0', display: 'flex', gap: 8, justifyContent: 'flex-end', flexShrink: 0 }}>{footer}</div>}
+        {footer && <div style={{ padding: '16px 24px', borderTop: '1px solid #EAECF0', display: 'flex', gap: 8, justifyContent: 'flex-end', flexShrink: 0, background: '#FAFBFC' }}>{footer}</div>}
       </div>
     </div>,
     document.body
@@ -206,7 +380,7 @@ export function SearchBar({ value, onChange, placeholder = 'Search...' }) {
 /* ─── FilterBar wrapper ─────────────────────────────────────────────────── */
 export function FilterBar({ children }) {
   return (
-    <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #EAECF0', padding: '14px 16px', display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', boxShadow: '0 1px 4px rgba(16,24,40,0.04)' }}>
+    <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #EAECF0', padding: '14px 18px', display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', boxShadow: '0 2px 8px rgba(16,24,40,0.06)', backdropFilter: 'blur(4px)' }}>
       {children}
     </div>
   );
@@ -215,7 +389,7 @@ export function FilterBar({ children }) {
 /* ─── Table shell ────────────────────────────────────────────────────────── */
 export function TableShell({ children }) {
   return (
-    <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #EAECF0', overflow: 'hidden', boxShadow: '0 1px 4px rgba(16,24,40,0.04)' }}>
+    <div style={{ background: '#fff', borderRadius: 16, border: '1px solid #EAECF0', overflow: 'hidden', boxShadow: '0 2px 8px rgba(16,24,40,0.06)' }}>
       <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: "'Inter',sans-serif", tableLayout: 'fixed' }}>
           {children}
@@ -227,18 +401,21 @@ export function TableShell({ children }) {
 }
 
 /* ─── Table header cell ──────────────────────────────────────────────────── */
-export function Th({ children, align = 'left', onClick, sortActive, sortDir }) {
+export function Th({ children, align = 'left', onClick, sortActive, sortDir, ts }) {
+  const t = ts || TABLE_STYLE_TOKENS.default;
   return (
     <th onClick={onClick} style={{
-      padding: '11px 16px', textAlign: align, fontSize: 11, fontWeight: 700,
-      color: '#98A2B3', textTransform: 'uppercase', letterSpacing: '0.05em',
-      background: '#F9FAFB', borderBottom: '1px solid #EAECF0',
+      padding: t.thPadding, textAlign: align, fontSize: 11, fontWeight: 700,
+      color: t.headerColor, textTransform: 'uppercase', letterSpacing: '0.06em',
+      background: t.headerBg,
+      borderBottom: t.headerBorder,
+      borderRight: t.thBorderRight,
       whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
       cursor: onClick ? 'pointer' : 'default', userSelect: 'none',
     }}>
       {children}
       {onClick && (
-        <span style={{ fontSize: 10, marginLeft: 4, color: sortActive ? '#2563EB' : 'transparent' }}>
+        <span style={{ fontSize: 10, marginLeft: 4, color: sortActive ? '#2563EB' : '#C4C9D4' }}>
           {sortDir === 'asc' ? '▲' : '▼'}
         </span>
       )}
@@ -260,10 +437,9 @@ export function SkeletonRows({ cols = 5, rows = 5 }) {
 /* ─── Empty state row ────────────────────────────────────────────────────── */
 export function EmptyRow({ cols = 5, message = 'No records found', sub = 'Try adjusting your filters' }) {
   return (
-    <tr><td colSpan={cols} style={{ padding: '52px 16px', textAlign: 'center' }}>
-      <div style={{ fontSize: 40, marginBottom: 12 }}>🗂️</div>
-      <div style={{ color: '#344054', fontWeight: 600, fontSize: 15 }}>{message}</div>
-      <div style={{ color: '#98A2B3', fontSize: 13, marginTop: 4 }}>{sub}</div>
+    <tr><td colSpan={cols} style={{ padding: '60px 16px', textAlign: 'center', background: '#FAFBFC' }}>
+      <div style={{ color: '#344054', fontWeight: 700, fontSize: 15, fontFamily: "'Inter',sans-serif" }}>{message}</div>
+      <div style={{ color: '#98A2B3', fontSize: 13, marginTop: 6, fontFamily: "'Inter',sans-serif" }}>{sub}</div>
     </td></tr>
   );
 }
@@ -273,13 +449,13 @@ export function Pagination({ page, total, limit, onPageChange }) {
   const totalPages = Math.ceil(total / limit);
   const shown = Math.min(limit, total - (page - 1) * limit);
   if (totalPages <= 1) return (
-    <div style={{ padding: '10px 16px', borderTop: '1px solid #F2F4F7' }}>
-      <span style={{ fontSize: 12, color: '#98A2B3' }}>Showing {total} record{total !== 1 ? 's' : ''}</span>
+    <div style={{ padding: '12px 18px', borderTop: '1px solid #F2F4F7', background: '#FAFBFC' }}>
+      <span style={{ fontSize: 12, color: '#98A2B3', fontFamily: "'Inter',sans-serif" }}>Showing {total} record{total !== 1 ? 's' : ''}</span>
     </div>
   );
   return (
-    <div style={{ padding: '10px 16px', borderTop: '1px solid #F2F4F7', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
-      <span style={{ fontSize: 12, color: '#98A2B3' }}>Showing {shown} of {total}</span>
+    <div style={{ padding: '12px 18px', borderTop: '1px solid #F2F4F7', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, background: '#FAFBFC' }}>
+      <span style={{ fontSize: 12, color: '#98A2B3', fontFamily: "'Inter',sans-serif" }}>Showing <b style={{ color: '#344054' }}>{shown}</b> of <b style={{ color: '#344054' }}>{total}</b></span>
       <div style={{ display: 'flex', gap: 4 }}>
         <PagBtn onClick={() => onPageChange(1)} disabled={page === 1} label="«" />
         <PagBtn onClick={() => onPageChange(page - 1)} disabled={page === 1} label="‹" />
@@ -306,11 +482,12 @@ export function DetailRow({ icon, label, value, highlight }) {
 }
 
 /* ─── Row hover wrapper ──────────────────────────────────────────────────── */
-export function TR({ children, idx }) {
+export function TR({ children, idx, ts }) {
   const [hov, setHov] = useState(false);
+  const t = ts || TABLE_STYLE_TOKENS.default;
   return (
     <tr onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
-      style={{ background: hov ? '#FAFBFF' : idx % 2 === 0 ? '#fff' : '#FAFAFA', transition: 'background 0.1s', borderBottom: '1px solid #F2F4F7' }}>
+      style={{ background: hov ? t.rowHover : idx % 2 === 0 ? t.rowEven : t.rowOdd, transition: 'background 0.15s', borderBottom: t.rowBorder }}>
       {children}
     </tr>
   );
@@ -333,6 +510,8 @@ export function DataTable({
   footerRows,
   noShell = false,
 }) {
+  const { tableStyle = 'default' } = useTheme();
+  const ts = TABLE_STYLE_TOKENS[tableStyle] || TABLE_STYLE_TOKENS.default;
   const [sorting, setSorting] = useState([]);
   const stableData = useMemo(() => data ?? [], [data]);
 
@@ -363,6 +542,7 @@ export function DataTable({
                 const sorted  = header.column.getIsSorted();
                 return (
                   <Th key={header.id}
+                    ts={ts}
                     align={header.column.columnDef.meta?.align}
                     onClick={canSort ? header.column.getToggleSortingHandler() : undefined}
                     sortActive={!!sorted}
@@ -383,11 +563,12 @@ export function DataTable({
           ) : (
             <>
               {table.getRowModel().rows.map((row, idx) => (
-                <TR key={row.id} idx={idx}>
+                <TR key={row.id} idx={idx} ts={ts}>
                   {row.getVisibleCells().map(cell => (
                     <td key={cell.id} style={{
-                      padding: cell.column.columnDef.meta?.padding ?? '13px 16px',
+                      padding: cell.column.columnDef.meta?.padding ?? ts.cellPadding,
                       textAlign: cell.column.columnDef.meta?.align ?? 'left',
+                      borderRight: ts.cellBorderRight,
                     }}>
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
                     </td>
@@ -405,7 +586,7 @@ export function DataTable({
 
   if (noShell) return inner;
   return (
-    <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #EAECF0', overflow: 'hidden', boxShadow: '0 1px 4px rgba(16,24,40,0.04)' }}>
+    <div style={{ background: '#fff', borderRadius: ts.shellRadius, border: ts.shellBorder, overflow: 'hidden', boxShadow: ts.shellShadow }}>
       {inner}
     </div>
   );

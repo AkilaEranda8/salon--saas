@@ -16,12 +16,25 @@ class Insight:
 def analyze(data: dict) -> list[dict]:
     insights: list[Insight] = []
 
-    revenue_rows  = data.get("revenue", [])
-    services_rows = data.get("services", [])
-    staff_rows    = data.get("staff", [])
-    appt_rows     = data.get("appointments", [])
-    expenses_rows = data.get("expenses", [])
-    customers_rows = data.get("customers", [])
+    def as_rows(value):
+        if isinstance(value, list):
+            return value
+        if isinstance(value, dict):
+            if isinstance(value.get("data"), list):
+                return value.get("data")
+            if isinstance(value.get("rows"), list):
+                return value.get("rows")
+            return [value]
+        if isinstance(value, (int, float)):
+            return [{"value": value, "revenue": value, "amount": value}]
+        return []
+
+    revenue_rows   = as_rows(data.get("revenue", []))
+    services_rows  = as_rows(data.get("services", []))
+    staff_rows     = as_rows(data.get("staff", []))
+    appt_rows      = as_rows(data.get("appointments", []))
+    expenses_rows  = as_rows(data.get("expenses", []))
+    customers_rows = as_rows(data.get("customers", []))
 
     # ── 1. Revenue trend ─────────────────────────────────────────────────────
     if len(revenue_rows) >= 2:

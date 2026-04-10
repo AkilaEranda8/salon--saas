@@ -17,11 +17,11 @@ const fmtN  = n => Number(n || 0).toLocaleString();
 const today = () => new Date().toISOString().slice(0, 10);
 const thisMonth = () => new Date().toISOString().slice(0, 7);
 
-/* design tokens */
-const G900 = '#1B3A2D';   /* dark forest green – primary */
-const G700 = '#2D6A4F';   /* mid green */
-const G100 = '#D1FAE5';   /* light green tint */
-const PAGE_BG = '#F0F2EF';
+/* design tokens — aligned with design-system.js */
+const G900 = '#1D4ED8';   /* primary dark blue */
+const G700 = '#2563EB';   /* primary blue */
+const G100 = '#EFF6FF';   /* primary light blue */
+const PAGE_BG = '#F7F8FA';
 
 const STATUS_COLOR = {
   pending:   { dot: '#F59E0B', bg: '#FEF3C7', text: '#92400E' },
@@ -30,7 +30,7 @@ const STATUS_COLOR = {
   cancelled: { dot: '#EF4444', bg: '#FEE2E2', text: '#991B1B' },
 };
 
-const PIE_COLORS   = ['#F59E0B', '#3B82F6', '#10B981', '#EF4444'];
+const PIE_COLORS   = ['#2563EB', '#F59E0B', '#10B981', '#EF4444'];
 const MONTHS_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
 /*─── sub-components ────────────────────────────────────────────*/
@@ -39,26 +39,29 @@ function Sk({ h = 20, w = '100%', mb = 0 }) {
   return <div style={{ height: h, width: w, background: '#E5E7EB', borderRadius: 8, animation: 'pulse 1.5s ease-in-out infinite', marginBottom: mb }} />;
 }
 
-/* Featured (dark-green) KPI – first card */
+/* Featured KPI – first card (indigo gradient) */
 function FeaturedKpi({ label, value, sub, loading }) {
   return (
     <div style={{
-      background: G900, borderRadius: 18, padding: '22px 22px 18px',
+      background: 'linear-gradient(135deg, #1E3A5F 0%, #2563EB 100%)',
+      borderRadius: 18, padding: '22px 22px 18px',
       color: '#fff', position: 'relative', overflow: 'hidden',
       display: 'flex', flexDirection: 'column', gap: 8,
+      boxShadow: '0 8px 24px rgba(37,99,235,0.30)',
     }}>
-      <div style={{ position:'absolute', top:-24, right:-24, width:110, height:110, borderRadius:'50%', background:'rgba(255,255,255,0.07)' }} />
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start' }}>
-        <span style={{ fontSize: 13, fontWeight: 600, opacity: 0.75 }}>{label}</span>
-        <span style={{ background:'rgba(255,255,255,0.15)', borderRadius:'50%', width:28, height:28, display:'flex', alignItems:'center', justifyContent:'center', fontSize:13 }}>↗</span>
+      <div style={{ position:'absolute', top:-28, right:-28, width:120, height:120, borderRadius:'50%', background:'rgba(255,255,255,0.06)' }} />
+      <div style={{ position:'absolute', bottom:-16, left:-16, width:80, height:80, borderRadius:'50%', background:'rgba(255,255,255,0.04)' }} />
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', position:'relative' }}>
+        <span style={{ fontSize: 12, fontWeight: 700, opacity: 0.8, textTransform:'uppercase', letterSpacing:'0.06em' }}>{label}</span>
+        <span style={{ background:'rgba(255,255,255,0.18)', borderRadius:10, width:30, height:30, display:'flex', alignItems:'center', justifyContent:'center', fontSize:14 }}>📅</span>
       </div>
       {loading
-        ? <div style={{ height:32, width:'55%', background:'rgba(255,255,255,0.2)', borderRadius:6 }} />
-        : <div style={{ fontSize:32, fontWeight:800, letterSpacing:'-1.5px', lineHeight:1.1 }}>{value}</div>
+        ? <div style={{ height:36, width:'55%', background:'rgba(255,255,255,0.2)', borderRadius:6 }} />
+        : <div style={{ fontSize:34, fontWeight:800, letterSpacing:'-1.5px', lineHeight:1.1, position:'relative' }}>{value}</div>
       }
       {sub && !loading && (
-        <div style={{ fontSize:11, opacity:0.65, display:'flex', alignItems:'center', gap:6 }}>
-          <span style={{ background:'rgba(255,255,255,0.18)', borderRadius:10, padding:'2px 8px' }}>↑ {sub}</span>
+        <div style={{ fontSize:11, opacity:0.75, display:'flex', alignItems:'center', gap:6, position:'relative' }}>
+          <span style={{ background:'rgba(255,255,255,0.18)', borderRadius:20, padding:'3px 10px', fontWeight:600 }}>↑ {sub}</span>
         </div>
       )}
     </div>
@@ -67,24 +70,30 @@ function FeaturedKpi({ label, value, sub, loading }) {
 
 /* Regular KPI card */
 function KpiCard({ label, value, sub, loading }) {
+  const [hov, setHov] = React.useState(false);
   return (
-    <div style={{
-      background:'#fff', borderRadius:18, padding:'22px 22px 18px',
-      display:'flex', flexDirection:'column', gap:7,
-      boxShadow:'0 1px 4px rgba(0,0,0,0.05)',
-    }}>
+    <div
+      onMouseEnter={() => setHov(true)}
+      onMouseLeave={() => setHov(false)}
+      style={{
+        background:'#fff', borderRadius:16, padding:'20px 22px 16px',
+        display:'flex', flexDirection:'column', gap:7,
+        boxShadow: hov ? '0 8px 20px rgba(16,24,40,0.10)' : '0 1px 4px rgba(0,0,0,0.05)',
+        border: hov ? '1px solid #BFDBFE' : '1px solid #EAECF0',
+        transform: hov ? 'translateY(-2px)' : 'translateY(0)',
+        transition: 'all 0.2s ease',
+      }}>
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start' }}>
-        <span style={{ fontSize:13, fontWeight:600, color:'#6B7280' }}>{label}</span>
-        <span style={{ border:'1.5px solid #E5E7EB', borderRadius:'50%', width:28, height:28, display:'flex', alignItems:'center', justifyContent:'center', fontSize:13, color:'#9CA3AF' }}>↗</span>
+        <span style={{ fontSize:11, fontWeight:700, color:'#98A2B3', textTransform:'uppercase', letterSpacing:'0.06em' }}>{label}</span>
+        <span style={{ background:G100, borderRadius:8, width:28, height:28, display:'flex', alignItems:'center', justifyContent:'center', fontSize:13, color:G700 }}>↗</span>
       </div>
       {loading
-        ? <Sk h={28} w="60%" />
-        : <div style={{ fontSize:28, fontWeight:800, color:'#111827', letterSpacing:'-0.5px', lineHeight:1.1 }}>{value}</div>
+        ? <Sk h={30} w="60%" />
+        : <div style={{ fontSize:28, fontWeight:800, color:'#101828', letterSpacing:'-0.5px', lineHeight:1.1 }}>{value}</div>
       }
       {sub && !loading && (
-        <div style={{ fontSize:11, color:'#9CA3AF', display:'flex', alignItems:'center', gap:4 }}>
-          <span style={{ width:14, height:14, background:G100, borderRadius:3, display:'inline-flex', alignItems:'center', justifyContent:'center', fontSize:9, color:G700 }}>↑</span>
-          {sub}
+        <div style={{ fontSize:11, color:'#98A2B3', display:'flex', alignItems:'center', gap:4 }}>
+          <span style={{ padding:'2px 8px', background:G100, borderRadius:10, fontWeight:600, color:G700, fontSize:10 }}>↑ {sub}</span>
         </div>
       )}
     </div>
@@ -94,7 +103,7 @@ function KpiCard({ label, value, sub, loading }) {
 /* Generic card shell */
 function Card({ children, style }) {
   return (
-    <div style={{ background:'#fff', borderRadius:18, padding:'20px 22px', boxShadow:'0 1px 4px rgba(0,0,0,0.05)', ...style }}>
+    <div style={{ background:'#fff', borderRadius:16, padding:'20px 22px', boxShadow:'0 2px 8px rgba(16,24,40,0.06)', border:'1px solid #EAECF0', ...style }}>
       {children}
     </div>
   );
@@ -122,13 +131,100 @@ function BarTip({ active, payload, label }) {
   );
 }
 
+/* Profit KPI — green if positive, red if loss */
+function ProfitKpi({ revenue, expenses, loading }) {
+  const profit = revenue - expenses;
+  const pct    = revenue > 0 ? Math.round((profit / revenue) * 100) : 0;
+  const pos    = profit >= 0;
+  const [hov, setHov] = React.useState(false);
+  return (
+    <div
+      onMouseEnter={() => setHov(true)}
+      onMouseLeave={() => setHov(false)}
+      style={{
+        background:'#fff', borderRadius:16, padding:'20px 22px 16px',
+        display:'flex', flexDirection:'column', gap:7,
+        boxShadow: hov ? '0 8px 20px rgba(16,24,40,0.10)' : '0 1px 4px rgba(0,0,0,0.05)',
+        border: hov ? '1px solid #BFDBFE' : '1px solid #EAECF0',
+        transform: hov ? 'translateY(-2px)' : 'translateY(0)',
+        transition: 'all 0.2s ease',
+      }}>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start' }}>
+        <span style={{ fontSize:11, fontWeight:700, color:'#98A2B3', textTransform:'uppercase', letterSpacing:'0.06em' }}>Net Profit</span>
+        <span style={{ background: pos ? '#D1FAE5' : '#FEE2E2', borderRadius:8, width:28, height:28, display:'flex', alignItems:'center', justifyContent:'center', fontSize:13 }}>{pos ? '📈' : '📉'}</span>
+      </div>
+      {loading
+        ? <Sk h={30} w="60%" />
+        : <div style={{ fontSize:28, fontWeight:800, color: pos ? '#059669' : '#DC2626', letterSpacing:'-0.5px', lineHeight:1.1 }}>
+            Rs. {Math.abs(profit).toLocaleString()}
+          </div>
+      }
+      {!loading && (
+        <div style={{ fontSize:11, color:'#98A2B3', display:'flex', alignItems:'center', gap:4 }}>
+          <span style={{ padding:'2px 8px', background: pos ? '#D1FAE5' : '#FEE2E2', borderRadius:10, fontWeight:600, color: pos ? '#065F46' : '#991B1B', fontSize:10 }}>
+            {pos ? '↑' : '↓'} {Math.abs(pct)}% margin
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* Low-Stock warning card */
+function LowStockCard({ items, loading, onClick }) {
+  const count = items.length;
+  const [hov, setHov] = React.useState(false);
+  return (
+    <div
+      onClick={count > 0 ? onClick : undefined}
+      onMouseEnter={() => setHov(true)}
+      onMouseLeave={() => setHov(false)}
+      style={{
+        background:'#fff', borderRadius:16, padding:'20px 22px 16px',
+        display:'flex', flexDirection:'column', gap:7,
+        boxShadow: hov && count > 0 ? '0 8px 20px rgba(16,24,40,0.10)' : '0 1px 4px rgba(0,0,0,0.05)',
+        border: count > 0 ? (hov ? '1px solid #FCA5A5' : '1px solid #FECACA') : '1px solid #EAECF0',
+        transform: hov && count > 0 ? 'translateY(-2px)' : 'translateY(0)',
+        transition: 'all 0.2s ease',
+        cursor: count > 0 ? 'pointer' : 'default',
+        background: count > 0 ? (hov ? '#FFF7F7' : '#FFF9F9') : '#fff',
+      }}>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start' }}>
+        <span style={{ fontSize:11, fontWeight:700, color:'#98A2B3', textTransform:'uppercase', letterSpacing:'0.06em' }}>Low Stock</span>
+        <span style={{ background: count > 0 ? '#FEE2E2' : '#D1FAE5', borderRadius:8, width:28, height:28, display:'flex', alignItems:'center', justifyContent:'center', fontSize:13 }}>{count > 0 ? '⚠️' : '✅'}</span>
+      </div>
+      {loading
+        ? <Sk h={30} w="60%" />
+        : <div style={{ fontSize:28, fontWeight:800, color: count > 0 ? '#DC2626' : '#059669', letterSpacing:'-0.5px', lineHeight:1.1 }}>{count}</div>
+      }
+      {!loading && (
+        <div style={{ fontSize:11, color:'#98A2B3', display:'flex', alignItems:'center', gap:4 }}>
+          <span style={{ padding:'2px 8px', background: count > 0 ? '#FEE2E2' : '#D1FAE5', borderRadius:10, fontWeight:600, color: count > 0 ? '#991B1B' : '#065F46', fontSize:10 }}>
+            {count > 0 ? 'Needs restocking →' : 'All stocked up'}
+          </span>
+        </div>
+      )}
+      {count > 0 && !loading && (
+        <div style={{ marginTop:4, display:'flex', flexDirection:'column', gap:3 }}>
+          {items.slice(0,3).map(it => (
+            <div key={it.id} style={{ fontSize:11, color:'#6B7280', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+              · {it.name} ({it.quantity} {it.unit || 'units'})
+            </div>
+          ))}
+          {count > 3 && <div style={{ fontSize:11, color:'#9CA3AF' }}>+{count - 3} more items</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /*  main component  */
 export default function DashboardPage() {
   const { user }        = useAuth();
   const navigate        = useNavigate();
   const { toast }       = useToast();
   const { isMobile }    = useBreakpoint();
-  const isAdmin         = ['superadmin','admin','manager','staff'].includes(user?.role);
+  const isAdmin         = ['superadmin','admin','manager'].includes(user?.role);
   const refreshTimerRef = useRef(null);
 
   /* state */
@@ -143,6 +239,9 @@ export default function DashboardPage() {
   const [apptStatus,  setApptStatus]  = useState([]);
   const [staffData,   setStaffData]   = useState([]);
   const [loading,     setLoading]     = useState(true);
+  const [lowStockItems,   setLowStockItems]   = useState([]);
+  const [monthExpenses,   setMonthExpenses]   = useState(0);
+  const [attendPresent,   setAttendPresent]   = useState(0);
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -204,6 +303,19 @@ export default function DashboardPage() {
         .slice(0,5);
       setStaffData(topped);
 
+      /* secondary: low-stock, expenses, attendance — non-blocking */
+      const expQ = reportParams.toString() ? `?${reportParams.toString()}&limit=1` : `?month=${month || thisMonth()}&limit=1`;
+      const [invRes, expRes, attRes] = await Promise.all([
+        api.get('/inventory/low-stock').catch(() => ({ data: [] })),
+        api.get(`/expenses${expQ}`).catch(() => ({ data: {} })),
+        api.get(`/attendance/summary?month=${month || thisMonth()}`).catch(() => ({ data: [] })),
+      ]);
+      setLowStockItems(Array.isArray(invRes.data) ? invRes.data : []);
+      setMonthExpenses(Number(expRes.data?.totalAmount || 0));
+      const attRows = Array.isArray(attRes.data) ? attRes.data : [];
+      const presentIds = new Set(attRows.filter(r => ['present','late'].includes(r.status || '')).map(r => r.staff_id));
+      setAttendPresent(presentIds.size);
+
     } catch (e) {
       if (!silent) toast('Failed to load dashboard.', 'error');
     } finally {
@@ -228,16 +340,18 @@ export default function DashboardPage() {
   const nextReminder    = reminders[0];
   const totalAppts      = apptStatus.reduce((s, x) => s + x.value, 0) || 1;
   const completedPct    = Math.round(((apptStatus.find(x => x.name === 'Completed')?.value || 0) / totalAppts) * 100);
+  const netProfit       = (stats?.monthRevenue || 0) - monthExpenses;
 
   const linkBtn = (label, path, pill) => (
     <button
       onClick={() => navigate(path)}
       style={{
         fontSize: 11, fontWeight: 700, cursor: 'pointer', border: 'none',
-        background: pill ? G100 : 'none',
-        color: pill ? G700 : '#9CA3AF',
+        background: pill ? '#EFF6FF' : 'none',
+        color: pill ? '#2563EB' : '#98A2B3',
         padding: pill ? '5px 12px' : 0,
         borderRadius: pill ? 8 : 0,
+        fontFamily: "'Inter',sans-serif",
       }}
     >{label}</button>
   );
@@ -270,7 +384,7 @@ export default function DashboardPage() {
           />
           <button
             onClick={() => navigate('/appointments')}
-            style={{ display:'flex', alignItems:'center', gap:7, padding:'10px 18px', borderRadius:12, background:G900, color:'#fff', border:'none', cursor:'pointer', fontSize:13, fontWeight:700 }}
+            style={{ display:'flex', alignItems:'center', gap:7, padding:'10px 18px', borderRadius:12, background:'linear-gradient(135deg, #1D4ED8, #2563EB)', color:'#fff', border:'none', cursor:'pointer', fontSize:13, fontWeight:700, boxShadow:'0 2px 8px rgba(37,99,235,0.30)' }}
           >+ New Appointment</button>
           <button
             onClick={() => load()}
@@ -287,6 +401,21 @@ export default function DashboardPage() {
         <KpiCard     label="Month Revenue"         value={stats ? fmt(stats.monthRevenue)  : '—'}      sub="This month"      loading={loading} />
         <KpiCard     label="Total Customers"       value={stats ? fmtN(stats.totalCustomers) : '—'}   sub="All time"        loading={loading} />
       </div>
+
+      {/* ── Row 1.5: Operational Insights ────────────────── */}
+      {isAdmin && (
+        <div style={{ display:'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4,1fr)', gap:14 }}>
+          <KpiCard label="Month Expenses" value={fmt(monthExpenses)} sub="this month" loading={loading} />
+          <ProfitKpi revenue={stats?.monthRevenue || 0} expenses={monthExpenses} loading={loading} />
+          <KpiCard
+            label="Staff Present"
+            value={`${attendPresent} staff`}
+            sub="active this month"
+            loading={loading}
+          />
+          <LowStockCard items={lowStockItems} loading={loading} onClick={() => navigate('/inventory')} />
+        </div>
+      )}
 
       {/* ── Row 2: Bar chart  |  Reminder  |  Today's schedule ── */}
       <div style={{ display:'grid', gridTemplateColumns: isMobile ? '1fr' : '2fr 1.05fr 1.05fr', gap:14 }}>
@@ -306,8 +435,8 @@ export default function DashboardPage() {
                 <Bar dataKey="revenue" name="Revenue" radius={[6,6,0,0]}>
                   {revenueData.map((_,i) => (
                     <Cell key={i} fill={
-                      i === revenueData.length-1 ? G700 :
-                      i === revenueData.length-2 ? G900 : '#C7DDD0'
+                      i === revenueData.length-1 ? '#2563EB' :
+                      i === revenueData.length-2 ? '#1D4ED8' : '#93C5FD'
                     } />
                   ))}
                 </Bar>
@@ -325,7 +454,7 @@ export default function DashboardPage() {
             </div>
           ) : nextReminder ? (
             <div style={{ display:'flex', flexDirection:'column', gap:10, flex:1 }}>
-              <div style={{ background:'#F6FAF8', borderRadius:12, padding:'14px 16px', flex:1 }}>
+              <div style={{ background:'#EFF6FF', borderRadius:12, padding:'14px 16px', flex:1, border:'1px solid #BFDBFE' }}>
                 <div style={{ fontSize:15, fontWeight:700, color:'#111827', marginBottom:5, lineHeight:1.35 }}>{nextReminder.title}</div>
                 {nextReminder.due_date && (
                   <div style={{ fontSize:12, color:'#6B7280' }}>📅 Due: {nextReminder.due_date}</div>
@@ -342,7 +471,7 @@ export default function DashboardPage() {
               </div>
               <button
                 onClick={() => navigate('/reminders')}
-                style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:8, padding:'12px', borderRadius:12, background:G900, color:'#fff', border:'none', cursor:'pointer', fontSize:13, fontWeight:700 }}
+                style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:8, padding:'12px', borderRadius:12, background:'linear-gradient(135deg, #1D4ED8, #2563EB)', color:'#fff', border:'none', cursor:'pointer', fontSize:13, fontWeight:700, boxShadow:'0 2px 8px rgba(37,99,235,0.25)' }}
               >📋 View Reminders</button>
               {reminders.length > 1 && (
                 <div style={{ fontSize:11, color:'#9CA3AF', textAlign:'center' }}>+{reminders.length-1} more</div>
@@ -350,9 +479,8 @@ export default function DashboardPage() {
             </div>
           ) : (
             <div style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:8, color:'#9CA3AF' }}>
-              <span style={{ fontSize:32 }}>✅</span>
               <span style={{ fontSize:13 }}>All caught up!</span>
-              <button onClick={() => navigate('/reminders')} style={{ marginTop:8, padding:'10px 20px', borderRadius:12, background:G900, color:'#fff', border:'none', cursor:'pointer', fontSize:13, fontWeight:700 }}>
+              <button onClick={() => navigate('/reminders')} style={{ marginTop:8, padding:'10px 20px', borderRadius:12, background:'linear-gradient(135deg, #1D4ED8, #2563EB)', color:'#fff', border:'none', cursor:'pointer', fontSize:13, fontWeight:700 }}>
                 + Add Reminder
               </button>
             </div>
@@ -370,7 +498,7 @@ export default function DashboardPage() {
             const sc = STATUS_COLOR[a.status] || STATUS_COLOR.pending;
             return (
               <div key={a.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 0', borderBottom:'1px solid #F9FAFB' }}>
-                <div style={{ width:36, height:36, borderRadius:10, background:G900+'18', display:'flex', alignItems:'center', justifyContent:'center', fontWeight:700, fontSize:13, color:G900, flexShrink:0 }}>
+                <div style={{ width:36, height:36, borderRadius:10, background:'#EFF6FF', display:'flex', alignItems:'center', justifyContent:'center', fontWeight:700, fontSize:13, color:'#2563EB', flexShrink:0 }}>
                   {a.customer?.name?.[0]?.toUpperCase() || '?'}
                 </div>
                 <div style={{ flex:1, minWidth:0 }}>
@@ -394,7 +522,7 @@ export default function DashboardPage() {
           <CardHead
             title="Team Performance"
             action={
-              <button onClick={() => navigate('/staff')} style={{ display:'flex', alignItems:'center', gap:6, padding:'6px 14px', borderRadius:10, background:'#F3F4F6', border:'none', cursor:'pointer', fontSize:12, fontWeight:700, color:'#374151' }}>
+              <button onClick={() => navigate('/staff')} style={{ display:'flex', alignItems:'center', gap:6, padding:'6px 14px', borderRadius:10, background:'#EFF6FF', border:'1px solid #BFDBFE', cursor:'pointer', fontSize:12, fontWeight:700, color:'#2563EB' }}>
                 + Add Member
               </button>
             }
@@ -408,8 +536,8 @@ export default function DashboardPage() {
               ? { bg:'#D1FAE5', text:'#065F46', label:'Top Earner' }
               : { bg:'#DBEAFE', text:'#1E40AF', label:'Active' };
             return (
-              <div key={s.id} style={{ display:'flex', alignItems:'center', gap:12, padding:'10px 12px', borderRadius:12, background: i===0 ? '#F0F9F4' : '#F9FAFB', marginBottom:8 }}>
-                <div style={{ width:38, height:38, borderRadius:'50%', background: i===0 ? G900 : '#E5E7EB', display:'flex', alignItems:'center', justifyContent:'center', fontWeight:700, fontSize:14, color: i===0 ? '#fff' : '#374151', flexShrink:0 }}>
+              <div key={s.id} style={{ display:'flex', alignItems:'center', gap:12, padding:'10px 12px', borderRadius:12, background: i===0 ? '#EFF6FF' : '#F9FAFB', marginBottom:8, border: i===0 ? '1px solid #BFDBFE' : '1px solid transparent' }}>
+                <div style={{ width:38, height:38, borderRadius:'50%', background: i===0 ? 'linear-gradient(135deg, #1D4ED8, #2563EB)' : '#E5E7EB', display:'flex', alignItems:'center', justifyContent:'center', fontWeight:700, fontSize:14, color: i===0 ? '#fff' : '#374151', flexShrink:0 }}>
                   {s.name?.[0]?.toUpperCase() || '?'}
                 </div>
                 <div style={{ flex:1, minWidth:0 }}>
@@ -473,10 +601,10 @@ export default function DashboardPage() {
               <div key={s.service_id || s.id || i} style={{ marginBottom:10 }}>
                 <div style={{ display:'flex', justifyContent:'space-between', marginBottom:4 }}>
                   <span style={{ fontSize:12, fontWeight:600, color:'#374151', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:'60%' }}>{s.service?.name || s.name || ''}</span>
-                  <span style={{ fontSize:12, fontWeight:700, color:G700 }}>Rs. {rev.toLocaleString()}</span>
+                  <span style={{ fontSize:12, fontWeight:700, color:'#2563EB' }}>Rs. {rev.toLocaleString()}</span>
                 </div>
-                <div style={{ height:6, background:'#F3F4F6', borderRadius:4, overflow:'hidden' }}>
-                  <div style={{ height:'100%', width:`${pct}%`, background:`linear-gradient(90deg,${G900},${G700})`, borderRadius:4, transition:'width 0.6s ease' }} />
+                  <div style={{ height:6, background:'#E8ECEF', borderRadius:4, overflow:'hidden' }}>
+                    <div style={{ height:'100%', width:`${pct}%`, background:`linear-gradient(90deg, #1D4ED8, #2563EB)`, borderRadius:4, transition:'width 0.6s ease' }} />
                 </div>
               </div>
             );
@@ -486,7 +614,7 @@ export default function DashboardPage() {
 
       {/* ── Row 4: Recent Appointments table ─────────────── */}
       <Card style={{ padding:0, overflow:'hidden' }}>
-        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'18px 22px', borderBottom:'1px solid #F3F4F6' }}>
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'18px 22px', borderBottom:'1px solid #F2F4F7', background:'linear-gradient(180deg, #F8F9FC 0%, #F1F3F9 100%)' }}>
           <span style={{ fontSize:15, fontWeight:700, color:'#111827' }}>Recent Appointments</span>
           {linkBtn('View all →', '/appointments', true)}
         </div>
@@ -499,7 +627,7 @@ export default function DashboardPage() {
                 <thead>
                   <tr>
                     {['Customer','Service','Staff','Date','Time','Status','Amount'].map(h => (
-                      <th key={h} style={{ padding:'12px 10px', textAlign:'left', fontSize:11, fontWeight:700, color:'#9CA3AF', textTransform:'uppercase', letterSpacing:'0.05em', borderBottom:'2px solid #F3F4F6', whiteSpace:'nowrap' }}>{h}</th>
+                      <th key={h} style={{ padding:'12px 10px', textAlign:'left', fontSize:11, fontWeight:700, color:'#667085', textTransform:'uppercase', letterSpacing:'0.06em', borderBottom:'1.5px solid #E4E7EC', whiteSpace:'nowrap', background:'linear-gradient(180deg, #F8F9FC 0%, #F1F3F9 100%)' }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
@@ -510,7 +638,7 @@ export default function DashboardPage() {
                     const sc = STATUS_COLOR[a.status] || STATUS_COLOR.pending;
                     return (
                       <tr key={a.id} style={{ borderBottom:'1px solid #F9FAFB', transition:'background .1s' }}
-                        onMouseEnter={e => e.currentTarget.style.background='#F6FAF8'}
+                        onMouseEnter={e => e.currentTarget.style.background='#EEF4FF'}
                         onMouseLeave={e => e.currentTarget.style.background=''}
                       >
                         <td style={{ padding:'11px 10px', fontWeight:600, color:'#111827' }}>{a.customer?.name || ''}</td>
@@ -521,7 +649,7 @@ export default function DashboardPage() {
                         <td style={{ padding:'11px 10px' }}>
                           <span style={{ fontSize:11, padding:'4px 10px', borderRadius:20, background:sc.bg, color:sc.text, fontWeight:700, textTransform:'capitalize' }}>{a.status}</span>
                         </td>
-                        <td style={{ padding:'11px 10px', fontWeight:700, color:G700, whiteSpace:'nowrap' }}>
+                        <td style={{ padding:'11px 10px', fontWeight:700, color:'#2563EB', whiteSpace:'nowrap' }}>
                           {a.payment ? fmt(a.payment.total_amount) : ''}
                         </td>
                       </tr>
@@ -544,8 +672,8 @@ export default function DashboardPage() {
               const apts = Number(b.dataValues?.todayAppts     || b.todayAppts     || 0);
               const com  = Number(b.dataValues?.monthCommission|| b.monthCommission|| 0);
               return (
-                <div key={b.id} style={{ display:'flex', alignItems:'center', gap:12, padding:'14px 16px', background:'#F6FAF8', borderRadius:12 }}>
-                  <div style={{ width:42, height:42, borderRadius:12, background:G900, display:'flex', alignItems:'center', justifyContent:'center', fontSize:18, flexShrink:0 }}>🏢</div>
+              <div key={b.id} style={{ display:'flex', alignItems:'center', gap:12, padding:'14px 16px', background:'#EFF6FF', borderRadius:12, border:'1px solid #BFDBFE' }}>
+                <div style={{ width:42, height:42, borderRadius:12, background:'linear-gradient(135deg, #1D4ED8, #2563EB)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:18, flexShrink:0 }}>🏢</div>
                   <div style={{ flex:1, minWidth:0 }}>
                     <div style={{ fontSize:13, fontWeight:700, color:'#111827' }}>{b.name}</div>
                     <div style={{ fontSize:11, color:'#9CA3AF', marginTop:2 }}>{apts} appt{apts!==1?'s':''} today</div>

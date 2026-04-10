@@ -16,10 +16,11 @@ services:
       - certbot_conf:/etc/letsencrypt:ro
 
   certbot:
-    image: certbot/certbot
+    image: certbot/dns-cloudflare
     volumes:
       - certbot_www:/var/www/certbot
       - certbot_conf:/etc/letsencrypt
+      - /root/cloudflare-credentials.ini:/etc/cloudflare/credentials.ini:ro
     profiles:
       - certbot
 
@@ -48,19 +49,43 @@ services:
       db:
         condition: service_healthy
     environment:
+      NODE_ENV: production
       DB_HOST: db
       DB_USER: root
-      DB_PASS: ${DB_PASS:-rootpass}
-      DB_NAME: ${DB_NAME:-zanesalon}
-      JWT_SECRET: ${JWT_SECRET:-zanesalon_docker_jwt_secret_change_me}
+      DB_PASS: ${DB_PASS:?DB_PASS is required}
+      DB_NAME: ${DB_NAME:?DB_NAME is required}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
       PORT: 5000
       FIREBASE_SERVICE_ACCOUNT_JSON: ${FIREBASE_SERVICE_ACCOUNT_JSON:-}
+      # Stripe billing (optional — billing features disabled if not set)
+      STRIPE_SECRET_KEY:          ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET:      ${STRIPE_WEBHOOK_SECRET:-}
+      STRIPE_BASIC_PRICE_ID:      ${STRIPE_BASIC_PRICE_ID:-}
+      STRIPE_PRO_PRICE_ID:        ${STRIPE_PRO_PRICE_ID:-}
+      STRIPE_ENTERPRISE_PRICE_ID: ${STRIPE_ENTERPRISE_PRICE_ID:-}
+      # Email notifications (optional)
+      EMAIL_HOST: ${EMAIL_HOST:-smtp.gmail.com}
+      EMAIL_PORT: ${EMAIL_PORT:-587}
+      EMAIL_USER: ${EMAIL_USER:-}
+      EMAIL_PASS: ${EMAIL_PASS:-}
+      # Twilio SMS (optional)
+      TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
+      TWILIO_AUTH_TOKEN:  ${TWILIO_AUTH_TOKEN:-}
+      TWILIO_FROM_NUMBER: ${TWILIO_FROM_NUMBER:-}
+      FRONTEND_BASE_URL:  ${FRONTEND_BASE_URL:-https://{slug}.salon.hexalyte.com}
+      PLATFORM_URL:       ${PLATFORM_URL:-https://admin.hexalyte.com}
     expose:
       - "5000"
     ports:
       - "${BACKEND_PORT:-5001}:5000"
     volumes:
       - uploads_data:/app/uploads
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:5000/api/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
   frontend:
     build: ./frontend
@@ -95,9 +120,17 @@ services:
     environment:
       PMA_HOST: db
       PMA_PORT: 3306
-      MYSQL_ROOT_PASSWORD: ${DB_PASS:-rootpass}
+      MYSQL_ROOT_PASSWORD: ${DB_PASS:?DB_PASS is required}
+      # Require login — do not auto-login as root
+      PMA_USER: ""
+      PMA_PASSWORD: ""
+      PMA_ARBITRARY: 0
+      UPLOAD_LIMIT: 64M
     expose:
       - "80"
+    # NOTE: phpMyAdmin is only reachable via pma.hexalyte.com through nginx.
+    # Access is controlled by nginx IP restrictions in proxy/default.conf.
+    # Never expose port 80 directly on the host in production.
 
   # One-off seed runner
   seed:
@@ -106,11 +139,14 @@ services:
       db:
         condition: service_healthy
     environment:
+      NODE_ENV: production
       DB_HOST: db
       DB_USER: root
-      DB_PASS: ${DB_PASS:-rootpass}
-      DB_NAME: ${DB_NAME:-zanesalon}
-      JWT_SECRET: ${JWT_SECRET:-zanesalon_docker_jwt_secret_change_me}
+      DB_PASS: ${DB_PASS:?DB_PASS is required}
+      DB_NAME: ${DB_NAME:?DB_NAME is required}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      FRONTEND_BASE_URL: ${FRONTEND_BASE_URL:-https://{slug}.salon.hexalyte.com}
+      PLATFORM_URL:      ${PLATFORM_URL:-https://admin.hexalyte.com}
     command: node scripts/seedAll.js
     profiles:
       - seed

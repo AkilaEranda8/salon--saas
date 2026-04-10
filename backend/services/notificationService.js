@@ -98,6 +98,30 @@ async function getChannelFlags() {
 }
 
 // ── SMS credentials loader ──────────────────────────────────────────────────
+
+// ── Template helpers ──────────────────────────────────────────────────────────
+/**
+ * Fetch a custom DB template for the given event + channel + tenantId.
+ * Returns { subject, body } or null if no custom template is saved.
+ */
+async function getTemplate(event_type, channel, tenantId) {
+  try {
+    const { MessageTemplate } = getModels();
+    const row = await MessageTemplate.findOne({
+      where: { event_type, channel, tenant_id: tenantId || null, is_active: true },
+    });
+    return row ? { subject: row.subject, body: row.body } : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Replace {variable} placeholders in a template string. */
+function interpolate(tpl, vars) {
+  return tpl.replace(/\{(\w+)\}/g, (_, k) => (vars[k] != null ? vars[k] : `{${k}}`));
+}
+
+// ── SMS credentials loader ──────────────────────────────────────────────────
 async function getSMSCreds() {
   try {
     const { NotificationSettings } = getModels();
@@ -321,7 +345,7 @@ function detailRow(label, value) {
 }
 
 // ── 1. Appointment Confirmed ──────────────────────────────────────────────────
-async function notifyAppointmentConfirmed(appointment, branch, service) {
+async function notifyAppointmentConfirmed(appointment, branch, service, tenantId) {
   const flags = await getChannelFlags();
   const phone = appointment.phone        || null;
   const email = appointment.email        || null;
@@ -338,9 +362,19 @@ async function notifyAppointmentConfirmed(appointment, branch, service) {
     event_type:    'appointment_confirmed',
     branch_id:     branch?.id || appointment.branch_id,
   };
+  const vars = {
+    customer_name: appointment.customer_name,
+    date,
+    time,
+    service_name: svcName,
+    branch_name: brName,
+    amount,
+  };
 
   if (email && flags.appt_confirmed_email) {
-    const body = `
+    const tpl = await getTemplate('appointment_confirmed', 'email', tenantId);
+    const subject = tpl ? interpolate(tpl.subject || 'Appointment Confirmed — Zane Salon', vars) : 'Appointment Confirmed — Zane Salon';
+    const bodyHtml = tpl ? interpolate(tpl.body, vars) : `
       <h2 style="margin:0 0 8px;font-size:22px;color:#1e3a8a;">Appointment Confirmed! 🎉</h2>
       <p style="margin:0 0 24px;font-size:15px;color:#475569;">
         Hi <strong>${appointment.customer_name}</strong>, your appointment has been confirmed.
@@ -359,35 +393,39 @@ async function notifyAppointmentConfirmed(appointment, branch, service) {
       <p style="margin:0;font-size:15px;color:#475569;">Thank you for choosing <strong>Zane Salon</strong>! See you soon. ✨</p>`;
     await sendEmail({
       to:      email,
-      subject: 'Appointment Confirmed — Zane Salon',
-      html:    buildEmailWrapper('Appointment Confirmed', body, brName, brPhone),
+      subject,
+      html:    buildEmailWrapper(subject, bodyHtml, brName, brPhone),
       meta,
     });
   }
 
   if (phone && flags.appt_confirmed_whatsapp) {
-    const msg =
-      `✂️ *Zane Salon — Appointment Confirmed!*\n\n` +
-      `Hi ${appointment.customer_name}, your booking is confirmed:\n\n` +
-      `📅 Date: ${date}\n⏰ Time: ${time}\n💇 Service: ${svcName}\n🏠 Branch: ${brName}\n💰 Amount: ${amount}\n\n` +
-      `Please arrive 5 mins early. See you soon! 😊`;
+    const tpl = await getTemplate('appointment_confirmed', 'whatsapp', tenantId);
+    const msg = tpl
+      ? interpolate(tpl.body, vars)
+      : `✂️ *Zane Salon — Appointment Confirmed!*\n\n` +
+        `Hi ${appointment.customer_name}, your booking is confirmed:\n\n` +
+        `📅 Date: ${date}\n⏰ Time: ${time}\n💇 Service: ${svcName}\n🏠 Branch: ${brName}\n💰 Amount: ${amount}\n\n` +
+        `Please arrive 5 mins early. See you soon! 😊`;
     await sendWhatsApp({ to: phone, message: msg, meta });
   }
 
   if (phone && flags.appt_confirmed_sms) {
-    const smsMsg =
-      `Zane Salon\n` +
-      `Hi ${appointment.customer_name}! Appointment booked.\n` +
-      `Service: ${svcName}\n` +
-      `Date: ${date} | ${time}\n` +
-      `Branch: ${brName}\n` +
-      `Thank you!`;
+    const tpl = await getTemplate('appointment_confirmed', 'sms', tenantId);
+    const smsMsg = tpl
+      ? interpolate(tpl.body, vars)
+      : `Zane Salon\n` +
+        `Hi ${appointment.customer_name}! Appointment booked.\n` +
+        `Service: ${svcName}\n` +
+        `Date: ${date} | ${time}\n` +
+        `Branch: ${brName}\n` +
+        `Thank you!`;
     await sendSMS({ to: phone, message: smsMsg, meta });
   }
 }
 
 // ── 2. Appointment Completed ────────────────────────────────────────────────
-async function notifyAppointmentCompleted(appointment, branch, service) {
+async function notifyAppointmentCompleted(appointment, branch, service, tenantId) {
   const flags = await getChannelFlags();
   const phone = appointment.phone || null;
   if (!phone || !flags.appt_completed_sms) return;
@@ -401,17 +439,17 @@ async function notifyAppointmentCompleted(appointment, branch, service) {
     event_type:    'appointment_completed',
     branch_id:     branch?.id || appointment.branch_id,
   };
+  const vars = { customer_name: appointment.customer_name, date, time, service_name: svcName, branch_name: brName };
 
-  const smsMsg =
-    `Zane Salon\n` +
-    `Hi ${appointment.customer_name}! Your ${svcName} is done.\n` +
-    `${date} ${time} | ${brName}\n` +
-    `Thank you for visiting!`;
+  const tpl = await getTemplate('appointment_completed', 'sms', tenantId);
+  const smsMsg = tpl
+    ? interpolate(tpl.body, vars)
+    : `Zane Salon\nHi ${appointment.customer_name}! Your ${svcName} is done.\n${date} ${time} | ${brName}\nThank you for visiting!`;
   await sendSMS({ to: phone, message: smsMsg, meta });
 }
 
 // ── 3. Payment Receipt ────────────────────────────────────────────────────────
-async function notifyPaymentReceipt(payment, branch, service, customer) {
+async function notifyPaymentReceipt(payment, branch, service, customer, tenantId) {
   const flags = await getChannelFlags();
   const phone = customer?.phone || null;
   const email = customer?.email || null;
@@ -437,7 +475,14 @@ async function notifyPaymentReceipt(payment, branch, service, customer) {
     : detailRow('💳 Payment', total);
 
   if (email && flags.payment_receipt_email) {
-    const body = `
+    const tpl = await getTemplate('payment_receipt', 'email', tenantId);
+    let subject, bodyHtml;
+    if (tpl) {
+      subject  = interpolate(tpl.subject || 'Payment Receipt — Zane Salon', { customer_name: customerName, branch_name: brName, date, service_name: svcName, amount: total });
+      bodyHtml = interpolate(tpl.body, { customer_name: customerName, branch_name: brName, date, service_name: svcName, amount: total });
+    } else {
+      subject  = 'Payment Receipt — Zane Salon';
+      bodyHtml = `
       <h2 style="margin:0 0 8px;font-size:22px;color:#1e3a8a;">Payment Receipt 🧾</h2>
       <p style="margin:0 0 24px;font-size:15px;color:#475569;">
         Hi <strong>${customerName}</strong>, thank you for your payment. Here's your receipt:
@@ -459,64 +504,77 @@ async function notifyPaymentReceipt(payment, branch, service, customer) {
         <p style="margin:0;font-size:14px;color:#166534;">🌟 You earned <strong>${pointsEarned} loyalty points</strong> on this visit!</p>
       </div>` : ''}
       <p style="margin:0;font-size:15px;color:#475569;">Thank you for visiting <strong>Zane Salon</strong>! 💜</p>`;
+    }
     await sendEmail({
       to:      email,
-      subject: 'Payment Receipt — Zane Salon',
-      htmapl:    buildEmailWrapper('Payment Receipt', body, brName, brPhone),
+      subject,
+      html:    buildEmailWrapper(subject, bodyHtml, brName, brPhone),
       meta,
     });
   }
 
   if (phone && flags.payment_receipt_whatsapp) {
-    let msg =
-      `🧾 *Zane Salon — Payment Receipt*\n\n` +
-      `Hi ${customerName}! Payment confirmed:\n\n` +
-      `💇 Service: ${svcName}\n🏠 Branch: ${brName}\n📅 Date: ${date}\n💰 Total Paid: ${total}\n`;
-    if (discount > 0)     msg += `🎁 Loyalty Discount: Rs. ${discount.toFixed(2)}\n`;
-    if (pointsEarned > 0) msg += `\n🌟 You earned *${pointsEarned} loyalty points*!`;
-    msg += `\n\nThank you for choosing Zane Salon! 💜`;
+    const tpl = await getTemplate('payment_receipt', 'whatsapp', tenantId);
+    let msg;
+    if (tpl) {
+      msg = interpolate(tpl.body, { customer_name: customerName, branch_name: brName, date, service_name: svcName, amount: total });
+    } else {
+      msg =
+        `🧾 *Zane Salon — Payment Receipt*\n\n` +
+        `Hi ${customerName}! Payment confirmed:\n\n` +
+        `💇 Service: ${svcName}\n🏠 Branch: ${brName}\n📅 Date: ${date}\n💰 Total Paid: ${total}\n`;
+      if (discount > 0)     msg += `🎁 Loyalty Discount: Rs. ${discount.toFixed(2)}\n`;
+      if (pointsEarned > 0) msg += `\n🌟 You earned *${pointsEarned} loyalty points*!`;
+      msg += `\n\nThank you for choosing Zane Salon! 💜`;
+    }
     await sendWhatsApp({ to: phone, message: msg, meta });
   }
 
   if (phone && flags.payment_receipt_sms) {
-    const paid        = parseFloat(payment.total_amount || 0);
-    const promoDisc   = parseFloat(payment.promo_discount || 0);
-    const totalDisc   = discount + promoDisc;
-    const grossBill   = paid + totalDisc;
-    const totalPts    = customer?.loyalty_points || 0;
-    const ticketLine = payment.walkin_token ? `Ticket: ${payment.walkin_token}\n` : '';
-    let smsMsg =
-      `Zane Salon - Receipt\n` +
-      `${ticketLine}` +
-      `Hi ${customerName}!\n` +
-      `Paid: Rs. ${paid.toFixed(2)}\n` +
-      `Service: ${svcName} | ${date}`;
-    if (totalDisc > 0) {
-      smsMsg += `\nBill: Rs. ${grossBill.toFixed(2)}`;
-      if (promoDisc > 0) {
-        const pStr = promoDisc % 1 === 0 ? promoDisc.toFixed(0) : promoDisc.toFixed(2);
-        smsMsg += `\nPromo -Rs.${pStr}`;
+    const tpl = await getTemplate('payment_receipt', 'sms', tenantId);
+    let smsMsg;
+    if (tpl) {
+      smsMsg = interpolate(tpl.body, { customer_name: customerName, branch_name: brName, date, service_name: svcName, amount: total });
+    } else {
+      const paid        = parseFloat(payment.total_amount || 0);
+      const promoDisc   = parseFloat(payment.promo_discount || 0);
+      const totalDisc   = discount + promoDisc;
+      const grossBill   = paid + totalDisc;
+      const totalPts    = customer?.loyalty_points || 0;
+      const ticketLine  = payment.walkin_token ? `Ticket: ${payment.walkin_token}\n` : '';
+      smsMsg =
+        `Zane Salon - Receipt\n` +
+        `${ticketLine}` +
+        `Hi ${customerName}!\n` +
+        `Paid: Rs. ${paid.toFixed(2)}\n` +
+        `Service: ${svcName} | ${date}`;
+      if (totalDisc > 0) {
+        smsMsg += `\nBill: Rs. ${grossBill.toFixed(2)}`;
+        if (promoDisc > 0) {
+          const pStr = promoDisc % 1 === 0 ? promoDisc.toFixed(0) : promoDisc.toFixed(2);
+          smsMsg += `\nPromo -Rs.${pStr}`;
+        }
+        if (discount > 0) {
+          const ptsUsed = Math.floor(discount);
+          const dStr    = discount % 1 === 0 ? discount.toFixed(0) : discount.toFixed(2);
+          smsMsg += `\nLoyalty -Rs.${dStr} (-${ptsUsed} pts)`;
+        }
       }
-      if (discount > 0) {
-        const ptsUsed = Math.floor(discount);
-        const dStr    = discount % 1 === 0 ? discount.toFixed(0) : discount.toFixed(2);
-        smsMsg += `\nLoyalty -Rs.${dStr} (-${ptsUsed} pts)`;
+      if (totalPts > 0) {
+        const earnedSuffix = pointsEarned > 0 ? ` (+${pointsEarned})` : '';
+        smsMsg += `\nTotal Points: ${totalPts} pts${earnedSuffix}`;
       }
+      smsMsg += `\nThank you!`;
     }
-    if (totalPts > 0) {
-      const earnedSuffix = pointsEarned > 0 ? ` (+${pointsEarned})` : '';
-      smsMsg += `\nTotal Points: ${totalPts} pts${earnedSuffix}`;
-    }
-    smsMsg += `\nThank you!`;
     await sendSMS({ to: phone, message: smsMsg, meta });
   }
 }
 
 // ── 3. Loyalty Points Update ──────────────────────────────────────────────────
-async function notifyLoyaltyPoints(customer, pointsEarned, totalPoints, branch) {
+async function notifyLoyaltyPoints(customer, pointsEarned, totalPoints, branch, tenantId) {
   const flags = await getChannelFlags();
   const phone = customer?.phone;
-  if (!phone || !flags.loyalty_points_whatsapp) return;
+  if (!phone) return;
 
   const name   = customer.name || 'Valued Customer';
   const brName = branch?.name  || 'Zane Salon';
@@ -526,17 +584,30 @@ async function notifyLoyaltyPoints(customer, pointsEarned, totalPoints, branch) 
     event_type:    'loyalty_points',
     branch_id:     branch?.id,
   };
-  const msg =
-    `${tier.emoji} *Zane Salon — Loyalty Points Update*\n\n` +
-    `Hey ${name}! 🎉\n\nYou just earned *+${pointsEarned} points* at *${brName}*!\n\n` +
-    `📊 Your Points Balance:\n  • Earned this visit: +${pointsEarned}\n  • Total balance: *${totalPoints} pts*\n  • Tier status: ${tier.name}\n\n` +
-    `💡 Tip: Every 10 pts = Rs. 1 discount on your next visit!\n\nKeep visiting Zane Salon to unlock more rewards. 🛍️`;
+  const vars = { customer_name: name, branch_name: brName, points_earned: pointsEarned, points_total: totalPoints };
 
-  await sendWhatsApp({ to: phone, message: msg, meta });
+  if (flags.loyalty_points_whatsapp) {
+    const tpl = await getTemplate('loyalty_points', 'whatsapp', tenantId);
+    const msg = tpl
+      ? interpolate(tpl.body, vars)
+      : `${tier.emoji} *Zane Salon — Loyalty Points Update*\n\n` +
+        `Hey ${name}! 🎉\n\nYou just earned *+${pointsEarned} points* at *${brName}*!\n\n` +
+        `📊 Your Points Balance:\n  • Earned this visit: +${pointsEarned}\n  • Total balance: *${totalPoints} pts*\n  • Tier status: ${tier.name}\n\n` +
+        `💡 Tip: Every 10 pts = Rs. 1 discount on your next visit!\n\nKeep visiting Zane Salon to unlock more rewards. 🛍️`;
+    await sendWhatsApp({ to: phone, message: msg, meta });
+  }
+
+  if (flags.loyalty_points_sms) {
+    const tpl = await getTemplate('loyalty_points', 'sms', tenantId);
+    const smsMsg = tpl
+      ? interpolate(tpl.body, vars)
+      : `Zane Salon\nHi ${name}! You earned +${pointsEarned} loyalty points.\nTotal: ${totalPoints} pts. Every 10 pts = Rs. 1 discount!`;
+    await sendSMS({ to: phone, message: smsMsg, meta });
+  }
 }
 
 // ── 4. Review Request ─────────────────────────────────────────────────────────
-async function notifyReviewRequest(payment, customer, service, branch, token) {
+async function notifyReviewRequest(payment, customer, service, branch, token, tenantId) {
   const phone = customer?.phone || null;
   const email = customer?.email || null;
   if (!phone && !email) return;
@@ -552,9 +623,17 @@ async function notifyReviewRequest(payment, customer, service, branch, token) {
     event_type:    'review_request',
     branch_id:     branch?.id || payment.branch_id,
   };
+  const vars = { customer_name: customerName, branch_name: brName, service_name: svcName, review_url: reviewUrl };
 
   if (email) {
-    const body = `
+    const tpl = await getTemplate('review_request', 'email', tenantId);
+    let subject, bodyHtml;
+    if (tpl) {
+      subject  = interpolate(tpl.subject || `How was your visit at ${brName}? — Share your feedback`, vars);
+      bodyHtml = interpolate(tpl.body, vars);
+    } else {
+      subject  = `How was your visit at ${brName}? — Share your feedback`;
+      bodyHtml = `
       <h2 style="margin:0 0 8px;font-size:22px;color:#1e3a8a;">How was your experience? ⭐</h2>
       <p style="margin:0 0 24px;font-size:15px;color:#475569;">
         Hi <strong>${customerName}</strong>, thank you for visiting <strong>${brName}</strong>!
@@ -569,21 +648,24 @@ async function notifyReviewRequest(payment, customer, service, branch, token) {
       <p style="margin:0;font-size:13px;color:#9ca3af;text-align:center;">
         This link is unique to your visit and can only be used once.
       </p>`;
+    }
     await sendEmail({
       to:      email,
-      subject: `How was your visit at ${brName}? — Share your feedback`,
-      html:    buildEmailWrapper('Share Your Review', body, brName, brPhone),
+      subject,
+      html:    buildEmailWrapper('Share Your Review', bodyHtml, brName, brPhone),
       meta,
     });
   }
 
   if (phone) {
-    const msg =
-      `⭐ *Zane Salon — Share Your Feedback!*\n\n` +
-      `Hi ${customerName}! 😊 Thank you for visiting *${brName}*.\n\n` +
-      `How was your *${svcName}* experience? We'd love your feedback!\n\n` +
-      `👉 Leave a review (takes 30 seconds):\n${reviewUrl}\n\n` +
-      `_This link is unique and can only be used once._`;
+    const tpl = await getTemplate('review_request', 'whatsapp', tenantId);
+    const msg = tpl
+      ? interpolate(tpl.body, vars)
+      : `⭐ *Zane Salon — Share Your Feedback!*\n\n` +
+        `Hi ${customerName}! 😊 Thank you for visiting *${brName}*.\n\n` +
+        `How was your *${svcName}* experience? We'd love your feedback!\n\n` +
+        `👉 Leave a review (takes 30 seconds):\n${reviewUrl}\n\n` +
+        `_This link is unique and can only be used once._`;
     await sendWhatsApp({ to: phone, message: msg, meta });
   }
 }
@@ -597,5 +679,7 @@ module.exports = {
   notifyPaymentReceipt,
   notifyLoyaltyPoints,
   notifyReviewRequest,
+  getTemplate,
+  interpolate,
 };
 

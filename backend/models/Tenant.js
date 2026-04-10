@@ -23,6 +23,41 @@ const Tenant = sequelize.define('Tenant', {
     type: DataTypes.STRING(255),
     allowNull: false,
   },
+  brand_name: {
+    type: DataTypes.STRING(150),
+    allowNull: true,
+  },
+  logo_sidebar_url: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+  },
+  logo_header_url: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+  },
+  logo_login_url: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+  },
+  logo_public_url: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+  },
+  primary_color: {
+    type: DataTypes.STRING(20),
+    allowNull: true,
+    defaultValue: '#2563EB',
+  },
+  sidebar_style: {
+    type: DataTypes.ENUM('light', 'dark'),
+    allowNull: false,
+    defaultValue: 'light',
+  },
+  font_family: {
+    type: DataTypes.STRING(100),
+    allowNull: true,
+    defaultValue: 'Inter',
+  },
   plan: {
     type: DataTypes.ENUM('trial', 'basic', 'pro', 'enterprise'),
     defaultValue: 'trial',
@@ -52,6 +87,25 @@ const Tenant = sequelize.define('Tenant', {
   max_staff: {
     type: DataTypes.INTEGER,
     defaultValue: 10,
+  },
+  custom_domain: {
+    type: DataTypes.STRING(255),
+    allowNull: true,
+    unique: true,
+  },
+  domain_verified: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+  },
+  payment_gateway: {
+    type: DataTypes.ENUM('stripe', 'paypal', 'square', 'none'),
+    defaultValue: 'none',
+    allowNull: false,
+  },
+  back_transfer_wage: {
+    type: DataTypes.DECIMAL(12, 2),
+    defaultValue: 0.00,
+    allowNull: false,
   },
 }, {
   tableName: 'tenants',

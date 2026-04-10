@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from '../api/axios';
 import AiChatWidget from '../components/ui/AiChatWidget';
+import { resolveBrandName } from '../utils/branding';
 
 const colors = {
   primary: '#3b82f6',
@@ -33,6 +34,7 @@ const TIME_SLOTS = generateTimeSlots();
 
 export default function BookingPage() {
   const [step, setStep] = useState(0);
+  const [branding, setBranding] = useState({});
   const [branches, setBranches] = useState([]);
   const [services, setServices] = useState([]);
   const [staffList, setStaffList] = useState([]);
@@ -56,6 +58,7 @@ export default function BookingPage() {
   // Fetch branches on mount
   useEffect(() => {
     axios.get('/api/public/branches').then((r) => setBranches(r.data)).catch(() => {});
+    axios.get('/api/branding/public').then((r) => setBranding(r.data?.data || r.data || {})).catch(() => {});
   }, []);
 
   // Fetch services when step = 1
@@ -396,7 +399,7 @@ export default function BookingPage() {
       <div style={S.container}>
         {/* Header */}
         <div style={S.header}>
-          <h1 style={S.logo}>Zane Salon</h1>
+          <h1 style={S.logo}>{resolveBrandName(branding)}</h1>
           <p style={S.subtitle}>Book your appointment online</p>
         </div>
 

@@ -70,6 +70,15 @@ export default function NotificationsPage() {
   const [filterSt, setFilterSt]           = useState('');
   const [filterEv, setFilterEv]           = useState('');
 
+  // ── Template editor state ──
+  const [templates, setTemplates]         = useState([]);
+  const [tplLoading, setTplLoading]       = useState(false);
+  const [tplOpen, setTplOpen]             = useState(false);
+  const [editTpl, setEditTpl]             = useState(null);
+  const [editSubject, setEditSubject]     = useState('');
+  const [editBody, setEditBody]           = useState('');
+  const [tplBusy, setTplBusy]             = useState(false);
+
   useEffect(() => {
     if (!isAdmin) return;
     api.get('/notifications/settings').then(r => {
@@ -91,6 +100,57 @@ export default function NotificationsPage() {
     setLogLoading(false);
   }, [logPage, filterCh, filterSt, filterEv]);
   useEffect(() => { loadLogs(); }, [loadLogs]);
+
+  const loadTemplates = useCallback(async () => {
+    if (!isAdmin) return;
+    setTplLoading(true);
+    try {
+      const { data } = await api.get('/notifications/templates');
+      setTemplates(data.templates || []);
+    } catch { /* silent */ }
+    finally { setTplLoading(false); }
+  }, [isAdmin]);
+  useEffect(() => { loadTemplates(); }, [loadTemplates]);
+
+  const openEditTpl = (tpl) => {
+    setEditTpl(tpl);
+    setEditSubject(tpl.subject || '');
+    setEditBody(tpl.body || '');
+    setTplOpen(true);
+  };
+
+  const saveTpl = async () => {
+    if (!editTpl || tplBusy) return;
+    if (!editBody.trim()) { toast('Message body cannot be empty.', 'error'); return; }
+    setTplBusy(true);
+    try {
+      await api.post('/notifications/templates', {
+        event_type: editTpl.event_type,
+        channel:    editTpl.channel,
+        subject:    editSubject.trim() || null,
+        body:       editBody.trim(),
+      });
+      await loadTemplates();
+      setTplOpen(false);
+      toast('Template saved!', 'success');
+    } catch (err) {
+      toast(err?.response?.data?.message || 'Failed to save template.', 'error');
+    } finally { setTplBusy(false); }
+  };
+
+  const resetTpl = async (tpl) => {
+    if (!tpl.id) return;
+    try {
+      await api.delete(`/notifications/templates/${tpl.id}`);
+      await loadTemplates();
+      if (tplOpen && editTpl?.event_type === tpl.event_type && editTpl?.channel === tpl.channel) setTplOpen(false);
+      toast('Template reset to default.', 'success');
+    } catch { toast('Failed to reset template.', 'error'); }
+  };
+
+  const insertVar = (varName) => {
+    setEditBody(b => b + `{${varName}}`);
+  };
 
   const saveSettings = async () => {
     setSettingsBusy(true);
@@ -528,6 +588,184 @@ export default function NotificationsPage() {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* ── Message Templates ────────────────────────────────────────────── */}
+      {isAdmin && (
+        <div style={{ background:'#fff', borderRadius:16, border:'1px solid #EAECF0', boxShadow:'0 1px 4px rgba(16,24,40,0.07)' }}>
+          {/* Header */}
+          <div style={{ padding:'16px 24px', borderBottom:'1px solid #F2F4F7', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+            <div>
+              <div style={{ fontSize:15, fontWeight:700, color:'#101828' }}>Message Templates</div>
+              <div style={{ fontSize:12, color:'#64748B', marginTop:2 }}>
+                Customize the SMS, WhatsApp, and Email messages sent to customers. Use <code style={{ background:'#F1F5F9', padding:'1px 5px', borderRadius:4 }}>{'{variable}'}</code> placeholders.
+              </div>
+            </div>
+            {tplLoading && <span style={{ fontSize:12, color:'#94A3B8' }}>Loading…</span>}
+          </div>
+
+          {/* Template cards grouped by event */}
+          <div style={{ padding:'16px 24px', display:'flex', flexDirection:'column', gap:12 }}>
+            {(() => {
+              const EVENT_LABEL = {
+                appointment_confirmed:  'Appointment Confirmed',
+                appointment_completed:  'Appointment Completed',
+                payment_receipt:        'Payment Receipt',
+                loyalty_points:         'Loyalty Points',
+                review_request:         'Review Request',
+                customer_registered:    'Customer Registered',
+              };
+              const groups = {};
+              templates.forEach(t => {
+                if (!groups[t.event_type]) groups[t.event_type] = [];
+                groups[t.event_type].push(t);
+              });
+              return Object.entries(groups).map(([evt, list]) => (
+                <div key={evt} style={{ border:'1px solid #EAECF0', borderRadius:12, overflow:'hidden' }}>
+                  <div style={{ padding:'10px 16px', background:'#F8FAFC', borderBottom:'1px solid #EAECF0', fontSize:13, fontWeight:700, color:'#344054' }}>
+                    {EVENT_LABEL[evt] || evt}
+                  </div>
+                  <div style={{ display:'flex', flexDirection:'column', gap:0 }}>
+                    {list.map((tpl, idx) => {
+                      const CH = { email:{ bg:'#EFF6FF', color:'#1D4ED8', label:'Email' }, whatsapp:{ bg:'#DCFCE7', color:'#166534', label:'WhatsApp' }, sms:{ bg:'#FEF3C7', color:'#B45309', label:'SMS' } };
+                      const ch = CH[tpl.channel] || { bg:'#F2F4F7', color:'#64748B', label:tpl.channel };
+                      return (
+                        <div key={tpl.channel} style={{ display:'flex', alignItems:'center', gap:12, padding:'12px 16px', borderTop: idx > 0 ? '1px solid #F2F4F7' : 'none', background:'#fff' }}>
+                          <span style={{ flexShrink:0, padding:'3px 10px', borderRadius:10, fontSize:11, fontWeight:700, background:ch.bg, color:ch.color, minWidth:72, textAlign:'center' }}>{ch.label}</span>
+                          {tpl.is_custom && (
+                            <span style={{ flexShrink:0, padding:'2px 8px', borderRadius:6, fontSize:10, fontWeight:700, background:'#EFF6FF', color:'#2563EB' }}>Custom</span>
+                          )}
+                          <div style={{ flex:1, fontSize:12, color:'#64748B', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:'55%' }}>
+                            {tpl.channel === 'email' && tpl.subject
+                              ? <><strong style={{ color:'#344054' }}>Subject:</strong> {tpl.subject}</>
+                              : (tpl.body || '').replace(/<[^>]+>/g, '').slice(0, 100) + ((tpl.body || '').length > 100 ? '…' : '')}
+                          </div>
+                          <div style={{ display:'flex', gap:8, marginLeft:'auto', flexShrink:0 }}>
+                            {tpl.is_custom && (
+                              <button type="button" onClick={() => resetTpl(tpl)}
+                                style={{ padding:'5px 12px', borderRadius:7, border:'1.5px solid #E4E7EC', background:'#F9FAFB', fontSize:12, fontWeight:600, color:'#64748B', cursor:'pointer', fontFamily:"'Inter',sans-serif" }}>
+                                Reset
+                              </button>
+                            )}
+                            <button type="button" onClick={() => openEditTpl(tpl)}
+                              style={{ padding:'5px 14px', borderRadius:7, border:'none', background:'#2563EB', fontSize:12, fontWeight:700, color:'#fff', cursor:'pointer', fontFamily:"'Inter',sans-serif" }}>
+                              Edit
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ));
+            })()}
+          </div>
+        </div>
+      )}
+
+      {/* ── Template Edit Modal ─────────────────────────────────────────────── */}
+      {tplOpen && editTpl && (
+        <div style={{ position:'fixed', inset:0, zIndex:1000, background:'rgba(0,0,0,0.45)', display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}
+          onClick={e => { if (e.target === e.currentTarget) setTplOpen(false); }}>
+          <div style={{ background:'#fff', borderRadius:16, width:'100%', maxWidth:680, maxHeight:'90vh', display:'flex', flexDirection:'column', boxShadow:'0 20px 60px rgba(0,0,0,0.2)' }}>
+            {/* Modal header */}
+            <div style={{ padding:'20px 24px', borderBottom:'1px solid #EAECF0', display:'flex', alignItems:'center', justifyContent:'space-between', flexShrink:0 }}>
+              <div>
+                <div style={{ fontSize:15, fontWeight:700, color:'#101828' }}>
+                  Edit Template — {(()=>{const labels={appointment_confirmed:'Appointment Confirmed',appointment_completed:'Appointment Completed',payment_receipt:'Payment Receipt',loyalty_points:'Loyalty Points',review_request:'Review Request',customer_registered:'Customer Registered'};return labels[editTpl.event_type]||editTpl.event_type;})()}
+                </div>
+                <div style={{ display:'flex', alignItems:'center', gap:8, marginTop:4 }}>
+                  {(() => { const CH={email:{bg:'#EFF6FF',color:'#1D4ED8',label:'Email'},whatsapp:{bg:'#DCFCE7',color:'#166534',label:'WhatsApp'},sms:{bg:'#FEF3C7',color:'#B45309',label:'SMS'}}; const ch=CH[editTpl.channel]||{bg:'#F2F4F7',color:'#64748B',label:editTpl.channel}; return <span style={{padding:'2px 10px',borderRadius:8,fontSize:11,fontWeight:700,background:ch.bg,color:ch.color}}>{ch.label}</span>; })()}
+                  <span style={{ fontSize:12, color:'#94A3B8' }}>Channel</span>
+                </div>
+              </div>
+              <button type="button" onClick={() => setTplOpen(false)}
+                style={{ width:32, height:32, borderRadius:8, border:'1.5px solid #E4E7EC', background:'#F8FAFC', cursor:'pointer', fontSize:18, color:'#64748B', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                ×
+              </button>
+            </div>
+
+            {/* Modal body */}
+            <div style={{ padding:'20px 24px', overflowY:'auto', flex:1, display:'flex', flexDirection:'column', gap:16 }}>
+              {/* Subject (email only) */}
+              {editTpl.channel === 'email' && (
+                <div>
+                  <label style={{ display:'block', fontSize:12, fontWeight:600, color:'#344054', marginBottom:5 }}>Subject Line</label>
+                  <input type="text" value={editSubject} onChange={e => setEditSubject(e.target.value)}
+                    placeholder="e.g. Appointment Confirmed — {branch_name}"
+                    style={{ width:'100%', padding:'9px 12px', borderRadius:8, border:'1.5px solid #D0D5DD', fontSize:13, fontFamily:"'Inter',sans-serif", color:'#101828', outline:'none', boxSizing:'border-box' }} />
+                </div>
+              )}
+
+              {/* Body */}
+              <div style={{ flex:1 }}>
+                <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:5 }}>
+                  <label style={{ fontSize:12, fontWeight:600, color:'#344054' }}>
+                    Message Body {editTpl.channel === 'email' ? '(HTML supported)' : ''}
+                  </label>
+                  <span style={{ fontSize:11, color:'#94A3B8' }}>{editBody.length} chars</span>
+                </div>
+                <textarea value={editBody} onChange={e => setEditBody(e.target.value)} rows={editTpl.channel === 'email' ? 12 : 8}
+                  style={{ width:'100%', padding:'10px 12px', borderRadius:8, border:'1.5px solid #D0D5DD', fontSize:12, fontFamily:'monospace', color:'#101828', outline:'none', resize:'vertical', boxSizing:'border-box', lineHeight:1.5 }} />
+              </div>
+
+              {/* Variable hints */}
+              <div>
+                <div style={{ fontSize:11, fontWeight:600, color:'#64748B', marginBottom:6 }}>Click to insert variable:</div>
+                <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
+                  {[
+                    ['customer_name','Customer Name'],
+                    ['branch_name','Branch Name'],
+                    ['service_name','Service'],
+                    ['date','Date'],
+                    ['time','Time'],
+                    ['amount','Amount'],
+                    ['points_earned','Points Earned'],
+                    ['points_total','Points Total'],
+                    ...(editTpl.event_type === 'review_request' ? [['review_url','Review URL']] : []),
+                  ].map(([key, label]) => (
+                    <button key={key} type="button" onClick={() => insertVar(key)}
+                      style={{ padding:'4px 10px', borderRadius:6, border:'1.5px solid #C7D2FE', background:'#EEF2FF', fontSize:11, fontWeight:600, color:'#4338CA', cursor:'pointer', fontFamily:"'Inter',sans-serif" }}>
+                      {'{' + key + '}'} <span style={{ fontWeight:400, color:'#6366F1', fontSize:10 }}>{label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Preview note */}
+              {editTpl.channel !== 'email' && (
+                <div style={{ padding:'10px 14px', background:'#FEF3C7', borderRadius:8, fontSize:11, color:'#92400E' }}>
+                  💡 For WhatsApp: use *bold*, _italic_. For SMS: keep under 160 chars per segment.
+                </div>
+              )}
+              {editTpl.channel === 'email' && (
+                <div style={{ padding:'10px 14px', background:'#EFF6FF', borderRadius:8, fontSize:11, color:'#1E40AF' }}>
+                  💡 HTML is supported. The content is automatically wrapped in the branded email template. Use inline styles for formatting.
+                </div>
+              )}
+            </div>
+
+            {/* Modal footer */}
+            <div style={{ padding:'16px 24px', borderTop:'1px solid #EAECF0', display:'flex', alignItems:'center', justifyContent:'space-between', gap:10, flexShrink:0 }}>
+              {editTpl.is_custom && (
+                <button type="button" onClick={() => resetTpl(editTpl)}
+                  style={{ padding:'8px 18px', borderRadius:8, border:'1.5px solid #E4E7EC', background:'#F9FAFB', fontSize:13, fontWeight:600, color:'#64748B', cursor:'pointer', fontFamily:"'Inter',sans-serif" }}>
+                  Reset to Default
+                </button>
+              )}
+              <div style={{ display:'flex', gap:10, marginLeft:'auto' }}>
+                <button type="button" onClick={() => setTplOpen(false)}
+                  style={{ padding:'8px 18px', borderRadius:8, border:'1.5px solid #E4E7EC', background:'#fff', fontSize:13, fontWeight:600, color:'#344054', cursor:'pointer', fontFamily:"'Inter',sans-serif" }}>
+                  Cancel
+                </button>
+                <button type="button" onClick={saveTpl} disabled={tplBusy}
+                  style={{ padding:'8px 22px', borderRadius:8, border:'none', background: tplBusy ? '#93C5FD' : '#2563EB', fontSize:13, fontWeight:700, color:'#fff', cursor: tplBusy ? 'not-allowed' : 'pointer', fontFamily:"'Inter',sans-serif" }}>
+                  {tplBusy ? 'Saving…' : 'Save Template'}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 

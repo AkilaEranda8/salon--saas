@@ -107,8 +107,8 @@ echo "════════════════════════�
 echo ""
 docker compose ps
 echo ""
-echo "    Website:     https://zanesalon.com"
-  echo "  Management:  https://main.zanesalon.com"
-  echo "  API:         https://api.zanesalon.com"
-  echo "  phpMyAdmin:  https://pma.zanesalon.com"
+echo "    Website:     https://salon.hexalyte.com"
+  echo "  Management:  https://admin.hexalyte.com"
+  echo "  API:         https://api.salon.hexalyte.com"
+  echo "  phpMyAdmin:  https://pma.hexalyte.com"
 echo ""

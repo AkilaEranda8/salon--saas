@@ -7,6 +7,11 @@ const AuthContext = createContext(null);
 export const AuthProvider = ({ children }) => {
   const [user, setUser]       = useState(null);
   const [loading, setLoading] = useState(true);
+  const [maintenance, setMaintenance] = useState({
+    enabled: false,
+    message: 'System is under maintenance. Please try again later.',
+    endsAt: null,
+  });
 
   // The slug for the current subdomain — available to all consumers
   const tenantSlug = getTenantSlug();
@@ -15,8 +20,25 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     const checkAuth = async () => {
       try {
-        const res = await api.get('/auth/me');
-        setUser(res.data.user);
+        const [authRes, maintenanceRes] = await Promise.allSettled([
+          api.get('/auth/me'),
+          fetch('/api/public/maintenance-status').then((r) => (r.ok ? r.json() : null)),
+        ]);
+
+        if (authRes.status === 'fulfilled') {
+          setUser(authRes.value.data.user);
+        } else {
+          setUser(null);
+        }
+
+        const maintenanceData = maintenanceRes.status === 'fulfilled' ? maintenanceRes.value : null;
+        if (maintenanceData) {
+          setMaintenance({
+            enabled: !!maintenanceData.enabled,
+            message: maintenanceData.message || 'System is under maintenance. Please try again later.',
+            endsAt: maintenanceData.endsAt || null,
+          });
+        }
       } catch {
         setUser(null);
       } finally {
@@ -25,6 +47,33 @@ export const AuthProvider = ({ children }) => {
     };
     checkAuth();
   }, []);
+
+  useEffect(() => {
+    const refreshMaintenance = async () => {
+      try {
+        const res = await fetch('/api/public/maintenance-status');
+        if (!res.ok) return;
+        const data = await res.json();
+        setMaintenance({
+          enabled: !!data.enabled,
+          message: data.message || 'System is under maintenance. Please try again later.',
+          endsAt: data.endsAt || null,
+        });
+      } catch {
+        // ignore transient refresh failures
+      }
+    };
+
+    refreshMaintenance();
+    const timer = setInterval(refreshMaintenance, 30000);
+    return () => clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    if (maintenance.enabled && user && user.role !== 'platform_admin') {
+      logout();
+    }
+  }, [maintenance.enabled, user]);
 
   /**
    * Authenticate the user.
@@ -40,6 +89,19 @@ export const AuthProvider = ({ children }) => {
       password: String(credentials?.password ?? ''),
     };
     const response = await api.post('/auth/login', normalized);
+    // If 2FA required, don't set user yet — return the flag to the caller
+    if (response.data.requires2fa) {
+      return response.data; // { requires2fa: true, tempToken: '...' }
+    }
+    setUser(response.data.user);
+    return response.data;
+  };
+
+  /**
+   * Complete login after TOTP verification.
+   */
+  const verify2FA = async ({ tempToken, code }) => {
+    const response = await api.post('/auth/2fa/verify-login', { tempToken, code });
     setUser(response.data.user);
     return response.data;
   };
@@ -54,6 +116,15 @@ export const AuthProvider = ({ children }) => {
       // Proceed with local logout even if server call fails
     } finally {
       setUser(null);
+    }
+  };
+
+  const refreshUser = async () => {
+    try {
+      const res = await api.get('/auth/me');
+      setUser(res.data.user);
+    } catch {
+      // silently ignore — user stays as-is
     }
   };
 
@@ -85,9 +156,12 @@ export const AuthProvider = ({ children }) => {
       tenantSlug,
       login,
       logout,
+      refreshUser,
+      verify2FA,
       isAuthenticated,
       loading,
       subscriptionWarning,
+      maintenance,
     }}>
       {children}
     </AuthContext.Provider>

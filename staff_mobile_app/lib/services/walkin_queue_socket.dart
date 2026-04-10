@@ -10,7 +10,7 @@ class WalkInQueueSocket {
   String? _branchId;
 
   static String originFromApiBase(String apiBase) {
-    final u = Uri.parse(apiBase.trim().isEmpty ? 'https://api.zanesalon.com' : apiBase);
+    final u = Uri.parse(apiBase.trim().isEmpty ? 'https://api.salon.hexalyte.com' : apiBase);
     final port = u.hasPort ? ':${u.port}' : '';
     return '${u.scheme}://${u.host}$port';
   }

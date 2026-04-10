@@ -16,9 +16,10 @@ function computePromoAmount(discount, gross) {
 }
 
 /** Date-only compare in local YYYY-MM-DD */
-function isDiscountActive(discount, branchId, asOfDate = new Date()) {
+function isDiscountActive(discount, branchId, tenantId = null, asOfDate = new Date()) {
   if (!discount || !discount.is_active) return false;
   if (discount.branch_id != null && Number(discount.branch_id) !== Number(branchId)) return false;
+  if (tenantId != null && Number(discount.tenant_id) !== Number(tenantId)) return false;
   const y = asOfDate.getFullYear();
   const m = String(asOfDate.getMonth() + 1).padStart(2, '0');
   const d = String(asOfDate.getDate()).padStart(2, '0');
@@ -28,13 +29,14 @@ function isDiscountActive(discount, branchId, asOfDate = new Date()) {
   return true;
 }
 
-function activeDiscountWhere(branchId) {
+function activeDiscountWhere(branchId, tenantId = null) {
   const y = new Date().getFullYear();
   const m = String(new Date().getMonth() + 1).padStart(2, '0');
   const d = String(new Date().getDate()).padStart(2, '0');
   const today = `${y}-${m}-${d}`;
   return {
     is_active: true,
+    ...(tenantId != null ? { tenant_id: tenantId } : {}),
     [Op.or]: [{ branch_id: null }, { branch_id: Number(branchId) }],
     [Op.and]: [
       { [Op.or]: [{ starts_at: null }, { starts_at: { [Op.lte]: today } }] },

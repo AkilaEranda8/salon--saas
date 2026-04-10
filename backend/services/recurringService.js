@@ -32,13 +32,18 @@ async function createNextRecurring(appointment) {
 
       // Check staff availability for the same time slot
       if (appointment.staff_id) {
+        const conflictWhere = {
+          staff_id: appointment.staff_id,
+          date: nextDate,
+          time: appointment.time,
+          status: { [Op.notIn]: ['cancelled'] },
+        };
+        if (appointment.tenant_id) {
+          conflictWhere.tenant_id = appointment.tenant_id;
+        }
+
         const conflict = await Appointment.findOne({
-          where: {
-            staff_id: appointment.staff_id,
-            date: nextDate,
-            time: appointment.time,
-            status: { [Op.notIn]: ['cancelled'] },
-          },
+          where: conflictWhere,
           transaction: t,
         });
         if (conflict) {
@@ -62,6 +67,7 @@ async function createNextRecurring(appointment) {
         is_recurring:         true,
         recurrence_frequency: 'weekly',
         recurrence_parent_id: parentId,
+        tenant_id:            appointment.tenant_id || null,
       }, { transaction: t });
 
       // Link current appointment to the new one

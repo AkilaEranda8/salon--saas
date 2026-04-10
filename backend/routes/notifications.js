@@ -18,4 +18,9 @@ router.post('/offer-sms',               requireRole('superadmin', 'admin', 'mana
 router.post('/staff-monthly-earnings',  requireRole('superadmin', 'admin'), ctrl.sendStaffMonthlyEarnings);
 router.post('/test-staff-earnings-pdf', requireRole('superadmin', 'admin'), ctrl.testStaffEarningsPdf);
 
+// Message templates
+router.get('/templates',        requireRole('superadmin', 'admin'), ctrl.listTemplates);
+router.post('/templates',       requireRole('superadmin', 'admin'), ctrl.saveTemplate);
+router.delete('/templates/:id', requireRole('superadmin', 'admin'), ctrl.deleteTemplate);
+
 module.exports = router;

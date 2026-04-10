@@ -1,31 +1,54 @@
 # Dependencies
-node_modules/
-frontend/node_modules/
-backend/node_modules/
+node_modules
+**/node_modules
 
-# Build output
-frontend/dist/
-
-# Environment files
+# Environment files — NEVER commit secrets
 .env
+.env.local
+.env.production
+.env.*.local
 backend/.env
 frontend/.env
 
-# Uploads
+# Build outputs
+dist
+build
+.vite
+**/.vite
+
+# Uploads (user-generated content — use volume in production)
 backend/uploads/*
 !backend/uploads/.gitkeep
 
+# Python
+__pycache__
+*.pyc
+*.pyo
+.venv
+venv
+ai_bot/__pycache__
+
 # Logs
 *.log
-npm-debug.log*
+logs/
+_latest_prod_logs.txt
 
-# OS files
+# OS
 .DS_Store
 Thumbs.db
 
-# Docker volumes
-mysql_data/
-
 # IDE
-.vscode/
-.idea/
+.vscode/settings.json
+.idea
+
+# SSL / secrets
+*.pem
+*.key
+*.crt
+cloudflare-credentials.ini
+
+# Flutter/Dart build
+staff_mobile_app/.dart_tool
+staff_mobile_app/build
+staff_mobile_app/.flutter-plugins
+staff_mobile_app/.flutter-plugins-dependencies

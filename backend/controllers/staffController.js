@@ -1,6 +1,6 @@
 const { Op, fn, col, literal } = require('sequelize');
 const { Staff, Branch, StaffBranch, StaffSpecialization, Service, Appointment, Payment, User } = require('../models');
-const { tenantWhere } = require('../utils/tenantScope');
+const { tenantWhere, byIdWhere, resolveTenantId } = require('../utils/tenantScope');
 
 // Helper: resolve branch filter from role
 const getBranchWhere = (req) => {
@@ -48,7 +48,8 @@ const list = async (req, res) => {
 
 const getOne = async (req, res) => {
   try {
-    const staff = await Staff.findByPk(req.params.id, {
+    const staff = await Staff.findOne({
+      where: byIdWhere(req, req.params.id),
       include: [
         { model: Branch, as: 'branch',   attributes: ['id', 'name', 'color'] },
         { model: Branch, as: 'branches', attributes: ['id', 'name', 'color'], through: { attributes: [] } },
@@ -64,8 +65,9 @@ const getOne = async (req, res) => {
     if (!staff) return res.status(404).json({ message: 'Staff not found.' });
 
     // Appointment count & total commission
-    const apptCount = await Appointment.count({ where: { staff_id: staff.id } });
-    const commSum   = await Payment.sum('commission_amount', { where: { staff_id: staff.id } });
+    const scope = tenantWhere(req);
+    const apptCount = await Appointment.count({ where: { staff_id: staff.id, ...scope } });
+    const commSum   = await Payment.sum('commission_amount', { where: { staff_id: staff.id, ...scope } });
 
     return res.json({ ...staff.toJSON(), apptCount, totalCommission: commSum || 0 });
   } catch (err) {
@@ -84,12 +86,13 @@ const create = async (req, res) => {
       return res.status(400).json({ message: 'Name and branch are required.' });
     }
 
-    const staff = await Staff.create({ name, phone, role_title, branch_id, commission_type, commission_value, join_date, user_id: user_id || null });
+    const tenantId = resolveTenantId(req);
+    const staff = await Staff.create({ name, phone, role_title, branch_id, commission_type, commission_value, join_date, user_id: user_id || null, tenant_id: tenantId });
 
     // Save all branch associations
     if (branchIds.length) {
       await StaffBranch.bulkCreate(
-        branchIds.map((bid) => ({ staff_id: staff.id, branch_id: bid })),
+        branchIds.map((bid) => ({ staff_id: staff.id, branch_id: bid, tenant_id: tenantId })),
         { ignoreDuplicates: true },
       );
     }
@@ -108,7 +111,7 @@ const create = async (req, res) => {
 
 const update = async (req, res) => {
   try {
-    const staff = await Staff.findByPk(req.params.id);
+    const staff = await Staff.findOne({ where: byIdWhere(req, req.params.id) });
     if (!staff) return res.status(404).json({ message: 'Staff not found.' });
 
     // Prevent cross-branch updates for non-superadmin/admin
@@ -136,7 +139,7 @@ const update = async (req, res) => {
     if (branchIds.length) {
       await StaffBranch.destroy({ where: { staff_id: staff.id } });
       await StaffBranch.bulkCreate(
-        branchIds.map((bid) => ({ staff_id: staff.id, branch_id: bid })),
+        branchIds.map((bid) => ({ staff_id: staff.id, branch_id: bid, tenant_id: resolveTenantId(req) })),
         { ignoreDuplicates: true },
       );
     }
@@ -149,7 +152,7 @@ const update = async (req, res) => {
 
 const remove = async (req, res) => {
   try {
-    const staff = await Staff.findByPk(req.params.id);
+    const staff = await Staff.findOne({ where: byIdWhere(req, req.params.id) });
     if (!staff) return res.status(404).json({ message: 'Staff not found.' });
 
     await staff.destroy();
@@ -162,11 +165,11 @@ const remove = async (req, res) => {
 const commissionSummary = async (req, res) => {
   try {
     const { month, year, branchId } = req.query;
-    const staffWhere = {};
+    const staffWhere = tenantWhere(req);
     if (req.userBranchId) staffWhere.branch_id = req.userBranchId;
     else if (branchId) staffWhere.branch_id = branchId;
 
-    const paymentWhere = {};
+    const paymentWhere = tenantWhere(req);
     if (month && year) {
       const m = String(month).padStart(2, '0');
       const start = `${year}-${m}-01`;
@@ -227,7 +230,7 @@ const commissionSummary = async (req, res) => {
 
 const commissionReport = async (req, res) => {
   try {
-    const where = { staff_id: req.params.id };
+    const where = { staff_id: req.params.id, ...tenantWhere(req) };
     if (req.query.month) {
       const [year, month] = req.query.month.split('-');
       const start = `${year}-${month}-01`;
@@ -261,16 +264,19 @@ const setSpecializations = async (req, res) => {
       return res.status(400).json({ message: 'serviceIds must be an array.' });
     }
 
+    const staff = await Staff.findOne({ where: byIdWhere(req, req.params.id), attributes: ['id'] });
+    if (!staff) return res.status(404).json({ message: 'Staff not found.' });
+
     // Replace all existing specializations
-    await StaffSpecialization.destroy({ where: { staff_id: req.params.id } });
+    await StaffSpecialization.destroy({ where: { staff_id: staff.id } });
 
     if (serviceIds.length) {
-      const specs = serviceIds.map((sid) => ({ staff_id: parseInt(req.params.id), service_id: sid }));
+      const specs = serviceIds.map((sid) => ({ staff_id: staff.id, service_id: sid }));
       await StaffSpecialization.bulkCreate(specs);
     }
 
     const updated = await StaffSpecialization.findAll({
-      where: { staff_id: req.params.id },
+      where: { staff_id: staff.id },
       include: [{ model: Service, as: 'service', attributes: ['id', 'name'] }],
     });
 

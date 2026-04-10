@@ -17,6 +17,7 @@ const NAV_ITEMS = [
   { path: '/attendance',   label: 'Attendance',   icon: '📋', roles: ['superadmin','admin','manager'] },
   { path: '/reminders',    label: 'Reminders',    icon: '🔔', roles: ['superadmin','admin','manager','staff'] },
   { path: '/reports',      label: 'Reports',      icon: '📊', roles: ['superadmin','admin','manager'] },
+  { path: '/support',      label: 'Support Tickets', icon: '🛟', roles: ['superadmin','admin','manager','staff'] },
   { path: '/walk-in',       label: 'Walk-in',       icon: '🎫', roles: ['superadmin','admin','manager','staff'] },
   { path: '/notifications', label: 'Notifications',  icon: '📨', roles: ['superadmin','admin'] },
   { path: '/reviews',       label: 'Reviews',         icon: '⭐', roles: ['superadmin','admin','manager'] },

@@ -11,7 +11,7 @@ for p in passwords:
     except:
         pass
 
-BASE = "https://main.zanesalon.com/aibot"
+BASE = "https://admin.hexalyte.com/aibot"
 
 tests = [
     ("HEALTH",   f"curl -sk {BASE}/health"),

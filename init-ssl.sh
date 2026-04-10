@@ -1,68 +1,85 @@
 #!/bin/bash
-# ── SSL initialization script for zanesalon.com ──────────────────────────────
-# Run this ONCE on the VPS to obtain Let's Encrypt certificates.
-# After that, a cron job handles auto-renewal.
+# ── SSL initialization script for hexalyte.com (SaaS Multi-Tenant) ────────────
+#
+# This script obtains WILDCARD certificates for salon.hexalyte.com and
+# hexalyte.com using the DNS-01 challenge via the Cloudflare plugin.
+# The wildcard certs cover all tenant subdomains automatically.
+#
+# Prerequisites:
+#   1. Cloudflare API token with Zone:DNS:Edit permission
+#   2. Token saved in /root/cloudflare-credentials.ini:
+#        dns_cloudflare_api_token = YOUR_TOKEN_HERE
+#   3. docker-compose.yml certbot service uses certbot/dns-cloudflare image
+#
+# Run ONCE on the VPS:  bash init-ssl.sh
+# After that, auto-renewal handles the rest.
 
 set -e
 
-DOMAINS="main.zanesalon.com api.zanesalon.com pma.zanesalon.com"
 EMAIL="akilaeranda8@gmail.com"
 COMPOSE="docker compose"
+CF_CREDS="/root/cloudflare-credentials.ini"
 
-echo "=== Step 1: Create temporary HTTP-only nginx config ==="
-cat > /tmp/default_http.conf << 'HTTPCONF'
-server {
-    listen 80;
-    server_name main.zanesalon.com api.zanesalon.com pma.zanesalon.com;
+# ── Validate Cloudflare credentials file ─────────────────────────────────────
+if [ ! -f "$CF_CREDS" ]; then
+  echo "ERROR: Cloudflare credentials file not found at $CF_CREDS"
+  echo ""
+  echo "Create the file with:"
+  echo "  dns_cloudflare_api_token = YOUR_CLOUDFLARE_API_TOKEN"
+  echo ""
+  echo "Get the token from: https://dash.cloudflare.com/profile/api-tokens"
+  echo "Required permissions: Zone > DNS > Edit"
+  exit 1
+fi
 
-    location /.well-known/acme-challenge/ {
-        root /var/www/certbot;
-    }
+chmod 600 "$CF_CREDS"
 
-    location / {
-        return 200 'SSL setup in progress...';
-        add_header Content-Type text/plain;
-    }
-}
-HTTPCONF
-
-echo "=== Step 2: Stop proxy, copy temp config, restart ==="
-$COMPOSE stop proxy
-docker cp /tmp/default_http.conf $(${COMPOSE} ps -q proxy 2>/dev/null || true):/etc/nginx/conf.d/default.conf 2>/dev/null || true
-
-# Recreate proxy with temp config mounted
-cp proxy/default.conf proxy/default.conf.ssl
-cp /tmp/default_http.conf proxy/default.conf
+echo "=== Step 1: Start services (proxy needs to be up) ==="
 $COMPOSE up -d proxy
 sleep 3
 
-echo "=== Step 3: Request certificates ==="
-$COMPOSE run --rm --profile certbot certbot certonly \
-  --webroot \
-  --webroot-path=/var/www/certbot \
+echo "=== Step 2: Obtain wildcard SSL certificate via DNS-01 challenge ==="
+$COMPOSE run --rm certbot certonly \
+  --dns-cloudflare \
+  --dns-cloudflare-credentials /etc/cloudflare/credentials.ini \
   --email "$EMAIL" \
   --agree-tos \
   --no-eff-email \
-  -d main.zanesalon.com \
-  -d api.zanesalon.com \
-  -d pma.zanesalon.com
+  --cert-name salon.hexalyte.com \
+  -d salon.hexalyte.com \
+  -d "*.salon.hexalyte.com"
 
-echo "=== Step 4: Restore full SSL nginx config ==="
-cp proxy/default.conf.ssl proxy/default.conf
-rm -f proxy/default.conf.ssl
+echo "=== Step 2b: Obtain hexalyte.com wildcard certificate ==="
+$COMPOSE run --rm certbot certonly \
+  --dns-cloudflare \
+  --dns-cloudflare-credentials /etc/cloudflare/credentials.ini \
+  --email "$EMAIL" \
+  --agree-tos \
+  --no-eff-email \
+  --cert-name hexalyte.com \
+  -d hexalyte.com \
+  -d "*.hexalyte.com"
 
-echo "=== Step 5: Reload proxy with SSL ==="
-$COMPOSE stop proxy
-$COMPOSE up -d proxy
+echo "=== Step 3: Reload Nginx with the new wildcard certificate ==="
+$COMPOSE exec proxy nginx -s reload || $COMPOSE restart proxy
 
-echo "=== Step 6: Set up auto-renewal cron ==="
-CRON_CMD="0 3 * * * cd /root/zane_salon && docker compose run --rm --profile certbot certbot renew --quiet && docker compose exec proxy nginx -s reload"
-(crontab -l 2>/dev/null | grep -v certbot; echo "$CRON_CMD") | crontab -
+echo "=== Step 4: Set up auto-renewal cron ==="
+CRON_CMD="0 3 */14 * * cd /root/salon_v1 && docker compose run --rm certbot renew --quiet && docker compose exec proxy nginx -s reload"
+(crontab -l 2>/dev/null | grep -v "certbot renew"; echo "$CRON_CMD") | crontab -
 
 echo ""
 echo "=== SSL setup complete! ==="
-echo "  https://main.zanesalon.com"
-echo "  https://api.zanesalon.com"
-echo "  https://pma.zanesalon.com"
 echo ""
-echo "Auto-renewal cron installed (daily at 3 AM)."
+echo "Wildcard certificates cover:"
+echo "  https://salon.hexalyte.com"
+echo "  https://api.salon.hexalyte.com"
+echo "  https://pma.hexalyte.com"
+echo "  https://admin.hexalyte.com"
+echo "  https://*.salon.hexalyte.com  (all tenant subdomains)"
+echo ""
+echo "Auto-renewal cron installed (every 14 days at 3 AM)."
+echo ""
+echo "Next steps:"
+echo "  1. Run the SaaS migration: docker compose exec backend node scripts/migrateToSaas.js"
+echo "  2. Visit https://zane.salon.hexalyte.com to test your existing salon"
+echo "  3. Visit https://salon.hexalyte.com/signup to test new tenant registration"

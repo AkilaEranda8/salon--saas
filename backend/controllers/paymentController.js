@@ -2,7 +2,7 @@ const { Op, fn, col, literal } = require('sequelize');
 const { sequelize } = require('../config/database');
 const { Payment, PaymentSplit, Branch, Staff, Customer, Service, Appointment, CustomerPackage, Package: PkgModel, PackageRedemption } = require('../models');
 const { notifyPaymentReceipt, notifyLoyaltyPoints, notifyReviewRequest } = require('../services/notificationService');
-const { tenantWhere } = require('../utils/tenantScope');
+const { tenantWhere, byIdWhere, resolveTenantId } = require('../utils/tenantScope');
 
 const getBranchWhere = (req) => {
   const where = tenantWhere(req);
@@ -48,7 +48,8 @@ const list = async (req, res) => {
 
 const getOne = async (req, res) => {
   try {
-    const payment = await Payment.findByPk(req.params.id, {
+    const payment = await Payment.findOne({
+      where: byIdWhere(req, req.params.id),
       include: [
         { model: Branch,      as: 'branch'      },
         { model: Staff,       as: 'staff'       },
@@ -91,7 +92,7 @@ const create = async (req, res) => {
     let commission_amount = 0;
     if (staff_id) {
       const { Staff: StaffModel } = require('../models');
-      const staffMember = await StaffModel.findByPk(staff_id, { transaction: t });
+      const staffMember = await StaffModel.findOne({ where: byIdWhere(req, staff_id), transaction: t });
       if (staffMember) {
         const commissionBase = Math.max(0, total_amount - loyalty_discount);
         commission_amount = staffMember.commission_type === 'percentage'
@@ -110,6 +111,7 @@ const create = async (req, res) => {
       appointment_id: appointment_id || null,
       customer_name, total_amount, loyalty_discount, promo_discount, points_earned,
       commission_amount, date: today, status: 'paid',
+      tenant_id: resolveTenantId(req),
     }, { transaction: t });
 
     // Save splits
@@ -124,7 +126,8 @@ const create = async (req, res) => {
     // Redeem package sessions for 'Package' splits
     for (const s of splits) {
       if (s.method === 'Package' && s.customer_package_id) {
-        const cp = await CustomerPackage.findByPk(s.customer_package_id, {
+        const cp = await CustomerPackage.findOne({
+          where: byIdWhere(req, s.customer_package_id),
           include: [{ model: PkgModel, as: 'package' }],
           transaction: t,
         });
@@ -135,6 +138,7 @@ const create = async (req, res) => {
             service_id: service_id || null,
             redeemed_at: new Date(),
             redeemed_by: staff_id || null,
+            tenant_id: resolveTenantId(req),
           }, { transaction: t });
           const newUsed = (cp.sessions_used || 0) + 1;
           const updates = { sessions_used: newUsed };
@@ -147,7 +151,7 @@ const create = async (req, res) => {
     // Update customer stats
     if (customer_id) {
       const { Customer: CustModel } = require('../models');
-      const cust = await CustModel.findByPk(customer_id, { transaction: t });
+      const cust = await CustModel.findOne({ where: byIdWhere(req, customer_id), transaction: t });
       if (cust) {
         let newPoints = cust.loyalty_points + points_earned;
         if (usePoints && loyalty_discount > 0) {
@@ -167,7 +171,7 @@ const create = async (req, res) => {
     if (appointment_id) {
       const { Appointment: ApptModel } = require('../models');
       await ApptModel.update({ commission_paid: commission_amount }, {
-        where: { id: appointment_id },
+        where: { id: appointment_id, ...tenantWhere(req) },
         transaction: t,
       });
     }
@@ -178,8 +182,8 @@ const create = async (req, res) => {
     // Walk-in: send SMS if phone provided even without customer_id
     if (!customer_id && phone) {
       const [branch, service] = await Promise.all([
-        Branch.findByPk(branch_id,   { attributes: ['id', 'name', 'phone'] }),
-        Service.findByPk(service_id, { attributes: ['id', 'name'] }),
+        Branch.findOne({ where: byIdWhere(req, branch_id), attributes: ['id', 'name', 'phone'] }),
+        Service.findOne({ where: byIdWhere(req, service_id), attributes: ['id', 'name'] }),
       ]);
       const walkinCustomer = { name: customer_name || 'Guest', phone, email: null, loyalty_points: 0 };
       notifyPaymentReceipt(
@@ -189,11 +193,11 @@ const create = async (req, res) => {
     }
     if (customer_id) {
       const [branch, service, customer] = await Promise.all([
-        Branch.findByPk(branch_id,   { attributes: ['id', 'name', 'phone'] }),
-        Service.findByPk(service_id, { attributes: ['id', 'name'] }),
+        Branch.findOne({ where: byIdWhere(req, branch_id), attributes: ['id', 'name', 'phone'] }),
+        Service.findOne({ where: byIdWhere(req, service_id), attributes: ['id', 'name'] }),
         (async () => {
           const { Customer: CustModel } = require('../models');
-          return CustModel.findByPk(customer_id, { attributes: ['id', 'name', 'phone', 'email', 'loyalty_points'] });
+          return CustModel.findOne({ where: byIdWhere(req, customer_id), attributes: ['id', 'name', 'phone', 'email', 'loyalty_points'] });
         })(),
       ]);
       if (customer) {
@@ -223,7 +227,7 @@ const create = async (req, res) => {
 
 const update = async (req, res) => {
   try {
-    const payment = await Payment.findByPk(req.params.id);
+    const payment = await Payment.findOne({ where: byIdWhere(req, req.params.id) });
     if (!payment) return res.status(404).json({ message: 'Payment not found.' });
     const allowed = ['status', 'note', 'date', 'total_amount', 'method'];
     const fields  = {};

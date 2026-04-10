@@ -44,9 +44,11 @@ const upsert = async (req, res) => {
     const { staff_id, date, check_in, check_out, status, note } = req.body;
     if (!staff_id || !date) return res.status(400).json({ message: 'staff_id and date are required.' });
 
+    const tenantId = req.userTenantId ?? req.user?.tenantId ?? null;
+
     const [record, created] = await Attendance.findOrCreate({
-      where: { staff_id, date },
-      defaults: { check_in, check_out, status, note },
+      where: { staff_id, date, tenant_id: tenantId },
+      defaults: { check_in, check_out, status, note, tenant_id: tenantId },
     });
 
     if (!created) {
@@ -60,18 +62,27 @@ const upsert = async (req, res) => {
 
     return res.status(created ? 201 : 200).json(record);
   } catch (err) {
+    console.error('attendance upsert error:', err);
     return res.status(500).json({ message: 'Server error.' });
   }
 };
 
 const update = async (req, res) => {
   try {
-    const record = await Attendance.findByPk(req.params.id);
+    const where = { id: req.params.id, ...require('../utils/tenantScope').tenantWhere(req) };
+    const record = await Attendance.findOne({ where });
     if (!record) return res.status(404).json({ message: 'Attendance record not found.' });
 
-    await record.update(req.body);
+    const { check_in, check_out, status, note } = req.body;
+    const updates = {};
+    if (check_in  !== undefined) updates.check_in  = check_in;
+    if (check_out !== undefined) updates.check_out = check_out;
+    if (status    !== undefined) updates.status    = status;
+    if (note      !== undefined) updates.note      = note;
+    await record.update(updates);
     return res.json(record);
   } catch (err) {
+    console.error('attendance update error:', err);
     return res.status(500).json({ message: 'Server error.' });
   }
 };

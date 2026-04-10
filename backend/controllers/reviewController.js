@@ -148,7 +148,7 @@ const stats = async (req, res) => {
         attributes: [
           'service_id',
           [fn('AVG', col('service_rating')), 'avgRating'],
-          [fn('COUNT', col('id')),           'count'],
+          [fn('COUNT', col('Review.id')),    'count'],
         ],
         include: [{ model: Service, as: 'service', attributes: ['name'] }],
         group: ['service_id', 'service.id', 'service.name'],
@@ -160,7 +160,7 @@ const stats = async (req, res) => {
         attributes: [
           'staff_id',
           [fn('AVG', col('staff_rating')), 'avgRating'],
-          [fn('COUNT', col('id')),         'count'],
+          [fn('COUNT', col('Review.id')),  'count'],
         ],
         include: [{ model: Staff, as: 'staff', attributes: ['name'] }],
         group: ['staff_id', 'staff.id', 'staff.name'],

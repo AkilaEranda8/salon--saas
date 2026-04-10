@@ -1,6 +1,6 @@
 const { Op } = require('sequelize');
 const { Customer, Branch, Appointment, Service } = require('../models');
-const { tenantWhere } = require('../utils/tenantScope');
+const { tenantWhere, byIdWhere, resolveTenantId } = require('../utils/tenantScope');
 
 const getBranchWhere = (req) => {
   const where = tenantWhere(req);
@@ -40,7 +40,8 @@ const list = async (req, res) => {
 
 const getOne = async (req, res) => {
   try {
-    const cust = await Customer.findByPk(req.params.id, {
+    const cust = await Customer.findOne({
+      where: byIdWhere(req, req.params.id),
       include: [
         { model: Branch, as: 'branch', attributes: ['id', 'name'] },
         {
@@ -65,7 +66,18 @@ const create = async (req, res) => {
     const { name, phone, email, branch_id } = req.body;
     if (!name) return res.status(400).json({ message: 'Customer name is required.' });
 
-    const cust = await Customer.create({ name, phone, email, branch_id });
+    const effectiveBranchId = req.userBranchId || branch_id || req.user?.branchId || null;
+    if (req.userBranchId && effectiveBranchId && Number(effectiveBranchId) !== Number(req.userBranchId)) {
+      return res.status(403).json({ message: 'You can only create customers in your branch.' });
+    }
+
+    const cust = await Customer.create({
+      name,
+      phone,
+      email,
+      branch_id: effectiveBranchId,
+      tenant_id: resolveTenantId(req),
+    });
     return res.status(201).json(cust);
   } catch (err) {
     return res.status(500).json({ message: 'Server error.' });
@@ -74,7 +86,7 @@ const create = async (req, res) => {
 
 const update = async (req, res) => {
   try {
-    const cust = await Customer.findByPk(req.params.id);
+    const cust = await Customer.findOne({ where: byIdWhere(req, req.params.id) });
     if (!cust) return res.status(404).json({ message: 'Customer not found.' });
 
     const allowed = ['name', 'phone', 'email', 'branch_id'];
@@ -91,7 +103,7 @@ const update = async (req, res) => {
 
 const remove = async (req, res) => {
   try {
-    const cust = await Customer.findByPk(req.params.id);
+    const cust = await Customer.findOne({ where: byIdWhere(req, req.params.id) });
     if (!cust) return res.status(404).json({ message: 'Customer not found.' });
 
     await cust.destroy();
@@ -108,7 +120,7 @@ const loyalty = async (req, res) => {
       return res.status(400).json({ message: 'action must be "add" or "redeem" and points must be a positive integer.' });
     }
 
-    const cust = await Customer.findByPk(req.params.id);
+    const cust = await Customer.findOne({ where: byIdWhere(req, req.params.id) });
     if (!cust) return res.status(404).json({ message: 'Customer not found.' });
 
     if (action === 'redeem') {

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { useTheme } from '../../context/ThemeContext';
 
 /* ── SVG icon helper ──────────────────────────────────────── */
 const Ico = ({ d, size = 18 }) => (
@@ -45,38 +46,85 @@ const NAV = [
   ]},
 ];
 
-/* ── Color palette ────────────────────────────────────────── */
-const C = {
-  bg:          '#0C0A15',
-  bgGrad:      'linear-gradient(180deg, #0E0C18 0%, #110F20 40%, #13102A 100%)',
-  border:      '#1C1935',
-  borderSub:   'rgba(99,102,241,0.08)',
-  topGlow:     'radial-gradient(ellipse at 50% -30%, rgba(99,102,241,0.15) 0%, transparent 70%)',
-  navHover:    'rgba(99,102,241,0.07)',
-  navActiveBg: 'linear-gradient(90deg, rgba(99,102,241,0.18) 0%, rgba(99,102,241,0.04) 100%)',
-  navActiveTx: '#C4B5FD',
-  navActiveIc: '#A78BFA',
-  accent:      '#6366F1',
-  accentGrad:  'linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%)',
-  accentGlow:  'rgba(99,102,241,0.50)',
-  text:        '#F1F5F9',
-  textSub:     '#94A3B8',
-  textMuted:   '#475569',
-  groupLabel:  'rgba(99,102,241,0.45)',
-  userBg:      'rgba(99,102,241,0.06)',
-  userBorder:  'rgba(99,102,241,0.12)',
-  scrollThumb: '#1E1B35',
-  scrollHover: '#2A2650',
-  badge:       { bg: 'rgba(99,102,241,0.12)', text: '#818CF8', border: 'rgba(99,102,241,0.25)' },
-  online:      '#34D399',
-  danger:      '#EF4444',
+/* ── Theme palettes ───────────────────────────────────────── */
+const THEME = {
+  light: {
+    bg:           '#FFFFFF',
+    sidebarBg:    '#FAFBFC',
+    bgGrad:       'linear-gradient(180deg, #FAFBFC 0%, #F4F5F7 100%)',
+    topGlow:      'radial-gradient(ellipse at 50% -30%, rgba(99,102,241,0.08) 0%, transparent 70%)',
+    border:       '#EAECF0',
+    borderSub:    '#F2F4F7',
+    navHover:     '#F0EDFF',
+    navActiveBg:  'linear-gradient(90deg, rgba(99,102,241,0.12) 0%, rgba(99,102,241,0.03) 100%)',
+    navActiveTx:  '#4338CA',
+    navActiveIc:  '#6366F1',
+    accent:       '#6366F1',
+    accentGrad:   'linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%)',
+    accentGlow:   'rgba(99,102,241,0.30)',
+    text:         '#101828',
+    textSub:      '#475467',
+    textMuted:    '#98A2B3',
+    groupLabel:   '#98A2B3',
+    userBg:       '#F4F5F7',
+    userBorder:   '#EAECF0',
+    scrollThumb:  '#D0D5DD',
+    scrollHover:  '#B0B8C4',
+    badge:        { bg: '#EEF2FF', text: '#4338CA', border: '#C7D2FE' },
+    online:       '#10B981',
+    onlineBorder: '#FFFFFF',
+    danger:       '#EF4444',
+    dangerHover:  '#FEF2F2',
+    dangerBorder: 'rgba(239,68,68,0.18)',
+    shadow:       '0 1px 3px rgba(16,24,40,0.06)',
+    logoText:     '#101828',
+    logoSub:      '#6366F1',
+    tooltipBg:    '#1E293B',
+    tooltipBd:    'rgba(255,255,255,0.08)',
+    activeDot:    '#6366F1',
+  },
+  dark: {
+    bg:           '#0C0A15',
+    sidebarBg:    '#13111F',
+    bgGrad:       'linear-gradient(180deg, #0E0C18 0%, #110F20 40%, #13102A 100%)',
+    topGlow:      'radial-gradient(ellipse at 50% -30%, rgba(99,102,241,0.15) 0%, transparent 70%)',
+    border:       '#1C1935',
+    borderSub:    'rgba(99,102,241,0.08)',
+    navHover:     'rgba(99,102,241,0.07)',
+    navActiveBg:  'linear-gradient(90deg, rgba(99,102,241,0.18) 0%, rgba(99,102,241,0.04) 100%)',
+    navActiveTx:  '#C4B5FD',
+    navActiveIc:  '#A78BFA',
+    accent:       '#6366F1',
+    accentGrad:   'linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%)',
+    accentGlow:   'rgba(99,102,241,0.50)',
+    text:         '#F1F5F9',
+    textSub:      '#94A3B8',
+    textMuted:    '#475569',
+    groupLabel:   'rgba(99,102,241,0.45)',
+    userBg:       'rgba(99,102,241,0.06)',
+    userBorder:   'rgba(99,102,241,0.12)',
+    scrollThumb:  '#1E1B35',
+    scrollHover:  '#2A2650',
+    badge:        { bg: 'rgba(99,102,241,0.12)', text: '#818CF8', border: 'rgba(99,102,241,0.25)' },
+    online:       '#34D399',
+    onlineBorder: '#0C0A15',
+    danger:       '#EF4444',
+    dangerHover:  'rgba(239,68,68,0.10)',
+    dangerBorder: 'rgba(239,68,68,0.20)',
+    shadow:       '2px 0 24px rgba(0,0,0,0.35)',
+    logoText:     '#FFFFFF',
+    logoSub:      null,
+    tooltipBg:    'linear-gradient(135deg, #1E1B32, #13111F)',
+    tooltipBd:    'rgba(99,102,241,0.15)',
+    activeDot:    '#818CF8',
+  },
 };
 
 const W_FULL = 262;
 const W_COLL = 72;
 
 /* ── NavItem component ────────────────────────────────────── */
-function NavItem({ item, collapsed, isActive, onClick }) {
+function NavItem({ item, collapsed, isActive, onClick, T }) {
   const [hov, setHov] = useState(false);
 
   return (
@@ -90,8 +138,8 @@ function NavItem({ item, collapsed, isActive, onClick }) {
         <div style={{
           position: 'absolute', left: 0, top: 6, bottom: 6,
           width: 3, borderRadius: 2,
-          background: C.accentGrad,
-          boxShadow: `0 0 10px ${C.accentGlow}`,
+          background: T.accentGrad,
+          boxShadow: `0 0 10px ${T.accentGlow}`,
         }} />
       )}
 
@@ -105,7 +153,7 @@ function NavItem({ item, collapsed, isActive, onClick }) {
           padding:        collapsed ? '10px 14px' : '9px 14px 9px 18px',
           borderRadius:   10,
           cursor:         'pointer',
-          background:     isActive ? C.navActiveBg : hov ? C.navHover : 'transparent',
+          background:     isActive ? T.navActiveBg : hov ? T.navHover : 'transparent',
           transition:     'all 0.18s ease',
           userSelect:     'none',
         }}
@@ -113,9 +161,9 @@ function NavItem({ item, collapsed, isActive, onClick }) {
         <span style={{
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           width: 20, height: 20, flexShrink: 0,
-          color: isActive ? C.navActiveIc : hov ? '#818CF8' : C.textMuted,
+          color: isActive ? T.navActiveIc : hov ? T.accent : T.textMuted,
           transition: 'color 0.18s',
-          filter: isActive ? `drop-shadow(0 0 6px ${C.accentGlow})` : 'none',
+          filter: isActive ? `drop-shadow(0 0 6px ${T.accentGlow})` : 'none',
         }}>
           <Ico d={item.icon} size={17} />
         </span>
@@ -125,7 +173,7 @@ function NavItem({ item, collapsed, isActive, onClick }) {
             fontWeight:    isActive ? 700 : 500,
             fontFamily:    "'Inter', sans-serif",
             whiteSpace:    'nowrap',
-            color:         isActive ? C.navActiveTx : hov ? C.text : C.textSub,
+            color:         isActive ? T.navActiveTx : hov ? T.text : T.textSub,
             transition:    'color 0.18s',
             letterSpacing: isActive ? '-0.01em' : 0,
           }}>
@@ -136,8 +184,8 @@ function NavItem({ item, collapsed, isActive, onClick }) {
           <span style={{
             marginLeft: 'auto',
             width: 6, height: 6, borderRadius: '50%',
-            background: '#818CF8',
-            boxShadow: '0 0 8px rgba(129,140,248,0.8)',
+            background: T.activeDot,
+            boxShadow: `0 0 8px ${T.activeDot}CC`,
             flexShrink: 0,
           }} />
         )}
@@ -150,7 +198,7 @@ function NavItem({ item, collapsed, isActive, onClick }) {
           left:          'calc(100% + 10px)',
           top:           '50%',
           transform:     'translateY(-50%)',
-          background:    'linear-gradient(135deg, #1E1B32, #13111F)',
+          background:    T.tooltipBg,
           color:         '#fff',
           fontSize:      12,
           fontWeight:    600,
@@ -161,7 +209,7 @@ function NavItem({ item, collapsed, isActive, onClick }) {
           zIndex:        999,
           boxShadow:     '0 4px 20px rgba(0,0,0,0.40)',
           fontFamily:    "'Inter', sans-serif",
-          border:        '1px solid rgba(99,102,241,0.15)',
+          border:        `1px solid ${T.tooltipBd}`,
         }}>
           {item.label}
         </div>
@@ -173,9 +221,12 @@ function NavItem({ item, collapsed, isActive, onClick }) {
 /* ── PlatformSidebar ──────────────────────────────────────── */
 export default function PlatformSidebar({ collapsed, onToggle }) {
   const { user, logout } = useAuth();
+  const { isDark } = useTheme();
   const location = useLocation();
   const navigate = useNavigate();
   const [signOutHov, setSignOutHov] = useState(false);
+
+  const T = THEME[isDark ? 'dark' : 'light'];
 
   const handleNav    = (path) => navigate(path);
   const handleLogout = async () => { await logout(); navigate('/platform/login'); };
@@ -192,22 +243,22 @@ export default function PlatformSidebar({ collapsed, onToggle }) {
     <aside style={{
       width:          ec ? W_COLL : W_FULL,
       minWidth:       ec ? W_COLL : W_FULL,
-      background:     C.bgGrad,
-      borderRight:    `1px solid ${C.border}`,
+      background:     T.bgGrad,
+      borderRight:    `1px solid ${T.border}`,
       display:        'flex',
       flexDirection:  'column',
       overflow:       'hidden',
       height:         '100vh',
       position:       'relative',
-      transition:     'width 0.24s cubic-bezier(.4,0,.2,1), min-width 0.24s cubic-bezier(.4,0,.2,1)',
+      transition:     'width 0.24s cubic-bezier(.4,0,.2,1), min-width 0.24s cubic-bezier(.4,0,.2,1), background 0.22s',
       fontFamily:     "'Inter', sans-serif",
-      boxShadow:      '2px 0 24px rgba(0,0,0,0.35)',
+      boxShadow:      T.shadow,
     }}>
 
       {/* ambient top glow */}
       <div style={{
         position: 'absolute', top: 0, left: 0, right: 0, height: 200,
-        background: C.topGlow,
+        background: T.topGlow,
         pointerEvents: 'none', zIndex: 0,
       }} />
 
@@ -218,7 +269,7 @@ export default function PlatformSidebar({ collapsed, onToggle }) {
         alignItems:     'center',
         justifyContent: ec ? 'center' : 'space-between',
         padding:        ec ? '0 16px' : '0 18px',
-        borderBottom:   `1px solid ${C.border}`,
+        borderBottom:   `1px solid ${T.border}`,
         flexShrink:     0,
         gap:            8,
         position:       'relative',
@@ -229,9 +280,9 @@ export default function PlatformSidebar({ collapsed, onToggle }) {
           <div style={{ position: 'relative', flexShrink: 0 }}>
             <div style={{
               width: 36, height: 36, borderRadius: 10,
-              background: C.accentGrad,
+              background: T.accentGrad,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              boxShadow: `0 4px 16px ${C.accentGlow}`,
+              boxShadow: `0 4px 16px ${T.accentGlow}`,
             }}>
               <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
@@ -241,8 +292,8 @@ export default function PlatformSidebar({ collapsed, onToggle }) {
             <div style={{
               position: 'absolute', bottom: -1, right: -1,
               width: 9, height: 9, borderRadius: '50%',
-              background: C.online,
-              border: `2px solid ${C.bg}`,
+              background: T.online,
+              border: `2px solid ${T.onlineBorder}`,
             }} />
           </div>
 
@@ -251,7 +302,7 @@ export default function PlatformSidebar({ collapsed, onToggle }) {
               <div style={{
                 fontSize:      15,
                 fontWeight:    800,
-                color:         '#fff',
+                color:         T.logoText,
                 lineHeight:    1.2,
                 letterSpacing: '-0.03em',
                 fontFamily:    "'Sora', 'Manrope', 'Inter', sans-serif",
@@ -265,10 +316,15 @@ export default function PlatformSidebar({ collapsed, onToggle }) {
                 letterSpacing: '0.12em',
                 marginTop:     1,
                 textTransform: 'uppercase',
-                background:    'linear-gradient(90deg, #818CF8, #A78BFA)',
-                WebkitBackgroundClip: 'text',
-                WebkitTextFillColor:  'transparent',
                 fontFamily:    "'Inter', sans-serif",
+                ...(T.logoSub
+                  ? { color: T.logoSub }
+                  : {
+                      background: 'linear-gradient(90deg, #818CF8, #A78BFA)',
+                      WebkitBackgroundClip: 'text',
+                      WebkitTextFillColor:  'transparent',
+                    }
+                ),
               }}>
                 Platform
               </div>
@@ -279,22 +335,22 @@ export default function PlatformSidebar({ collapsed, onToggle }) {
         {/* collapse / expand toggle */}
         {!ec ? (
           <button onClick={onToggle} style={{
-            background: 'none', border: `1.5px solid ${C.border}`, cursor: 'pointer',
-            padding: '5px', borderRadius: 8, color: C.textMuted, display: 'flex',
+            background: 'none', border: `1.5px solid ${T.border}`, cursor: 'pointer',
+            padding: '5px', borderRadius: 8, color: T.textMuted, display: 'flex',
             alignItems: 'center', flexShrink: 0, transition: 'all 0.18s',
           }}
-          onMouseEnter={e => { e.currentTarget.style.borderColor = C.accent; e.currentTarget.style.color = C.accent; e.currentTarget.style.background = 'rgba(99,102,241,0.08)'; }}
-          onMouseLeave={e => { e.currentTarget.style.borderColor = C.border; e.currentTarget.style.color = C.textMuted; e.currentTarget.style.background = 'none'; }}>
+          onMouseEnter={e => { e.currentTarget.style.borderColor = T.accent; e.currentTarget.style.color = T.accent; e.currentTarget.style.background = `${T.accent}14`; }}
+          onMouseLeave={e => { e.currentTarget.style.borderColor = T.border; e.currentTarget.style.color = T.textMuted; e.currentTarget.style.background = 'none'; }}>
             <Ico d="M11 19l-7-7 7-7m8 14l-7-7 7-7" size={14} />
           </button>
         ) : (
           <button onClick={onToggle} style={{
             background: 'none', border: 'none', cursor: 'pointer',
-            color: C.textMuted, display: 'flex', alignItems: 'center',
+            color: T.textMuted, display: 'flex', alignItems: 'center',
             padding: 0, transition: 'color 0.18s',
           }}
-          onMouseEnter={e => { e.currentTarget.style.color = C.accent; }}
-          onMouseLeave={e => { e.currentTarget.style.color = C.textMuted; }}>
+          onMouseEnter={e => { e.currentTarget.style.color = T.accent; }}
+          onMouseLeave={e => { e.currentTarget.style.color = T.textMuted; }}>
             <Ico d="M13 5l7 7-7 7M5 5l7 7-7 7" size={14} />
           </button>
         )}
@@ -303,14 +359,14 @@ export default function PlatformSidebar({ collapsed, onToggle }) {
       {/* ── User card ───────────────────────────── */}
       <div style={{
         padding:      ec ? '10px 8px' : '10px 14px',
-        borderBottom: `1px solid ${C.border}`,
+        borderBottom: `1px solid ${T.border}`,
         flexShrink:   0,
         position:     'relative',
         zIndex:       1,
       }}>
         <div style={{
-          background:     C.userBg,
-          border:         `1.5px solid ${C.userBorder}`,
+          background:     T.userBg,
+          border:         `1.5px solid ${T.userBorder}`,
           borderRadius:   12,
           padding:        ec ? '10px 0' : '10px 12px',
           display:        'flex',
@@ -322,10 +378,10 @@ export default function PlatformSidebar({ collapsed, onToggle }) {
           {/* avatar */}
           <div style={{
             width: 34, height: 34, borderRadius: 10,
-            background: C.accentGrad,
+            background: T.accentGrad,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             color: '#fff', fontWeight: 800, fontSize: 12.5, flexShrink: 0,
-            boxShadow: `0 2px 8px ${C.accentGlow}`,
+            boxShadow: `0 2px 8px ${T.accentGlow}`,
             letterSpacing: '0.04em',
           }}>
             {initials}
@@ -333,7 +389,7 @@ export default function PlatformSidebar({ collapsed, onToggle }) {
           {!ec && (
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{
-                fontSize: 13, fontWeight: 700, color: C.text,
+                fontSize: 13, fontWeight: 700, color: T.text,
                 overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                 lineHeight: 1.3,
               }}>
@@ -343,8 +399,8 @@ export default function PlatformSidebar({ collapsed, onToggle }) {
                 display: 'inline-flex', alignItems: 'center',
                 fontSize: 9.5, fontWeight: 700, marginTop: 3,
                 padding: '1px 8px', borderRadius: 99,
-                background: C.badge.bg, color: C.badge.text,
-                border: `1px solid ${C.badge.border}`,
+                background: T.badge.bg, color: T.badge.text,
+                border: `1px solid ${T.badge.border}`,
                 letterSpacing: '0.04em', textTransform: 'uppercase',
               }}>
                 Platform Admin
@@ -363,22 +419,22 @@ export default function PlatformSidebar({ collapsed, onToggle }) {
         <style>{`
           .plat-sb-nav::-webkit-scrollbar { width: 4px; }
           .plat-sb-nav::-webkit-scrollbar-track { background: transparent; }
-          .plat-sb-nav::-webkit-scrollbar-thumb { background: ${C.scrollThumb}; border-radius: 99px; }
-          .plat-sb-nav::-webkit-scrollbar-thumb:hover { background: ${C.scrollHover}; }
+          .plat-sb-nav::-webkit-scrollbar-thumb { background: ${T.scrollThumb}; border-radius: 99px; }
+          .plat-sb-nav::-webkit-scrollbar-thumb:hover { background: ${T.scrollHover}; }
         `}</style>
         {NAV.map((group, gi) => (
           <div key={group.label} style={{ marginBottom: 2 }}>
             {!ec && gi > 0 && (
-              <div style={{ height: 1, background: C.border, margin: '8px 6px 10px' }} />
+              <div style={{ height: 1, background: T.border, margin: '8px 6px 10px' }} />
             )}
             {ec && gi > 0 && (
-              <div style={{ height: 1, background: C.borderSub, margin: '6px 14px' }} />
+              <div style={{ height: 1, background: T.borderSub, margin: '6px 14px' }} />
             )}
             {!ec && (
               <div style={{
                 fontSize:       9.5,
                 fontWeight:     800,
-                color:          C.groupLabel,
+                color:          T.groupLabel,
                 textTransform:  'uppercase',
                 letterSpacing:  '0.12em',
                 padding:        '4px 14px 6px',
@@ -393,6 +449,7 @@ export default function PlatformSidebar({ collapsed, onToggle }) {
                 collapsed={ec}
                 isActive={isActive(item.path)}
                 onClick={handleNav}
+                T={T}
               />
             ))}
           </div>
@@ -401,7 +458,7 @@ export default function PlatformSidebar({ collapsed, onToggle }) {
 
       {/* ── Bottom / Sign out ───────────────────── */}
       <div style={{
-        borderTop: `1px solid ${C.border}`,
+        borderTop: `1px solid ${T.border}`,
         padding: ec ? '10px 8px' : '10px 10px',
         flexShrink: 0,
         position: 'relative',
@@ -419,8 +476,8 @@ export default function PlatformSidebar({ collapsed, onToggle }) {
             padding:        ec ? '10px 14px' : '9px 14px',
             borderRadius:   10,
             cursor:         'pointer',
-            background:     signOutHov ? 'rgba(239,68,68,0.10)' : 'transparent',
-            border:         signOutHov ? '1px solid rgba(239,68,68,0.20)' : '1px solid transparent',
+            background:     signOutHov ? T.dangerHover : 'transparent',
+            border:         signOutHov ? `1px solid ${T.dangerBorder}` : '1px solid transparent',
             transition:     'all 0.18s',
             userSelect:     'none',
           }}
@@ -428,12 +485,12 @@ export default function PlatformSidebar({ collapsed, onToggle }) {
           <span style={{
             display: 'flex', flexShrink: 0, width: 20, height: 20,
             alignItems: 'center', justifyContent: 'center',
-            color: C.danger,
+            color: T.danger,
           }}>
             <Ico d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" size={17} />
           </span>
           {!ec && (
-            <span style={{ fontSize: 13, fontWeight: 600, color: C.danger }}>
+            <span style={{ fontSize: 13, fontWeight: 600, color: T.danger }}>
               Sign out
             </span>
           )}

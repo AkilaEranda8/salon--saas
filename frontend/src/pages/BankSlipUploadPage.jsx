@@ -204,7 +204,7 @@ const BankSlipUploadPage = () => {
         </button>
       }
     >
-      <div style={{ maxWidth: 580, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 24 }}>
+      <div style={{ maxWidth: 900, margin: '0 auto', width: '100%', display: 'flex', flexDirection: 'column', gap: 24 }}>
 
         {/* ── Plan Hero (if plan selected) ──────────────────────────────────── */}
         {planParam && (
@@ -394,34 +394,31 @@ const BankSlipUploadPage = () => {
               </div>
             </div>
 
-            {/* ── Transaction Date ── */}
-            <div>
-              <label style={{ display: 'block', fontSize: 12.5, fontWeight: 700, marginBottom: 8, color: '#344054', fontFamily: "'Inter', sans-serif" }}>
-                Transaction Date <span style={{ color: '#DC2626' }}>*</span>
-              </label>
-              <input
-                type="date"
-                value={transactionDate} onChange={(e) => setTransactionDate(e.target.value)}
-                onFocus={() => setFocusedField('date')} onBlur={() => setFocusedField(null)}
-                style={{ ...inputBase, ...(focusedField === 'date' ? inputFocusStyle(accent.color) : {}) }}
-              />
-            </div>
-
-            {/* ── Notes ── */}
-            <div>
-              <label style={{ display: 'block', fontSize: 12.5, fontWeight: 700, marginBottom: 8, color: '#344054', fontFamily: "'Inter', sans-serif" }}>
-                Additional Notes
-              </label>
-              <textarea
-                value={notes} onChange={(e) => setNotes(e.target.value)}
-                onFocus={() => setFocusedField('notes')} onBlur={() => setFocusedField(null)}
-                placeholder="Any additional information…"
-                rows="3"
-                style={{
-                  ...inputBase, fontFamily: "'Inter', sans-serif", resize: 'vertical',
-                  ...(focusedField === 'notes' ? inputFocusStyle(accent.color) : {}),
-                }}
-              />
+            {/* ── Transaction Date + Notes ── */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+              <div>
+                <label style={{ display: 'block', fontSize: 12.5, fontWeight: 700, marginBottom: 8, color: '#344054', fontFamily: "'Inter', sans-serif" }}>
+                  Transaction Date <span style={{ color: '#DC2626' }}>*</span>
+                </label>
+                <input
+                  type="date"
+                  value={transactionDate} onChange={(e) => setTransactionDate(e.target.value)}
+                  onFocus={() => setFocusedField('date')} onBlur={() => setFocusedField(null)}
+                  style={{ ...inputBase, ...(focusedField === 'date' ? inputFocusStyle(accent.color) : {}) }}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: 12.5, fontWeight: 700, marginBottom: 8, color: '#344054', fontFamily: "'Inter', sans-serif" }}>
+                  Additional Notes
+                </label>
+                <input
+                  type="text"
+                  value={notes} onChange={(e) => setNotes(e.target.value)}
+                  onFocus={() => setFocusedField('notes')} onBlur={() => setFocusedField(null)}
+                  placeholder="Any additional info…"
+                  style={{ ...inputBase, ...(focusedField === 'notes' ? inputFocusStyle(accent.color) : {}) }}
+                />
+              </div>
             </div>
 
             {/* ── Submit Button ── */}

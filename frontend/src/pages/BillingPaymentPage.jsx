@@ -76,10 +76,14 @@ export default function BillingPaymentPage() {
   const planMeta = useMemo(() => {
     const found = apiPlans.find((p) => p.key === plan);
     if (!found) return null;
-    const price = [found.price_display, found.price_period].filter(Boolean).join(' ').trim();
+    const now = new Date();
+    const offerLive = found.offer_active && found.offer_price_display &&
+      (!found.offer_ends_at || new Date(found.offer_ends_at) > now);
     return {
       label: found.label,
-      price: found.price_display || 'Custom',
+      price: offerLive ? found.offer_price_display : (found.price_display || 'Custom'),
+      originalPrice: offerLive ? found.price_display : null,
+      offerBadge: offerLive ? (found.offer_badge || null) : null,
       period: found.price_period || '',
       features: Array.isArray(found.features) ? found.features : [],
     };
@@ -183,6 +187,17 @@ export default function BillingPaymentPage() {
           }}>
             Selected plan
           </span>
+          {planMeta?.offerBadge && (
+            <span style={{
+              display: 'inline-block', marginLeft: 8,
+              background: 'linear-gradient(135deg, #F59E0B, #EF4444)',
+              color: '#fff', fontSize: 10, fontWeight: 800, letterSpacing: '0.08em',
+              textTransform: 'uppercase', padding: '3px 10px', borderRadius: 99,
+              boxShadow: '0 2px 8px rgba(239,68,68,0.4)', fontFamily: "'Inter', sans-serif",
+            }}>
+              🔥 {planMeta.offerBadge}
+            </span>
+          )}
 
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginTop: 14 }}>
             <span style={{
@@ -193,10 +208,18 @@ export default function BillingPaymentPage() {
             </span>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginTop: 6 }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
             <span style={{ fontSize: 32, fontWeight: 900, color: '#fff', fontFamily: "'Sora', sans-serif" }}>
               {planMeta?.price || '—'}
             </span>
+            {planMeta?.originalPrice && (
+              <span style={{
+                fontSize: 18, fontWeight: 600, color: 'rgba(255,255,255,0.55)',
+                textDecoration: 'line-through', fontFamily: "'Sora', sans-serif",
+              }}>
+                {planMeta.originalPrice}
+              </span>
+            )}
             <span style={{ fontSize: 14, color: 'rgba(255,255,255,0.7)', fontWeight: 500, fontFamily: "'Inter', sans-serif" }}>
               {planMeta?.period || ''}
             </span>

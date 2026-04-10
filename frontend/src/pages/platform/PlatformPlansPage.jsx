@@ -358,13 +358,15 @@ function PlanCard({ plan, dark, onEdit, onDelete, onToggle }) {
             </>
           )}
         </div>
-        {plan.offer_active && plan.offer_label && (
-          <div style={{ marginTop: 6, fontSize: 11, fontWeight: 700, color: '#FCD34D', display: 'flex', alignItems: 'center', gap: 5 }}>
-            🏷️ {plan.offer_label}
+        {plan.offer_active && (
+          <div style={{ marginTop: 6, fontSize: 11, fontWeight: 700, color: '#FCD34D', display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
+            {plan.offer_label && <span>🏷️ {plan.offer_label}</span>}
             {plan.offer_ends_at && (
-              <span style={{ opacity: 0.8, fontWeight: 500 }}>
-                · Ends {new Date(plan.offer_ends_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-              </span>
+              new Date(plan.offer_ends_at) < new Date()
+                ? <span style={{ color: '#FCA5A5', fontWeight: 700 }}>⚠️ Offer Expired</span>
+                : <span style={{ opacity: 0.8, fontWeight: 500 }}>
+                    · Ends {new Date(plan.offer_ends_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                  </span>
             )}
           </div>
         )}

@@ -124,7 +124,13 @@ const BillingPage = () => {
     return { PLANS: map, upgradePlans: list };
   }, [apiPlans]);
 
+  const [showContactModal, setShowContactModal] = useState(false);
+
   const handleUpgrade = (plan) => {
+    if (plan === 'enterprise') {
+      setShowContactModal(true);
+      return;
+    }
     navigate(`/billing/payment?plan=${plan}`);
   };
 
@@ -392,20 +398,22 @@ const BillingPage = () => {
                       onClick={() => handleUpgrade(key)}
                       style={{
                         width: '100%', padding: '12px 0',
-                        background: popular
-                          ? 'linear-gradient(90deg, #7C3AED, #A855F7)'
-                          : `linear-gradient(135deg, ${info.color}, ${info.color}CC)`,
+                        background: key === 'enterprise'
+                          ? 'linear-gradient(135deg, #064E3B, #059669)'
+                          : popular
+                            ? 'linear-gradient(90deg, #7C3AED, #A855F7)'
+                            : `linear-gradient(135deg, ${info.color}, ${info.color}CC)`,
                         color: '#fff', border: 'none',
                         borderRadius: 10, fontSize: 13.5, fontWeight: 700,
                         cursor: 'pointer',
                         opacity: 1,
-                        boxShadow: popular ? '0 4px 14px rgba(124,58,237,0.35)' : `0 2px 10px ${info.color}40`,
+                        boxShadow: key === 'enterprise' ? '0 4px 14px rgba(5,150,105,0.35)' : popular ? '0 4px 14px rgba(124,58,237,0.35)' : `0 2px 10px ${info.color}40`,
                         transition: 'all 0.15s', letterSpacing: '0.02em',
                         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
                         fontFamily: "'Inter', sans-serif",
                       }}
                     >
-                      {`Get ${info.label}`} <IconArrowRight />
+                      {key === 'enterprise' ? 'Contact Sales' : `Get ${info.label}`} <IconArrowRight />
                     </button>
                   )}
                 </motion.div>
@@ -463,6 +471,151 @@ const BillingPage = () => {
       <p style={{ margin: 0, fontSize: 12, color: '#98A2B3', textAlign: 'center', fontFamily: "'Inter', sans-serif" }}>
         Pay via bank transfer and upload your slip for admin approval. Your subscription will be activated once approved.
       </p>
+
+      {/* ── Contact Sales Modal (Enterprise) ── */}
+      {showContactModal && (
+        <div
+          onClick={() => setShowContactModal(false)}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 9999,
+            background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: 20,
+          }}
+        >
+          <motion.div
+            initial={{ opacity: 0, scale: 0.92 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.2 }}
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: '#fff', borderRadius: 20, padding: '36px 32px',
+              maxWidth: 440, width: '100%',
+              boxShadow: '0 24px 64px rgba(0,0,0,0.18)',
+              position: 'relative',
+            }}
+          >
+            {/* Close button */}
+            <button
+              onClick={() => setShowContactModal(false)}
+              style={{
+                position: 'absolute', top: 16, right: 16,
+                background: '#F2F4F7', border: 'none', borderRadius: 99,
+                width: 32, height: 32, cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                color: '#667085', fontSize: 18, fontWeight: 700,
+              }}
+            >
+              ×
+            </button>
+
+            {/* Header */}
+            <div style={{
+              width: 56, height: 56, borderRadius: 14, margin: '0 auto 18px',
+              background: 'linear-gradient(135deg, #064E3B, #059669)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff',
+            }}>
+              <IconShield />
+            </div>
+            <h3 style={{
+              textAlign: 'center', margin: '0 0 6px', fontSize: 22, fontWeight: 900,
+              color: '#101828', fontFamily: "'Sora', 'Manrope', sans-serif",
+            }}>
+              Enterprise Plan
+            </h3>
+            <p style={{
+              textAlign: 'center', margin: '0 0 28px', fontSize: 14, color: '#667085',
+              lineHeight: 1.6, fontFamily: "'Inter', sans-serif",
+            }}>
+              Get unlimited branches, staff & services with custom pricing tailored for your business. Reach out to our sales team.
+            </p>
+
+            {/* Contact options */}
+            <div style={{ display: 'grid', gap: 12 }}>
+              <a
+                href="https://wa.me/94771234567?text=Hi%2C%20I'm%20interested%20in%20the%20Enterprise%20plan%20for%20my%20salon."
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 14,
+                  padding: '14px 18px', borderRadius: 12,
+                  border: '1.5px solid #D1FAE5', background: 'linear-gradient(135deg, #ECFDF5, #F0FDF4)',
+                  textDecoration: 'none', color: '#065F46',
+                  transition: 'all 0.15s', cursor: 'pointer',
+                }}
+              >
+                <div style={{
+                  width: 42, height: 42, borderRadius: 10,
+                  background: '#25D366', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  flexShrink: 0,
+                }}>
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="#fff">
+                    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+                  </svg>
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 15, fontWeight: 800, fontFamily: "'Sora', sans-serif" }}>WhatsApp</div>
+                  <div style={{ fontSize: 12.5, color: '#047857', marginTop: 1, fontFamily: "'Inter', sans-serif" }}>Chat with our sales team instantly</div>
+                </div>
+                <IconArrowRight />
+              </a>
+
+              <a
+                href="mailto:sales@hexalyte.com?subject=Enterprise%20Plan%20Inquiry&body=Hi%2C%20I'm%20interested%20in%20the%20Enterprise%20plan%20for%20my%20salon.%20Please%20get%20in%20touch."
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 14,
+                  padding: '14px 18px', borderRadius: 12,
+                  border: '1.5px solid #BFDBFE', background: 'linear-gradient(135deg, #EFF6FF, #DBEAFE)',
+                  textDecoration: 'none', color: '#1E3A5F',
+                  transition: 'all 0.15s', cursor: 'pointer',
+                }}
+              >
+                <div style={{
+                  width: 42, height: 42, borderRadius: 10,
+                  background: 'linear-gradient(135deg, #1E3A5F, #2563EB)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  flexShrink: 0,
+                }}>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="2" y="4" width="20" height="16" rx="2"/>
+                    <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>
+                  </svg>
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 15, fontWeight: 800, fontFamily: "'Sora', sans-serif" }}>Email</div>
+                  <div style={{ fontSize: 12.5, color: '#2563EB', marginTop: 1, fontFamily: "'Inter', sans-serif" }}>sales@hexalyte.com</div>
+                </div>
+                <IconArrowRight />
+              </a>
+
+              <a
+                href="tel:+94771234567"
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 14,
+                  padding: '14px 18px', borderRadius: 12,
+                  border: '1.5px solid #E5E7EB', background: '#F9FAFB',
+                  textDecoration: 'none', color: '#374151',
+                  transition: 'all 0.15s', cursor: 'pointer',
+                }}
+              >
+                <div style={{
+                  width: 42, height: 42, borderRadius: 10,
+                  background: 'linear-gradient(135deg, #374151, #4B5563)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  flexShrink: 0,
+                }}>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>
+                  </svg>
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 15, fontWeight: 800, fontFamily: "'Sora', sans-serif" }}>Call Us</div>
+                  <div style={{ fontSize: 12.5, color: '#6B7280', marginTop: 1, fontFamily: "'Inter', sans-serif" }}>+94 77 123 4567</div>
+                </div>
+                <IconArrowRight />
+              </a>
+            </div>
+          </motion.div>
+        </div>
+      )}
     </PageWrapper>
   );
 };

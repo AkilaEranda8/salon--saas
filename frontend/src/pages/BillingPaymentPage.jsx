@@ -35,6 +35,13 @@ export default function BillingPaymentPage() {
 
   const plan = (searchParams.get('plan') || '').toLowerCase();
 
+  // Enterprise uses Contact Sales — redirect back to billing
+  useEffect(() => {
+    if (plan === 'enterprise') {
+      navigate('/billing', { replace: true });
+    }
+  }, [plan, navigate]);
+
   useEffect(() => {
     api.get('/public/plans')
       .then((res) => setApiPlans(Array.isArray(res.data) ? res.data : []))

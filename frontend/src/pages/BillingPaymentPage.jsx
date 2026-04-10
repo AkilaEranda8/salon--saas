@@ -1,14 +1,8 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import api from '../api/axios';
 import PageWrapper from '../components/layout/PageWrapper';
-
-const PLAN_META = {
-  basic: { label: 'Basic', price: 'LKR 2,900 / mo' },
-  pro: { label: 'Pro', price: 'LKR 7,900 / mo' },
-  enterprise: { label: 'Enterprise', price: 'Custom pricing' },
-};
 
 const cardStyle = {
   background: '#fff',
@@ -37,9 +31,22 @@ export default function BillingPaymentPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [loadingMethod, setLoadingMethod] = useState('');
+  const [apiPlans, setApiPlans] = useState([]);
 
   const plan = (searchParams.get('plan') || '').toLowerCase();
-  const planMeta = useMemo(() => PLAN_META[plan], [plan]);
+
+  useEffect(() => {
+    api.get('/public/plans')
+      .then((res) => setApiPlans(Array.isArray(res.data) ? res.data : []))
+      .catch(() => {});
+  }, []);
+
+  const planMeta = useMemo(() => {
+    const found = apiPlans.find((p) => p.key === plan);
+    if (!found) return null;
+    const price = [found.price_display, found.price_period].filter(Boolean).join(' ').trim();
+    return { label: found.label, price: price || 'Custom pricing' };
+  }, [plan, apiPlans]);
 
   const handleCardPayment = async () => {
     if (!planMeta) {

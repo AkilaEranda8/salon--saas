@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
@@ -19,74 +19,29 @@ const IconAlert      = () => <svg width="20" height="20" viewBox="0 0 24 24" fil
 const IconSpark      = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>;
 const IconShield     = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>;
 
-/* ── Plan metadata ─────────────────────────────────────────────────────────── */
-const PLANS = {
+/* ── Plan visual styles (colors/gradients only — data comes from API) ──────── */
+const PLAN_STYLES = {
   trial: {
-    label: 'Free Trial', color: '#64748b', bg: '#f8fafc',
-    border: '#cbd5e1', gradient: 'linear-gradient(135deg, #1E3A5F 0%, #2563EB 100%)',
-    branches: 1, staff: 5, services: 20,
+    color: '#64748b', bg: '#f8fafc', border: '#cbd5e1',
+    gradient: 'linear-gradient(135deg, #1E3A5F 0%, #2563EB 100%)',
   },
   basic: {
-    label: 'Basic', color: '#2563eb', bg: '#eff6ff',
-    border: '#bfdbfe', gradient: 'linear-gradient(135deg, #1E3A5F 0%, #2563EB 100%)',
-    branches: 1, staff: 10, services: 50,
+    color: '#2563eb', bg: '#eff6ff', border: '#bfdbfe',
+    gradient: 'linear-gradient(135deg, #1E3A5F 0%, #2563EB 100%)',
   },
   pro: {
-    label: 'Pro', color: '#7c3aed', bg: '#faf5ff',
-    border: '#ddd6fe', gradient: 'linear-gradient(135deg, #4C1D95 0%, #7C3AED 100%)',
-    branches: 5, staff: 50, services: 200,
+    color: '#7c3aed', bg: '#faf5ff', border: '#ddd6fe',
+    gradient: 'linear-gradient(135deg, #4C1D95 0%, #7C3AED 100%)',
   },
   enterprise: {
-    label: 'Enterprise', color: '#059669', bg: '#ecfdf5',
-    border: '#a7f3d0', gradient: 'linear-gradient(135deg, #064E3B 0%, #059669 100%)',
-    branches: '∞', staff: '∞', services: '∞',
+    color: '#059669', bg: '#ecfdf5', border: '#a7f3d0',
+    gradient: 'linear-gradient(135deg, #064E3B 0%, #059669 100%)',
   },
 };
+const DEFAULT_STYLE = { color: '#2563eb', bg: '#eff6ff', border: '#bfdbfe', gradient: 'linear-gradient(135deg, #1E3A5F 0%, #2563EB 100%)' };
 
-const UPGRADE_PLANS = [
-  {
-    key: 'basic',
-    price: 'LKR 2,900',
-    period: '/mo',
-    tagline: 'Perfect for single-location salons',
-    features: [
-      '1 branch',
-      '10 staff members',
-      '50 services',
-      'Email & WhatsApp notifications',
-      'Basic reports',
-    ],
-  },
-  {
-    key: 'pro',
-    price: 'LKR 7,900',
-    period: '/mo',
-    tagline: 'For growing multi-branch salons',
-    popular: true,
-    features: [
-      '5 branches',
-      '50 staff members',
-      '200 services',
-      'AI Chat assistant',
-      'Advanced analytics & reports',
-      'Customer loyalty packages',
-    ],
-  },
-  {
-    key: 'enterprise',
-    price: 'Custom',
-    period: ' pricing',
-    tagline: 'Tailored for large salon chains',
-    features: [
-      'Unlimited branches',
-      'Unlimited staff',
-      'Unlimited services',
-      'Custom domain',
-      'API access',
-      'Priority support',
-    ],
-  },
-];
+/* helper: -1 means unlimited */
+const fmtLimit = (v) => (v === -1 || v === null || v === undefined ? '∞' : v);
 
 /* ── Trial progress bar ────────────────────────────────────────────────────── */
 const TrialBar = ({ daysLeft, totalDays = 14 }) => {
@@ -120,13 +75,54 @@ const BillingPage = () => {
   const [status, setStatus]     = useState(null);
   const [loading, setLoading]   = useState(true);
   const [managing, setManaging]   = useState(false);
+  const [apiPlans, setApiPlans]   = useState([]);
 
   useEffect(() => {
-    api.get('/billing/status')
-      .then((r) => setStatus(r.data))
+    Promise.all([
+      api.get('/billing/status'),
+      api.get('/public/plans').catch(() => ({ data: [] })),
+    ])
+      .then(([statusRes, plansRes]) => {
+        setStatus(statusRes.data);
+        setApiPlans(Array.isArray(plansRes.data) ? plansRes.data : []);
+      })
       .catch(() => toast.error('Failed to load billing info.'))
       .finally(() => setLoading(false));
   }, []);
+
+  /* Build PLANS map and UPGRADE_PLANS list from API data */
+  const { PLANS, upgradePlans } = useMemo(() => {
+    const map = {};
+    const list = [];
+
+    for (const p of apiPlans) {
+      const style = PLAN_STYLES[p.key] || DEFAULT_STYLE;
+      map[p.key] = {
+        label: p.label,
+        ...style,
+        branches: fmtLimit(p.max_branches),
+        staff: fmtLimit(p.max_staff),
+        services: fmtLimit(p.max_services),
+      };
+      if (p.key !== 'trial') {
+        list.push({
+          key: p.key,
+          price: p.price_display || 'Custom',
+          period: p.price_period || '',
+          tagline: p.tagline || '',
+          popular: !!p.is_popular,
+          features: Array.isArray(p.features) ? p.features : [],
+        });
+      }
+    }
+
+    // Fallback if API returned nothing
+    if (!map.trial) {
+      map.trial = { label: 'Free Trial', ...PLAN_STYLES.trial, branches: 1, staff: 5, services: 20 };
+    }
+
+    return { PLANS: map, upgradePlans: list };
+  }, [apiPlans]);
 
   const handleUpgrade = (plan) => {
     navigate(`/billing/payment?plan=${plan}`);
@@ -149,7 +145,7 @@ const BillingPage = () => {
   const daysLeft     = trialEnds ? Math.max(0, Math.ceil((trialEnds - new Date()) / 86400000)) : null;
   const isActive     = status?.subscription?.status === 'active';
   const isSuspended  = status?.status === 'suspended';
-  const visiblePlans = UPGRADE_PLANS.filter(p => currentPlan === 'trial' || p.key !== currentPlan);
+  const visiblePlans = upgradePlans.filter(p => currentPlan === 'trial' || p.key !== currentPlan);
 
   /* Manage Billing action button for PageWrapper */
   const manageBtn = isActive ? (
@@ -298,7 +294,7 @@ const BillingPage = () => {
 
           <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', alignItems: 'stretch' }}>
             {visiblePlans.map(({ key, price, period, tagline, popular, features }, i) => {
-              const info = PLANS[key];
+              const info = PLANS[key] || { label: key, ...DEFAULT_STYLE };
               const isCurrent = key === currentPlan;
               return (
                 <motion.div

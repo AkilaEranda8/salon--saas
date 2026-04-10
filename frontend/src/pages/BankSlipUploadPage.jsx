@@ -85,11 +85,9 @@ const BankSlipUploadPage = () => {
 
   const accent = PLAN_ACCENT[planParam] || ACCENT_DEFAULT;
 
-  const PLAN_PRICES = { basic: '2900', pro: '7900', enterprise: '' };
-
   const [file, setFile] = useState(null);
   const [dragOver, setDragOver] = useState(false);
-  const [amount, setAmount] = useState(planParam ? (PLAN_PRICES[planParam] || '') : '');
+  const [amount, setAmount] = useState('');
   const [bankName, setBankName] = useState('');
   const [transactionDate, setTransactionDate] = useState('');
   const [notes, setNotes] = useState('');
@@ -110,8 +108,24 @@ const BankSlipUploadPage = () => {
   const planMeta = useMemo(() => {
     const found = apiPlans.find((p) => p.key === planParam);
     if (!found) return null;
-    return { label: found.label, price: found.price_display || 'Custom', period: found.price_period || '' };
+    const now = new Date();
+    const offerLive = found.offer_active && found.offer_price_display &&
+      (!found.offer_ends_at || new Date(found.offer_ends_at) > now);
+    return {
+      label: found.label,
+      price: offerLive ? found.offer_price_display : (found.price_display || 'Custom'),
+      originalPrice: offerLive ? found.price_display : null,
+      offerBadge: offerLive ? (found.offer_badge || null) : null,
+      period: found.price_period || '',
+    };
   }, [planParam, apiPlans]);
+
+  const planPrice = planMeta?.price;
+  useEffect(() => {
+    if (!planPrice) return;
+    const numeric = planPrice.replace(/[^0-9]/g, '');
+    if (numeric) setAmount(numeric);
+  }, [planPrice]);
 
   const fetchBankSlipStatus = async () => {
     try {
@@ -219,7 +233,7 @@ const BankSlipUploadPage = () => {
             <div style={{ position: 'absolute', top: -30, right: -30, width: 140, height: 140, borderRadius: '50%', background: 'rgba(255,255,255,0.06)', pointerEvents: 'none' }} />
             <div style={{ position: 'absolute', bottom: -20, right: 60, width: 90, height: 90, borderRadius: '50%', background: 'rgba(255,255,255,0.04)', pointerEvents: 'none' }} />
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{
                 display: 'inline-block', background: 'rgba(255,255,255,0.18)',
                 color: '#fff', fontSize: 10, fontWeight: 800, letterSpacing: '0.08em',
@@ -228,6 +242,17 @@ const BankSlipUploadPage = () => {
               }}>
                 Bank Transfer
               </span>
+              {planMeta?.offerBadge && (
+                <span style={{
+                  display: 'inline-block',
+                  background: 'linear-gradient(135deg, #F59E0B, #EF4444)',
+                  color: '#fff', fontSize: 10, fontWeight: 800, letterSpacing: '0.08em',
+                  textTransform: 'uppercase', padding: '3px 10px', borderRadius: 99,
+                  boxShadow: '0 2px 8px rgba(239,68,68,0.4)', fontFamily: "'Inter', sans-serif",
+                }}>
+                  🔥 {planMeta.offerBadge}
+                </span>
+              )}
             </div>
 
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginTop: 14 }}>
@@ -235,10 +260,18 @@ const BankSlipUploadPage = () => {
                 {planMeta?.label || (planParam.charAt(0).toUpperCase() + planParam.slice(1))}
               </span>
             </div>
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginTop: 6 }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
               <span style={{ fontSize: 30, fontWeight: 900, color: '#fff', fontFamily: "'Sora', sans-serif" }}>
                 {planMeta?.price || '—'}
               </span>
+              {planMeta?.originalPrice && (
+                <span style={{
+                  fontSize: 18, fontWeight: 600, color: 'rgba(255,255,255,0.55)',
+                  textDecoration: 'line-through', fontFamily: "'Sora', sans-serif",
+                }}>
+                  {planMeta.originalPrice}
+                </span>
+              )}
               <span style={{ fontSize: 14, color: 'rgba(255,255,255,0.7)', fontWeight: 500, fontFamily: "'Inter', sans-serif" }}>
                 {planMeta?.period || ''}
               </span>

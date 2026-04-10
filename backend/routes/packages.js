@@ -3,9 +3,10 @@ const { Router }      = require('express');
 const ctrl            = require('../controllers/packageController');
 const { verifyToken, requireRole } = require('../middleware/auth');
 const { branchAccess }    = require('../middleware/branchAccess');
+const { featureGate } = require('../middleware/featureGate');
 
 const router = Router();
-router.use(verifyToken, branchAccess);
+router.use(verifyToken, branchAccess, featureGate('packages'));
 
 // Customer packages (must be before /:id to avoid ambiguity)
 router.get('/customer-packages',           ctrl.listAllCustomerPackages);

@@ -3,10 +3,11 @@ const { Router } = require('express');
 const { sequelize } = require('../config/database');
 const { verifyToken, requireRole } = require('../middleware/auth');
 const { branchAccess } = require('../middleware/branchAccess');
+const { featureGate } = require('../middleware/featureGate');
 const { tenantWhere, byIdWhere, resolveTenantId } = require('../utils/tenantScope');
 
 const router = Router();
-router.use(verifyToken, branchAccess);
+router.use(verifyToken, branchAccess, featureGate('loyalty'));
 
 // ─── GET /api/loyalty/rules ───────────────────────────────────────────────────
 router.get('/rules', async (req, res) => {

@@ -76,42 +76,56 @@ const NAV_GROUPS = [
 const THEME = {
   light: {
     bg:          '#FFFFFF',
-    border:      '#E5E7EB',
-    userBg:      '#F9FAFB',
-    navHover:    '#F5F3FF',
+    sidebarBg:   '#FAFBFC',
+    border:      '#EAECF0',
+    userBg:      '#F4F5F7',
+    userBorder:  '#EAECF0',
+    navHover:    '#F0EDFF',
     navActive:   '#6366F1',
+    navActiveBg: 'linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%)',
     navActiveTx: '#FFFFFF',
-    text:        '#1E293B',
-    textSub:     '#64748B',
-    textMuted:   '#9CA3AF',
-    groupLabel:  '#C4C4CF',
-    divider:     '#F1F5F9',
+    text:        '#101828',
+    textSub:     '#475467',
+    textMuted:   '#98A2B3',
+    groupLabel:  '#98A2B3',
+    divider:     '#F2F4F7',
     logoBg:      '#EEF2FF',
     logoColor:   '#6366F1',
     trackOff:    '#E5E7EB',
-    shadow:      '0 0 0 0 transparent',
+    shadow:      '0 1px 3px rgba(16,24,40,0.06)',
+    scrollThumb: '#D0D5DD',
+    activeGlow:  'rgba(99,102,241,0.18)',
   },
   dark: {
-    bg:          '#16122A',
-    border:      '#2A2540',
-    userBg:      '#201C35',
-    navHover:    '#201C35',
+    bg:          '#0F0D1A',
+    sidebarBg:   '#13111F',
+    border:      '#1F1C30',
+    userBg:      '#1A1730',
+    userBorder:  '#252240',
+    navHover:    '#1E1B32',
     navActive:   '#6366F1',
+    navActiveBg: 'linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%)',
     navActiveTx: '#FFFFFF',
-    text:        '#E2E8F0',
+    text:        '#F1F5F9',
     textSub:     '#94A3B8',
     textMuted:   '#475569',
-    groupLabel:  '#3F3A5A',
-    divider:     '#201C35',
-    logoBg:      'rgba(99,102,241,0.18)',
+    groupLabel:  '#475569',
+    divider:     '#1A1730',
+    logoBg:      'rgba(99,102,241,0.15)',
     logoColor:   '#818CF8',
-    trackOff:    '#2A2540',
+    trackOff:    '#1F1C30',
     shadow:      '2px 0 24px rgba(0,0,0,0.35)',
+    scrollThumb: '#2A2640',
+    activeGlow:  'rgba(99,102,241,0.12)',
   },
 };
 
-const ROLE_COLOR = { superadmin:'#6366F1', admin:'#0EA5E9', manager:'#10B981', staff:'#F59E0B' };
-const ROLE_LABEL = { superadmin:'Super Admin', admin:'Admin', manager:'Manager', staff:'Staff' };
+const ROLE_BADGE = {
+  superadmin: { bg: '#EEF2FF', text: '#4338CA', border: '#C7D2FE', label: 'Super Admin' },
+  admin:      { bg: '#EFF6FF', text: '#1D4ED8', border: '#BFDBFE', label: 'Admin' },
+  manager:    { bg: '#ECFDF5', text: '#065F46', border: '#A7F3D0', label: 'Manager' },
+  staff:      { bg: '#FFFBEB', text: '#92400E', border: '#FDE68A', label: 'Staff' },
+};
 
 /*  NavItem  */
 function NavItem({ item, collapsed, isActive, onClick, C, lyt }) {
@@ -119,15 +133,14 @@ function NavItem({ item, collapsed, isActive, onClick, C, lyt }) {
   const nRadius  = lyt?.navItemRadius ?? 10;
   const nPad     = collapsed ? '10px 14px' : (lyt?.navItemPad ?? '9px 14px');
   const isAccent = lyt?.accentBar;
-  const activeBg = isAccent ? `${C.navActive}18` : C.navActive;
-  const activeClr= isAccent ? C.navActive : C.navActiveTx;
+
   return (
-    <div style={{ position:'relative', marginBottom:2 }}
+    <div style={{ position:'relative', marginBottom: 1 }}
       onMouseEnter={() => setHov(true)}
       onMouseLeave={() => setHov(false)}
     >
       {isAccent && isActive && !collapsed && (
-        <div style={{ position:'absolute', left:0, top:5, bottom:5, width:3, borderRadius:2, background:C.navActive }} />
+        <div style={{ position:'absolute', left:0, top:6, bottom:6, width:3, borderRadius:2, background: C.navActive, boxShadow: `0 0 8px ${C.navActive}60` }} />
       )}
       <div
         onClick={() => onClick(item.path)}
@@ -135,12 +148,15 @@ function NavItem({ item, collapsed, isActive, onClick, C, lyt }) {
           display:        'flex',
           alignItems:     'center',
           justifyContent: collapsed ? 'center' : 'flex-start',
-          gap:            12,
+          gap:            11,
           padding:        nPad,
           borderRadius:   nRadius,
           cursor:         'pointer',
-          background:     isActive ? activeBg : hov ? C.navHover : 'transparent',
-          transition:     'background 0.16s',
+          background:     isActive
+            ? (isAccent ? `${C.navActive}14` : C.navActiveBg)
+            : hov ? C.navHover : 'transparent',
+          boxShadow:      isActive && !isAccent ? `0 2px 8px ${C.navActive}30` : 'none',
+          transition:     'all 0.18s ease',
           userSelect:     'none',
           paddingLeft:    isAccent && !collapsed ? '18px' : undefined,
         }}
@@ -148,42 +164,49 @@ function NavItem({ item, collapsed, isActive, onClick, C, lyt }) {
         <span style={{
           display:'flex', alignItems:'center', justifyContent:'center',
           width: 20, height: 20, flexShrink: 0,
-          color: isActive ? activeClr : hov ? C.text : C.textSub,
-          transition: 'color 0.16s',
+          color: isActive
+            ? (isAccent ? C.navActive : C.navActiveTx)
+            : hov ? C.text : C.textSub,
+          transition: 'color 0.18s',
         }}>
-          <Ico d={item.icon} size={18} />
+          <Ico d={item.icon} size={17} />
         </span>
         {!collapsed && (
           <span style={{
-            fontSize:   13.5,
-            fontWeight: isActive ? 600 : 500,
-            fontFamily: "'Inter',sans-serif",
+            fontSize:   13,
+            fontWeight: isActive ? 700 : 500,
+            fontFamily: "'Inter', sans-serif",
             whiteSpace: 'nowrap',
-            color:      isActive ? activeClr : hov ? C.text : C.textSub,
-            transition: 'color 0.16s',
+            color: isActive
+              ? (isAccent ? C.navActive : C.navActiveTx)
+              : hov ? C.text : C.textSub,
+            transition: 'color 0.18s',
+            letterSpacing: isActive ? '-0.01em' : 0,
           }}>
             {item.label}
           </span>
         )}
       </div>
 
+      {/* Collapsed tooltip */}
       {collapsed && hov && (
         <div style={{
           position:      'absolute',
           left:          'calc(100% + 10px)',
           top:           '50%',
           transform:     'translateY(-50%)',
-          background:    '#1E1B2E',
+          background:    'linear-gradient(135deg, #1E1B32, #13111F)',
           color:         '#fff',
           fontSize:      12,
-          fontWeight:    500,
-          padding:       '6px 12px',
-          borderRadius:  8,
+          fontWeight:    600,
+          padding:       '6px 14px',
+          borderRadius:  10,
           whiteSpace:    'nowrap',
           pointerEvents: 'none',
           zIndex:        999,
-          boxShadow:     '0 4px 18px rgba(0,0,0,0.32)',
-          fontFamily:    "'Inter',sans-serif",
+          boxShadow:     '0 4px 20px rgba(0,0,0,0.28)',
+          fontFamily:    "'Inter', sans-serif",
+          border:        '1px solid rgba(255,255,255,0.08)',
         }}>
           {item.label}
         </div>
@@ -205,8 +228,9 @@ export default function Sidebar({ collapsed, onToggle, currentUser, mobileOpen, 
   const STYLE = sidebarStyle || 'default';
   const C   = THEME[isDark || sidebarAppearance === 'dark' || STYLE === 'gradient' ? 'dark' : 'light'];
   // Override navActive with tenant primary color
-  const themedC = { ...C, navActive: primaryColor || C.navActive };
+  const themedC = { ...C, navActive: primaryColor || C.navActive, navActiveBg: primaryColor ? `linear-gradient(135deg, ${primaryColor} 0%, ${primaryColor}CC 100%)` : C.navActiveBg };
   const role     = currentUser?.role || '';
+  const rb = ROLE_BADGE[role] || ROLE_BADGE.staff;
   const tenantBranding = currentUser?.tenant || {};
   const brandName = resolveBrandName(tenantBranding);
   const brandLogo = resolveBrandLogo(tenantBranding, 'sidebar');
@@ -232,23 +256,23 @@ export default function Sidebar({ collapsed, onToggle, currentUser, mobileOpen, 
     shellRadius:   _det ? (STYLE === 'compact' ? 18 : 20) : 0,
     shellMargin:   _det ? '10px 0 10px 10px' : 0,
     shellHeight:   _det ? 'calc(100vh - 20px)' : '100vh',
-    shellShadow:   STYLE === 'floating' ? '0 8px 30px rgba(16,24,40,0.14)'
-                 : STYLE === 'glass'    ? '0 8px 32px rgba(16,24,40,0.10)'
-                 : STYLE === 'compact'  ? '0 4px 24px rgba(0,0,0,0.12)'
-                 : STYLE === 'gradient' ? '2px 0 20px rgba(0,0,0,0.20)'
+    shellShadow:   STYLE === 'floating' ? '0 8px 30px rgba(16,24,40,0.12)'
+                 : STYLE === 'glass'    ? '0 8px 32px rgba(16,24,40,0.08)'
+                 : STYLE === 'compact'  ? '0 4px 24px rgba(0,0,0,0.10)'
+                 : STYLE === 'gradient' ? '2px 0 20px rgba(0,0,0,0.18)'
                  : STYLE === 'minimal'  ? 'none'
                  : C.shadow,
     shellBg:       STYLE === 'gradient' ? 'linear-gradient(180deg, #1E293B 0%, #0F172A 100%)'
-                 : STYLE === 'glass'    ? 'rgba(255,255,255,0.75)'
+                 : STYLE === 'glass'    ? 'rgba(255,255,255,0.72)'
                  : STYLE === 'minimal'  ? 'rgba(255,255,255,0.6)'
                  : null,
     shellBd:       STYLE === 'gradient' || STYLE === 'floating' || STYLE === 'minimal' ? 'none'
-                 : STYLE === 'glass' ? '1px solid rgba(255,255,255,0.55)'
+                 : STYLE === 'glass' ? '1px solid rgba(255,255,255,0.45)'
                  : null,
     shellBackdrop: STYLE === 'glass' ? 'blur(20px) saturate(180%)' : null,
     navItemRadius: STYLE === 'pill'    ? 50
-                 : STYLE === 'minimal' ? 6
-                 : STYLE === 'accent'  ? 8
+                 : STYLE === 'minimal' ? 8
+                 : STYLE === 'accent'  ? 10
                  : ['floating','glass','wide'].includes(STYLE) ? 12
                  : 10,
     navItemPad:    STYLE === 'pill'    ? '9px 20px'
@@ -270,7 +294,7 @@ export default function Sidebar({ collapsed, onToggle, currentUser, mobileOpen, 
     <aside style={{
       width:         W,
       flexShrink:    0,
-      background:    lyt.shellBg || C.bg,
+      background:    lyt.shellBg || C.sidebarBg,
       borderRight:   lyt.shellBd != null ? lyt.shellBd : `1px solid ${C.border}`,
       boxShadow:     lyt.shellShadow,
       backdropFilter: lyt.shellBackdrop || undefined,
@@ -279,7 +303,7 @@ export default function Sidebar({ collapsed, onToggle, currentUser, mobileOpen, 
       flexDirection: 'column',
       overflow:      'hidden',
       transition:    'width 0.24s cubic-bezier(.4,0,.2,1), background 0.22s',
-      fontFamily:    "'Inter',sans-serif",
+      fontFamily:    "'Inter', sans-serif",
       position:      isMobile ? 'fixed' : 'relative',
       top: 0, left: 0,
       zIndex: isMobile ? 400 : undefined,
@@ -290,34 +314,50 @@ export default function Sidebar({ collapsed, onToggle, currentUser, mobileOpen, 
 
       {/*  Logo bar  */}
       <div style={{
-        height:         66,
+        height:         62,
         display:        'flex',
         alignItems:     'center',
         justifyContent: ec ? 'center' : 'space-between',
-        padding:        ec ? '0 16px' : '0 20px',
+        padding:        ec ? '0 16px' : '0 18px',
         borderBottom:   `1px solid ${C.border}`,
         flexShrink:     0,
         gap:            8,
       }}>
         <div style={{ display:'flex', alignItems:'center', gap:10, overflow:'hidden' }}>
-          <img
-            src={brandLogo}
-            alt={`${brandName} logo`}
-            style={{
-              width: 36,
-              height: 36,
-              borderRadius: 10,
-              objectFit: 'cover',
-              flexShrink: 0,
-              background: '#000',
-            }}
-          />
+          <div style={{ position: 'relative', flexShrink: 0 }}>
+            <img
+              src={brandLogo}
+              alt={`${brandName} logo`}
+              style={{
+                width: 34,
+                height: 34,
+                borderRadius: 10,
+                objectFit: 'cover',
+                flexShrink: 0,
+                border: `1.5px solid ${C.border}`,
+              }}
+            />
+            {/* Online indicator */}
+            <div style={{
+              position: 'absolute', bottom: -1, right: -1,
+              width: 9, height: 9, borderRadius: '50%',
+              background: '#10B981', border: `2px solid ${C.sidebarBg || C.bg}`,
+            }} />
+          </div>
           {!ec && (
             <div style={{ overflow:'hidden' }}>
-              <div style={{ fontSize:15, fontWeight:800, color:C.text, fontFamily:"'Outfit','Inter',sans-serif", letterSpacing:'-0.02em', lineHeight:1.2, whiteSpace:'nowrap' }}>
+              <div style={{
+                fontSize: 15, fontWeight: 800, color: C.text,
+                fontFamily: "'Sora', 'Manrope', 'Inter', sans-serif",
+                letterSpacing: '-0.03em', lineHeight: 1.2, whiteSpace: 'nowrap',
+              }}>
                 {brandName}
               </div>
-              <div style={{ fontSize:9.5, color:C.textMuted, fontWeight:600, letterSpacing:'0.1em', textTransform:'uppercase' }}>
+              <div style={{
+                fontSize: 9.5, color: C.textMuted, fontWeight: 700,
+                letterSpacing: '0.1em', textTransform: 'uppercase',
+                fontFamily: "'Inter', sans-serif",
+              }}>
                 Management
               </div>
             </div>
@@ -327,67 +367,94 @@ export default function Sidebar({ collapsed, onToggle, currentUser, mobileOpen, 
         {/* Collapse/close button */}
         {!ec ? (
           <button onClick={isMobile ? onMobileClose : onToggle} style={{
-            background:'none', border:`1px solid ${C.border}`, cursor:'pointer',
-            padding:'5px', borderRadius:8, color:C.textMuted, display:'flex',
-            alignItems:'center', flexShrink:0, transition:'all 0.15s',
+            background: 'none', border: `1.5px solid ${C.border}`, cursor: 'pointer',
+            padding: '5px', borderRadius: 8, color: C.textMuted, display: 'flex',
+            alignItems: 'center', flexShrink: 0, transition: 'all 0.18s',
           }}
-          onMouseEnter={e=>{ e.currentTarget.style.borderColor='#6366F1'; e.currentTarget.style.color='#6366F1'; }}
-          onMouseLeave={e=>{ e.currentTarget.style.borderColor=C.border; e.currentTarget.style.color=C.textMuted; }}>
-            <Ico d={isMobile ? 'M6 18L18 6M6 6l12 12' : 'M11 19l-7-7 7-7m8 14l-7-7 7-7'} size={15} />
+          onMouseEnter={e => { e.currentTarget.style.borderColor = themedC.navActive; e.currentTarget.style.color = themedC.navActive; e.currentTarget.style.background = C.activeGlow; }}
+          onMouseLeave={e => { e.currentTarget.style.borderColor = C.border; e.currentTarget.style.color = C.textMuted; e.currentTarget.style.background = 'none'; }}>
+            <Ico d={isMobile ? 'M6 18L18 6M6 6l12 12' : 'M11 19l-7-7 7-7m8 14l-7-7 7-7'} size={14} />
           </button>
         ) : (
-          <button onClick={onToggle} style={{ background:'none', border:'none', cursor:'pointer', color:C.textMuted, display:'flex', alignItems:'center', padding:0 }}>
-            <Ico d="M13 5l7 7-7 7M5 5l7 7-7 7" size={15} />
+          <button onClick={onToggle} style={{
+            background: 'none', border: 'none', cursor: 'pointer',
+            color: C.textMuted, display: 'flex', alignItems: 'center',
+            padding: 0, transition: 'color 0.18s',
+          }}
+          onMouseEnter={e => { e.currentTarget.style.color = themedC.navActive; }}
+          onMouseLeave={e => { e.currentTarget.style.color = C.textMuted; }}>
+            <Ico d="M13 5l7 7-7 7M5 5l7 7-7 7" size={14} />
           </button>
         )}
       </div>
 
       {/*  User card  */}
-      <div style={{ padding: ec ? '12px 10px' : '12px 14px', borderBottom:`1px solid ${C.border}`, flexShrink:0 }}>
+      <div style={{ padding: ec ? '10px 8px' : '10px 12px', borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
         <div style={{
           background:     C.userBg,
-          borderRadius:   14,
-          padding:        ec ? '12px 0' : '11px 14px',
+          border:         `1.5px solid ${C.userBorder || C.border}`,
+          borderRadius:   12,
+          padding:        ec ? '10px 0' : '10px 12px',
           display:        'flex',
           alignItems:     'center',
           justifyContent: ec ? 'center' : 'flex-start',
-          gap:            12,
+          gap:            10,
+          transition:     'all 0.18s',
         }}>
           {/* Avatar */}
           <div style={{
-            width:36, height:36, borderRadius:'50%',
-            background:'linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%)',
-            display:'flex', alignItems:'center', justifyContent:'center',
-            color:'#fff', fontWeight:700, fontSize:13.5, flexShrink:0,
-            boxShadow:'0 2px 10px rgba(99,102,241,0.4)',
-            letterSpacing:'0.03em',
+            width: 34, height: 34, borderRadius: 10,
+            background: 'linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            color: '#fff', fontWeight: 800, fontSize: 12.5, flexShrink: 0,
+            boxShadow: '0 2px 8px rgba(99,102,241,0.35)',
+            letterSpacing: '0.04em',
+            fontFamily: "'Inter', sans-serif",
           }}>
             {initials}
           </div>
           {!ec && (
-            <div style={{ flex:1, minWidth:0 }}>
-              <div style={{ fontSize:13.5, fontWeight:700, color:C.text, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', lineHeight:1.3 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{
+                fontSize: 13, fontWeight: 700, color: C.text,
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                lineHeight: 1.3, fontFamily: "'Inter', sans-serif",
+              }}>
                 {currentUser?.name}
               </div>
-              <div style={{ fontSize:11, fontWeight:600, marginTop:2, color: ROLE_COLOR[role] || '#6366F1' }}>
-                {ROLE_LABEL[role] || role}
-              </div>
+              <span style={{
+                display: 'inline-flex', alignItems: 'center',
+                fontSize: 9.5, fontWeight: 700, marginTop: 3,
+                padding: '1px 8px', borderRadius: 99,
+                background: isDark ? `${rb.text}18` : rb.bg,
+                color: isDark ? rb.text : rb.text,
+                border: isDark ? `1px solid ${rb.text}30` : `1px solid ${rb.border}`,
+                letterSpacing: '0.04em', textTransform: 'uppercase',
+                fontFamily: "'Inter', sans-serif",
+              }}>
+                {rb.label}
+              </span>
             </div>
           )}
         </div>
       </div>
 
       {/*  Nav  */}
-        <nav style={{ flex:1, overflowY:'auto', padding: ec ? '8px 8px' : lyt.navPad }}>
-        <style>{`.sb-nav::-webkit-scrollbar{display:none}`}</style>
+      <nav className="sb-nav" style={{ flex: 1, overflowY: 'auto', padding: ec ? '8px 8px' : lyt.navPad }}>
+        <style>{`
+          .sb-nav::-webkit-scrollbar { width: 4px; }
+          .sb-nav::-webkit-scrollbar-track { background: transparent; }
+          .sb-nav::-webkit-scrollbar-thumb { background: ${C.scrollThumb || C.textMuted}; border-radius: 99px; }
+          .sb-nav::-webkit-scrollbar-thumb:hover { background: ${C.textMuted}; }
+        `}</style>
         {visibleGroups.map((group, gi) => (
-          <div key={group.label} style={{ marginBottom:2 }}>
-            {!ec && gi > 0 && <div style={{ height:1, background:C.divider, margin:'6px 4px 8px' }} />}
+          <div key={group.label} style={{ marginBottom: 2 }}>
+            {!ec && gi > 0 && <div style={{ height: 1, background: C.divider, margin: '8px 6px 10px' }} />}
             {!ec && (
               <div style={{
-                fontSize:9.5, fontWeight:700, color:C.groupLabel,
-                textTransform:'uppercase', letterSpacing:'0.12em',
-                padding:'2px 14px 6px', fontFamily:"'Inter',sans-serif",
+                fontSize: 9.5, fontWeight: 800, color: C.groupLabel,
+                textTransform: 'uppercase', letterSpacing: '0.12em',
+                padding: '4px 14px 6px', fontFamily: "'Inter', sans-serif",
               }}>
                 {group.label}
               </div>
@@ -401,7 +468,7 @@ export default function Sidebar({ collapsed, onToggle, currentUser, mobileOpen, 
       </nav>
 
       {/*  Bottom  */}
-      <div style={{ borderTop:`1px solid ${C.border}`, padding: ec ? '10px 8px' : '10px 10px', flexShrink:0 }}>
+      <div style={{ borderTop: `1px solid ${C.border}`, padding: ec ? '10px 8px' : '10px 10px', flexShrink: 0 }}>
         {/* Sign out */}
         <div
           onClick={handleLogout}
@@ -411,20 +478,21 @@ export default function Sidebar({ collapsed, onToggle, currentUser, mobileOpen, 
             display:        'flex',
             alignItems:     'center',
             justifyContent: ec ? 'center' : 'flex-start',
-            gap:            12,
+            gap:            11,
             padding:        ec ? '10px 14px' : '9px 14px',
             borderRadius:   10,
             cursor:         'pointer',
-            background:     signOutHov ? (isDark ? 'rgba(239,68,68,0.12)' : '#FEF2F2') : 'transparent',
-            transition:     'background 0.16s',
+            background:     signOutHov ? (isDark ? 'rgba(239,68,68,0.10)' : '#FEF2F2') : 'transparent',
+            border:         signOutHov ? '1px solid rgba(239,68,68,0.20)' : '1px solid transparent',
+            transition:     'all 0.18s',
             userSelect:     'none',
           }}
         >
           <span style={{ display:'flex', flexShrink:0, color:'#EF4444', width:20, height:20, alignItems:'center', justifyContent:'center' }}>
-            <Ico d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" size={18} />
+            <Ico d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" size={17} />
           </span>
           {!ec && (
-            <span style={{ fontSize:13.5, fontWeight:500, color:'#EF4444', fontFamily:"'Inter',sans-serif" }}>
+            <span style={{ fontSize: 13, fontWeight: 600, color: '#EF4444', fontFamily: "'Inter', sans-serif" }}>
               Sign out
             </span>
           )}
@@ -436,7 +504,7 @@ export default function Sidebar({ collapsed, onToggle, currentUser, mobileOpen, 
   if (isMobile) {
     return (
       <>
-        <div onClick={onMobileClose} style={{ position:'fixed', inset:0, zIndex:399, background:'rgba(16,24,40,0.5)', backdropFilter:'blur(3px)' }} />
+        <div onClick={onMobileClose} style={{ position:'fixed', inset:0, zIndex:399, background:'rgba(16,24,40,0.55)', backdropFilter:'blur(4px)', WebkitBackdropFilter:'blur(4px)' }} />
         {panel}
       </>
     );

@@ -7,6 +7,7 @@ import Sidebar from './components/layout/Sidebar';
 import Topbar  from './components/layout/Topbar';
 import PlatformSidebar from './components/layout/PlatformSidebar';
 import SubscriptionBanner from './components/shared/SubscriptionBanner';
+import UpgradePlanModal from './components/shared/UpgradePlanModal';
 import { useBreakpoint } from './hooks/useBreakpoint';
 import { isPlatformContext } from './utils/tenant';
 import { useTheme } from './context/ThemeContext';
@@ -241,6 +242,7 @@ function AppShell() {
 
         {/* Subscription warning banner — renders only when needed */}
         <SubscriptionBanner />
+        <UpgradePlanModal />
 
         <div className="app-surface shell-scroll" style={{ flex: 1, overflowY: 'auto', background: isDark ? '#0F172A' : '#F7F8FA' }}>
           <Routes>

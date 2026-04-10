@@ -4,9 +4,10 @@ const { Op, fn, col, literal } = require('sequelize');
 const { sequelize } = require('../config/database');
 const { verifyToken, requireRole } = require('../middleware/auth');
 const { tenantWhere, resolveTenantId } = require('../utils/tenantScope');
+const { featureGate } = require('../middleware/featureGate');
 
 const router = Router();
-router.use(verifyToken);
+router.use(verifyToken, featureGate('kpi_dashboard'));
 
 // GET /api/kpi/summary — multi-branch overview
 router.get('/summary', requireRole('superadmin', 'admin', 'platform_admin'), async (req, res) => {

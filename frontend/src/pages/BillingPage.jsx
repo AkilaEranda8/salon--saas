@@ -307,9 +307,10 @@ const BillingPage = () => {
           </div>
 
           <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', alignItems: 'stretch' }}>
-            {visiblePlans.map(({ key, price, period, tagline, popular, features }, i) => {
+            {visiblePlans.map(({ key, price, period, tagline, popular, features, offerLive, offerBadge, offerLabel, offerPrice, offerEndsAt }, i) => {
               const info = PLANS[key] || { label: key, ...DEFAULT_STYLE };
               const isCurrent = key === currentPlan;
+              const hasOffer = offerLive && offerPrice;
               return (
                 <motion.div
                   key={key}
@@ -319,16 +320,34 @@ const BillingPage = () => {
                   whileHover={{ translateY: -3 }}
                   style={{
                     flex: 1, minWidth: 230,
-                    background: popular ? 'linear-gradient(160deg, #FAF5FF 0%, #F3E8FF 100%)' : '#fff',
-                    border: `1.5px solid ${popular ? info.color : '#EAECF0'}`,
+                    background: hasOffer
+                      ? 'linear-gradient(160deg, #FFFBEB 0%, #FEF3C7 40%, #FFF 100%)'
+                      : popular ? 'linear-gradient(160deg, #FAF5FF 0%, #F3E8FF 100%)' : '#fff',
+                    border: `1.5px solid ${hasOffer ? '#F59E0B' : popular ? info.color : '#EAECF0'}`,
                     borderRadius: 18, padding: '26px 22px',
                     position: 'relative',
-                    boxShadow: popular ? '0 8px 32px rgba(124,58,237,0.14)' : '0 2px 8px rgba(16,24,40,0.06)',
+                    boxShadow: hasOffer
+                      ? '0 8px 32px rgba(245,158,11,0.18)'
+                      : popular ? '0 8px 32px rgba(124,58,237,0.14)' : '0 2px 8px rgba(16,24,40,0.06)',
                     display: 'flex', flexDirection: 'column',
                     transition: 'box-shadow 0.18s',
                   }}
                 >
-                  {popular && (
+                  {/* Offer badge — takes priority over "Most Popular" */}
+                  {hasOffer && offerBadge ? (
+                    <div style={{
+                      position: 'absolute', top: -14, left: '50%', transform: 'translateX(-50%)',
+                      background: 'linear-gradient(135deg, #F59E0B, #EF4444)',
+                      color: '#fff', fontSize: 11, fontWeight: 800,
+                      padding: '4px 16px', borderRadius: 99,
+                      letterSpacing: '0.07em', textTransform: 'uppercase',
+                      boxShadow: '0 4px 14px rgba(239,68,68,0.35)',
+                      whiteSpace: 'nowrap', fontFamily: "'Inter', sans-serif",
+                      display: 'flex', alignItems: 'center', gap: 5,
+                    }}>
+                      🔥 {offerBadge}
+                    </div>
+                  ) : popular && (
                     <div style={{
                       position: 'absolute', top: -14, left: '50%', transform: 'translateX(-50%)',
                       background: 'linear-gradient(90deg, #7C3AED, #A855F7)',
@@ -362,14 +381,53 @@ const BillingPage = () => {
                     {tagline}
                   </p>
 
-                  <div style={{ marginBottom: 18 }}>
-                    <span style={{ fontSize: 29, fontWeight: 900, color: '#101828', fontFamily: "'Sora', sans-serif" }}>
-                      {price}
-                    </span>
-                    <span style={{ fontSize: 13.5, color: '#98A2B3', fontWeight: 500, fontFamily: "'Inter', sans-serif" }}>
-                      {period}
-                    </span>
+                  {/* Pricing — offer-aware */}
+                  <div style={{ marginBottom: hasOffer ? 8 : 18 }}>
+                    {hasOffer ? (
+                      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: 29, fontWeight: 900, color: '#B45309', fontFamily: "'Sora', sans-serif" }}>
+                          {offerPrice}
+                        </span>
+                        <span style={{
+                          fontSize: 16, fontWeight: 600, color: '#94A3B8',
+                          textDecoration: 'line-through', fontFamily: "'Sora', sans-serif",
+                        }}>
+                          {price}
+                        </span>
+                        <span style={{ fontSize: 13.5, color: '#98A2B3', fontWeight: 500, fontFamily: "'Inter', sans-serif" }}>
+                          {period}
+                        </span>
+                      </div>
+                    ) : (
+                      <>
+                        <span style={{ fontSize: 29, fontWeight: 900, color: '#101828', fontFamily: "'Sora', sans-serif" }}>
+                          {price}
+                        </span>
+                        <span style={{ fontSize: 13.5, color: '#98A2B3', fontWeight: 500, fontFamily: "'Inter', sans-serif" }}>
+                          {period}
+                        </span>
+                      </>
+                    )}
                   </div>
+
+                  {/* Offer label + countdown */}
+                  {hasOffer && (
+                    <div style={{
+                      marginBottom: 14, padding: '8px 12px',
+                      background: 'linear-gradient(135deg, #FEF3C7, #FDE68A)',
+                      border: '1px solid #FCD34D',
+                      borderRadius: 10,
+                    }}>
+                      {offerLabel && (
+                        <div style={{ fontSize: 12, fontWeight: 700, color: '#92400E', fontFamily: "'Inter', sans-serif" }}>
+                          🏷️ {offerLabel}
+                        </div>
+                      )}
+                      {offerEndsAt && (
+                        <OfferCountdown endsAt={offerEndsAt} />
+                      )}
+                    </div>
+                  )}
 
                   <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 22px', flexGrow: 1 }}>
                     {features.map((f) => (
@@ -406,16 +464,18 @@ const BillingPage = () => {
                       onClick={() => handleUpgrade(key)}
                       style={{
                         width: '100%', padding: '12px 0',
-                        background: key === 'enterprise'
-                          ? 'linear-gradient(135deg, #064E3B, #059669)'
-                          : popular
-                            ? 'linear-gradient(90deg, #7C3AED, #A855F7)'
-                            : `linear-gradient(135deg, ${info.color}, ${info.color}CC)`,
+                        background: hasOffer
+                          ? 'linear-gradient(135deg, #F59E0B, #EF4444)'
+                          : key === 'enterprise'
+                            ? 'linear-gradient(135deg, #064E3B, #059669)'
+                            : popular
+                              ? 'linear-gradient(90deg, #7C3AED, #A855F7)'
+                              : `linear-gradient(135deg, ${info.color}, ${info.color}CC)`,
                         color: '#fff', border: 'none',
                         borderRadius: 10, fontSize: 13.5, fontWeight: 700,
                         cursor: 'pointer',
                         opacity: 1,
-                        boxShadow: key === 'enterprise' ? '0 4px 14px rgba(5,150,105,0.35)' : popular ? '0 4px 14px rgba(124,58,237,0.35)' : `0 2px 10px ${info.color}40`,
+                        boxShadow: hasOffer ? '0 4px 14px rgba(245,158,11,0.40)' : key === 'enterprise' ? '0 4px 14px rgba(5,150,105,0.35)' : popular ? '0 4px 14px rgba(124,58,237,0.35)' : `0 2px 10px ${info.color}40`,
                         transition: 'all 0.15s', letterSpacing: '0.02em',
                         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
                         fontFamily: "'Inter', sans-serif",

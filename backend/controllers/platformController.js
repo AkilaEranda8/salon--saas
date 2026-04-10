@@ -1,5 +1,5 @@
 const { Op, fn, col, literal } = require('sequelize');
-const { Tenant, Subscription, Branch, Staff, User, Customer, Appointment, Payment, NotificationSettings, MaintenanceLog, NotificationLog, SupportTicket, PlatformInvoice, PlanConfig } = require('../models');
+const { Tenant, Subscription, Branch, Staff, User, Customer, Appointment, Payment, NotificationSettings, MaintenanceLog, NotificationLog, SupportTicket, PlatformInvoice, PlanConfig, PlanChangeLog } = require('../models');
 const { sequelize } = require('../config/database');
 const { invalidateTenantCache } = require('../middleware/tenantScope');
 const { getMaintenanceMode, setMaintenanceMode } = require('../services/systemSettings');
@@ -1433,6 +1433,16 @@ const createPlan = async (req, res) => {
       offer_badge:         offer_badge         ?? null,
       offer_ends_at:       offer_ends_at       ?? null,
     });
+    // Log creation
+    await PlanChangeLog.create({
+      plan_config_id: plan.id,
+      plan_key: plan.key,
+      plan_label: plan.label,
+      action: 'created',
+      new_values: plan.toJSON(),
+      full_snapshot: plan.toJSON(),
+      changed_by: req.user?.email || req.user?.name || 'platform_admin',
+    }).catch(() => {});
     return res.status(201).json(plan);
   } catch (err) {
     console.error('platform.createPlan error:', err);
@@ -1453,7 +1463,35 @@ const updatePlan = async (req, res) => {
     if (updates.features !== undefined && !Array.isArray(updates.features)) {
       updates.features = [];
     }
+    // Capture old values before update
+    const oldSnap = plan.toJSON();
+    const oldValues = {};
+    const newValues = {};
+    const changedFields = [];
+    for (const field of Object.keys(updates)) {
+      const oldVal = oldSnap[field];
+      const newVal = updates[field];
+      if (JSON.stringify(oldVal) !== JSON.stringify(newVal)) {
+        changedFields.push(field);
+        oldValues[field] = oldVal;
+        newValues[field] = newVal;
+      }
+    }
     await plan.update(updates);
+    // Log update if anything actually changed
+    if (changedFields.length > 0) {
+      await PlanChangeLog.create({
+        plan_config_id: plan.id,
+        plan_key: plan.key,
+        plan_label: plan.label,
+        action: 'updated',
+        changed_fields: changedFields,
+        old_values: oldValues,
+        new_values: newValues,
+        full_snapshot: plan.toJSON(),
+        changed_by: req.user?.email || req.user?.name || 'platform_admin',
+      }).catch(() => {});
+    }
     return res.json(plan);
   } catch (err) {
     console.error('platform.updatePlan error:', err);
@@ -1466,10 +1504,36 @@ const deletePlan = async (req, res) => {
   try {
     const plan = await PlanConfig.findByPk(req.params.id);
     if (!plan) return res.status(404).json({ message: 'Plan not found.' });
+    const snap = plan.toJSON();
     await plan.destroy();
+    // Log deletion
+    await PlanChangeLog.create({
+      plan_config_id: snap.id,
+      plan_key: snap.key,
+      plan_label: snap.label,
+      action: 'deleted',
+      old_values: snap,
+      full_snapshot: snap,
+      changed_by: req.user?.email || req.user?.name || 'platform_admin',
+    }).catch(() => {});
     return res.json({ message: 'Plan deleted.' });
   } catch (err) {
     console.error('platform.deletePlan error:', err);
+    return res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+// ── GET /api/platform/plans/change-logs ──────────────────────────────────────
+const listPlanChangeLogs = async (req, res) => {
+  try {
+    await PlanChangeLog.sync({ alter: true });
+    const logs = await PlanChangeLog.findAll({
+      order: [['createdAt', 'DESC']],
+      limit: 200,
+    });
+    return res.json(logs);
+  } catch (err) {
+    console.error('platform.listPlanChangeLogs error:', err);
     return res.status(500).json({ message: 'Server error.' });
   }
 };
@@ -1507,4 +1571,5 @@ module.exports = {
   createPlan,
   updatePlan,
   deletePlan,
+  listPlanChangeLogs,
 };

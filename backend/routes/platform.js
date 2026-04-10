@@ -37,9 +37,10 @@ router.patch('/system/maintenance', ctrl.updateMaintenance);
 router.post('/system/broadcast-sms', ctrl.broadcastSms);
 
 // Plan configuration management
-router.get('/plans',         ctrl.listPlans);
-router.post('/plans',        ctrl.createPlan);
-router.patch('/plans/:id',   ctrl.updatePlan);
-router.delete('/plans/:id',  ctrl.deletePlan);
+router.get('/plans',              ctrl.listPlans);
+router.get('/plans/change-logs',  ctrl.listPlanChangeLogs);
+router.post('/plans',             ctrl.createPlan);
+router.patch('/plans/:id',        ctrl.updatePlan);
+router.delete('/plans/:id',       ctrl.deletePlan);
 
 module.exports = router;

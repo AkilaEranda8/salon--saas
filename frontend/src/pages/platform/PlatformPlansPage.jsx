@@ -446,6 +446,9 @@ export default function PlatformPlansPage() {
   const [toast, setToast] = useState(null);
   const [showModal, setShowModal] = useState(false);
   const [editPlan, setEditPlan] = useState(null);
+  const [changeLogs, setChangeLogs] = useState([]);
+  const [logsOpen, setLogsOpen] = useState(false);
+  const [logsLoading, setLogsLoading] = useState(false);
 
   const showToast = (msg, type = 'success') => {
     setToast({ msg, type });
@@ -466,6 +469,18 @@ export default function PlatformPlansPage() {
 
   useEffect(() => { load(); }, [load]);
 
+  const loadLogs = useCallback(async () => {
+    setLogsLoading(true);
+    try {
+      const { data } = await api.get('/platform/plans/change-logs');
+      setChangeLogs(data);
+    } catch {
+      showToast('Failed to load change logs.', 'error');
+    } finally {
+      setLogsLoading(false);
+    }
+  }, []);
+
   const handleEdit = (plan) => { setEditPlan(plan); setShowModal(true); };
   const handleAdd  = () => { setEditPlan(null); setShowModal(true); };
 
@@ -474,6 +489,7 @@ export default function PlatformPlansPage() {
       await api.delete(`/platform/plans/${plan.id}`);
       showToast(`Plan "${plan.label}" deleted.`);
       load();
+      if (logsOpen) loadLogs();
     } catch (e) {
       showToast(e.response?.data?.message || 'Delete failed.', 'error');
     }
@@ -484,6 +500,7 @@ export default function PlatformPlansPage() {
       await api.patch(`/platform/plans/${plan.id}`, { is_active: !plan.is_active });
       showToast(`Plan "${plan.label}" ${plan.is_active ? 'deactivated' : 'activated'}.`);
       load();
+      if (logsOpen) loadLogs();
     } catch (e) {
       showToast(e.response?.data?.message || 'Update failed.', 'error');
     }
@@ -582,12 +599,130 @@ export default function PlatformPlansPage() {
         </div>
       )}
 
+      {/* ── Change History Section ── */}
+      <div style={{ marginTop: 32 }}>
+        <button
+          onClick={() => { setLogsOpen(o => !o); if (!logsOpen && changeLogs.length === 0) loadLogs(); }}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 10, width: '100%',
+            padding: '14px 20px', borderRadius: 14,
+            background: card, border: `1.5px solid ${bdr}`,
+            cursor: 'pointer', fontSize: 14, fontWeight: 700, color: txt('#0F172A'),
+            boxShadow: isDark ? '0 4px 14px rgba(2,6,23,0.25)' : '0 2px 8px rgba(15,23,42,0.06)',
+            transition: 'all 0.15s',
+          }}
+        >
+          <span style={{ fontSize: 18 }}>📋</span>
+          <span>Change History</span>
+          <span style={{ fontSize: 12, color: sub, fontWeight: 500, marginLeft: 4 }}>
+            {logsOpen ? '▲ Hide' : '▼ Show'}
+          </span>
+          <span style={{ marginLeft: 'auto', fontSize: 12, color: sub, fontWeight: 500 }}>
+            All plan create / update / delete logs
+          </span>
+        </button>
+
+        {logsOpen && (
+          <div style={{
+            marginTop: 12, borderRadius: 16,
+            background: card, border: `1px solid ${bdr}`,
+            overflow: 'hidden',
+            boxShadow: isDark ? '0 8px 24px rgba(2,6,23,0.3)' : '0 4px 14px rgba(15,23,42,0.06)',
+          }}>
+            {logsLoading ? (
+              <div style={{ padding: 32, textAlign: 'center', color: sub, fontSize: 13 }}>Loading logs…</div>
+            ) : changeLogs.length === 0 ? (
+              <div style={{ padding: 32, textAlign: 'center', color: sub, fontSize: 13 }}>No change logs yet.</div>
+            ) : (
+              <div style={{ maxHeight: 500, overflowY: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+                  <thead>
+                    <tr style={{ background: isDark ? '#1E293B' : '#F8FAFC', borderBottom: `1px solid ${bdr}` }}>
+                      {['Time', 'Plan', 'Action', 'Changed Fields', 'Old → New', 'By'].map(h => (
+                        <th key={h} style={{
+                          padding: '10px 14px', textAlign: 'left', fontSize: 11, fontWeight: 800,
+                          textTransform: 'uppercase', letterSpacing: 0.5, color: sub,
+                          position: 'sticky', top: 0, background: isDark ? '#1E293B' : '#F8FAFC',
+                        }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {changeLogs.map((log) => {
+                      const actionColors = { created: '#059669', updated: '#2563EB', deleted: '#DC2626' };
+                      const actionBg = { created: '#D1FAE5', updated: '#DBEAFE', deleted: '#FEE2E2' };
+                      return (
+                        <tr key={log.id} style={{ borderBottom: `1px solid ${bdr}`, transition: 'background 0.1s' }}
+                          onMouseEnter={e => e.currentTarget.style.background = isDark ? '#1E293B' : '#F9FAFB'}
+                          onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                        >
+                          <td style={{ padding: '10px 14px', color: sub, whiteSpace: 'nowrap', fontFamily: "'JetBrains Mono', monospace", fontSize: 11 }}>
+                            {new Date(log.createdAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                          </td>
+                          <td style={{ padding: '10px 14px', fontWeight: 700, color: txt('#0F172A') }}>
+                            {log.plan_label}
+                            <span style={{ fontSize: 10, color: sub, marginLeft: 6, fontWeight: 500 }}>({log.plan_key})</span>
+                          </td>
+                          <td style={{ padding: '10px 14px' }}>
+                            <span style={{
+                              display: 'inline-block', padding: '3px 10px', borderRadius: 99,
+                              fontSize: 11, fontWeight: 700, textTransform: 'uppercase',
+                              background: isDark ? `${actionColors[log.action]}25` : actionBg[log.action],
+                              color: actionColors[log.action],
+                            }}>
+                              {log.action}
+                            </span>
+                          </td>
+                          <td style={{ padding: '10px 14px', color: txt('#374151'), fontSize: 12 }}>
+                            {log.changed_fields?.length > 0
+                              ? log.changed_fields.map(f => (
+                                  <span key={f} style={{ display: 'inline-block', padding: '2px 7px', margin: '1px 3px', borderRadius: 6, background: isDark ? '#334155' : '#F1F5F9', fontSize: 11, fontWeight: 600 }}>
+                                    {f}
+                                  </span>
+                                ))
+                              : <span style={{ color: sub }}>—</span>
+                            }
+                          </td>
+                          <td style={{ padding: '10px 14px', fontSize: 11.5, maxWidth: 280 }}>
+                            {log.action === 'updated' && log.old_values && log.new_values ? (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                                {Object.keys(log.old_values).map(k => (
+                                  <div key={k} style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                                    <span style={{ fontWeight: 600, color: sub, minWidth: 70 }}>{k}:</span>
+                                    <span style={{ color: '#DC2626', textDecoration: 'line-through', fontFamily: "'JetBrains Mono', monospace", fontSize: 11 }}>
+                                      {typeof log.old_values[k] === 'object' ? JSON.stringify(log.old_values[k]) : String(log.old_values[k] ?? '—')}
+                                    </span>
+                                    <span style={{ color: sub }}>→</span>
+                                    <span style={{ color: '#059669', fontWeight: 600, fontFamily: "'JetBrains Mono', monospace", fontSize: 11 }}>
+                                      {typeof log.new_values[k] === 'object' ? JSON.stringify(log.new_values[k]) : String(log.new_values[k] ?? '—')}
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <span style={{ color: sub }}>—</span>
+                            )}
+                          </td>
+                          <td style={{ padding: '10px 14px', color: sub, fontSize: 11, fontWeight: 600 }}>
+                            {log.changed_by || '—'}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
       {/* Modal */}
       {showModal && (
         <PlanModal
           plan={editPlan}
           onClose={() => { setShowModal(false); setEditPlan(null); }}
-          onSaved={() => { load(); showToast(editPlan ? 'Plan updated.' : 'Plan created.'); }}
+          onSaved={() => { load(); if (logsOpen) loadLogs(); showToast(editPlan ? 'Plan updated.' : 'Plan created.'); }}
         />
       )}
     </div>

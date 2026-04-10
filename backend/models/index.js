@@ -32,6 +32,7 @@ const MessageTemplate = require('./MessageTemplate');
 const PlatformInvoice = require('./PlatformInvoice');
 const BankSlip = require('./BankSlip');
 const PlanConfig = require('./PlanConfig');
+const PlanChangeLog = require('./PlanChangeLog');
 // New models
 const Waitlist = require('./Waitlist');
 const LoyaltyRule = require('./LoyaltyRule');
@@ -263,6 +264,7 @@ module.exports = {
   PlatformInvoice,
   BankSlip,
   PlanConfig,
+  PlanChangeLog,
   // New
   Waitlist,
   LoyaltyRule,

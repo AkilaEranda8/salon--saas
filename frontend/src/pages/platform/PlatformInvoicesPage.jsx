@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
+import { getUploadUrl } from '../../utils/tenant';
 
 const STATUS_COLORS = {
   draft:    { bg: '#F3F4F6', text: '#374151', dot: '#9CA3AF' },
@@ -165,6 +166,8 @@ export default function PlatformInvoicesPage() {
     const match = notes.match(/\[bank-slip:(\d+)\]/);
     return match ? parseInt(match[1]) : null;
   };
+
+  const openSlip = (rawUrl) => setSlipViewUrl(getUploadUrl(rawUrl));
 
   const handleApproveSlip = async (bankSlipId) => {
     if (!window.confirm('Approve this bank slip and activate the tenant subscription?')) return;
@@ -406,7 +409,7 @@ export default function PlatformInvoicesPage() {
                             <>
                               {inv.pdf_url && (
                                 <button
-                                  onClick={() => setSlipViewUrl(inv.pdf_url)}
+                                  onClick={() => openSlip(inv.pdf_url)}
                                   title="View uploaded bank slip"
                                   style={{
                                     height: 30, padding: '0 10px', borderRadius: 7,

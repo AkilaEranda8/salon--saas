@@ -77,6 +77,23 @@ function detectFromHostname(hostname) {
 }
 
 /**
+ * Returns the full URL for an uploaded file.
+ * Uploads are stored on the backend and must be accessed via the API domain
+ * in production (api.salon.hexalyte.com) since the frontend nginx proxy
+ * for admin.hexalyte.com and tenant subdomains doesn't reliably forward /uploads/.
+ */
+export function getUploadUrl(path) {
+  if (!path) return null;
+  if (path.startsWith('http')) return path; // already absolute
+  const hostname = window.location.hostname;
+  const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1';
+  if (!isLocalhost) {
+    return `https://api.salon.hexalyte.com${path}`;
+  }
+  return path; // local dev: serves via /uploads/ proxy in frontend nginx
+}
+
+/**
  * Returns the hostname if it is a custom domain (not salon.hexalyte.com, not localhost).
  * Used to send X-Tenant-Host header when the user is on a custom domain.
  */

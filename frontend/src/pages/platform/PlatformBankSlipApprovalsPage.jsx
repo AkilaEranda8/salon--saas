@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import api from '../../api/axios';
+import { getUploadUrl } from '../../utils/tenant';
 
 const BankSlipApprovalsPage = () => {
   const [bankSlips, setBankSlips] = useState([]);
@@ -180,7 +181,7 @@ const BankSlipApprovalsPage = () => {
                   </td>
                   <td style={{ padding: '12px', fontSize: 13 }}>
                     {slip.file_url ? (
-                      <a href={slip.file_url} target="_blank" rel="noopener noreferrer" style={{ color: '#2563EB', textDecoration: 'underline' }}>
+                      <a href={getUploadUrl(slip.file_url)} target="_blank" rel="noopener noreferrer" style={{ color: '#2563EB', textDecoration: 'underline' }}>
                         View
                       </a>
                     ) : <span style={{ color: '#9CA3AF' }}>-</span>}
@@ -266,7 +267,7 @@ const BankSlipApprovalsPage = () => {
 
             <div style={{ marginBottom: 16 }}>
               <div style={{ fontSize: 12, color: '#6B7280', marginBottom: 4 }}>File</div>
-              <a href={selectedSlip.file_url} target="_blank" rel="noopener noreferrer"
+              <a href={getUploadUrl(selectedSlip.file_url)} target="_blank" rel="noopener noreferrer"
                 style={{ color: '#2563EB', textDecoration: 'underline', fontSize: 13 }}>
                 View {selectedSlip.file_name}
               </a>

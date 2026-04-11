@@ -126,7 +126,7 @@ function FormEditorModal({ editForm, onClose, onSaved, isDark }) {
                 {editForm ? 'Edit Consent Form' : 'New Consent Form'}
               </h2>
               <p style={{ margin: '5px 0 0', fontSize: 13, color: isDark ? '#64748B' : '#64748B' }}>
-                {editForm ? 'Update this template's content and settings.' : 'Create a reusable consent template for your services.'}
+                  {editForm ? "Update this template's content and settings." : 'Create a reusable consent template for your services.'}
               </p>
             </div>
             <button onClick={onClose} style={{

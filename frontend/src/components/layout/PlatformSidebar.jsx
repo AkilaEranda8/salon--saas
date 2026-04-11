@@ -221,9 +221,10 @@ function NavItem({ item, collapsed, isActive, onClick, T }) {
 /* ── PlatformSidebar ──────────────────────────────────────── */
 export default function PlatformSidebar({ collapsed, onToggle }) {
   const { user, logout } = useAuth();
-  const { isDark } = useTheme();
+  const { isDark, mode, toggleMode } = useTheme();
   const location = useLocation();
   const navigate = useNavigate();
+  const [themeHov, setThemeHov] = useState(false);
   const [signOutHov, setSignOutHov] = useState(false);
 
   const T = THEME[isDark ? 'dark' : 'light'];
@@ -464,6 +465,60 @@ export default function PlatformSidebar({ collapsed, onToggle }) {
         position: 'relative',
         zIndex: 1,
       }}>
+        <div
+          onClick={toggleMode}
+          onMouseEnter={() => setThemeHov(true)}
+          onMouseLeave={() => setThemeHov(false)}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: ec ? 'center' : 'flex-start',
+            gap: 11,
+            padding: ec ? '10px 14px' : '9px 14px',
+            borderRadius: 10,
+            cursor: 'pointer',
+            background: themeHov ? T.navHover : 'transparent',
+            border: `1px solid ${themeHov ? T.userBorder : 'transparent'}`,
+            transition: 'all 0.18s',
+            userSelect: 'none',
+            marginBottom: 8,
+          }}
+        >
+          <span style={{
+            display: 'flex', flexShrink: 0, width: 20, height: 20,
+            alignItems: 'center', justifyContent: 'center',
+            color: themeHov ? T.accent : T.textSub,
+            transition: 'color 0.18s ease',
+          }}>
+            {isDark ? (
+              <Ico d="M12 3a1 1 0 00-1 1 7 7 0 009 9 1 1 0 001-1A9 9 0 0112 3z" size={17} />
+            ) : (
+              <Ico d="M12 3v2m0 14v2m9-9h-2M5 12H3m14.364 6.364-1.414-1.414M8.05 8.05 6.636 6.636m10.728 0L15.95 8.05M8.05 15.95l-1.414 1.414M12 16a4 4 0 100-8 4 4 0 000 8z" size={17} />
+            )}
+          </span>
+          {!ec && (
+            <>
+              <span style={{ fontSize: 13, fontWeight: 600, color: T.text }}>
+                {isDark ? 'Light Mode' : 'Dark Mode'}
+              </span>
+              <span style={{
+                marginLeft: 'auto',
+                fontSize: 10,
+                fontWeight: 700,
+                color: T.badge.text,
+                background: T.badge.bg,
+                border: `1px solid ${T.badge.border}`,
+                borderRadius: 999,
+                padding: '3px 8px',
+                letterSpacing: '0.06em',
+                textTransform: 'uppercase',
+              }}>
+                {mode}
+              </span>
+            </>
+          )}
+        </div>
+
         <div
           onClick={handleLogout}
           onMouseEnter={() => setSignOutHov(true)}

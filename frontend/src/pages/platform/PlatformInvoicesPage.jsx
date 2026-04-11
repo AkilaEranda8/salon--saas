@@ -71,6 +71,10 @@ export default function PlatformInvoicesPage() {
   const [saving, setSaving] = useState(false);
   const [editError, setEditError] = useState('');
   const [tenants, setTenants] = useState([]);
+  const [slipViewUrl, setSlipViewUrl] = useState(null);
+  const [rejectSlip, setRejectSlip] = useState(null); // { bankSlipId, invoiceId }
+  const [rejectReason, setRejectReason] = useState('');
+  const [slipActing, setSlipActing] = useState(false);
 
   const PER_PAGE = 20;
 
@@ -152,6 +156,43 @@ export default function PlatformInvoicesPage() {
       setEditError(err.response?.data?.message || 'Save failed.');
     } finally {
       setSaving(false);
+    }
+  };
+
+  // Parse [bank-slip:ID] from invoice notes
+  const getBankSlipId = (notes) => {
+    if (!notes) return null;
+    const match = notes.match(/\[bank-slip:(\d+)\]/);
+    return match ? parseInt(match[1]) : null;
+  };
+
+  const handleApproveSlip = async (bankSlipId) => {
+    if (!window.confirm('Approve this bank slip and activate the tenant subscription?')) return;
+    setSlipActing(true);
+    try {
+      const res = await api.patch(`/billing/bank-slip/${bankSlipId}/approve`);
+      toast.success(res.data.message || 'Bank slip approved');
+      fetchInvoices();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to approve');
+    } finally {
+      setSlipActing(false);
+    }
+  };
+
+  const handleRejectSlip = async () => {
+    if (!rejectReason.trim()) { toast.error('Please provide a rejection reason'); return; }
+    setSlipActing(true);
+    try {
+      const res = await api.patch(`/billing/bank-slip/${rejectSlip.bankSlipId}/reject`, { rejection_reason: rejectReason });
+      toast.success(res.data.message || 'Bank slip rejected');
+      setRejectSlip(null);
+      setRejectReason('');
+      fetchInvoices();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to reject');
+    } finally {
+      setSlipActing(false);
     }
   };
 
@@ -357,6 +398,55 @@ export default function PlatformInvoicesPage() {
                     {/* Actions */}
                     <td style={{ padding: '11px 16px' }}>
                       <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
+                        {/* Bank slip actions – shown when invoice has a bank slip reference and is not yet resolved */}
+                        {(() => {
+                          const bsId = getBankSlipId(inv.notes);
+                          const isPending = inv.status === 'issued';
+                          return bsId ? (
+                            <>
+                              {inv.pdf_url && (
+                                <button
+                                  onClick={() => setSlipViewUrl(inv.pdf_url)}
+                                  title="View uploaded bank slip"
+                                  style={{
+                                    height: 30, padding: '0 10px', borderRadius: 7,
+                                    border: '1.5px solid #C7D2FE', background: '#EEF2FF',
+                                    cursor: 'pointer', fontSize: 11, fontWeight: 600, color: '#4338CA',
+                                    whiteSpace: 'nowrap', flexShrink: 0,
+                                  }}
+                                >View Slip</button>
+                              )}
+                              {isPending && (
+                                <>
+                                  <button
+                                    onClick={() => handleApproveSlip(bsId)}
+                                    disabled={slipActing}
+                                    title="Approve bank slip"
+                                    style={{
+                                      height: 30, padding: '0 10px', borderRadius: 7,
+                                      border: '1.5px solid #6EE7B7', background: '#ECFDF5',
+                                      cursor: slipActing ? 'not-allowed' : 'pointer',
+                                      fontSize: 11, fontWeight: 700, color: '#065F46',
+                                      whiteSpace: 'nowrap', flexShrink: 0, opacity: slipActing ? 0.6 : 1,
+                                    }}
+                                  >Approve</button>
+                                  <button
+                                    onClick={() => { setRejectSlip({ bankSlipId: bsId, invoiceId: inv.id }); setRejectReason(''); }}
+                                    disabled={slipActing}
+                                    title="Reject bank slip"
+                                    style={{
+                                      height: 30, padding: '0 10px', borderRadius: 7,
+                                      border: '1.5px solid #FCA5A5', background: '#FEF2F2',
+                                      cursor: slipActing ? 'not-allowed' : 'pointer',
+                                      fontSize: 11, fontWeight: 700, color: '#991B1B',
+                                      whiteSpace: 'nowrap', flexShrink: 0, opacity: slipActing ? 0.6 : 1,
+                                    }}
+                                  >Reject</button>
+                                </>
+                              )}
+                            </>
+                          ) : null;
+                        })()}
                         <button onClick={() => handleDownloadPdf(inv.id)} title="Download PDF"
                           style={{
                             width: 30, height: 30, borderRadius: 7,
@@ -530,6 +620,61 @@ export default function PlatformInvoicesPage() {
       )}
 
       {/* ── Edit Invoice Modal ─────────────────────────────────────────── */}
+      {/* ── View Bank Slip Image Modal ─────────────────────────────── */}
+      {slipViewUrl && (
+        <Modal title="Uploaded Bank Slip" onClose={() => setSlipViewUrl(null)}>
+          <div style={{ textAlign: 'center' }}>
+            {/\.(jpg|jpeg|png|gif|webp)$/i.test(slipViewUrl) ? (
+              <img
+                src={slipViewUrl}
+                alt="Bank slip proof"
+                style={{ maxWidth: '100%', maxHeight: 420, borderRadius: 8, objectFit: 'contain', border: '1px solid #E5E7EB' }}
+              />
+            ) : (
+              <a href={slipViewUrl} target="_blank" rel="noreferrer"
+                style={{ display: 'inline-block', padding: '12px 24px', background: '#4338CA', color: '#fff', borderRadius: 8, fontWeight: 600, textDecoration: 'none', fontSize: 13 }}
+              >Open File</a>
+            )}
+            <div style={{ marginTop: 14 }}>
+              <a href={slipViewUrl} target="_blank" rel="noreferrer"
+                style={{ fontSize: 12, color: '#4338CA', textDecoration: 'underline' }}
+              >Open in new tab</a>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* ── Reject Bank Slip Modal ────────────────────────────────────── */}
+      {rejectSlip && (
+        <Modal title="Reject Bank Slip" onClose={() => setRejectSlip(null)}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <p style={{ fontSize: 13, color: '#374151', margin: 0 }}>Please provide a reason for rejection. This will be visible to the tenant.</p>
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>Rejection Reason</label>
+              <textarea
+                value={rejectReason}
+                onChange={e => setRejectReason(e.target.value)}
+                placeholder="e.g. Amount does not match, unclear image…"
+                style={{ width: '100%', padding: '9px 12px', border: '1px solid #E5E7EB', borderRadius: 8, fontSize: 13, outline: 'none', boxSizing: 'border-box', minHeight: 90 }}
+              />
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+              <button onClick={() => setRejectSlip(null)}
+                style={{ padding: '9px 20px', border: '1px solid #E5E7EB', borderRadius: 8, background: '#fff', cursor: 'pointer', fontSize: 13 }}>
+                Cancel
+              </button>
+              <button onClick={handleRejectSlip} disabled={slipActing}
+                style={{
+                  padding: '9px 20px', border: 'none', borderRadius: 8,
+                  background: '#DC2626', color: '#fff', cursor: slipActing ? 'not-allowed' : 'pointer',
+                  fontSize: 13, fontWeight: 600, opacity: slipActing ? 0.6 : 1,
+                }}
+              >{slipActing ? 'Rejecting…' : 'Reject'}</button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
       {editInvoice && (
         <Modal title={`Edit Invoice ${editInvoice.invoice_number}`} onClose={() => setEditInvoice(null)}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>

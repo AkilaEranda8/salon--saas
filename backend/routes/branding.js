@@ -304,17 +304,29 @@ router.post('/domain/verify', verifyToken, requireRole('superadmin', 'admin'), a
     const tenant = await Tenant.findByPk(tenantId);
     if (!tenant?.custom_domain) return res.status(400).json({ message: 'No custom domain set.' });
 
-    // DNS check: resolve CNAME or A records of the custom domain
+    // DNS check: multiple strategies to verify domain ownership
     let verified = false;
     try {
+      // Strategy 1: Direct CNAME check
       const cnameResults = await dns.resolveCname(tenant.custom_domain).catch(() => []);
       if (cnameResults.some((c) => c.includes('hexalyte.com'))) {
         verified = true;
       }
+
+      // Strategy 2: A-record matches our server IP
       if (!verified) {
         const aResults = await dns.resolve4(tenant.custom_domain).catch(() => []);
         const serverIp = process.env.SERVER_IP || '';
         if (serverIp && aResults.includes(serverIp)) verified = true;
+
+        // Strategy 3: Cloudflare proxy — CNAME is flattened, so compare A records
+        // of custom domain vs salon.hexalyte.com (both behind same CF proxy)
+        if (!verified && aResults.length > 0) {
+          const targetIps = await dns.resolve4('salon.hexalyte.com').catch(() => []);
+          if (targetIps.length > 0 && aResults.some((ip) => targetIps.includes(ip))) {
+            verified = true;
+          }
+        }
       }
     } catch {
       verified = false;
@@ -326,7 +338,7 @@ router.post('/domain/verify', verifyToken, requireRole('superadmin', 'admin'), a
       domain_verified: verified,
       message: verified
         ? 'Domain verified successfully!'
-        : 'DNS not pointing correctly yet. Make sure your CNAME points to salon.hexalyte.com.',
+        : 'DNS not pointing correctly yet. Make sure your CNAME points to salon.hexalyte.com (use @ as the Name for root domains).',
     });
   } catch (err) {
     console.error('branding.verifyDomain error:', err);

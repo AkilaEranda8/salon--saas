@@ -74,6 +74,7 @@ services:
       TWILIO_FROM_NUMBER: ${TWILIO_FROM_NUMBER:-}
       FRONTEND_BASE_URL:  ${FRONTEND_BASE_URL:-https://{slug}.salon.hexalyte.com}
       PLATFORM_URL:       ${PLATFORM_URL:-https://admin.hexalyte.com}
+      SERVER_IP:          ${SERVER_IP:-}
     expose:
       - "5000"
     ports:

@@ -36,8 +36,8 @@ router.post('/invoices/:id/email', verifyToken, ctrl.billingInvoiceEmail);
 // Bank Slip routes
 router.post('/bank-slip/upload', verifyToken, upload.single('file'), bankSlipCtrl.uploadBankSlip);
 router.get('/bank-slip/status', verifyToken, bankSlipCtrl.getBankSlipStatus);
-router.get('/bank-slip/list', platformAdmin, bankSlipCtrl.listBankSlips);
-router.patch('/bank-slip/:id/approve', platformAdmin, bankSlipCtrl.approveBankSlip);
-router.patch('/bank-slip/:id/reject', platformAdmin, bankSlipCtrl.rejectBankSlip);
+router.get('/bank-slip/list', verifyToken, platformAdmin, bankSlipCtrl.listBankSlips);
+router.patch('/bank-slip/:id/approve', verifyToken, platformAdmin, bankSlipCtrl.approveBankSlip);
+router.patch('/bank-slip/:id/reject', verifyToken, platformAdmin, bankSlipCtrl.rejectBankSlip);
 
 module.exports = router;

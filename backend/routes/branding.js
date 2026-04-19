@@ -276,7 +276,7 @@ router.patch('/domain', verifyToken, requireRole('superadmin', 'admin'), async (
     // Check uniqueness
     if (rawDomain) {
       const existing = await Tenant.findOne({ where: { custom_domain: rawDomain } });
-      if (existing && existing.id !== tenantId) {
+      if (existing && Number(existing.id) !== Number(tenantId)) {
         return res.status(409).json({ message: 'Domain already in use by another tenant.' });
       }
     }

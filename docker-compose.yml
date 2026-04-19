@@ -153,6 +153,14 @@ services:
 
 volumes:
   mysql_data:
+    external: true
+    name: salon_v1_mysql_data
   uploads_data:
+    external: true
+    name: salon_v1_uploads_data
   certbot_www:
+    external: true
+    name: salon_v1_certbot_www
   certbot_conf:
+    external: true
+    name: salon_v1_certbot_conf

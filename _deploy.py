@@ -5,7 +5,7 @@ Deploy to VPS over SSH (Paramiko). Run from repo root:
   python _deploy.py
 
 Optional env:
-  DEPLOY_HOST       default 157.180.113.249
+  DEPLOY_HOST       default 46.62.135.100
   DEPLOY_USER       default root
   DEPLOY_PATH       default /root/xanesalon  (clone dir on server)
   DEPLOY_SSH_PASSWORD  if set, only this password is tried
@@ -31,7 +31,7 @@ except ImportError:
     print("Install paramiko:  pip install paramiko", file=sys.stderr)
     sys.exit(1)
 
-host = os.environ.get("DEPLOY_HOST", "157.180.113.249")
+host = os.environ.get("DEPLOY_HOST", "46.62.135.100")
 user = os.environ.get("DEPLOY_USER", "root")
 app_path = os.environ.get("DEPLOY_PATH", "/root/xanesalon")
 
@@ -42,7 +42,7 @@ if os.environ.get("DEPLOY_SSH_PASSWORD"):
 passwords.extend(
     p
     for p in (
-        "qnuwjheuweugdsjsds",
+        "CCaPfTjhjhjkhgkshds",
         "kjsdksdjiereihshdks",
     )
     if p not in passwords
@@ -55,14 +55,15 @@ deploy_cmd = (
     f"  mv /root/zane_salon {app_path} && echo '>>> Renamed zane_salon -> {app_path}'; "
     "fi && "
     f"if [ ! -d {app_path} ]; then "
-    "  git clone https://github.com/AkilaEranda8/zane_saloon_.git "
+    "  git clone https://github.com/AkilaEranda8/salon--saas.git "
     f"{app_path} && echo '>>> Cloned fresh'; "
     "fi && "
     f"cd {app_path} && "
     "echo '>>> git fetch + reset' && "
     "git fetch origin master && "
     "git reset --hard origin/master && "
-    "echo '>>> docker compose up --build (may take several minutes)...' && "
+    "echo '>>> docker compose down + up --build (may take several minutes)...' && "
+    "docker compose down && "
     "DOCKER_BUILDKIT=1 docker compose up -d --build && "
     "echo '>>> addMissingColumns migration' && "
     "docker compose exec -T backend node scripts/addMissingColumns.js && "

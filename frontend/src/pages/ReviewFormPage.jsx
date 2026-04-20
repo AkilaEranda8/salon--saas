@@ -215,7 +215,7 @@ export default function ReviewFormPage() {
           transition: 'opacity 0.2s',
         }}
       >
-        {submitting === 'sending' ? 'Submitting…' : '✨ Submit Review'}
+        {isSubmitting ? 'Submitting…' : '✨ Submit Review'}
       </button>
 
       <p style={{ margin: '16px 0 0', fontSize: 12, color: '#94a3b8', textAlign: 'center' }}>

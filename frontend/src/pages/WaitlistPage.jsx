@@ -100,11 +100,22 @@ export default function WaitlistPage() {
   const [staff, setStaff]           = useState([]);
   const [filter, setFilter]         = useState('waiting');
   const [search, setSearch]         = useState('');
+  const [branches, setBranches]     = useState([]);
   const [loading, setLoading]       = useState(true);
   const [showForm, setShowForm]     = useState(false);
   const [saving, setSaving]         = useState(false);
+  const [filterBranch, setFilterBranch] = useState(user?.branch_id || '');
 
-  const [form, setForm] = useState({ customer_name: '', phone: '', service_id: '', staff_id: '', preferred_date: '', preferred_time: '', notes: '' });
+  const [form, setForm] = useState({
+    customer_name: '',
+    phone: '',
+    service_id: '',
+    staff_id: '',
+    preferred_date: '',
+    preferred_time: '',
+    notes: '',
+    branch_id: user?.branch_id || ''
+  });
 
   /* ── Theme-aware colors ── */
   const c = {
@@ -123,26 +134,38 @@ export default function WaitlistPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const params = filter !== 'all' ? { status: filter } : {};
+      const params = {
+        ...(filter !== 'all' ? { status: filter } : {}),
+        ...(filterBranch ? { branchId: filterBranch } : {})
+      };
       const r = await api.get('/waitlist', { params });
       setEntries(Array.isArray(r.data) ? r.data : []);
     } catch { setEntries([]); }
     setLoading(false);
-  }, [filter]);
+  }, [filter, filterBranch]);
 
   const loadAll = useCallback(async () => {
     try {
-      const r = await api.get('/waitlist');
+      const params = filterBranch ? { branchId: filterBranch } : {};
+      const r = await api.get('/waitlist', { params });
       setAllEntries(Array.isArray(r.data) ? r.data : []);
     } catch { setAllEntries([]); }
-  }, []);
+  }, [filterBranch]);
 
   useEffect(() => { load(); loadAll(); }, [load, loadAll]);
 
   useEffect(() => {
+    api.get('/branches').then((r) => {
+      const data = Array.isArray(r.data?.data) ? r.data.data : (Array.isArray(r.data) ? r.data : []);
+      setBranches(data);
+      if (!user?.branch_id && data.length > 0) {
+        // If admin has no default branch, but we have branches, default to first one for the form
+        setForm(p => ({ ...p, branch_id: data[0].id }));
+      }
+    }).catch(() => {});
     api.get('/services').then((r) => setServices(Array.isArray(r.data?.data) ? r.data.data : (Array.isArray(r.data) ? r.data : []))).catch(() => {});
     api.get('/staff').then((r) => setStaff(Array.isArray(r.data?.data) ? r.data.data : (Array.isArray(r.data) ? r.data : []))).catch(() => {});
-  }, []);
+  }, [user?.branch_id]);
 
   const handleAdd = async (e) => {
     e.preventDefault();
@@ -152,7 +175,16 @@ export default function WaitlistPage() {
       await api.post('/waitlist', form);
       addToast('Added to waitlist', 'success');
       setShowForm(false);
-      setForm({ customer_name: '', phone: '', service_id: '', staff_id: '', preferred_date: '', preferred_time: '', notes: '' });
+      setForm({
+        customer_name: '',
+        phone: '',
+        service_id: '',
+        staff_id: '',
+        preferred_date: '',
+        preferred_time: '',
+        notes: '',
+        branch_id: user?.branch_id || (branches[0]?.id || '')
+      });
       load(); loadAll();
     } catch (err) { addToast(err.response?.data?.message || 'Error', 'error'); }
     setSaving(false);
@@ -317,7 +349,7 @@ export default function WaitlistPage() {
         </div>
 
         {/* Filter pills */}
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', flex: 1 }}>
           {filterTabs.map((t) => {
             const active = filter === t.key;
             return (
@@ -342,6 +374,24 @@ export default function WaitlistPage() {
             );
           })}
         </div>
+
+        {/* Branch Filter (for admins) */}
+        {(user?.role === 'admin' || user?.role === 'superadmin') && branches.length > 1 && (
+          <select
+            value={filterBranch}
+            onChange={(e) => setFilterBranch(e.target.value)}
+            style={{
+              padding: '8px 12px', borderRadius: 10,
+              border: `1.5px solid ${c.inputBrd}`, fontSize: 13, fontWeight: 600,
+              fontFamily: "'Inter', sans-serif", outline: 'none',
+              background: c.inputBg, color: c.text,
+              transition: 'border-color 0.15s', cursor: 'pointer',
+            }}
+          >
+            <option value="">All Branches</option>
+            {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+          </select>
+        )}
       </motion.div>
 
       {/* ── Add Form (Expandable) ── */}
@@ -388,10 +438,25 @@ export default function WaitlistPage() {
                     </select>
                   </div>
                   <div>
+                    <label style={lbl}>Branch *</label>
+                    <select
+                      style={inp}
+                      value={form.branch_id}
+                      onChange={(e) => setForm((p) => ({ ...p, branch_id: e.target.value, staff_id: '' }))}
+                      required
+                    >
+                      <option value="">Select branch</option>
+                      {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                    </select>
+                  </div>
+                  <div>
                     <label style={lbl}>Preferred Staff</label>
                     <select style={inp} value={form.staff_id} onChange={(e) => setForm((p) => ({ ...p, staff_id: e.target.value }))}>
                       <option value="">Any staff</option>
-                      {staff.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                      {staff
+                        .filter(s => !form.branch_id || Number(s.branch_id) === Number(form.branch_id))
+                        .map((s) => <option key={s.id} value={s.id}>{s.name}</option>)
+                      }
                     </select>
                   </div>
                   <div>

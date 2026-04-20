@@ -320,9 +320,9 @@ export function Drawer({ open, onClose, title, children, footer, width = 480 }) 
         boxShadow: '-8px 0 40px rgba(16,24,40,0.15)', animation: 'pk-drawer 0.22s ease',
       }}>
         <style>{'@keyframes pk-drawer { from { transform:translateX(100%); } to { transform:translateX(0); } }'}</style>
-        <div style={{ padding: '16px 24px', borderBottom: '1px solid rgba(255,255,255,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0, background: 'linear-gradient(135deg, #101828 0%, #1E3A5F 100%)', borderRadius: '0 0 0 0' }}>
-          <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#fff', fontFamily: "'Inter',sans-serif" }}>{title}</h3>
-          <button onClick={onClose} style={{ background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.2)', cursor: 'pointer', color: '#fff', display: 'flex', alignItems: 'center', borderRadius: 8, padding: 6 }}><IconClose /></button>
+        <div style={{ padding: '16px 24px', borderBottom: '1px solid #EAECF0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0, background: '#fff' }}>
+          <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#101828', fontFamily: "'Inter',sans-serif" }}>{title}</h3>
+          <button onClick={onClose} style={{ background: '#F2F4F7', border: '1px solid #E4E7EC', cursor: 'pointer', color: '#667085', display: 'flex', alignItems: 'center', borderRadius: 8, padding: 6 }}><IconClose /></button>
         </div>
         <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>{children}</div>
         {footer && <div style={{ padding: '16px 24px', borderTop: '1px solid #EAECF0', display: 'flex', gap: 8, justifyContent: 'flex-end', flexShrink: 0, background: '#FAFBFC' }}>{footer}</div>}
@@ -351,9 +351,9 @@ export function PKModal({ open, onClose, title, children, footer, size = 'md', w
         boxShadow: '0 20px 60px rgba(16,24,40,0.18)', maxHeight: '90vh', animation: 'pk-modal 0.18s ease',
       }}>
         <style>{'@keyframes pk-modal { from { opacity:0; transform:scale(0.96) translateY(8px); } to { opacity:1; transform:scale(1) translateY(0); } }'}</style>
-        <div style={{ padding: '16px 24px', borderBottom: '1px solid rgba(255,255,255,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0, background: 'linear-gradient(135deg, #101828 0%, #1E3A5F 100%)' }}>
-          <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#fff', fontFamily: "'Inter',sans-serif" }}>{title}</h3>
-          <button onClick={onClose} style={{ background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.2)', cursor: 'pointer', color: '#fff', display: 'flex', alignItems: 'center', borderRadius: 8, padding: 6 }}><IconClose /></button>
+        <div style={{ padding: '16px 24px', borderBottom: '1px solid #EAECF0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0, background: '#fff', borderRadius: '16px 16px 0 0' }}>
+          <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#101828', fontFamily: "'Inter',sans-serif" }}>{title}</h3>
+          <button onClick={onClose} style={{ background: '#F2F4F7', border: '1px solid #E4E7EC', cursor: 'pointer', color: '#667085', display: 'flex', alignItems: 'center', borderRadius: 8, padding: 6 }}><IconClose /></button>
         </div>
         <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>{children}</div>
         {footer && <div style={{ padding: '16px 24px', borderTop: '1px solid #EAECF0', display: 'flex', gap: 8, justifyContent: 'flex-end', flexShrink: 0, background: '#FAFBFC' }}>{footer}</div>}

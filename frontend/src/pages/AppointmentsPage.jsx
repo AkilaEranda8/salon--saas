@@ -168,9 +168,9 @@ function Modal({ open, onClose, title, children, footer, size='md', dark = false
       <div onClick={onClose} style={{ position:'absolute', inset:0, background:'rgba(16,24,40,0.45)', backdropFilter:'blur(2px)' }} />
       <div style={{ position:'relative', width:'100%', maxWidth:widths[size]??560, background:dark?'#111827':'#fff', borderRadius:16, display:'flex', flexDirection:'column', boxShadow:dark?'0 20px 60px rgba(2,6,23,0.55)':'0 20px 60px rgba(16,24,40,0.18)', maxHeight:'90vh', animation:'modal-pop 0.18s ease', border:dark?'1px solid #334155':'none' }}>
         <style>{'@keyframes modal-pop { from { opacity:0; transform:scale(0.96) translateY(8px); } to { opacity:1; transform:scale(1) translateY(0); } }'}</style>
-        <div style={{ padding:'16px 24px', borderBottom:`1px solid ${dark?'#1E293B':'rgba(255,255,255,0.12)'}`, display:'flex', alignItems:'center', justifyContent:'space-between', flexShrink:0, background:dark?'#0F172A':'linear-gradient(135deg, #101828 0%, #1E3A5F 100%)', borderRadius:'16px 16px 0 0' }}>
-          <h3 style={{ margin:0, fontSize:16, fontWeight:700, color:'#fff', fontFamily:"'Inter',sans-serif" }}>{title}</h3>
-          <button onClick={onClose} style={{ background:'rgba(255,255,255,0.12)', border:'1px solid rgba(255,255,255,0.2)', cursor:'pointer', color:'#fff', display:'flex', alignItems:'center', borderRadius:8, padding:6 }}><IconClose /></button>
+        <div style={{ padding:'16px 24px', borderBottom:`1px solid ${dark?'#1E293B':'#EAECF0'}`, display:'flex', alignItems:'center', justifyContent:'space-between', flexShrink:0, background:dark?'#0F172A':'#fff', borderRadius:'16px 16px 0 0' }}>
+          <h3 style={{ margin:0, fontSize:16, fontWeight:700, color:dark?'#F1F5F9':'#101828', fontFamily:"'Inter',sans-serif" }}>{title}</h3>
+          <button onClick={onClose} style={{ background:dark?'rgba(255,255,255,0.08)':'#F2F4F7', border:`1px solid ${dark?'rgba(255,255,255,0.12)':'#E4E7EC'}`, cursor:'pointer', color:dark?'#CBD5E1':'#667085', display:'flex', alignItems:'center', borderRadius:8, padding:6 }}><IconClose /></button>
         </div>
         <div style={{ flex:1, overflowY:'auto', padding:'20px 24px' }}>{children}</div>
         {footer && <div style={{ padding:'16px 24px', borderTop:`1px solid ${dark?'#334155':'#EAECF0'}`, display:'flex', gap:8, justifyContent:'flex-end', flexShrink:0, background:dark?'#111827':'#FAFBFC' }}>{footer}</div>}
@@ -188,9 +188,9 @@ function Drawer({ open, onClose, title, children, footer, dark = false }) {
       <div onClick={onClose} style={{ position:'absolute', inset:0, background:'rgba(16,24,40,0.4)', backdropFilter:'blur(2px)' }} />
       <div style={{ position:'relative', width:480, maxWidth:'95vw', background:dark?'#111827':'#fff', display:'flex', flexDirection:'column', boxShadow:dark?'-8px 0 40px rgba(2,6,23,0.55)':'-8px 0 40px rgba(16,24,40,0.15)', animation:'drawer-in 0.22s ease', borderLeft:dark?'1px solid #334155':'none' }}>
         <style>{'@keyframes drawer-in { from { transform:translateX(100%); } to { transform:translateX(0); } }'}</style>
-        <div style={{ padding:'16px 24px', borderBottom:`1px solid ${dark?'#1E293B':'rgba(255,255,255,0.12)'}`, display:'flex', alignItems:'center', justifyContent:'space-between', flexShrink:0, background:dark?'#0F172A':'linear-gradient(135deg, #101828 0%, #1E3A5F 100%)' }}>
-          <h3 style={{ margin:0, fontSize:16, fontWeight:700, color:'#fff', fontFamily:"'Inter',sans-serif" }}>{title}</h3>
-          <button onClick={onClose} style={{ background:'rgba(255,255,255,0.12)', border:'1px solid rgba(255,255,255,0.2)', cursor:'pointer', color:'#fff', display:'flex', alignItems:'center', borderRadius:8, padding:6 }}><IconClose /></button>
+        <div style={{ padding:'16px 24px', borderBottom:`1px solid ${dark?'#1E293B':'#EAECF0'}`, display:'flex', alignItems:'center', justifyContent:'space-between', flexShrink:0, background:dark?'#0F172A':'#fff' }}>
+          <h3 style={{ margin:0, fontSize:16, fontWeight:700, color:dark?'#F1F5F9':'#101828', fontFamily:"'Inter',sans-serif" }}>{title}</h3>
+          <button onClick={onClose} style={{ background:dark?'rgba(255,255,255,0.08)':'#F2F4F7', border:`1px solid ${dark?'rgba(255,255,255,0.12)':'#E4E7EC'}`, cursor:'pointer', color:dark?'#CBD5E1':'#667085', display:'flex', alignItems:'center', borderRadius:8, padding:6 }}><IconClose /></button>
         </div>
         <div style={{ flex:1, overflowY:'auto', padding:'20px 24px' }}>{children}</div>
         {footer && <div style={{ padding:'16px 24px', borderTop:`1px solid ${dark?'#334155':'#EAECF0'}`, display:'flex', gap:8, justifyContent:'flex-end', flexShrink:0, background:dark?'#111827':'#FAFBFC' }}>{footer}</div>}

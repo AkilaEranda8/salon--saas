@@ -5,8 +5,8 @@ const { User } = require('./models');
 
 (async () => {
   await sequelize.authenticate();
-  const username = 'platformadmin';
-  const plain = 'admin123';
+  const username = 'akila';
+  const plain = 'akila123';
 
   let user = await User.findOne({ where: { username } });
   const hash = await bcrypt.hash(plain, 10);

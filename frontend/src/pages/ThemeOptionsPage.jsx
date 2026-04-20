@@ -345,7 +345,7 @@ function MinimalSidebarPreview() {
 /* ── Main page ─────────────────────────────────────────────────────────────── */
 export default function ThemeOptionsPage() {
   const { mode, setMode, sidebarStyle, setSidebarStyle, primaryColor, setPrimaryColor, fontFamily, setFontFamily, sidebarAppearance, setSidebarAppearance, tableStyle, setTableStyle } = useTheme();
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
   const isAdmin = user?.role === 'superadmin' || user?.role === 'admin';
 
   const [brandColor, setBrandColor]       = useState(primaryColor || '#2563EB');
@@ -358,33 +358,44 @@ export default function ThemeOptionsPage() {
   useEffect(() => { setBrandFont(fontFamily); }, [fontFamily]);
   useEffect(() => { setBrandSidebar(sidebarAppearance); }, [sidebarAppearance]);
 
+  // ── Auto-save brand theme to API whenever color/font/sidebar changes ─────
+  const autoSaveRef = React.useRef(null);
+  const autoSaveBrandTheme = (color, font, sidebar) => {
+    if (!isAdmin) return;
+    if (autoSaveRef.current) clearTimeout(autoSaveRef.current);
+    autoSaveRef.current = setTimeout(async () => {
+      setSaving(true);
+      try {
+        await api.put('/branding', {
+          primary_color: color,
+          sidebar_style: sidebar,
+          font_family:   font,
+        });
+        toast.success('Brand theme saved!');
+        // Refresh user so BrandingSeeder has latest tenant data on next reload
+        refreshUser().catch(() => {});
+      } catch (err) {
+        toast.error(err.response?.data?.message || 'Failed to save brand theme.');
+      } finally {
+        setSaving(false);
+      }
+    }, 600);
+  };
+
   const handleColorChange = (hex) => {
     setBrandColor(hex);
     setPrimaryColor(hex);
+    autoSaveBrandTheme(hex, brandFont, brandSidebar);
   };
   const handleFontChange = (font) => {
     setBrandFont(font);
     setFontFamily(font);
+    autoSaveBrandTheme(brandColor, font, brandSidebar);
   };
   const handleSidebarChange = (style) => {
     setBrandSidebar(style);
     setSidebarAppearance(style);
-  };
-
-  const saveBrandTheme = async () => {
-    setSaving(true);
-    try {
-      await api.put('/branding', {
-        primary_color: brandColor,
-        sidebar_style: brandSidebar,
-        font_family:   brandFont,
-      });
-      toast.success('Brand theme saved!');
-    } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to save brand theme.');
-    } finally {
-      setSaving(false);
-    }
+    autoSaveBrandTheme(brandColor, brandFont, style);
   };
 
   const activeCount = [
@@ -958,26 +969,24 @@ export default function ThemeOptionsPage() {
             </div>
           </div>
 
-          {/* Save button */}
-          <div style={{ marginTop: 20, display: 'flex', justifyContent: 'flex-end' }}>
-            <button
-              onClick={saveBrandTheme}
-              disabled={saving}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 7,
-                padding: '10px 20px',
-                background: `linear-gradient(135deg, ${brandColor}CC, ${brandColor})`,
-                border: 'none', borderRadius: 10,
-                fontSize: 13, fontWeight: 700, color: '#fff',
-                cursor: saving ? 'not-allowed' : 'pointer',
-                opacity: saving ? 0.7 : 1,
-                boxShadow: `0 2px 8px ${brandColor}44`,
+          {/* Auto-save status */}
+          {saving && (
+            <div style={{ marginTop: 16, display: 'flex', justifyContent: 'flex-end' }}>
+              <div style={{
+                display: 'inline-flex', alignItems: 'center', gap: 7,
+                padding: '7px 14px', borderRadius: 8,
+                background: `${brandColor}12`, border: `1px solid ${brandColor}40`,
+                fontSize: 12.5, color: brandColor, fontWeight: 600,
                 fontFamily: "'Inter',sans-serif",
-              }}
-            >
-              <IconSave /> {saving ? 'Saving…' : 'Save Brand Theme'}
-            </button>
-          </div>
+              }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ animation: 'spin 1s linear infinite' }}>
+                  <polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-.22-3.12"/>
+                </svg>
+                Saving…
+                <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+              </div>
+            </div>
+          )}
         </SectionCard>
       )}
 

@@ -736,10 +736,23 @@ router.get('/plans', async (_req, res) => {
   try {
     const { PlanConfig } = require('../models');
     await PlanConfig.sync({ alter: true });
-    const plans = await PlanConfig.findAll({
+    let plans = await PlanConfig.findAll({
       where: { is_active: true },
       order: [['sort_order', 'ASC'], ['id', 'ASC']],
     });
+    if (plans.length === 0) {
+      const defaults = [
+        { key: 'trial',      label: 'Free Trial',  price_display: 'Free',        price_period: '',         tagline: '14-day free trial for new salons',    max_branches: 1,  max_staff: 5,  max_services: 20,  features: ['1 branch', '5 staff members', '20 services', 'Email notifications', 'Basic reports'],                                                                   trial_days: 14, is_popular: false, is_active: true, sort_order: 0 },
+        { key: 'basic',      label: 'Basic',        price_display: 'LKR 2,900',   price_period: '/mo',      tagline: 'Perfect for single-location salons',   max_branches: 1,  max_staff: 10, max_services: 50,  features: ['1 branch', '10 staff members', '50 services', 'Email & WhatsApp notifications', 'Basic reports'],                                                    trial_days: 0,  is_popular: false, is_active: true, sort_order: 1 },
+        { key: 'pro',        label: 'Pro',          price_display: 'LKR 7,900',   price_period: '/mo',      tagline: 'For growing multi-branch salons',       max_branches: 5,  max_staff: 50, max_services: 200, features: ['5 branches', '50 staff members', '200 services', 'AI Chat assistant', 'Advanced analytics & reports', 'Customer loyalty packages'],               trial_days: 0,  is_popular: true,  is_active: true, sort_order: 2 },
+        { key: 'enterprise', label: 'Enterprise',   price_display: 'Custom',      price_period: ' pricing', tagline: 'Tailored for large salon chains',       max_branches: -1, max_staff: -1, max_services: -1,  features: ['Unlimited branches', 'Unlimited staff', 'Unlimited services', 'Custom domain', 'API access', 'Priority support'],                                  trial_days: 0,  is_popular: false, is_active: true, sort_order: 3 },
+      ];
+      await PlanConfig.bulkCreate(defaults, { ignoreDuplicates: true });
+      plans = await PlanConfig.findAll({
+        where: { is_active: true },
+        order: [['sort_order', 'ASC'], ['id', 'ASC']],
+      });
+    }
     return res.json(plans);
   } catch (err) {
     console.error('Public plans error:', err);

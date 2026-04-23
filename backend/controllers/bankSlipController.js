@@ -1,5 +1,6 @@
 const { Op } = require('sequelize');
 const { BankSlip, Tenant, PlatformInvoice } = require('../models');
+const { getTenantCaps } = require('../utils/planConfig');
 const path = require('path');
 const fs = require('fs').promises;
 
@@ -125,11 +126,24 @@ const approveBankSlip = async (req, res) => {
       approval_date: new Date(),
     });
 
-    // Update tenant plan to the next paid plan if they have a pending subscription
+    // Update tenant plan to the plan stored on the linked invoice
     const tenant = await Tenant.findByPk(bankSlip.tenant_id);
-    if (tenant && tenant.plan === 'trial') {
-      // Default to basic plan when bank slip is approved
-      await tenant.update({ plan: 'basic' });
+    if (tenant) {
+      const invoice = await PlatformInvoice.findOne({
+        where: {
+          tenant_id: bankSlip.tenant_id,
+          notes: { [Op.like]: `%[bank-slip:${bankSlip.id}]%` },
+        },
+      });
+      const newPlan = invoice?.plan || 'basic';
+      const caps = getTenantCaps(newPlan);
+      await tenant.update({
+        plan: newPlan,
+        status: 'active',
+        max_branches: caps.max_branches,
+        max_staff: caps.max_staff,
+        trial_ends_at: null,
+      });
     }
 
     await PlatformInvoice.update(

@@ -1385,7 +1385,7 @@ const emailInvoice = async (req, res) => {
 // ── GET /api/platform/plans ─────────────────────────────────────────────────
 const listPlans = async (req, res) => {
   try {
-    await PlanConfig.sync({ alter: true });
+    await PlanConfig.sync();
     const plans = await PlanConfig.findAll({ order: [['sort_order', 'ASC'], ['id', 'ASC']] });
     // If no plans in DB yet, seed from planConfig.js defaults
     if (plans.length === 0) {

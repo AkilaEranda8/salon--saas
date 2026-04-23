@@ -183,7 +183,7 @@ const BillingPage = () => {
   const daysLeft     = trialEnds ? Math.max(0, Math.ceil((trialEnds - new Date()) / 86400000)) : null;
   const isActive     = status?.subscription?.status === 'active';
   const isSuspended  = status?.status === 'suspended';
-  const visiblePlans = upgradePlans.filter(p => currentPlan === 'trial' || p.key !== currentPlan);
+  const visiblePlans = upgradePlans.filter(p => currentPlan === 'trial' || isSuspended || p.key !== currentPlan);
 
   /* Manage Billing action button for PageWrapper */
   const manageBtn = isActive ? (
@@ -323,10 +323,12 @@ const BillingPage = () => {
               margin: '0 0 4px', fontSize: 20, fontWeight: 800, color: '#101828',
               fontFamily: "'Sora', 'Manrope', sans-serif", letterSpacing: '-0.3px',
             }}>
-              Choose a plan
+              {isSuspended ? 'Renew or change your plan' : 'Choose a plan'}
             </h2>
             <p style={{ margin: 0, fontSize: 13, color: '#667085', fontFamily: "'Inter', sans-serif" }}>
-              Unlock more capacity and features as your business grows.
+              {isSuspended
+                ? 'Reactivate your current plan or upgrade to restore access.'
+                : 'Unlock more capacity and features as your business grows.'}
             </p>
           </div>
 
@@ -474,7 +476,7 @@ const BillingPage = () => {
                     ))}
                   </ul>
 
-                  {isCurrent ? (
+                  {isCurrent && !isSuspended ? (
                     <div style={{
                       textAlign: 'center', padding: '11px 0',
                       borderRadius: 10, background: '#F2F4F7',
@@ -505,7 +507,7 @@ const BillingPage = () => {
                         fontFamily: "'Inter', sans-serif",
                       }}
                     >
-                      {key === 'enterprise' ? 'Contact Sales' : `Get ${info.label}`} <IconArrowRight />
+                      {key === 'enterprise' ? 'Contact Sales' : isCurrent && isSuspended ? `Renew ${info.label}` : `Get ${info.label}`} <IconArrowRight />
                     </button>
                   )}
                 </motion.div>

@@ -1,5 +1,5 @@
 const { Op } = require('sequelize');
-const { BankSlip, Tenant, PlatformInvoice } = require('../models');
+const { BankSlip, Tenant, PlatformInvoice, Subscription } = require('../models');
 const { getTenantCaps } = require('../utils/planConfig');
 const path = require('path');
 const fs = require('fs').promises;
@@ -144,6 +144,21 @@ const approveBankSlip = async (req, res) => {
         max_staff: caps.max_staff,
         trial_ends_at: null,
       });
+
+      // Auto-create Subscription record for bank-slip payment
+      if (newPlan !== 'trial') {
+        const now = new Date();
+        await Subscription.create({
+          tenant_id:              bankSlip.tenant_id,
+          stripe_subscription_id: `BANK-${bankSlip.tenant_id}-${bankSlip.id}`,
+          stripe_price_id:        `BANK-PRICE-${newPlan}`,
+          plan:                   newPlan,
+          status:                 'active',
+          current_period_start:   now,
+          current_period_end:     new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000),
+          cancel_at_period_end:   false,
+        });
+      }
     }
 
     await PlatformInvoice.update(

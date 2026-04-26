@@ -4,7 +4,7 @@ const { sequelize } = require('../config/database');
 const { invalidateTenantCache } = require('../middleware/tenantScope');
 const { getMaintenanceMode, setMaintenanceMode } = require('../services/systemSettings');
 const { getApiMonitoringSnapshot } = require('../services/apiMonitoring');
-const { sendSMS } = require('../services/notificationService');
+const { sendSMS, sendEmail } = require('../services/notificationService');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { addTrialDays, getTenantCaps } = require('../utils/planConfig');
@@ -252,6 +252,76 @@ const createTenant = async (req, res) => {
 
     await t.commit();
     invalidateTenantCache(tenant.slug);
+
+    // ── Send welcome email with account details ───────────────────────────────
+    const tenantUrl = buildTenantAppUrl(cleanSlug, req);
+    const trialNote = trialEnds
+      ? `Your <strong>${plan}</strong> trial is active until <strong>${new Date(trialEnds).toDateString()}</strong>.`
+      : `Your account is on the <strong>${plan}</strong> plan.`;
+
+    sendEmail({
+      to:      ownerEmail,
+      subject: `Welcome to Zane Salon — Your account is ready 🎉`,
+      html: `
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  body{margin:0;padding:0;background:#F0F2F5;font-family:'Inter',Arial,sans-serif;}
+  .wrap{max-width:560px;margin:40px auto;background:#FFFFFF;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);}
+  .header{background:linear-gradient(135deg,#4F46E5 0%,#6366F1 100%);padding:36px 32px;text-align:center;}
+  .header h1{margin:0;font-size:24px;font-weight:800;color:#FFFFFF;letter-spacing:-0.3px;}
+  .header p{margin:8px 0 0;font-size:14px;color:rgba(255,255,255,0.85);}
+  .body{padding:32px;}
+  .greeting{font-size:16px;font-weight:700;color:#0F172A;margin-bottom:8px;}
+  .sub{font-size:14px;color:#475569;line-height:1.6;margin-bottom:24px;}
+  .card{background:#F8F9FC;border:1px solid #E5E7EB;border-radius:12px;padding:20px 22px;margin-bottom:20px;}
+  .card-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:#64748B;margin-bottom:14px;}
+  .row{display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid #E5E7EB;}
+  .row:last-child{border-bottom:none;}
+  .label{font-size:12px;color:#64748B;font-weight:600;}
+  .value{font-size:13px;color:#0F172A;font-weight:700;text-align:right;word-break:break-all;max-width:60%;}
+  .value.mono{font-family:monospace;background:#EEF2FF;color:#4338CA;padding:2px 7px;border-radius:5px;font-size:12px;}
+  .btn{display:block;text-align:center;background:linear-gradient(135deg,#4F46E5,#6366F1);color:#FFFFFF;text-decoration:none;font-size:15px;font-weight:700;padding:14px 28px;border-radius:10px;margin:24px 0 0;box-shadow:0 2px 8px rgba(99,102,241,0.35);}
+  .notice{background:#FFFBEB;border:1px solid #FCD34D;border-radius:8px;padding:12px 14px;font-size:12.5px;color:#92400E;line-height:1.5;margin-top:20px;}
+  .footer{padding:18px 32px;text-align:center;font-size:11px;color:#94A3B8;border-top:1px solid #F1F5F9;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="header">
+    <h1>🎉 Welcome to Zane Salon</h1>
+    <p>Your salon management account is ready</p>
+  </div>
+  <div class="body">
+    <div class="greeting">Hi ${ownerName},</div>
+    <div class="sub">Your account has been created by the platform admin. Below are your login credentials and account details. Please keep this email safe.</div>
+
+    <div class="card">
+      <div class="card-title">Login Credentials</div>
+      <div class="row"><span class="label">Login URL</span><span class="value"><a href="${tenantUrl}" style="color:#4F46E5;">${tenantUrl}</a></span></div>
+      <div class="row"><span class="label">Email / Username</span><span class="value mono">${ownerEmail}</span></div>
+      <div class="row"><span class="label">Password</span><span class="value mono">${password}</span></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Account Details</div>
+      <div class="row"><span class="label">Business Name</span><span class="value">${businessName}</span></div>
+      <div class="row"><span class="label">Branch</span><span class="value">${branchName || businessName}</span></div>
+      <div class="row"><span class="label">Plan</span><span class="value" style="text-transform:capitalize;">${plan}</span></div>
+      ${trialEnds ? `<div class="row"><span class="label">Trial Ends</span><span class="value">${new Date(trialEnds).toDateString()}</span></div>` : ''}
+      <div class="row"><span class="label">Subdomain</span><span class="value mono">${cleanSlug}</span></div>
+    </div>
+
+    <a href="${tenantUrl}" class="btn">Go to My Dashboard →</a>
+
+    <div class="notice">⚠️ For security, please change your password after your first login under <strong>Settings → Profile</strong>.</div>
+  </div>
+  <div class="footer">Zane Salon Platform · This email was sent to ${ownerEmail}</div>
+</div>
+</body></html>`,
+      meta: { event_type: 'tenant_welcome', channel: 'email' },
+    }).catch(err => console.error('tenant welcome email failed:', err.message));
 
     return res.status(201).json({
       tenant_url: buildTenantAppUrl(tenant.slug, req),

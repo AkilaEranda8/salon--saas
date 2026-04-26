@@ -28,7 +28,7 @@ if hasattr(sys.stderr, "buffer"):
 try:
     import paramiko
 except ImportError:
-    print("Install paramiko:  pip install paramiko", file=sys.stderr)
+    print("Install paramiko first:  pip install paramiko", file=sys.stderr)
     sys.exit(1)
 
 host = os.environ.get("DEPLOY_HOST", "46.62.135.100")
@@ -62,9 +62,16 @@ deploy_cmd = (
     "echo '>>> git fetch + reset' && "
     "git fetch origin main && "
     "git reset --hard origin/main && "
+    "echo '>>> Stop old salon_v1 stack (shared DB volume — must stop before rebuild)' && "
+    "if [ -d /root/salon_v1 ]; then cd /root/salon_v1 && docker compose down 2>/dev/null || true && cd {app_path}; fi && "
+    f"cd {app_path} && "
     "echo '>>> docker compose down + up --build (may take several minutes)...' && "
     "docker compose down && "
     "DOCKER_BUILDKIT=1 docker compose up -d --build && "
+    "echo '>>> Waiting for DB healthy...' && "
+    "for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30; do "
+    "  S=$(docker inspect --format='{{.State.Health.Status}}' xanesalon-db-1 2>/dev/null); "
+    "  echo \"  DB: $S\"; [ \"$S\" = healthy ] && break; sleep 5; done && "
     "echo '>>> addMissingColumns migration' && "
     "docker compose exec -T backend node scripts/addMissingColumns.js && "
     "echo '>>> ensureSuperadmin' && "

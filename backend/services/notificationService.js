@@ -10,21 +10,31 @@ function getModels() {
   return _models;
 }
 
-// ── Transporter (lazy) ────────────────────────────────────────────────────────
-let _transporter = null;
-function getTransporter() {
-  if (_transporter) return _transporter;
-  if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) return null;
-  _transporter = nodemailer.createTransport({
-    host:   process.env.EMAIL_HOST || 'smtp.gmail.com',
-    port:   parseInt(process.env.EMAIL_PORT) || 587,
-    secure: false,
-    auth: {
+// ── SMTP resolver: platform DB (tenant_id=null) → env fallback ───────────────
+async function resolveSmtpConfig() {
+  try {
+    const { NotificationSettings } = getModels();
+    const row = await NotificationSettings.findOne({ where: { branch_id: null, tenant_id: null } });
+    if (row && row.smtp_user && row.smtp_pass) {
+      return {
+        host: row.smtp_host || process.env.EMAIL_HOST || 'smtp.gmail.com',
+        port: parseInt(row.smtp_port || process.env.EMAIL_PORT || 587),
+        user: row.smtp_user,
+        pass: row.smtp_pass,
+        from: row.smtp_from || row.smtp_user,
+      };
+    }
+  } catch { /* fall through */ }
+  if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
+    return {
+      host: process.env.EMAIL_HOST || 'smtp.gmail.com',
+      port: parseInt(process.env.EMAIL_PORT || 587),
       user: process.env.EMAIL_USER,
       pass: process.env.EMAIL_PASS,
-    },
-  });
-  return _transporter;
+      from: process.env.EMAIL_FROM || process.env.EMAIL_USER,
+    };
+  }
+  return null;
 }
 
 // ── Twilio client (lazy) ──────────────────────────────────────────────────────
@@ -125,7 +135,7 @@ function interpolate(tpl, vars) {
 async function getSMSCreds() {
   try {
     const { NotificationSettings } = getModels();
-    const row = await NotificationSettings.findOne({ where: { branch_id: null } });
+    const row = await NotificationSettings.findOne({ where: { branch_id: null, tenant_id: null } });
     if (row && row.sms_user_id && row.sms_api_key) {
       return {
         userId:   row.sms_user_id.trim(),
@@ -153,15 +163,21 @@ async function getSMSCreds() {
  */
 async function sendEmail({ to, subject, html, meta = {} }) {
   if (!to) return;
-  const transporter = getTransporter();
-  if (!transporter) {
-    console.warn('[Notifications] Email skipped — EMAIL_USER/EMAIL_PASS not configured.');
+  const smtpConf = await resolveSmtpConfig();
+  if (!smtpConf) {
+    console.warn('[Notifications] Email skipped — no SMTP configured (set via Platform Admin → SMTP & SMS or .env).');
     return;
   }
+  const transporter = nodemailer.createTransport({
+    host:   smtpConf.host,
+    port:   smtpConf.port,
+    secure: smtpConf.port === 465,
+    auth:   { user: smtpConf.user, pass: smtpConf.pass },
+  });
   let status = 'sent', errorMsg = null;
   try {
     await transporter.sendMail({
-      from:    process.env.EMAIL_FROM || `Zane Salon <${process.env.EMAIL_USER}>`,
+      from:    smtpConf.from,
       to,
       subject,
       html,

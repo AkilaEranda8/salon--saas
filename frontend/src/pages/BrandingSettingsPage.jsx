@@ -3,7 +3,6 @@ import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
 import api from '../api/axios';
 import PageWrapper from '../components/layout/PageWrapper';
-import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 
 /* ── SVG icons ───────────────────────────────────────────────────────────── */
@@ -239,15 +238,9 @@ export default function BrandingSettingsPage() {
   const [form, setForm]                         = useState(EMPTY);
   const [uploadingVariant, setUploadingVariant] = useState('');
 
-  const { setPrimaryColor, setFontFamily, setSidebarAppearance } = useTheme();
   const { refreshUser } = useAuth();
 
   const updateField = (key, value) => setForm((prev) => ({ ...prev, [key]: value }));
-
-  // Sync branding theme fields to ThemeContext so changes apply live in the app
-  useEffect(() => { setPrimaryColor(form.primary_color); }, [form.primary_color]);
-  useEffect(() => { setFontFamily(form.font_family); }, [form.font_family]);
-  useEffect(() => { setSidebarAppearance(form.sidebar_style); }, [form.sidebar_style]);
 
   const loadBranding = async () => {
     setLoading(true);

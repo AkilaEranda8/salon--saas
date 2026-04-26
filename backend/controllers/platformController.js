@@ -1538,6 +1538,113 @@ const listPlanChangeLogs = async (req, res) => {
   }
 };
 
+// ── Platform SMTP / SMS helpers ───────────────────────────────────────────────
+function maskSecret(val) {
+  if (!val) return '';
+  const s = String(val);
+  if (s.length <= 4) return '****';
+  return '••••••••' + s.slice(-4);
+}
+
+function buildSmtpSmsOut(row) {
+  return {
+    smtp_host:             row?.smtp_host             || process.env.EMAIL_HOST  || 'smtp.gmail.com',
+    smtp_port:             row?.smtp_port             || parseInt(process.env.EMAIL_PORT) || 587,
+    smtp_user:             row?.smtp_user             || process.env.EMAIL_USER  || '',
+    smtp_from:             row?.smtp_from             || process.env.EMAIL_FROM  || '',
+    smtp_pass:             maskSecret(row?.smtp_pass  || process.env.EMAIL_PASS  || ''),
+    smtp_pass_set:         !!(row?.smtp_pass          || process.env.EMAIL_PASS),
+    smtp_source:           row?.smtp_user && row?.smtp_pass ? 'db' : (process.env.EMAIL_USER ? 'env' : 'none'),
+    sms_user_id:           row?.sms_user_id           || process.env.SMS_USER_ID   || '',
+    sms_api_key:           maskSecret(row?.sms_api_key || process.env.SMS_API_KEY  || ''),
+    sms_api_key_set:       !!(row?.sms_api_key         || process.env.SMS_API_KEY),
+    sms_sender_id:         row?.sms_sender_id          || process.env.SMS_SENDER_ID || '',
+    sms_source:            row?.sms_user_id && row?.sms_api_key ? 'db' : (process.env.SMS_USER_ID ? 'env' : 'none'),
+    twilio_account_sid:    row?.twilio_account_sid    || process.env.TWILIO_ACCOUNT_SID    || '',
+    twilio_auth_token:     maskSecret(row?.twilio_auth_token || process.env.TWILIO_AUTH_TOKEN || ''),
+    twilio_auth_token_set: !!(row?.twilio_auth_token  || process.env.TWILIO_AUTH_TOKEN),
+    twilio_whatsapp_from:  row?.twilio_whatsapp_from  || process.env.TWILIO_WHATSAPP_FROM   || '',
+    twilio_source:         row?.twilio_account_sid && row?.twilio_auth_token ? 'db' : (process.env.TWILIO_ACCOUNT_SID ? 'env' : 'none'),
+  };
+}
+
+// ── GET /api/platform/system/smtp-sms ─────────────────────────────────────────
+const getPlatformSmtpSms = async (req, res) => {
+  try {
+    const row = await NotificationSettings.findOne({ where: { branch_id: null, tenant_id: null } });
+    return res.json(buildSmtpSmsOut(row));
+  } catch (err) {
+    console.error('getPlatformSmtpSms error:', err);
+    return res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+// ── PUT /api/platform/system/smtp-sms ─────────────────────────────────────────
+const updatePlatformSmtpSms = async (req, res) => {
+  try {
+    const update = {};
+    if (typeof req.body.smtp_host === 'string') update.smtp_host = req.body.smtp_host.trim() || null;
+    if (req.body.smtp_port !== undefined)        update.smtp_port = parseInt(req.body.smtp_port) || null;
+    if (typeof req.body.smtp_user === 'string')  update.smtp_user = req.body.smtp_user.trim() || null;
+    if (typeof req.body.smtp_from === 'string')  update.smtp_from = req.body.smtp_from.trim() || null;
+    if (typeof req.body.smtp_pass === 'string' && !req.body.smtp_pass.includes('•')) {
+      update.smtp_pass = req.body.smtp_pass.trim() || null;
+    }
+    if (typeof req.body.sms_user_id   === 'string') update.sms_user_id   = req.body.sms_user_id.trim()   || null;
+    if (typeof req.body.sms_sender_id === 'string') update.sms_sender_id = req.body.sms_sender_id.trim() || null;
+    if (typeof req.body.sms_api_key   === 'string' && !req.body.sms_api_key.includes('•')) {
+      update.sms_api_key = req.body.sms_api_key.trim() || null;
+    }
+    if (typeof req.body.twilio_account_sid   === 'string') update.twilio_account_sid   = req.body.twilio_account_sid.trim()   || null;
+    if (typeof req.body.twilio_whatsapp_from === 'string') update.twilio_whatsapp_from = req.body.twilio_whatsapp_from.trim() || null;
+    if (typeof req.body.twilio_auth_token    === 'string' && !req.body.twilio_auth_token.includes('•')) {
+      update.twilio_auth_token = req.body.twilio_auth_token.trim() || null;
+    }
+
+    const [row, created] = await NotificationSettings.findOrCreate({
+      where:    { branch_id: null, tenant_id: null },
+      defaults: update,
+    });
+    if (!created) await row.update(update);
+
+    const fresh = await NotificationSettings.findOne({ where: { branch_id: null, tenant_id: null } });
+    return res.json({ ...buildSmtpSmsOut(fresh), message: 'Settings saved.' });
+  } catch (err) {
+    console.error('updatePlatformSmtpSms error:', err);
+    return res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+// ── POST /api/platform/system/smtp-sms/test ───────────────────────────────────
+const testPlatformSmtp = async (req, res) => {
+  try {
+    const nodemailer = require('nodemailer');
+    const { to_email } = req.body;
+    if (!to_email) return res.status(400).json({ message: 'to_email is required.' });
+
+    const row  = await NotificationSettings.findOne({ where: { branch_id: null, tenant_id: null } });
+    const host = row?.smtp_host || process.env.EMAIL_HOST || 'smtp.gmail.com';
+    const port = parseInt(row?.smtp_port || process.env.EMAIL_PORT || 587);
+    const user = row?.smtp_user || process.env.EMAIL_USER || '';
+    const pass = row?.smtp_pass || process.env.EMAIL_PASS || '';
+    const from = row?.smtp_from || process.env.EMAIL_FROM || user;
+
+    if (!user || !pass) return res.status(400).json({ message: 'SMTP credentials not configured.' });
+
+    const transporter = nodemailer.createTransport({ host, port, secure: port === 465, auth: { user, pass } });
+    await transporter.sendMail({
+      from,
+      to:      to_email,
+      subject: '[Platform] SMTP Test — System',
+      html:    `<p>This is a test email from the platform admin panel at <b>${new Date().toISOString()}</b>.</p>`,
+    });
+    return res.json({ message: `Test email sent to ${to_email}.` });
+  } catch (err) {
+    console.error('testPlatformSmtp error:', err);
+    return res.status(500).json({ message: err.message || 'SMTP test failed.' });
+  }
+};
+
 module.exports = {
   listTenants,
   createTenant,
@@ -1572,4 +1679,7 @@ module.exports = {
   updatePlan,
   deletePlan,
   listPlanChangeLogs,
+  getPlatformSmtpSms,
+  updatePlatformSmtpSms,
+  testPlatformSmtp,
 };

@@ -65,6 +65,8 @@ const OnboardingPage = () => {
     try {
       const res = await api.post('/onboarding/register', form);
       const { slug } = res.data.tenant;
+      // Clear theme preferences so the new account starts with clean defaults
+      ['salon-theme-mode', 'salon-sidebar-style', 'salon-primary-color', 'salon-font-family', 'salon-sidebar-appearance', 'salon-table-style'].forEach((k) => localStorage.removeItem(k));
       // Redirect to the new tenant subdomain
       window.location.href = `https://${slug}.salon.hexalyte.com/dashboard`;
     } catch (err) {

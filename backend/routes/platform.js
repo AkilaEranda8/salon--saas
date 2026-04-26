@@ -36,6 +36,11 @@ router.get('/system/monitoring', ctrl.getMonitoring);
 router.patch('/system/maintenance', ctrl.updateMaintenance);
 router.post('/system/broadcast-sms', ctrl.broadcastSms);
 
+// SMTP / SMS configuration (platform-level global defaults)
+router.get('/system/smtp-sms',       ctrl.getPlatformSmtpSms);
+router.put('/system/smtp-sms',       ctrl.updatePlatformSmtpSms);
+router.post('/system/smtp-sms/test', ctrl.testPlatformSmtp);
+
 // Plan configuration management
 router.get('/plans',              ctrl.listPlans);
 router.get('/plans/change-logs',  ctrl.listPlanChangeLogs);

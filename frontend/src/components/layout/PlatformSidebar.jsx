@@ -27,6 +27,8 @@ const NAV = [
       icon: 'M12 3l2.9 5.9L21 10l-4.5 4.4L17.6 21 12 17.9 6.4 21l1.1-6.6L3 10l6.1-1.1L12 3z' },
     { path: '/platform/system', label: 'System Control',
       icon: 'M12 6V4m0 16v-2m8-6h-2M6 12H4m12.95 4.95l-1.4-1.4M8.45 8.45l-1.4-1.4m9.9 0l-1.4 1.4m-7.1 7.1l-1.4 1.4M12 16a4 4 0 100-8 4 4 0 000 8z' },
+    { path: '/platform/smtp-sms', label: 'SMTP & SMS',
+      icon: 'M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z' },
   ]},
   { label: 'BILLING', items: [
     { path: '/platform/subscriptions', label: 'Subscriptions',

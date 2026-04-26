@@ -13,7 +13,7 @@ function getInitialMode() {
   if (typeof window === 'undefined') return 'light';
   const savedMode = window.localStorage.getItem(THEME_MODE_KEY);
   if (savedMode === 'light' || savedMode === 'dark') return savedMode;
-  return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  return 'light';
 }
 
 function getInitialSidebarStyle() {

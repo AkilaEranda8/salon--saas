@@ -91,7 +91,11 @@ const cleanHexColor = (value) => {
   return VALID_HEX_COLOR.test(normalized) ? normalized : null;
 };
 
-const ALLOWED_SIDEBAR_STYLES = new Set(['light', 'dark']);
+const ALLOWED_SIDEBAR_STYLES = new Set([
+  'default', 'compact', 'floating', 'glass', 'gradient',
+  'accent', 'pill', 'wide', 'minimal',
+  'light', 'dark', // legacy appearance values
+]);
 const ALLOWED_FONTS = new Set(['Inter', 'Poppins', 'Roboto', 'Nunito', 'Lato', 'Montserrat']);
 
 const cleanUrl = (value) => {
@@ -180,7 +184,7 @@ router.put('/', verifyToken, requireRole('superadmin', 'admin'), async (req, res
       logo_login_url: cleanUrl(req.body?.logo_login_url ?? req.body?.login_logo),
       logo_public_url: cleanUrl(req.body?.logo_public_url ?? req.body?.public_logo),
       primary_color: cleanHexColor(req.body?.primary_color) ?? tenant.primary_color ?? '#2563EB',
-      sidebar_style: ALLOWED_SIDEBAR_STYLES.has(reqSidebarStyle) ? reqSidebarStyle : (tenant.sidebar_style ?? 'light'),
+      sidebar_style: ALLOWED_SIDEBAR_STYLES.has(reqSidebarStyle) ? reqSidebarStyle : (tenant.sidebar_style ?? 'default'),
       font_family: (reqFontFamily && ALLOWED_FONTS.has(reqFontFamily)) ? reqFontFamily : (tenant.font_family ?? 'Inter'),
     };
 

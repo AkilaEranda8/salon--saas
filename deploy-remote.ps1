@@ -39,11 +39,11 @@ Set-Location $repoRoot
 
 if (-not $SkipPush) {
   Write-Host "Pushing master to origin..." -ForegroundColor Green
-  git push origin master
+  git push origin main
   if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 }
 
-$remoteCmd = "set -e; cd `"$p`" && git pull origin master && docker compose down && docker compose up -d --build && docker compose ps"
+$remoteCmd = "set -e; cd `"$p`" && git pull origin main && docker compose down && docker compose up -d --build && docker compose ps"
 $target = "${u}@${h}"
 
 Write-Host "Connecting to $target (app: $p)..." -ForegroundColor Green

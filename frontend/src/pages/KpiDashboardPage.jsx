@@ -232,109 +232,134 @@ export default function KpiDashboardPage() {
         </div>
       )}
 
-      {/* ── Branch Cards / Table ── */}
-      {loading ? (
-        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(300px,1fr))', gap:16 }}>
-          {[1,2,3].map(i => (
-            <div key={i} style={{ background:C.card, borderRadius:16, border:`1px solid ${C.border}`, padding:22, height:220 }}>
-              {[90,60,40,70,50].map((w,j) => <div key={j} style={{ height:14, borderRadius:6, marginBottom:12, width:`${w}%`, background:isDark?'linear-gradient(90deg,#1E293B 25%,#334155 50%,#1E293B 75%)':'linear-gradient(90deg,#F2F4F7 25%,#E8EAED 50%,#F2F4F7 75%)', backgroundSize:'200% 100%', animation:'shimmer 1.4s infinite' }} />)}
-            </div>
-          ))}
-        </div>
-      ) : sorted.length === 0 ? (
-        <div style={{ textAlign:'center', padding:60, border:`2px dashed ${C.border}`, borderRadius:14, fontFamily:"'Inter',sans-serif" }}>
-          <div style={{ fontSize:40, marginBottom:12 }}>📊</div>
-          <div style={{ fontWeight:700, fontSize:15, color:C.text }}>No branch data</div>
-          <div style={{ fontSize:13, marginTop:4, color:C.sub }}>Select a different branch or check that branches are active.</div>
-        </div>
-      ) : (
-        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(300px,1fr))', gap:16 }}>
-          {sorted.map((b, idx) => {
-            const utilColor = b.utilization_rate >= 70 ? '#059669' : b.utilization_rate < 30 ? '#EF4444' : '#D97706';
-            const branchColor = b.color || '#2563EB';
-            return (
-              <div key={b.id}
-                style={{ background:C.card, border:`1.5px solid ${C.border}`, borderRadius:16, padding:22, boxShadow:isDark?'0 8px 20px rgba(2,6,23,0.35)':'0 1px 4px rgba(16,24,40,0.04)', transition:'all 0.2s ease', cursor:'default' }}
-                onMouseEnter={e => { e.currentTarget.style.transform='translateY(-3px)'; e.currentTarget.style.boxShadow=isDark?'0 16px 32px rgba(2,6,23,0.5)':'0 8px 24px rgba(16,24,40,0.12)'; }}
-                onMouseLeave={e => { e.currentTarget.style.transform='translateY(0)'; e.currentTarget.style.boxShadow=isDark?'0 8px 20px rgba(2,6,23,0.35)':'0 1px 4px rgba(16,24,40,0.04)'; }}>
+      {/* ── Branch Table ── */}
+      <div style={{ background:C.card, borderRadius:14, border:`1px solid ${C.border}`, overflow:'hidden', boxShadow:isDark?'0 8px 20px rgba(2,6,23,0.35)':'0 1px 4px rgba(16,24,40,0.04)' }}>
+        <div style={{ overflowX:'auto' }}>
+          <table style={{ width:'100%', borderCollapse:'collapse', fontFamily:"'Inter',sans-serif", tableLayout:'fixed' }}>
+            <colgroup>
+              <col style={{width:'22%'}}/><col style={{width:'14%'}}/><col style={{width:'9%'}}/><col style={{width:'9%'}}/><col style={{width:'10%'}}/><col style={{width:'18%'}}/><col style={{width:'12%'}}/><col style={{width:'6%'}}/>
+            </colgroup>
+            <thead>
+              <tr>
+                {[
+                  {col:'name',      label:'Branch'},
+                  {col:'revenue',   label:`Revenue (${period==='today'?'Today':period==='week'?'Week':'Month'})`, align:'right'},
+                  {col:'appointments', label:'Appts', align:'center'},
+                  {col:null,        label:'Walk-ins', align:'center'},
+                  {col:null,        label:'Customers', align:'center'},
+                  {col:'utilization', label:'Completion', align:'left'},
+                  {col:null,        label:'Top Staff',  align:'left'},
+                  {col:null,        label:'',           align:'center'},
+                ].map(({col,label,align='left'}, hi) => (
+                  <th key={hi} onClick={col?()=>handleSort(col):undefined}
+                    style={{ padding:'12px 16px', textAlign:align, fontSize:11, fontWeight:700, color:C.sub, textTransform:'uppercase', letterSpacing:'0.06em', background:isDark?'#1E293B':'linear-gradient(180deg,#F8F9FC 0%,#F1F3F9 100%)', borderBottom:`1.5px solid ${C.border}`, whiteSpace:'nowrap', cursor:col?'pointer':'default', userSelect:'none' }}>
+                    {label}
+                    {col && (sortBy===col
+                      ? <span style={{ fontSize:10, marginLeft:3, color:isDark?'#93C5FD':'#2563EB' }}>{sortDir==='desc'?'↓':'↑'}</span>
+                      : <span style={{ opacity:0.3, fontSize:10, marginLeft:3 }}>⇅</span>)}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? Array.from({length:4}).map((_,i) => (
+                <tr key={i}>{Array.from({length:8}).map((_,j) => (
+                  <td key={j} style={{padding:'16px'}}><div style={{height:13, borderRadius:6, width:`${55+(j*11)%38}%`, background:isDark?'linear-gradient(90deg,#1E293B 25%,#334155 50%,#1E293B 75%)':'linear-gradient(90deg,#F2F4F7 25%,#E8EAED 50%,#F2F4F7 75%)', backgroundSize:'200% 100%', animation:'shimmer 1.4s infinite'}} /></td>
+                ))}</tr>
+              )) : sorted.length === 0 ? (
+                <tr><td colSpan={8} style={{padding:'52px 16px', textAlign:'center'}}>
+                  <div style={{fontSize:40, marginBottom:12}}>📊</div>
+                  <div style={{fontWeight:600, fontSize:15, color:C.text}}>No branch data</div>
+                  <div style={{fontSize:13, marginTop:4, color:C.sub}}>Select a different branch or check that branches are active.</div>
+                </td></tr>
+              ) : sorted.map((b, idx) => {
+                const utilColor   = b.utilization_rate >= 70 ? '#059669' : b.utilization_rate < 30 ? '#EF4444' : '#D97706';
+                const branchColor = b.color || '#2563EB';
+                const rowBg = isDark ? (idx%2===0?'#0F172A':'#111827') : (idx%2===0?'#fff':'#FAFBFC');
+                const topStar = b.top_staff?.[0];
+                return (
+                  <tr key={b.id} style={{borderBottom:`1px solid ${C.border}`, background:rowBg, transition:'background 0.15s'}}
+                    onMouseEnter={e => e.currentTarget.style.background=isDark?'#1E293B':'#EEF4FF'}
+                    onMouseLeave={e => e.currentTarget.style.background=rowBg}>
 
-                {/* Header */}
-                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:16 }}>
-                  <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-                    <div style={{ width:36, height:36, borderRadius:10, background:`${branchColor}18`, border:`1.5px solid ${branchColor}30`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:16, flexShrink:0 }}>
-                      {idx===0?'🥇':idx===1?'🥈':idx===2?'🥉':'🏢'}
-                    </div>
-                    <div>
-                      <div style={{ fontWeight:800, fontSize:14, color:C.text, fontFamily:"'Sora','Manrope',sans-serif" }}>{b.name}</div>
-                      <div style={{ fontSize:11, color:C.muted, marginTop:1, fontFamily:"'Inter',sans-serif" }}>Branch #{b.id}</div>
-                    </div>
-                  </div>
-                  <div style={{ display:'flex', alignItems:'center', gap:6 }}>
-                    <div style={{ background:`${branchColor}14`, border:`1.5px solid ${branchColor}30`, borderRadius:10, padding:'6px 12px', textAlign:'right' }}>
-                      <div style={{ fontSize:15, fontWeight:800, color:branchColor, fontFamily:"'Sora','Manrope',sans-serif" }}>{Rs(b._revenue)}</div>
-                      <div style={{ fontSize:9, color:branchColor, fontWeight:700, fontFamily:"'Inter',sans-serif", textTransform:'uppercase' }}>{period==='today'?'Today':period==='week'?'Week':'Month'}</div>
-                    </div>
-                    <ActionBtn onClick={() => setDetailBranch(b)} title="View Details" color="#2563EB"><IconEye /></ActionBtn>
-                  </div>
-                </div>
-
-                {/* KPI Grid */}
-                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:8 }}>
-                  {[
-                    { label:'Appts',     value: b.appointments_today || 0, color:'#059669', bg:'#ECFDF5', dbg:'#059669' + '18' },
-                    { label:'Walk-ins',  value: b.walkin_today       || 0, color:'#D97706', bg:'#FFFBEB', dbg:'#D97706' + '18' },
-                    { label:'Customers', value: b.customer_count     || 0, color:'#7C3AED', bg:'#F5F3FF', dbg:'#7C3AED' + '18' },
-                  ].map(({ label, value, color, bg, dbg }) => (
-                    <div key={label} style={{ background:isDark?dbg:bg, borderRadius:10, padding:'10px 6px', textAlign:'center', border:`1px solid ${color}20` }}>
-                      <div style={{ fontSize:18, fontWeight:800, color, fontFamily:"'Inter',sans-serif" }}>{value}</div>
-                      <div style={{ fontSize:9, color:isDark?color+'cc':color, fontWeight:700, marginTop:2, fontFamily:"'Inter',sans-serif", textTransform:'uppercase', letterSpacing:'0.04em' }}>{label}</div>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Utilization bar */}
-                <div style={{ marginTop:14 }}>
-                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:4 }}>
-                    <span style={{ fontSize:10, fontWeight:700, color:C.muted, textTransform:'uppercase', letterSpacing:'0.05em', fontFamily:"'Inter',sans-serif" }}>Completion Rate</span>
-                    <span style={{ fontSize:12, fontWeight:800, color:utilColor }}>{b.utilization_rate || 0}%</span>
-                  </div>
-                  <UtilBar value={b.utilization_rate || 0} color={utilColor} dark={isDark} />
-                </div>
-
-                {/* Appointment breakdown */}
-                {b.appointments_breakdown && Object.keys(b.appointments_breakdown).length > 0 && (
-                  <div style={{ marginTop:12, display:'flex', gap:4, flexWrap:'wrap' }}>
-                    {Object.entries(b.appointments_breakdown).map(([status, count]) => {
-                      const sColor = status==='completed'?'#059669':status==='confirmed'?'#2563EB':status==='cancelled'?'#DC2626':status==='in_service'?'#7C3AED':'#D97706';
-                      return (
-                        <span key={status} style={{ fontSize:10, fontWeight:700, padding:'2px 8px', borderRadius:99, background:`${sColor}14`, color:sColor, border:`1px solid ${sColor}25`, fontFamily:"'Inter',sans-serif", textTransform:'capitalize' }}>
-                          {status} {count}
-                        </span>
-                      );
-                    })}
-                  </div>
-                )}
-
-                {/* Top staff */}
-                {b.top_staff && b.top_staff.length > 0 && (
-                  <div style={{ marginTop:14, borderTop:`1px solid ${C.border}`, paddingTop:12 }}>
-                    <div style={{ fontSize:10, fontWeight:800, color:C.muted, marginBottom:8, letterSpacing:'0.06em', fontFamily:"'Inter',sans-serif" }}>TOP STAFF</div>
-                    {b.top_staff.slice(0,3).map((s, i) => (
-                      <div key={i} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', fontSize:12, padding:'5px 0', borderBottom:i<b.top_staff.length-1?`1px solid ${C.border}`:'none', fontFamily:"'Inter',sans-serif" }}>
-                        <span style={{ display:'flex', alignItems:'center', gap:7 }}>
-                          <span style={{ width:20, height:20, borderRadius:6, background:`${RANK_COLORS[i]}18`, border:`1.5px solid ${RANK_COLORS[i]}35`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:9, fontWeight:800, color:RANK_COLORS[i] }}>{MEDAL[i]}</span>
-                          <span style={{ fontWeight:600, color:C.text }}>{s.name}</span>
-                        </span>
-                        <span style={{ fontWeight:700, color:C.sub, background:isDark?'#1E293B':'#F2F4F7', borderRadius:6, padding:'2px 7px', fontSize:10 }}>{Rs(s.revenue)}</span>
+                    {/* Branch name */}
+                    <td style={{padding:'14px 16px'}}>
+                      <div style={{display:'flex', alignItems:'center', gap:10}}>
+                        <div style={{width:34, height:34, borderRadius:10, background:`${branchColor}18`, border:`1.5px solid ${branchColor}30`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:15, flexShrink:0}}>
+                          {idx===0?'🥇':idx===1?'🥈':idx===2?'🥉':'🏢'}
+                        </div>
+                        <div>
+                          <div style={{fontWeight:700, fontSize:14, color:C.text}}>{b.name}</div>
+                          <div style={{fontSize:11, color:C.muted, marginTop:1}}>Branch #{b.id}</div>
+                        </div>
                       </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            );
-          })}
+                    </td>
+
+                    {/* Revenue */}
+                    <td style={{padding:'14px 16px', textAlign:'right'}}>
+                      <div style={{fontWeight:800, fontSize:15, color:branchColor}}>{Rs(b._revenue)}</div>
+                      {b.tx_week>0 && period==='week' && <div style={{fontSize:11, color:C.muted, marginTop:1}}>{b.tx_week} txns</div>}
+                    </td>
+
+                    {/* Appointments */}
+                    <td style={{padding:'14px 16px', textAlign:'center'}}>
+                      <span style={{display:'inline-flex', alignItems:'center', justifyContent:'center', width:36, height:36, borderRadius:10, background:'#ECFDF5', border:'1px solid #A7F3D0', fontWeight:800, fontSize:16, color:'#059669'}}>{b.appointments_today||0}</span>
+                    </td>
+
+                    {/* Walk-ins */}
+                    <td style={{padding:'14px 16px', textAlign:'center'}}>
+                      <span style={{display:'inline-flex', alignItems:'center', justifyContent:'center', width:36, height:36, borderRadius:10, background:'#FFFBEB', border:'1px solid #FDE68A', fontWeight:800, fontSize:16, color:'#D97706'}}>{b.walkin_today||0}</span>
+                    </td>
+
+                    {/* Customers */}
+                    <td style={{padding:'14px 16px', textAlign:'center'}}>
+                      <span style={{display:'inline-flex', alignItems:'center', justifyContent:'center', width:36, height:36, borderRadius:10, background:'#F5F3FF', border:'1px solid #DDD6FE', fontWeight:800, fontSize:16, color:'#7C3AED'}}>{b.customer_count||0}</span>
+                    </td>
+
+                    {/* Completion rate */}
+                    <td style={{padding:'14px 16px'}}>
+                      <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:5}}>
+                        <span style={{fontSize:12, fontWeight:800, color:utilColor}}>{b.utilization_rate||0}%</span>
+                        {b.appointments_breakdown && (
+                          <div style={{display:'flex', gap:3, flexWrap:'wrap'}}>
+                            {Object.entries(b.appointments_breakdown).slice(0,2).map(([st,cnt]) => {
+                              const sc = st==='completed'?'#059669':st==='confirmed'?'#2563EB':st==='cancelled'?'#DC2626':'#D97706';
+                              return <span key={st} style={{fontSize:9, fontWeight:700, padding:'1px 5px', borderRadius:99, background:`${sc}14`, color:sc, border:`1px solid ${sc}25`, textTransform:'capitalize'}}>{st.replace('_',' ')} {cnt}</span>;
+                            })}
+                          </div>
+                        )}
+                      </div>
+                      <UtilBar value={b.utilization_rate||0} color={utilColor} dark={isDark} />
+                    </td>
+
+                    {/* Top staff */}
+                    <td style={{padding:'14px 16px'}}>
+                      {topStar ? (
+                        <div>
+                          <div style={{display:'flex', alignItems:'center', gap:6}}>
+                            <span style={{fontSize:14}}>🥇</span>
+                            <span style={{fontWeight:600, fontSize:12, color:C.text, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{topStar.name}</span>
+                          </div>
+                          <div style={{fontSize:11, color:'#2563EB', fontWeight:700, marginTop:2, marginLeft:20}}>{Rs(topStar.revenue)}</div>
+                        </div>
+                      ) : <span style={{color:C.muted, fontSize:12}}>—</span>}
+                    </td>
+
+                    {/* Action */}
+                    <td style={{padding:'14px 16px', textAlign:'center'}}>
+                      <ActionBtn onClick={() => setDetailBranch(b)} title="View Details" color="#2563EB"><IconEye /></ActionBtn>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
-      )}
+        <div style={{padding:'10px 16px', borderTop:`1px solid ${C.border}`, fontSize:12, color:C.muted, display:'flex', justifyContent:'space-between'}}>
+          <span>Showing {sorted.length} of {branches.length} branches</span>
+          <span>Sorted by {sortBy} {sortDir==='desc'?'↓':'↑'}</span>
+        </div>
+      </div>
 
       {/* ── Footer ── */}
       <p style={{ margin:0, fontSize:12, color:C.muted, textAlign:'center', fontFamily:"'Inter',sans-serif" }}>

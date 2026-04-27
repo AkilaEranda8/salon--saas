@@ -5,6 +5,8 @@ const path = require('path');
 const multer = require('multer');
 const { Tenant } = require('../models');
 const { verifyToken, requireRole } = require('../middleware/auth');
+const { encrypt } = require('../utils/crypto');
+const logger      = require('../utils/logger');
 
 const router = Router();
 
@@ -379,7 +381,7 @@ router.get('/payment-settings', verifyToken, requireRole('superadmin', 'admin'),
       helapay_notify_url:   tenant.helapay_notify_url   || '',
     });
   } catch (err) {
-    console.error('branding.getPaymentSettings error:', err);
+    logger.error('branding_getPaymentSettings', { message: err.message, tenant: req.userTenantId });
     return res.status(500).json({ message: 'Server error.' });
   }
 });
@@ -396,14 +398,16 @@ router.put('/payment-settings', verifyToken, requireRole('superadmin', 'admin'),
     const updates = {};
     for (const key of allowed) {
       if (req.body[key] !== undefined) {
-        updates[key] = String(req.body[key] || '').trim() || null;
+        let val = String(req.body[key] || '').trim() || null;
+        if (key === 'helapay_app_secret' && val) val = encrypt(val);
+        updates[key] = val;
       }
     }
 
     await tenant.update(updates);
     return res.json({ message: 'Payment settings saved.' });
   } catch (err) {
-    console.error('branding.putPaymentSettings error:', err);
+    logger.error('branding_putPaymentSettings', { message: err.message, tenant: req.userTenantId });
     return res.status(500).json({ message: 'Server error.' });
   }
 });

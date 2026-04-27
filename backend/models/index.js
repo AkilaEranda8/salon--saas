@@ -42,6 +42,7 @@ const CustomerMembership = require('./CustomerMembership');
 const ConsentForm = require('./ConsentForm');
 const CustomerConsent = require('./CustomerConsent');
 const InventoryReorder = require('./InventoryReorder');
+const RevokedToken     = require('./RevokedToken');
 
 // Tenant
 Tenant.hasMany(Subscription, { foreignKey: 'tenant_id', as: 'subscriptions' });
@@ -274,4 +275,5 @@ module.exports = {
   ConsentForm,
   CustomerConsent,
   InventoryReorder,
+  RevokedToken,
 };

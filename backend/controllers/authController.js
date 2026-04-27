@@ -1,8 +1,9 @@
 const bcrypt = require('bcryptjs');
 const jwt    = require('jsonwebtoken');
+const crypto = require('crypto');
 const speakeasy = require('speakeasy');
 const qrcode    = require('qrcode');
-const { User, Branch, Tenant } = require('../models');
+const { User, Branch, Tenant, RevokedToken } = require('../models');
 const { getMaintenanceMode } = require('../services/systemSettings');
 
 const isLocalRequest = (req) => {
@@ -184,13 +185,32 @@ const login = async (req, res) => {
 };
 
 // ─── POST /api/auth/logout ───────────────────────────────────────────────────
-const logout = (req, res) => {
+const logout = async (req, res) => {
+  const rawToken =
+    req.cookies?.token ||
+    (req.headers.authorization?.startsWith('Bearer ')
+      ? req.headers.authorization.split(' ')[1]
+      : null);
+
+  if (rawToken) {
+    try {
+      const decoded = jwt.decode(rawToken);
+      if (decoded?.exp) {
+        const hash = crypto.createHash('sha256').update(rawToken).digest('hex');
+        await RevokedToken.upsert({
+          token_hash: hash,
+          expires_at: new Date(decoded.exp * 1000),
+        });
+      }
+    } catch (_) { /* non-fatal */ }
+  }
+
   const opts = getCookieOptions(req);
   res.clearCookie('token', {
     httpOnly: true,
-    secure: opts.secure,
+    secure:   opts.secure,
     sameSite: opts.sameSite,
-    path: opts.path,
+    path:     opts.path,
   });
   return res.json({ message: 'Logged out.' });
 };

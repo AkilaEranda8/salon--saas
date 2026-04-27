@@ -57,6 +57,8 @@ function validateEnv() {
     'EMAIL_USER',
     'EMAIL_PASS',
     'FIREBASE_SERVICE_ACCOUNT_JSON',
+    'ENCRYPTION_KEY',
+    'PLATFORM_SECRET',
   ];
   const missingRecommended = recommended.filter((k) => !process.env[k]);
   if (missingRecommended.length > 0) {

@@ -4,9 +4,11 @@
  * Docs: HelaPOS Merchant QR API v1.2.0
  */
 
-const axios = require('axios');
+const axios          = require('axios');
+const { decrypt }    = require('../utils/crypto');
 
-const HELA_BASE = 'https://helapos.lk/merchant-api';
+const HELA_BASE    = 'https://helapos.lk/merchant-api';
+const HELA_TIMEOUT = 10_000; // 10 s — prevent event-loop hang on slow API
 
 // In-memory token cache: tenantId → { accessToken, refreshToken, expiresAt }
 const tokenCache = new Map();
@@ -25,7 +27,8 @@ function isCacheValid(entry) {
 // ── Token Management ──────────────────────────────────────────────────────────
 
 async function getAccessToken(tenant) {
-  const { id: tenantId, helapay_app_id, helapay_app_secret } = tenant;
+  const { id: tenantId, helapay_app_id } = tenant;
+  const helapay_app_secret = decrypt(tenant.helapay_app_secret); // decrypt at-rest value
 
   if (!helapay_app_id || !helapay_app_secret) {
     throw new Error('HelaPay App ID and App Secret are not configured for this tenant.');
@@ -42,7 +45,7 @@ async function getAccessToken(tenant) {
       const entry = {
         accessToken: refreshed.accessToken,
         refreshToken: refreshed.refreshToken,
-        expiresAt: Date.now() + 20 * 60 * 1000, // assume 20 min TTL
+        expiresAt: Date.now() + 20 * 60 * 1000,
       };
       tokenCache.set(tenantId, entry);
       return entry.accessToken;
@@ -57,6 +60,7 @@ async function getAccessToken(tenant) {
     `${HELA_BASE}/merchant/api/v1/getToken`,
     { grant_type: 'client_credentials' },
     {
+      timeout: HELA_TIMEOUT,
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Basic ${authCode}`,
@@ -79,7 +83,7 @@ async function refreshAccessToken(refreshToken) {
   const { data } = await axios.post(
     `${HELA_BASE}/merchant/api/v1/merchant/auth/refresh`,
     { refreshToken },
-    { headers: { 'Content-Type': 'application/json' } }
+    { timeout: HELA_TIMEOUT, headers: { 'Content-Type': 'application/json' } }
   );
   const row = Array.isArray(data.data) ? data.data[0] : data.data;
   if (!row?.accessToken) throw new Error('Refresh failed.');
@@ -109,6 +113,7 @@ async function generateQR(tenant, reference, amount) {
       am: parseFloat(amount),
     },
     {
+      timeout: HELA_TIMEOUT,
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${accessToken}`,
@@ -144,6 +149,7 @@ async function checkPaymentStatus(tenant, { reference, qr_reference }) {
     `${HELA_BASE}/merchant/api/helapos/sales/getSaleStatus`,
     body,
     {
+      timeout: HELA_TIMEOUT,
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${accessToken}`,
@@ -170,6 +176,7 @@ async function getTransactionHistory(tenant, { start, end }) {
       end,
     },
     {
+      timeout: HELA_TIMEOUT,
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${accessToken}`,

@@ -6,17 +6,20 @@ const helmet       = require('helmet');
 const rateLimit    = require('express-rate-limit');
 const cookieParser = require('cookie-parser');
 const path         = require('path');
+const cron         = require('node-cron');
 const { sequelize } = require('./config/database');
 const validateEnv  = require('./config/validateEnv');
 const { initSocket } = require('./socket');
 const { startAppointmentReminderCron, startReminderDueCron } = require('./services/appointmentReminderCron');
 const { startMarketingAutomationCron } = require('./services/marketingAutomationCron');
 const { apiMonitorMiddleware } = require('./services/apiMonitoring');
-const { tenantScope }       = require('./middleware/tenantScope');
-const { checkSubscription } = require('./middleware/checkSubscription');
+const { tenantScope }          = require('./middleware/tenantScope');
+const { checkSubscription }    = require('./middleware/checkSubscription');
 const { enforceMaintenanceMode } = require('./middleware/maintenanceMode');
 const { ensureCustomerProfileColumns } = require('./services/ensureCustomerProfileColumns');
 const { ensureInventorySupplierColumns } = require('./services/ensureInventorySupplierColumns');
+const platformGuard = require('./middleware/platformGuard');
+const logger        = require('./utils/logger');
 
 // Validate required env vars on startup
 validateEnv();
@@ -90,8 +93,17 @@ const onboardingLimiter = rateLimit({
   message: { message: 'Too many registration attempts, please try again later.' },
 });
 
+const helapayLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max:      30,
+  standardHeaders: true,
+  legacyHeaders:   false,
+  message: { message: 'Too many QR requests, please slow down.' },
+});
+
 app.use('/api/auth/login',    authLimiter);
 app.use('/api/auth/register', authLimiter);
+app.use('/api/helapay',       helapayLimiter);
 app.use('/api/',              apiLimiter);
 
 // ── Socket.io ─────────────────────────────────────────────────────────────────
@@ -117,9 +129,17 @@ app.use('/api/', tenantScope);
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // ── Routes ────────────────────────────────────────────────────────────────────
-app.get('/api/health', (_req, res) =>
-  res.json({ status: 'ok', message: 'Zane Salon API is running' })
-);
+app.get('/api/health', async (_req, res) => {
+  const health = { status: 'ok', uptime: Math.floor(process.uptime()), timestamp: Date.now() };
+  try {
+    await sequelize.authenticate();
+    health.database = 'ok';
+  } catch {
+    health.database = 'error';
+    health.status   = 'degraded';
+  }
+  return res.status(health.status === 'ok' ? 200 : 503).json(health);
+});
 
 // Public (no auth, no subscription check)
 app.use('/api/public',       require('./routes/public'));
@@ -161,8 +181,8 @@ app.use('/api/support',      require('./routes/support'));
 // Billing (protected — Stripe portal, checkout)
 app.use('/api/billing',      require('./routes/billing'));
 
-// Platform admin (only platform_admin role)
-app.use('/api/platform',     require('./routes/platform'));
+// Platform admin (only platform_admin role) — extra secret header guard
+app.use('/api/platform', platformGuard, require('./routes/platform'));
 
 // ── NEW FEATURES: Analytics, Communication, Loyalty, Security ──────────────────
 app.use('/api/features',     require('./routes/features'));
@@ -180,8 +200,8 @@ app.use('/api/helapay',      require('./routes/helapay'));
 app.use((_req, res) => res.status(404).json({ message: 'Route not found.' }));
 
 // ── Global error handler ──────────────────────────────────────────────────────
-app.use((err, _req, res, _next) => {
-  console.error('Unhandled error:', err);
+app.use((err, req, res, _next) => {
+  logger.error('unhandled_error', { message: err.message, stack: err.stack, path: req.path });
   res.status(err.status || 500).json({
     message: process.env.NODE_ENV === 'production'
       ? 'Internal server error'
@@ -196,14 +216,14 @@ async function connectWithRetry(retries = 10, delay = 3000) {
   for (let i = 1; i <= retries; i++) {
     try {
       await sequelize.authenticate();
-      console.log('✓ Database connection established.');
+      logger.info('database_connected');
       return;
     } catch (err) {
-      console.error(`✗ DB connection attempt ${i}/${retries} failed: ${err.message}`);
+      logger.warn(`db_connect_attempt_${i}`, { message: err.message });
       if (i < retries) await new Promise((r) => setTimeout(r, delay));
     }
   }
-  console.error('✗ Could not connect to database after all retries.');
+  logger.error('db_connect_failed', { retries });
 }
 
 connectWithRetry().then(async () => {
@@ -211,7 +231,7 @@ connectWithRetry().then(async () => {
   try {
     await sequelize.sync({ force: false });
   } catch (err) {
-    console.warn('⚠  Table sync warning:', err.message);
+    logger.warn('sequelize_sync_warning', { message: err.message });
   }
 
   // ── Column migrations (idempotent — safe to run on every start) ──────────
@@ -223,12 +243,12 @@ connectWithRetry().then(async () => {
       await sequelize.query(
         `ALTER TABLE staff ADD COLUMN user_id INT NULL DEFAULT NULL`
       );
-      console.log('✓ Migration: staff.user_id column added.');
+      logger.info('migration: staff.user_id column added');
     } else {
-      console.log('✓ Migration: staff.user_id already exists.');
+      logger.info('migration: staff.user_id already exists');
     }
   } catch (err) {
-    console.warn('⚠  Migration staff.user_id:', err.message);
+    logger.warn('migration_staff_user_id', { message: err.message });
   }
 
   try {
@@ -239,12 +259,12 @@ connectWithRetry().then(async () => {
       await sequelize.query(
         `ALTER TABLE payments ADD COLUMN promo_discount DECIMAL(10,2) NOT NULL DEFAULT 0 AFTER loyalty_discount`
       );
-      console.log('✓ Migration: payments.promo_discount column added.');
+      logger.info('migration: payments.promo_discount column added');
     } else {
-      console.log('✓ Migration: payments.promo_discount already exists.');
+      logger.info('migration: payments.promo_discount already exists');
     }
   } catch (err) {
-    console.warn('⚠  Migration payments.promo_discount:', err.message);
+    logger.warn('migration_payments_promo_discount', { message: err.message });
   }
 
   try {
@@ -260,12 +280,47 @@ connectWithRetry().then(async () => {
       const [cols] = await sequelize.query(`SHOW COLUMNS FROM tenants LIKE '${column}'`);
       if (cols.length === 0) {
         await sequelize.query(alterSql);
-        console.log(`✓ Migration: tenants.${column} column added.`);
+        logger.info(`migration: tenants.${column} column added`);
       }
     }
   } catch (err) {
-    console.warn('⚠  Migration tenants.branding:', err.message);
+    logger.warn('migration_tenants_branding', { message: err.message });
   }
+
+  // ── DB Indexes (idempotent) ──────────────────────────────────────────────────
+  try {
+    const indexes = [
+      { table: 'appointments', columns: '(tenant_id, date)',    name: 'idx_appt_tenant_date' },
+      { table: 'appointments', columns: '(staff_id, date)',     name: 'idx_appt_staff_date'  },
+      { table: 'payments',     columns: '(tenant_id, created_at)', name: 'idx_pay_tenant_date' },
+      { table: 'payments',     columns: '(customer_id)',        name: 'idx_pay_customer'     },
+      { table: 'walk_ins',     columns: '(tenant_id, status)',  name: 'idx_walkin_tenant_status' },
+      { table: 'tenants',      columns: '(slug)',               name: 'idx_tenant_slug', unique: true },
+    ];
+    const [existingIndexes] = await sequelize.query(`SELECT INDEX_NAME FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE()`);
+    const existingNames = new Set(existingIndexes.map(r => r.INDEX_NAME));
+    for (const idx of indexes) {
+      if (existingNames.has(idx.name)) continue;
+      const unique = idx.unique ? 'UNIQUE' : '';
+      try {
+        await sequelize.query(`CREATE ${unique} INDEX ${idx.name} ON ${idx.table} ${idx.columns}`);
+        logger.info(`migration_index_added: ${idx.name}`);
+      } catch (e) {
+        logger.warn(`migration_index_skip: ${idx.name}`, { message: e.message });
+      }
+    }
+  } catch (err) {
+    logger.warn('migration_indexes_failed', { message: err.message });
+  }
+
+  // ── Revoked token cleanup cron (daily at 3am) ─────────────────────────────
+  cron.schedule('0 3 * * *', async () => {
+    try {
+      const { RevokedToken } = require('./models');
+      const deleted = await RevokedToken.destroy({ where: { expires_at: { [require('sequelize').Op.lt]: new Date() } } });
+      if (deleted > 0) logger.info('revoked_token_cleanup', { deleted });
+    } catch (e) { logger.warn('revoked_token_cleanup_failed', { message: e.message }); }
+  });
 
   startAppointmentReminderCron();
   startReminderDueCron();
@@ -276,7 +331,7 @@ connectWithRetry().then(async () => {
   await ensureInventorySupplierColumns();
 
   server.listen(PORT, () =>
-    console.log(`✓ Zane Salon server running on http://localhost:${PORT}`)
+    logger.info('server_started', { port: PORT })
   );
 });
 

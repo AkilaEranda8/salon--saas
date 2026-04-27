@@ -2,13 +2,15 @@ const { Router } = require('express');
 const { verifyToken } = require('../middleware/auth');
 const { tenantScope } = require('../middleware/tenantScope');
 const { generateQR, checkPaymentStatus, getTransactionHistory } = require('../services/helapayService');
+const requirePlan = require('../middleware/requirePlan');
+const logger      = require('../utils/logger');
 
 const router = Router();
 
 // ── POST /api/helapay/qr ─────────────────────────────────────────────────────
 // Generate a LankaQR code for a payment
 // Body: { reference, amount }
-router.post('/qr', verifyToken, async (req, res) => {
+router.post('/qr', verifyToken, requirePlan('pro', 'enterprise'), async (req, res) => {
   try {
     const tenant = req.tenant;
     if (!tenant) return res.status(400).json({ message: 'Tenant context required.' });
@@ -21,7 +23,7 @@ router.post('/qr', verifyToken, async (req, res) => {
     const result = await generateQR(tenant, reference, amount);
     return res.json(result);
   } catch (err) {
-    console.error('helapay.generateQR error:', err.message);
+    logger.error('helapay_generateQR', { message: err.message, tenant: req.tenant?.id });
     return res.status(500).json({ message: err.message });
   }
 });
@@ -29,7 +31,7 @@ router.post('/qr', verifyToken, async (req, res) => {
 // ── POST /api/helapay/status ──────────────────────────────────────────────────
 // Check payment status
 // Body: { reference?, qr_reference? }
-router.post('/status', verifyToken, async (req, res) => {
+router.post('/status', verifyToken, requirePlan('pro', 'enterprise'), async (req, res) => {
   try {
     const tenant = req.tenant;
     if (!tenant) return res.status(400).json({ message: 'Tenant context required.' });
@@ -42,7 +44,7 @@ router.post('/status', verifyToken, async (req, res) => {
     const result = await checkPaymentStatus(tenant, { reference, qr_reference });
     return res.json(result);
   } catch (err) {
-    console.error('helapay.checkStatus error:', err.message);
+    logger.error('helapay_checkStatus', { message: err.message, tenant: req.tenant?.id });
     return res.status(500).json({ message: err.message });
   }
 });
@@ -50,7 +52,7 @@ router.post('/status', verifyToken, async (req, res) => {
 // ── POST /api/helapay/history ─────────────────────────────────────────────────
 // Retrieve transaction history
 // Body: { start, end } (YYYY-MM-DD)
-router.post('/history', verifyToken, async (req, res) => {
+router.post('/history', verifyToken, requirePlan('pro', 'enterprise'), async (req, res) => {
   try {
     const tenant = req.tenant;
     if (!tenant) return res.status(400).json({ message: 'Tenant context required.' });
@@ -63,7 +65,7 @@ router.post('/history', verifyToken, async (req, res) => {
     const result = await getTransactionHistory(tenant, { start, end });
     return res.json(result);
   } catch (err) {
-    console.error('helapay.history error:', err.message);
+    logger.error('helapay_history', { message: err.message, tenant: req.tenant?.id });
     return res.status(500).json({ message: err.message });
   }
 });
@@ -74,7 +76,7 @@ router.post('/history', verifyToken, async (req, res) => {
 router.post('/callback', async (req, res) => {
   try {
     const { statusCode, reference, sale } = req.body;
-    console.log('[HelaPay Callback]', JSON.stringify(req.body));
+    logger.info('helapay_callback', { body: req.body });
 
     // payment_status: 2=Success, 0=Pending, -1=Failed
     const paymentStatus = sale?.payment_status;
@@ -86,7 +88,7 @@ router.post('/callback', async (req, res) => {
 
     return res.status(200).json({ received: true });
   } catch (err) {
-    console.error('helapay.callback error:', err.message);
+    logger.error('helapay_callback_error', { message: err.message });
     return res.status(200).json({ received: true }); // Always 200 to HelaPay
   }
 });

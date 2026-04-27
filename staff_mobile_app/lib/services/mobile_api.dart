@@ -857,6 +857,42 @@ class MobileApi {
     return WalkInEntry.fromJson(Map<String, dynamic>.from(body));
   }
 
+  // ── HelaPay ────────────────────────────────────────────────────────────────
+
+  Future<Map<String, dynamic>> generateQR({
+    required String token,
+    required String reference,
+    required double amount,
+  }) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/api/helapay/qr'),
+      headers: _authHeaders(token),
+      body: jsonEncode({'reference': reference, 'amount': amount}),
+    );
+    final body = _decode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['message'] ?? 'QR generation failed');
+    }
+    return body;
+  }
+
+  Future<Map<String, dynamic>> checkQRStatus({
+    required String token,
+    required String reference,
+    required String qrReference,
+  }) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/api/helapay/status'),
+      headers: _authHeaders(token),
+      body: jsonEncode({'reference': reference, 'qr_reference': qrReference}),
+    );
+    final body = _decode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['message'] ?? 'Status check failed');
+    }
+    return body;
+  }
+
   Map<String, String> _baseHeaders() => {
     'Content-Type': 'application/json',
     if (slug != null && slug!.isNotEmpty) 'X-Tenant-Slug': slug!,

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../models/salon_service.dart';
+import '../services/mobile_api.dart';
+import 'helapay_qr_screen.dart';
 import '../widgets/walk_in_service_dropdown_section.dart';
 
 // ── Palette ───────────────────────────────────────────────────────────────────
@@ -47,6 +49,8 @@ class AddWalkInPaymentModal extends StatefulWidget {
     this.customerName = '',
     this.serviceName = '',
     this.discounts = const [],
+    this.mobileApi,
+    this.token = '',
     super.key,
   });
 
@@ -57,6 +61,8 @@ class AddWalkInPaymentModal extends StatefulWidget {
   final String customerName;
   final String serviceName;
   final List<Map<String, dynamic>> discounts;
+  final MobileApi? mobileApi;
+  final String token;
 
   static Future<AddWalkInPaymentModalResult?> show(
     BuildContext context, {
@@ -66,6 +72,8 @@ class AddWalkInPaymentModal extends StatefulWidget {
     String customerName = '',
     String serviceName = '',
     List<Map<String, dynamic>> discounts = const [],
+    MobileApi? mobileApi,
+    String token = '',
   }) {
     return showModalBottomSheet<AddWalkInPaymentModalResult>(
       context: context,
@@ -78,6 +86,8 @@ class AddWalkInPaymentModal extends StatefulWidget {
         customerName: customerName,
         serviceName: serviceName,
         discounts: discounts,
+        mobileApi: mobileApi,
+        token: token,
       ),
     );
   }
@@ -89,12 +99,13 @@ class AddWalkInPaymentModal extends StatefulWidget {
 
 class _AddWalkInPaymentModalState extends State<AddWalkInPaymentModal> {
   static const _methods = [
-    'Cash', 'Card', 'Online Transfer', 'Loyalty Points', 'Package',
+    'Cash', 'Card', 'Online Transfer', 'LankaQR', 'Loyalty Points', 'Package',
   ];
   static const _methodIcons = <String, IconData>{
     'Cash':            Icons.payments_rounded,
     'Card':            Icons.credit_card_rounded,
     'Online Transfer': Icons.account_balance_rounded,
+    'LankaQR':         Icons.qr_code_rounded,
     'Loyalty Points':  Icons.stars_rounded,
     'Package':         Icons.card_giftcard_rounded,
   };
@@ -233,7 +244,7 @@ class _AddWalkInPaymentModalState extends State<AddWalkInPaymentModal> {
     super.dispose();
   }
 
-  void _submit() {
+  Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     if (_orderedSelectedServiceIds().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -241,17 +252,45 @@ class _AddWalkInPaymentModalState extends State<AddWalkInPaymentModal> {
       );
       return;
     }
-    final gross = _totalSelectedAmount();
-    final promo = _computedPromo();
-    Navigator.of(context).pop(AddWalkInPaymentModalResult(
-      method: _method,
-      amount: _amtCtrl.text.trim(),
-      subtotal: gross > 0 ? gross.toStringAsFixed(0) : '0',
-      discountId: _discountId,
-      serviceIds: List<String>.from(_orderedSelectedServiceIds()),
+    final gross  = _totalSelectedAmount();
+    final promo  = _computedPromo();
+    final result = AddWalkInPaymentModalResult(
+      method:          _method,
+      amount:          _amtCtrl.text.trim(),
+      subtotal:        gross > 0 ? gross.toStringAsFixed(0) : '0',
+      discountId:      _discountId,
+      serviceIds:      List<String>.from(_orderedSelectedServiceIds()),
       loyaltyDiscount: '0',
-      promoDiscount: promo.toStringAsFixed(2),
-    ));
+      promoDiscount:   promo.toStringAsFixed(2),
+    );
+
+    if (_method == 'LankaQR') {
+      final api = widget.mobileApi;
+      if (api == null || widget.token.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('HelaPay not configured. Contact admin.'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+        return;
+      }
+      final amount = double.tryParse(_amtCtrl.text.trim()) ?? 0;
+      final ref = 'WI-${DateTime.now().millisecondsSinceEpoch}';
+      if (!mounted) return;
+      final paid = await Navigator.of(context).push<bool>(
+        MaterialPageRoute(
+          fullscreenDialog: true,
+          builder: (_) => HelaPayQRScreen(
+            api: api, token: widget.token,
+            amount: amount, reference: ref,
+          ),
+        ),
+      );
+      if (paid != true || !mounted) return;
+    }
+
+    Navigator.of(context).pop(result);
   }
 
   Widget _label(String text) => Padding(

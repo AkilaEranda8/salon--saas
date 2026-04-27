@@ -150,6 +150,8 @@ class _PaymentsPageState extends State<PaymentsPage> {
       staff: staff, services: services,
       discounts: discounts,
       initialBranchId: uid,
+      mobileApi: app.api,
+      token: app.currentUser?.authToken ?? '',
       onRegisterNewCustomer: (name, phone, branchId) =>
           AppStateScope.of(context).registerCustomer(
             name: name,

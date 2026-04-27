@@ -91,6 +91,7 @@ class AppState extends ChangeNotifier {
   List<SalonService> get services => List.unmodifiable(_services);
   List<Map<String, String>> get branches => List.unmodifiable(_branches);
   StaffUser? get currentUser => _currentUser;
+  MobileApi  get api        => _api;
   String? get lastError => _lastError;
   int get appointmentTotal => _appointmentTotal;
 

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../models/customer.dart';
+import '../services/mobile_api.dart';
+import 'helapay_qr_screen.dart';
 import '../models/salon_service.dart';
 import '../models/staff_member.dart';
 import '../widgets/walk_in_service_dropdown_section.dart';
@@ -53,6 +55,8 @@ class AddPaymentModal extends StatefulWidget {
     this.discounts = const [],
     this.initialBranchId,
     this.onRegisterNewCustomer,
+    this.mobileApi,
+    this.token = '',
     super.key,
   });
 
@@ -66,6 +70,8 @@ class AddPaymentModal extends StatefulWidget {
   /// Called when user taps "Add & Select" for a new customer.
   /// Returns the created [Customer] or null on failure.
   final Future<Customer?> Function(String name, String phone, String? branchId)? onRegisterNewCustomer;
+  final MobileApi? mobileApi;
+  final String token;
 
   static Future<AddPaymentModalResult?> show(
     BuildContext context, {
@@ -76,6 +82,8 @@ class AddPaymentModal extends StatefulWidget {
     List<Map<String, dynamic>> discounts = const [],
     String? initialBranchId,
     Future<Customer?> Function(String name, String phone, String? branchId)? onRegisterNewCustomer,
+    MobileApi? mobileApi,
+    String token = '',
   }) {
     return showModalBottomSheet<AddPaymentModalResult>(
       context: context,
@@ -89,6 +97,8 @@ class AddPaymentModal extends StatefulWidget {
         discounts: discounts,
         initialBranchId: initialBranchId,
         onRegisterNewCustomer: onRegisterNewCustomer,
+        mobileApi: mobileApi,
+        token: token,
       ),
     );
   }
@@ -99,12 +109,13 @@ class AddPaymentModal extends StatefulWidget {
 
 class _AddPaymentModalState extends State<AddPaymentModal> {
   static const _methods = <String>[
-    'Cash', 'Card', 'Online Transfer', 'Loyalty Points', 'Package'
+    'Cash', 'Card', 'Online Transfer', 'LankaQR', 'Loyalty Points', 'Package'
   ];
   static const _methodIcons = <String, IconData>{
     'Cash':            Icons.payments_rounded,
     'Card':            Icons.credit_card_rounded,
     'Online Transfer': Icons.account_balance_rounded,
+    'LankaQR':         Icons.qr_code_rounded,
     'Loyalty Points':  Icons.stars_rounded,
     'Package':         Icons.card_giftcard_rounded,
   };
@@ -223,7 +234,7 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
     }
   }
 
-  void _submit() {
+  Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     if (_customerId.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -245,7 +256,7 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
       orElse: () => Customer(id: '', name: 'Walk-in', phone: '', email: ''),
     );
     final promo = _computedPromo();
-    Navigator.of(context).pop(AddPaymentModalResult(
+    final result = AddPaymentModalResult(
       branchId:       (_branchId ?? '').trim(),
       customerId:     _customerId.trim(),
       staffId:        (_staffId ?? '').trim(),
@@ -259,7 +270,35 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
       customerName:   _customerNameCtrl.text.trim().isEmpty
                           ? cust.name
                           : _customerNameCtrl.text.trim(),
-    ));
+    );
+
+    if (_method == 'LankaQR') {
+      final api = widget.mobileApi;
+      if (api == null || widget.token.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('HelaPay not configured. Contact admin.'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+        return;
+      }
+      final amount = double.tryParse(_paidAmountCtrl.text.trim()) ?? 0;
+      final ref = 'PAY-${DateTime.now().millisecondsSinceEpoch}';
+      if (!mounted) return;
+      final paid = await Navigator.of(context).push<bool>(
+        MaterialPageRoute(
+          fullscreenDialog: true,
+          builder: (_) => HelaPayQRScreen(
+            api: api, token: widget.token,
+            amount: amount, reference: ref,
+          ),
+        ),
+      );
+      if (paid != true || !mounted) return;
+    }
+
+    Navigator.of(context).pop(result);
   }
 
   // ── helpers ──────────────────────────────────────────────────────────────────

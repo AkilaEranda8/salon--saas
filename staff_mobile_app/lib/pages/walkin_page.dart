@@ -369,6 +369,8 @@ class _WalkInPageState extends State<WalkInPage> {
       services: _services,
       selectedServiceIds: selectedForModal,
       discounts: discounts,
+      mobileApi: app.api,
+      token: app.currentUser?.authToken ?? '',
     );
     if (payload == null || !mounted) return;
 

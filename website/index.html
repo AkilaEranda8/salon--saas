@@ -312,8 +312,7 @@
       background: #0f0a1e; color: #9ca3af;
       padding: 56px 0 32px;
     }
-    .footer-grid { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 48px; margin-bottom: 48px; }
-    .footer-brand { }
+    .footer-grid { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 1fr; gap: 40px; margin-bottom: 48px; }
     .footer-logo { display: flex; align-items: center; gap: 10px; color: #fff; font-size: 18px; font-weight: 800; margin-bottom: 14px; }
     .footer-logo-icon {
       width: 32px; height: 32px; border-radius: 8px;
@@ -334,6 +333,42 @@
       .footer-brand { grid-column: 1 / -1; }
     }
     @media (max-width: 500px) { .footer-grid { grid-template-columns: 1fr; } }
+
+    /* ── Customer Portal Section ── */
+    .customer-section { padding: 80px 0; }
+    .customer-split { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; }
+    .customer-panel {
+      border-radius: 20px; padding: 36px 32px;
+      display: flex; flex-direction: column; gap: 14px;
+    }
+    .customer-panel.for-salon { background: linear-gradient(140deg, #1e1b4b 0%, #312e81 100%); color: #fff; }
+    .customer-panel.for-cust  { background: linear-gradient(140deg, #4c1d95 0%, #7c3aed 100%); color: #fff; }
+    .cpanel-icon {
+      width: 52px; height: 52px; border-radius: 14px;
+      background: rgba(255,255,255,.15); display: flex; align-items: center; justify-content: center;
+    }
+    .cpanel-icon svg { width: 26px; height: 26px; fill: #fff; }
+    .customer-panel h3 { font-size: 22px; font-weight: 800; margin: 0; }
+    .customer-panel p  { font-size: 14px; opacity: .85; margin: 0; line-height: 1.65; }
+    .cpanel-list { list-style: none; display: flex; flex-direction: column; gap: 7px; }
+    .cpanel-list li { display: flex; align-items: center; gap: 8px; font-size: 13px; opacity: .9; }
+    .cpanel-list li::before { content: '✓'; font-weight: 800; flex-shrink: 0; }
+    .cpanel-btns { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 6px; }
+    .cpanel-btn-solid {
+      display: inline-flex; align-items: center;
+      background: #fff; color: var(--c-primary);
+      padding: 10px 22px; border-radius: 99px; font-size: 14px; font-weight: 700;
+      transition: var(--transition);
+    }
+    .cpanel-btn-solid:hover { background: #f3f0ff; transform: translateY(-1px); }
+    .cpanel-btn-outline {
+      display: inline-flex; align-items: center;
+      background: rgba(255,255,255,.12); color: #fff;
+      padding: 10px 22px; border-radius: 99px; font-size: 14px; font-weight: 700;
+      border: 1.5px solid rgba(255,255,255,.35); transition: var(--transition);
+    }
+    .cpanel-btn-outline:hover { background: rgba(255,255,255,.22); }
+    @media (max-width: 768px) { .customer-split { grid-template-columns: 1fr; } }
 
     /* ── Animations ── */
     @keyframes fadeUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
@@ -359,6 +394,7 @@
       <a href="#how-it-works">How It Works</a>
       <a href="#pricing">Pricing</a>
       <a href="#compare">Compare</a>
+      <a href="#customer-portal">Customer Portal</a>
     </div>
     <div class="nav-cta">
       <a href="https://admin.hexalyte.com/login" class="btn btn-ghost">Log In</a>
@@ -642,6 +678,56 @@
   </div>
 </section>
 
+<!-- ── Customer Portal Section ──────────────────────────────────────────── -->
+<section class="customer-section" id="customer-portal">
+  <div class="container">
+    <div class="section-head">
+      <span class="tag">For Everyone</span>
+      <h2>Two portals, one platform</h2>
+      <p>Whether you run a salon or visit one — Hexalyte has a dedicated experience built for you.</p>
+    </div>
+    <div class="customer-split">
+
+      <div class="customer-panel for-salon">
+        <div class="cpanel-icon">
+          <svg viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"/></svg>
+        </div>
+        <h3>Salon Owners &amp; Staff</h3>
+        <p>Manage your entire salon business from one powerful dashboard — appointments, staff, analytics, and more.</p>
+        <ul class="cpanel-list">
+          <li>Smart appointment calendar</li>
+          <li>Staff management &amp; attendance</li>
+          <li>KPI dashboard &amp; analytics</li>
+          <li>14-day free trial — no card needed</li>
+        </ul>
+        <div class="cpanel-btns">
+          <a href="https://admin.hexalyte.com/register" class="cpanel-btn-solid">Start Free Trial</a>
+          <a href="https://admin.hexalyte.com/login" class="cpanel-btn-outline">Log In</a>
+        </div>
+      </div>
+
+      <div class="customer-panel for-cust">
+        <div class="cpanel-icon">
+          <svg viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+        </div>
+        <h3>Salon Customers</h3>
+        <p>View your booking history, check loyalty points, buy packages, and rebook in seconds from your personal portal.</p>
+        <ul class="cpanel-list">
+          <li>View &amp; manage your bookings</li>
+          <li>Check loyalty points &amp; rewards</li>
+          <li>Buy service packages &amp; memberships</li>
+          <li>One-click rebooking</li>
+        </ul>
+        <div class="cpanel-btns">
+          <a href="https://admin.hexalyte.com/customer-portal/register" class="cpanel-btn-solid">Register Now</a>
+          <a href="https://admin.hexalyte.com/customer-portal/login" class="cpanel-btn-outline">Log In</a>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
 <!-- ── CTA ────────────────────────────────────────────────────────────────── -->
 <section class="cta-section">
   <div class="container">
@@ -683,6 +769,14 @@
           <li><a href="https://admin.hexalyte.com/register">Sign Up</a></li>
           <li><a href="https://admin.hexalyte.com/login">Log In</a></li>
           <li><a href="https://admin.hexalyte.com">Dashboard</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h4>Customers</h4>
+        <ul>
+          <li><a href="https://admin.hexalyte.com/customer-portal/register">Register</a></li>
+          <li><a href="https://admin.hexalyte.com/customer-portal/login">Customer Login</a></li>
+          <li><a href="https://admin.hexalyte.com/booking">Book Appointment</a></li>
         </ul>
       </div>
       <div class="footer-col">

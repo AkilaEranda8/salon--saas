@@ -345,6 +345,7 @@ function MinimalSidebarPreview() {
 /* ── Main page ─────────────────────────────────────────────────────────────── */
 export default function ThemeOptionsPage() {
   const { mode, setMode, sidebarStyle, setSidebarStyle, primaryColor, setPrimaryColor, fontFamily, setFontFamily, sidebarAppearance, setSidebarAppearance, tableStyle, setTableStyle } = useTheme();
+  const [layoutSaving, setLayoutSaving] = useState(false);
   const { user, refreshUser } = useAuth();
   const isAdmin = user?.role === 'superadmin' || user?.role === 'admin';
 
@@ -360,7 +361,7 @@ export default function ThemeOptionsPage() {
 
   // ── Auto-save brand theme to API whenever color/font/sidebar changes ─────
   const autoSaveRef = React.useRef(null);
-  const autoSaveBrandTheme = (color, font, sidebar) => {
+  const autoSaveBrandTheme = (color, font, layout) => {
     if (!isAdmin) return;
     if (autoSaveRef.current) clearTimeout(autoSaveRef.current);
     autoSaveRef.current = setTimeout(async () => {
@@ -368,11 +369,10 @@ export default function ThemeOptionsPage() {
       try {
         await api.put('/branding', {
           primary_color: color,
-          sidebar_style: sidebar,
+          sidebar_style: layout,
           font_family:   font,
         });
         toast.success('Brand theme saved!');
-        // Refresh user so BrandingSeeder has latest tenant data on next reload
         refreshUser().catch(() => {});
       } catch (err) {
         toast.error(err.response?.data?.message || 'Failed to save brand theme.');
@@ -385,17 +385,25 @@ export default function ThemeOptionsPage() {
   const handleColorChange = (hex) => {
     setBrandColor(hex);
     setPrimaryColor(hex);
-    autoSaveBrandTheme(hex, brandFont, brandSidebar);
+    autoSaveBrandTheme(hex, brandFont, sidebarStyle || 'default');
   };
   const handleFontChange = (font) => {
     setBrandFont(font);
     setFontFamily(font);
-    autoSaveBrandTheme(brandColor, font, brandSidebar);
+    autoSaveBrandTheme(brandColor, font, sidebarStyle || 'default');
   };
-  const handleSidebarChange = (style) => {
-    setBrandSidebar(style);
-    setSidebarAppearance(style);
-    autoSaveBrandTheme(brandColor, brandFont, style);
+  const handleLayoutChange = (layout) => {
+    setSidebarStyle(layout);
+    if (!isAdmin) return;
+    setLayoutSaving(true);
+    api.put('/branding', {
+      primary_color: brandColor,
+      sidebar_style: layout,
+      font_family:   brandFont,
+    })
+      .then(() => toast.success('Sidebar layout saved!'))
+      .catch(err => toast.error(err.response?.data?.message || 'Failed to save layout.'))
+      .finally(() => setLayoutSaving(false));
   };
 
   const activeCount = [
@@ -486,7 +494,7 @@ export default function ThemeOptionsPage() {
             description="Full-width sidebar with icons and labels visible."
             icon={<IconLayout />}
             active={sidebarStyle === 'default'}
-            onClick={() => setSidebarStyle('default')}
+            onClick={() => handleLayoutChange('default')}
             previewBg="linear-gradient(180deg, #F8F9FC 0%, #F1F3F9 100%)"
             previewContent={<DefaultSidebarPreview />}
           />
@@ -496,7 +504,7 @@ export default function ThemeOptionsPage() {
             description="Floating pill sidebar — icons only, hovers to reveal labels."
             icon={<IconLayout />}
             active={sidebarStyle === 'compact'}
-            onClick={() => setSidebarStyle('compact')}
+            onClick={() => handleLayoutChange('compact')}
             previewBg="linear-gradient(180deg, #F8F9FC 0%, #F1F3F9 100%)"
             previewContent={<CompactSidebarPreview />}
           />
@@ -506,7 +514,7 @@ export default function ThemeOptionsPage() {
             description="Detached, rounded sidebar that hovers above the background."
             icon={<IconLayout />}
             active={sidebarStyle === 'floating'}
-            onClick={() => setSidebarStyle('floating')}
+            onClick={() => handleLayoutChange('floating')}
             previewBg="linear-gradient(180deg, #E8ECF4 0%, #DDE3EF 100%)"
             previewContent={<FloatingSidebarPreview />}
           />
@@ -516,7 +524,7 @@ export default function ThemeOptionsPage() {
             description="Frosted glass sidebar with blur and transparency."
             icon={<IconLayout />}
             active={sidebarStyle === 'glass'}
-            onClick={() => setSidebarStyle('glass')}
+            onClick={() => handleLayoutChange('glass')}
             previewBg="linear-gradient(135deg, #C7D2FE 0%, #BAE6FD 100%)"
             previewContent={<GlassSidebarPreview />}
           />
@@ -526,7 +534,7 @@ export default function ThemeOptionsPage() {
             description="Dark navy gradient sidebar for a bold, professional look."
             icon={<IconLayout />}
             active={sidebarStyle === 'gradient'}
-            onClick={() => setSidebarStyle('gradient')}
+            onClick={() => handleLayoutChange('gradient')}
             previewBg="linear-gradient(180deg, #E2E8F0 0%, #CBD5E1 100%)"
             previewContent={<GradientSidebarPreview />}
           />
@@ -536,7 +544,7 @@ export default function ThemeOptionsPage() {
             description="Active item highlighted with a coloured left bar indicator."
             icon={<IconLayout />}
             active={sidebarStyle === 'accent'}
-            onClick={() => setSidebarStyle('accent')}
+            onClick={() => handleLayoutChange('accent')}
             previewBg="linear-gradient(180deg, #F8F9FC 0%, #F1F3F9 100%)"
             previewContent={<AccentSidebarPreview />}
           />
@@ -546,7 +554,7 @@ export default function ThemeOptionsPage() {
             description="Active nav item shown as a full capsule/pill shape."
             icon={<IconLayout />}
             active={sidebarStyle === 'pill'}
-            onClick={() => setSidebarStyle('pill')}
+            onClick={() => handleLayoutChange('pill')}
             previewBg="linear-gradient(180deg, #F8F9FC 0%, #F1F3F9 100%)"
             previewContent={<PillSidebarPreview />}
           />
@@ -556,7 +564,7 @@ export default function ThemeOptionsPage() {
             description="Extra-wide sidebar with more breathing room for labels."
             icon={<IconLayout />}
             active={sidebarStyle === 'wide'}
-            onClick={() => setSidebarStyle('wide')}
+            onClick={() => handleLayoutChange('wide')}
             previewBg="linear-gradient(180deg, #F8F9FC 0%, #F1F3F9 100%)"
             previewContent={<WideSidebarPreview />}
           />
@@ -566,7 +574,7 @@ export default function ThemeOptionsPage() {
             description="Transparent, borderless sidebar that blends into the background."
             icon={<IconLayout />}
             active={sidebarStyle === 'minimal'}
-            onClick={() => setSidebarStyle('minimal')}
+            onClick={() => handleLayoutChange('minimal')}
             previewBg="linear-gradient(180deg, #F0F1F5 0%, #E8EAF0 100%)"
             previewContent={<MinimalSidebarPreview />}
           />

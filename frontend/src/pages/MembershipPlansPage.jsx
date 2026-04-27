@@ -217,24 +217,10 @@ export default function MembershipPlansPage() {
       title="Membership Plans"
       subtitle="Create and manage customer loyalty membership plans"
       actions={
-        <div style={{display:'flex',gap:8,alignItems:'center'}}>
-          {canAdmin && tab==='plans' && (
-            <button onClick={()=>{setEditPlan(null);setPlanForm(blankPlan);setShowPlanModal(true);}}
-              style={{display:'flex',alignItems:'center',gap:6,padding:'9px 18px',background:'linear-gradient(135deg,#2563EB,#3B82F6)',border:'none',borderRadius:10,cursor:'pointer',fontSize:13,fontWeight:700,color:'#fff',boxShadow:'0 2px 10px rgba(37,99,235,0.35)',fontFamily:"'Inter',sans-serif"}}>
-              <IconPlus/> New Plan
-            </button>
-          )}
-          {tab==='enrollments' && (
-            <button onClick={()=>setShowEnrollModal(true)}
-              style={{display:'flex',alignItems:'center',gap:6,padding:'9px 18px',background:'linear-gradient(135deg,#7C3AED,#A855F7)',border:'none',borderRadius:10,cursor:'pointer',fontSize:13,fontWeight:700,color:'#fff',boxShadow:'0 2px 10px rgba(124,58,237,0.35)',fontFamily:"'Inter',sans-serif"}}>
-              <IconPlus/> Enroll Customer
-            </button>
-          )}
-          <button onClick={()=>{loadPlans();loadEnrollments();}}
-            style={{width:34,height:34,borderRadius:9,border:`1.5px solid ${C.border}`,background:C.card,color:C.sub,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer'}}>
-            <IconRefresh/>
-          </button>
-        </div>
+        <button onClick={()=>{loadPlans();loadEnrollments();}}
+          style={{width:34,height:34,borderRadius:9,border:`1.5px solid ${C.border}`,background:C.card,color:C.sub,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer'}}>
+          <IconRefresh/>
+        </button>
       }
     >
 
@@ -294,6 +280,15 @@ export default function MembershipPlansPage() {
 
       {/* ══════════════ PLANS TAB ══════════════ */}
       {tab==='plans' && (
+        <>
+        {canAdmin && (
+          <div style={{display:'flex',justifyContent:'flex-end'}}>
+            <button onClick={()=>{setEditPlan(null);setPlanForm(blankPlan);setShowPlanModal(true);}}
+              style={{display:'flex',alignItems:'center',gap:6,padding:'9px 18px',background:'linear-gradient(135deg,#2563EB,#3B82F6)',border:'none',borderRadius:10,cursor:'pointer',fontSize:13,fontWeight:700,color:'#fff',boxShadow:'0 2px 10px rgba(37,99,235,0.35)',fontFamily:"'Inter',sans-serif"}}>
+              <IconPlus/> New Plan
+            </button>
+          </div>
+        )}
         <div style={{display:'flex',gap:18,flexWrap:'wrap',alignItems:'stretch'}}>
           {plans.length===0 ? (
             <div style={{width:'100%',textAlign:'center',padding:'50px 20px',background:isDark?C.card:'linear-gradient(135deg,#F9FAFB,#F3F4F6)',borderRadius:18,border:`2px dashed ${C.border}`}}>
@@ -356,11 +351,19 @@ export default function MembershipPlansPage() {
             );
           })}
         </div>
+        </>
       )}
 
       {/* ══════════════ ENROLLMENTS TAB ══════════════ */}
       {tab==='enrollments' && (
         <>
+          {/* Enroll button row */}
+          <div style={{display:'flex',justifyContent:'flex-end'}}>
+            <button onClick={()=>setShowEnrollModal(true)}
+              style={{display:'flex',alignItems:'center',gap:6,padding:'9px 18px',background:'linear-gradient(135deg,#7C3AED,#A855F7)',border:'none',borderRadius:10,cursor:'pointer',fontSize:13,fontWeight:700,color:'#fff',boxShadow:'0 2px 10px rgba(124,58,237,0.35)',fontFamily:"'Inter',sans-serif"}}>
+              <IconPlus/> Enroll Customer
+            </button>
+          </div>
           {/* Filter bar */}
           <div style={{background:C.card,borderRadius:14,border:`1px solid ${C.border}`,padding:'12px 16px',display:'flex',gap:10,flexWrap:'wrap',alignItems:'center',boxShadow:isDark?'0 8px 20px rgba(2,6,23,0.35)':'0 1px 4px rgba(16,24,40,0.04)'}}>
             <div style={{position:'relative',flex:1,minWidth:200}}>

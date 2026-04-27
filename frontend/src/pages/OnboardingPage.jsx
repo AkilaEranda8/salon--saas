@@ -80,7 +80,7 @@ const OnboardingPage = () => {
     <div style={s.page}>
       <div style={s.card}>
         {/* Header */}
-        <div style={s.logo}>💇 Zane Salon Platform</div>
+        <div style={s.logo}>💇 Hexalyte Salon Platform</div>
         <h2 style={s.title}>Create your salon account</h2>
 
         {/* Step indicator */}
@@ -105,7 +105,7 @@ const OnboardingPage = () => {
                 value={form.businessName}
                 onChange={set('businessName')}
                 onBlur={handleBusinessNameBlur}
-                placeholder="Zane Beauty Salon"
+                placeholder="My Beauty Salon"
                 required
               />
 
@@ -116,7 +116,7 @@ const OnboardingPage = () => {
                   value={form.slug}
                   onChange={set('slug')}
                   onBlur={checkSlug}
-                  placeholder="zane-salon"
+                  placeholder="my-salon"
                   pattern="[a-z0-9][a-z0-9-]{1,61}[a-z0-9]"
                   required
                 />
@@ -148,7 +148,7 @@ const OnboardingPage = () => {
           {step === 1 && (
             <div>
               <label style={s.label}>Your Name *</label>
-              <input style={s.input} value={form.ownerName} onChange={set('ownerName')} placeholder="Akila Eranda" required />
+              <input style={s.input} value={form.ownerName} onChange={set('ownerName')} placeholder="Your Name" required />
 
               <label style={s.label}>Email Address *</label>
               <input style={s.input} type="email" value={form.ownerEmail} onChange={set('ownerEmail')} placeholder="you@example.com" required />
@@ -177,22 +177,25 @@ const OnboardingPage = () => {
 };
 
 const s = {
-  page:    { minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f1f5f9', padding: 20 },
-  card:    { background: '#fff', borderRadius: 12, padding: 40, width: '100%', maxWidth: 480, boxShadow: '0 4px 24px rgba(0,0,0,0.1)' },
-  logo:    { fontSize: 22, fontWeight: 700, marginBottom: 8, textAlign: 'center' },
-  title:   { fontSize: 20, fontWeight: 600, textAlign: 'center', marginBottom: 24, color: '#1e293b' },
-  steps:   { display: 'flex', gap: 8, marginBottom: 24 },
-  step:    (active) => ({ flex: 1, display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: active ? '#6366f1' : '#94a3b8', fontWeight: active ? 600 : 400 }),
-  stepDot: (done)   => ({ width: 22, height: 22, borderRadius: '50%', background: done ? '#6366f1' : '#e2e8f0', color: done ? '#fff' : '#94a3b8', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700 }),
-  label:   { display: 'block', fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 4, marginTop: 14 },
-  input:   { width: '100%', padding: '9px 12px', border: '1px solid #d1d5db', borderRadius: 6, fontSize: 14, boxSizing: 'border-box', marginBottom: 4 },
-  btn:     { width: '100%', padding: '10px 0', background: '#6366f1', color: '#fff', border: 'none', borderRadius: 6, fontSize: 15, fontWeight: 600, cursor: 'pointer', marginTop: 20 },
-  checkBtn: { padding: '9px 14px', background: '#e2e8f0', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 13 },
+  page:       { minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg, #0f172a 0%, #312e81 50%, #4c1d95 100%)', padding: 20 },
+  card:       { background: '#fff', borderRadius: 16, padding: 36, width: '100%', maxWidth: 500, boxShadow: '0 10px 40px rgba(16,24,40,0.22)' },
+  logoWrap:   { width: 48, height: 48, borderRadius: 14, background: 'linear-gradient(135deg, #7c3aed, #4f46e5)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 14, fontSize: 24 },
+  logo:       { fontSize: 13, fontWeight: 700, color: '#7c3aed', marginBottom: 2 },
+  title:      { fontSize: 22, fontWeight: 800, marginBottom: 4, color: '#101828' },
+  sub:        { fontSize: 14, color: '#667085', marginBottom: 22 },
+  steps:      { display: 'flex', gap: 6, marginBottom: 24 },
+  step:       (active) => ({ flex: 1, display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: active ? '#7c3aed' : '#94a3b8', fontWeight: active ? 700 : 400 }),
+  stepDot:    (done)   => ({ width: 24, height: 24, borderRadius: '50%', background: done ? 'linear-gradient(135deg,#7c3aed,#4f46e5)' : '#e2e8f0', color: done ? '#fff' : '#94a3b8', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 800, flexShrink: 0 }),
+  label:      { display: 'block', fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 5, marginTop: 14 },
+  input:      { width: '100%', padding: '10px 13px', border: '1.5px solid #d0d5dd', borderRadius: 10, fontSize: 14, boxSizing: 'border-box', marginBottom: 4, outline: 'none' },
+  btn:        { width: '100%', padding: '11px 0', background: 'linear-gradient(90deg,#7c3aed,#4f46e5)', color: '#fff', border: 'none', borderRadius: 10, fontSize: 15, fontWeight: 700, cursor: 'pointer', marginTop: 20 },
+  btnBack:    { padding: '11px 0', background: '#f3f4f6', color: '#374151', border: 'none', borderRadius: 10, fontSize: 15, fontWeight: 700, cursor: 'pointer', flex: 1 },
+  checkBtn:   { padding: '10px 16px', background: '#f3f4f6', border: 'none', borderRadius: 10, cursor: 'pointer', fontSize: 13, fontWeight: 600, flexShrink: 0 },
   urlPreview: { fontSize: 12, color: '#6b7280', marginTop: 4, marginBottom: 2 },
-  ok:      { fontSize: 12, color: '#16a34a', fontWeight: 600 },
-  bad:     { fontSize: 12, color: '#dc2626', fontWeight: 600 },
-  error:   { background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 6, padding: '10px 14px', color: '#dc2626', fontSize: 13, marginBottom: 16 },
-  note:    { fontSize: 11, color: '#94a3b8', textAlign: 'center', marginTop: 16 },
+  ok:         { fontSize: 12, color: '#16a34a', fontWeight: 700 },
+  bad:        { fontSize: 12, color: '#dc2626', fontWeight: 700 },
+  error:      { background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 9, padding: '11px 14px', color: '#dc2626', fontSize: 13, marginBottom: 16 },
+  note:       { fontSize: 11, color: '#94a3b8', textAlign: 'center', marginTop: 16, lineHeight: 1.6 },
 };
 
 export default OnboardingPage;

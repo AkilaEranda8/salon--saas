@@ -454,7 +454,8 @@ export default function App() {
         element={<LoginRedirect />}
       />
       <Route path="/platform/login" element={<PlatformLoginRedirect />} />
-      <Route path="/signup"         element={<OnboardingPage />} />
+      <Route path="/signup"    element={<OnboardingPage />} />
+      <Route path="/register" element={<OnboardingPage />} />
       <Route path="/impersonate"    element={<ImpersonateGate />} />
       <Route path="/booking"        element={<BookingPage />} />
       <Route path="/customer-portal/login"     element={<CustomerPortalLoginPage />} />

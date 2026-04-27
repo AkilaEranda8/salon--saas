@@ -235,11 +235,12 @@ router.post('/customer-portal/request-otp', async (req, res) => {
     if (!normalized) return res.status(400).json({ message: 'Phone is required.' });
 
     const variants = buildPhoneVariants(normalized);
-    const existing = await Appointment.count({
-      where: { phone: { [Op.or]: variants } },
-    });
-    if (!existing) {
-      return res.status(404).json({ message: 'No bookings found for this phone number.' });
+    const [apptCount, customerCount] = await Promise.all([
+      Appointment.count({ where: { phone: { [Op.or]: variants } } }),
+      Customer.count({ where: { phone: { [Op.or]: variants } } }),
+    ]);
+    if (!apptCount && !customerCount) {
+      return res.status(404).json({ message: 'No account found for this phone number. Please register first.' });
     }
 
     const code = String(Math.floor(100000 + Math.random() * 900000));
@@ -254,6 +255,45 @@ router.post('/customer-portal/request-otp', async (req, res) => {
   } catch (err) {
     console.error('portal.requestOtp error:', err);
     return res.status(500).json({ message: 'Failed to send OTP.' });
+  }
+});
+
+// ── POST /api/public/customer-portal/register — new customer self-registration ─
+router.post('/customer-portal/register', async (req, res) => {
+  try {
+    const { name, phone, email } = req.body || {};
+    const normalized = normalizePhoneDigits(phone);
+    if (!normalized || !String(name || '').trim()) {
+      return res.status(400).json({ message: 'Name and phone number are required.' });
+    }
+
+    const variants = buildPhoneVariants(normalized);
+    let customer = await Customer.findOne({ where: { phone: { [Op.or]: variants } } });
+
+    if (!customer) {
+      customer = await Customer.create({
+        name: String(name).trim(),
+        phone: normalized,
+        email: email ? String(email).trim() : null,
+      });
+    } else {
+      const updates = {};
+      if (!String(customer.name || '').trim() && name) updates.name = String(name).trim();
+      if (!String(customer.email || '').trim() && email) updates.email = String(email).trim();
+      if (Object.keys(updates).length) await customer.update(updates);
+    }
+
+    const code = String(Math.floor(100000 + Math.random() * 900000));
+    otpStore.set(normalized, { code, expiresAt: Date.now() + OTP_TTL_MS, attempts: 0 });
+
+    await sendSMS({ to: normalized, message: `Your verification code is: ${code}. Valid for 5 minutes.`, meta: { event_type: 'portal_register_otp' } });
+
+    const response = { message: 'OTP sent to your phone. Please verify to complete registration.' };
+    if (process.env.NODE_ENV !== 'production') response.debug_otp = code;
+    return res.json(response);
+  } catch (err) {
+    console.error('portal.register error:', err);
+    return res.status(500).json({ message: 'Registration failed. Please try again.' });
   }
 });
 

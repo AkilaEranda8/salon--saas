@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 
 const card = {
   width: '100%',
@@ -132,6 +132,13 @@ export default function CustomerPortalLoginPage() {
             <small style={{ color: '#6941c6' }}>Dev OTP: {debugOtp}</small>
           )}
         </div>
+
+        <p style={{ textAlign: 'center', marginTop: 18, fontSize: 13, color: '#667085' }}>
+          New customer?{' '}
+          <Link to="/customer-portal/register" style={{ color: '#7c3aed', fontWeight: 700, textDecoration: 'none' }}>
+            Create an account
+          </Link>
+        </p>
       </div>
     </div>
   );

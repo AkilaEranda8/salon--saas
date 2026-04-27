@@ -126,7 +126,7 @@ export default function KpiDashboardPage() {
     if (sortBy === key) setSortDir(d => d === 'desc' ? 'asc' : 'desc');
     else { setSortBy(key); setSortDir('desc'); }
   };
-  const SortIco = ({ col }) => sortBy !== col
+  const sortIco = (col) => sortBy !== col
     ? <span style={{ opacity:0.3, fontSize:10, marginLeft:3 }}>⇅</span>
     : <span style={{ fontSize:10, marginLeft:3, color:isDark?'#93C5FD':'#2563EB' }}>{sortDir==='desc'?'↓':'↑'}</span>;
 
@@ -140,6 +140,7 @@ export default function KpiDashboardPage() {
   const C = { border: isDark?'#334155':'#EAECF0', card: isDark?'#111827':'#fff', text: isDark?'#E2E8F0':'#101828', sub: isDark?'#94A3B8':'#667085', muted: isDark?'#64748B':'#98A2B3', hover: isDark?'#1E293B':'#F8FAFF' };
 
   return (
+    <>
     <PageWrapper title="Multi-Branch KPI Dashboard" subtitle="Real-time performance metrics across all branches"
       actions={
         <div style={{ display:'flex', gap:6, flexWrap:'wrap', alignItems:'center' }}>
@@ -206,7 +207,7 @@ export default function KpiDashboardPage() {
           {[{k:'revenue',l:'Revenue'},{k:'appointments',l:'Appts'},{k:'utilization',l:'Utilization'}].map(({k,l}) => (
             <button key={k} onClick={() => handleSort(k)}
               style={{ padding:'5px 12px', borderRadius:20, fontSize:12, fontWeight:sortBy===k?700:500, cursor:'pointer', fontFamily:"'Inter',sans-serif", transition:'all 0.15s', background:sortBy===k?(isDark?'#1E3A8A':'#DBEAFE'):(isDark?'#0F172A':'#F9FAFB'), color:sortBy===k?'#2563EB':(isDark?'#94A3B8':'#667085'), border:`1.5px solid ${sortBy===k?'#93C5FD':C.border}` }}>
-              {l}<SortIco col={k} />
+              {l}{sortIco(k)}
             </button>
           ))}
         </div>
@@ -366,8 +367,9 @@ export default function KpiDashboardPage() {
         Live KPI data — click Refresh or switch period to update
       </p>
 
-      {/* ── Branch Detail Drawer ── */}
-      <Drawer open={!!detailBranch} onClose={() => setDetailBranch(null)} title={detailBranch?.name || 'Branch Details'} dark={isDark}>
+    </PageWrapper>
+    {/* ── Branch Detail Drawer ── */}
+    <Drawer open={!!detailBranch} onClose={() => setDetailBranch(null)} title={detailBranch?.name || 'Branch Details'} dark={isDark}>
         {detailBranch && (
           <div style={{ fontFamily:"'Inter',sans-serif" }}>
             <div style={{ background:isDark?'#1E293B':'#F9FAFB', borderRadius:12, padding:16, marginBottom:20, border:isDark?'1px solid #334155':'none' }}>
@@ -419,7 +421,7 @@ export default function KpiDashboardPage() {
             )}
           </div>
         )}
-      </Drawer>
-    </PageWrapper>
+    </Drawer>
+    </>
   );
 }

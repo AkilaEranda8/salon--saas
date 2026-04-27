@@ -493,7 +493,7 @@ export default function ThemeOptionsPage() {
             label="Default"
             description="Full-width sidebar with icons and labels visible."
             icon={<IconLayout />}
-            active={sidebarStyle === 'default'}
+            active={!sidebarStyle || sidebarStyle === 'default' || sidebarStyle === 'light' || sidebarStyle === 'dark'}
             onClick={() => handleLayoutChange('default')}
             previewBg="linear-gradient(180deg, #F8F9FC 0%, #F1F3F9 100%)"
             previewContent={<DefaultSidebarPreview />}

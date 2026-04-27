@@ -77,6 +77,10 @@ import ThemeOptionsPage from './pages/ThemeOptionsPage';
 import TwoFactorPage from './pages/TwoFactorPage';
 
 // ── Branding seeder: apply tenant theme to ThemeContext on login ───────────
+const VALID_SIDEBAR_LAYOUTS = new Set([
+  'default','compact','floating','glass','gradient','accent','pill','wide','minimal',
+]);
+
 function BrandingSeeder() {
   const { user } = useAuth();
   const { setPrimaryColor, setFontFamily, setSidebarStyle } = useTheme();
@@ -86,7 +90,11 @@ function BrandingSeeder() {
     const t = user.tenant;
     if (t.primary_color) setPrimaryColor(t.primary_color);
     if (t.font_family)   setFontFamily(t.font_family);
-    if (t.sidebar_style) setSidebarStyle(t.sidebar_style);
+    // Only apply valid layout values; treat null/light/dark as 'default'
+    const layout = t.sidebar_style && VALID_SIDEBAR_LAYOUTS.has(t.sidebar_style)
+      ? t.sidebar_style
+      : 'default';
+    setSidebarStyle(layout);
   }, [user?.tenant]);
 
   return null;

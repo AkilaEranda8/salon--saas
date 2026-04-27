@@ -14,8 +14,9 @@ import { Select }        from '../components/ui/FormElements';
 /*  helpers  */
 const fmt   = n => `Rs. ${Number(n || 0).toLocaleString()}`;
 const fmtN  = n => Number(n || 0).toLocaleString();
-const today = () => new Date().toISOString().slice(0, 10);
-const thisMonth = () => new Date().toISOString().slice(0, 7);
+const SL_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+const today     = () => new Date(Date.now() + SL_OFFSET_MS).toISOString().slice(0, 10);
+const thisMonth = () => new Date(Date.now() + SL_OFFSET_MS).toISOString().slice(0, 7);
 
 /* design tokens — aligned with design-system.js */
 const G900 = '#1D4ED8';   /* primary dark blue */

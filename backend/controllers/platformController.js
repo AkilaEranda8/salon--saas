@@ -8,6 +8,7 @@ const { sendSMS, sendEmail } = require('../services/notificationService');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { addTrialDays, getTenantCaps } = require('../utils/planConfig');
+const { slToday } = require('../utils/dateUtils');
 const { generateInvoicePdfBuffer, sendInvoiceEmail } = require('../services/invoiceDocumentService');
 const { FORBIDDEN_SLUGS, SLUG_RE, findUniqueSlug, buildTenantAppUrl } = require('../utils/tenantDomain');
 
@@ -808,7 +809,7 @@ const getMonitoring = async (_req, res) => {
     const appointmentsTodayPromise = hasAppointmentModel
       ? Appointment.count({
           where: {
-            date: new Date().toISOString().slice(0, 10),
+            date: slToday(),
             status: { [Op.not]: 'cancelled' },
           },
         })

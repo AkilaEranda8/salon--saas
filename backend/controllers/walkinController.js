@@ -4,6 +4,7 @@ const { WalkIn, Service, Staff } = require('../models');
 const { emitQueueUpdate } = require('../socket');
 const { notifyBranch } = require('../services/fcmService');
 const { tenantWhere, resolveTenantId } = require('../utils/tenantScope');
+const { slToday } = require('../utils/dateUtils');
 
 function resolveBranchIdFromRequest(req, rawBranchId) {
   const requested = rawBranchId != null ? Number(rawBranchId) : null;
@@ -18,8 +19,8 @@ function resolveBranchIdFromRequest(req, rawBranchId) {
   return { branchId: requested };
 }
 
-// Helper: today as YYYY-MM-DD
-const today = () => new Date().toISOString().slice(0, 10);
+// Helper: today as YYYY-MM-DD (Asia/Colombo)
+const today = slToday;
 
 // Helper: generate next token for a branch+date atomically inside a transaction
 async function generateToken(branchId, date, transaction) {

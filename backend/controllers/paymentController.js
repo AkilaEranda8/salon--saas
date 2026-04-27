@@ -3,6 +3,7 @@ const { sequelize } = require('../config/database');
 const { Payment, PaymentSplit, Branch, Staff, Customer, Service, Appointment, CustomerPackage, Package: PkgModel, PackageRedemption } = require('../models');
 const { notifyPaymentReceipt, notifyLoyaltyPoints, notifyReviewRequest } = require('../services/notificationService');
 const { tenantWhere, byIdWhere, resolveTenantId } = require('../utils/tenantScope');
+const { slToday } = require('../utils/dateUtils');
 
 const getBranchWhere = (req) => {
   const where = tenantWhere(req);
@@ -101,7 +102,7 @@ const create = async (req, res) => {
       }
     }
 
-    const today = new Date().toISOString().slice(0, 10);
+    const today = slToday();
 
     const payment = await Payment.create({
       branch_id,

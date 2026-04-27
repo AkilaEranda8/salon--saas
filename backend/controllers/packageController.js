@@ -2,6 +2,7 @@
 const { Op } = require('sequelize');
 const { sequelize } = require('../config/database');
 const { tenantWhere, byIdWhere, resolveTenantId } = require('../utils/tenantScope');
+const { slToday } = require('../utils/dateUtils');
 
 // ── PACKAGE TEMPLATES ─────────────────────────────────────────────────────────
 
@@ -162,7 +163,7 @@ const customerPackages = async (req, res) => {
     });
 
     // Auto-expire overdue packages (single bulk update instead of N+1)
-    const today = new Date().toISOString().slice(0, 10);
+    const today = slToday();
     const expiredIds = rows
       .filter((cp) => cp.status === 'active' && cp.expiry_date < today)
       .map((cp) => cp.id);
@@ -185,7 +186,7 @@ const customerPackages = async (req, res) => {
 const activePackages = async (req, res) => {
   try {
     const { CustomerPackage, Package, Branch } = require('../models');
-    const today = new Date().toISOString().slice(0, 10);
+    const today = slToday();
 
     const rows = await CustomerPackage.findAll({
       where: {
@@ -239,7 +240,7 @@ const purchase = async (req, res) => {
       return res.status(404).json({ message: 'Customer not found.' });
     }
 
-    const today      = new Date().toISOString().slice(0, 10);
+    const today      = slToday();
     const expiryDate = new Date();
     expiryDate.setDate(expiryDate.getDate() + pkg.validity_days);
 
@@ -311,7 +312,7 @@ const redeem = async (req, res) => {
     }
 
     // Validate not expired
-    const today = new Date().toISOString().slice(0, 10);
+    const today = slToday();
     if (cp.expiry_date < today) {
       await cp.update({ status: 'expired' }, { transaction: t });
       await t.commit();
@@ -393,7 +394,7 @@ const purchaseForAllCustomers = async (req, res) => {
     const expiry = new Date();
     expiry.setMonth(expiry.getMonth() + parseInt(expiryMonths));
     const expiryStr = expiry.toISOString().slice(0, 10);
-    const today = new Date().toISOString().slice(0, 10);
+    const today = slToday();
 
     let created = 0;
     for (const c of customers) {

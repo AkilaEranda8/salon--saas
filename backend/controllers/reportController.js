@@ -4,6 +4,11 @@ const { Appointment, Payment, PaymentSplit, Branch, Staff, Service, Inventory, R
 const XLSX = require('xlsx');
 const { tenantWhere } = require('../utils/tenantScope');
 
+/* ── Sri Lanka timezone helpers (UTC+05:30) ─────────────────── */
+const SL_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+const slToday = () => new Date(Date.now() + SL_OFFSET_MS).toISOString().slice(0, 10);
+const slThisMonth = () => new Date(Date.now() + SL_OFFSET_MS).toISOString().slice(0, 7);
+
 const getBranchWhere = (req) => {
   const where = tenantWhere(req);
   if (req.userBranchId)    where.branch_id = req.userBranchId;
@@ -191,9 +196,9 @@ const appointmentStats = async (req, res) => {
 const dashboard = async (req, res) => {
   try {
     const branchWhere = getBranchWhere(req);
-    const today = new Date().toISOString().slice(0, 10);
+    const today = slToday();
     const selectedMonthRange = getMonthRange(req.query.month);
-    const [yrStr, moStr] = today.split('-');
+    const [yrStr, moStr] = (selectedMonthRange ? selectedMonthRange.start : today).split('-');
     const currentMonthStart = `${yrStr}-${moStr}-01`;
     const currentLastDay = new Date(parseInt(yrStr, 10), parseInt(moStr, 10), 0).getDate();
     const currentMonthEnd = `${yrStr}-${moStr}-${String(currentLastDay).padStart(2, '0')}`;

@@ -78,6 +78,13 @@ async function addIfMissing(table, column, definition) {
     await addIfMissing('users', 'totp_secret',  { type: DataTypes.STRING(64),  allowNull: true });
     await addIfMissing('users', 'totp_enabled', { type: DataTypes.BOOLEAN, defaultValue: false, allowNull: false });
 
+    // ── tenants HelaPay columns ───────────────────────────────────────────────
+    await addIfMissing('tenants', 'helapay_merchant_id',  { type: DataTypes.STRING(100), allowNull: true });
+    await addIfMissing('tenants', 'helapay_app_id',       { type: DataTypes.STRING(200), allowNull: true });
+    await addIfMissing('tenants', 'helapay_app_secret',   { type: DataTypes.TEXT,        allowNull: true });
+    await addIfMissing('tenants', 'helapay_business_id',  { type: DataTypes.STRING(100), allowNull: true });
+    await addIfMissing('tenants', 'helapay_notify_url',   { type: DataTypes.STRING(500), allowNull: true });
+
     console.log('✓ Migration complete');
   } catch (err) {
     console.error('✗ Migration failed:', err.message);

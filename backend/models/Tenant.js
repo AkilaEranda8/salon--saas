@@ -107,6 +107,26 @@ const Tenant = sequelize.define('Tenant', {
     defaultValue: 0.00,
     allowNull: false,
   },
+  helapay_merchant_id: {
+    type: DataTypes.STRING(100),
+    allowNull: true,
+  },
+  helapay_app_id: {
+    type: DataTypes.STRING(200),
+    allowNull: true,
+  },
+  helapay_app_secret: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+  },
+  helapay_business_id: {
+    type: DataTypes.STRING(100),
+    allowNull: true,
+  },
+  helapay_notify_url: {
+    type: DataTypes.STRING(500),
+    allowNull: true,
+  },
 }, {
   tableName: 'tenants',
   timestamps: true,

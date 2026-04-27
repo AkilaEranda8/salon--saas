@@ -13,9 +13,123 @@ import {
 } from '../components/ui/PageKit';
 import { computePromoFromDiscount } from '../utils/promoDiscount';
 
-const METHODS = ['Cash','Card','Online Transfer','Loyalty Points','Package'];
-const METHOD_LABEL = { 'Cash':'Cash', 'Card':'Card', 'Online Transfer':'Bank Transfer', 'Loyalty Points':'Loyalty Pts', 'Package':'Package' };
+const METHODS = ['Cash','Card','Online Transfer','Loyalty Points','Package','LankaQR'];
+const METHOD_LABEL = { 'Cash':'Cash', 'Card':'Card', 'Online Transfer':'Bank Transfer', 'Loyalty Points':'Loyalty Pts', 'Package':'Package', 'LankaQR':'LankaQR' };
 const EMPTY_FORM = { branch_id:'', staff_id:'', customer_id:'', service_ids:[], total_amount:'', loyalty_discount:0, discount_id:'', splits:[{ method:'Cash', amount:'' }] };
+
+// ── HelaPay QR Modal ─────────────────────────────────────────────────────────
+function HelaPayQRModal({ amount, reference, onClose, onSuccess }) {
+  const [qrData,      setQrData]      = useState(null);
+  const [qrReference, setQrReference] = useState(null);
+  const [status,      setStatus]      = useState('generating'); // generating | waiting | success | failed | error
+  const [errMsg,      setErrMsg]      = useState('');
+  const pollRef = useRef(null);
+
+  const stopPoll = () => { if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; } };
+
+  const startPolling = (ref, qrRef) => {
+    stopPoll();
+    pollRef.current = setInterval(async () => {
+      try {
+        const res = await api.post('/helapay/status', { reference: ref, qr_reference: qrRef });
+        const ps = res.data?.sale?.payment_status;
+        if (ps === 2)  { stopPoll(); setStatus('success'); setTimeout(onSuccess, 1500); }
+        else if (ps === -1) { stopPoll(); setStatus('failed'); }
+      } catch { }
+    }, 3000);
+  };
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await api.post('/helapay/qr', { reference: String(reference), amount: Number(amount) });
+        setQrData(res.data.qr_data);
+        setQrReference(res.data.qr_reference);
+        setStatus('waiting');
+        startPolling(res.data.reference, res.data.qr_reference);
+      } catch (e) {
+        setErrMsg(e.response?.data?.message || 'QR generation failed. Check HelaPay settings.');
+        setStatus('error');
+      }
+    })();
+    return stopPoll;
+  }, []);
+
+  const qrUrl = qrData
+    ? `https://api.qrserver.com/v1/create-qr-code/?size=260x260&ecc=M&data=${encodeURIComponent(qrData)}`
+    : null;
+
+  const STATUS_UI = {
+    generating: { icon: '⏳', color: '#2563EB', label: 'Generating QR…' },
+    waiting:    { icon: '📱', color: '#D97706', label: 'Waiting for payment…' },
+    success:    { icon: '✅', color: '#059669', label: 'Payment Received!' },
+    failed:     { icon: '❌', color: '#DC2626', label: 'Payment Failed' },
+    error:      { icon: '⚠️', color: '#DC2626', label: 'Error' },
+  };
+  const ui = STATUS_UI[status] || STATUS_UI.waiting;
+
+  return createPortal(
+    <div style={{ position:'fixed', inset:0, zIndex:9999, display:'flex', alignItems:'center', justifyContent:'center', background:'rgba(0,0,0,0.65)', backdropFilter:'blur(4px)' }}>
+      <div style={{ background:'#fff', borderRadius:24, width:360, maxWidth:'95vw', boxShadow:'0 32px 80px rgba(0,0,0,0.3)', overflow:'hidden' }}>
+        {/* Header */}
+        <div style={{ background:'linear-gradient(135deg,#1e3a5f,#0f2340)', padding:'20px 24px 16px', textAlign:'center' }}>
+          <div style={{ color:'#fff', fontWeight:800, fontSize:17, letterSpacing:1 }}>LankaQR Payment</div>
+          <div style={{ color:'#93C5FD', fontSize:13, marginTop:4 }}>Rs. {Number(amount||0).toLocaleString()}</div>
+        </div>
+
+        {/* Body */}
+        <div style={{ padding:'24px 24px 20px', textAlign:'center' }}>
+          {/* Status badge */}
+          <div style={{ display:'inline-flex', alignItems:'center', gap:8, background: ui.color+'15', border:`1px solid ${ui.color}40`, borderRadius:99, padding:'6px 16px', marginBottom:20, fontSize:13, fontWeight:700, color: ui.color }}>
+            <span>{ui.icon}</span> {ui.label}
+            {status === 'waiting' && (
+              <span style={{ display:'inline-block', width:14, height:14, border:`2px solid ${ui.color}`, borderTopColor:'transparent', borderRadius:'50%', animation:'spin 0.8s linear infinite', marginLeft:4 }} />
+            )}
+          </div>
+
+          {/* QR image */}
+          {qrUrl && status !== 'success' && status !== 'failed' && (
+            <div style={{ display:'inline-block', padding:12, background:'#fff', border:'1.5px solid #E4E7EC', borderRadius:16, boxShadow:'0 4px 16px rgba(0,0,0,0.08)', marginBottom:16 }}>
+              <img src={qrUrl} alt="LankaQR" width={220} height={220} style={{ display:'block', borderRadius:8 }} />
+            </div>
+          )}
+
+          {status === 'success' && (
+            <div style={{ width:80, height:80, borderRadius:'50%', background:'#ECFDF5', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 16px' }}>
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#059669" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+            </div>
+          )}
+
+          {status === 'failed' && (
+            <div style={{ width:80, height:80, borderRadius:'50%', background:'#FEF2F2', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 16px' }}>
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#DC2626" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+            </div>
+          )}
+
+          {status === 'error' && (
+            <div style={{ background:'#FEF2F2', border:'1px solid #FECACA', borderRadius:10, padding:'12px 14px', fontSize:13, color:'#B91C1C', marginBottom:16 }}>{errMsg}</div>
+          )}
+
+          {status === 'waiting' && (
+            <div style={{ fontSize:12, color:'#667085', marginTop:-8, marginBottom:4 }}>Ask the customer to scan with any LankaQR-supported app</div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div style={{ padding:'12px 24px 20px', display:'flex', gap:10, justifyContent:'center', borderTop:'1px solid #F2F4F7' }}>
+          {(status === 'failed' || status === 'error') && (
+            <button onClick={onClose} style={{ padding:'10px 24px', borderRadius:10, border:'none', background:'#EF4444', color:'#fff', fontWeight:700, fontSize:14, cursor:'pointer' }}>Close</button>
+          )}
+          {status === 'waiting' && (
+            <button onClick={() => { stopPoll(); onClose(); }} style={{ padding:'10px 24px', borderRadius:10, border:'1px solid #E5E7EB', background:'#fff', color:'#374151', fontWeight:600, fontSize:14, cursor:'pointer' }}>Cancel</button>
+          )}
+        </div>
+      </div>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+    </div>,
+    document.body
+  );
+}
 
 function CustomerTypeahead({ customers, value, onSelect, onNew, branchId }) {
   const [query,  setQuery]  = useState('');
@@ -341,6 +455,7 @@ export default function PaymentsPage() {
   const [form, setForm]           = useState(EMPTY_FORM);
   const [saving, setSaving]       = useState(false);
   const [formErr, setFormErr]     = useState('');
+  const [qrModal, setQrModal]     = useState(null); // { amount, reference, splitIdx }
   const [custPackages, setCustPackages] = useState([]);
   const [loadingPkgs, setLoadingPkgs]   = useState(false);
   const [discounts, setDiscounts]       = useState([]);
@@ -805,6 +920,18 @@ export default function PaymentsPage() {
                       <button onClick={() => removeSplit(i)} style={{ background:'#FEF2F2', border:'1px solid #FECACA', borderRadius:7, cursor:'pointer', color:'#DC2626', fontSize:15, width:30, height:30, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>×</button>
                     )}
                   </div>
+                  {sp.method === 'LankaQR' && sp.amount && Number(sp.amount) > 0 && (
+                    <div style={{ marginTop:8 }}>
+                      <button
+                        type="button"
+                        onClick={() => setQrModal({ amount: sp.amount, reference: `PAY-${Date.now()}`, splitIdx: i })}
+                        style={{ width:'100%', padding:'9px 0', borderRadius:9, border:'none', background:'linear-gradient(135deg,#1e3a5f,#2563EB)', color:'#fff', fontWeight:700, fontSize:13, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}
+                      >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M14 14h3v3h-3zM17 17h3v3h-3zM14 20h3"/></svg>
+                        Generate QR Code
+                      </button>
+                    </div>
+                  )}
                   {sp.method === 'Package' && (
                     <div style={{ marginTop:8 }}>
                       {!form.customer_id ? (
@@ -853,6 +980,15 @@ export default function PaymentsPage() {
       </Modal>
 
       <InvoiceModal open={showInvoice} onClose={() => setShowInvoice(false)} payment={invoiceItem} />
+
+      {qrModal && (
+        <HelaPayQRModal
+          amount={qrModal.amount}
+          reference={qrModal.reference}
+          onClose={() => setQrModal(null)}
+          onSuccess={() => setQrModal(null)}
+        />
+      )}
     </PageWrapper>
   );
 }

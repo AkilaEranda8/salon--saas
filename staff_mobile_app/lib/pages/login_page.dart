@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../pages/dashboard_page.dart';
 import '../state/app_state.dart';
@@ -13,6 +14,7 @@ class LoginPage extends StatefulWidget {
 
 class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
   final _formKey = GlobalKey<FormState>();
+  final _slugController     = TextEditingController();
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _obscurePassword = true;
@@ -88,6 +90,15 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
         _entranceController.forward();
       }
     });
+    _loadSavedSlug();
+  }
+
+  Future<void> _loadSavedSlug() async {
+    final prefs = await SharedPreferences.getInstance();
+    final slug = prefs.getString('salon_slug') ?? '';
+    if (slug.isNotEmpty && mounted) {
+      setState(() => _slugController.text = slug);
+    }
   }
 
   @override
@@ -96,6 +107,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
     _logoController.dispose();
     _orbController.dispose();
     _buttonPulseController.dispose();
+    _slugController.dispose();
     _usernameController.dispose();
     _passwordController.dispose();
     super.dispose();
@@ -103,11 +115,18 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
 
   Future<void> _handleLogin() async {
     if (!_formKey.currentState!.validate()) return;
+    final slug = _slugController.text.trim().toLowerCase();
+    if (slug.isEmpty) {
+      setState(() => _error = 'Salon name is required');
+      return;
+    }
     setState(() {
       _loading = true;
       _error = null;
     });
     final appState = AppStateScope.of(context);
+    appState.setSlug(slug);
+    await appState.saveSlug(slug);
     final ok = await appState.loginStaff(
       _usernameController.text,
       _passwordController.text,
@@ -263,7 +282,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                             ),
                             const SizedBox(width: 10),
                             Text(
-                              '© ${DateTime.now().year} Zane Salon',
+                              '© ${DateTime.now().year} Hexa Salon',
                               style: const TextStyle(
                                 color: Color(0x55F5EEE8),
                                 fontSize: 11,
@@ -337,7 +356,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
 
         // Salon name
         const Text(
-          'ZANE SALON',
+          'HEXA SALON',
           style: TextStyle(
             color: Color(0xFFF5EEE8),
             fontSize: 30,
@@ -441,6 +460,16 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
             ),
 
             const SizedBox(height: 26),
+
+            // Salon slug field
+            _buildInputField(
+              controller: _slugController,
+              label: 'Salon Name (e.g. xanesalon)',
+              icon: Icons.store_outlined,
+              validator: (v) =>
+                  (v == null || v.trim().isEmpty) ? 'Salon name is required' : null,
+            ),
+            const SizedBox(height: 14),
 
             // Username field
             _buildInputField(

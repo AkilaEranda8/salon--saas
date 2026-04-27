@@ -151,6 +151,11 @@ export default function PlatformTenantsPage() {
         status: editTenant.status,
         payment_gateway: editTenant.payment_gateway || 'none',
         back_transfer_wage: editTenant.back_transfer_wage || 0,
+        helapay_merchant_id:  editTenant.helapay_merchant_id  || null,
+        helapay_app_id:       editTenant.helapay_app_id       || null,
+        helapay_app_secret:   editTenant.helapay_app_secret   || null,
+        helapay_business_id:  editTenant.helapay_business_id  || null,
+        helapay_notify_url:   editTenant.helapay_notify_url   || null,
       });
       setEditTenant(null);
       fetchTenants();
@@ -731,6 +736,52 @@ export default function PlatformTenantsPage() {
                 onChange={e => setEditTenant(t => ({ ...t, back_transfer_wage: parseFloat(e.target.value) }))}
                 style={{ width: '100%', padding: '9px 12px', border: '1px solid #E5E7EB', borderRadius: 8, fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
               />
+            </div>
+            <div style={{ borderTop: '1px solid #F3F4F6', paddingTop: 14 }}>
+              <p style={{ fontSize: 11, fontWeight: 700, color: '#6B7280', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 12 }}>HelaPay / LankaQR Settings</p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <div>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 4 }}>Business ID</label>
+                  <input type="text" value={editTenant.helapay_business_id || ''}
+                    onChange={e => setEditTenant(t => ({ ...t, helapay_business_id: e.target.value }))}
+                    placeholder="e.g. 223"
+                    style={{ width: '100%', padding: '8px 12px', border: '1px solid #E5E7EB', borderRadius: 8, fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 4 }}>Merchant ID</label>
+                  <input type="text" value={editTenant.helapay_merchant_id || ''}
+                    onChange={e => setEditTenant(t => ({ ...t, helapay_merchant_id: e.target.value }))}
+                    placeholder="e.g. HLPM-00123"
+                    style={{ width: '100%', padding: '8px 12px', border: '1px solid #E5E7EB', borderRadius: 8, fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 4 }}>App ID</label>
+                  <input type="text" value={editTenant.helapay_app_id || ''}
+                    onChange={e => setEditTenant(t => ({ ...t, helapay_app_id: e.target.value }))}
+                    placeholder="App ID from HelaPOS"
+                    style={{ width: '100%', padding: '8px 12px', border: '1px solid #E5E7EB', borderRadius: 8, fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 4 }}>App Secret</label>
+                  <input type="password" value={editTenant.helapay_app_secret || ''}
+                    onChange={e => setEditTenant(t => ({ ...t, helapay_app_secret: e.target.value }))}
+                    placeholder="App Secret from HelaPOS"
+                    style={{ width: '100%', padding: '8px 12px', border: '1px solid #E5E7EB', borderRadius: 8, fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 4 }}>Notify URL (Webhook)</label>
+                  <input type="text" value={editTenant.helapay_notify_url || ''}
+                    onChange={e => setEditTenant(t => ({ ...t, helapay_notify_url: e.target.value }))}
+                    placeholder="https://api.salon.hexalyte.com/api/helapay/callback"
+                    style={{ width: '100%', padding: '8px 12px', border: '1px solid #E5E7EB', borderRadius: 8, fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
+                  />
+                  <p style={{ fontSize: 11, color: '#6B7280', marginTop: 4 }}>Email to <a href="mailto:support@helapay.lk" style={{ color: '#2563EB' }}>support@helapay.lk</a> to register these credentials.</p>
+                </div>
+              </div>
             </div>
 
             {error && <div style={{ color: '#EF4444', fontSize: 12 }}>{error}</div>}

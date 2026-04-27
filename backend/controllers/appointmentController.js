@@ -416,6 +416,28 @@ const changeStatus = async (req, res) => {
         appointment_id: String(appt.id),
         branch_id: String(appt.branch_id),
       });
+
+      // Auto-notify matching waitlist entries (fire-and-forget)
+      setImmediate(async () => {
+        try {
+          const { Waitlist } = require('../models');
+          const where = { status: 'waiting', branch_id: appt.branch_id };
+          if (appt.tenant_id) where.tenant_id = appt.tenant_id;
+          if (appt.service_id) where.service_id = appt.service_id;
+          if (appt.date) where.preferred_date = { [Op.or]: [appt.date, null] };
+          const waiting = await Waitlist.findAll({ where, order: [['createdAt', 'ASC']], limit: 5 });
+          for (const w of waiting) {
+            w.status = 'notified';
+            w.notified_at = new Date();
+            await w.save();
+          }
+          if (waiting.length > 0) {
+            console.log(`[waitlist] Auto-notified ${waiting.length} entries for cancelled appt #${appt.id}`);
+          }
+        } catch (e) {
+          console.error('[waitlist] auto-notify failed:', e.message);
+        }
+      });
     }
 
     // Auto-create next recurring appointment when completed

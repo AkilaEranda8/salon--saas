@@ -38,12 +38,13 @@ class MyCommissionResult {
 }
 
 class MobileApi {
-  MobileApi({required String baseUrl})
+  MobileApi({required String baseUrl, this.slug})
     : baseUrl = baseUrl.endsWith('/')
           ? baseUrl.substring(0, baseUrl.length - 1)
           : baseUrl;
 
   final String baseUrl;
+  final String? slug;
 
   Future<Map<String, dynamic>> login({
     required String username,
@@ -51,7 +52,7 @@ class MobileApi {
   }) async {
     final response = await http.post(
       Uri.parse('$baseUrl/api/auth/login'),
-      headers: {'Content-Type': 'application/json'},
+      headers: _baseHeaders(),
       body: jsonEncode({
         'username': username.trim(),
         'password': password.trim(),
@@ -856,9 +857,15 @@ class MobileApi {
     return WalkInEntry.fromJson(Map<String, dynamic>.from(body));
   }
 
+  Map<String, String> _baseHeaders() => {
+    'Content-Type': 'application/json',
+    if (slug != null && slug!.isNotEmpty) 'X-Tenant-Slug': slug!,
+  };
+
   Map<String, String> _authHeaders(String token) => {
     'Content-Type': 'application/json',
     'Authorization': 'Bearer $token',
+    if (slug != null && slug!.isNotEmpty) 'X-Tenant-Slug': slug!,
   };
 
   Map<String, dynamic> _decode(String raw) {

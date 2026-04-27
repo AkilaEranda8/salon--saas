@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { io } from 'socket.io-client';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
@@ -49,6 +50,74 @@ const getCustomerPhone = (customer = {}) => (
 /*  Print CSS injected once  */
 const PRINT_CSS = `@media print { body > *:not(#walkin-print-root) { display: none !important; } #walkin-print-root { display: block !important; } }`;
 
+// ── HelaPay QR Panel (Walk-in) ────────────────────────────────────────────────
+function WalkInQRPanel({ amount, reference, onClose, onSuccess }) {
+  const [qrData,   setQrData]   = useState(null);
+  const [status,   setStatus]   = useState('generating');
+  const [errMsg,   setErrMsg]   = useState('');
+  const pollRef = useRef(null);
+  const stopPoll = () => { if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; } };
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await api.post('/helapay/qr', { reference: String(reference), amount: Number(amount) });
+        setQrData(res.data.qr_data);
+        setStatus('waiting');
+        const ref2 = res.data.reference;
+        const qrRef = res.data.qr_reference;
+        stopPoll();
+        pollRef.current = setInterval(async () => {
+          try {
+            const r2 = await api.post('/helapay/status', { reference: ref2, qr_reference: qrRef });
+            const ps = r2.data?.sale?.payment_status;
+            if (ps === 2)  { stopPoll(); setStatus('success'); setTimeout(onSuccess, 1200); }
+            else if (ps === -1) { stopPoll(); setStatus('failed'); }
+          } catch { }
+        }, 3000);
+      } catch (e) {
+        setErrMsg(e.response?.data?.message || 'QR generation failed.');
+        setStatus('error');
+      }
+    })();
+    return stopPoll;
+  }, []);
+
+  const qrUrl = qrData ? `https://api.qrserver.com/v1/create-qr-code/?size=240x240&ecc=M&data=${encodeURIComponent(qrData)}` : null;
+  const colors = { generating:'#2563EB', waiting:'#D97706', success:'#059669', failed:'#DC2626', error:'#DC2626' };
+  const labels = { generating:'Generating QR…', waiting:'Waiting for payment…', success:'Payment Received!', failed:'Payment Failed', error:'Error' };
+  const c = colors[status]; const l = labels[status];
+
+  return (
+    <div style={{ background:'#fff', borderRadius:24, width:340, maxWidth:'92vw', boxShadow:'0 32px 80px rgba(0,0,0,0.3)', overflow:'hidden' }}>
+      <div style={{ background:'linear-gradient(135deg,#1e3a5f,#0f2340)', padding:'18px 22px 14px', textAlign:'center' }}>
+        <div style={{ color:'#fff', fontWeight:800, fontSize:16, letterSpacing:1 }}>LankaQR Payment</div>
+        <div style={{ color:'#93C5FD', fontSize:13, marginTop:3 }}>Rs. {Number(amount||0).toLocaleString()}</div>
+      </div>
+      <div style={{ padding:'20px 22px 16px', textAlign:'center' }}>
+        <div style={{ display:'inline-flex', alignItems:'center', gap:7, background:c+'18', border:`1px solid ${c}40`, borderRadius:99, padding:'5px 14px', marginBottom:16, fontSize:13, fontWeight:700, color:c }}>
+          {l}
+          {status === 'waiting' && <span style={{ display:'inline-block', width:13, height:13, border:`2px solid ${c}`, borderTopColor:'transparent', borderRadius:'50%', animation:'spin 0.8s linear infinite', marginLeft:4 }} />}
+        </div>
+        {qrUrl && status === 'waiting' && (
+          <div style={{ display:'inline-block', padding:10, border:'1.5px solid #E4E7EC', borderRadius:14, boxShadow:'0 4px 14px rgba(0,0,0,0.07)', marginBottom:12 }}>
+            <img src={qrUrl} alt="LankaQR" width={200} height={200} style={{ display:'block', borderRadius:6 }} />
+          </div>
+        )}
+        {status === 'success' && <div style={{ fontSize:40, marginBottom:8 }}>✅</div>}
+        {status === 'failed'  && <div style={{ fontSize:40, marginBottom:8 }}>❌</div>}
+        {status === 'error'   && <div style={{ background:'#FEF2F2', border:'1px solid #FECACA', borderRadius:8, padding:'10px 12px', fontSize:12, color:'#B91C1C', marginBottom:12 }}>{errMsg}</div>}
+        {status === 'waiting' && <div style={{ fontSize:12, color:'#667085', marginBottom:4 }}>Ask the customer to scan with any LankaQR app</div>}
+      </div>
+      <div style={{ padding:'10px 22px 18px', display:'flex', gap:8, justifyContent:'center', borderTop:'1px solid #F2F4F7' }}>
+        {(status === 'failed' || status === 'error') && <button onClick={onClose} style={{ padding:'9px 22px', borderRadius:9, border:'none', background:'#EF4444', color:'#fff', fontWeight:700, fontSize:13, cursor:'pointer' }}>Close</button>}
+        {status === 'waiting' && <button onClick={() => { stopPoll(); onClose(); }} style={{ padding:'9px 22px', borderRadius:9, border:'1px solid #E5E7EB', background:'#fff', color:'#374151', fontWeight:600, fontSize:13, cursor:'pointer' }}>Cancel</button>}
+      </div>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+    </div>
+  );
+}
+
 export default function WalkInPage() {
   const { user }  = useAuth();
   const { toast } = useToast();
@@ -75,6 +144,7 @@ export default function WalkInPage() {
   const [paymentSaving,  setPaymentSaving]  = useState(false);
   const [paymentError,   setPaymentError]   = useState('');
   const [paymentOk,      setPaymentOk]      = useState(false);
+  const [qrModal,        setQrModal]        = useState(null);
   const [paymentServices,setPaymentServices]= useState([]);
   const [paymentDiscountId, setPaymentDiscountId] = useState('');
   const [paymentDiscounts, setPaymentDiscounts] = useState([]);
@@ -1002,7 +1072,7 @@ export default function WalkInPage() {
               <div>
                 <Label>Payment Method</Label>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
-                  {['Cash', 'Card', 'Online Transfer'].map((m) => {
+                  {['Cash', 'Card', 'Online Transfer', 'LankaQR'].map((m) => {
                     const active = paymentMethod === m;
                     return (
                       <button
@@ -1026,6 +1096,16 @@ export default function WalkInPage() {
                     );
                   })}
                 </div>
+                {paymentMethod === 'LankaQR' && paymentAmount && Number(paymentAmount) > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setQrModal({ amount: paymentAmount, reference: `WI-${Date.now()}` })}
+                    style={{ marginTop:10, width:'100%', padding:'10px 0', borderRadius:10, border:'none', background:'linear-gradient(135deg,#1e3a5f,#2563EB)', color:'#fff', fontWeight:700, fontSize:14, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M14 14h3v3h-3zM17 17h3v3h-3zM14 20h3"/></svg>
+                    Generate LankaQR
+                  </button>
+                )}
               </div>
               <div>
                 <div>
@@ -1065,6 +1145,13 @@ export default function WalkInPage() {
           </div>
         )}
       </Modal>
+
+      {qrModal && createPortal(
+        <div style={{ position:'fixed', inset:0, zIndex:9999, display:'flex', alignItems:'center', justifyContent:'center', background:'rgba(0,0,0,0.65)', backdropFilter:'blur(4px)' }}>
+          <WalkInQRPanel amount={qrModal.amount} reference={qrModal.reference} onClose={() => setQrModal(null)} onSuccess={() => { setQrModal(null); handleCollectPayment(); }} />
+        </div>,
+        document.body
+      )}
 
       {/*  EDIT MODAL  */}
       <Modal open={!!editEntry} onClose={() => setEditEntry(null)} title="Edit Walk-in Entry" size="sm">

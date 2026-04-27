@@ -70,7 +70,8 @@ import BankSlipUploadPage from './pages/BankSlipUploadPage';
 import OnboardingPage   from './pages/OnboardingPage';
 import SupportTicketsPage from './pages/SupportTicketsPage';
 import MaintenancePage  from './pages/MaintenancePage';
-import BrandingSettingsPage from './pages/BrandingSettingsPage';
+import BrandingSettingsPage  from './pages/BrandingSettingsPage';
+import PaymentSettingsPage   from './pages/PaymentSettingsPage';
 import DomainSettingsPage  from './pages/DomainSettingsPage';
 import ThemeOptionsPage from './pages/ThemeOptionsPage';
 import TwoFactorPage from './pages/TwoFactorPage';
@@ -350,6 +351,11 @@ function AppShell() {
             <Route path="/branding"     element={
               <RoleRoute roles={['superadmin', 'admin']}>
                 <BrandingSettingsPage />
+              </RoleRoute>
+            } />
+            <Route path="/payment-settings" element={
+              <RoleRoute roles={['superadmin', 'admin']}>
+                <PaymentSettingsPage />
               </RoleRoute>
             } />
             <Route path="/domain-settings" element={

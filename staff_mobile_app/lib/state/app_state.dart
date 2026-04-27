@@ -48,10 +48,26 @@ class AppState extends ChangeNotifier {
 
   static const _kAuthTokenKey = 'staff_auth_token';
   static const _kUserJsonKey = 'staff_user_json';
+  static const _kSlugKey = 'salon_slug';
 
-  final MobileApi _api;
+  MobileApi _api;
 
-  String get apiBaseUrl => kStaffApiBaseUrl;
+  String get apiBaseUrl => _api.baseUrl;
+
+  void setSlug(String slug) {
+    _api = MobileApi(baseUrl: kStaffApiBaseUrl, slug: slug.trim().toLowerCase());
+  }
+
+  Future<String?> getSavedSlug() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_kSlugKey);
+  }
+
+  Future<void> saveSlug(String slug) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_kSlugKey, slug.trim().toLowerCase());
+  }
+
   final List<StaffUser> _staffUsers = [];
   final List<AppItem> _items = [];
   final List<Customer> _customers = [];
@@ -84,6 +100,10 @@ class AppState extends ChangeNotifier {
   Future<void> loadPersistedSession() async {
     try {
       final prefs = await SharedPreferences.getInstance();
+      final savedSlug = prefs.getString(_kSlugKey);
+      if (savedSlug != null && savedSlug.isNotEmpty) {
+        _api = MobileApi(baseUrl: kStaffApiBaseUrl, slug: savedSlug);
+      }
       final token = prefs.getString(_kAuthTokenKey);
       if (token == null || token.trim().isEmpty) return;
       final raw = prefs.getString(_kUserJsonKey);

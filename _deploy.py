@@ -63,7 +63,7 @@ deploy_cmd = (
     "git fetch origin main && "
     "git reset --hard origin/main && "
     "echo '>>> Stop old salon_v1 stack (shared DB volume — must stop before rebuild)' && "
-    "if [ -d /root/salon_v1 ]; then cd /root/salon_v1 && docker compose down 2>/dev/null || true && cd {app_path}; fi && "
+    f"if [ -d /root/salon_v1 ]; then cd /root/salon_v1 && docker compose down 2>/dev/null || true && cd {app_path}; fi && "
     f"cd {app_path} && "
     "echo '>>> docker compose down + up --build (may take several minutes)...' && "
     "docker compose down && "

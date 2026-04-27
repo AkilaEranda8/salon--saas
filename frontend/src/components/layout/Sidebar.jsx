@@ -60,7 +60,8 @@ const NAV_GROUPS = [
     { path:'/offer-sms',     label:'Offer SMS',     roles:MGR, icon:'M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2v10zm-4-6H7m10 4H7' },
   ]},
   { label:'SETTINGS', items:[
-    { path:'/branding',        label:'Branding',      roles:ADM, icon:'M20 7a2 2 0 00-2-2H6a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V7zM8 7v10m8-10v10M6 10h12' },
+    { path:'/branding',          label:'Branding',        roles:ADM, icon:'M20 7a2 2 0 00-2-2H6a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V7zM8 7v10m8-10v10M6 10h12' },
+    { path:'/payment-settings',  label:'Payment Settings', roles:ADM, icon:'M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z' },
     { path:'/consent-forms',   label:'Consent Forms', roles:ALL, icon:'M9 12h6m-6 4h6M8 4h8a2 2 0 012 2v12a2 2 0 01-2 2H8a2 2 0 01-2-2V6a2 2 0 012-2z' },
     { path:'/domain-settings', label:'Custom Domain',  roles:ADM, icon:'M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1' },
     { path:'/themes',        label:'Themes',        roles:ALL, icon:'M12 3v2m0 14v2m9-9h-2M5 12H3m14.364 6.364-1.414-1.414M8.05 8.05 6.636 6.636m10.728 0L15.95 8.05M8.05 15.95l-1.414 1.414M12 16a4 4 0 100-8 4 4 0 000 8z' },

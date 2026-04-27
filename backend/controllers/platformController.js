@@ -40,6 +40,12 @@ const TENANT_SAFE_ATTRIBUTES = [
   'trial_ends_at',
   'max_branches',
   'max_staff',
+  'payment_gateway',
+  'back_transfer_wage',
+  'helapay_merchant_id',
+  'helapay_app_id',
+  'helapay_business_id',
+  'helapay_notify_url',
   'createdAt',
   'updatedAt',
 ];
@@ -385,7 +391,7 @@ const updateTenant = async (req, res) => {
     const tenant = await Tenant.findByPk(req.params.id);
     if (!tenant) return res.status(404).json({ message: 'Tenant not found.' });
 
-    const allowed = ['status', 'plan', 'trial_ends_at', 'max_branches', 'max_staff', 'name', 'email', 'payment_gateway', 'back_transfer_wage'];
+    const allowed = ['status', 'plan', 'trial_ends_at', 'max_branches', 'max_staff', 'name', 'email', 'payment_gateway', 'back_transfer_wage', 'helapay_merchant_id', 'helapay_app_id', 'helapay_app_secret', 'helapay_business_id', 'helapay_notify_url'];
     const updates = {};
     for (const key of allowed) {
       if (req.body[key] !== undefined) updates[key] = req.body[key];

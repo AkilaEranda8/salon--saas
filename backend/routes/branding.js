@@ -363,4 +363,49 @@ router.post('/domain/verify', verifyToken, requireRole('superadmin', 'admin'), a
   }
 });
 
+// ── GET /api/branding/payment-settings ───────────────────────────────────────
+router.get('/payment-settings', verifyToken, requireRole('superadmin', 'admin'), async (req, res) => {
+  try {
+    const tenantId = req.tenant?.id ?? req.userTenantId;
+    if (!tenantId) return res.status(400).json({ message: 'Tenant context required.' });
+    const tenant = await Tenant.findByPk(tenantId, {
+      attributes: ['id', 'helapay_merchant_id', 'helapay_app_id', 'helapay_business_id', 'helapay_notify_url'],
+    });
+    if (!tenant) return res.status(404).json({ message: 'Tenant not found.' });
+    return res.json({
+      helapay_merchant_id:  tenant.helapay_merchant_id  || '',
+      helapay_app_id:       tenant.helapay_app_id       || '',
+      helapay_business_id:  tenant.helapay_business_id  || '',
+      helapay_notify_url:   tenant.helapay_notify_url   || '',
+    });
+  } catch (err) {
+    console.error('branding.getPaymentSettings error:', err);
+    return res.status(500).json({ message: 'Server error.' });
+  }
+});
+
+// ── PUT /api/branding/payment-settings ───────────────────────────────────────
+router.put('/payment-settings', verifyToken, requireRole('superadmin', 'admin'), async (req, res) => {
+  try {
+    const tenantId = req.tenant?.id ?? req.userTenantId;
+    if (!tenantId) return res.status(400).json({ message: 'Tenant context required.' });
+    const tenant = await Tenant.findByPk(tenantId);
+    if (!tenant) return res.status(404).json({ message: 'Tenant not found.' });
+
+    const allowed = ['helapay_merchant_id', 'helapay_app_id', 'helapay_app_secret', 'helapay_business_id', 'helapay_notify_url'];
+    const updates = {};
+    for (const key of allowed) {
+      if (req.body[key] !== undefined) {
+        updates[key] = String(req.body[key] || '').trim() || null;
+      }
+    }
+
+    await tenant.update(updates);
+    return res.json({ message: 'Payment settings saved.' });
+  } catch (err) {
+    console.error('branding.putPaymentSettings error:', err);
+    return res.status(500).json({ message: 'Server error.' });
+  }
+});
+
 module.exports = router;

@@ -249,6 +249,8 @@ export default function DashboardPage() {
   const [lowStockItems,   setLowStockItems]   = useState([]);
   const [monthExpenses,   setMonthExpenses]   = useState(0);
   const [attendPresent,   setAttendPresent]   = useState(0);
+  const [branding,        setBranding]        = useState({});
+  const [uploadingVariant,setUploadingVariant]= useState('');
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -335,6 +337,31 @@ export default function DashboardPage() {
   useEffect(() => {
     if (isAdmin) api.get('/branches').then(r => setBranches(r.data.data||r.data||[])).catch(()=>{});
   }, [isAdmin]);
+
+  useEffect(() => {
+    if (['superadmin','admin'].includes(user?.role)) {
+      api.get('/branding').then(r => setBranding(r.data?.data || {})).catch(() => {});
+    }
+  }, [user?.role]);
+
+  const uploadLogo = async (variant, file) => {
+    if (!file) return;
+    setUploadingVariant(variant);
+    try {
+      const payload = new FormData();
+      payload.append('file', file);
+      payload.append('variant', variant);
+      const res = await api.post(`/branding/upload?variant=${encodeURIComponent(variant)}`, payload, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      const updated = res.data?.data?.branding;
+      if (updated) setBranding(updated);
+      toast('Logo updated!', 'success');
+    } catch (err) {
+      toast(err.response?.data?.message || 'Upload failed.', 'error');
+    }
+    setUploadingVariant('');
+  };
 
   /* auto-refresh every 3 min */
   useEffect(() => {
@@ -696,7 +723,52 @@ export default function DashboardPage() {
         </Card>
       )}
 
-      <style>{`@keyframes pulse { 0%,100%{opacity:1}50%{opacity:.45} }`}</style>
+      {/* ── Logo Manager (admin / superadmin only) ──────────── */}
+      {['superadmin','admin'].includes(user?.role) && (
+        <Card>
+          <CardHead title="🖼 Salon Logos" action={linkBtn('Full Branding Settings →', '/branding', true)} />
+          <div style={{ display:'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4,1fr)', gap:16 }}>
+            {[
+              { key:'sidebar', label:'Sidebar Logo',  hint:'Shown in the app sidebar' },
+              { key:'header',  label:'Header Logo',   hint:'Shown in the top header' },
+              { key:'login',   label:'Login Logo',    hint:'Shown on the login page' },
+              { key:'public',  label:'Public Logo',   hint:'Shown on booking / public pages' },
+            ].map(({ key, label, hint }) => {
+              const url  = branding[`logo_${key}_url`];
+              const busy = uploadingVariant === key;
+              return (
+                <div key={key} style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                  <div>
+                    <div style={{ fontSize:12, fontWeight:700, color:'#374151', textTransform:'uppercase', letterSpacing:'0.06em' }}>{label}</div>
+                    <div style={{ fontSize:11, color:'#9CA3AF', marginTop:2 }}>{hint}</div>
+                  </div>
+                  <div style={{ height:90, borderRadius:12, border:`2px dashed ${url ? '#BFDBFE' : '#E5E7EB'}`, display:'flex', alignItems:'center', justifyContent:'center', background: url ? '#EFF6FF' : '#F9FAFB', overflow:'hidden', position:'relative' }}>
+                    {busy ? (
+                      <div style={{ fontSize:11, color:'#2563EB', fontWeight:600, display:'flex', flexDirection:'column', alignItems:'center', gap:6 }}>
+                        <div style={{ width:20, height:20, border:'2.5px solid #BFDBFE', borderTopColor:'#2563EB', borderRadius:'50%', animation:'spin .8s linear infinite' }} />
+                        Uploading…
+                      </div>
+                    ) : url ? (
+                      <img src={url} alt={label} style={{ maxWidth:'100%', maxHeight:'100%', objectFit:'contain', padding:8 }} />
+                    ) : (
+                      <span style={{ fontSize:11, color:'#9CA3AF' }}>No logo set</span>
+                    )}
+                  </div>
+                  <label style={{ cursor: busy ? 'not-allowed' : 'pointer' }}>
+                    <input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" style={{ display:'none' }} disabled={!!uploadingVariant}
+                      onChange={e => { const f = e.target.files?.[0]; if (f) uploadLogo(key, f); e.target.value = ''; }} />
+                    <div style={{ padding:'9px 0', borderRadius:10, border:`1.5px solid ${busy ? '#E5E7EB' : '#2563EB'}`, background: busy ? '#F9FAFB' : url ? '#fff' : '#EFF6FF', color: busy ? '#9CA3AF' : '#2563EB', fontSize:12, fontWeight:700, textAlign:'center', transition:'all .15s', userSelect:'none' }}>
+                      {busy ? 'Uploading…' : url ? '↑ Replace Logo' : '↑ Upload Logo'}
+                    </div>
+                  </label>
+                </div>
+              );
+            })}
+          </div>
+        </Card>
+      )}
+
+      <style>{`@keyframes pulse { 0%,100%{opacity:1}50%{opacity:.45} } @keyframes spin { to { transform:rotate(360deg); } }`}</style>
     </PageWrapper>
   );
 }

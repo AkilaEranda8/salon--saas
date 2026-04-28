@@ -78,6 +78,12 @@ async function addIfMissing(table, column, definition) {
     await addIfMissing('users', 'totp_secret',  { type: DataTypes.STRING(64),  allowNull: true });
     await addIfMissing('users', 'totp_enabled', { type: DataTypes.BOOLEAN, defaultValue: false, allowNull: false });
 
+    // ── users auth columns ───────────────────────────────────────────────────
+    await addIfMissing('users', 'email',                { type: DataTypes.STRING(255), allowNull: true });
+    await addIfMissing('users', 'must_change_password', { type: DataTypes.BOOLEAN, defaultValue: false, allowNull: false });
+    await addIfMissing('users', 'password_reset_token', { type: DataTypes.STRING(64),  allowNull: true });
+    await addIfMissing('users', 'password_reset_expires', { type: DataTypes.DATE,     allowNull: true });
+
     // ── tenants HelaPay columns ───────────────────────────────────────────────
     await addIfMissing('tenants', 'helapay_merchant_id',  { type: DataTypes.STRING(100), allowNull: true });
     await addIfMissing('tenants', 'helapay_app_id',       { type: DataTypes.STRING(200), allowNull: true });

@@ -79,7 +79,7 @@ import TwoFactorPage from './pages/TwoFactorPage';
 
 // ── Branding seeder: apply tenant theme to ThemeContext on login ───────────
 const VALID_SIDEBAR_LAYOUTS = new Set([
-  'default','compact','floating','glass','gradient','accent','pill','wide','minimal',
+  'hexa','default','compact','floating','glass','gradient','accent','pill','wide','minimal',
 ]);
 
 function BrandingSeeder() {
@@ -94,7 +94,7 @@ function BrandingSeeder() {
     // Only apply valid layout values; treat null/light/dark as 'default'
     const layout = t.sidebar_style && VALID_SIDEBAR_LAYOUTS.has(t.sidebar_style)
       ? t.sidebar_style
-      : 'default';
+      : 'hexa';
     setSidebarStyle(layout);
   }, [user?.tenant]);
 

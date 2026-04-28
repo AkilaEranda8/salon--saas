@@ -92,7 +92,7 @@ const cleanHexColor = (value) => {
 };
 
 const ALLOWED_SIDEBAR_STYLES = new Set([
-  'default', 'compact', 'floating', 'glass', 'gradient',
+  'hexa', 'default', 'compact', 'floating', 'glass', 'gradient',
   'accent', 'pill', 'wide', 'minimal',
   'light', 'dark', // legacy appearance values
 ]);

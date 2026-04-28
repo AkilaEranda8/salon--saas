@@ -160,6 +160,26 @@ function DarkPreview() {
   );
 }
 
+function HexaSidebarPreview() {
+  return (
+    <div style={{ display: 'flex', gap: 0, width: 130, height: 72, borderRadius: 8, overflow: 'hidden', border: '1px solid #2A1F40', boxShadow: '0 2px 12px rgba(0,0,0,0.35)' }}>
+      <div style={{ width: 38, background: 'linear-gradient(180deg,#110E1D 0%,#0D0916 100%)', borderRight: '1px solid #2A1F40', padding: '5px 6px', display: 'flex', flexDirection: 'column', gap: 3 }}>
+        <div style={{ height: 5, background: '#c9a96e', borderRadius: 2, marginBottom: 2 }} />
+        {['#c9a96e33', '#2A1F40', '#2A1F40'].map((bg, i) => (
+          <div key={i} style={{ height: 10, borderRadius: 4, background: bg, display: 'flex', alignItems: 'center', paddingLeft: 3 }}>
+            <div style={{ width: 4, height: 4, borderRadius: 1, background: i === 0 ? '#c9a96e' : '#4B3D6A' }} />
+          </div>
+        ))}
+      </div>
+      <div style={{ flex: 1, background: '#0D0916', padding: '6px 8px', display: 'flex', flexDirection: 'column', gap: 3 }}>
+        <div style={{ height: 6, width: '60%', background: '#2A1F40', borderRadius: 3 }} />
+        <div style={{ height: 4, width: '80%', background: '#1A1430', borderRadius: 3 }} />
+        <div style={{ height: 4, width: '50%', background: '#1A1430', borderRadius: 3 }} />
+      </div>
+    </div>
+  );
+}
+
 function DefaultSidebarPreview() {
   return (
     <div style={{ display: 'flex', gap: 0, width: 130, height: 72, borderRadius: 8, overflow: 'hidden', border: '1px solid #E5E7EB', boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
@@ -489,11 +509,21 @@ export default function ThemeOptionsPage() {
       >
         <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
           <AppearanceCard
+            value="hexa"
+            label="Hexa (Default)"
+            description="Hexa Salon brand style — dark sidebar with gold accents."
+            icon={<IconLayout />}
+            active={!sidebarStyle || sidebarStyle === 'hexa'}
+            onClick={() => handleLayoutChange('hexa')}
+            previewBg="linear-gradient(180deg, #1A1430 0%, #0D0916 100%)"
+            previewContent={<HexaSidebarPreview />}
+          />
+          <AppearanceCard
             value="default"
             label="Default"
             description="Full-width sidebar with icons and labels visible."
             icon={<IconLayout />}
-            active={!sidebarStyle || sidebarStyle === 'default' || sidebarStyle === 'light' || sidebarStyle === 'dark'}
+            active={sidebarStyle === 'default' || sidebarStyle === 'light' || sidebarStyle === 'dark'}
             onClick={() => handleLayoutChange('default')}
             previewBg="linear-gradient(180deg, #F8F9FC 0%, #F1F3F9 100%)"
             previewContent={<DefaultSidebarPreview />}

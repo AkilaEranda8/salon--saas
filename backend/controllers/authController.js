@@ -1,6 +1,7 @@
 const bcrypt = require('bcryptjs');
 const jwt    = require('jsonwebtoken');
 const crypto = require('crypto');
+const { Op }  = require('sequelize');
 const speakeasy = require('speakeasy');
 const qrcode    = require('qrcode');
 const { User, Branch, Tenant, RevokedToken } = require('../models');

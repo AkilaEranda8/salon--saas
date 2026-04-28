@@ -19,8 +19,8 @@ function getInitialMode() {
 function getInitialSidebarStyle() {
   if (typeof window === 'undefined') return 'default';
   const savedStyle = window.localStorage.getItem(SIDEBAR_STYLE_KEY);
-  const valid = ['default','compact','floating','glass','gradient','accent','pill','wide','minimal'];
-  return valid.includes(savedStyle) ? savedStyle : 'default';
+  const valid = ['default','compact','floating','glass','gradient','accent','pill','wide','minimal','hexa'];
+  return valid.includes(savedStyle) ? savedStyle : 'hexa';
 }
 
 function getInitialPrimaryColor() {

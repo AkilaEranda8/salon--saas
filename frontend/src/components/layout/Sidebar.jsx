@@ -79,6 +79,28 @@ const NAV_GROUPS = [
 
 /*  Theme palette  */
 const THEME = {
+  hexa: {
+    bg:          '#0D0916',
+    sidebarBg:   '#110E1D',
+    border:      '#2A1F40',
+    userBg:      '#1A1430',
+    userBorder:  '#2D2050',
+    navHover:    '#1E1635',
+    navActive:   '#c9a96e',
+    navActiveBg: 'linear-gradient(135deg, #c9a96e 0%, #a07840 100%)',
+    navActiveTx: '#0D0916',
+    text:        '#F5EDD8',
+    textSub:     '#B8A882',
+    textMuted:   '#6B5F82',
+    groupLabel:  '#6B5F82',
+    divider:     '#1A1430',
+    logoBg:      'rgba(201,169,110,0.12)',
+    logoColor:   '#c9a96e',
+    trackOff:    '#2A1F40',
+    shadow:      '2px 0 24px rgba(0,0,0,0.45)',
+    scrollThumb: '#2D2050',
+    activeGlow:  'rgba(201,169,110,0.20)',
+  },
   light: {
     bg:          '#FFFFFF',
     sidebarBg:   '#FAFBFC',
@@ -231,9 +253,9 @@ export default function Sidebar({ collapsed, onToggle, currentUser, mobileOpen, 
   const { isMobile } = useBreakpoint();
 
   const STYLE = sidebarStyle || 'default';
-  const C   = THEME[isDark || sidebarAppearance === 'dark' || STYLE === 'gradient' ? 'dark' : 'light'];
+  const C   = STYLE === 'hexa' ? THEME.hexa : THEME[isDark || sidebarAppearance === 'dark' || STYLE === 'gradient' ? 'dark' : 'light'];
   // Override navActive with tenant primary color
-  const themedC = { ...C, navActive: primaryColor || C.navActive, navActiveBg: primaryColor ? `linear-gradient(135deg, ${primaryColor} 0%, ${primaryColor}CC 100%)` : C.navActiveBg };
+  const themedC = STYLE === 'hexa' ? C : { ...C, navActive: primaryColor || C.navActive, navActiveBg: primaryColor ? `linear-gradient(135deg, ${primaryColor} 0%, ${primaryColor}CC 100%)` : C.navActiveBg };
   const role     = currentUser?.role || '';
   const rb = ROLE_BADGE[role] || ROLE_BADGE.staff;
   const tenantBranding = currentUser?.tenant || {};
@@ -267,11 +289,13 @@ export default function Sidebar({ collapsed, onToggle, currentUser, mobileOpen, 
                  : STYLE === 'gradient' ? '2px 0 20px rgba(0,0,0,0.18)'
                  : STYLE === 'minimal'  ? 'none'
                  : C.shadow,
-    shellBg:       STYLE === 'gradient' ? 'linear-gradient(180deg, #1E293B 0%, #0F172A 100%)'
+    shellBg:       STYLE === 'hexa'     ? 'linear-gradient(180deg, #110E1D 0%, #0D0916 100%)'
+                 : STYLE === 'gradient' ? 'linear-gradient(180deg, #1E293B 0%, #0F172A 100%)'
                  : STYLE === 'glass'    ? 'rgba(255,255,255,0.72)'
                  : STYLE === 'minimal'  ? 'rgba(255,255,255,0.6)'
                  : null,
-    shellBd:       STYLE === 'gradient' || STYLE === 'floating' || STYLE === 'minimal' ? 'none'
+    shellBd:       STYLE === 'hexa' ? '1px solid #2A1F40'
+                 : STYLE === 'gradient' || STYLE === 'floating' || STYLE === 'minimal' ? 'none'
                  : STYLE === 'glass' ? '1px solid rgba(255,255,255,0.45)'
                  : null,
     shellBackdrop: STYLE === 'glass' ? 'blur(20px) saturate(180%)' : null,

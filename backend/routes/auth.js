@@ -1,6 +1,6 @@
 const { Router } = require('express');
 const jwt = require('jsonwebtoken');
-const { register, login, logout, getMe, verifyLogin2FA, setup2FA, enable2FA, disable2FA, status2FA, changeOwnPassword, impersonateSession } = require('../controllers/authController');
+const { register, login, logout, getMe, verifyLogin2FA, setup2FA, enable2FA, disable2FA, status2FA, changeOwnPassword, forgotPassword, resetPassword, forceChangePassword, impersonateSession } = require('../controllers/authController');
 const { verifyToken, requireRole } = require('../middleware/auth');
 
 const router = Router();
@@ -51,6 +51,15 @@ router.post('/2fa/disable', verifyToken, disable2FA);
 
 // POST /api/auth/change-password — authenticated user changes their own password
 router.post('/change-password', verifyToken, changeOwnPassword);
+
+// POST /api/auth/forgot-password — public, sends reset link to user's email
+router.post('/forgot-password', forgotPassword);
+
+// POST /api/auth/reset-password/:token — public, sets new password via token
+router.post('/reset-password/:token', resetPassword);
+
+// POST /api/auth/first-login-password — authenticated, for must_change_password=true users
+router.post('/first-login-password', verifyToken, forceChangePassword);
 
 // POST /api/auth/impersonate-session — platform admin exchanges impersonation token for a session cookie
 router.post('/impersonate-session', impersonateSession);

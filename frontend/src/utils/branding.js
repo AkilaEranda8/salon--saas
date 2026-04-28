@@ -1,13 +1,5 @@
 const DEFAULT_BRAND_NAME = 'Hexa Salon';
-const DEFAULT_LOGO_SVG =
-  'data:image/svg+xml;utf8,' +
-  encodeURIComponent(`
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96">
-      <rect width="96" height="96" rx="22" fill="#111827"/>
-      <circle cx="48" cy="38" r="18" fill="#c9a96e"/>
-      <path d="M22 76c7-10 17-15 26-15s19 5 26 15" fill="none" stroke="#c9a96e" stroke-width="7" stroke-linecap="round"/>
-    </svg>
-  `);
+const DEFAULT_LOGO_SVG = '/hexa-salon-logo.png';
 
 export function normalizeBranding(input = {}) {
   const branding = input || {};

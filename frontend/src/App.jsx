@@ -290,9 +290,7 @@ function ForcePasswordChangeModal() {
 
 function AppShell() {
   const { isNarrow, isMobile } = useBreakpoint();
-  const [sbCollapsed, setSbCollapsed] = useState(() => {
-    try { return localStorage.getItem('sb-collapsed') === 'true'; } catch { return false; }
-  });
+  const [sbCollapsed, setSbCollapsed] = useState(false);
   const [sbMobileOpen, setSbMobileOpen] = useState(false);
   const { user } = useAuth();
   const { isDark } = useTheme();

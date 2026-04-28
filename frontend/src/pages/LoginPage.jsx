@@ -258,18 +258,19 @@ export default function LoginPage({ platformMode = false }) {
         <div style={{ textAlign: 'center', marginBottom: 30 }}>
           <div style={{
             display: 'inline-block',
-            borderRadius: 24,
+            borderRadius: 28,
             overflow: 'hidden',
+            background: '#FFFFFF',
             boxShadow: dark
-              ? '0 12px 40px rgba(0,0,0,0.55), 0 0 0 1px rgba(201,169,110,0.15)'
-              : '0 12px 40px rgba(124,58,237,0.18), 0 0 0 1px rgba(124,58,237,0.12)',
+              ? '0 16px 48px rgba(0,0,0,0.60), 0 0 0 1.5px rgba(201,169,110,0.20), 0 2px 0 rgba(255,255,255,0.06) inset'
+              : '0 12px 40px rgba(124,58,237,0.16), 0 0 0 1.5px rgba(124,58,237,0.10)',
             animation: 'float 5s ease-in-out infinite',
             transition: 'box-shadow .35s',
           }}>
             <img
               src="/kogo.png"
               alt="Hexa Salon"
-              style={{ width: 180, height: 180, objectFit: 'cover', display: 'block' }}
+              style={{ width: 190, height: 190, objectFit: 'cover', display: 'block' }}
             />
           </div>
           <p style={{

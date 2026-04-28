@@ -83,6 +83,65 @@ class _AdvancesPageState extends State<AdvancesPage> {
     return ['superadmin', 'admin'].contains(r);
   }
 
+  // Next month in YYYY-MM format
+  String _nextMonth(String ym) {
+    try {
+      final parts = ym.split('-');
+      var y = int.parse(parts[0]);
+      var m = int.parse(parts[1]);
+      m++;
+      if (m > 12) { m = 1; y++; }
+      return '$y-${m.toString().padLeft(2, '0')}';
+    } catch (_) { return ym; }
+  }
+
+  Future<void> _carryForward(Map<String, dynamic> adv) async {
+    final staffId  = '${(adv['staff'] as Map?)?['id'] ?? adv['staff_id'] ?? ''}';
+    final branchId = '${adv['branch_id'] ?? (adv['branch'] as Map?)?['id'] ?? ''}';
+    final amount   = double.tryParse('${adv['amount']}') ?? 0;
+    final month    = '${adv['month'] ?? ''}';
+    final nextMo   = _nextMonth(month);
+    if (staffId.isEmpty || amount <= 0) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Carry Forward Advance?'),
+        content: Text(
+          'Create a new pending advance of Rs. ${amount.toStringAsFixed(0)} '
+          'for $nextMo (carry forward from $month)?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Carry Forward',
+                style: TextStyle(color: Color(0xFF7C3AED), fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    final app = AppStateScope.of(context);
+    final now  = DateTime.now();
+    final date = '${now.year}-${now.month.toString().padLeft(2,'0')}-${now.day.toString().padLeft(2,'0')}';
+    final ok = await app.addAdvance(
+      staffId:  staffId,
+      branchId: branchId,
+      amount:   amount,
+      date:     date,
+      month:    nextMo,
+      reason:   'Carry forward from $month',
+    );
+    if (!mounted) return;
+    if (ok) {
+      _snack('Carried forward to $nextMo', success: true);
+      _load(silent: true);
+    } else {
+      _snack(app.lastError ?? 'Failed');
+    }
+  }
+
   void _settleCommission(Map<String, dynamic> adv) {
     final staffId   = '${(adv['staff'] as Map?)?['id'] ?? adv['staff_id'] ?? ''}';
     final staffName = '${(adv['staff'] as Map?)?['name'] ?? 'Staff'}';
@@ -287,12 +346,13 @@ class _AdvancesPageState extends State<AdvancesPage> {
                           padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
                           itemCount: _advances.length,
                           itemBuilder: (_, i) => _AdvanceCard(
-                            advance:   _advances[i],
-                            canManage: _canManage,
-                            canDelete: _canDelete,
-                            onDeduct:  () => _markDeducted(_advances[i]),
-                            onDelete:  () => _delete(_advances[i]),
-                            onSettle:  () => _settleCommission(_advances[i]),
+                            advance:      _advances[i],
+                            canManage:    _canManage,
+                            canDelete:    _canDelete,
+                            onDeduct:     () => _markDeducted(_advances[i]),
+                            onDelete:     () => _delete(_advances[i]),
+                            onSettle:     () => _settleCommission(_advances[i]),
+                            onCarryFwd:   () => _carryForward(_advances[i]),
                           ),
                         ),
         ),
@@ -337,10 +397,11 @@ class _AdvanceCard extends StatelessWidget {
     required this.onDeduct,
     required this.onDelete,
     required this.onSettle,
+    required this.onCarryFwd,
   });
   final Map<String, dynamic> advance;
   final bool canManage, canDelete;
-  final VoidCallback onDeduct, onDelete, onSettle;
+  final VoidCallback onDeduct, onDelete, onSettle, onCarryFwd;
 
   @override
   Widget build(BuildContext context) {
@@ -448,7 +509,7 @@ class _AdvanceCard extends StatelessWidget {
                         children: [
                           Icon(Icons.payments_rounded, size: 15, color: Color(0xFF2563EB)),
                           SizedBox(width: 6),
-                          Text('Settle Commission',
+                          Text('Settle',
                             style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700,
                                 color: Color(0xFF2563EB))),
                         ],
@@ -456,7 +517,29 @@ class _AdvanceCard extends StatelessWidget {
                     ),
                   ),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: GestureDetector(
+                    onTap: onCarryFwd,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF5F3FF),
+                        borderRadius: BorderRadius.circular(10)),
+                      child: const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.redo_rounded, size: 15, color: Color(0xFF7C3AED)),
+                          SizedBox(width: 6),
+                          Text('Carry Fwd',
+                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700,
+                                color: Color(0xFF7C3AED))),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 6),
               ],
               if (canManage && pending && canDelete) const SizedBox(width: 8),
               if (canDelete)

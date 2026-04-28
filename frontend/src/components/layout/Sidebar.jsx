@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth }       from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
@@ -19,6 +19,11 @@ const ALL = ['superadmin','admin','manager','staff'];
 const MGR = ['superadmin','admin','manager'];
 const ADM = ['superadmin','admin'];
 const SA  = ['superadmin'];
+
+/*  Route aliases — keeps isActive DRY and maintainable  */
+const ROUTE_ALIASES = {
+  '/walk-in': '/walkin',
+};
 
 const NAV_GROUPS = [
   { label:'MAIN', items:[
@@ -157,14 +162,27 @@ const ROLE_BADGE = {
 /*  NavItem  */
 function NavItem({ item, collapsed, isActive, onClick, C, lyt }) {
   const [hov, setHov] = useState(false);
+  const [tip, setTip] = useState(null);
+  const itemRef = useRef(null);
   const nRadius  = lyt?.navItemRadius ?? 10;
   const nPad     = collapsed ? '10px 14px' : (lyt?.navItemPad ?? '9px 14px');
   const isAccent = lyt?.accentBar;
 
+  const handleMouseEnter = () => {
+    setHov(true);
+    if (collapsed && itemRef.current) {
+      const rect = itemRef.current.getBoundingClientRect();
+      const vh   = window.innerHeight;
+      const y    = Math.min(Math.max(rect.top + rect.height / 2, 24), vh - 24);
+      setTip({ x: rect.right + 10, y });
+    }
+  };
+  const handleMouseLeave = () => { setHov(false); setTip(null); };
+
   return (
-    <div style={{ position:'relative', marginBottom: 1 }}
-      onMouseEnter={() => setHov(true)}
-      onMouseLeave={() => setHov(false)}
+    <div ref={itemRef} style={{ position:'relative', marginBottom: 1 }}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
     >
       {isAccent && isActive && !collapsed && (
         <div style={{ position:'absolute', left:0, top:6, bottom:6, width:3, borderRadius:2, background: C.navActive, boxShadow: `0 0 8px ${C.navActive}60` }} />
@@ -215,12 +233,12 @@ function NavItem({ item, collapsed, isActive, onClick, C, lyt }) {
         )}
       </div>
 
-      {/* Collapsed tooltip */}
-      {collapsed && hov && (
+      {/* Collapsed tooltip — fixed positioning prevents viewport overflow */}
+      {collapsed && hov && tip && (
         <div style={{
-          position:      'absolute',
-          left:          'calc(100% + 10px)',
-          top:           '50%',
+          position:      'fixed',
+          left:          tip.x,
+          top:           tip.y,
           transform:     'translateY(-50%)',
           background:    'linear-gradient(135deg, #1E1B32, #13111F)',
           color:         '#fff',
@@ -230,7 +248,7 @@ function NavItem({ item, collapsed, isActive, onClick, C, lyt }) {
           borderRadius:  10,
           whiteSpace:    'nowrap',
           pointerEvents: 'none',
-          zIndex:        999,
+          zIndex:        9999,
           boxShadow:     '0 4px 20px rgba(0,0,0,0.28)',
           fontFamily:    "'Inter', sans-serif",
           border:        '1px solid rgba(255,255,255,0.08)',
@@ -271,10 +289,10 @@ export default function Sidebar({ collapsed, onToggle, currentUser, mobileOpen, 
 
   const isActive = path =>
     location.pathname === path ||
-    (path === '/walk-in' && location.pathname === '/walkin');
+    location.pathname === (ROUTE_ALIASES[path] ?? null);
 
   const handleNavigate = path => { navigate(path); onMobileClose?.(); };
-  const handleLogout   = async () => { await logout(); navigate('/login'); };
+  const handleLogout   = async () => { try { await logout(); } catch (_) {} navigate('/login'); };
 
   const ec = isMobile ? false : collapsed;
   // Layout config for the current sidebar style
@@ -393,6 +411,31 @@ export default function Sidebar({ collapsed, onToggle, currentUser, mobileOpen, 
           )}
         </div>
 
+        {/* Desktop collapse chevron */}
+        {!isMobile && (
+          <button onClick={onToggle} style={{
+            background: 'none', border: `1.5px solid ${C.border}`, cursor: 'pointer',
+            padding: '5px', borderRadius: 8, color: C.textMuted, display: 'flex',
+            alignItems: 'center', flexShrink: 0, transition: 'all 0.18s',
+          }}
+          onMouseEnter={e => { e.currentTarget.style.borderColor = themedC.navActive; e.currentTarget.style.color = themedC.navActive; }}
+          onMouseLeave={e => { e.currentTarget.style.borderColor = C.border; e.currentTarget.style.color = C.textMuted; }}>
+            <Ico d={ec ? 'M13 5l7 7-7 7M5 5l7 7-7 7' : 'M11 19l-7-7 7-7m8 14l-7-7 7-7'} size={14} />
+          </button>
+        )}
+
+        {/* Mobile close (X) button */}
+        {isMobile && (
+          <button onClick={onMobileClose} style={{
+            background: 'none', border: `1.5px solid ${C.border}`, cursor: 'pointer',
+            padding: '5px', borderRadius: 8, color: C.textMuted, display: 'flex',
+            alignItems: 'center', flexShrink: 0, transition: 'all 0.18s',
+          }}
+          onMouseEnter={e => { e.currentTarget.style.borderColor = '#EF4444'; e.currentTarget.style.color = '#EF4444'; }}
+          onMouseLeave={e => { e.currentTarget.style.borderColor = C.border; e.currentTarget.style.color = C.textMuted; }}>
+            <Ico d="M6 18L18 6M6 6l12 12" size={14} />
+          </button>
+        )}
       </div>
 
       {/*  Nav  */}

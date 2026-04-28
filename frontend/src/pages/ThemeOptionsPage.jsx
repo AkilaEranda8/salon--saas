@@ -427,6 +427,12 @@ export default function ThemeOptionsPage() {
       .finally(() => setLayoutSaving(false));
   };
 
+  const handleSidebarChange = (appearance) => {
+    setBrandSidebar(appearance);
+    setSidebarAppearance(appearance);
+    window.localStorage.setItem('salon-sidebar-appearance', appearance);
+  };
+
   const activeCount = [
     mode === 'dark' ? 1 : 0,
     sidebarStyle && sidebarStyle !== 'default' ? 1 : 0,

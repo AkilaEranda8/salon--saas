@@ -13,6 +13,21 @@ import {
 const ROLES = ['superadmin','admin','manager','staff'];
 const EMPTY = { username:'', password:'', name:'', role:'staff', branch_id:'', is_active:true };
 
+function generatePassword(len = 12) {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789@#!';
+  return Array.from({ length: len }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+}
+
+function IconRefresh() {
+  return <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M3 21v-5h5"/></svg>;
+}
+
+function IconEye({ off }) {
+  return off
+    ? <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+    : <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>;
+}
+
 const ROLE_COLOR = { superadmin:'#7C3AED', admin:'#2563EB', manager:'#059669', staff:'#475467' };
 const ROLE_BG    = { superadmin:'#F5F3FF', admin:'#EFF6FF', manager:'#ECFDF5', staff:'#F9FAFB' };
 
@@ -40,6 +55,9 @@ export default function UsersPage() {
   const [saving, setSaving]       = useState(false);
   const [formError, setFormError] = useState('');
   const [pwdTarget, setPwdTarget] = useState(null);
+  const [staffList, setStaffList] = useState([]);
+  const [showFormPwd, setShowFormPwd]   = useState(false);
+  const [showNewPwd, setShowNewPwd]     = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -57,11 +75,12 @@ export default function UsersPage() {
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
     api.get('/branches?limit=100').then(r => setBranches(r.data.data || [])).catch(() => {});
+    api.get('/staff?limit=200').then(r => setStaffList(r.data.data || [])).catch(() => {});
   }, []);
 
-  const openCreate = () => { setEditItem(null); setForm(EMPTY); setFormError(''); setShowForm(true); };
+  const openCreate = () => { setEditItem(null); setForm(EMPTY); setFormError(''); setShowFormPwd(false); setShowForm(true); };
   const openEdit   = u  => { setEditItem(u); setForm({ username:u.username, password:'', name:u.name, role:u.role, branch_id:u.branch_id||'', is_active:u.is_active }); setFormError(''); setShowForm(true); };
-  const openPwd    = u  => { setPwdTarget(u); setNewPwd(''); setShowPwd(true); };
+  const openPwd    = u  => { setPwdTarget(u); setNewPwd(''); setShowNewPwd(false); setShowPwd(true); };
 
   const handleSave = async () => {
     setFormError('');
@@ -216,13 +235,57 @@ export default function UsersPage() {
           <Button variant="primary" loading={saving} onClick={handleSave}>{editItem ? 'Update' : 'Create'}</Button></>}>
         {formError && <div style={{ background:'#FEF2F2', color:'#DC2626', padding:'9px 13px', borderRadius:9, marginBottom:16, fontSize:13, border:'1px solid #FEE2E2' }}>{formError}</div>}
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
-          <FormGroup label="Full Name" required><Input value={form.name} onChange={e => setForm({...form, name:e.target.value})} /></FormGroup>
-          <FormGroup label="Username" required><Input value={form.username} onChange={e => setForm({...form, username:e.target.value})} autoComplete="off" /></FormGroup>
-          {!editItem && (
+
+          {/* Staff picker — only on create */}
+          {!editItem && staffList.length > 0 && (
             <div style={{ gridColumn:'1/-1' }}>
-              <FormGroup label="Password" required><Input type="password" value={form.password} onChange={e => setForm({...form, password:e.target.value})} autoComplete="new-password" /></FormGroup>
+              <FormGroup label="Link Staff Member">
+                <Select value={form._staffId || ''} onChange={e => {
+                  const sid = e.target.value;
+                  if (!sid) { setForm(f => ({ ...f, _staffId: '' })); return; }
+                  const s = staffList.find(x => String(x.id) === sid);
+                  if (!s) return;
+                  const autoUser = s.name.toLowerCase().replace(/\s+/g, '.').replace(/[^a-z0-9.]/g, '');
+                  setForm(f => ({ ...f, _staffId: sid, name: s.name, branch_id: String(s.branch_id || ''), username: f.username || autoUser }));
+                }}>
+                  <option value="">— Select staff member —</option>
+                  {staffList.map(s => <option key={s.id} value={s.id}>{s.name}{s.branch?.name ? ` (${s.branch.name})` : ''}</option>)}
+                </Select>
+              </FormGroup>
             </div>
           )}
+
+          <FormGroup label="Full Name" required><Input value={form.name} onChange={e => setForm({...form, name:e.target.value})} /></FormGroup>
+          <FormGroup label="Username" required><Input value={form.username} onChange={e => setForm({...form, username:e.target.value})} autoComplete="off" /></FormGroup>
+
+          {/* Password with generate button */}
+          {!editItem && (
+            <div style={{ gridColumn:'1/-1' }}>
+              <FormGroup label="Password" required>
+                <div style={{ display:'flex', gap:6 }}>
+                  <div style={{ position:'relative', flex:1 }}>
+                    <Input
+                      type={showFormPwd ? 'text' : 'password'}
+                      value={form.password}
+                      onChange={e => setForm({...form, password:e.target.value})}
+                      autoComplete="new-password"
+                      style={{ paddingRight:34, fontFamily: showFormPwd ? 'monospace' : undefined }}
+                    />
+                    <button type="button" onClick={() => setShowFormPwd(v => !v)}
+                      style={{ position:'absolute', right:8, top:'50%', transform:'translateY(-50%)', background:'none', border:'none', cursor:'pointer', color:'#6B7280', padding:2, display:'flex' }}>
+                      <IconEye off={showFormPwd} />
+                    </button>
+                  </div>
+                  <button type="button"
+                    onClick={() => { const p = generatePassword(); setForm(f => ({...f, password:p})); setShowFormPwd(true); }}
+                    style={{ display:'flex', alignItems:'center', gap:5, padding:'0 12px', borderRadius:8, border:'1.5px solid #2563EB', background:'#EFF6FF', color:'#2563EB', fontWeight:600, fontSize:12, cursor:'pointer', whiteSpace:'nowrap', fontFamily:"'Inter',sans-serif" }}>
+                    <IconRefresh /> Generate
+                  </button>
+                </div>
+              </FormGroup>
+            </div>
+          )}
+
           <FormGroup label="Role">
             <Select value={form.role} onChange={e => setForm({...form, role:e.target.value})}>
               {filterRoles.map(r => <option key={r} value={r} style={{ textTransform:'capitalize' }}>{r}</option>)}
@@ -242,11 +305,30 @@ export default function UsersPage() {
       </Modal>
 
       {/* Change Password Modal */}
-      <Modal open={showPwd} onClose={() => setShowPwd(false)} title={`Change Password  ${pwdTarget?.name}`} size="sm"
+      <Modal open={showPwd} onClose={() => setShowPwd(false)} title={`Change Password — ${pwdTarget?.name}`} size="sm"
         footer={<><Button variant="secondary" onClick={() => setShowPwd(false)}>Cancel</Button>
           <Button variant="primary" loading={saving} onClick={handleChangePwd}>Change Password</Button></>}>
         <FormGroup label="New Password (min 6 chars)">
-          <Input type="password" value={newPwd} onChange={e => setNewPwd(e.target.value)} autoComplete="new-password" />
+          <div style={{ display:'flex', gap:6 }}>
+            <div style={{ position:'relative', flex:1 }}>
+              <Input
+                type={showNewPwd ? 'text' : 'password'}
+                value={newPwd}
+                onChange={e => setNewPwd(e.target.value)}
+                autoComplete="new-password"
+                style={{ paddingRight:34, fontFamily: showNewPwd ? 'monospace' : undefined }}
+              />
+              <button type="button" onClick={() => setShowNewPwd(v => !v)}
+                style={{ position:'absolute', right:8, top:'50%', transform:'translateY(-50%)', background:'none', border:'none', cursor:'pointer', color:'#6B7280', padding:2, display:'flex' }}>
+                <IconEye off={showNewPwd} />
+              </button>
+            </div>
+            <button type="button"
+              onClick={() => { const p = generatePassword(); setNewPwd(p); setShowNewPwd(true); }}
+              style={{ display:'flex', alignItems:'center', gap:5, padding:'0 12px', borderRadius:8, border:'1.5px solid #2563EB', background:'#EFF6FF', color:'#2563EB', fontWeight:600, fontSize:12, cursor:'pointer', whiteSpace:'nowrap', fontFamily:"'Inter',sans-serif" }}>
+              <IconRefresh /> Generate
+            </button>
+          </div>
         </FormGroup>
       </Modal>
     </PageWrapper>

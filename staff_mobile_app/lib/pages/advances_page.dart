@@ -43,8 +43,8 @@ class _AdvancesPageState extends State<AdvancesPage> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
-  Future<void> _load() async {
-    setState(() { _loading = true; _error = ''; });
+  Future<void> _load({bool silent = false}) async {
+    if (!silent) setState(() { _loading = true; _error = ''; });
     final app = AppStateScope.of(context);
     // Load staff+branches first so the Add form always has data
     try {
@@ -52,12 +52,12 @@ class _AdvancesPageState extends State<AdvancesPage> {
       final brn = await app.loadBranches();
       if (mounted) setState(() { _staff = stf; _branches = brn; });
     } catch (_) {}
-    // Load advances separately
+    // Load advances separately — keep old list visible on error
     try {
       final adv = await app.loadAdvances(month: _month);
       if (mounted) setState(() => _advances = adv);
     } catch (e) {
-      if (mounted) setState(() => _error = e.toString().replaceFirst('Exception: ', ''));
+      if (mounted && !silent) setState(() => _error = e.toString().replaceFirst('Exception: ', ''));
     }
     if (mounted) setState(() => _loading = false);
   }
@@ -90,7 +90,7 @@ class _AdvancesPageState extends State<AdvancesPage> {
         branches: _branches,
         month:    _month,
         defaultBranchId: AppStateScope.of(context).currentUser?.branchId ?? '',
-        onSaved: _load,
+        onSaved: () => _load(silent: true),
       ),
     );
   }
@@ -521,6 +521,12 @@ class _AddAdvanceSheetState extends State<_AddAdvanceSheet> {
     );
     if (!mounted) return;
     if (ok) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: const Text('Advance added successfully'),
+        backgroundColor: _emerald,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ));
       Navigator.of(context).pop();
       widget.onSaved();
     } else {

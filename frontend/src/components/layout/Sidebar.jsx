@@ -273,7 +273,7 @@ export default function Sidebar({ collapsed, onToggle, currentUser, mobileOpen, 
         display:        'flex',
         alignItems:     'center',
         justifyContent: ec ? 'center' : 'space-between',
-        padding:        ec ? '0 12px' : '0 14px 0 16px',
+        padding:        ec ? '0 12px' : '0 10px 0 14px',
         borderBottom:   `1px solid ${C.border}`,
         background:     C.headerBg,
         flexShrink:     0,
@@ -295,10 +295,10 @@ export default function Sidebar({ collapsed, onToggle, currentUser, mobileOpen, 
           </div>
           {!ec && (
             <div style={{ overflow: 'hidden', flex: 1 }}>
-              <div style={{
-                fontSize: 14, fontWeight: 800, color: C.text,
+              <div title={brandName} style={{
+                fontSize: 13, fontWeight: 800, color: C.text,
                 fontFamily: "'Sora','Manrope','Inter',sans-serif",
-                letterSpacing: '-0.03em', lineHeight: 1.25, whiteSpace: 'nowrap',
+                letterSpacing: '-0.025em', lineHeight: 1.25, whiteSpace: 'nowrap',
                 overflow: 'hidden', textOverflow: 'ellipsis',
               }}>
                 {brandName}

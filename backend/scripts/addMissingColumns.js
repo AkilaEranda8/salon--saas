@@ -95,6 +95,10 @@ async function addIfMissing(table, column, definition) {
     await addIfMissing('tenants', 'helapay_business_id',  { type: DataTypes.STRING(100), allowNull: true });
     await addIfMissing('tenants', 'helapay_notify_url',   { type: DataTypes.STRING(500), allowNull: true });
 
+    // ── notification_logs ENUM expansion ─────────────────────────────────────
+    await sequelize.query(`ALTER TABLE notification_logs MODIFY COLUMN event_type ENUM('appointment_confirmed','payment_receipt','loyalty_points','test','review_request','password_reset','custom_marketing') NOT NULL`).catch(e => console.warn('  ! notification_logs.event_type ENUM:', e.message));
+    await sequelize.query(`ALTER TABLE notification_logs MODIFY COLUMN channel ENUM('email','whatsapp','sms') NOT NULL`).catch(e => console.warn('  ! notification_logs.channel ENUM:', e.message));
+
     console.log('✓ Migration complete');
   } catch (err) {
     console.error('✗ Migration failed:', err.message);

@@ -21,11 +21,11 @@ const NotificationLog = sequelize.define('NotificationLog', {
     allowNull: true,
   },
   event_type: {
-    type: DataTypes.ENUM('appointment_confirmed', 'payment_receipt', 'loyalty_points', 'test', 'review_request'),
+    type: DataTypes.ENUM('appointment_confirmed', 'payment_receipt', 'loyalty_points', 'test', 'review_request', 'password_reset', 'custom_marketing'),
     allowNull: false,
   },
   channel: {
-    type: DataTypes.ENUM('email', 'whatsapp'),
+    type: DataTypes.ENUM('email', 'whatsapp', 'sms'),
     allowNull: false,
   },
   message_preview: {

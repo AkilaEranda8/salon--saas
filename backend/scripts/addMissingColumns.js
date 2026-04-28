@@ -55,8 +55,12 @@ async function addIfMissing(table, column, definition) {
 
     // ── tenants theme columns ────────────────────────────────────────────────
     await addIfMissing('tenants', 'primary_color', { type: DataTypes.STRING(20),  allowNull: true,  defaultValue: '#2563EB' });
-    await addIfMissing('tenants', 'sidebar_style', { type: DataTypes.STRING(10),  allowNull: false, defaultValue: 'light' });
+    await addIfMissing('tenants', 'sidebar_style', { type: DataTypes.STRING(20),  allowNull: false, defaultValue: 'hexa' });
     await addIfMissing('tenants', 'font_family',   { type: DataTypes.STRING(100), allowNull: true,  defaultValue: 'Inter' });
+    // Expand sidebar_style ENUM to include all layout options + hexa default
+    await sequelize.query(`ALTER TABLE tenants MODIFY COLUMN sidebar_style ENUM('hexa','default','compact','floating','glass','gradient','accent','pill','wide','minimal','light','dark') NOT NULL DEFAULT 'hexa'`).catch(() => {});
+    // Migrate old 'light'/'dark' values to hexa
+    await sequelize.query(`UPDATE tenants SET sidebar_style='hexa' WHERE sidebar_style IN ('light','dark','default') OR sidebar_style IS NULL`).catch(() => {});
 
     // ── message_templates table ──────────────────────────────────────────────
     await sequelize.query(`

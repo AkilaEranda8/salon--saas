@@ -49,9 +49,9 @@ const Tenant = sequelize.define('Tenant', {
     defaultValue: '#2563EB',
   },
   sidebar_style: {
-    type: DataTypes.ENUM('light', 'dark'),
+    type: DataTypes.ENUM('hexa','default','compact','floating','glass','gradient','accent','pill','wide','minimal','light','dark'),
     allowNull: false,
-    defaultValue: 'light',
+    defaultValue: 'hexa',
   },
   font_family: {
     type: DataTypes.STRING(100),

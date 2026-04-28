@@ -193,13 +193,12 @@ class _CommissionPageState extends State<CommissionPage> {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => _RecordPayoutSheet(
-        staffId:  staffId,
+      builder: (_) => _PaySalarySheet(
+        staffId:   staffId,
         staffName: _staffName ?? '',
         branchId:  branchId,
         month:     _month,
-        balanceDue: _balanceDue,
-        onSaved: () { _load(); },
+        onSaved:   () { _load(); },
       ),
     );
   }
@@ -1350,6 +1349,343 @@ class _RecordPayoutSheetState extends State<_RecordPayoutSheet> {
       ),
     );
   }
+
+  Widget _lbl(String t) => Padding(
+    padding: const EdgeInsets.only(bottom: 6),
+    child: Text(t, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700,
+        color: _muted, letterSpacing: 0.3)));
+
+  InputDecoration _dec(String hint) => InputDecoration(
+    hintText: hint,
+    hintStyle: const TextStyle(color: _muted, fontSize: 13),
+    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10),
+        borderSide: const BorderSide(color: _border)),
+    enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10),
+        borderSide: const BorderSide(color: _border)),
+    focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10),
+        borderSide: const BorderSide(color: _emerald, width: 1.5)),
+    filled: true, fillColor: _canvas,
+  );
+}
+
+// ── Pay Salary Sheet ──────────────────────────────────────────────────────────
+class _PaySalarySheet extends StatefulWidget {
+  const _PaySalarySheet({
+    required this.staffId,
+    required this.staffName,
+    required this.branchId,
+    required this.month,
+    required this.onSaved,
+  });
+  final String staffId, staffName, branchId, month;
+  final VoidCallback onSaved;
+
+  @override
+  State<_PaySalarySheet> createState() => _PaySalarySheetState();
+}
+
+class _PaySalarySheetState extends State<_PaySalarySheet> {
+  bool   _loading  = true;
+  bool   _saving   = false;
+  String _error    = '';
+
+  double _totalComm     = 0;
+  double _totalAdvances = 0;
+  double _netPayable    = 0;
+  double _alreadyPaid   = 0;
+  double _balanceDue    = 0;
+
+  List<Map<String, dynamic>> _pendingAdvances = [];
+  Set<String> _toDeduct = {};
+
+  final _amountCtrl = TextEditingController();
+  final _notesCtrl  = TextEditingController();
+  String _date = () {
+    final n = DateTime.now();
+    return '${n.year}-${n.month.toString().padLeft(2,'0')}-${n.day.toString().padLeft(2,'0')}';
+  }();
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+  }
+
+  @override
+  void dispose() {
+    _amountCtrl.dispose();
+    _notesCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    try {
+      final app = AppStateScope.of(context);
+      final commF = app.loadStaffCommissionReport(
+          staffId: widget.staffId, month: widget.month);
+      final advF  = app.loadAdvances(
+          staffId: widget.staffId, month: widget.month, status: 'pending');
+      final comm = await commF;
+      final adv  = await advF;
+      if (!mounted) return;
+      setState(() {
+        _totalComm     = comm.total;
+        _totalAdvances = comm.totalAdvances;
+        _netPayable    = comm.netCommission;
+        _alreadyPaid   = comm.totalPaid;
+        _balanceDue    = comm.balanceDue;
+        _pendingAdvances = adv;
+        _toDeduct = adv.map((a) => '${a['id']}').toSet();
+        _amountCtrl.text = comm.balanceDue.toStringAsFixed(0);
+        _loading = false;
+      });
+    } catch (e) {
+      if (mounted) setState(() {
+        _error = e.toString().replaceFirst('Exception: ', '');
+        _loading = false;
+      });
+    }
+  }
+
+  double get _selectedAdvancesTotal => _pendingAdvances
+      .where((a) => _toDeduct.contains('${a['id']}'))
+      .fold(0.0, (s, a) => s + (double.tryParse('${a['amount']}') ?? 0));
+
+  double get _liveNet =>
+      (_totalComm - _totalAdvances - _selectedAdvancesTotal).clamp(0, double.infinity).toDouble();
+
+  double get _liveBalance => (_liveNet - _alreadyPaid).clamp(0, double.infinity).toDouble();
+
+  Future<void> _save() async {
+    final amount = double.tryParse(_amountCtrl.text.trim());
+    if (amount == null || amount <= 0) {
+      setState(() => _error = 'Enter a valid payment amount.');
+      return;
+    }
+    setState(() { _saving = true; _error = ''; });
+    final app = AppStateScope.of(context);
+    // 1. Mark selected advances as deducted
+    for (final id in _toDeduct) {
+      await app.markAdvanceDeducted(id);
+    }
+    if (!mounted) return;
+    // 2. Record payment
+    final effectiveBranchId = widget.branchId.isNotEmpty
+        ? widget.branchId
+        : (app.branches.isNotEmpty ? app.branches.first['id'] ?? '' : '');
+    final ok = await app.addCommissionPayout(
+      staffId:  widget.staffId,
+      branchId: effectiveBranchId,
+      amount:   amount,
+      date:     _date,
+      month:    widget.month,
+      notes:    _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
+    );
+    if (!mounted) return;
+    if (ok) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Salary paid successfully'),
+        backgroundColor: _emerald,
+        behavior: SnackBarBehavior.floating,
+      ));
+      Navigator.of(context).pop();
+      widget.onSaved();
+    } else {
+      setState(() { _error = app.lastError ?? 'Save failed.'; _saving = false; });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottom = MediaQuery.of(context).viewInsets.bottom;
+    return Container(
+      margin: const EdgeInsets.fromLTRB(10, 0, 10, 10),
+      decoration: BoxDecoration(
+        color: _surface, borderRadius: BorderRadius.circular(24)),
+      child: SingleChildScrollView(
+        padding: EdgeInsets.fromLTRB(20, 0, 20, bottom + 24),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          // Handle
+          Center(child: Container(
+            margin: const EdgeInsets.symmetric(vertical: 12),
+            width: 36, height: 4,
+            decoration: BoxDecoration(color: _border,
+                borderRadius: BorderRadius.circular(4)))),
+          // Header
+          Row(children: [
+            const Icon(Icons.payments_rounded, color: _emerald, size: 22),
+            const SizedBox(width: 10),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Text('Pay Salary', style: TextStyle(
+                  fontSize: 17, fontWeight: FontWeight.w800, color: _ink)),
+              Text('${widget.staffName} · ${_monthLabel(widget.month)}',
+                  style: const TextStyle(fontSize: 12, color: _muted)),
+            ])),
+          ]),
+          const SizedBox(height: 16),
+          const Divider(color: _border),
+          const SizedBox(height: 16),
+
+          if (_loading)
+            const Center(child: Padding(
+              padding: EdgeInsets.all(24),
+              child: CircularProgressIndicator(color: _emerald),
+            ))
+          else ...[
+            // ── Commission summary ──────────────────────────────────────
+            _summaryRow('Total Commission', _totalComm, const Color(0xFFD97706)),
+            if (_totalAdvances > 0)
+              _summaryRow('Prev Advances Deducted', -_totalAdvances, const Color(0xFFDC2626)),
+            if (_selectedAdvancesTotal > 0)
+              _summaryRow('New Deductions (selected)', -_selectedAdvancesTotal, const Color(0xFF7C3AED)),
+            const Divider(color: _border, height: 20),
+            _summaryRow('Net Payable', _liveNet, _emerald, bold: true),
+            if (_alreadyPaid > 0)
+              _summaryRow('Already Paid', -_alreadyPaid, _muted),
+            _summaryRow('Balance Due', _liveBalance,
+                _liveBalance > 0 ? const Color(0xFF2563EB) : _emerald, bold: true),
+
+            // ── Pending advances ──────────────────────────────────────
+            if (_pendingAdvances.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              const Divider(color: _border),
+              const SizedBox(height: 12),
+              Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                Text('Pending Advances (${_pendingAdvances.length})',
+                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: _ink)),
+                GestureDetector(
+                  onTap: () => setState(() =>
+                    _toDeduct = _toDeduct.length == _pendingAdvances.length
+                        ? {} : _pendingAdvances.map((a) => '${a['id']}').toSet()),
+                  child: Text(
+                    _toDeduct.length == _pendingAdvances.length ? 'Deselect All' : 'Select All',
+                    style: const TextStyle(fontSize: 12, color: _emerald,
+                        fontWeight: FontWeight.w600)),
+                ),
+              ]),
+              const SizedBox(height: 8),
+              ..._pendingAdvances.map((adv) {
+                final id = '${adv['id']}';
+                final selected = _toDeduct.contains(id);
+                final amt = double.tryParse('${adv['amount']}') ?? 0;
+                return GestureDetector(
+                  onTap: () => setState(() =>
+                    selected ? _toDeduct.remove(id) : _toDeduct.add(id)),
+                  child: Container(
+                    margin: const EdgeInsets.only(bottom: 6),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: selected ? const Color(0xFFEFF6FF) : _canvas,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: selected ? const Color(0xFF2563EB) : _border)),
+                    child: Row(children: [
+                      Icon(selected ? Icons.check_box_rounded : Icons.check_box_outline_blank_rounded,
+                          size: 20, color: selected ? const Color(0xFF2563EB) : _muted),
+                      const SizedBox(width: 10),
+                      Expanded(child: Text(
+                        '${adv['month'] ?? ''} · Rs. ${amt.toStringAsFixed(0)}'
+                        '${(adv['reason'] as String?)?.isNotEmpty == true ? ' · ${adv['reason']}' : ''}',
+                        style: TextStyle(fontSize: 12,
+                            color: selected ? const Color(0xFF2563EB) : _ink,
+                            fontWeight: FontWeight.w500))),
+                    ]),
+                  ),
+                );
+              }),
+            ],
+
+            // ── Payment form ──────────────────────────────────────────
+            const SizedBox(height: 16),
+            const Divider(color: _border),
+            const SizedBox(height: 14),
+            _lbl('Payment Amount (Rs.)'),
+            TextField(
+              controller: _amountCtrl,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: _ink),
+              onChanged: (_) => setState(() {}),
+              decoration: _dec('e.g. 15000'),
+            ),
+            const SizedBox(height: 14),
+            Row(children: [
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                _lbl('Payment Date'),
+                GestureDetector(
+                  onTap: () async {
+                    final d = await showDatePicker(
+                      context: context, initialDate: DateTime.now(),
+                      firstDate: DateTime(2020), lastDate: DateTime(2030));
+                    if (d != null) {
+                      if (mounted) setState(() => _date =
+                        '${d.year}-${d.month.toString().padLeft(2,'0')}-${d.day.toString().padLeft(2,'0')}');
+                    }
+                  },
+                  child: Container(height: 50,
+                    decoration: BoxDecoration(
+                      border: Border.all(color: _border),
+                      borderRadius: BorderRadius.circular(10), color: _canvas),
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    child: Row(children: [
+                      const Icon(Icons.calendar_today_rounded, size: 14, color: _muted),
+                      const SizedBox(width: 8),
+                      Text(_date, style: const TextStyle(fontSize: 13, color: _ink)),
+                    ])),
+                ),
+              ])),
+            ]),
+            const SizedBox(height: 14),
+            _lbl('Notes (optional)'),
+            TextField(
+              controller: _notesCtrl,
+              style: const TextStyle(fontSize: 13, color: _ink),
+              decoration: _dec('e.g. Cash payment'),
+            ),
+            if (_error.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Text(_error, style: const TextStyle(fontSize: 13, color: Color(0xFFDC2626))),
+            ],
+            const SizedBox(height: 20),
+            SizedBox(
+              width: double.infinity, height: 52,
+              child: ElevatedButton(
+                onPressed: _saving ? null : _save,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _emerald, foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  elevation: 0),
+                child: _saving
+                    ? const SizedBox(width: 20, height: 20,
+                        child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                    : Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                        const Icon(Icons.payments_rounded, size: 18),
+                        const SizedBox(width: 8),
+                        Text(
+                          _toDeduct.isNotEmpty
+                              ? 'Deduct Advances & Pay'
+                              : 'Record Payment',
+                          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+                      ]),
+              ),
+            ),
+          ],
+        ]),
+      ),
+    );
+  }
+
+  Widget _summaryRow(String label, double value, Color color, {bool bold = false}) =>
+    Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+        Text(label, style: TextStyle(fontSize: 13, color: _muted,
+            fontWeight: bold ? FontWeight.w700 : FontWeight.w500)),
+        Text('Rs. ${value.abs().toStringAsFixed(0)}',
+            style: TextStyle(fontSize: bold ? 15 : 13,
+                fontWeight: bold ? FontWeight.w800 : FontWeight.w600, color: color)),
+      ]),
+    );
 
   Widget _lbl(String t) => Padding(
     padding: const EdgeInsets.only(bottom: 6),

@@ -17,15 +17,15 @@ function getInitialMode() {
 }
 
 function getInitialSidebarStyle() {
-  if (typeof window === 'undefined') return 'hexa';
+  if (typeof window === 'undefined') return 'default';
   const savedStyle = window.localStorage.getItem(SIDEBAR_STYLE_KEY);
-  const legacy = ['default', 'light', 'dark'];
-  const valid  = ['hexa','compact','floating','glass','gradient','accent','pill','wide','minimal'];
+  const legacy = ['light', 'dark'];
+  const valid  = ['default','hexa','compact','floating','glass','gradient','accent','pill','wide','minimal'];
   if (!savedStyle || legacy.includes(savedStyle)) {
-    window.localStorage.setItem(SIDEBAR_STYLE_KEY, 'hexa');
-    return 'hexa';
+    window.localStorage.setItem(SIDEBAR_STYLE_KEY, 'default');
+    return 'default';
   }
-  return valid.includes(savedStyle) ? savedStyle : 'hexa';
+  return valid.includes(savedStyle) ? savedStyle : 'default';
 }
 
 function getInitialPrimaryColor() {

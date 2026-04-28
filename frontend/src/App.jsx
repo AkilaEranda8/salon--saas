@@ -96,7 +96,7 @@ function BrandingSeeder() {
     if (!window.localStorage.getItem('salon-sidebar-user-set')) {
       const layout = t.sidebar_style && VALID_SIDEBAR_LAYOUTS.has(t.sidebar_style)
         ? t.sidebar_style
-        : 'hexa';
+        : 'default';
       setSidebarStyle(layout);
     }
   }, [user?.tenant]);

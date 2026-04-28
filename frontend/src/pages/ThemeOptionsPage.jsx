@@ -510,16 +510,6 @@ export default function ThemeOptionsPage() {
       >
         <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
           <AppearanceCard
-            value="hexa"
-            label="Hexa (Default)"
-            description="Hexa Salon brand style — dark sidebar with gold accents."
-            icon={<IconLayout />}
-            active={!sidebarStyle || sidebarStyle === 'hexa'}
-            onClick={() => handleLayoutChange('hexa')}
-            previewBg="linear-gradient(180deg, #1A1430 0%, #0D0916 100%)"
-            previewContent={<HexaSidebarPreview />}
-          />
-          <AppearanceCard
             value="default"
             label="Default"
             description="Full-width sidebar with icons and labels visible."

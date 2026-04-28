@@ -1,7 +1,7 @@
 {
-  "name": "zanesalon-backend",
+  "name": "hexasalon-backend",
   "version": "1.0.0",
-  "description": "Zane Salon Backend API",
+  "description": "Hexa Salon Backend API — by Hexalyte Innovation",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

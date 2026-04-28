@@ -29,7 +29,7 @@ services:
     restart: unless-stopped
     environment:
       MYSQL_ROOT_PASSWORD: ${DB_PASS:-rootpass}
-      MYSQL_DATABASE: ${DB_NAME:-zanesalon}
+      MYSQL_DATABASE: ${DB_NAME:-hexasalon}
     # Do NOT expose MySQL port to the host in production
     expose:
       - "3306"

@@ -1,7 +1,7 @@
 {
-  "name": "zanesalon-frontend",
+  "name": "hexasalon-frontend",
   "version": "1.0.0",
-  "description": "Zane Salon Frontend",
+  "description": "Hexa Salon Frontend — by Hexalyte Innovation",
   "type": "module",
   "scripts": {
     "dev": "vite",

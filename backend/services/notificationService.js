@@ -341,10 +341,10 @@ function buildEmailWrapper(title, bodyHtml, branchName = 'HEXA SALON', branchPho
     <tr><td align="center">
       <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
         <tr>
-          <td style="background:linear-gradient(135deg,#1e3a8a 0%,#3b82f6 100%);padding:32px 40px;text-align:center;">
+          <td style="background:linear-gradient(135deg,#1a0a2e 0%,#4a1a6e 50%,#c9a96e 100%);padding:32px 40px;text-align:center;">
             <div style="font-size:32px;margin-bottom:8px;">✂️</div>
-            <h1 style="margin:0;font-size:28px;font-weight:800;color:#ffffff;letter-spacing:1px;">HEXA SALON</h1>
-            <p style="margin:6px 0 0;font-size:14px;color:#bfdbfe;">Premium Salon Management</p>
+            <h1 style="margin:0;font-size:28px;font-weight:800;color:#c9a96e;letter-spacing:2px;">HEXA SALON</h1>
+            <p style="margin:6px 0 0;font-size:13px;color:#e8d5b0;letter-spacing:1px;">Smart Salon Management System</p>
           </td>
         </tr>
         <tr>
@@ -353,7 +353,7 @@ function buildEmailWrapper(title, bodyHtml, branchName = 'HEXA SALON', branchPho
         <tr>
           <td style="background:#f8faff;padding:24px 40px;border-top:1px solid #e2e8f0;text-align:center;">
             <p style="margin:0 0 6px;font-size:13px;color:#6b7280;">
-              <strong style="color:#1e3a8a;">${safeBranchName}</strong>
+              <strong style="color:#7c3aed;">${safeBranchName}</strong>
               ${safeBranchPhone ? ` &nbsp;·&nbsp; 📞 ${safeBranchPhone}` : ''}
             </p>
             <p style="margin:0;font-size:11px;color:#9ca3af;">
@@ -407,7 +407,7 @@ async function notifyAppointmentConfirmed(appointment, branch, service, tenantId
     const tpl = await getTemplate('appointment_confirmed', 'email', tenantId);
     const subject = tpl ? interpolate(tpl.subject || 'Appointment Confirmed — HEXA SALON', vars) : 'Appointment Confirmed — HEXA SALON';
     const bodyHtml = tpl ? interpolate(tpl.body, vars) : `
-      <h2 style="margin:0 0 8px;font-size:22px;color:#1e3a8a;">Appointment Confirmed! 🎉</h2>
+      <h2 style="margin:0 0 8px;font-size:22px;color:#7c3aed;">Appointment Confirmed! 🎉</h2>
       <p style="margin:0 0 24px;font-size:15px;color:#475569;">
         Hi <strong>${appointment.customer_name}</strong>, your appointment has been confirmed.
         Here are the details:
@@ -419,8 +419,8 @@ async function notifyAppointmentConfirmed(appointment, branch, service, tenantId
         ${detailRow('🏠 Branch',  brName)}
         ${detailRow('💰 Amount',  amount)}
       </table>
-      <div style="margin:28px 0;padding:16px 20px;background:#eff6ff;border-left:4px solid #3b82f6;border-radius:4px;">
-        <p style="margin:0;font-size:14px;color:#1e40af;">📌 Please arrive 5 minutes early. Contact us if you need to reschedule.</p>
+      <div style="margin:28px 0;padding:16px 20px;background:#f5f0ff;border-left:4px solid #7c3aed;border-radius:4px;">
+        <p style="margin:0;font-size:14px;color:#5b21b6;">📌 Please arrive 5 minutes early. Contact us if you need to reschedule.</p>
       </div>
       <p style="margin:0;font-size:15px;color:#475569;">Thank you for choosing <strong>HEXA SALON</strong>! See you soon. ✨</p>`;
     await sendEmail({
@@ -516,7 +516,7 @@ async function notifyPaymentReceipt(payment, branch, service, customer, tenantId
     } else {
       subject  = 'Payment Receipt — HEXA SALON';
       bodyHtml = `
-      <h2 style="margin:0 0 8px;font-size:22px;color:#1e3a8a;">Payment Receipt 🧾</h2>
+      <h2 style="margin:0 0 8px;font-size:22px;color:#7c3aed;">Payment Receipt 🧾</h2>
       <p style="margin:0 0 24px;font-size:15px;color:#475569;">
         Hi <strong>${customerName}</strong>, thank you for your payment. Here's your receipt:
       </p>
@@ -528,7 +528,7 @@ async function notifyPaymentReceipt(payment, branch, service, customer, tenantId
         ${discount > 0 ? detailRow('🎁 Loyalty Discount', `- Rs. ${discount.toFixed(2)}`) : ''}
         <tr>
           <td style="padding:14px 0 4px;font-size:16px;color:#1e293b;font-weight:700;border-top:2px solid #e2e8f0;" colspan="2">
-            Total Paid: <span style="float:right;color:#1e3a8a;">Rs. ${parseFloat(payment.total_amount || 0).toFixed(2)}</span>
+            Total Paid: <span style="float:right;color:#7c3aed;">Rs. ${parseFloat(payment.total_amount || 0).toFixed(2)}</span>
           </td>
         </tr>
       </table>
@@ -668,14 +668,14 @@ async function notifyReviewRequest(payment, customer, service, branch, token, te
     } else {
       subject  = `How was your visit at ${brName}? — Share your feedback`;
       bodyHtml = `
-      <h2 style="margin:0 0 8px;font-size:22px;color:#1e3a8a;">How was your experience? ⭐</h2>
+      <h2 style="margin:0 0 8px;font-size:22px;color:#7c3aed;">How was your experience? ⭐</h2>
       <p style="margin:0 0 24px;font-size:15px;color:#475569;">
         Hi <strong>${customerName}</strong>, thank you for visiting <strong>${brName}</strong>!
         We'd love to hear your feedback on <strong>${svcName}</strong>.
       </p>
       <div style="text-align:center;margin:32px 0;">
         <a href="${reviewUrl}"
-           style="display:inline-block;padding:14px 32px;background:linear-gradient(135deg,#1e3a8a,#3b82f6);color:#ffffff;text-decoration:none;border-radius:8px;font-size:16px;font-weight:700;letter-spacing:0.5px;">
+           style="display:inline-block;padding:14px 32px;background:linear-gradient(135deg,#7c3aed,#c9a96e);color:#ffffff;text-decoration:none;border-radius:8px;font-size:16px;font-weight:700;letter-spacing:0.5px;">
           ✍️ Leave a Review
         </a>
       </div>

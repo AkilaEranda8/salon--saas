@@ -185,7 +185,7 @@ export default function LoginPage({ platformMode = false }) {
           <p style={{
             color: P.muted, margin: '8px 0 0', fontSize: 13,
             letterSpacing: 4, textTransform: 'uppercase', fontWeight: 500,
-          }}>{platformMode ? 'Management Suite' : 'Management Suite'}</p>
+          }}>{platformMode ? 'Platform Administration' : 'Smart Salon Management System'}</p>
         </div>
 
         {/* ── Card ── */}
@@ -371,7 +371,9 @@ export default function LoginPage({ platformMode = false }) {
         }}>
           <span style={{ letterSpacing: 1 }}>{resolveBrandName(branding).toUpperCase()}</span>
           <span style={{ margin: '0 8px', opacity: .3 }}>·</span>
-          <span>Management Suite</span>
+          <span>Smart Salon Management System</span>
+          <span style={{ margin: '0 8px', opacity: .3 }}>·</span>
+          <span style={{ opacity: .5 }}>Hexalyte Innovation</span>
         </div>
       </div>
 

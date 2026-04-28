@@ -268,7 +268,7 @@ const createTenant = async (req, res) => {
 
     sendEmail({
       to:      ownerEmail,
-      subject: `Welcome to Zane Salon — Your account is ready 🎉`,
+      subject: `Welcome to HEXA SALON — Your account is ready 🎉`,
       html: `
 <!DOCTYPE html>
 <html lang="en">
@@ -297,7 +297,7 @@ const createTenant = async (req, res) => {
 <body>
 <div class="wrap">
   <div class="header">
-    <h1>🎉 Welcome to Zane Salon</h1>
+    <h1>🎉 Welcome to HEXA SALON</h1>
     <p>Your salon management account is ready</p>
   </div>
   <div class="body">
@@ -324,7 +324,7 @@ const createTenant = async (req, res) => {
 
     <div class="notice">⚠️ For security, please change your password after your first login under <strong>Settings → Profile</strong>.</div>
   </div>
-  <div class="footer">Zane Salon Platform · This email was sent to ${ownerEmail}</div>
+  <div class="footer">HEXA SALON Platform · This email was sent to ${ownerEmail}</div>
 </div>
 </body></html>`,
       meta: { event_type: 'tenant_welcome', channel: 'email' },

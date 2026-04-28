@@ -1,4 +1,4 @@
-package com.example.staff_mobile_app
+package com.hexalyte.salonstaff
 
 import io.flutter.embedding.android.FlutterFragmentActivity
 

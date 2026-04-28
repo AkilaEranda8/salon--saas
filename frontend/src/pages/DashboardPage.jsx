@@ -133,8 +133,9 @@ function BarTip({ active, payload, label }) {
 }
 
 /* Profit KPI — green if positive, red if loss */
-function ProfitKpi({ revenue, expenses, loading }) {
-  const profit = revenue - expenses;
+function ProfitKpi({ revenue, commission, expenses, loading }) {
+  const totalCost = (commission || 0) + (expenses || 0);
+  const profit = revenue - totalCost;
   const pct    = revenue > 0 ? Math.round((profit / revenue) * 100) : 0;
   const pos    = profit >= 0;
   const [hov, setHov] = React.useState(false);
@@ -161,10 +162,15 @@ function ProfitKpi({ revenue, expenses, loading }) {
           </div>
       }
       {!loading && (
-        <div style={{ fontSize:11, color:'#98A2B3', display:'flex', alignItems:'center', gap:4 }}>
-          <span style={{ padding:'2px 8px', background: pos ? '#D1FAE5' : '#FEE2E2', borderRadius:10, fontWeight:600, color: pos ? '#065F46' : '#991B1B', fontSize:10 }}>
-            {pos ? '↑' : '↓'} {Math.abs(pct)}% margin
-          </span>
+        <div style={{ display:'flex', flexDirection:'column', gap:3 }}>
+          <div style={{ fontSize:11, color:'#98A2B3', display:'flex', alignItems:'center', gap:4 }}>
+            <span style={{ padding:'2px 8px', background: pos ? '#D1FAE5' : '#FEE2E2', borderRadius:10, fontWeight:600, color: pos ? '#065F46' : '#991B1B', fontSize:10 }}>
+              {pos ? '↑' : '↓'} {Math.abs(pct)}% margin
+            </span>
+          </div>
+          <div style={{ fontSize:10, color:'#B0B8C8' }}>
+            Rev Rs.{Number(revenue).toLocaleString()} · Comm Rs.{Number(commission||0).toLocaleString()} · Exp Rs.{Number(expenses||0).toLocaleString()}
+          </div>
         </div>
       )}
     </div>
@@ -341,7 +347,7 @@ export default function DashboardPage() {
   const nextReminder    = reminders[0];
   const totalAppts      = apptStatus.reduce((s, x) => s + x.value, 0) || 1;
   const completedPct    = Math.round(((apptStatus.find(x => x.name === 'Completed')?.value || 0) / totalAppts) * 100);
-  const netProfit       = (stats?.monthRevenue || 0) - monthExpenses;
+  const netProfit       = (stats?.monthRevenue || 0) - (stats?.monthCommission || 0) - monthExpenses;
 
   const linkBtn = (label, path, pill) => (
     <button
@@ -407,7 +413,7 @@ export default function DashboardPage() {
       {isAdmin && (
         <div style={{ display:'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4,1fr)', gap:14 }}>
           <KpiCard label="Month Expenses" value={fmt(monthExpenses)} sub="this month" loading={loading} />
-          <ProfitKpi revenue={stats?.monthRevenue || 0} expenses={monthExpenses} loading={loading} />
+          <ProfitKpi revenue={stats?.monthRevenue || 0} commission={stats?.monthCommission || 0} expenses={monthExpenses} loading={loading} />
           <KpiCard
             label="Staff Present"
             value={`${attendPresent} staff`}

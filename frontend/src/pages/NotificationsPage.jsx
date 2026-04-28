@@ -461,7 +461,7 @@ export default function NotificationsPage() {
                       <label style={{ display:'block', fontSize:12, fontWeight:600, color:'#344054', marginBottom:5 }}>From Name / Address <span style={{ fontWeight:400, color:'#94A3B8' }}>(optional)</span></label>
                       <input type="text" value={settings.smtp_from || ''}
                         onChange={e => setSettings(s => ({ ...s, smtp_from: e.target.value }))}
-                        placeholder={`Zane Salon <youremail@gmail.com>`} style={inputStyle} />
+                        placeholder={`HEXA SALON <youremail@gmail.com>`} style={inputStyle} />
                     </div>
 
                     {/* Test */}

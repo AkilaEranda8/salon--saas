@@ -168,7 +168,7 @@ export default function TokenDisplayScreen() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <span style={{ fontSize: 20 }}>✂️</span>
           <span style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: 20, fontWeight: 700, color: C.text }}>
-            Zane Salon
+            HEXA SALON
           </span>
           <span style={{ fontSize: 13, color: C.muted, fontWeight: 500 }}>Queue Display</span>
           {branches.length > 1 && !userBranchId && (
@@ -349,7 +349,7 @@ export default function TokenDisplayScreen() {
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         padding: '10px 32px', borderTop: `1px solid ${C.border}`, fontSize: 12, color: C.muted,
       }}>
-        <span>Zane Salon Queue Management System</span>
+        <span>HEXA SALON Queue Management System</span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <span style={{
             width: 8, height: 8, borderRadius: '50%',

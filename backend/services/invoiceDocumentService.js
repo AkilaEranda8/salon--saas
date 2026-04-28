@@ -63,7 +63,7 @@ async function generateInvoicePdfBuffer({ invoice, tenant }) {
     doc.font('Helvetica').fontSize(11).fillColor(gray)
       .text(`Client Name: ${tenantName}`, 40, 155)
       .text(`Company Name: ${tenantName}`, 40, 173)
-      .text(`Billing Address: ${tenant?.slug || '-'} / Zane Salon`, 40, 191)
+      .text(`Billing Address: ${tenant?.slug || '-'} / HEXA SALON`, 40, 191)
       .text(`Phone: ${tenant?.phone || '-'}`, 40, 209)
       .text(`Email: ${tenant?.email || '-'}`, 40, 227);
 
@@ -116,7 +116,7 @@ async function generateInvoicePdfBuffer({ invoice, tenant }) {
     doc.fillColor(gray).font('Helvetica').fontSize(10)
       .text('• Payment is due on receipt of this invoice.', 40, 417)
       .text('• Late payments may incur additional charges.', 40, 433)
-      .text('• For support, contact Zane Salon billing support.', 40, 449);
+      .text('• For support, contact HEXA SALON billing support.', 40, 449);
 
     doc.fillColor(gray).font('Helvetica').fontSize(11)
       .text('Subtotal', 330, 408)
@@ -171,7 +171,7 @@ async function sendInvoiceEmail({ to, invoice, tenant, pdfBuffer }) {
     throw new Error('Email configuration is missing (EMAIL_USER / EMAIL_PASS).');
   }
 
-  const subject = `Invoice ${invoice.invoice_number || `INV-${invoice.id}`} - ${tenant?.name || 'Zane Salon'}`;
+  const subject = `Invoice ${invoice.invoice_number || `INV-${invoice.id}`} - ${tenant?.name || 'HEXA SALON'}`;
   const html = `
     <div style="font-family:Arial,sans-serif;color:#111827;line-height:1.6">
       <h2 style="margin:0 0 8px;color:#0F274B">Invoice ${invoice.invoice_number || `INV-${invoice.id}`}</h2>
@@ -179,12 +179,12 @@ async function sendInvoiceEmail({ to, invoice, tenant, pdfBuffer }) {
       <p>Please find your invoice attached as a PDF.</p>
       <p><strong>Amount:</strong> ${formatMoney(invoice.amount, invoice.currency || 'USD')}</p>
       <p><strong>Due Date:</strong> ${formatDate(invoice.due_at)}</p>
-      <p>Thank you,<br/>Zane Salon Billing</p>
+      <p>Thank you,<br/>HEXA SALON Billing</p>
     </div>
   `;
 
   await transporter.sendMail({
-    from: process.env.EMAIL_FROM || `Zane Salon <${process.env.EMAIL_USER}>`,
+    from: process.env.EMAIL_FROM || `HEXA SALON <${process.env.EMAIL_USER}>`,
     to,
     subject,
     html,

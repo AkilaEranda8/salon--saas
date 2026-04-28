@@ -104,7 +104,7 @@ export default function ReviewFormPage() {
           padding: '28px 36px', textAlign: 'center',
         }}>
           <div style={{ fontSize: 36, marginBottom: 8 }}>✂️</div>
-          <h1 style={{ margin: 0, fontSize: 26, fontWeight: 800, color: '#fff', letterSpacing: 1 }}>Zane Salon</h1>
+          <h1 style={{ margin: 0, fontSize: 26, fontWeight: 800, color: '#fff', letterSpacing: 1 }}>HEXA SALON</h1>
           <p style={{ margin: '6px 0 0', fontSize: 14, color: '#bfdbfe' }}>Customer Feedback</p>
         </div>
         <div style={{ padding: '32px 36px' }}>{children}</div>

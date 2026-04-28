@@ -180,7 +180,7 @@ export default function LoginPage({ platformMode = false }) {
             fontSize: 42, fontWeight: 700, color: P.text,
             margin: 0, letterSpacing: 2,
           }}>
-            {platformMode ? 'ZANE SALON' : resolveBrandName(branding).toUpperCase()}
+            {platformMode ? 'HEXA SALON' : resolveBrandName(branding).toUpperCase()}
           </h1>
           <p style={{
             color: P.muted, margin: '8px 0 0', fontSize: 13,

@@ -1,7 +1,7 @@
 'use strict';
 const { Op } = require('sequelize');
 const { NotificationLog, NotificationSettings, Customer, Branch } = require('../models');
-const { tenantWhere } = require('../utils/tenantScope');
+const { tenantWhere, resolveTenantId } = require('../utils/tenantScope');
 const { sendEmail, sendWhatsApp, sendSMS } = require('../services/notificationService');
 const { runStaffMonthlyEarningsEmails } = require('../services/sendStaffMonthlyEarningsEmails');
 const { buildStaffEarningsPdfBuffer } = require('../services/staffEarningsPdf');
@@ -49,7 +49,7 @@ const getLogs = async (req, res) => {
       include: [{ model: Branch, as: 'branch', attributes: ['id', 'name'], required: false }],
     });
 
-    const companyDefault = process.env.COMPANY_NAME || 'Zane Salon';
+    const companyDefault = process.env.COMPANY_NAME || 'HEXA SALON';
     const data = rows.map((row) => {
       const plain = row.get ? row.get({ plain: true }) : row;
       return {
@@ -110,7 +110,8 @@ function buildSettingsOut(row, envDefaults) {
 // ── GET /api/notifications/settings ──────────────────────────────────────────
 const getSettings = async (req, res) => {
   try {
-    const row = await NotificationSettings.findOne({ where: { branch_id: null } });
+    const tenantId = resolveTenantId(req);
+    const row = await NotificationSettings.findOne({ where: { branch_id: null, tenant_id: tenantId || null } });
 
     const envDefaults = {
       sms_sender_id:        process.env.SMS_SENDER_ID        || '',
@@ -173,9 +174,10 @@ const updateSettings = async (req, res) => {
 
     console.log('[updateSettings] update object:', JSON.stringify(update));
 
+    const tenantId = resolveTenantId(req);
     const [row, created] = await NotificationSettings.findOrCreate({
-      where:    { branch_id: null },
-      defaults: { ...DEFAULT_SETTINGS, ...update },
+      where:    { branch_id: null, tenant_id: tenantId || null },
+      defaults: { ...DEFAULT_SETTINGS, tenant_id: tenantId || null, ...update },
     });
 
     console.log('[updateSettings] created:', created, '| row id:', row.id);
@@ -213,6 +215,7 @@ const sendTest = async (req, res) => {
     }
     const { sms } = req.body;
 
+    const tenantId = resolveTenantId(req);
     const meta = {
       customer_name: 'Test Customer',
       event_type:    'test',
@@ -224,22 +227,23 @@ const sendTest = async (req, res) => {
       if (email) {
         await sendEmail({
           to:      email,
-          subject: '[TEST] Appointment Confirmed — Zane Salon',
-          html:    `<p>This is a test appointment confirmation from Zane Salon (${date}).</p>`,
+          subject: '[TEST] Appointment Confirmed — HEXA SALON',
+          html:    `<p>This is a test appointment confirmation from HEXA SALON (${date}).</p>`,
           meta,
+          tenantId,
         });
       }
       if (phone) {
         await sendWhatsApp({
           to:      phone,
-          message: `[TEST] ✂️ Zane Salon — Appointment Confirmed!\n\nHi Test Customer, this is a test notification (${date}).`,
+          message: `[TEST] ✂️ HEXA SALON — Appointment Confirmed!\n\nHi Test Customer, this is a test notification (${date}).`,
           meta,
         });
       }
       if (sms || phone) {
         await sendSMS({
           to:      sms || phone,
-          message: `[TEST] Zane Salon - Appt Confirmed! Hi Test Customer, test notification (${date}).`,
+          message: `[TEST] HEXA SALON - Appt Confirmed! Hi Test Customer, test notification (${date}).`,
           meta,
         });
       }
@@ -247,22 +251,23 @@ const sendTest = async (req, res) => {
       if (email) {
         await sendEmail({
           to:      email,
-          subject: '[TEST] Payment Receipt — Zane Salon',
-          html:    `<p>This is a test payment receipt from Zane Salon (${date}). Amount: Rs. 1,500.00</p>`,
+          subject: '[TEST] Payment Receipt — HEXA SALON',
+          html:    `<p>This is a test payment receipt from HEXA SALON (${date}). Amount: Rs. 1,500.00</p>`,
           meta,
+          tenantId,
         });
       }
       if (phone) {
         await sendWhatsApp({
           to:      phone,
-          message: `[TEST] 🧾 Zane Salon — Payment Receipt\n\nHi Test Customer! This is a test receipt (${date}).\n💰 Total Paid: Rs. 1,500.00`,
+          message: `[TEST] 🧾 HEXA SALON — Payment Receipt\n\nHi Test Customer! This is a test receipt (${date}).\n💰 Total Paid: Rs. 1,500.00`,
           meta,
         });
       }
       if (sms || phone) {
         await sendSMS({
           to:      sms || phone,
-          message: `[TEST] Zane Salon - Receipt Hi Test Customer! Total: Rs. 1,500.00 (${date}).`,
+          message: `[TEST] HEXA SALON - Receipt Hi Test Customer! Total: Rs. 1,500.00 (${date}).`,
           meta,
         });
       }
@@ -270,14 +275,14 @@ const sendTest = async (req, res) => {
       if (phone) {
         await sendWhatsApp({
           to:      phone,
-          message: `[TEST] 🌟 Zane Salon — Loyalty Points\n\nHey Test Customer! 🎉\nThis is a test loyalty update.\n• Earned this visit: +150 pts\n• Total balance: 350 pts`,
+          message: `[TEST] 🌟 HEXA SALON — Loyalty Points\n\nHey Test Customer! 🎉\nThis is a test loyalty update.\n• Earned this visit: +150 pts\n• Total balance: 350 pts`,
           meta,
         });
       }
       if (sms || phone) {
         await sendSMS({
           to:      sms || phone,
-          message: `[TEST] Zane Salon - Loyalty Update! Earned: +150 pts. Balance: 350 pts.`,
+          message: `[TEST] HEXA SALON - Loyalty Update! Earned: +150 pts. Balance: 350 pts.`,
           meta,
         });
       }
@@ -300,16 +305,18 @@ const testProvider = async (req, res) => {
   const date = new Date().toLocaleString('en-GB', { dateStyle: 'short', timeStyle: 'short' });
 
   try {
+    const tenantId = resolveTenantId(req);
     if (provider === 'smtp') {
       await sendEmail({
         to,
-        subject: `✅ Zane Salon — SMTP Test (${date})`,
+        subject: `✅ HEXA SALON — SMTP Test (${date})`,
         html: `<div style="font-family:Arial,sans-serif;padding:24px;">
           <h2 style="color:#16A34A;">✅ SMTP Connection Successful!</h2>
-          <p>This is a test email from <strong>Zane Salon</strong>.</p>
+          <p>This is a test email from <strong>HEXA SALON</strong>.</p>
           <p style="color:#64748B;font-size:13px;">Sent at: ${date}</p>
         </div>`,
         meta: { customer_name: 'Test', event_type: 'test', branch_id: null },
+        tenantId,
       });
       return res.json({ message: `Test email sent to ${to}` });
     }
@@ -317,7 +324,7 @@ const testProvider = async (req, res) => {
     if (provider === 'sms') {
       const result = await sendSMS({
         to,
-        message: `[Zane Salon] SMS test successful! Sent at ${date}.`,
+        message: `[HEXA SALON] SMS test successful! Sent at ${date}.`,
         meta: { customer_name: 'Test', event_type: 'test', branch_id: null },
       });
       if (result && result.status === 'failed') {
@@ -332,7 +339,7 @@ const testProvider = async (req, res) => {
     if (provider === 'whatsapp') {
       await sendWhatsApp({
         to,
-        message: `✅ *Zane Salon* — WhatsApp test successful!\n\nSent at: ${date}`,
+        message: `✅ *HEXA SALON* — WhatsApp test successful!\n\nSent at: ${date}`,
         meta: { customer_name: 'Test', event_type: 'test', branch_id: null },
       });
       return res.json({ message: `Test WhatsApp sent to ${to}` });
@@ -507,7 +514,7 @@ const testStaffEarningsPdf = async (req, res) => {
 const DEFAULT_TEMPLATES = {
   appointment_confirmed: {
     email: {
-      subject: 'Appointment Confirmed — Zane Salon',
+      subject: 'Appointment Confirmed — HEXA SALON',
       body: `<h2 style="margin:0 0 8px;font-size:22px;color:#1e3a8a;">Appointment Confirmed! 🎉</h2>
 <p style="margin:0 0 24px;font-size:15px;color:#475569;">Hi <strong>{customer_name}</strong>, your appointment has been confirmed. Here are the details:</p>
 <table width="100%" cellpadding="0" cellspacing="0">
@@ -536,7 +543,7 @@ const DEFAULT_TEMPLATES = {
   },
   payment_receipt: {
     email: {
-      subject: 'Payment Receipt — Zane Salon',
+      subject: 'Payment Receipt — HEXA SALON',
       body: `<h2 style="margin:0 0 8px;font-size:22px;color:#1e3a8a;">Payment Receipt 🧾</h2>
 <p style="margin:0 0 24px;font-size:15px;color:#475569;">Hi <strong>{customer_name}</strong>, thank you for your payment. Here's your receipt:</p>
 <table width="100%" cellpadding="0" cellspacing="0">

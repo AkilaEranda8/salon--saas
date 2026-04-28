@@ -12,7 +12,7 @@ const scripts = [
 ];
 
 console.log('╔═══════════════════════════════════════════╗');
-console.log('║     Zane Salon — Full Database Seeder     ║');
+console.log('║     HEXA SALON — Full Database Seeder     ║');
 console.log('╚═══════════════════════════════════════════╝\n');
 
 for (const { file, label } of scripts) {

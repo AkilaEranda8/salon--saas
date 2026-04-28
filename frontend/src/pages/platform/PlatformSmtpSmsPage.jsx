@@ -278,7 +278,7 @@ export default function PlatformSmtpSmsPage() {
               <Field label="SMTP Host" value={form.smtp_host} onChange={set('smtp_host')} placeholder="smtp.gmail.com" dark={dark} />
               <Field label="SMTP Port" value={form.smtp_port} onChange={set('smtp_port')} placeholder="587" type="number" dark={dark} hint="587 for TLS · 465 for SSL" />
               <Field label="SMTP Username / Email" value={form.smtp_user} onChange={set('smtp_user')} placeholder="no-reply@yourdomain.com" dark={dark} />
-              <Field label="From Address (display)" value={form.smtp_from} onChange={set('smtp_from')} placeholder="Zane Salon <no-reply@yourdomain.com>" dark={dark} hint="Shown as sender name in email clients" />
+              <Field label="From Address (display)" value={form.smtp_from} onChange={set('smtp_from')} placeholder="HEXA SALON <no-reply@yourdomain.com>" dark={dark} hint="Shown as sender name in email clients" />
               <Field label="SMTP Password / App Password" value={form.smtp_pass} onChange={set('smtp_pass')} placeholder="Enter new password or leave to keep existing" dark={dark} showToggle />
             </div>
 

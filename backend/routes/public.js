@@ -14,7 +14,7 @@ const Payment = require('../models/Payment');
 const PaymentSplit = require('../models/PaymentSplit');
 const { sendSMS } = require('../services/notificationService');
 const { getMaintenanceMode } = require('../services/systemSettings');
-const WEB_BOOKING_BRANCH_NAME = 'Zane Salon (VIP)';
+const WEB_BOOKING_BRANCH_NAME = 'HEXA SALON (VIP)';
 
 function toPublicUrl(req, relPath = '') {
   if (!relPath || typeof relPath !== 'string') return relPath;
@@ -246,7 +246,7 @@ router.post('/customer-portal/request-otp', async (req, res) => {
     const code = String(Math.floor(100000 + Math.random() * 900000));
     otpStore.set(normalized, { code, expiresAt: Date.now() + OTP_TTL_MS, attempts: 0 });
 
-    const sms = `Zane Salon OTP: ${code}. Valid for 5 minutes.`;
+    const sms = `HEXA SALON OTP: ${code}. Valid for 5 minutes.`;
     await sendSMS({ to: normalized, message: sms, meta: { event_type: 'portal_otp' } });
 
     const response = { message: 'OTP sent successfully.' };
@@ -741,11 +741,11 @@ router.post('/bookings', async (req, res) => {
           const endTime = toHHMM(requestedRanges[requestedRanges.length - 1].end);
           const totalAmount = orderedServices.reduce((sum, s) => sum + (parseFloat(s.price) || 0), 0);
           const summaryMsg =
-            `Zane Salon - Booking Received\n` +
+            `HEXA SALON - Booking Received\n` +
             `Hi ${bookingName}, your booking is pending confirmation.\n` +
             `Date: ${date} ${firstTime}-${endTime}\n` +
             `Services: ${orderedServices.length} item(s)\n` +
-            `Branch: ${branch?.name || 'Zane Salon'}\n` +
+            `Branch: ${branch?.name || 'HEXA SALON'}\n` +
             `Total: Rs. ${totalAmount.toFixed(2)}`;
 
           await sendSMS({

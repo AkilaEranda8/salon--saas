@@ -1,14 +1,14 @@
 /**
  * migrateToSaas.js
  *
- * One-time, idempotent migration that converts the single-tenant Zane Salon
+ * One-time, idempotent migration that converts the single-tenant HEXA SALON
  * system into the SaaS multi-tenant architecture.
  *
  * Safe to re-run: all operations check current state before acting.
  *
  * Steps:
  *   1. Add tenant_id columns to all tables (if not already present)
- *   2. Create the Zane Salon tenant record (if not already present)
+ *   2. Create the HEXA SALON tenant record (if not already present)
  *   3. Backfill tenant_id = 1 on all rows where tenant_id IS NULL
  *   4. Widen the customers unique index to include tenant_id
  *   5. Update users.role ENUM to include 'platform_admin'
@@ -116,12 +116,12 @@ async function run() {
     }
   }
 
-  // ── Step 3: Create Zane Salon tenant ──────────────────────────────────────
-  console.log('\nStep 3: Creating Zane Salon tenant...');
+  // ── Step 3: Create HEXA SALON tenant ──────────────────────────────────────
+  console.log('\nStep 3: Creating HEXA SALON tenant...');
   let zaneTenant = await Tenant.findOne({ where: { slug: 'zane' } });
   if (!zaneTenant) {
     zaneTenant = await Tenant.create({
-      name:          'Zane Salon',
+      name:          'HEXA SALON',
       slug:          'zane',
       email:         'admin@hexalyte.com',
       plan:          'enterprise',
@@ -130,9 +130,9 @@ async function run() {
       max_branches:  -1,
       max_staff:     -1,
     });
-    console.log(`  ✓ Created Zane Salon tenant, id: ${zaneTenant.id}`);
+    console.log(`  ✓ Created HEXA SALON tenant, id: ${zaneTenant.id}`);
   } else {
-    console.log(`  - Zane Salon tenant already exists, id: ${zaneTenant.id}`);
+    console.log(`  - HEXA SALON tenant already exists, id: ${zaneTenant.id}`);
   }
 
   const tenantId = zaneTenant.id;
@@ -199,7 +199,7 @@ async function run() {
   }
 
   console.log('\n=== SaaS Migration complete ===');
-  console.log(`\nZane Salon tenant ID: ${tenantId}`);
+  console.log(`\nHEXA SALON tenant ID: ${tenantId}`);
   console.log('Verify with: SELECT COUNT(*) FROM branches WHERE tenant_id IS NULL;');
   console.log('Expected: 0\n');
 

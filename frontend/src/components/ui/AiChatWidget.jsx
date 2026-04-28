@@ -181,7 +181,7 @@ function renderText(text) {
 export default function AiChatWidget() {
   const [open, setOpen]         = useState(false);
   const [messages, setMessages] = useState([
-    { from: 'bot', text: 'Hello! Welcome to Zane Salon 💇\n\nI can help you book appointments, check services, prices, and more.\n\nHow can I help you today?' },
+    { from: 'bot', text: 'Hello! Welcome to HEXA SALON 💇\n\nI can help you book appointments, check services, prices, and more.\n\nHow can I help you today?' },
   ]);
   const [input, setInput]       = useState('');
   const [loading, setLoading]   = useState(false);
@@ -241,7 +241,7 @@ export default function AiChatWidget() {
             <div style={S.header}>
               <div style={S.headerAvatar}>💇</div>
               <div>
-                <div style={S.headerTitle}>Zane Salon AI</div>
+                <div style={S.headerTitle}>HEXA SALON AI</div>
                 <div style={S.headerSub}>● Online · Always here to help</div>
               </div>
               <button style={S.closeBtn} onClick={() => setOpen(false)}>✕</button>

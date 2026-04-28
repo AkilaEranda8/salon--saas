@@ -125,7 +125,7 @@ async function runStaffMonthlyEarningsEmails(opts = {}) {
           <p>Hi <strong>${String(staff.name || '').replace(/</g, '')}</strong>,</p>
           <p>Please find your <strong>monthly earnings report</strong> (${label}) attached as a PDF.</p>
           <p style="color:#64748B;font-size:13px;">Total commission for this period: <strong>Rs. ${totalCommission.toLocaleString('en-LK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></p>
-          <p style="color:#64748B;font-size:12px;margin-top:24px;">— ${process.env.COMPANY_NAME || 'Zane Salon'}</p>
+          <p style="color:#64748B;font-size:12px;margin-top:24px;">— ${process.env.COMPANY_NAME || 'HEXA SALON'}</p>
         </div>`,
       attachments: [{ filename, content: buffer, contentType: 'application/pdf' }],
       meta: {

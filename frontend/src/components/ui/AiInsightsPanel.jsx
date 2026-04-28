@@ -101,7 +101,7 @@ export default function AiInsightsPanel({ reportData }) {
             <div>
               <div style={{ fontSize: 15, fontWeight: 700, color: '#fff' }}>AI Insights</div>
               <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.75)' }}>
-                Powered by Zane Salon AI
+                Powered by HEXA SALON AI
               </div>
             </div>
           </div>

@@ -1,4 +1,4 @@
-# Zane Salon AI Bot
+# HEXA SALON AI Bot
 
 Custom-built AI chatbot — no OpenAI, no external LLM. Pure Python.
 

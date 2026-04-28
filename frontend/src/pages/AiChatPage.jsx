@@ -185,7 +185,7 @@ function TypingIndicator() {
 export default function AiChatPage() {
   const [messages, setMessages] = useState([{
     from: 'bot',
-    text: "Hello! Welcome to **Zane Salon AI**\n\nI understand natural language — just type what you need!\n\n• Book appointments\n• Services & prices\n• Branch locations\n• Today's schedule & revenue\n• Inventory alerts\n\nOr pick a quick option below",
+    text: "Hello! Welcome to **HEXA SALON AI**\n\nI understand natural language — just type what you need!\n\n• Book appointments\n• Services & prices\n• Branch locations\n• Today's schedule & revenue\n• Inventory alerts\n\nOr pick a quick option below",
   }]);
   const [input, setInput]         = useState('');
   const [loading, setLoading]     = useState(false);
@@ -263,7 +263,7 @@ export default function AiChatPage() {
             </div>
             <div>
               <div style={{ fontSize: 15, fontWeight: 700, color: '#fff', fontFamily: "'Sora','Manrope',sans-serif" }}>
-                Zane Salon AI
+                HEXA SALON AI
               </div>
               <div style={{ fontSize: 11.5, display: 'flex', alignItems: 'center', gap: 5, marginTop: 1 }}>
                 <div style={{

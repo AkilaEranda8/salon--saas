@@ -11,8 +11,8 @@ const logger      = require('../utils/logger');
 const router = Router();
 
 const DEFAULT_BRANDING = {
-  name: 'Zane Salon',
-  brand_name: 'Zane Salon',
+  name: 'HEXA SALON',
+  brand_name: 'HEXA SALON',
   logo_sidebar_url: null,
   logo_header_url: null,
   logo_login_url: null,

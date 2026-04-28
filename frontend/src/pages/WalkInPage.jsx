@@ -963,7 +963,7 @@ export default function WalkInPage() {
         <Modal open={!!showToken} onClose={() => setShowToken(null)} title="Queue Token" size="sm">
           <div id="walkin-print-root" style={{ textAlign: 'center', padding: '20px 0' }}>
             <div style={{ fontSize: 11, color: '#94A3B8', marginBottom: 12, letterSpacing: 1.5, textTransform: 'uppercase', fontWeight: 700 }}>
-              Zane Salon · Walk-in Token
+              HEXA SALON · Walk-in Token
             </div>
             <div style={{
               width: 110, height: 110, borderRadius: 20, margin: '0 auto 16px',

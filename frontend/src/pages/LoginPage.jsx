@@ -189,15 +189,14 @@ export default function LoginPage({ platformMode = false }) {
             src={resolveBrandLogo(branding, 'login')}
             alt={`${resolveBrandName(branding)} logo`}
             style={{
-              width: 120,
-              height: 120,
+              width: 200,
+              height: 200,
               objectFit: 'contain',
-              borderRadius: 18,
-              marginBottom: 16,
-              boxShadow: `0 12px 36px rgba(201,169,110,.18)`,
+              borderRadius: 0,
+              marginBottom: 10,
               animation: 'float 4s ease-in-out infinite',
-              background: '#000',
-              padding: 8,
+              background: 'transparent',
+              filter: 'drop-shadow(0 8px 28px rgba(201,169,110,.25))',
             }}
           />
           <h1 style={{

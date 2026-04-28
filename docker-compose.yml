@@ -122,9 +122,6 @@ services:
       PMA_HOST: db
       PMA_PORT: 3306
       MYSQL_ROOT_PASSWORD: ${DB_PASS:?DB_PASS is required}
-      # Require login — do not auto-login as root
-      PMA_USER: ""
-      PMA_PASSWORD: ""
       PMA_ARBITRARY: 0
       UPLOAD_LIMIT: 64M
     expose:

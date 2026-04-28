@@ -1,5 +1,5 @@
 const DEFAULT_BRAND_NAME = 'Hexa Salon';
-const DEFAULT_LOGO_SVG = '/hexa-salon-logo.png';
+const DEFAULT_LOGO_SVG = '/salon-logo.png';
 
 export function normalizeBranding(input = {}) {
   const branding = input || {};

@@ -318,14 +318,12 @@ export default function LoginPage({ platformMode = false }) {
                     </span>
                   ) : 'Sign In'}
                 </button>
-                {!platformMode && (
-                  <div style={{ textAlign: 'center', marginTop: 16 }}>
-                    <button type="button" onClick={() => { setStepForgot(true); setForgotSent(false); setForgotUsername(''); setForgotError(''); }}
-                      style={{ background: 'none', border: 'none', color: P.goldDim, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', textDecoration: 'underline', opacity: 0.8 }}>
-                      Forgot password?
-                    </button>
-                  </div>
-                )}
+                <div style={{ textAlign: 'center', marginTop: 16 }}>
+                  <button type="button" onClick={() => { setStepForgot(true); setForgotSent(false); setForgotUsername(''); setForgotError(''); }}
+                    style={{ background: 'none', border: 'none', color: P.goldDim, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', textDecoration: 'underline', opacity: 0.8 }}>
+                    Forgot password?
+                  </button>
+                </div>
               </form>
             </>
           )}

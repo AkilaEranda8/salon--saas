@@ -430,7 +430,6 @@ export default function ThemeOptionsPage() {
   const handleSidebarChange = (appearance) => {
     setBrandSidebar(appearance);
     setSidebarAppearance(appearance);
-    setMode(appearance);
     window.localStorage.setItem('salon-sidebar-appearance', appearance);
   };
 

@@ -4,7 +4,7 @@ const crypto = require('crypto');
 const { Op }  = require('sequelize');
 const speakeasy = require('speakeasy');
 const qrcode    = require('qrcode');
-const { User, Branch, Tenant, RevokedToken } = require('../models');
+const { User, Branch, Tenant, RevokedToken, Staff } = require('../models');
 const { getMaintenanceMode } = require('../services/systemSettings');
 
 const isLocalRequest = (req) => {
@@ -462,18 +462,36 @@ const forgotPassword = async (req, res) => {
     const whereClause = { username };
     if (tenantId) whereClause.tenant_id = tenantId;
     const user = await User.findOne({ where: whereClause });
-    if (user && user.email) {
-      const token   = crypto.randomBytes(32).toString('hex');
-      const expires = new Date(Date.now() + 60 * 60 * 1000);
-      await user.update({ password_reset_token: token, password_reset_expires: expires });
-      const origin   = req.headers.origin || process.env.FRONTEND_URL || 'http://localhost';
-      const resetUrl = `${origin}/reset-password/${token}`;
-      const { sendEmail } = require('../services/notificationService');
-      await sendEmail({
-        to:      user.email,
-        subject: 'Password Reset Request',
-        html:    `<div style="font-family:Arial,sans-serif;max-width:500px;margin:auto;color:#111827;padding:24px"><h2 style="color:#2563EB;margin-top:0">Password Reset</h2><p>Hi <strong>${user.name}</strong>,</p><p>Click the button below to reset your password. This link expires in <strong>1 hour</strong>.</p><p style="text-align:center;margin:32px 0"><a href="${resetUrl}" style="background:#2563EB;color:#fff;padding:13px 32px;border-radius:10px;text-decoration:none;font-weight:700;font-size:15px">Reset Password</a></p><p style="font-size:12px;color:#6B7280">If you did not request this, ignore this email.</p></div>`,
-      }).catch(e => console.warn('[forgotPassword] email failed:', e.message));
+    if (user) {
+      const staffRecord = await Staff.findOne({ where: { user_id: user.id } }).catch(() => null);
+      const phone = staffRecord?.phone;
+
+      if (user.email || phone) {
+        const token   = crypto.randomBytes(32).toString('hex');
+        const expires = new Date(Date.now() + 60 * 60 * 1000);
+        await user.update({ password_reset_token: token, password_reset_expires: expires });
+        const origin   = req.headers.origin || process.env.FRONTEND_URL || 'http://localhost';
+        const resetUrl = `${origin}/reset-password/${token}`;
+        const { sendEmail, sendSMS } = require('../services/notificationService');
+
+        // Send email (via Platform Admin SMTP)
+        if (user.email) {
+          await sendEmail({
+            to:      user.email,
+            subject: 'Password Reset Request',
+            html:    `<div style="font-family:Arial,sans-serif;max-width:500px;margin:auto;color:#111827;padding:24px"><h2 style="color:#2563EB;margin-top:0">Password Reset</h2><p>Hi <strong>${user.name}</strong>,</p><p>Click the button below to reset your password. This link expires in <strong>1 hour</strong>.</p><p style="text-align:center;margin:32px 0"><a href="${resetUrl}" style="background:#2563EB;color:#fff;padding:13px 32px;border-radius:10px;text-decoration:none;font-weight:700;font-size:15px">Reset Password</a></p><p style="font-size:12px;color:#6B7280">If you did not request this, ignore this email.</p></div>`,
+          }).catch(e => console.warn('[forgotPassword] email failed:', e.message));
+        }
+
+        // Send SMS via Platform Admin Notify.lk credentials
+        if (phone) {
+          await sendSMS({
+            to:      phone,
+            message: `Password reset for ${user.name}. Reset link (valid 1hr): ${resetUrl}`,
+            meta:    { customer_name: user.name, event_type: 'password_reset' },
+          }).catch(e => console.warn('[forgotPassword] SMS failed:', e.message));
+        }
+      }
     }
     return res.json({ message: 'If an account with that username and an email on file was found, a reset link has been sent.' });
   } catch (err) {

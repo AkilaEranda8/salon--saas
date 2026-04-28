@@ -295,20 +295,6 @@ function AppShell() {
   const { user } = useAuth();
   const { isDark } = useTheme();
 
-  /* Persist collapsed state */
-  useEffect(() => {
-    try { localStorage.setItem('sb-collapsed', sbCollapsed); } catch {}
-  }, [sbCollapsed]);
-
-  /* Auto-collapse only when resizing to mobile/tablet — not on initial mount */
-  const prevNarrow = useRef(null);
-  useEffect(() => {
-    if (prevNarrow.current === null) { prevNarrow.current = isNarrow; return; }
-    if (prevNarrow.current !== isNarrow) {
-      setSbCollapsed(isNarrow && !isMobile);
-      prevNarrow.current = isNarrow;
-    }
-  }, [isNarrow, isMobile]);
 
   const handleMenuClick = () => {
     if (isMobile) setSbMobileOpen(o => !o);

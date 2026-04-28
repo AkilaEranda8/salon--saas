@@ -53,11 +53,13 @@ class _AdvancesPageState extends State<AdvancesPage> {
       final adv     = await advF;
       final stf     = await staffF;
       final brn     = await branchF;
-      if (mounted) setState(() {
-        _advances = adv;
-        _staff    = stf;
-        _branches = brn;
-      });
+      if (mounted) {
+        setState(() {
+          _advances = adv;
+          _staff    = stf;
+          _branches = brn;
+        });
+      }
     } catch (e) {
       if (mounted) setState(() => _error = e.toString().replaceFirst('Exception: ', ''));
     }
@@ -125,6 +127,7 @@ class _AdvancesPageState extends State<AdvancesPage> {
       ),
     );
     if (confirmed != true) return;
+    if (!mounted) return;
     final app = AppStateScope.of(context);
     final ok  = await app.deleteAdvance('${adv['id']}');
     if (ok) {
@@ -599,7 +602,7 @@ class _AddAdvanceSheetState extends State<_AddAdvanceSheet> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  _commChip('Commission', _commInfo!.totalCommission, const Color(0xFFD97706)),
+                  _commChip('Commission', _commInfo!.total, const Color(0xFFD97706)),
                   _commChip('Advances', _commInfo!.totalAdvances, const Color(0xFFDC2626)),
                   _commChip('Net', _commInfo!.netCommission, _emerald),
                 ],
@@ -637,8 +640,10 @@ class _AddAdvanceSheetState extends State<_AddAdvanceSheet> {
                     initialDate: DateTime.now(),
                     firstDate: DateTime(2020), lastDate: DateTime(2030),
                   );
-                  if (d != null) setState(() => _date =
-                    '${d.year}-${d.month.toString().padLeft(2,'0')}-${d.day.toString().padLeft(2,'0')}');
+                  if (d != null) {
+                    setState(() => _date =
+                      '${d.year}-${d.month.toString().padLeft(2,'0')}-${d.day.toString().padLeft(2,'0')}');
+                  }
                 },
                 child: Container(
                   height: 44,
@@ -670,8 +675,10 @@ class _AddAdvanceSheetState extends State<_AddAdvanceSheet> {
                 helpText: 'Select deduction month',
                 initialEntryMode: DatePickerEntryMode.input,
               );
-              if (d != null) setState(() => _month =
-                '${d.year}-${d.month.toString().padLeft(2,'0')}');
+              if (d != null) {
+                setState(() => _month =
+                  '${d.year}-${d.month.toString().padLeft(2,'0')}');
+              }
             },
             child: Container(
               height: 44,

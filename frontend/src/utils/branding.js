@@ -1,4 +1,4 @@
-const DEFAULT_BRAND_NAME = 'Salon V1';
+const DEFAULT_BRAND_NAME = 'Hexa Salon';
 const DEFAULT_LOGO_SVG =
   'data:image/svg+xml;utf8,' +
   encodeURIComponent(`

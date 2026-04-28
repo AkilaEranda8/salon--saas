@@ -29,7 +29,7 @@ class _AdvancesPageState extends State<AdvancesPage> {
   List<StaffMember>          _staff    = [];
   List<Map<String, String>>  _branches = [];
   bool   _loading = true;
-  String _month   = _currentMonth();
+  String _month   = ''; // empty = all months
   String _error   = '';
 
   static String _currentMonth() {
@@ -45,19 +45,22 @@ class _AdvancesPageState extends State<AdvancesPage> {
 
   Future<void> _load({bool silent = false}) async {
     if (!silent) setState(() { _loading = true; _error = ''; });
-    final app = AppStateScope.of(context);
-    // Load staff+branches first so the Add form always has data
     try {
-      final stf = await app.loadStaffList();
-      final brn = await app.loadBranches();
-      if (mounted) setState(() { _staff = stf; _branches = brn; });
-    } catch (_) {}
-    // Load advances separately — keep old list visible on error
-    try {
-      final adv = await app.loadAdvances(month: _month);
+      final app = AppStateScope.of(context);
+      // Load staff+branches first so the Add form always has data
+      try {
+        final stf = await app.loadStaffList();
+        final brn = await app.loadBranches();
+        if (mounted) setState(() { _staff = stf; _branches = brn; });
+      } catch (_) {}
+      // Load advances — keep old list visible on error
+      final adv = await app.loadAdvances(
+          month: _month.isNotEmpty ? _month : null);
       if (mounted) setState(() => _advances = adv);
     } catch (e) {
-      if (mounted && !silent) setState(() => _error = e.toString().replaceFirst('Exception: ', ''));
+      if (mounted && !silent) {
+        setState(() => _error = e.toString().replaceFirst('Exception: ', ''));
+      }
     }
     if (mounted) setState(() => _loading = false);
   }
@@ -88,7 +91,7 @@ class _AdvancesPageState extends State<AdvancesPage> {
       builder: (_) => _AddAdvanceSheet(
         staff:    _staff,
         branches: _branches,
-        month:    _month,
+        month:    _month.isNotEmpty ? _month : _currentMonth(),
         defaultBranchId: AppStateScope.of(context).currentUser?.branchId ?? '',
         onSaved: () => _load(silent: true),
       ),
@@ -201,6 +204,22 @@ class _AdvancesPageState extends State<AdvancesPage> {
             const SizedBox(width: 8),
             const Text('Month:', style: TextStyle(fontSize: 13, color: _muted, fontWeight: FontWeight.w600)),
             const SizedBox(width: 8),
+            // All months chip
+            GestureDetector(
+              onTap: () { setState(() => _month = ''); _load(); },
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                margin: const EdgeInsets.only(right: 6),
+                decoration: BoxDecoration(
+                  color: _month.isEmpty ? _emerald : _canvas,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: _month.isEmpty ? _emerald : _border),
+                ),
+                child: Text('All',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700,
+                      color: _month.isEmpty ? Colors.white : _muted)),
+              ),
+            ),
             GestureDetector(
               onTap: () async {
                 final picked = await showDatePicker(

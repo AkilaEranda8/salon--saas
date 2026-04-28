@@ -1,29 +1,23 @@
 import { useState, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { useAuth }       from '../../context/AuthContext';
+import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { resolveBrandLogo, resolveBrandName } from '../../utils/branding';
 
-/*  SVG icon helper  */
 const Ico = ({ d, size = 18 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
-    stroke="currentColor" strokeWidth="1.8"
-    strokeLinecap="round" strokeLinejoin="round">
+    stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
     <path d={d} />
   </svg>
 );
 
-/*  Nav definition  */
 const ALL = ['superadmin','admin','manager','staff'];
 const MGR = ['superadmin','admin','manager'];
 const ADM = ['superadmin','admin'];
 const SA  = ['superadmin'];
 
-/*  Route aliases — keeps isActive DRY and maintainable  */
-const ROUTE_ALIASES = {
-  '/walk-in': '/walkin',
-};
+const ROUTE_ALIASES = { '/walk-in': '/walkin' };
 
 const NAV_GROUPS = [
   { label:'MAIN', items:[
@@ -82,175 +76,130 @@ const NAV_GROUPS = [
   ]},
 ];
 
-/*  Theme palette  */
-const THEME = {
-  hexa: {
-    bg:          '#0D0916',
-    sidebarBg:   '#110E1D',
+const ROLE_META = {
+  superadmin: { label: 'Super Admin', color: '#818CF8', bg: 'rgba(99,102,241,0.14)' },
+  admin:      { label: 'Admin',       color: '#60A5FA', bg: 'rgba(59,130,246,0.14)' },
+  manager:    { label: 'Manager',     color: '#34D399', bg: 'rgba(16,185,129,0.14)' },
+  staff:      { label: 'Staff',       color: '#FBBF24', bg: 'rgba(245,158,11,0.14)' },
+};
+
+function getColors(isDark, sidebarAppearance, sidebarStyle, primaryColor) {
+  const dark = isDark || sidebarAppearance === 'dark' || ['gradient', 'hexa'].includes(sidebarStyle);
+  if (sidebarStyle === 'hexa') return {
+    sidebarBg:   'linear-gradient(175deg, #110E1D 0%, #0A0714 100%)',
     border:      '#2A1F40',
-    userBg:      '#1A1430',
-    userBorder:  '#2D2050',
-    navHover:    '#1E1635',
-    navActive:   '#c9a96e',
-    navActiveBg: 'linear-gradient(135deg, #c9a96e 0%, #a07840 100%)',
-    navActiveTx: '#0D0916',
     text:        '#F5EDD8',
     textSub:     '#B8A882',
     textMuted:   '#6B5F82',
-    groupLabel:  '#6B5F82',
+    accent:      '#c9a96e',
+    accentBg:    'linear-gradient(135deg, #c9a96e, #a07840)',
+    accentTx:    '#0D0916',
+    hover:       'rgba(201,169,110,0.09)',
     divider:     '#1A1430',
-    logoBg:      'rgba(201,169,110,0.12)',
-    logoColor:   '#c9a96e',
-    trackOff:    '#2A1F40',
-    shadow:      '2px 0 24px rgba(0,0,0,0.45)',
     scrollThumb: '#2D2050',
-    activeGlow:  'rgba(201,169,110,0.20)',
-  },
-  light: {
-    bg:          '#FFFFFF',
-    sidebarBg:   '#FAFBFC',
-    border:      '#EAECF0',
-    userBg:      '#F4F5F7',
-    userBorder:  '#EAECF0',
-    navHover:    '#F0EDFF',
-    navActive:   '#6366F1',
-    navActiveBg: 'linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%)',
-    navActiveTx: '#FFFFFF',
-    text:        '#101828',
-    textSub:     '#475467',
-    textMuted:   '#98A2B3',
-    groupLabel:  '#98A2B3',
-    divider:     '#F2F4F7',
-    logoBg:      '#EEF2FF',
-    logoColor:   '#6366F1',
-    trackOff:    '#E5E7EB',
-    shadow:      '0 1px 3px rgba(16,24,40,0.06)',
-    scrollThumb: '#D0D5DD',
-    activeGlow:  'rgba(99,102,241,0.18)',
-  },
-  dark: {
-    bg:          '#0F0D1A',
-    sidebarBg:   '#13111F',
+    userBg:      'rgba(255,255,255,0.04)',
+    headerBg:    'rgba(0,0,0,0.18)',
+  };
+  const pc = primaryColor || '#6366F1';
+  if (dark) return {
+    sidebarBg:   sidebarStyle === 'gradient' ? 'linear-gradient(175deg, #1E293B 0%, #0F172A 100%)' : '#13111F',
     border:      '#1F1C30',
-    userBg:      '#1A1730',
-    userBorder:  '#252240',
-    navHover:    '#1E1B32',
-    navActive:   '#6366F1',
-    navActiveBg: 'linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%)',
-    navActiveTx: '#FFFFFF',
     text:        '#F1F5F9',
     textSub:     '#94A3B8',
     textMuted:   '#475569',
-    groupLabel:  '#475569',
+    accent:      pc,
+    accentBg:    `linear-gradient(135deg, ${pc}, ${pc}CC)`,
+    accentTx:    '#FFFFFF',
+    hover:       `${pc}14`,
     divider:     '#1A1730',
-    logoBg:      'rgba(99,102,241,0.15)',
-    logoColor:   '#818CF8',
-    trackOff:    '#1F1C30',
-    shadow:      '2px 0 24px rgba(0,0,0,0.35)',
     scrollThumb: '#2A2640',
-    activeGlow:  'rgba(99,102,241,0.12)',
-  },
-};
+    userBg:      'rgba(255,255,255,0.05)',
+    headerBg:    'rgba(0,0,0,0.14)',
+  };
+  return {
+    sidebarBg:   sidebarStyle === 'glass' ? 'rgba(255,255,255,0.76)' : '#FAFBFC',
+    border:      '#EAECF0',
+    text:        '#101828',
+    textSub:     '#475467',
+    textMuted:   '#98A2B3',
+    accent:      pc,
+    accentBg:    `linear-gradient(135deg, ${pc}, ${pc}CC)`,
+    accentTx:    '#FFFFFF',
+    hover:       `${pc}0F`,
+    divider:     '#F2F4F7',
+    scrollThumb: '#D0D5DD',
+    userBg:      '#F4F5F7',
+    headerBg:    'rgba(0,0,0,0.02)',
+  };
+}
 
-const ROLE_BADGE = {
-  superadmin: { bg: '#EEF2FF', text: '#4338CA', border: '#C7D2FE', label: 'Super Admin' },
-  admin:      { bg: '#EFF6FF', text: '#1D4ED8', border: '#BFDBFE', label: 'Admin' },
-  manager:    { bg: '#ECFDF5', text: '#065F46', border: '#A7F3D0', label: 'Manager' },
-  staff:      { bg: '#FFFBEB', text: '#92400E', border: '#FDE68A', label: 'Staff' },
-};
-
-/*  NavItem  */
-function NavItem({ item, collapsed, isActive, onClick, C, lyt }) {
+function NavItem({ item, collapsed, isActive, onClick, C }) {
   const [hov, setHov] = useState(false);
   const [tip, setTip] = useState(null);
-  const itemRef = useRef(null);
-  const nRadius  = lyt?.navItemRadius ?? 10;
-  const nPad     = collapsed ? '10px 14px' : (lyt?.navItemPad ?? '9px 14px');
-  const isAccent = lyt?.accentBar;
-
-  const handleMouseEnter = () => {
-    setHov(true);
-    if (collapsed && itemRef.current) {
-      const rect = itemRef.current.getBoundingClientRect();
-      const vh   = window.innerHeight;
-      const y    = Math.min(Math.max(rect.top + rect.height / 2, 24), vh - 24);
-      setTip({ x: rect.right + 10, y });
-    }
-  };
-  const handleMouseLeave = () => { setHov(false); setTip(null); };
+  const ref = useRef(null);
 
   return (
-    <div ref={itemRef} style={{ position:'relative', marginBottom: 1 }}
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
+    <div ref={ref} style={{ position: 'relative' }}
+      onMouseEnter={() => {
+        setHov(true);
+        if (collapsed && ref.current) {
+          const r = ref.current.getBoundingClientRect();
+          setTip({ x: r.right + 10, y: Math.min(Math.max(r.top + r.height / 2, 24), window.innerHeight - 24) });
+        }
+      }}
+      onMouseLeave={() => { setHov(false); setTip(null); }}
     >
-      {isAccent && isActive && !collapsed && (
-        <div style={{ position:'absolute', left:0, top:6, bottom:6, width:3, borderRadius:2, background: C.navActive, boxShadow: `0 0 8px ${C.navActive}60` }} />
-      )}
-      <div
-        onClick={() => onClick(item.path)}
-        style={{
-          display:        'flex',
-          alignItems:     'center',
-          justifyContent: collapsed ? 'center' : 'flex-start',
-          gap:            11,
-          padding:        nPad,
-          borderRadius:   nRadius,
-          cursor:         'pointer',
-          background:     isActive
-            ? (isAccent ? `${C.navActive}14` : C.navActiveBg)
-            : hov ? C.navHover : 'transparent',
-          boxShadow:      isActive && !isAccent ? `0 2px 8px ${C.navActive}30` : 'none',
-          transition:     'all 0.18s ease',
-          userSelect:     'none',
-          paddingLeft:    isAccent && !collapsed ? '18px' : undefined,
-        }}
-      >
+      <div onClick={() => onClick(item.path)} style={{
+        display:        'flex',
+        alignItems:     'center',
+        justifyContent: collapsed ? 'center' : 'flex-start',
+        gap:            10,
+        padding:        collapsed ? '10px 0' : '8px 12px',
+        borderRadius:   10,
+        cursor:         'pointer',
+        marginBottom:   2,
+        background:     isActive ? C.accentBg : hov ? C.hover : 'transparent',
+        boxShadow:      isActive ? `0 2px 10px ${C.accent}28` : 'none',
+        transition:     'all 0.15s ease',
+        userSelect:     'none',
+      }}>
         <span style={{
-          display:'flex', alignItems:'center', justifyContent:'center',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
           width: 20, height: 20, flexShrink: 0,
-          color: isActive
-            ? (isAccent ? C.navActive : C.navActiveTx)
-            : hov ? C.text : C.textSub,
-          transition: 'color 0.18s',
+          color: isActive ? C.accentTx : hov ? C.text : C.textSub,
+          transition: 'color 0.15s',
         }}>
-          <Ico d={item.icon} size={17} />
+          <Ico d={item.icon} size={16} />
         </span>
         {!collapsed && (
           <span style={{
-            fontSize:   13,
-            fontWeight: isActive ? 700 : 500,
-            fontFamily: "'Inter', sans-serif",
-            whiteSpace: 'nowrap',
-            color: isActive
-              ? (isAccent ? C.navActive : C.navActiveTx)
-              : hov ? C.text : C.textSub,
-            transition: 'color 0.18s',
-            letterSpacing: isActive ? '-0.01em' : 0,
+            fontSize:      13,
+            fontWeight:    isActive ? 600 : 450,
+            letterSpacing: '-0.01em',
+            whiteSpace:    'nowrap',
+            color:         isActive ? C.accentTx : hov ? C.text : C.textSub,
+            transition:    'color 0.15s',
           }}>
             {item.label}
           </span>
         )}
       </div>
-
-      {/* Collapsed tooltip — fixed positioning prevents viewport overflow */}
       {collapsed && hov && tip && (
         <div style={{
           position:      'fixed',
           left:          tip.x,
           top:           tip.y,
           transform:     'translateY(-50%)',
-          background:    'linear-gradient(135deg, #1E1B32, #13111F)',
+          background:    '#1E1B32',
           color:         '#fff',
           fontSize:      12,
           fontWeight:    600,
-          padding:       '6px 14px',
-          borderRadius:  10,
+          padding:       '5px 12px',
+          borderRadius:  8,
           whiteSpace:    'nowrap',
           pointerEvents: 'none',
           zIndex:        9999,
-          boxShadow:     '0 4px 20px rgba(0,0,0,0.28)',
-          fontFamily:    "'Inter', sans-serif",
+          boxShadow:     '0 4px 20px rgba(0,0,0,0.30)',
           border:        '1px solid rgba(255,255,255,0.08)',
         }}>
           {item.label}
@@ -260,22 +209,18 @@ function NavItem({ item, collapsed, isActive, onClick, C, lyt }) {
   );
 }
 
-
-
-/*  Sidebar  */
 export default function Sidebar({ collapsed, onToggle, currentUser, mobileOpen, onMobileClose }) {
   const location = useLocation();
   const navigate = useNavigate();
   const { logout } = useAuth();
-  const { mode, isDark, sidebarStyle, sidebarAppearance, primaryColor } = useTheme();
+  const { isDark, sidebarStyle, sidebarAppearance, primaryColor } = useTheme();
   const { isMobile } = useBreakpoint();
+  const [signOutHov, setSignOutHov] = useState(false);
 
   const STYLE = sidebarStyle || 'default';
-  const C   = STYLE === 'hexa' ? THEME.hexa : THEME[isDark || sidebarAppearance === 'dark' || STYLE === 'gradient' ? 'dark' : 'light'];
-  // Override navActive with tenant primary color
-  const themedC = STYLE === 'hexa' ? C : { ...C, navActive: primaryColor || C.navActive, navActiveBg: primaryColor ? `linear-gradient(135deg, ${primaryColor} 0%, ${primaryColor}CC 100%)` : C.navActiveBg };
-  const role     = currentUser?.role || '';
-  const rb = ROLE_BADGE[role] || ROLE_BADGE.staff;
+  const C = getColors(isDark, sidebarAppearance, STYLE, primaryColor);
+  const role = currentUser?.role || 'staff';
+  const rm = ROLE_META[role] || ROLE_META.staff;
   const tenantBranding = currentUser?.tenant || {};
   const brandName = resolveBrandName(tenantBranding);
   const brandLogo = resolveBrandLogo(tenantBranding, 'sidebar');
@@ -283,192 +228,195 @@ export default function Sidebar({ collapsed, onToggle, currentUser, mobileOpen, 
     ? currentUser.name.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase()
     : '?';
 
+  const isFloating = !isMobile && ['compact', 'floating', 'glass'].includes(STYLE);
+  const isGlass    = STYLE === 'glass';
+
   const visibleGroups = NAV_GROUPS.map(g => ({
     ...g, items: g.items.filter(i => i.roles.includes(role)),
   })).filter(g => g.items.length > 0);
 
-  const isActive = path =>
-    location.pathname === path ||
-    location.pathname === (ROUTE_ALIASES[path] ?? null);
-
-  const handleNavigate = path => { navigate(path); onMobileClose?.(); };
+  const isActive     = p => location.pathname === p || location.pathname === (ROUTE_ALIASES[p] ?? null);
+  const handleNavigate = p => { navigate(p); onMobileClose?.(); };
   const handleLogout   = async () => { try { await logout(); } catch (_) {} navigate('/login'); };
 
   const ec = isMobile ? false : collapsed;
-  // Layout config for the current sidebar style
-  const _det = !isMobile && ['compact','floating','glass'].includes(STYLE);
-  const lyt = {
-    shellRadius:   _det ? (STYLE === 'compact' ? 18 : 20) : 0,
-    shellMargin:   _det ? '10px 0 10px 10px' : 0,
-    shellHeight:   _det ? 'calc(100vh - 20px)' : '100vh',
-    shellShadow:   STYLE === 'floating' ? '0 8px 30px rgba(16,24,40,0.12)'
-                 : STYLE === 'glass'    ? '0 8px 32px rgba(16,24,40,0.08)'
-                 : STYLE === 'compact'  ? '0 4px 24px rgba(0,0,0,0.10)'
-                 : STYLE === 'gradient' ? '2px 0 20px rgba(0,0,0,0.18)'
-                 : STYLE === 'minimal'  ? 'none'
-                 : C.shadow,
-    shellBg:       STYLE === 'hexa'     ? 'linear-gradient(180deg, #110E1D 0%, #0D0916 100%)'
-                 : STYLE === 'gradient' ? 'linear-gradient(180deg, #1E293B 0%, #0F172A 100%)'
-                 : STYLE === 'glass'    ? 'rgba(255,255,255,0.72)'
-                 : STYLE === 'minimal'  ? 'rgba(255,255,255,0.6)'
-                 : null,
-    shellBd:       STYLE === 'hexa' ? '1px solid #2A1F40'
-                 : STYLE === 'gradient' || STYLE === 'floating' || STYLE === 'minimal' ? 'none'
-                 : STYLE === 'glass' ? '1px solid rgba(255,255,255,0.45)'
-                 : null,
-    shellBackdrop: STYLE === 'glass' ? 'blur(20px) saturate(180%)' : null,
-    navItemRadius: STYLE === 'pill'    ? 50
-                 : STYLE === 'minimal' ? 8
-                 : STYLE === 'accent'  ? 10
-                 : ['floating','glass','wide'].includes(STYLE) ? 12
-                 : 10,
-    navItemPad:    STYLE === 'pill'    ? '9px 20px'
-                 : STYLE === 'wide'    ? '10px 18px'
-                 : STYLE === 'compact' ? '10px 14px'
-                 : '9px 14px',
-    navPad:        STYLE === 'compact' ? '10px 12px'
-                 : STYLE === 'wide'    ? '10px 14px'
-                 : '8px 10px',
-    accentBar:    STYLE === 'accent',
-    W:            STYLE === 'wide' ? 300 : STYLE === 'glass' ? 264 : 258,
-  };
-  const W  = ec ? 72 : lyt.W;
-  const [signOutHov, setSignOutHov] = useState(false);
+  const W  = ec ? 68 : (STYLE === 'wide' ? 300 : 256);
 
   if (isMobile && !mobileOpen) return null;
 
   const panel = (
     <aside style={{
-      width:         W,
-      flexShrink:    0,
-      background:    lyt.shellBg || C.sidebarBg,
-      borderRight:   lyt.shellBd != null ? lyt.shellBd : `1px solid ${C.border}`,
-      boxShadow:     lyt.shellShadow,
-      backdropFilter: lyt.shellBackdrop || undefined,
-      WebkitBackdropFilter: lyt.shellBackdrop || undefined,
-      display:       'flex',
-      flexDirection: 'column',
-      overflow:      'hidden',
-      transition:    'width 0.24s cubic-bezier(.4,0,.2,1), background 0.22s',
-      fontFamily:    "'Inter', sans-serif",
-      position:      isMobile ? 'fixed' : 'relative',
+      width:                W,
+      flexShrink:           0,
+      background:           C.sidebarBg,
+      backdropFilter:       isGlass ? 'blur(24px) saturate(180%)' : undefined,
+      WebkitBackdropFilter: isGlass ? 'blur(24px) saturate(180%)' : undefined,
+      borderRight:          isFloating ? 'none' : `1px solid ${C.border}`,
+      boxShadow:            isFloating
+                              ? (isDark ? '0 8px 32px rgba(0,0,0,0.38)' : '0 8px 32px rgba(16,24,40,0.10)')
+                              : STYLE === 'hexa' ? '2px 0 24px rgba(0,0,0,0.45)' : 'none',
+      display:              'flex',
+      flexDirection:        'column',
+      overflow:             'hidden',
+      transition:           'width 0.22s cubic-bezier(.4,0,.2,1)',
+      fontFamily:           "'Inter', sans-serif",
+      position:             isMobile ? 'fixed' : 'relative',
       top: 0, left: 0,
-      zIndex: isMobile ? 400 : undefined,
-      borderRadius: isMobile ? 0 : lyt.shellRadius,
-      margin: isMobile ? 0 : lyt.shellMargin,
-      height: isMobile ? '100vh' : lyt.shellHeight,
+      zIndex:               isMobile ? 400 : undefined,
+      borderRadius:         isMobile ? 0 : (isFloating ? 16 : 0),
+      margin:               isMobile ? 0 : (isFloating ? '10px 0 10px 10px' : 0),
+      height:               isMobile ? '100vh' : (isFloating ? 'calc(100vh - 20px)' : '100vh'),
     }}>
 
-      {/*  Logo bar  */}
+      {/* ── Header ── */}
       <div style={{
-        height:         62,
         display:        'flex',
         alignItems:     'center',
         justifyContent: ec ? 'center' : 'space-between',
-        padding:        ec ? '0 16px' : '0 18px',
+        padding:        ec ? '0 12px' : '0 14px 0 16px',
         borderBottom:   `1px solid ${C.border}`,
+        background:     C.headerBg,
         flexShrink:     0,
         gap:            8,
+        minHeight:      64,
       }}>
-        <div style={{ display:'flex', alignItems:'center', gap:10, overflow:'hidden' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, overflow: 'hidden', flex: 1 }}>
           <div style={{ position: 'relative', flexShrink: 0 }}>
             <img
               src={brandLogo}
               alt={`${brandName} logo`}
-              style={{
-                width: 34,
-                height: 34,
-                borderRadius: 10,
-                objectFit: 'cover',
-                flexShrink: 0,
-                border: `1.5px solid ${C.border}`,
-              }}
+              style={{ width: 36, height: 36, borderRadius: 10, objectFit: 'cover', border: `1.5px solid ${C.border}` }}
             />
-            {/* Online indicator */}
             <div style={{
               position: 'absolute', bottom: -1, right: -1,
               width: 9, height: 9, borderRadius: '50%',
-              background: '#10B981', border: `2px solid ${C.sidebarBg || C.bg}`,
+              background: '#10B981', border: `2px solid ${C.sidebarBg.startsWith('linear') ? '#110E1D' : C.sidebarBg}`,
             }} />
           </div>
           {!ec && (
-            <div style={{ overflow:'hidden' }}>
+            <div style={{ overflow: 'hidden', flex: 1 }}>
               <div style={{
-                fontSize: 15, fontWeight: 800, color: C.text,
-                fontFamily: "'Sora', 'Manrope', 'Inter', sans-serif",
-                letterSpacing: '-0.03em', lineHeight: 1.2, whiteSpace: 'nowrap',
+                fontSize: 14, fontWeight: 800, color: C.text,
+                fontFamily: "'Sora','Manrope','Inter',sans-serif",
+                letterSpacing: '-0.03em', lineHeight: 1.25, whiteSpace: 'nowrap',
+                overflow: 'hidden', textOverflow: 'ellipsis',
               }}>
                 {brandName}
               </div>
-              <div style={{
-                fontSize: 9.5, color: C.textMuted, fontWeight: 700,
-                letterSpacing: '0.1em', textTransform: 'uppercase',
-                fontFamily: "'Inter', sans-serif",
-              }}>
+              <div style={{ fontSize: 9, color: C.textMuted, fontWeight: 700, letterSpacing: '0.10em', textTransform: 'uppercase' }}>
                 Management
               </div>
             </div>
           )}
         </div>
 
-        {/* Desktop collapse chevron */}
-        {!isMobile && (
+        {!isMobile ? (
           <button onClick={onToggle} style={{
-            background: 'none', border: `1.5px solid ${C.border}`, cursor: 'pointer',
-            padding: '5px', borderRadius: 8, color: C.textMuted, display: 'flex',
-            alignItems: 'center', flexShrink: 0, transition: 'all 0.18s',
+            background: 'none', border: `1px solid ${C.border}`, cursor: 'pointer',
+            padding: 5, borderRadius: 8, color: C.textMuted,
+            display: 'flex', alignItems: 'center', flexShrink: 0, transition: 'all 0.15s',
           }}
-          onMouseEnter={e => { e.currentTarget.style.borderColor = themedC.navActive; e.currentTarget.style.color = themedC.navActive; }}
-          onMouseLeave={e => { e.currentTarget.style.borderColor = C.border; e.currentTarget.style.color = C.textMuted; }}>
-            <Ico d={ec ? 'M13 5l7 7-7 7M5 5l7 7-7 7' : 'M11 19l-7-7 7-7m8 14l-7-7 7-7'} size={14} />
+            onMouseEnter={e => { e.currentTarget.style.borderColor = C.accent; e.currentTarget.style.color = C.accent; }}
+            onMouseLeave={e => { e.currentTarget.style.borderColor = C.border; e.currentTarget.style.color = C.textMuted; }}>
+            <Ico d={ec ? 'M13 5l7 7-7 7M5 5l7 7-7 7' : 'M11 19l-7-7 7-7m8 14l-7-7 7-7'} size={13} />
           </button>
-        )}
-
-        {/* Mobile close (X) button */}
-        {isMobile && (
+        ) : (
           <button onClick={onMobileClose} style={{
-            background: 'none', border: `1.5px solid ${C.border}`, cursor: 'pointer',
-            padding: '5px', borderRadius: 8, color: C.textMuted, display: 'flex',
-            alignItems: 'center', flexShrink: 0, transition: 'all 0.18s',
+            background: 'none', border: `1px solid ${C.border}`, cursor: 'pointer',
+            padding: 5, borderRadius: 8, color: C.textMuted,
+            display: 'flex', alignItems: 'center', flexShrink: 0, transition: 'all 0.15s',
           }}
-          onMouseEnter={e => { e.currentTarget.style.borderColor = '#EF4444'; e.currentTarget.style.color = '#EF4444'; }}
-          onMouseLeave={e => { e.currentTarget.style.borderColor = C.border; e.currentTarget.style.color = C.textMuted; }}>
-            <Ico d="M6 18L18 6M6 6l12 12" size={14} />
+            onMouseEnter={e => { e.currentTarget.style.borderColor = '#EF4444'; e.currentTarget.style.color = '#EF4444'; }}
+            onMouseLeave={e => { e.currentTarget.style.borderColor = C.border; e.currentTarget.style.color = C.textMuted; }}>
+            <Ico d="M6 18L18 6M6 6l12 12" size={13} />
           </button>
         )}
       </div>
 
-      {/*  Nav  */}
-      <nav className="sb-nav" style={{ flex: 1, overflowY: 'auto', padding: ec ? '8px 8px' : lyt.navPad }}>
+      {/* ── User card ── */}
+      {!ec && (
+        <div style={{
+          margin:       '10px 10px 2px',
+          padding:      '10px 12px',
+          borderRadius: 12,
+          background:   C.userBg,
+          border:       `1px solid ${C.border}`,
+          display:      'flex',
+          alignItems:   'center',
+          gap:          10,
+          flexShrink:   0,
+        }}>
+          <div style={{
+            width: 36, height: 36, borderRadius: 10, flexShrink: 0,
+            background: C.accentBg,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 13, fontWeight: 700, color: C.accentTx, letterSpacing: '0.02em',
+          }}>
+            {initials}
+          </div>
+          <div style={{ overflow: 'hidden', flex: 1 }}>
+            <div style={{
+              fontSize: 13, fontWeight: 600, color: C.text,
+              whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+            }}>
+              {currentUser?.name || 'User'}
+            </div>
+            <span style={{
+              display:    'inline-block',
+              fontSize:   10,
+              fontWeight: 700,
+              padding:    '1px 7px',
+              borderRadius: 20,
+              background: rm.bg,
+              color:      rm.color,
+              letterSpacing: '0.04em',
+            }}>
+              {rm.label}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* ── Nav ── */}
+      <nav className="sb-nav-rd" style={{ flex: 1, overflowY: 'auto', padding: ec ? '8px 6px' : '8px 10px' }}>
         <style>{`
-          .sb-nav::-webkit-scrollbar { width: 4px; }
-          .sb-nav::-webkit-scrollbar-track { background: transparent; }
-          .sb-nav::-webkit-scrollbar-thumb { background: ${C.scrollThumb || C.textMuted}; border-radius: 99px; }
-          .sb-nav::-webkit-scrollbar-thumb:hover { background: ${C.textMuted}; }
+          .sb-nav-rd::-webkit-scrollbar { width: 3px; }
+          .sb-nav-rd::-webkit-scrollbar-track { background: transparent; }
+          .sb-nav-rd::-webkit-scrollbar-thumb { background: ${C.scrollThumb}; border-radius: 99px; }
         `}</style>
         {visibleGroups.map((group, gi) => (
-          <div key={group.label} style={{ marginBottom: 2 }}>
-            {!ec && gi > 0 && <div style={{ height: 1, background: C.divider, margin: '8px 6px 10px' }} />}
+          <div key={group.label} style={{ marginBottom: 4 }}>
+            {!ec && gi > 0 && (
+              <div style={{ height: 1, background: C.divider, margin: '6px 4px 8px' }} />
+            )}
             {!ec && (
               <div style={{
-                fontSize: 9.5, fontWeight: 800, color: C.groupLabel,
-                textTransform: 'uppercase', letterSpacing: '0.12em',
-                padding: '4px 14px 6px', fontFamily: "'Inter', sans-serif",
+                fontSize:      9,
+                fontWeight:    800,
+                color:         C.textMuted,
+                textTransform: 'uppercase',
+                letterSpacing: '0.12em',
+                padding:       '2px 12px 4px',
               }}>
                 {group.label}
               </div>
             )}
             {group.items.map(item => (
-              <NavItem key={item.path} item={item} collapsed={ec}
-                isActive={isActive(item.path)} onClick={handleNavigate} C={themedC} lyt={lyt} />
+              <NavItem
+                key={item.path}
+                item={item}
+                collapsed={ec}
+                isActive={isActive(item.path)}
+                onClick={handleNavigate}
+                C={C}
+              />
             ))}
           </div>
         ))}
       </nav>
 
-      {/*  Bottom  */}
-      <div style={{ borderTop: `1px solid ${C.border}`, padding: ec ? '10px 8px' : '10px 10px', flexShrink: 0 }}>
-        {/* Sign out */}
+      {/* ── Footer ── */}
+      <div style={{ borderTop: `1px solid ${C.border}`, padding: ec ? '8px 6px' : '8px 10px', flexShrink: 0 }}>
         <div
           onClick={handleLogout}
           onMouseEnter={() => setSignOutHov(true)}
@@ -477,23 +425,21 @@ export default function Sidebar({ collapsed, onToggle, currentUser, mobileOpen, 
             display:        'flex',
             alignItems:     'center',
             justifyContent: ec ? 'center' : 'flex-start',
-            gap:            11,
-            padding:        ec ? '10px 14px' : '9px 14px',
+            gap:            10,
+            padding:        ec ? '10px 0' : '9px 12px',
             borderRadius:   10,
             cursor:         'pointer',
-            background:     signOutHov ? (isDark ? 'rgba(239,68,68,0.10)' : '#FEF2F2') : 'transparent',
-            border:         signOutHov ? '1px solid rgba(239,68,68,0.20)' : '1px solid transparent',
-            transition:     'all 0.18s',
+            background:     signOutHov ? 'rgba(239,68,68,0.08)' : 'transparent',
+            border:         `1px solid ${signOutHov ? 'rgba(239,68,68,0.22)' : 'transparent'}`,
+            transition:     'all 0.15s',
             userSelect:     'none',
           }}
         >
-          <span style={{ display:'flex', flexShrink:0, color:'#EF4444', width:20, height:20, alignItems:'center', justifyContent:'center' }}>
-            <Ico d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" size={17} />
+          <span style={{ display: 'flex', flexShrink: 0, color: '#EF4444', width: 20, height: 20, alignItems: 'center', justifyContent: 'center' }}>
+            <Ico d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" size={16} />
           </span>
           {!ec && (
-            <span style={{ fontSize: 13, fontWeight: 600, color: '#EF4444', fontFamily: "'Inter', sans-serif" }}>
-              Sign out
-            </span>
+            <span style={{ fontSize: 13, fontWeight: 600, color: '#EF4444' }}>Sign out</span>
           )}
         </div>
       </div>
@@ -503,7 +449,14 @@ export default function Sidebar({ collapsed, onToggle, currentUser, mobileOpen, 
   if (isMobile) {
     return (
       <>
-        <div onClick={onMobileClose} style={{ position:'fixed', inset:0, zIndex:399, background:'rgba(16,24,40,0.55)', backdropFilter:'blur(4px)', WebkitBackdropFilter:'blur(4px)' }} />
+        <div
+          onClick={onMobileClose}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 399,
+            background: 'rgba(16,24,40,0.60)',
+            backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)',
+          }}
+        />
         {panel}
       </>
     );

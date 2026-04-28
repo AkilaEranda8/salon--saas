@@ -177,7 +177,7 @@ export default function ReportsPage() {
       const url = window.URL.createObjectURL(new Blob([res.data]));
       const a = document.createElement('a');
       a.href = url;
-      a.download = `ZaneSalon_Report_${dateFrom}_${dateTo}.xlsx`;
+      a.download = `HexaSalon_Report_${dateFrom}_${dateTo}.xlsx`;
       document.body.appendChild(a);
       a.click();
       a.remove();

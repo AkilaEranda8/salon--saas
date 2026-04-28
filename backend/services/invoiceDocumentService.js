@@ -56,7 +56,7 @@ async function generateInvoicePdfBuffer({ invoice, tenant }) {
 
     doc.roundedRect(350, 55, 36, 36, 8).fill('#F4C542');
     doc.fillColor('#FFFFFF').font('Helvetica-Bold').fontSize(20).text('z', 363, 63);
-    doc.fillColor(teal).font('Helvetica-Bold').fontSize(20).text('Zane', 395, 61);
+    doc.fillColor(teal).font('Helvetica-Bold').fontSize(20).text('Hexa', 395, 61);
     doc.fillColor(navy).font('Helvetica-Bold').fontSize(20).text('Salon', 395, 83);
 
     doc.fillColor('#111827').font('Helvetica-Bold').fontSize(13).text('Bill To:', 40, 130);

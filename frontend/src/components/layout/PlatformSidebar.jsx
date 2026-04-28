@@ -311,7 +311,7 @@ export default function PlatformSidebar({ collapsed, onToggle }) {
                 fontFamily:    "'Sora', 'Manrope', 'Inter', sans-serif",
                 whiteSpace:    'nowrap',
               }}>
-                ZaneSalon
+                Hexa Salon
               </div>
               <div style={{
                 fontSize:      9.5,

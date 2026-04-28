@@ -444,7 +444,7 @@ const exportExcel = async (req, res) => {
 
     // ── Write & send ──
     const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
-    const filename = `ZaneSalon_Report_${from || 'all'}_${to || 'all'}.xlsx`;
+    const filename = `HexaSalon_Report_${from || 'all'}_${to || 'all'}.xlsx`;
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     return res.send(buf);

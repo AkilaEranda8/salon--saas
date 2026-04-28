@@ -185,7 +185,7 @@ class _AiChatPageState extends State<AiChatPage>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Zane AI',
+                const Text('Hexa Salon AI',
                   style: TextStyle(
                     color: _ink, fontSize: 15,
                     fontWeight: FontWeight.w800, letterSpacing: -0.2)),
@@ -245,7 +245,7 @@ class _AiChatPageState extends State<AiChatPage>
             color: Colors.white, size: 36),
       ),
       const SizedBox(height: 18),
-      const Text('Hi! I\'m Zane AI',
+      const Text('Hi! I\'m Hexa Salon AI',
         style: TextStyle(
           color: _ink, fontSize: 22,
           fontWeight: FontWeight.w900, letterSpacing: -0.5)),
@@ -309,7 +309,7 @@ class _AiChatPageState extends State<AiChatPage>
                 style: const TextStyle(color: _ink, fontSize: 14),
                 decoration: const InputDecoration(
                   border: InputBorder.none,
-                  hintText: 'Ask Zane AI anything…',
+                  hintText: 'Ask Hexa Salon AI anything…',
                   hintStyle: TextStyle(
                     color: Color(0xFFB0B8B0), fontSize: 14)),
                 onSubmitted: (_) => _send(),

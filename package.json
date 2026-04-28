@@ -1,7 +1,7 @@
 {
   "name": "zanesalon",
   "version": "1.0.0",
-  "description": "Zane Salon — Salon Management System (full-stack)",
+  "description": "Hexa Salon — Salon Management System (full-stack)",
   "private": true,
   "scripts": {
     "dev": "concurrently \"npm run dev --prefix backend\" \"npm run dev --prefix frontend\"",

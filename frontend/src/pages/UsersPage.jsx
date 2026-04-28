@@ -11,7 +11,7 @@ import {
 } from '../components/ui/PageKit';
 
 const ROLES = ['superadmin','admin','manager','staff'];
-const EMPTY = { username:'', password:'', name:'', role:'staff', branch_id:'', is_active:true };
+const EMPTY = { username:'', password:'', name:'', email:'', role:'staff', branch_id:'', is_active:true };
 
 function generatePassword(len = 12) {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789@#!';
@@ -79,7 +79,7 @@ export default function UsersPage() {
   }, []);
 
   const openCreate = () => { setEditItem(null); setForm(EMPTY); setFormError(''); setShowFormPwd(false); setShowForm(true); };
-  const openEdit   = u  => { setEditItem(u); setForm({ username:u.username, password:'', name:u.name, role:u.role, branch_id:u.branch_id||'', is_active:u.is_active }); setFormError(''); setShowForm(true); };
+  const openEdit   = u  => { setEditItem(u); setForm({ username:u.username, password:'', name:u.name, email:u.email, role:u.role, branch_id:u.branch_id||'', is_active:u.is_active }); setFormError(''); setShowForm(true); };
   const openPwd    = u  => { setPwdTarget(u); setNewPwd(''); setShowNewPwd(false); setShowPwd(true); };
 
   const handleSave = async () => {
@@ -257,6 +257,11 @@ export default function UsersPage() {
 
           <FormGroup label="Full Name" required><Input value={form.name} onChange={e => setForm({...form, name:e.target.value})} /></FormGroup>
           <FormGroup label="Username" required><Input value={form.username} onChange={e => setForm({...form, username:e.target.value})} autoComplete="off" /></FormGroup>
+          <div style={{ gridColumn:'1/-1' }}>
+            <FormGroup label="Email" helperText="Used for password reset emails">
+              <Input type="email" value={form.email || ''} onChange={e => setForm({...form, email:e.target.value})} placeholder="staff@example.com" autoComplete="off" />
+            </FormGroup>
+          </div>
 
           {/* Password with generate button */}
           {!editItem && (

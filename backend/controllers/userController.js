@@ -31,7 +31,7 @@ const list = async (req, res) => {
 
 const create = async (req, res) => {
   try {
-    const { username, password, name, role, branch_id, is_active } = req.body;
+    const { username, password, name, role, branch_id, is_active, email } = req.body;
     const tenantId = resolveTenantId(req);
 
     if (!username || !password || !name) {
@@ -51,10 +51,12 @@ const create = async (req, res) => {
     const hash = await bcrypt.hash(password, 10);
     const user = await User.create({
       username, password: hash, name,
-      role: role || 'staff',
-      branch_id: branch_id || null,
-      is_active: is_active !== false,
-      tenant_id: tenantId,
+      email:                email || null,
+      role:                 role || 'staff',
+      branch_id:            branch_id || null,
+      is_active:            is_active !== false,
+      tenant_id:            tenantId,
+      must_change_password: true,
     });
 
     const result = user.toJSON();
@@ -72,7 +74,7 @@ const update = async (req, res) => {
     const user = await User.findOne({ where: byIdWhere(req, req.params.id) });
     if (!user) return res.status(404).json({ message: 'User not found.' });
 
-    const { name, username, role, branch_id, is_active, password } = req.body;
+    const { name, username, role, branch_id, is_active, password, email } = req.body;
     const updates = {};
     if (name !== undefined)      updates.name      = name;
     if (username !== undefined)  updates.username   = username;
@@ -85,6 +87,7 @@ const update = async (req, res) => {
     }
     if (branch_id !== undefined) updates.branch_id  = branch_id || null;
     if (is_active !== undefined) updates.is_active  = is_active;
+    if (email !== undefined)     updates.email      = email || null;
     if (password)                updates.password   = await bcrypt.hash(password, 10);
 
     // Check username uniqueness before updating

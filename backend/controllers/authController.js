@@ -174,9 +174,10 @@ const login = async (req, res) => {
         branchId: user.branch_id,
         avatar:   user.avatar,
         color:    user.color,
-        branch:   user.branch,
-        tenant:   user.tenant,
-        tenantId: user.tenant_id,
+        branch:               user.branch,
+        tenant:               user.tenant,
+        tenantId:             user.tenant_id,
+        must_change_password: !!user.must_change_password,
       },
     });
   } catch (err) {
@@ -305,9 +306,10 @@ const verifyLogin2FA = async (req, res) => {
         branchId: user.branch_id,
         avatar:   user.avatar,
         color:    user.color,
-        branch:   user.branch,
-        tenant:   user.tenant,
-        tenantId: user.tenant_id,
+        branch:               user.branch,
+        tenant:               user.tenant,
+        tenantId:             user.tenant_id,
+        must_change_password: !!user.must_change_password,
       },
     });
   } catch (err) {
@@ -443,10 +445,75 @@ const changeOwnPassword = async (req, res) => {
     }
 
     const hash = await bcrypt.hash(newPassword, 12);
-    await user.update({ password: hash });
+    await user.update({ password: hash, must_change_password: false });
     return res.json({ message: 'Password changed successfully.' });
   } catch (err) {
     console.error('changeOwnPassword error:', err);
+    return res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+// ─── POST /api/auth/forgot-password ─────────────────────────────────────────
+const forgotPassword = async (req, res) => {
+  try {
+    const { username } = req.body;
+    if (!username) return res.status(400).json({ message: 'Username is required.' });
+    const tenantId = req.tenant?.id ?? null;
+    const whereClause = { username };
+    if (tenantId) whereClause.tenant_id = tenantId;
+    const user = await User.findOne({ where: whereClause });
+    if (user && user.email) {
+      const token   = crypto.randomBytes(32).toString('hex');
+      const expires = new Date(Date.now() + 60 * 60 * 1000);
+      await user.update({ password_reset_token: token, password_reset_expires: expires });
+      const origin   = req.headers.origin || process.env.FRONTEND_URL || 'http://localhost';
+      const resetUrl = `${origin}/reset-password/${token}`;
+      const { sendEmail } = require('../services/notificationService');
+      await sendEmail({
+        to:      user.email,
+        subject: 'Password Reset Request',
+        html:    `<div style="font-family:Arial,sans-serif;max-width:500px;margin:auto;color:#111827;padding:24px"><h2 style="color:#2563EB;margin-top:0">Password Reset</h2><p>Hi <strong>${user.name}</strong>,</p><p>Click the button below to reset your password. This link expires in <strong>1 hour</strong>.</p><p style="text-align:center;margin:32px 0"><a href="${resetUrl}" style="background:#2563EB;color:#fff;padding:13px 32px;border-radius:10px;text-decoration:none;font-weight:700;font-size:15px">Reset Password</a></p><p style="font-size:12px;color:#6B7280">If you did not request this, ignore this email.</p></div>`,
+      }).catch(e => console.warn('[forgotPassword] email failed:', e.message));
+    }
+    return res.json({ message: 'If an account with that username and an email on file was found, a reset link has been sent.' });
+  } catch (err) {
+    console.error('forgotPassword error:', err);
+    return res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+// ─── POST /api/auth/reset-password/:token ────────────────────────────────────
+const resetPassword = async (req, res) => {
+  try {
+    const { token }       = req.params;
+    const { newPassword } = req.body;
+    if (!token || !newPassword) return res.status(400).json({ message: 'Token and new password are required.' });
+    if (newPassword.length < 8) return res.status(400).json({ message: 'Password must be at least 8 characters.' });
+    const user = await User.findOne({
+      where: { password_reset_token: token, password_reset_expires: { [Op.gt]: new Date() } },
+    });
+    if (!user) return res.status(400).json({ message: 'Invalid or expired reset link. Please request a new one.' });
+    const hash = await bcrypt.hash(newPassword, 12);
+    await user.update({ password: hash, password_reset_token: null, password_reset_expires: null, must_change_password: false });
+    return res.json({ message: 'Password reset successfully. You can now log in.' });
+  } catch (err) {
+    console.error('resetPassword error:', err);
+    return res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+// ─── POST /api/auth/first-login-password ─────────────────────────────────────
+const forceChangePassword = async (req, res) => {
+  try {
+    const { newPassword } = req.body;
+    if (!newPassword || newPassword.length < 8) return res.status(400).json({ message: 'New password must be at least 8 characters.' });
+    const user = await User.findByPk(req.user.id);
+    if (!user) return res.status(404).json({ message: 'User not found.' });
+    const hash = await bcrypt.hash(newPassword, 12);
+    await user.update({ password: hash, must_change_password: false });
+    return res.json({ message: 'Password updated successfully.' });
+  } catch (err) {
+    console.error('forceChangePassword error:', err);
     return res.status(500).json({ message: 'Server error.' });
   }
 };
@@ -490,4 +557,4 @@ const impersonateSession = async (req, res) => {
   }
 };
 
-module.exports = { register, login, logout, getMe, verifyLogin2FA, setup2FA, enable2FA, disable2FA, status2FA, changeOwnPassword, impersonateSession };
+module.exports = { register, login, logout, getMe, verifyLogin2FA, setup2FA, enable2FA, disable2FA, status2FA, changeOwnPassword, forgotPassword, resetPassword, forceChangePassword, impersonateSession };

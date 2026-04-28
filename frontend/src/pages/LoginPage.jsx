@@ -43,6 +43,13 @@ export default function LoginPage({ platformMode = false }) {
   const [tempToken,  setTempToken]  = useState('');
   const [totpCode,   setTotpCode]   = useState('');
 
+  /* Forgot-password state */
+  const [stepForgot,      setStepForgot]      = useState(false);
+  const [forgotUsername,  setForgotUsername]  = useState('');
+  const [forgotSent,      setForgotSent]      = useState(false);
+  const [forgotLoading,   setForgotLoading]   = useState(false);
+  const [forgotError,     setForgotError]     = useState('');
+
   useEffect(() => { setMounted(true); }, []);
 
   useEffect(() => {
@@ -112,6 +119,24 @@ export default function LoginPage({ platformMode = false }) {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleForgot = async (e) => {
+    e.preventDefault();
+    setForgotError('');
+    if (!forgotUsername.trim()) { setForgotError('Please enter your username.'); return; }
+    setForgotLoading(true);
+    try {
+      await fetch('/api/auth/forgot-password', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ username: forgotUsername.trim() }),
+      });
+      setForgotSent(true);
+    } catch {
+      setForgotError('Something went wrong. Please try again.');
+    }
+    setForgotLoading(false);
   };
 
   const handleTotp = async (e) => {
@@ -294,7 +319,65 @@ export default function LoginPage({ platformMode = false }) {
                     </span>
                   ) : 'Sign In'}
                 </button>
+                {!platformMode && (
+                  <div style={{ textAlign: 'center', marginTop: 16 }}>
+                    <button type="button" onClick={() => { setStepForgot(true); setForgotSent(false); setForgotUsername(''); setForgotError(''); }}
+                      style={{ background: 'none', border: 'none', color: P.goldDim, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', textDecoration: 'underline', opacity: 0.8 }}>
+                      Forgot password?
+                    </button>
+                  </div>
+                )}
               </form>
+            </>
+          )}
+
+          {/* ── Step 3: Forgot Password ── */}
+          {stepForgot && (
+            <>
+              <div style={{ marginBottom: 24 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
+                  <div style={{ width: 40, height: 40, borderRadius: 10, background: 'rgba(201,169,110,.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>🔑</div>
+                  <div>
+                    <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: P.text }}>Reset Password</h2>
+                    <p style={{ margin: '4px 0 0', fontSize: 13, color: P.muted }}>Enter your username to receive a reset link</p>
+                  </div>
+                </div>
+              </div>
+              {forgotError && (
+                <div style={{ padding: '10px 14px', borderRadius: 12, marginBottom: 16, background: 'rgba(239,68,68,.1)', border: '1px solid rgba(239,68,68,.2)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: 13, fontWeight: 500, color: '#fca5a5' }}>{forgotError}</span>
+                </div>
+              )}
+              {forgotSent ? (
+                <div style={{ padding: '16px', borderRadius: 14, background: 'rgba(5,150,105,.1)', border: '1px solid rgba(5,150,105,.25)', textAlign: 'center' }}>
+                  <div style={{ fontSize: 28, marginBottom: 8 }}>📧</div>
+                  <p style={{ margin: 0, color: '#6ee7b7', fontSize: 14, fontWeight: 600 }}>Check your email</p>
+                  <p style={{ margin: '6px 0 0', color: P.muted, fontSize: 13 }}>If an account was found with an email on file, a reset link has been sent.</p>
+                </div>
+              ) : (
+                <form onSubmit={handleForgot}>
+                  <div style={{ marginBottom: 22 }}>
+                    <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: P.muted, marginBottom: 8, textTransform: 'uppercase', letterSpacing: 1 }}>Username</label>
+                    <div style={{ position: 'relative' }}>
+                      <span style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', fontSize: 16, color: P.muted, pointerEvents: 'none' }}>👤</span>
+                      <input value={forgotUsername} onChange={e => { setForgotUsername(e.target.value); setForgotError(''); }}
+                        placeholder="Enter your username" autoFocus autoComplete="username"
+                        style={{ ...inputBase, paddingLeft: 42 }}
+                        onFocus={e => { e.target.style.borderColor = P.gold; e.target.style.boxShadow = `0 0 0 3px rgba(201,169,110,.15)`; }}
+                        onBlur={e => { e.target.style.borderColor = P.border; e.target.style.boxShadow = 'none'; }}
+                        required />
+                    </div>
+                  </div>
+                  <button type="submit" disabled={forgotLoading}
+                    style={{ width: '100%', padding: '14px', borderRadius: 14, border: 'none', background: forgotLoading ? P.surface : `linear-gradient(135deg, ${P.gold}, ${P.goldDim})`, color: forgotLoading ? P.muted : '#0b0e13', fontSize: 15, fontWeight: 700, letterSpacing: .5, cursor: forgotLoading ? 'not-allowed' : 'pointer', transition: 'all .25s', fontFamily: 'inherit' }}>
+                    {forgotLoading ? 'Sending…' : 'Send Reset Link'}
+                  </button>
+                </form>
+              )}
+              <button type="button" onClick={() => setStepForgot(false)}
+                style={{ width: '100%', marginTop: 14, padding: '10px', borderRadius: 12, border: 'none', background: 'none', color: P.muted, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>
+                ← Back to login
+              </button>
             </>
           )}
 

@@ -76,6 +76,7 @@ import PaymentSettingsPage   from './pages/PaymentSettingsPage';
 import DomainSettingsPage  from './pages/DomainSettingsPage';
 import ThemeOptionsPage from './pages/ThemeOptionsPage';
 import TwoFactorPage from './pages/TwoFactorPage';
+import ResetPasswordPage from './pages/ResetPasswordPage';
 
 // ── Branding seeder: apply tenant theme to ThemeContext on login ───────────
 const VALID_SIDEBAR_LAYOUTS = new Set([
@@ -213,6 +214,77 @@ function PlatformShell() {
   );
 }
 
+// ── Force Password Change Modal ────────────────────────────────────────
+
+function ForcePasswordChangeModal() {
+  const { user, refreshUser } = useAuth();
+  const [newPwd,     setNewPwd]     = useState('');
+  const [confirmPwd, setConfirmPwd] = useState('');
+  const [showPwd,    setShowPwd]    = useState(false);
+  const [loading,    setLoading]    = useState(false);
+  const [error,      setError]      = useState('');
+
+  if (!user?.must_change_password) return null;
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+    if (newPwd.length < 8)     { setError('Password must be at least 8 characters.'); return; }
+    if (newPwd !== confirmPwd) { setError('Passwords do not match.'); return; }
+    setLoading(true);
+    try {
+      await api.post('/auth/first-login-password', { newPassword: newPwd });
+      await refreshUser();
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to update password.');
+    }
+    setLoading(false);
+  };
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.75)', backdropFilter: 'blur(6px)', zIndex: 99999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+      <div style={{ background: '#fff', borderRadius: 20, padding: '32px 28px', width: '100%', maxWidth: 420, boxShadow: '0 24px 80px rgba(0,0,0,.3)' }}>
+        <div style={{ textAlign: 'center', marginBottom: 24 }}>
+          <div style={{ width: 60, height: 60, borderRadius: 16, background: '#FEF3C7', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 30, margin: '0 auto 14px' }}>🔑</div>
+          <h2 style={{ margin: 0, fontSize: 21, fontWeight: 700, color: '#111827', fontFamily: "'Inter', sans-serif" }}>Set Your Password</h2>
+          <p style={{ margin: '8px 0 0', fontSize: 13, color: '#6B7280', fontFamily: "'Inter', sans-serif" }}>
+            Your account was set up with a temporary password.<br />Please choose a new password to continue.
+          </p>
+        </div>
+        {error && <div style={{ background: '#FEF2F2', color: '#DC2626', padding: '9px 13px', borderRadius: 9, marginBottom: 16, fontSize: 13, border: '1px solid #FEE2E2', fontFamily: "'Inter', sans-serif" }}>{error}</div>}
+        <form onSubmit={handleSubmit}>
+          <div style={{ marginBottom: 14 }}>
+            <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#6B7280', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 1, fontFamily: "'Inter', sans-serif" }}>New Password</label>
+            <div style={{ position: 'relative' }}>
+              <input type={showPwd ? 'text' : 'password'} value={newPwd} onChange={e => setNewPwd(e.target.value)} required
+                placeholder="At least 8 characters" autoFocus autoComplete="new-password"
+                style={{ width: '100%', padding: '11px 42px 11px 14px', borderRadius: 10, border: '1.5px solid #E5E7EB', fontSize: 14, fontFamily: showPwd ? 'monospace' : "'Inter', sans-serif", outline: 'none', boxSizing: 'border-box' }}
+                onFocus={e => e.target.style.borderColor = '#2563EB'}
+                onBlur={e => e.target.style.borderColor = '#E5E7EB'} />
+              <button type="button" onClick={() => setShowPwd(v => !v)}
+                style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#9CA3AF', fontSize: 16, lineHeight: 1 }}>
+                {showPwd ? '🙈' : '👁'}
+              </button>
+            </div>
+          </div>
+          <div style={{ marginBottom: 22 }}>
+            <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#6B7280', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 1, fontFamily: "'Inter', sans-serif" }}>Confirm Password</label>
+            <input type="password" value={confirmPwd} onChange={e => setConfirmPwd(e.target.value)} required
+              placeholder="Re-enter new password" autoComplete="new-password"
+              style={{ width: '100%', padding: '11px 14px', borderRadius: 10, border: '1.5px solid #E5E7EB', fontSize: 14, fontFamily: "'Inter', sans-serif", outline: 'none', boxSizing: 'border-box' }}
+              onFocus={e => e.target.style.borderColor = '#2563EB'}
+              onBlur={e => e.target.style.borderColor = '#E5E7EB'} />
+          </div>
+          <button type="submit" disabled={loading}
+            style={{ width: '100%', padding: '13px', borderRadius: 12, border: 'none', background: loading ? '#E5E7EB' : 'linear-gradient(135deg,#2563EB,#1d4ed8)', color: loading ? '#9CA3AF' : '#fff', fontSize: 15, fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer', fontFamily: "'Inter', sans-serif", transition: 'all .2s' }}>
+            {loading ? 'Saving…' : 'Set Password & Continue →'}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 // ── App shell (authenticated layout) ──────────────────────────────────
 
 function AppShell() {
@@ -256,6 +328,7 @@ function AppShell() {
         <SubscriptionBanner />
         <UpgradePlanModal />
 
+        <ForcePasswordChangeModal />
         <div className="app-surface shell-scroll" style={{ flex: 1, overflowY: 'auto', background: isDark ? '#0F172A' : '#F7F8FA' }}>
           <Routes>
             {/* ── MAIN ────────────────────────────────────── */}
@@ -462,8 +535,9 @@ export default function App() {
       <Route path="/customer-portal/register"  element={<CustomerRegisterPage />} />
       <Route path="/customer-portal" element={<CustomerPortalPage />} />
       <Route path="/token-display"  element={<TokenDisplayScreen />} />
-      <Route path="/review/:token"  element={<ReviewFormPage />} />
-      <Route path="/maintenance"    element={<MaintenancePage />} />
+      <Route path="/review/:token"        element={<ReviewFormPage />} />
+      <Route path="/reset-password/:token" element={<ResetPasswordPage />} />
+      <Route path="/maintenance"          element={<MaintenancePage />} />
 
       {/* ── Protected shell ── */}
       <Route

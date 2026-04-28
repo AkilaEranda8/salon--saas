@@ -393,28 +393,6 @@ export default function Sidebar({ collapsed, onToggle, currentUser, mobileOpen, 
           )}
         </div>
 
-        {/* Collapse/close button */}
-        {!ec ? (
-          <button onClick={isMobile ? onMobileClose : onToggle} style={{
-            background: 'none', border: `1.5px solid ${C.border}`, cursor: 'pointer',
-            padding: '5px', borderRadius: 8, color: C.textMuted, display: 'flex',
-            alignItems: 'center', flexShrink: 0, transition: 'all 0.18s',
-          }}
-          onMouseEnter={e => { e.currentTarget.style.borderColor = themedC.navActive; e.currentTarget.style.color = themedC.navActive; e.currentTarget.style.background = C.activeGlow; }}
-          onMouseLeave={e => { e.currentTarget.style.borderColor = C.border; e.currentTarget.style.color = C.textMuted; e.currentTarget.style.background = 'none'; }}>
-            <Ico d={isMobile ? 'M6 18L18 6M6 6l12 12' : 'M11 19l-7-7 7-7m8 14l-7-7 7-7'} size={14} />
-          </button>
-        ) : (
-          <button onClick={onToggle} style={{
-            background: 'none', border: 'none', cursor: 'pointer',
-            color: C.textMuted, display: 'flex', alignItems: 'center',
-            padding: 0, transition: 'color 0.18s',
-          }}
-          onMouseEnter={e => { e.currentTarget.style.color = themedC.navActive; }}
-          onMouseLeave={e => { e.currentTarget.style.color = C.textMuted; }}>
-            <Ico d="M13 5l7 7-7 7M5 5l7 7-7 7" size={14} />
-          </button>
-        )}
       </div>
 
       {/*  Nav  */}

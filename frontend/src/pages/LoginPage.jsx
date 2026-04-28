@@ -268,7 +268,7 @@ export default function LoginPage({ platformMode = false }) {
             transition: 'box-shadow .35s',
           }}>
             <img
-              src="/kogo.png"
+              src="/kogo.png?v=2"
               alt="Hexa Salon"
               style={{ width: 190, height: 190, objectFit: 'cover', display: 'block' }}
             />

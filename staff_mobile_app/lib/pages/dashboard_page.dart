@@ -18,7 +18,6 @@ import 'permissions_page.dart';
 import 'reminders_page.dart';
 import 'services_page.dart';
 import 'staff_page.dart';
-import 'advances_page.dart';
 import 'expenses_page.dart';
 import 'walkin_page.dart';
 
@@ -252,9 +251,6 @@ class _DashboardPageState extends State<DashboardPage>
       _NavData('Expenses', Icons.receipt_long_rounded,
           [const Color(0xFFB91C1C), const Color(0xFFEF4444)],
           const ExpensesPage()),
-      _NavData('Advances', Icons.account_balance_wallet_rounded,
-          [const Color(0xFF92400E), const Color(0xFFC9956C)],
-          const AdvancesPage()),
       _NavData('Permissions', Icons.admin_panel_settings_rounded,
           [const Color(0xFF374151), const Color(0xFF9CA3AF)],
           const PermissionsPage(),

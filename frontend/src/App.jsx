@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
 import api from './api/axios';
@@ -303,7 +303,7 @@ function AppShell() {
   }, [sbCollapsed]);
 
   /* Auto-collapse only when resizing to mobile/tablet — not on initial mount */
-  const prevNarrow = React.useRef(null);
+  const prevNarrow = useRef(null);
   useEffect(() => {
     if (prevNarrow.current === null) { prevNarrow.current = isNarrow; return; }
     if (prevNarrow.current !== isNarrow) {

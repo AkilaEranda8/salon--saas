@@ -408,7 +408,7 @@ class _AdvanceCard extends StatelessWidget {
             Text('Reason: $reason',
               style: const TextStyle(fontSize: 12, color: _muted)),
           ],
-          if ((canManage && pending) || canDelete || (canManage && !pending)) ..[
+          if ((canManage && pending) || canDelete || (canManage && !pending)) ...[
             const SizedBox(height: 10),
             const Divider(height: 1, color: _border),
             const SizedBox(height: 8),
@@ -434,7 +434,7 @@ class _AdvanceCard extends StatelessWidget {
                     ),
                   ),
                 ),
-              if (!pending && canManage) ..[
+              if (!pending && canManage) ...[
                 Expanded(
                   child: GestureDetector(
                     onTap: onSettle,
@@ -516,10 +516,12 @@ class _CommissionSettleSheetState extends State<_CommissionSettleSheet> {
           .loadStaffCommissionReport(staffId: widget.staffId, month: widget.month);
       if (mounted) setState(() { _data = result; _loading = false; });
     } catch (e) {
-      if (mounted) setState(() {
-        _error = e.toString().replaceFirst('Exception: ', '');
-        _loading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _error = e.toString().replaceFirst('Exception: ', '');
+          _loading = false;
+        });
+      }
     }
   }
 

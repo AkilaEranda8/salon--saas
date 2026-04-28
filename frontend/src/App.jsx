@@ -92,11 +92,13 @@ function BrandingSeeder() {
     const t = user.tenant;
     if (t.primary_color) setPrimaryColor(t.primary_color);
     if (t.font_family)   setFontFamily(t.font_family);
-    // Only apply valid layout values; treat null/light/dark as 'default'
-    const layout = t.sidebar_style && VALID_SIDEBAR_LAYOUTS.has(t.sidebar_style)
-      ? t.sidebar_style
-      : 'hexa';
-    setSidebarStyle(layout);
+    // Only apply tenant layout if the user hasn't explicitly chosen their own
+    if (!window.localStorage.getItem('salon-sidebar-user-set')) {
+      const layout = t.sidebar_style && VALID_SIDEBAR_LAYOUTS.has(t.sidebar_style)
+        ? t.sidebar_style
+        : 'hexa';
+      setSidebarStyle(layout);
+    }
   }, [user?.tenant]);
 
   return null;

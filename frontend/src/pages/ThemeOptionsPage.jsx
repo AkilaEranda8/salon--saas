@@ -414,6 +414,7 @@ export default function ThemeOptionsPage() {
   };
   const handleLayoutChange = (layout) => {
     setSidebarStyle(layout);
+    window.localStorage.setItem('salon-sidebar-user-set', '1');
     if (!isAdmin) return;
     setLayoutSaving(true);
     api.put('/branding', {

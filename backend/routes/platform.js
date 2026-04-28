@@ -29,6 +29,7 @@ router.patch('/invoices/:id',       ctrl.updateInvoice);
 router.delete('/invoices/:id',      ctrl.deleteInvoice);
 router.get('/admins',           ctrl.listAdmins);
 router.post('/admins',          ctrl.createAdmin);
+router.patch('/admins/:id',     ctrl.updateAdmin);
 router.delete('/admins/:id',    ctrl.deleteAdmin);
 router.get('/system/maintenance', ctrl.getMaintenance);
 router.get('/system/maintenance/logs', ctrl.getMaintenanceLogs);

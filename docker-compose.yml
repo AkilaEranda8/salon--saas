@@ -57,6 +57,7 @@ services:
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
       PORT: 5000
       FIREBASE_SERVICE_ACCOUNT_JSON: ${FIREBASE_SERVICE_ACCOUNT_JSON:-}
+      SUPERADMIN_EMAIL: ${SUPERADMIN_EMAIL:-}
       # Stripe billing (optional — billing features disabled if not set)
       STRIPE_SECRET_KEY:          ${STRIPE_SECRET_KEY:-}
       STRIPE_WEBHOOK_SECRET:      ${STRIPE_WEBHOOK_SECRET:-}

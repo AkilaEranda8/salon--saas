@@ -663,7 +663,7 @@ const listAdmins = async (req, res) => {
   try {
     const admins = await User.findAll({
       where: { role: 'platform_admin' },
-      attributes: ['id', 'name', 'username', 'createdAt', 'is_active'],
+      attributes: ['id', 'name', 'username', 'email', 'createdAt', 'is_active'],
       order: [['createdAt', 'DESC']],
     });
     return res.json(admins);
@@ -675,7 +675,7 @@ const listAdmins = async (req, res) => {
 // ── POST /api/platform/admins ─────────────────────────────────────────────────
 const createAdmin = async (req, res) => {
   try {
-    const { name, username, password } = req.body;
+    const { name, username, password, email } = req.body;
     if (!username || !password) return res.status(400).json({ message: 'Username and password required.' });
     const exists = await User.findOne({ where: { username } });
     if (exists) return res.status(409).json({ message: 'Username already taken.' });
@@ -684,11 +684,27 @@ const createAdmin = async (req, res) => {
       name: name || 'Platform Admin',
       username,
       password: hash,
+      email:    email?.trim() || null,
       role: 'platform_admin',
       tenant_id: null,
       is_active: true,
     });
     return res.status(201).json({ id: user.id, name: user.name, username: user.username, is_active: user.is_active });
+  } catch (err) {
+    return res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+// ── PATCH /api/platform/admins/:id ───────────────────────────────────────────
+const updateAdmin = async (req, res) => {
+  try {
+    const user = await User.findOne({ where: { id: req.params.id, role: 'platform_admin' } });
+    if (!user) return res.status(404).json({ message: 'Admin not found.' });
+    const update = {};
+    if (typeof req.body.email === 'string') update.email = req.body.email.trim() || null;
+    if (typeof req.body.name  === 'string') update.name  = req.body.name.trim()  || user.name;
+    if (Object.keys(update).length) await user.update(update);
+    return res.json({ id: user.id, name: user.name, username: user.username, email: user.email, is_active: user.is_active });
   } catch (err) {
     return res.status(500).json({ message: 'Server error.' });
   }
@@ -1746,6 +1762,7 @@ module.exports = {
   deleteSubscription,
   listAdmins,
   createAdmin,
+  updateAdmin,
   deleteAdmin,
   getMaintenance,
   getMaintenanceLogs,

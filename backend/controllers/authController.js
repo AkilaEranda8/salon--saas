@@ -466,7 +466,17 @@ const forgotPassword = async (req, res) => {
       const token   = crypto.randomBytes(32).toString('hex');
       const expires = new Date(Date.now() + 60 * 60 * 1000);
       await user.update({ password_reset_token: token, password_reset_expires: expires });
-      const origin   = req.headers.origin || process.env.FRONTEND_URL || 'http://localhost';
+      // Resolve origin: Origin header → Referer header → env → localhost
+      let origin = req.headers.origin;
+      if (!origin && req.headers.referer) {
+        try { origin = new URL(req.headers.referer).origin; } catch {}
+      }
+      if (!origin) {
+        origin = tenantId
+          ? (process.env.FRONTEND_URL || process.env.FRONTEND_BASE_URL || '')
+          : (process.env.PLATFORM_URL || process.env.FRONTEND_URL || '');
+      }
+      if (!origin) origin = 'http://localhost';
       const resetUrl = `${origin}/reset-password/${token}`;
       const { sendEmail } = require('../services/notificationService');
       await sendEmail({

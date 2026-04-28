@@ -463,10 +463,20 @@ export default function ThemeOptionsPage() {
             label="Light"
             description="Clean white interface, best for bright environments."
             icon={<IconSun />}
-            active={true}
+            active={mode === 'light'}
             onClick={() => setMode('light')}
             previewBg="linear-gradient(180deg, #F8F9FC 0%, #EFF1F7 100%)"
             previewContent={<LightPreview />}
+          />
+          <AppearanceCard
+            value="dark"
+            label="Dark"
+            description="Dark interface, easy on the eyes in low-light environments."
+            icon={<IconMoon />}
+            active={mode === 'dark'}
+            onClick={() => setMode('dark')}
+            previewBg="linear-gradient(180deg, #13111F 0%, #0F0D1A 100%)"
+            previewContent={<DarkPreview />}
           />
         </div>
       </SectionCard>

@@ -85,16 +85,14 @@ const VALID_SIDEBAR_LAYOUTS = new Set([
 
 function BrandingSeeder() {
   const { user } = useAuth();
-  const { setPrimaryColor, setFontFamily, setSidebarStyle, setMode } = useTheme();
+  const { setPrimaryColor, setFontFamily, setSidebarStyle } = useTheme();
 
   useEffect(() => {
     if (!user?.tenant) return;
     const t = user.tenant;
     if (t.primary_color) setPrimaryColor(t.primary_color);
     if (t.font_family)   setFontFamily(t.font_family);
-    // Always enforce light mode + default sidebar
-    setMode('light');
-    window.localStorage.setItem('salon-theme-mode', 'light');
+    // Enforce default sidebar; leave mode (light/dark) to user preference
     setSidebarStyle('default');
     window.localStorage.setItem('salon-sidebar-style', 'default');
     window.localStorage.setItem('salon-sidebar-user-set', 'seeded');

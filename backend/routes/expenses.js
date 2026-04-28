@@ -12,7 +12,7 @@ router.get('/profit-loss', ctrl.profitLoss);
 router.get('/',            ctrl.list);
 router.get('/:id',         ctrl.getOne);
 
-router.post('/',    requireRole('superadmin', 'admin', 'manager'), ctrl.create);
+router.post('/',    requireRole('superadmin'), ctrl.create);
 router.put('/:id',  requireRole('superadmin', 'admin', 'manager'), ctrl.update);
 router.delete('/:id', requireRole('superadmin', 'admin'),          ctrl.remove);
 

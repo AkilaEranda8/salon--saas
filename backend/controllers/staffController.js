@@ -1,5 +1,5 @@
 const { Op, fn, col, literal } = require('sequelize');
-const { Staff, Branch, StaffBranch, StaffSpecialization, Service, Appointment, Payment, User } = require('../models');
+const { Staff, Branch, StaffBranch, StaffSpecialization, Service, Appointment, Payment, User, StaffAdvance, CommissionPayout } = require('../models');
 const { tenantWhere, byIdWhere, resolveTenantId } = require('../utils/tenantScope');
 
 // Helper: resolve branch filter from role
@@ -206,18 +206,49 @@ const commissionSummary = async (req, res) => {
       aggMap[row.staff_id] = row;
     }
 
+    // Fetch pending advance totals + paid payout totals for the same month
+    const advMap  = {};
+    const paidMap = {};
+    if (month && year) {
+      const ym = `${year}-${String(month).padStart(2, '0')}`;
+
+      const advancesAgg = await StaffAdvance.findAll({
+        where: { staff_id: { [Op.in]: staffIds }, month: ym, status: 'pending', ...tenantWhere(req) },
+        attributes: ['staff_id', [fn('SUM', col('amount')), 'totalAdvances']],
+        group: ['staff_id'],
+        raw: true,
+      });
+      for (const row of advancesAgg) advMap[row.staff_id] = parseFloat(row.totalAdvances) || 0;
+
+      const payoutsAgg = await CommissionPayout.findAll({
+        where: { staff_id: { [Op.in]: staffIds }, month: ym, ...tenantWhere(req) },
+        attributes: ['staff_id', [fn('SUM', col('amount')), 'totalPaid']],
+        group: ['staff_id'],
+        raw: true,
+      });
+      for (const row of payoutsAgg) paidMap[row.staff_id] = parseFloat(row.totalPaid) || 0;
+    }
+
     const results = staffRows.map((staff) => {
-      const agg = aggMap[staff.id] || { totalRevenue: 0, totalCommission: 0, appointmentCount: 0 };
+      const agg             = aggMap[staff.id] || { totalRevenue: 0, totalCommission: 0, appointmentCount: 0 };
+      const totalCommission = parseFloat(agg.totalCommission) || 0;
+      const totalAdvances   = advMap[staff.id]  || 0;
+      const totalPaid       = paidMap[staff.id] || 0;
+      const netCommission   = Math.max(0, totalCommission - totalAdvances);
       return {
-        staffId:         staff.id,
-        staffName:       staff.name,
-        role:            staff.role_title,
-        branchName:      staff.branch?.name || '',
-        commissionType:  staff.commission_type,
-        commissionValue: staff.commission_value,
+        staffId:          staff.id,
+        staffName:        staff.name,
+        role:             staff.role_title,
+        branchName:       staff.branch?.name || '',
+        commissionType:   staff.commission_type,
+        commissionValue:  staff.commission_value,
         appointmentCount: parseInt(agg.appointmentCount) || 0,
-        totalRevenue:    parseFloat(agg.totalRevenue)    || 0,
-        totalCommission: parseFloat(agg.totalCommission) || 0,
+        totalRevenue:     parseFloat(agg.totalRevenue) || 0,
+        totalCommission,
+        totalAdvances,
+        netCommission,
+        totalPaid,
+        balanceDue: Math.max(0, netCommission - totalPaid),
       };
     });
 
@@ -250,7 +281,33 @@ const commissionReport = async (req, res) => {
 
     const total = payments.reduce((acc, p) => acc + parseFloat(p.commission_amount || 0), 0);
 
-    return res.json({ total, data: payments });
+    // Pending advances + commission payouts for this staff for the same month
+    let totalAdvances = 0;
+    let totalPaid     = 0;
+    if (req.query.month) {
+      const [advRows, payoutRows] = await Promise.all([
+        StaffAdvance.findAll({
+          where: { staff_id: req.params.id, month: req.query.month, status: 'pending', ...tenantWhere(req) },
+          raw: true,
+        }),
+        CommissionPayout.findAll({
+          where: { staff_id: req.params.id, month: req.query.month, ...tenantWhere(req) },
+          raw: true,
+        }),
+      ]);
+      totalAdvances = advRows.reduce((s, a) => s + parseFloat(a.amount || 0), 0);
+      totalPaid     = payoutRows.reduce((s, p) => s + parseFloat(p.amount || 0), 0);
+    }
+
+    const netCommission = Math.max(0, total - totalAdvances);
+    return res.json({
+      total,
+      totalAdvances,
+      netCommission,
+      totalPaid,
+      balanceDue: Math.max(0, netCommission - totalPaid),
+      data: payments,
+    });
   } catch (err) {
     return res.status(500).json({ message: 'Server error.' });
   }

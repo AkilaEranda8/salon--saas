@@ -29,10 +29,18 @@ class MyCommissionResult {
   MyCommissionResult({
     required this.total,
     required this.records,
+    required this.totalAdvances,
+    required this.netCommission,
+    required this.totalPaid,
+    required this.balanceDue,
     this.staffName,
   });
 
   final double total;
+  final double totalAdvances;
+  final double netCommission;
+  final double totalPaid;
+  final double balanceDue;
   final List<CommissionRecord> records;
   final String? staffName;
 }
@@ -634,14 +642,22 @@ class MobileApi {
         // Skip malformed rows instead of failing the whole response.
       }
     }
+    final advRaw  = body['totalAdvances'];
+    final netRaw  = body['netCommission'];
+    final paidRaw = body['totalPaid'];
+    final balRaw  = body['balanceDue'];
+    final totalComm = totalRaw is num ? totalRaw.toDouble() : double.tryParse('$totalRaw') ?? 0;
+    final totalAdv  = advRaw  is num ? advRaw.toDouble()  : double.tryParse('$advRaw')  ?? 0;
+    final netComm   = netRaw  is num ? netRaw.toDouble()  : double.tryParse('$netRaw')  ?? (totalComm - totalAdv).clamp(0, double.infinity);
+    final tPaid     = paidRaw is num ? paidRaw.toDouble() : double.tryParse('$paidRaw') ?? 0;
     return MyCommissionResult(
-      total: totalRaw is num
-          ? totalRaw.toDouble()
-          : double.tryParse('$totalRaw') ?? 0,
-      records: records,
-      staffName: '${staffMap['name'] ?? ''}'.trim().isEmpty
-          ? null
-          : '${staffMap['name']}',
+      total:         totalComm,
+      totalAdvances: totalAdv,
+      netCommission: netComm,
+      totalPaid:     tPaid,
+      balanceDue:    balRaw is num ? balRaw.toDouble() : double.tryParse('$balRaw') ?? (netComm - tPaid).clamp(0, double.infinity),
+      records:       records,
+      staffName: '${staffMap['name'] ?? ''}'.trim().isEmpty ? null : '${staffMap['name']}',
     );
   }
 
@@ -715,14 +731,22 @@ class MobileApi {
             Map<String, dynamic>.from(item)));
       } catch (_) {}
     }
+    final advRaw2  = body['totalAdvances'];
+    final netRaw2  = body['netCommission'];
+    final paidRaw2 = body['totalPaid'];
+    final balRaw2  = body['balanceDue'];
+    final totalComm2 = totalRaw is num ? totalRaw.toDouble() : double.tryParse('$totalRaw') ?? 0;
+    final totalAdv2  = advRaw2  is num ? advRaw2.toDouble()  : double.tryParse('$advRaw2')  ?? 0;
+    final netComm2   = netRaw2  is num ? netRaw2.toDouble()  : double.tryParse('$netRaw2')  ?? (totalComm2 - totalAdv2).clamp(0, double.infinity);
+    final tPaid2     = paidRaw2 is num ? paidRaw2.toDouble() : double.tryParse('$paidRaw2') ?? 0;
     return MyCommissionResult(
-      total: totalRaw is num
-          ? totalRaw.toDouble()
-          : double.tryParse('$totalRaw') ?? 0,
-      records: records,
-      staffName: '${staffMap['name'] ?? ''}'.trim().isEmpty
-          ? null
-          : '${staffMap['name']}',
+      total:         totalComm2,
+      totalAdvances: totalAdv2,
+      netCommission: netComm2,
+      totalPaid:     tPaid2,
+      balanceDue:    balRaw2 is num ? balRaw2.toDouble() : double.tryParse('$balRaw2') ?? (netComm2 - tPaid2).clamp(0, double.infinity),
+      records:       records,
+      staffName: '${staffMap['name'] ?? ''}'.trim().isEmpty ? null : '${staffMap['name']}',
     );
   }
 
@@ -889,6 +913,237 @@ class MobileApi {
     final body = _decode(response.body);
     if (response.statusCode >= 400) {
       throw Exception(body['message'] ?? 'Status check failed');
+    }
+    return body;
+  }
+
+  /// GET /api/commission-payouts
+  Future<Map<String, dynamic>> fetchCommissionPayouts({
+    required String token,
+    String? staffId,
+    String? month,
+    String? branchId,
+  }) async {
+    final qp = <String, String>{};
+    if (staffId  != null && staffId.isNotEmpty)  qp['staffId']  = staffId;
+    if (month    != null && month.isNotEmpty)    qp['month']    = month;
+    if (branchId != null && branchId.isNotEmpty) qp['branchId'] = branchId;
+    final uri = Uri.parse('$baseUrl/api/commission-payouts').replace(queryParameters: qp);
+    final response = await http.get(uri, headers: _authHeaders(token));
+    final body = _decode(response.body);
+    if (response.statusCode >= 400) throw Exception(body['message'] ?? 'Payouts load failed');
+    return body;
+  }
+
+  /// POST /api/commission-payouts
+  Future<Map<String, dynamic>> createCommissionPayout({
+    required String token,
+    required String staffId,
+    required String branchId,
+    required double amount,
+    required String date,
+    required String month,
+    String? notes,
+  }) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/api/commission-payouts'),
+      headers: _authHeaders(token),
+      body: jsonEncode({
+        'staff_id':  staffId,
+        'branch_id': branchId,
+        'amount':    amount,
+        'date':      date,
+        'month':     month,
+        if (notes != null && notes.isNotEmpty) 'notes': notes,
+      }),
+    );
+    final body = _decode(response.body);
+    if (response.statusCode >= 400) throw Exception(body['message'] ?? 'Create payout failed');
+    return body;
+  }
+
+  /// DELETE /api/commission-payouts/:id
+  Future<void> deleteCommissionPayout({required String token, required String payoutId}) async {
+    final response = await http.delete(
+      Uri.parse('$baseUrl/api/commission-payouts/$payoutId'),
+      headers: _authHeaders(token),
+    );
+    if (response.statusCode >= 400) {
+      final body = _decode(response.body);
+      throw Exception(body['message'] ?? 'Delete payout failed');
+    }
+  }
+
+  /// GET /api/advances — list staff advances, filter by staffId / month / branchId.
+  Future<Map<String, dynamic>> fetchAdvances({
+    required String token,
+    String? staffId,
+    String? month,
+    String? branchId,
+    String? status,
+  }) async {
+    final qp = <String, String>{};
+    if (staffId  != null && staffId.isNotEmpty)  qp['staffId']  = staffId;
+    if (month    != null && month.isNotEmpty)    qp['month']    = month;
+    if (branchId != null && branchId.isNotEmpty) qp['branchId'] = branchId;
+    if (status   != null && status.isNotEmpty)   qp['status']   = status;
+    final uri = Uri.parse('$baseUrl/api/advances').replace(queryParameters: qp);
+    final response = await http.get(uri, headers: _authHeaders(token));
+    final body = _decode(response.body);
+    if (response.statusCode >= 400) throw Exception(body['message'] ?? 'Advances load failed');
+    return body;
+  }
+
+  /// POST /api/advances — record a new advance (admin/manager/superadmin).
+  Future<Map<String, dynamic>> createAdvance({
+    required String token,
+    required String staffId,
+    required String branchId,
+    required double amount,
+    required String date,
+    required String month,
+    String? reason,
+  }) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/api/advances'),
+      headers: _authHeaders(token),
+      body: jsonEncode({
+        'staff_id':  staffId,
+        'branch_id': branchId,
+        'amount':    amount,
+        'date':      date,
+        'month':     month,
+        if (reason != null && reason.isNotEmpty) 'reason': reason,
+      }),
+    );
+    final body = _decode(response.body);
+    if (response.statusCode >= 400) throw Exception(body['message'] ?? 'Create advance failed');
+    return body;
+  }
+
+  /// PATCH /api/advances/:id/deduct — mark advance as deducted.
+  Future<void> markAdvanceDeducted({required String token, required String advanceId}) async {
+    final response = await http.patch(
+      Uri.parse('$baseUrl/api/advances/$advanceId/deduct'),
+      headers: _authHeaders(token),
+    );
+    if (response.statusCode >= 400) {
+      final body = _decode(response.body);
+      throw Exception(body['message'] ?? 'Mark deducted failed');
+    }
+  }
+
+  /// DELETE /api/advances/:id
+  Future<void> deleteAdvance({required String token, required String advanceId}) async {
+    final response = await http.delete(
+      Uri.parse('$baseUrl/api/advances/$advanceId'),
+      headers: _authHeaders(token),
+    );
+    if (response.statusCode >= 400) {
+      final body = _decode(response.body);
+      throw Exception(body['message'] ?? 'Delete advance failed');
+    }
+  }
+
+  /// GET /api/customers/:id — full customer profile with loyalty_points + last 10 appointments.
+  Future<Map<String, dynamic>> fetchCustomerDetail({
+    required String token,
+    required String customerId,
+  }) async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/api/customers/$customerId'),
+      headers: _authHeaders(token),
+    );
+    final body = _decode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['message'] ?? 'Customer load failed');
+    }
+    return body;
+  }
+
+  /// GET /api/users — list all users (superadmin/admin only).
+  Future<List<Map<String, dynamic>>> fetchUsers({required String token}) async {
+    final uri = Uri.parse('$baseUrl/api/users').replace(queryParameters: {'limit': '100'});
+    final response = await http.get(uri, headers: _authHeaders(token));
+    final body = _decode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['message'] ?? 'Users load failed');
+    }
+    final list = body['data'] as List? ?? (body is List ? body as List : const []);
+    return list.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+  }
+
+  /// PUT /api/users/:id — update role or is_active (superadmin only for role changes).
+  Future<Map<String, dynamic>> updateUser({
+    required String token,
+    required String userId,
+    String? role,
+    bool? isActive,
+  }) async {
+    final payload = <String, dynamic>{};
+    if (role != null) payload['role'] = role;
+    if (isActive != null) payload['is_active'] = isActive;
+    final response = await http.put(
+      Uri.parse('$baseUrl/api/users/$userId'),
+      headers: _authHeaders(token),
+      body: jsonEncode(payload),
+    );
+    final body = _decode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['message'] ?? 'User update failed');
+    }
+    return body;
+  }
+
+  /// GET /api/expenses — list expenses, optionally filtered by branchId and month (YYYY-MM).
+  Future<Map<String, dynamic>> fetchExpenses({
+    required String token,
+    String? branchId,
+    String? month,
+  }) async {
+    final qp = <String, String>{'limit': '200'};
+    if (branchId != null && branchId.isNotEmpty) qp['branchId'] = branchId;
+    if (month != null && month.isNotEmpty) qp['month'] = month;
+    final uri = Uri.parse('$baseUrl/api/expenses').replace(queryParameters: qp);
+    final response = await http.get(uri, headers: _authHeaders(token));
+    final body = _decode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['message'] ?? 'Expenses load failed');
+    }
+    return body;
+  }
+
+  /// POST /api/expenses — create a new expense (superadmin only).
+  Future<Map<String, dynamic>> createExpense({
+    required String token,
+    required String branchId,
+    required String category,
+    required String title,
+    required double amount,
+    required String date,
+    String? paidTo,
+    String? paymentMethod,
+    String? receiptNumber,
+    String? notes,
+  }) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/api/expenses'),
+      headers: _authHeaders(token),
+      body: jsonEncode({
+        'branch_id':      branchId,
+        'category':       category,
+        'title':          title,
+        'amount':         amount,
+        'date':           date,
+        if (paidTo != null && paidTo.isNotEmpty) 'paid_to': paidTo,
+        if (paymentMethod != null) 'payment_method': paymentMethod,
+        if (receiptNumber != null && receiptNumber.isNotEmpty) 'receipt_number': receiptNumber,
+        if (notes != null && notes.isNotEmpty) 'notes': notes,
+      }),
+    );
+    final body = _decode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['message'] ?? 'Expense create failed');
     }
     return body;
   }

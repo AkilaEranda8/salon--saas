@@ -43,6 +43,8 @@ const ConsentForm = require('./ConsentForm');
 const CustomerConsent = require('./CustomerConsent');
 const InventoryReorder = require('./InventoryReorder');
 const RevokedToken     = require('./RevokedToken');
+const StaffAdvance      = require('./StaffAdvance');
+const CommissionPayout  = require('./CommissionPayout');
 
 // Tenant
 Tenant.hasMany(Subscription, { foreignKey: 'tenant_id', as: 'subscriptions' });
@@ -230,6 +232,20 @@ InventoryReorder.belongsTo(Inventory, { foreignKey: 'inventory_id', as: 'item' }
 InventoryReorder.belongsTo(Branch,    { foreignKey: 'branch_id',    as: 'branch' });
 Inventory.hasMany(InventoryReorder, { foreignKey: 'inventory_id', as: 'reorders' });
 
+// StaffAdvance
+StaffAdvance.belongsTo(Staff,  { foreignKey: 'staff_id',   as: 'staff' });
+StaffAdvance.belongsTo(Branch, { foreignKey: 'branch_id',  as: 'branch' });
+StaffAdvance.belongsTo(User,   { foreignKey: 'created_by', as: 'creator', constraints: false });
+Staff.hasMany(StaffAdvance,    { foreignKey: 'staff_id',   as: 'advances' });
+Branch.hasMany(StaffAdvance,   { foreignKey: 'branch_id',  as: 'advances' });
+
+// CommissionPayout
+CommissionPayout.belongsTo(Staff,  { foreignKey: 'staff_id', as: 'staff' });
+CommissionPayout.belongsTo(Branch, { foreignKey: 'branch_id', as: 'branch' });
+CommissionPayout.belongsTo(User,   { foreignKey: 'paid_by',  as: 'paidBy', constraints: false });
+Staff.hasMany(CommissionPayout,    { foreignKey: 'staff_id', as: 'commissionPayouts' });
+Branch.hasMany(CommissionPayout,   { foreignKey: 'branch_id', as: 'commissionPayouts' });
+
 module.exports = {
   Tenant,
   Subscription,
@@ -276,4 +292,6 @@ module.exports = {
   CustomerConsent,
   InventoryReorder,
   RevokedToken,
+  StaffAdvance,
+  CommissionPayout,
 };

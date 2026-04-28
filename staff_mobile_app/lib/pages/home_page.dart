@@ -4,6 +4,8 @@ import '../models/staff_user.dart';
 import '../state/app_state.dart';
 import 'add_item_page.dart';
 import 'ai_chat_page.dart';
+import 'advances_page.dart';
+import 'expenses_page.dart';
 import 'appointments_page.dart';
 import 'calendar_page.dart';
 import 'commission_page.dart';
@@ -168,6 +170,31 @@ class HomePage extends StatelessWidget {
             onTap: () {
               Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const CommissionPage()),
+              );
+            },
+          ),
+          const SizedBox(height: 8),
+          _actionTile(
+            context: context,
+            title: 'Expenses',
+            subtitle: 'View and track business expenses',
+            icon: Icons.receipt_long_outlined,
+            enabled: true,
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const ExpensesPage()),
+              );
+            },
+          ),
+          _actionTile(
+            context: context,
+            title: 'Staff Advances',
+            subtitle: 'Record and track salary advances',
+            icon: Icons.account_balance_wallet_outlined,
+            enabled: true,
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const AdvancesPage()),
               );
             },
           ),

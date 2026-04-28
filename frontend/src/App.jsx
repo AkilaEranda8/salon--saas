@@ -56,6 +56,7 @@ import ConsentFormsPage from './pages/ConsentFormsPage';
 import KpiDashboardPage from './pages/KpiDashboardPage';
 import MarketingAutomationPage from './pages/MarketingAutomationPage';
 import InventoryReorderPage from './pages/InventoryReorderPage';
+import AdvancesPage     from './pages/AdvancesPage';
 import ExpensesPage     from './pages/ExpensesPage';
 import ReviewsPage      from './pages/ReviewsPage';
 import ReviewFormPage   from './pages/ReviewFormPage';
@@ -377,6 +378,11 @@ function AppShell() {
             <Route path="/commission"   element={
               <RoleRoute roles={['superadmin', 'admin', 'manager', 'staff']}>
                 <CommissionPage />
+              </RoleRoute>
+            } />
+            <Route path="/advances" element={
+              <RoleRoute roles={['superadmin', 'admin', 'manager']}>
+                <AdvancesPage />
               </RoleRoute>
             } />
             <Route path="/attendance"   element={

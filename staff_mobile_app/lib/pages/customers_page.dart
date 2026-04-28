@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'add_customer_modal.dart';
+import 'customer_history_page.dart';
 import '../models/customer.dart';
 import '../models/staff_user.dart';
 import '../state/app_state.dart';
@@ -275,8 +276,12 @@ class _CustomersPageState extends State<CustomersPage> {
                 child: ListView.builder(
                   padding: const EdgeInsets.fromLTRB(16, 8, 16, 88),
                   itemCount: list.length,
-                  itemBuilder: (ctx, i) => _CustomerCard(
-                    customer: list[i], index: i),
+                  itemBuilder: (ctx, i) => GestureDetector(
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => CustomerHistoryPage(customer: list[i]))),
+                    child: _CustomerCard(customer: list[i], index: i),
+                  ),
                 ),
               ),
       ),

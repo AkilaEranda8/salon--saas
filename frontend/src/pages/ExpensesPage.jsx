@@ -19,6 +19,7 @@ const EMPTY = { branch_id:'', category:'Supplies', title:'', amount:'', date: ne
 export default function ExpensesPage() {
   const { user }     = useAuth();
   const canEdit      = ['superadmin','admin','manager'].includes(user?.role);
+  const canAdd       = user?.role === 'superadmin';
   const isSuperAdmin = user?.role === 'superadmin';
   const today    = new Date().toISOString().slice(0,10);
   const curMonth = today.slice(0,7);
@@ -142,7 +143,7 @@ export default function ExpensesPage() {
 
   return (
     <PageWrapper title="Expenses" subtitle="Track and manage business expenses"
-      actions={canEdit && <Button variant="primary" onClick={openAdd} style={{ display:'flex', alignItems:'center', gap:6 }}><IconPlus /> Add Expense</Button>}>
+      actions={canAdd && <Button variant="primary" onClick={openAdd} style={{ display:'flex', alignItems:'center', gap:6 }}><IconPlus /> Add Expense</Button>}>
 
       {/* Stat Cards */}
       <div style={{ display:'flex', gap:12, flexWrap:'wrap' }}>

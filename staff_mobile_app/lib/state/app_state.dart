@@ -1007,6 +1007,227 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  /// GET /api/commission-payouts
+  Future<List<Map<String, dynamic>>> loadCommissionPayouts({
+    String? staffId,
+    String? month,
+  }) async {
+    final token = _currentUser?.authToken;
+    if (token == null || token.isEmpty) throw Exception('Missing auth token.');
+    final body = await _api.fetchCommissionPayouts(
+      token: token,
+      staffId:  staffId,
+      month:    month,
+      branchId: _currentUser?.branchId,
+    );
+    final list = body['data'] as List? ?? const [];
+    return list.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+  }
+
+  /// POST /api/commission-payouts
+  Future<bool> addCommissionPayout({
+    required String staffId,
+    required String branchId,
+    required double amount,
+    required String date,
+    required String month,
+    String? notes,
+  }) async {
+    final token = _currentUser?.authToken;
+    if (token == null || token.isEmpty) { _lastError = 'Missing auth token.'; return false; }
+    try {
+      await _api.createCommissionPayout(
+        token: token, staffId: staffId, branchId: branchId,
+        amount: amount, date: date, month: month, notes: notes);
+      return true;
+    } catch (e) {
+      _lastError = e.toString().replaceFirst('Exception: ', '');
+      return false;
+    }
+  }
+
+  /// DELETE /api/commission-payouts/:id
+  Future<bool> deleteCommissionPayout(String payoutId) async {
+    final token = _currentUser?.authToken;
+    if (token == null || token.isEmpty) { _lastError = 'Missing auth token.'; return false; }
+    try {
+      await _api.deleteCommissionPayout(token: token, payoutId: payoutId);
+      return true;
+    } catch (e) {
+      _lastError = e.toString().replaceFirst('Exception: ', '');
+      return false;
+    }
+  }
+
+  /// GET /api/advances
+  Future<List<Map<String, dynamic>>> loadAdvances({
+    String? staffId,
+    String? month,
+    String? status,
+  }) async {
+    final token = _currentUser?.authToken;
+    if (token == null || token.isEmpty) throw Exception('Missing auth token.');
+    final body = await _api.fetchAdvances(
+      token: token,
+      staffId:  staffId,
+      month:    month,
+      branchId: _currentUser?.branchId,
+      status:   status,
+    );
+    final list = body['data'] as List? ?? const [];
+    return list.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+  }
+
+  /// POST /api/advances
+  Future<bool> addAdvance({
+    required String staffId,
+    required String branchId,
+    required double amount,
+    required String date,
+    required String month,
+    String? reason,
+  }) async {
+    final token = _currentUser?.authToken;
+    if (token == null || token.isEmpty) { _lastError = 'Missing auth token.'; return false; }
+    try {
+      await _api.createAdvance(
+        token: token, staffId: staffId, branchId: branchId,
+        amount: amount, date: date, month: month, reason: reason);
+      return true;
+    } catch (e) {
+      _lastError = e.toString().replaceFirst('Exception: ', '');
+      return false;
+    }
+  }
+
+  /// PATCH /api/advances/:id/deduct
+  Future<bool> markAdvanceDeducted(String advanceId) async {
+    final token = _currentUser?.authToken;
+    if (token == null || token.isEmpty) { _lastError = 'Missing auth token.'; return false; }
+    try {
+      await _api.markAdvanceDeducted(token: token, advanceId: advanceId);
+      return true;
+    } catch (e) {
+      _lastError = e.toString().replaceFirst('Exception: ', '');
+      return false;
+    }
+  }
+
+  /// DELETE /api/advances/:id
+  Future<bool> deleteAdvance(String advanceId) async {
+    final token = _currentUser?.authToken;
+    if (token == null || token.isEmpty) { _lastError = 'Missing auth token.'; return false; }
+    try {
+      await _api.deleteAdvance(token: token, advanceId: advanceId);
+      return true;
+    } catch (e) {
+      _lastError = e.toString().replaceFirst('Exception: ', '');
+      return false;
+    }
+  }
+
+  /// GET /api/users — returns raw list of user maps (superadmin/admin only).
+  Future<List<Map<String, dynamic>>> loadUsers() async {
+    final token = _currentUser?.authToken;
+    if (token == null || token.isEmpty) {
+      throw Exception('Missing auth token (cannot load users).');
+    }
+    return _api.fetchUsers(token: token);
+  }
+
+  /// PUT /api/users/:id — change role (superadmin only).
+  Future<bool> updateUserRole({
+    required String userId,
+    required String role,
+  }) async {
+    final token = _currentUser?.authToken;
+    if (token == null || token.isEmpty) {
+      _lastError = 'Missing auth token.';
+      return false;
+    }
+    try {
+      await _api.updateUser(token: token, userId: userId, role: role);
+      return true;
+    } catch (e) {
+      _lastError = e.toString().replaceFirst('Exception: ', '');
+      return false;
+    }
+  }
+
+  /// PUT /api/users/:id — toggle active/inactive (superadmin/admin).
+  Future<bool> toggleUserActive({
+    required String userId,
+    required bool isActive,
+  }) async {
+    final token = _currentUser?.authToken;
+    if (token == null || token.isEmpty) {
+      _lastError = 'Missing auth token.';
+      return false;
+    }
+    try {
+      await _api.updateUser(token: token, userId: userId, isActive: isActive);
+      return true;
+    } catch (e) {
+      _lastError = e.toString().replaceFirst('Exception: ', '');
+      return false;
+    }
+  }
+
+  /// GET /api/expenses — returns raw list of expense maps.
+  Future<List<Map<String, dynamic>>> loadExpenses({
+    String? branchId,
+    String? month,
+  }) async {
+    final token = _currentUser?.authToken;
+    if (token == null || token.isEmpty) {
+      throw Exception('Missing auth token (cannot load expenses).');
+    }
+    final body = await _api.fetchExpenses(
+      token: token,
+      branchId: branchId ?? _currentUser?.branchId,
+      month: month,
+    );
+    final list = body['data'] as List? ?? (body is List ? body as List : const []);
+    return list.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+  }
+
+  /// POST /api/expenses — superadmin only.
+  Future<bool> addExpense({
+    required String branchId,
+    required String category,
+    required String title,
+    required double amount,
+    required String date,
+    String? paidTo,
+    String? paymentMethod,
+    String? receiptNumber,
+    String? notes,
+  }) async {
+    final token = _currentUser?.authToken;
+    if (token == null || token.isEmpty) {
+      _lastError = 'Missing auth token (cannot add expense).';
+      return false;
+    }
+    try {
+      await _api.createExpense(
+        token: token,
+        branchId: branchId,
+        category: category,
+        title: title,
+        amount: amount,
+        date: date,
+        paidTo: paidTo,
+        paymentMethod: paymentMethod,
+        receiptNumber: receiptNumber,
+        notes: notes,
+      );
+      return true;
+    } catch (e) {
+      _lastError = e.toString().replaceFirst('Exception: ', '');
+      return false;
+    }
+  }
+
   Set<StaffPermission> _permissionsFromRole(String role) {
     switch (role.trim().toLowerCase()) {
       case 'superadmin':

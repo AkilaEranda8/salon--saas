@@ -195,6 +195,8 @@ app.use('/api/consent',      require('./routes/consent'));
 app.use('/api/kpi',          require('./routes/kpi'));
 app.use('/api/marketing',    require('./routes/marketing'));
 app.use('/api/helapay',      require('./routes/helapay'));
+app.use('/api/advances',            require('./routes/advances'));
+app.use('/api/commission-payouts',  require('./routes/commissionPayouts'));
 
 // ── 404 handler ───────────────────────────────────────────────────────────────
 app.use((_req, res) => res.status(404).json({ message: 'Route not found.' }));

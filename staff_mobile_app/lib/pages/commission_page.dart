@@ -51,7 +51,13 @@ class _CommissionPageState extends State<CommissionPage> {
   bool _loading = true;
   String? _error;
   String _month = _currentMonth();
-  double _total = 0;
+  double _total          = 0;
+  double _totalAdvances  = 0;
+  double _netCommission  = 0;
+  double _totalPaid      = 0;
+  double _balanceDue     = 0;
+  List<Map<String, dynamic>> _payouts = const [];
+  bool _payoutsLoading   = false;
   String? _staffName;
   List<CommissionRecord> _rows = const [];
   List<StaffCommissionSummary> _summaries = const [];
@@ -108,33 +114,50 @@ class _CommissionPageState extends State<CommissionPage> {
           }
           final name = detail.staffName ?? match?.staffName;
           setState(() {
-            _summaries = summaries;
-            _rows = detail.records;
-            _total = detail.total;
-            _staffName = name;
-            _loading = false;
+            _summaries     = summaries;
+            _rows          = detail.records;
+            _total         = detail.total;
+            _totalAdvances = detail.totalAdvances;
+            _netCommission = detail.netCommission;
+            _totalPaid     = detail.totalPaid;
+            _balanceDue    = detail.balanceDue;
+            _staffName     = name;
+            _loading       = false;
           });
+          _loadPayouts(sel);
         } else {
-          final grand = summaries.fold(
-              0.0, (double s, StaffCommissionSummary x) => s + x.totalCommission);
+          final grand    = summaries.fold(0.0, (double s, StaffCommissionSummary x) => s + x.totalCommission);
+          final grandAdv = summaries.fold(0.0, (double s, StaffCommissionSummary x) => s + x.totalAdvances);
+          final grandPaid = summaries.fold(0.0, (double s, StaffCommissionSummary x) => s + x.totalPaid);
+          final grandNet  = (grand - grandAdv).clamp(0, double.infinity);
           setState(() {
-            _summaries = summaries;
-            _rows = const [];
-            _total = grand;
-            _staffName = null;
-            _loading = false;
+            _summaries     = summaries;
+            _rows          = const [];
+            _total         = grand;
+            _totalAdvances = grandAdv;
+            _netCommission = grandNet;
+            _totalPaid     = grandPaid;
+            _balanceDue    = (grandNet - grandPaid).clamp(0, double.infinity);
+            _payouts       = const [];
+            _staffName     = null;
+            _loading       = false;
           });
         }
       } else {
         final result = await app.loadMyCommission(month: _month);
         if (!mounted) return;
         setState(() {
-          _summaries = const [];
+          _summaries       = const [];
           _selectedStaffId = null;
-          _rows = result.records;
-          _total = result.total;
-          _staffName = result.staffName;
-          _loading = false;
+          _rows            = result.records;
+          _total           = result.total;
+          _totalAdvances   = result.totalAdvances;
+          _netCommission   = result.netCommission;
+          _totalPaid       = result.totalPaid;
+          _balanceDue      = result.balanceDue;
+          _payouts         = const [];
+          _staffName       = result.staffName;
+          _loading         = false;
         });
       }
     } catch (e) {
@@ -143,6 +166,55 @@ class _CommissionPageState extends State<CommissionPage> {
         _loading = false;
         _error = e.toString().replaceFirst('Exception: ', '');
       });
+    }
+  }
+
+  Future<void> _loadPayouts(String staffId) async {
+    if (!mounted) return;
+    setState(() => _payoutsLoading = true);
+    try {
+      final app     = AppStateScope.of(context);
+      final payouts = await app.loadCommissionPayouts(staffId: staffId, month: _month);
+      if (mounted) setState(() => _payouts = payouts);
+    } catch (_) {}
+    if (mounted) setState(() => _payoutsLoading = false);
+  }
+
+  bool get _canRecordPayout {
+    final r = AppStateScope.of(context).currentUser?.role ?? '';
+    return ['superadmin', 'admin', 'manager'].contains(r);
+  }
+
+  void _openRecordPayment() {
+    if (_selectedStaffId == null && _teamMode) return;
+    final staffId  = _selectedStaffId ?? '';
+    final branchId = AppStateScope.of(context).currentUser?.branchId ?? '';
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _RecordPayoutSheet(
+        staffId:  staffId,
+        staffName: _staffName ?? '',
+        branchId:  branchId,
+        month:     _month,
+        balanceDue: _balanceDue,
+        onSaved: () { _load(); },
+      ),
+    );
+  }
+
+  Future<void> _deletePayout(Map<String, dynamic> p) async {
+    final app = AppStateScope.of(context);
+    final ok  = await app.deleteCommissionPayout('${p['id']}');
+    if (ok) {
+      _load();
+    } else {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(app.lastError ?? 'Failed'),
+        backgroundColor: const Color(0xFFDC2626),
+        behavior: SnackBarBehavior.floating,
+      ));
     }
   }
 
@@ -257,6 +329,29 @@ class _CommissionPageState extends State<CommissionPage> {
                         childCount: _summaries.length,
                       ),
                     ),
+                  ),
+                ],
+                // ── Payment history (when individual staff selected) ──
+                if (_payouts.isNotEmpty || _payoutsLoading) ...[
+                  SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
+                    sliver: SliverToBoxAdapter(child: _sectionLabel('PAYMENT HISTORY')),
+                  ),
+                  SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                    sliver: _payoutsLoading
+                        ? const SliverToBoxAdapter(
+                            child: Center(child: Padding(
+                              padding: EdgeInsets.all(12),
+                              child: CircularProgressIndicator(color: _forest, strokeWidth: 2))))
+                        : SliverList(delegate: SliverChildBuilderDelegate(
+                            (ctx, i) => _PayoutRow(
+                              payout:    _payouts[i],
+                              canDelete: _canRecordPayout,
+                              onDelete:  () => _deletePayout(_payouts[i]),
+                            ),
+                            childCount: _payouts.length,
+                          )),
                   ),
                 ],
                 if (_rows.isNotEmpty) ...[
@@ -559,6 +654,69 @@ class _CommissionPageState extends State<CommissionPage> {
                                           letterSpacing: -1)),
                                     ],
                                   ),
+                            if (!_loading) ...[
+                              // Advance deduction
+                              if (_totalAdvances > 0) ...[
+                                const SizedBox(height: 8),
+                                _DeductChip(
+                                  label: 'Advance  −LKR ${_totalAdvances.toStringAsFixed(0)}',
+                                  icon: Icons.remove_circle_rounded,
+                                  color: const Color(0xFFFFCDD2),
+                                  bg: Colors.red,
+                                ),
+                                const SizedBox(height: 5),
+                                _AmountRow(label: 'Net Payable', amount: _netCommission, color: const Color(0xFF86EFAC)),
+                              ],
+                              // Paid
+                              if (_totalPaid > 0) ...[
+                                const SizedBox(height: 5),
+                                _DeductChip(
+                                  label: 'Paid  −LKR ${_totalPaid.toStringAsFixed(0)}',
+                                  icon: Icons.check_circle_rounded,
+                                  color: const Color(0xFFA7F3D0),
+                                  bg: const Color(0xFF059669),
+                                ),
+                              ],
+                              // Balance due
+                              if (_netCommission > 0 || _totalPaid > 0) ...[
+                                const SizedBox(height: 6),
+                                const Divider(color: Colors.white24, height: 1),
+                                const SizedBox(height: 6),
+                                Row(children: [
+                                  const Text('Balance Due  ',
+                                    style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w700)),
+                                  Text('LKR ${_balanceDue.toStringAsFixed(0)}',
+                                    style: TextStyle(
+                                      color: _balanceDue > 0 ? const Color(0xFFFDE68A) : const Color(0xFF86EFAC),
+                                      fontSize: 17, fontWeight: FontWeight.w900, letterSpacing: -0.5)),
+                                  if (_balanceDue <= 0) ...[
+                                    const SizedBox(width: 6),
+                                    const Icon(Icons.check_circle_rounded, size: 15, color: Color(0xFF86EFAC)),
+                                  ],
+                                ]),
+                              ],
+                              // Record Payment button
+                              if (_canRecordPayout && _balanceDue > 0 &&
+                                  (_selectedStaffId != null || !_teamMode)) ...[
+                                const SizedBox(height: 10),
+                                GestureDetector(
+                                  onTap: _openRecordPayment,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF3A8C62),
+                                      borderRadius: BorderRadius.circular(10)),
+                                    child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                                      Icon(Icons.payments_rounded, size: 15, color: Colors.white),
+                                      SizedBox(width: 7),
+                                      Text('Record Payment',
+                                        style: TextStyle(color: Colors.white, fontSize: 12,
+                                            fontWeight: FontWeight.w700)),
+                                    ]),
+                                  ),
+                                ),
+                              ],
+                            ],
                           ],
                         ),
                       ),
@@ -737,8 +895,20 @@ class _StaffSummaryCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Text('LKR ${row.totalCommission.toStringAsFixed(0)}',
-                style: const TextStyle(
-                  color: _forest, fontSize: 15, fontWeight: FontWeight.w900)),
+                style: TextStyle(
+                  color: row.totalAdvances > 0 ? _muted : _forest,
+                  fontSize: row.totalAdvances > 0 ? 12 : 15,
+                  fontWeight: FontWeight.w700,
+                  decoration: row.totalAdvances > 0
+                      ? TextDecoration.lineThrough : null)),
+              if (row.totalAdvances > 0) ...[
+                Text('−${row.totalAdvances.toStringAsFixed(0)}',
+                  style: const TextStyle(color: Color(0xFFDC2626),
+                      fontSize: 11, fontWeight: FontWeight.w700)),
+                Text('Net: ${row.netCommission.toStringAsFixed(0)}',
+                  style: const TextStyle(color: Color(0xFF059669),
+                      fontSize: 13, fontWeight: FontWeight.w900)),
+              ],
               Text('${row.appointmentCount} appts',
                 style: const TextStyle(color: _muted, fontSize: 11)),
             ],
@@ -903,4 +1073,299 @@ class _CommissionCard extends StatelessWidget {
       ),
     );
   }
+}
+
+// ── Small deduction chip inside summary card ──────────────────────────────────
+class _DeductChip extends StatelessWidget {
+  const _DeductChip({required this.label, required this.icon,
+      required this.color, required this.bg});
+  final String label;
+  final IconData icon;
+  final Color color, bg;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+    decoration: BoxDecoration(
+      color: bg.withValues(alpha: 0.25),
+      borderRadius: BorderRadius.circular(10)),
+    child: Row(mainAxisSize: MainAxisSize.min, children: [
+      Icon(icon, size: 13, color: color),
+      const SizedBox(width: 5),
+      Text(label, style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w700)),
+    ]),
+  );
+}
+
+class _AmountRow extends StatelessWidget {
+  const _AmountRow({required this.label, required this.amount, required this.color});
+  final String label;
+  final double amount;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) => Row(children: [
+    Text('$label  ', style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w600)),
+    Text('LKR ${amount.toStringAsFixed(0)}',
+      style: TextStyle(color: color, fontSize: 16, fontWeight: FontWeight.w900, letterSpacing: -0.5)),
+  ]);
+}
+
+// ── Payout history row ────────────────────────────────────────────────────────
+class _PayoutRow extends StatelessWidget {
+  const _PayoutRow({required this.payout, required this.canDelete, required this.onDelete});
+  final Map<String, dynamic> payout;
+  final bool canDelete;
+  final VoidCallback onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    final amount = double.tryParse('${payout['amount']}') ?? 0;
+    final date   = _fmtDate('${payout['date'] ?? ''}');
+    final notes  = '${payout['notes'] ?? ''}';
+    final paidBy = (payout['paidBy'] as Map?)?['name'] ?? '';
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: _surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFD1FAE5)),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 5, offset: const Offset(0, 2))],
+      ),
+      child: Row(children: [
+        Container(width: 40, height: 40,
+          decoration: BoxDecoration(color: const Color(0xFFECFDF5),
+              borderRadius: BorderRadius.circular(11)),
+          child: const Icon(Icons.payments_rounded, size: 18, color: Color(0xFF059669))),
+        const SizedBox(width: 12),
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('LKR ${amount.toStringAsFixed(0)}',
+            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800,
+                color: Color(0xFF059669), letterSpacing: -0.3)),
+          Row(children: [
+            Text(date, style: const TextStyle(fontSize: 11, color: _muted)),
+            if (paidBy.isNotEmpty) ...[
+              const Text(' · ', style: TextStyle(color: _muted)),
+              Text('by $paidBy', style: const TextStyle(fontSize: 11, color: _muted)),
+            ],
+          ]),
+          if (notes.isNotEmpty)
+            Text(notes, style: const TextStyle(fontSize: 11, color: _muted)),
+        ])),
+        if (canDelete)
+          GestureDetector(
+            onTap: onDelete,
+            child: Container(
+              padding: const EdgeInsets.all(7),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFEF2F2),
+                borderRadius: BorderRadius.circular(9)),
+              child: const Icon(Icons.delete_rounded, size: 15, color: Color(0xFFDC2626)),
+            ),
+          ),
+      ]),
+    );
+  }
+
+  static String _fmtDate(String raw) {
+    try {
+      final d = DateTime.parse(raw);
+      const mo = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      return '${d.day} ${mo[d.month-1]} ${d.year}';
+    } catch (_) { return raw; }
+  }
+}
+
+// ── Record payout bottom sheet ────────────────────────────────────────────────
+class _RecordPayoutSheet extends StatefulWidget {
+  const _RecordPayoutSheet({
+    required this.staffId,
+    required this.staffName,
+    required this.branchId,
+    required this.month,
+    required this.balanceDue,
+    required this.onSaved,
+  });
+  final String staffId, staffName, branchId, month;
+  final double balanceDue;
+  final VoidCallback onSaved;
+
+  @override
+  State<_RecordPayoutSheet> createState() => _RecordPayoutSheetState();
+}
+
+class _RecordPayoutSheetState extends State<_RecordPayoutSheet> {
+  final _amountCtrl = TextEditingController();
+  final _notesCtrl  = TextEditingController();
+  String _date   = _today();
+  bool   _saving = false;
+  String _error  = '';
+
+  static String _today() {
+    final n = DateTime.now();
+    return '${n.year}-${n.month.toString().padLeft(2,'0')}-${n.day.toString().padLeft(2,'0')}';
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _amountCtrl.text = widget.balanceDue.toStringAsFixed(0);
+  }
+
+  @override
+  void dispose() { _amountCtrl.dispose(); _notesCtrl.dispose(); super.dispose(); }
+
+  Future<void> _save() async {
+    final amount = double.tryParse(_amountCtrl.text.trim());
+    if (amount == null || amount <= 0) {
+      setState(() => _error = 'Enter a valid amount.');
+      return;
+    }
+    setState(() { _saving = true; _error = ''; });
+    final app = AppStateScope.of(context);
+    final ok  = await app.addCommissionPayout(
+      staffId:  widget.staffId,
+      branchId: widget.branchId,
+      amount:   amount,
+      date:     _date,
+      month:    widget.month,
+      notes:    _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
+    );
+    if (!mounted) return;
+    if (ok) {
+      Navigator.of(context).pop();
+      widget.onSaved();
+    } else {
+      setState(() { _error = app.lastError ?? 'Save failed.'; _saving = false; });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottom = MediaQuery.of(context).viewInsets.bottom;
+    return Container(
+      decoration: const BoxDecoration(
+        color: _surface,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      padding: EdgeInsets.fromLTRB(20, 20, 20, 20 + bottom),
+      child: SingleChildScrollView(
+        child: Column(mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            const Icon(Icons.payments_rounded, color: _emerald, size: 20),
+            const SizedBox(width: 8),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Text('Record Commission Payment',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: _ink)),
+              if (widget.staffName.isNotEmpty)
+                Text(widget.staffName,
+                  style: const TextStyle(fontSize: 12, color: _muted)),
+            ])),
+            GestureDetector(onTap: () => Navigator.of(context).pop(),
+              child: const Icon(Icons.close_rounded, color: _muted, size: 22)),
+          ]),
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+            decoration: BoxDecoration(
+              color: const Color(0xFFECFDF5),
+              borderRadius: BorderRadius.circular(10)),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              const Icon(Icons.account_balance_wallet_rounded, size: 13, color: Color(0xFF059669)),
+              const SizedBox(width: 6),
+              Text('Balance Due: LKR ${widget.balanceDue.toStringAsFixed(0)}',
+                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700,
+                    color: Color(0xFF059669))),
+            ]),
+          ),
+          const SizedBox(height: 16),
+          if (_error.isNotEmpty)
+            Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFEF2F2), borderRadius: BorderRadius.circular(10)),
+              child: Text(_error, style: const TextStyle(fontSize: 13, color: Color(0xFFDC2626))),
+            ),
+          Row(children: [
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              _lbl('Amount (LKR) *'),
+              TextField(
+                controller: _amountCtrl, keyboardType: TextInputType.number,
+                style: const TextStyle(fontSize: 14, color: _ink, fontWeight: FontWeight.w700),
+                decoration: _dec('0.00'),
+              ),
+            ])),
+            const SizedBox(width: 12),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              _lbl('Date'),
+              GestureDetector(
+                onTap: () async {
+                  final d = await showDatePicker(
+                    context: context, initialDate: DateTime.now(),
+                    firstDate: DateTime(2020), lastDate: DateTime(2030));
+                  if (d != null) setState(() => _date =
+                    '${d.year}-${d.month.toString().padLeft(2,'0')}-${d.day.toString().padLeft(2,'0')}');
+                },
+                child: Container(height: 50,
+                  decoration: BoxDecoration(
+                    border: Border.all(color: _border),
+                    borderRadius: BorderRadius.circular(10), color: _canvas),
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: Row(children: [
+                    const Icon(Icons.calendar_today_rounded, size: 14, color: _muted),
+                    const SizedBox(width: 8),
+                    Text(_date, style: const TextStyle(fontSize: 13, color: _ink)),
+                  ])),
+              ),
+            ])),
+          ]),
+          const SizedBox(height: 14),
+          _lbl('Notes (optional)'),
+          TextField(
+            controller: _notesCtrl,
+            style: const TextStyle(fontSize: 13, color: _ink),
+            decoration: _dec('e.g. Cash payment'),
+          ),
+          const SizedBox(height: 22),
+          SizedBox(
+            width: double.infinity, height: 50,
+            child: ElevatedButton(
+              onPressed: _saving ? null : _save,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _emerald, foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                elevation: 0),
+              child: _saving
+                  ? const SizedBox(width: 20, height: 20,
+                      child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                  : const Text('Save Payment',
+                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+            ),
+          ),
+        ]),
+      ),
+    );
+  }
+
+  Widget _lbl(String t) => Padding(
+    padding: const EdgeInsets.only(bottom: 6),
+    child: Text(t, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700,
+        color: _muted, letterSpacing: 0.3)));
+
+  InputDecoration _dec(String hint) => InputDecoration(
+    hintText: hint,
+    hintStyle: const TextStyle(color: _muted, fontSize: 13),
+    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10),
+        borderSide: const BorderSide(color: _border)),
+    enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10),
+        borderSide: const BorderSide(color: _border)),
+    focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10),
+        borderSide: const BorderSide(color: _emerald, width: 1.5)),
+    filled: true, fillColor: _canvas,
+  );
 }

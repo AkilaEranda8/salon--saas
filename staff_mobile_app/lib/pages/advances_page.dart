@@ -38,28 +38,24 @@ class _AdvancesPageState extends State<AdvancesPage> {
   }
 
   @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    _load();
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
   Future<void> _load() async {
     setState(() { _loading = true; _error = ''; });
+    final app = AppStateScope.of(context);
+    // Load staff+branches first so the Add form always has data
     try {
-      final app = AppStateScope.of(context);
-      final advF    = app.loadAdvances(month: _month);
-      final staffF  = app.loadStaffList();
-      final branchF = app.loadBranches();
-      final adv     = await advF;
-      final stf     = await staffF;
-      final brn     = await branchF;
-      if (mounted) {
-        setState(() {
-          _advances = adv;
-          _staff    = stf;
-          _branches = brn;
-        });
-      }
+      final stf = await app.loadStaffList();
+      final brn = await app.loadBranches();
+      if (mounted) setState(() { _staff = stf; _branches = brn; });
+    } catch (_) {}
+    // Load advances separately
+    try {
+      final adv = await app.loadAdvances(month: _month);
+      if (mounted) setState(() => _advances = adv);
     } catch (e) {
       if (mounted) setState(() => _error = e.toString().replaceFirst('Exception: ', ''));
     }

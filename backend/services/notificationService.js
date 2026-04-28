@@ -188,11 +188,15 @@ async function sendEmail({ to, subject, html, meta = {}, tenantId = null, attach
     port:   smtpConf.port,
     secure: smtpConf.port === 465,
     auth:   { user: smtpConf.user, pass: smtpConf.pass },
+    tls:    { rejectUnauthorized: false },
   });
+  // Ensure from always contains an email address
+  const fromRaw = smtpConf.from || smtpConf.user;
+  const fromAddr = (fromRaw && fromRaw.includes('@')) ? fromRaw : (fromRaw ? `${fromRaw} <${smtpConf.user}>` : smtpConf.user);
   let status = 'sent', errorMsg = null;
   try {
     await transporter.sendMail({
-      from:        smtpConf.from,
+      from:        fromAddr,
       to,
       subject,
       html,

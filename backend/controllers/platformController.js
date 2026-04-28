@@ -1708,9 +1708,17 @@ const testPlatformSmtp = async (req, res) => {
 
     if (!user || !pass) return res.status(400).json({ message: 'SMTP credentials not configured.' });
 
-    const transporter = nodemailer.createTransport({ host, port, secure: port === 465, auth: { user, pass } });
+    // Ensure 'from' always contains an email address
+    const fromAddr = (from && from.includes('@')) ? from : (from ? `${from} <${user}>` : user);
+
+    const transporter = nodemailer.createTransport({
+      host, port,
+      secure: port === 465,
+      auth: { user, pass },
+      tls: { rejectUnauthorized: false },
+    });
     await transporter.sendMail({
-      from,
+      from: fromAddr,
       to:      to_email,
       subject: '[Platform] SMTP Test — System',
       html:    `<p>This is a test email from the platform admin panel at <b>${new Date().toISOString()}</b>.</p>`,

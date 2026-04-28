@@ -290,14 +290,26 @@ function ForcePasswordChangeModal() {
 
 function AppShell() {
   const { isNarrow, isMobile } = useBreakpoint();
-  const [sbCollapsed,  setSbCollapsed]  = useState(false);
+  const [sbCollapsed, setSbCollapsed] = useState(() => {
+    try { return localStorage.getItem('sb-collapsed') === 'true'; } catch { return false; }
+  });
   const [sbMobileOpen, setSbMobileOpen] = useState(false);
   const { user } = useAuth();
   const { isDark } = useTheme();
 
-  /* Auto-collapse on tablet, expand on desktop */
+  /* Persist collapsed state */
   useEffect(() => {
-    setSbCollapsed(isNarrow && !isMobile);
+    try { localStorage.setItem('sb-collapsed', sbCollapsed); } catch {}
+  }, [sbCollapsed]);
+
+  /* Auto-collapse only when resizing to mobile/tablet — not on initial mount */
+  const prevNarrow = React.useRef(null);
+  useEffect(() => {
+    if (prevNarrow.current === null) { prevNarrow.current = isNarrow; return; }
+    if (prevNarrow.current !== isNarrow) {
+      setSbCollapsed(isNarrow && !isMobile);
+      prevNarrow.current = isNarrow;
+    }
   }, [isNarrow, isMobile]);
 
   const handleMenuClick = () => {

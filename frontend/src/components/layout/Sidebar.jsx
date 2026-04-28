@@ -174,7 +174,7 @@ function NavItem({ item, collapsed, isActive, onClick, C, lyt }) {
         style={{
           display:        'flex',
           alignItems:     'center',
-          justifyContent: 'center',
+          justifyContent: collapsed ? 'center' : 'flex-start',
           gap:            11,
           padding:        nPad,
           borderRadius:   nRadius,
@@ -312,7 +312,7 @@ export default function Sidebar({ collapsed, onToggle, currentUser, mobileOpen, 
                  : STYLE === 'wide'    ? '10px 14px'
                  : '8px 10px',
     accentBar:    STYLE === 'accent',
-    W:            STYLE === 'wide' ? 260 : STYLE === 'glass' ? 240 : 220,
+    W:            STYLE === 'wide' ? 300 : STYLE === 'glass' ? 264 : 258,
   };
   const W  = ec ? 72 : lyt.W;
   const [signOutHov, setSignOutHov] = useState(false);

@@ -289,16 +289,13 @@ function ForcePasswordChangeModal() {
 // ── App shell (authenticated layout) ──────────────────────────────────
 
 function AppShell() {
-  const { isNarrow, isMobile } = useBreakpoint();
-  const [sbCollapsed, setSbCollapsed] = useState(false);
+  const { isMobile } = useBreakpoint();
   const [sbMobileOpen, setSbMobileOpen] = useState(false);
   const { user } = useAuth();
   const { isDark } = useTheme();
 
-
   const handleMenuClick = () => {
     if (isMobile) setSbMobileOpen(o => !o);
-    else setSbCollapsed(c => !c);
   };
 
   return (
@@ -308,8 +305,8 @@ function AppShell() {
       <div className="app-shell-orb app-shell-orb-two" />
       <div className="shell-sidebar-surface">
         <Sidebar
-          collapsed={sbCollapsed}
-          onToggle={() => setSbCollapsed(c => !c)}
+          collapsed={false}
+          onToggle={() => {}}
           currentUser={user}
           mobileOpen={sbMobileOpen}
           onMobileClose={() => setSbMobileOpen(false)}

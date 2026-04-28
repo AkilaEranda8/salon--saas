@@ -174,7 +174,7 @@ function NavItem({ item, collapsed, isActive, onClick, C, lyt }) {
         style={{
           display:        'flex',
           alignItems:     'center',
-          justifyContent: collapsed ? 'center' : 'flex-start',
+          justifyContent: 'center',
           gap:            11,
           padding:        nPad,
           borderRadius:   nRadius,

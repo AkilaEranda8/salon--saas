@@ -50,6 +50,8 @@ export default function CustomersPage() {
   const [form, setForm]             = useState(EMPTY);
   const [saving, setSaving]         = useState(false);
   const [formErr, setFormErr]       = useState('');
+  const [custPayments, setCustPayments] = useState([]);
+  const [custPayLoading, setCustPayLoading] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -67,7 +69,16 @@ export default function CustomersPage() {
 
   const openAdd     = () => { setEditItem(null); setForm({ ...EMPTY, branch_id: user?.branch_id || '' }); setFormErr(''); setShowForm(true); };
   const openEdit    = row => { setEditItem(row); setForm({ name: row.name, phone: row.phone, email: row.email || '', branch_id: row.branch_id || '' }); setFormErr(''); setShowForm(true); };
-  const openProfile = row => { setProfileItem(row); setShowProfile(true); };
+  const openProfile = row => {
+    setProfileItem(row);
+    setCustPayments([]);
+    setShowProfile(true);
+    setCustPayLoading(true);
+    api.get('/payments', { params: { customerId: row.id, limit: 50 } })
+      .then(r => setCustPayments(Array.isArray(r.data?.data) ? r.data.data : []))
+      .catch(() => {})
+      .finally(() => setCustPayLoading(false));
+  };
 
   const handleSave = async () => {
     if (!form.name || !form.phone) return setFormErr('Name and phone are required');
@@ -250,6 +261,37 @@ export default function CustomersPage() {
                 Branch: <strong>{p.branch.name}</strong>
               </div>
             )}
+
+            {/* Payment History */}
+            <div style={{ marginTop: 20 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: '#98A2B3', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 10 }}>Payment History</div>
+              {custPayLoading ? (
+                <div style={{ textAlign: 'center', padding: 16, color: '#98A2B3', fontSize: 13 }}>Loading…</div>
+              ) : custPayments.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: 16, color: '#98A2B3', fontSize: 13 }}>No payments found</div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {custPayments.map(pay => (
+                    <div key={pay.id} style={{ background: '#F9FAFB', borderRadius: 10, padding: '10px 14px', border: '1px solid #EAECF0' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div>
+                          <div style={{ fontWeight: 600, fontSize: 13, color: '#101828' }}>
+                            {pay.service?.name || pay.customer_name || 'Service'}
+                          </div>
+                          <div style={{ fontSize: 11, color: '#98A2B3', marginTop: 2 }}>
+                            {pay.date ? new Date(pay.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : ''}
+                            {pay.staff?.name ? ` · ${pay.staff.name}` : ''}
+                          </div>
+                        </div>
+                        <div style={{ fontWeight: 700, fontSize: 14, color: '#059669', fontFamily: "'Outfit',sans-serif" }}>
+                          Rs. {Number(pay.total_amount || 0).toLocaleString()}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         )}
       </Drawer>

@@ -25,6 +25,7 @@ const list = async (req, res) => {
       const last  = new Date(year, month, 0).getDate();
       where.date  = { [Op.between]: [start, `${year}-${month}-${last}`] };
     }
+    if (req.query.customerId) where.customer_id = req.query.customerId;
 
     const { count, rows } = await Payment.findAndCountAll({
       where,

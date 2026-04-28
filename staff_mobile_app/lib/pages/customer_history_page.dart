@@ -45,6 +45,7 @@ class CustomerHistoryPage extends StatefulWidget {
 
 class _CustomerHistoryPageState extends State<CustomerHistoryPage> {
   Map<String, dynamic>? _detail;
+  List<Map<String, dynamic>> _payments = [];
   bool   _loading = true;
   String _error   = '';
 
@@ -57,11 +58,20 @@ class _CustomerHistoryPageState extends State<CustomerHistoryPage> {
   Future<void> _load() async {
     setState(() { _loading = true; _error = ''; });
     try {
-      final app    = AppStateScope.of(context);
-      final token  = app.currentUser?.authToken ?? '';
-      final detail = await app.api.fetchCustomerDetail(
-        token: token, customerId: widget.customer.id);
-      if (mounted) setState(() => _detail = detail);
+      final app   = AppStateScope.of(context);
+      final token = app.currentUser?.authToken ?? '';
+      final results = await Future.wait([
+        app.api.fetchCustomerDetail(token: token, customerId: widget.customer.id),
+        app.api.fetchPayments(token: token, customerId: '${widget.customer.id}', limit: 50)
+            .then((list) => list.map((p) => {
+              'id': p.id, 'date': p.date, 'total_amount': p.totalAmount,
+              'service': {'name': p.serviceName}, 'staff': {'name': p.staffName},
+            }).toList()),
+      ]);
+      if (mounted) setState(() {
+        _detail   = results[0] as Map<String, dynamic>;
+        _payments = (results[1] as List).cast<Map<String, dynamic>>();
+      });
     } catch (e) {
       if (mounted) setState(() => _error = e.toString().replaceFirst('Exception: ', ''));
     }
@@ -210,6 +220,7 @@ class _CustomerHistoryPageState extends State<CustomerHistoryPage> {
                     : _Body(
                         detail: _detail!,
                         appointments: _appointments,
+                        payments: _payments,
                         loyaltyPoints: _loyaltyPoints,
                         lastVisit: _lastVisit,
                         totalVisits: _totalVisits,
@@ -241,6 +252,7 @@ class _Body extends StatelessWidget {
   const _Body({
     required this.detail,
     required this.appointments,
+    required this.payments,
     required this.loyaltyPoints,
     required this.lastVisit,
     required this.totalVisits,
@@ -248,6 +260,7 @@ class _Body extends StatelessWidget {
 
   final Map<String, dynamic> detail;
   final List<Map<String, dynamic>> appointments;
+  final List<Map<String, dynamic>> payments;
   final int loyaltyPoints, totalVisits;
   final String lastVisit;
 
@@ -321,6 +334,28 @@ class _Body extends StatelessWidget {
             )
           else
             ...appointments.map((appt) => _AppointmentRow(appt: appt)),
+
+          const SizedBox(height: 24),
+
+          // ── Payment History ───────────────────────────────────────────
+          _SectionTitle(title: 'Payment History', sub: '(last ${payments.length})'),
+          const SizedBox(height: 10),
+
+          if (payments.isEmpty)
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: _surface,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: _border),
+              ),
+              child: const Center(
+                child: Text('No payments found.',
+                  style: TextStyle(color: _muted, fontSize: 13)),
+              ),
+            )
+          else
+            ...payments.map((pay) => _PaymentRow(pay: pay)),
         ],
       ),
     );
@@ -545,6 +580,77 @@ class _AppointmentRow extends StatelessWidget {
     } catch (_) {
       return raw;
     }
+  }
+}
+
+// ── Payment row ───────────────────────────────────────────────────────────────
+class _PaymentRow extends StatelessWidget {
+  const _PaymentRow({required this.pay});
+  final Map<String, dynamic> pay;
+
+  static String _fmt(String raw) {
+    try {
+      final d = DateTime.parse(raw);
+      const mo = ['Jan','Feb','Mar','Apr','May','Jun',
+                   'Jul','Aug','Sep','Oct','Nov','Dec'];
+      return '${d.day} ${mo[d.month - 1]} ${d.year}';
+    } catch (_) { return raw; }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final service = (pay['service'] as Map?)?['name'] ?? '—';
+    final staff   = (pay['staff']   as Map?)?['name'] ?? '';
+    final date    = _fmt('${pay['date'] ?? ''}');
+    final amount  = double.tryParse('${pay['total_amount']}') ?? 0;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      decoration: BoxDecoration(
+        color: _surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: _border),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 5, offset: const Offset(0, 2))],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+        child: Row(children: [
+          Container(
+            width: 46, height: 46,
+            decoration: BoxDecoration(
+              color: const Color(0xFFECFDF5),
+              borderRadius: BorderRadius.circular(12)),
+            child: const Center(
+              child: Icon(Icons.payments_rounded, size: 20, color: Color(0xFF059669)),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(service,
+                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700,
+                    color: _ink, letterSpacing: -0.2),
+                maxLines: 1, overflow: TextOverflow.ellipsis),
+              const SizedBox(height: 3),
+              Row(children: [
+                Text(date, style: const TextStyle(fontSize: 11, color: _muted)),
+                if (staff.isNotEmpty) ...[
+                  const Text(' · ', style: TextStyle(color: _muted, fontSize: 11)),
+                  Text(staff, style: const TextStyle(fontSize: 11, color: _muted)),
+                ],
+              ]),
+            ],
+          )),
+          Text(
+            'Rs. ${amount.toStringAsFixed(0)}',
+            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800,
+                color: Color(0xFF059669)),
+          ),
+        ]),
+      ),
+    );
   }
 }
 

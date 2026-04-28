@@ -460,12 +460,14 @@ class MobileApi {
     required String token,
     String? branchId,
     String? month,
+    String? customerId,
     int limit = 200,
   }) async {
     final qp = <String, String>{
       'limit': '$limit',
       if (branchId != null && branchId.isNotEmpty) 'branchId': branchId,
       if (month != null && month.isNotEmpty) 'month': month,
+      if (customerId != null && customerId.isNotEmpty) 'customerId': customerId,
     };
     final uri = Uri.parse('$baseUrl/api/payments').replace(queryParameters: qp);
     final response = await http.get(uri, headers: _authHeaders(token));

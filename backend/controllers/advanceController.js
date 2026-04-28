@@ -86,6 +86,21 @@ const markDeducted = async (req, res) => {
   }
 };
 
+const revertPending = async (req, res) => {
+  try {
+    const advance = await StaffAdvance.findOne({ where: byIdWhere(req, req.params.id) });
+    if (!advance) return res.status(404).json({ message: 'Advance not found.' });
+    if (advance.status === 'pending') {
+      return res.status(400).json({ message: 'Already pending.' });
+    }
+    await advance.update({ status: 'pending' });
+    return res.json(advance);
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: 'Server error.' });
+  }
+};
+
 const remove = async (req, res) => {
   try {
     const advance = await StaffAdvance.findOne({ where: byIdWhere(req, req.params.id) });
@@ -98,4 +113,4 @@ const remove = async (req, res) => {
   }
 };
 
-module.exports = { list, create, markDeducted, remove };
+module.exports = { list, create, markDeducted, revertPending, remove };

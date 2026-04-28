@@ -95,6 +95,35 @@ class _AdvancesPageState extends State<AdvancesPage> {
     } catch (_) { return ym; }
   }
 
+  Future<void> _revertToPending(Map<String, dynamic> adv) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Revert to Pending?'),
+        content: Text(
+          'This will mark the Rs. ${adv['amount']} advance as pending again. '
+          'It will be deducted from next month\'s commission instead.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Revert', style: TextStyle(color: Color(0xFFDC2626), fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    final app = AppStateScope.of(context);
+    final ok  = await app.revertAdvanceToPending('${adv['id']}');
+    if (!mounted) return;
+    if (ok) {
+      setState(() => adv['status'] = 'pending');
+      _snack('Reverted to pending', success: true);
+    } else {
+      _snack(app.lastError ?? 'Failed');
+    }
+  }
+
   Future<void> _carryForward(Map<String, dynamic> adv) async {
     final staffId  = '${(adv['staff'] as Map?)?['id'] ?? adv['staff_id'] ?? ''}';
     final branchId = '${adv['branch_id'] ?? (adv['branch'] as Map?)?['id'] ?? ''}';
@@ -353,6 +382,7 @@ class _AdvancesPageState extends State<AdvancesPage> {
                             onDelete:     () => _delete(_advances[i]),
                             onSettle:     () => _settleCommission(_advances[i]),
                             onCarryFwd:   () => _carryForward(_advances[i]),
+                            onRevert:     () => _revertToPending(_advances[i]),
                           ),
                         ),
         ),
@@ -398,10 +428,11 @@ class _AdvanceCard extends StatelessWidget {
     required this.onDelete,
     required this.onSettle,
     required this.onCarryFwd,
+    required this.onRevert,
   });
   final Map<String, dynamic> advance;
   final bool canManage, canDelete;
-  final VoidCallback onDeduct, onDelete, onSettle, onCarryFwd;
+  final VoidCallback onDeduct, onDelete, onSettle, onCarryFwd, onRevert;
 
   @override
   Widget build(BuildContext context) {
@@ -537,6 +568,17 @@ class _AdvanceCard extends StatelessWidget {
                         ],
                       ),
                     ),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                GestureDetector(
+                  onTap: onRevert,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFF7ED),
+                      borderRadius: BorderRadius.circular(10)),
+                    child: const Icon(Icons.undo_rounded, size: 16, color: Color(0xFFD97706)),
                   ),
                 ),
                 const SizedBox(width: 6),

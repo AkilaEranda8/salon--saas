@@ -1033,6 +1033,18 @@ class MobileApi {
     }
   }
 
+  /// PATCH /api/advances/:id/revert — revert advance back to pending.
+  Future<void> revertAdvanceToPending({required String token, required String advanceId}) async {
+    final response = await http.patch(
+      Uri.parse('$baseUrl/api/advances/$advanceId/revert'),
+      headers: _authHeaders(token),
+    );
+    if (response.statusCode >= 400) {
+      final body = _decode(response.body);
+      throw Exception(body['message'] ?? 'Revert failed');
+    }
+  }
+
   /// DELETE /api/advances/:id
   Future<void> deleteAdvance({required String token, required String advanceId}) async {
     final response = await http.delete(

@@ -9,6 +9,7 @@ router.use(verifyToken, branchAccess);
 router.get('/',              ctrl.list);
 router.post('/',             requireRole('superadmin', 'admin', 'manager'), ctrl.create);
 router.patch('/:id/deduct',  requireRole('superadmin', 'admin'), ctrl.markDeducted);
+router.patch('/:id/revert',  requireRole('superadmin', 'admin'), ctrl.revertPending);
 router.delete('/:id',        requireRole('superadmin', 'admin'), ctrl.remove);
 
 module.exports = router;

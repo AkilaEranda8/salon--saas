@@ -1113,6 +1113,19 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  /// PATCH /api/advances/:id/revert
+  Future<bool> revertAdvanceToPending(String advanceId) async {
+    final token = _currentUser?.authToken;
+    if (token == null || token.isEmpty) { _lastError = 'Missing auth token.'; return false; }
+    try {
+      await _api.revertAdvanceToPending(token: token, advanceId: advanceId);
+      return true;
+    } catch (e) {
+      _lastError = e.toString().replaceFirst('Exception: ', '');
+      return false;
+    }
+  }
+
   /// DELETE /api/advances/:id
   Future<bool> deleteAdvance(String advanceId) async {
     final token = _currentUser?.authToken;

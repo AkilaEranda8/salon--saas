@@ -17,9 +17,14 @@ function getInitialMode() {
 }
 
 function getInitialSidebarStyle() {
-  if (typeof window === 'undefined') return 'default';
+  if (typeof window === 'undefined') return 'hexa';
   const savedStyle = window.localStorage.getItem(SIDEBAR_STYLE_KEY);
-  const valid = ['default','compact','floating','glass','gradient','accent','pill','wide','minimal','hexa'];
+  const legacy = ['default', 'light', 'dark'];
+  const valid  = ['hexa','compact','floating','glass','gradient','accent','pill','wide','minimal'];
+  if (!savedStyle || legacy.includes(savedStyle)) {
+    window.localStorage.setItem(SIDEBAR_STYLE_KEY, 'hexa');
+    return 'hexa';
+  }
   return valid.includes(savedStyle) ? savedStyle : 'hexa';
 }
 

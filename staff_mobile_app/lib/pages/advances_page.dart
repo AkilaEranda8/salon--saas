@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/staff_member.dart';
+import '../services/mobile_api.dart';
 import '../state/app_state.dart';
 
 // ── Palette ───────────────────────────────────────────────────────────────────
@@ -46,15 +47,16 @@ class _AdvancesPageState extends State<AdvancesPage> {
     setState(() { _loading = true; _error = ''; });
     try {
       final app = AppStateScope.of(context);
-      final results = await Future.wait([
-        app.loadAdvances(month: _month),
-        app.loadStaff(),
-        app.loadBranches(),
-      ]);
+      final advF    = app.loadAdvances(month: _month);
+      final staffF  = app.loadStaffList();
+      final branchF = app.loadBranches();
+      final adv     = await advF;
+      final stf     = await staffF;
+      final brn     = await branchF;
       if (mounted) setState(() {
-        _advances = results[0] as List<Map<String, dynamic>>;
-        _staff    = results[1] as List<StaffMember>;
-        _branches = results[2] as List<Map<String, String>>;
+        _advances = adv;
+        _staff    = stf;
+        _branches = brn;
       });
     } catch (e) {
       if (mounted) setState(() => _error = e.toString().replaceFirst('Exception: ', ''));
@@ -447,12 +449,14 @@ class _AddAdvanceSheetState extends State<_AddAdvanceSheet> {
   final _amountCtrl = TextEditingController();
   final _reasonCtrl = TextEditingController();
 
-  String  _staffId  = '';
-  String  _branchId = '';
-  String  _date     = _today();
-  String  _month    = '';
-  bool    _saving   = false;
-  String  _error    = '';
+  String              _staffId     = '';
+  String              _branchId    = '';
+  String              _date        = _today();
+  String              _month       = '';
+  bool                _saving      = false;
+  String              _error       = '';
+  MyCommissionResult? _commInfo;
+  bool                _loadingComm = false;
 
   static String _today() {
     final n = DateTime.now();
@@ -462,8 +466,27 @@ class _AddAdvanceSheetState extends State<_AddAdvanceSheet> {
   @override
   void initState() {
     super.initState();
-    _branchId = widget.defaultBranchId;
-    _month    = widget.month;
+    _branchId = widget.defaultBranchId.isNotEmpty
+        ? widget.defaultBranchId
+        : (widget.branches.isNotEmpty ? widget.branches.first['id'] ?? '' : '');
+    _month = widget.month;
+  }
+
+  Future<void> _loadComm(String staffId) async {
+    if (staffId.isEmpty) {
+      setState(() => _commInfo = null);
+      return;
+    }
+    setState(() { _loadingComm = true; _commInfo = null; });
+    try {
+      final app    = AppStateScope.of(context);
+      final result = await app.loadStaffCommissionReport(
+          staffId: staffId, month: _month);
+      if (mounted) setState(() => _commInfo = result);
+    } catch (_) {
+      if (mounted) setState(() => _commInfo = null);
+    }
+    if (mounted) setState(() => _loadingComm = false);
   }
 
   @override
@@ -475,9 +498,17 @@ class _AddAdvanceSheetState extends State<_AddAdvanceSheet> {
 
   Future<void> _save() async {
     final amount = double.tryParse(_amountCtrl.text.trim());
-    if (_staffId.isEmpty || amount == null || _branchId.isEmpty) {
-      setState(() => _error = 'Staff, branch and amount are required.');
+    if (_staffId.isEmpty) {
+      setState(() => _error = 'Please select a staff member.');
       return;
+    }
+    if (amount == null || amount <= 0) {
+      setState(() => _error = 'Enter a valid amount.');
+      return;
+    }
+    // Auto-pick first branch if still empty (single-branch tenants)
+    if (_branchId.isEmpty && widget.branches.isNotEmpty) {
+      _branchId = widget.branches.first['id'] ?? '';
     }
     setState(() { _saving = true; _error = ''; });
     final app = AppStateScope.of(context);
@@ -542,9 +573,39 @@ class _AddAdvanceSheetState extends State<_AddAdvanceSheet> {
               const DropdownMenuItem(value: '', child: Text('Select staff')),
               ...widget.staff.map((s) => DropdownMenuItem(value: s.id, child: Text(s.name))),
             ],
-            onChanged: (v) => setState(() => _staffId = v ?? ''),
+            onChanged: (v) { setState(() => _staffId = v ?? ''); _loadComm(v ?? ''); },
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 10),
+          // Commission preview
+          if (_loadingComm)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 6),
+              child: Row(children: [
+                SizedBox(width: 14, height: 14,
+                    child: CircularProgressIndicator(strokeWidth: 1.8, color: _emerald)),
+                SizedBox(width: 10),
+                Text('Loading commission...', style: TextStyle(fontSize: 12, color: _muted)),
+              ]),
+            )
+          else if (_commInfo != null)
+            Container(
+              margin: const EdgeInsets.only(bottom: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF0FDF4),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFFBBF7D0)),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  _commChip('Commission', _commInfo!.totalCommission, const Color(0xFFD97706)),
+                  _commChip('Advances', _commInfo!.totalAdvances, const Color(0xFFDC2626)),
+                  _commChip('Net', _commInfo!.netCommission, _emerald),
+                ],
+              ),
+            ),
+          const SizedBox(height: 10),
 
           // Branch picker (only if multi-branch)
           if (widget.branches.length > 1) ...[
@@ -665,6 +726,16 @@ class _AddAdvanceSheetState extends State<_AddAdvanceSheet> {
     padding: const EdgeInsets.only(bottom: 6),
     child: Text(t, style: const TextStyle(
         fontSize: 11, fontWeight: FontWeight.w700, color: _muted, letterSpacing: 0.3)),
+  );
+
+  Widget _commChip(String label, double value, Color color) => Column(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      Text(label, style: const TextStyle(fontSize: 10, color: _muted, fontWeight: FontWeight.w600)),
+      const SizedBox(height: 2),
+      Text('Rs. ${value.toStringAsFixed(0)}',
+          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: color)),
+    ],
   );
 
   Widget _field(TextEditingController ctrl, String hint,

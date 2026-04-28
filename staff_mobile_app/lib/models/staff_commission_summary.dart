@@ -40,7 +40,7 @@ class StaffCommissionSummary {
     final balRaw  = json['balanceDue'];
     final totalCommission = comm is num ? comm.toDouble() : double.tryParse('$comm') ?? 0;
     final totalAdvances   = adv  is num ? adv.toDouble()  : double.tryParse('$adv')  ?? 0;
-    final netC  = net  is num ? net.toDouble()  : (net  != null ? double.tryParse('$net')  ?? 0 : (totalCommission - totalAdvances).clamp(0, double.infinity));
+    final netC  = net  is num ? net.toDouble()  : (net  != null ? double.tryParse('$net')  ?? 0 : (totalCommission - totalAdvances).clamp(0, double.infinity).toDouble());
     final tPaid = paidRaw is num ? paidRaw.toDouble() : double.tryParse('$paidRaw') ?? 0;
     return StaffCommissionSummary(
       staffId:          '${json['staffId'] ?? ''}',
@@ -49,11 +49,11 @@ class StaffCommissionSummary {
       branchName:       '${json['branchName'] ?? ''}',
       appointmentCount: int.tryParse('${json['appointmentCount'] ?? 0}') ?? 0,
       totalRevenue:     rev is num ? rev.toDouble() : double.tryParse('$rev') ?? 0,
-      totalCommission,
-      totalAdvances,
+      totalCommission: totalCommission,
+      totalAdvances: totalAdvances,
       netCommission:    netC,
       totalPaid:        tPaid,
-      balanceDue:       balRaw is num ? balRaw.toDouble() : double.tryParse('$balRaw') ?? (netC - tPaid).clamp(0, double.infinity),
+      balanceDue:       balRaw is num ? balRaw.toDouble() : double.tryParse('$balRaw') ?? (netC - tPaid).clamp(0, double.infinity).toDouble(),
       commissionType:   json['commissionType']?.toString(),
       commissionValue:  cv is num ? cv.toDouble() : double.tryParse('$cv'),
     );

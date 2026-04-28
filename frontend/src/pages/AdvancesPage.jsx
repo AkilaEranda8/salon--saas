@@ -2,10 +2,12 @@ import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
 import Button from '../components/ui/Button';
+import Modal from '../components/ui/Modal';
+import { Input, Select, FormGroup } from '../components/ui/FormElements';
 import PageWrapper from '../components/layout/PageWrapper';
 import {
   IconTrash, IconPlus, IconDollar, IconCalendar,
-  ActionBtn, StatCard, PKModal as Modal,
+  ActionBtn, StatCard,
   FilterBar, DataTable, StaffAvatar,
 } from '../components/ui/PageKit';
 
@@ -195,47 +197,41 @@ export default function AdvancesPage() {
       />
 
       {/* Add Advance Modal */}
-      {showForm && (
-        <Modal title="Add Staff Advance" onClose={() => setShowForm(false)}
-          footer={<><Button variant="secondary" onClick={() => setShowForm(false)}>Cancel</Button><Button variant="primary" loading={saving} onClick={handleSave}>Save Advance</Button></>}>
-          {formErr && <div style={{ background: '#FEF2F2', color: '#DC2626', padding: '9px 14px', borderRadius: 9, fontSize: 13, marginBottom: 14 }}>{formErr}</div>}
+      <Modal open={showForm} onClose={() => setShowForm(false)} title="Add Staff Advance" size="md"
+        footer={<><Button variant="secondary" onClick={() => setShowForm(false)}>Cancel</Button><Button variant="primary" loading={saving} onClick={handleSave}>Save Advance</Button></>}>
+        {formErr && <div style={{ background: '#FEF2F2', color: '#DC2626', padding: '9px 14px', borderRadius: 9, fontSize: 13, marginBottom: 14, border: '1px solid #FEE2E2' }}>{formErr}</div>}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <FormGroup label="Staff Member" required>
+            <Select value={form.staff_id} onChange={e => setForm(p => ({ ...p, staff_id: e.target.value }))}>
+              <option value="">Select staff</option>
+              {staff.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </Select>
+          </FormGroup>
+          {['superadmin', 'admin'].includes(user?.role) && (
+            <FormGroup label="Branch">
+              <Select value={form.branch_id} onChange={e => setForm(p => ({ ...p, branch_id: e.target.value }))}>
+                <option value="">Select branch</option>
+                {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+              </Select>
+            </FormGroup>
+          )}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-            <div style={{ gridColumn: '1 / -1' }}>
-              <label style={{ fontSize: 12, fontWeight: 700, color: '#475467', display: 'block', marginBottom: 6 }}>Staff Member *</label>
-              <select value={form.staff_id} onChange={f('staff_id')} style={inp}>
-                <option value="">Select staff</option>
-                {staff.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-              </select>
-            </div>
-            {['superadmin', 'admin'].includes(user?.role) && (
-              <div style={{ gridColumn: '1 / -1' }}>
-                <label style={{ fontSize: 12, fontWeight: 700, color: '#475467', display: 'block', marginBottom: 6 }}>Branch</label>
-                <select value={form.branch_id} onChange={f('branch_id')} style={inp}>
-                  <option value="">Select branch</option>
-                  {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-                </select>
-              </div>
-            )}
-            <div>
-              <label style={{ fontSize: 12, fontWeight: 700, color: '#475467', display: 'block', marginBottom: 6 }}>Amount (Rs.) *</label>
-              <input type="number" min="0" value={form.amount} onChange={f('amount')} style={inp} placeholder="0.00" />
-            </div>
-            <div>
-              <label style={{ fontSize: 12, fontWeight: 700, color: '#475467', display: 'block', marginBottom: 6 }}>Date *</label>
-              <input type="date" value={form.date} onChange={f('date')} style={inp} />
-            </div>
-            <div style={{ gridColumn: '1 / -1' }}>
-              <label style={{ fontSize: 12, fontWeight: 700, color: '#475467', display: 'block', marginBottom: 6 }}>Deduction Month *</label>
-              <input type="month" value={form.month} onChange={f('month')} style={inp} />
-              <span style={{ fontSize: 11, color: '#98A2B3', marginTop: 4, display: 'block' }}>The commission month this advance will be deducted from</span>
-            </div>
-            <div style={{ gridColumn: '1 / -1' }}>
-              <label style={{ fontSize: 12, fontWeight: 700, color: '#475467', display: 'block', marginBottom: 6 }}>Reason</label>
-              <input type="text" value={form.reason} onChange={f('reason')} style={inp} placeholder="e.g. Emergency advance" />
-            </div>
+            <FormGroup label="Amount (Rs.)" required>
+              <Input type="number" min="0" value={form.amount} onChange={e => setForm(p => ({ ...p, amount: e.target.value }))} placeholder="0.00" />
+            </FormGroup>
+            <FormGroup label="Date" required>
+              <Input type="date" value={form.date} onChange={e => setForm(p => ({ ...p, date: e.target.value }))} />
+            </FormGroup>
           </div>
-        </Modal>
-      )}
+          <FormGroup label="Deduction Month" required>
+            <Input type="month" value={form.month} onChange={e => setForm(p => ({ ...p, month: e.target.value }))} />
+            <span style={{ fontSize: 11, color: '#98A2B3', marginTop: 4, display: 'block' }}>Commission month this advance will be deducted from</span>
+          </FormGroup>
+          <FormGroup label="Reason">
+            <Input value={form.reason} onChange={e => setForm(p => ({ ...p, reason: e.target.value }))} placeholder="e.g. Emergency advance" />
+          </FormGroup>
+        </div>
+      </Modal>
     </PageWrapper>
   );
 }

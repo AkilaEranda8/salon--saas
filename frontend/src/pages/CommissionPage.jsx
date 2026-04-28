@@ -2,11 +2,12 @@ import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
 import Button from '../components/ui/Button';
+import Modal from '../components/ui/Modal';
 import PageWrapper from '../components/layout/PageWrapper';
 import {
   StatCard, FilterBar, DataTable,
   StaffAvatar, IconDollar, IconUsers, IconReceipt, IconPlus,
-  ActionBtn, PKModal as Modal,
+  ActionBtn,
 } from '../components/ui/PageKit';
 
 const Rs     = n => `Rs. ${Number(n || 0).toLocaleString()}`;
@@ -234,9 +235,9 @@ export default function CommissionPage() {
       />
 
       {/* Record Payment Modal */}
-      {payRow && (
-        <Modal title={`Record Payment — ${payRow.staffName}`} onClose={() => setPayRow(null)}
-          footer={<><Button variant="secondary" onClick={() => setPayRow(null)}>Cancel</Button><Button variant="primary" loading={paySaving} onClick={handlePay}>Save Payment</Button></>}>
+      <Modal open={!!payRow} title={payRow ? `Record Payment — ${payRow.staffName}` : ''} onClose={() => setPayRow(null)} size="md"
+        footer={<><Button variant="secondary" onClick={() => setPayRow(null)}>Cancel</Button><Button variant="primary" loading={paySaving} onClick={handlePay}>Save Payment</Button></>}>
+        {payRow && <>
           <div style={{ background: '#ECFDF5', color: '#065F46', padding: '9px 14px', borderRadius: 9, fontSize: 13, marginBottom: 16, display: 'flex', gap: 16 }}>
             <span>Net Payable: <strong>{Rs(payRow.netCommission)}</strong></span>
             <span>Paid: <strong>{Rs(payRow.totalPaid)}</strong></span>
@@ -257,8 +258,8 @@ export default function CommissionPage() {
               <input type="text" value={payForm.notes} onChange={e => setPayForm(p => ({ ...p, notes: e.target.value }))} style={inp} placeholder="e.g. Cash payment" />
             </div>
           </div>
-        </Modal>
-      )}
+        </>}
+      </Modal>
     </PageWrapper>
   );
 }

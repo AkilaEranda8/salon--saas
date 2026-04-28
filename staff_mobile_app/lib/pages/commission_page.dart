@@ -129,7 +129,7 @@ class _CommissionPageState extends State<CommissionPage> {
           final grand    = summaries.fold(0.0, (double s, StaffCommissionSummary x) => s + x.totalCommission);
           final grandAdv = summaries.fold(0.0, (double s, StaffCommissionSummary x) => s + x.totalAdvances);
           final grandPaid = summaries.fold(0.0, (double s, StaffCommissionSummary x) => s + x.totalPaid);
-          final grandNet  = (grand - grandAdv).clamp(0, double.infinity);
+          final grandNet  = (grand - grandAdv).clamp(0, double.infinity).toDouble();
           setState(() {
             _summaries     = summaries;
             _rows          = const [];
@@ -137,7 +137,7 @@ class _CommissionPageState extends State<CommissionPage> {
             _totalAdvances = grandAdv;
             _netCommission = grandNet;
             _totalPaid     = grandPaid;
-            _balanceDue    = (grandNet - grandPaid).clamp(0, double.infinity);
+            _balanceDue    = (grandNet - grandPaid).clamp(0, double.infinity).toDouble();
             _payouts       = const [];
             _staffName     = null;
             _loading       = false;

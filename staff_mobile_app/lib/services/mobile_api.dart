@@ -1161,19 +1161,27 @@ class MobileApi {
 
   Map<String, dynamic> _decode(String raw) {
     if (raw.trim().isEmpty) return {};
-    final parsed = jsonDecode(raw);
-    if (parsed is Map<String, dynamic>) return parsed;
-    return {};
+    try {
+      final parsed = jsonDecode(raw);
+      if (parsed is Map<String, dynamic>) return parsed;
+      return {};
+    } on FormatException {
+      return {'message': raw.trim()};
+    }
   }
 
   List<dynamic> _decodeList(String raw) {
     if (raw.trim().isEmpty) return const [];
-    final parsed = jsonDecode(raw);
-    if (parsed is List) return parsed;
-    if (parsed is Map<String, dynamic> && parsed['data'] is List) {
-      return parsed['data'] as List;
+    try {
+      final parsed = jsonDecode(raw);
+      if (parsed is List) return parsed;
+      if (parsed is Map<String, dynamic> && parsed['data'] is List) {
+        return parsed['data'] as List;
+      }
+      return const [];
+    } on FormatException {
+      return const [];
     }
-    return const [];
   }
 
   String _extractTokenFromCookie(String setCookie) {

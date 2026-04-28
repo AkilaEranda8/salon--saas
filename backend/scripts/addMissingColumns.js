@@ -105,6 +105,49 @@ async function addIfMissing(table, column, definition) {
     await sequelize.query(`ALTER TABLE notification_logs MODIFY COLUMN event_type ENUM('appointment_confirmed','payment_receipt','loyalty_points','test','review_request','password_reset','custom_marketing') NOT NULL`).catch(e => console.warn('  ! notification_logs.event_type ENUM:', e.message));
     await sequelize.query(`ALTER TABLE notification_logs MODIFY COLUMN channel ENUM('email','whatsapp','sms') NOT NULL`).catch(e => console.warn('  ! notification_logs.channel ENUM:', e.message));
 
+    // ── staff_advances table ─────────────────────────────────────────────────
+    await sequelize.query(`
+      CREATE TABLE IF NOT EXISTS staff_advances (
+        id         INT AUTO_INCREMENT PRIMARY KEY,
+        staff_id   INT          NOT NULL,
+        branch_id  INT          NOT NULL,
+        amount     DECIMAL(10,2) NOT NULL,
+        date       DATE         NOT NULL,
+        month      VARCHAR(7)   NOT NULL COMMENT 'YYYY-MM deduction month',
+        reason     VARCHAR(300) NULL,
+        status     ENUM('pending','deducted') NOT NULL DEFAULT 'pending',
+        created_by INT          NULL,
+        tenant_id  INT          NULL,
+        createdAt  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updatedAt  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_sa_staff  (staff_id),
+        INDEX idx_sa_branch (branch_id),
+        INDEX idx_sa_month  (month),
+        INDEX idx_sa_tenant (tenant_id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `).catch(e => console.warn('  ! staff_advances:', e.message));
+
+    // ── commission_payouts table ─────────────────────────────────────────────
+    await sequelize.query(`
+      CREATE TABLE IF NOT EXISTS commission_payouts (
+        id         INT AUTO_INCREMENT PRIMARY KEY,
+        staff_id   INT          NOT NULL,
+        branch_id  INT          NOT NULL,
+        amount     DECIMAL(10,2) NOT NULL,
+        date       DATE         NOT NULL,
+        month      VARCHAR(7)   NOT NULL COMMENT 'YYYY-MM commission month',
+        notes      VARCHAR(300) NULL,
+        paid_by    INT          NULL,
+        tenant_id  INT          NULL,
+        createdAt  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updatedAt  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_cp_staff  (staff_id),
+        INDEX idx_cp_branch (branch_id),
+        INDEX idx_cp_month  (month),
+        INDEX idx_cp_tenant (tenant_id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `).catch(e => console.warn('  ! commission_payouts:', e.message));
+
     console.log('✓ Migration complete');
   } catch (err) {
     console.error('✗ Migration failed:', err.message);

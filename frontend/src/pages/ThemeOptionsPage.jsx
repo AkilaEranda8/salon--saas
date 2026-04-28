@@ -463,43 +463,11 @@ export default function ThemeOptionsPage() {
             label="Light"
             description="Clean white interface, best for bright environments."
             icon={<IconSun />}
-            active={mode === 'light'}
+            active={true}
             onClick={() => setMode('light')}
             previewBg="linear-gradient(180deg, #F8F9FC 0%, #EFF1F7 100%)"
             previewContent={<LightPreview />}
           />
-          <AppearanceCard
-            value="dark"
-            label="Dark"
-            description="Dark violet theme, easy on the eyes at night."
-            icon={<IconMoon />}
-            active={mode === 'dark'}
-            onClick={() => setMode('dark')}
-            previewBg="linear-gradient(180deg, #1A1530 0%, #16122A 100%)"
-            previewContent={<DarkPreview />}
-          />
-        </div>
-
-        {/* Quick toggle strip */}
-        <div style={{
-          marginTop: 20, display: 'inline-flex', alignItems: 'center', gap: 14,
-          padding: '10px 16px', borderRadius: 12,
-          background: C.soft, border: `1px solid ${C.border}`,
-        }}>
-          <span style={{ fontSize: 13, color: C.label, fontFamily: "'Inter',sans-serif" }}>Quick switch:</span>
-          <button
-            onClick={() => setMode(mode === 'dark' ? 'light' : 'dark')}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 8,
-              padding: '7px 16px', borderRadius: 8,
-              background: mode === 'dark' ? 'linear-gradient(135deg, #1D4ED8, #2563EB)' : 'linear-gradient(135deg, #16122A, #201C35)',
-              color: '#fff', border: 'none', cursor: 'pointer',
-              fontSize: 12.5, fontWeight: 700, fontFamily: "'Inter',sans-serif",
-              boxShadow: '0 2px 6px rgba(0,0,0,0.15)',
-            }}
-          >
-            {mode === 'dark' ? <><IconSun /> Switch to Light</> : <><IconMoon /> Switch to Dark</>}
-          </button>
         </div>
       </SectionCard>
 

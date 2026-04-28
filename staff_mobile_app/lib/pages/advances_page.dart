@@ -83,6 +83,21 @@ class _AdvancesPageState extends State<AdvancesPage> {
     return ['superadmin', 'admin'].contains(r);
   }
 
+  void _settleCommission(Map<String, dynamic> adv) {
+    final staffId   = '${(adv['staff'] as Map?)?['id'] ?? adv['staff_id'] ?? ''}';
+    final staffName = '${(adv['staff'] as Map?)?['name'] ?? 'Staff'}';
+    final month     = '${adv['month'] ?? ''}';
+    if (staffId.isEmpty) return;
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _CommissionSettleSheet(
+        staffId: staffId, staffName: staffName, month: month,
+      ),
+    );
+  }
+
   void _openAdd() {
     showModalBottomSheet(
       context: context,
@@ -277,6 +292,7 @@ class _AdvancesPageState extends State<AdvancesPage> {
                             canDelete: _canDelete,
                             onDeduct:  () => _markDeducted(_advances[i]),
                             onDelete:  () => _delete(_advances[i]),
+                            onSettle:  () => _settleCommission(_advances[i]),
                           ),
                         ),
         ),
@@ -320,10 +336,11 @@ class _AdvanceCard extends StatelessWidget {
     required this.canDelete,
     required this.onDeduct,
     required this.onDelete,
+    required this.onSettle,
   });
   final Map<String, dynamic> advance;
   final bool canManage, canDelete;
-  final VoidCallback onDeduct, onDelete;
+  final VoidCallback onDeduct, onDelete, onSettle;
 
   @override
   Widget build(BuildContext context) {
@@ -391,7 +408,7 @@ class _AdvanceCard extends StatelessWidget {
             Text('Reason: $reason',
               style: const TextStyle(fontSize: 12, color: _muted)),
           ],
-          if ((canManage && pending) || canDelete) ...[
+          if ((canManage && pending) || canDelete || (canManage && !pending)) ..[
             const SizedBox(height: 10),
             const Divider(height: 1, color: _border),
             const SizedBox(height: 8),
@@ -417,6 +434,30 @@ class _AdvanceCard extends StatelessWidget {
                     ),
                   ),
                 ),
+              if (!pending && canManage) ..[
+                Expanded(
+                  child: GestureDetector(
+                    onTap: onSettle,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFEFF6FF),
+                        borderRadius: BorderRadius.circular(10)),
+                      child: const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.payments_rounded, size: 15, color: Color(0xFF2563EB)),
+                          SizedBox(width: 6),
+                          Text('Settle Commission',
+                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700,
+                                color: Color(0xFF2563EB))),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+              ],
               if (canManage && pending && canDelete) const SizedBox(width: 8),
               if (canDelete)
                 GestureDetector(
@@ -443,6 +484,133 @@ class _AdvanceCard extends StatelessWidget {
       return '${d.day} ${mo[d.month-1]} ${d.year}';
     } catch (_) { return raw; }
   }
+}
+
+// ── Commission Settle Sheet ───────────────────────────────────────────────────
+class _CommissionSettleSheet extends StatefulWidget {
+  const _CommissionSettleSheet({
+    required this.staffId,
+    required this.staffName,
+    required this.month,
+  });
+  final String staffId, staffName, month;
+
+  @override
+  State<_CommissionSettleSheet> createState() => _CommissionSettleSheetState();
+}
+
+class _CommissionSettleSheetState extends State<_CommissionSettleSheet> {
+  MyCommissionResult? _data;
+  bool _loading = true;
+  String _error = '';
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+  }
+
+  Future<void> _load() async {
+    try {
+      final result = await AppStateScope.of(context)
+          .loadStaffCommissionReport(staffId: widget.staffId, month: widget.month);
+      if (mounted) setState(() { _data = result; _loading = false; });
+    } catch (e) {
+      if (mounted) setState(() {
+        _error = e.toString().replaceFirst('Exception: ', '');
+        _loading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+      decoration: BoxDecoration(
+        color: _surface,
+        borderRadius: BorderRadius.circular(24),
+      ),
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        // Handle
+        Center(child: Container(
+          margin: const EdgeInsets.only(top: 12, bottom: 8),
+          width: 36, height: 4,
+          decoration: BoxDecoration(
+            color: _border, borderRadius: BorderRadius.circular(4)),
+        )),
+        // Header
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 4, 20, 16),
+          child: Row(children: [
+            const Icon(Icons.payments_rounded, color: Color(0xFF2563EB), size: 22),
+            const SizedBox(width: 10),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('Commission Settlement', style: const TextStyle(
+                  fontSize: 16, fontWeight: FontWeight.w800, color: _ink)),
+              Text('${widget.staffName} · ${widget.month}',
+                  style: const TextStyle(fontSize: 12, color: _muted)),
+            ])),
+          ]),
+        ),
+        const Divider(height: 1, color: _border),
+        // Body
+        if (_loading)
+          const Padding(
+            padding: EdgeInsets.all(32),
+            child: CircularProgressIndicator(color: _emerald),
+          )
+        else if (_error.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.all(24),
+            child: Text(_error, style: const TextStyle(color: Color(0xFFDC2626))),
+          )
+        else if (_data != null)
+          Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(children: [
+              _row('Total Commission',   _data!.total,          const Color(0xFFD97706)),
+              const SizedBox(height: 10),
+              _row('Advances Deducted', -_data!.totalAdvances,  const Color(0xFFDC2626)),
+              const SizedBox(height: 10),
+              const Divider(color: _border),
+              const SizedBox(height: 10),
+              _row('Net Payable',        _data!.netCommission,  _emerald, bold: true),
+              const SizedBox(height: 10),
+              _row('Already Paid',      -_data!.totalPaid,      _muted),
+              const SizedBox(height: 10),
+              const Divider(color: _border),
+              const SizedBox(height: 10),
+              _row('Balance Due',        _data!.balanceDue,     _data!.balanceDue > 0
+                  ? const Color(0xFF2563EB) : _green, bold: true),
+              const SizedBox(height: 20),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _emerald, foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                  ),
+                  child: const Text('Close', style: TextStyle(fontWeight: FontWeight.w700)),
+                ),
+              ),
+            ]),
+          ),
+        SizedBox(height: MediaQuery.of(context).padding.bottom + 8),
+      ]),
+    );
+  }
+
+  Widget _row(String label, double value, Color color, {bool bold = false}) =>
+    Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+      Text(label, style: TextStyle(fontSize: 13, color: _muted,
+          fontWeight: bold ? FontWeight.w700 : FontWeight.w500)),
+      Text('Rs. ${value.abs().toStringAsFixed(0)}',
+          style: TextStyle(fontSize: bold ? 16 : 14,
+              fontWeight: bold ? FontWeight.w800 : FontWeight.w600, color: color)),
+    ]);
 }
 
 // ── Add Advance bottom sheet ──────────────────────────────────────────────────

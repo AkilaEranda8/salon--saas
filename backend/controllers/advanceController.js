@@ -53,7 +53,7 @@ const create = async (req, res) => {
       reason: reason || null,
       status: 'pending',
       created_by: req.user?.id || null,
-      tenant_id:  req.tenantId  || null,
+      tenant_id:  req.userTenantId ?? req.tenant?.id ?? null,
     });
 
     const result = await StaffAdvance.findOne({

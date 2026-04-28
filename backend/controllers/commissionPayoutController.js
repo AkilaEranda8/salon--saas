@@ -51,7 +51,7 @@ const create = async (req, res) => {
       month,
       notes: notes || null,
       paid_by:   req.user?.id || null,
-      tenant_id: req.tenantId  || null,
+      tenant_id: req.userTenantId ?? req.tenant?.id ?? null,
     });
 
     const result = await CommissionPayout.findOne({

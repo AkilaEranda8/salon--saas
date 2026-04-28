@@ -106,7 +106,7 @@ function getColors(isDark, sidebarAppearance, sidebarStyle, primaryColor) {
     border:      '#1F1C30',
     text:        '#F1F5F9',
     textSub:     '#94A3B8',
-    textMuted:   '#475569',
+    textMuted:   '#7B90A8',
     accent:      pc,
     accentBg:    `linear-gradient(135deg, ${pc}, ${pc}CC)`,
     accentTx:    '#FFFFFF',
@@ -230,6 +230,7 @@ export default function Sidebar({ collapsed, onToggle, currentUser, mobileOpen, 
 
   const isFloating = !isMobile && ['compact', 'floating', 'glass'].includes(STYLE);
   const isGlass    = STYLE === 'glass';
+  const isDarkSb   = isDark || sidebarAppearance === 'dark' || ['gradient', 'hexa'].includes(STYLE);
 
   const visibleGroups = NAV_GROUPS.map(g => ({
     ...g, items: g.items.filter(i => i.roles.includes(role)),
@@ -260,6 +261,7 @@ export default function Sidebar({ collapsed, onToggle, currentUser, mobileOpen, 
       overflow:             'hidden',
       transition:           'width 0.22s cubic-bezier(.4,0,.2,1)',
       fontFamily:           "'Inter', sans-serif",
+      color:                isDarkSb ? '#F1F5F9' : '#101828',
       position:             isMobile ? 'fixed' : 'relative',
       top: 0, left: 0,
       zIndex:               isMobile ? 400 : undefined,
@@ -296,14 +298,14 @@ export default function Sidebar({ collapsed, onToggle, currentUser, mobileOpen, 
           {!ec && (
             <div style={{ overflow: 'hidden', flex: 1 }}>
               <div title={brandName} style={{
-                fontSize: 13, fontWeight: 800, color: C.text,
+                fontSize: 13, fontWeight: 800, color: isDarkSb ? '#FFFFFF' : '#101828',
                 fontFamily: "'Sora','Manrope','Inter',sans-serif",
                 letterSpacing: '-0.025em', lineHeight: 1.25, whiteSpace: 'nowrap',
                 overflow: 'hidden', textOverflow: 'ellipsis',
               }}>
                 {brandName}
               </div>
-              <div style={{ fontSize: 9, color: C.textMuted, fontWeight: 700, letterSpacing: '0.10em', textTransform: 'uppercase' }}>
+              <div style={{ fontSize: 9, color: isDarkSb ? '#8BA4BE' : C.textMuted, fontWeight: 700, letterSpacing: '0.10em', textTransform: 'uppercase' }}>
                 Management
               </div>
             </div>

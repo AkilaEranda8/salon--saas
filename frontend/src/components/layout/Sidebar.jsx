@@ -417,57 +417,6 @@ export default function Sidebar({ collapsed, onToggle, currentUser, mobileOpen, 
         )}
       </div>
 
-      {/*  User card  */}
-      <div style={{ padding: ec ? '10px 8px' : '10px 12px', borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
-        <div style={{
-          background:     C.userBg,
-          border:         `1.5px solid ${C.userBorder || C.border}`,
-          borderRadius:   12,
-          padding:        ec ? '10px 0' : '10px 12px',
-          display:        'flex',
-          alignItems:     'center',
-          justifyContent: ec ? 'center' : 'flex-start',
-          gap:            10,
-          transition:     'all 0.18s',
-        }}>
-          {/* Avatar */}
-          <div style={{
-            width: 34, height: 34, borderRadius: 10,
-            background: 'linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            color: '#fff', fontWeight: 800, fontSize: 12.5, flexShrink: 0,
-            boxShadow: '0 2px 8px rgba(99,102,241,0.35)',
-            letterSpacing: '0.04em',
-            fontFamily: "'Inter', sans-serif",
-          }}>
-            {initials}
-          </div>
-          {!ec && (
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{
-                fontSize: 13, fontWeight: 700, color: C.text,
-                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                lineHeight: 1.3, fontFamily: "'Inter', sans-serif",
-              }}>
-                {currentUser?.name}
-              </div>
-              <span style={{
-                display: 'inline-flex', alignItems: 'center',
-                fontSize: 9.5, fontWeight: 700, marginTop: 3,
-                padding: '1px 8px', borderRadius: 99,
-                background: isDark ? `${rb.text}18` : rb.bg,
-                color: isDark ? rb.text : rb.text,
-                border: isDark ? `1px solid ${rb.text}30` : `1px solid ${rb.border}`,
-                letterSpacing: '0.04em', textTransform: 'uppercase',
-                fontFamily: "'Inter', sans-serif",
-              }}>
-                {rb.label}
-              </span>
-            </div>
-          )}
-        </div>
-      </div>
-
       {/*  Nav  */}
       <nav className="sb-nav" style={{ flex: 1, overflowY: 'auto', padding: ec ? '8px 8px' : lyt.navPad }}>
         <style>{`

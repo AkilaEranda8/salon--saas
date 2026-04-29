@@ -1,32 +1,8 @@
 const { Router } = require('express');
-const jwt = require('jsonwebtoken');
 const { register, login, logout, getMe, verifyLogin2FA, setup2FA, enable2FA, disable2FA, status2FA, changeOwnPassword, forgotPassword, resetPassword, forceChangePassword, impersonateSession } = require('../controllers/authController');
-const { verifyToken, requireRole } = require('../middleware/auth');
+const { verifyToken, optionalVerifyToken, requireRole } = require('../middleware/auth');
 
 const router = Router();
-
-// Soft auth check for /auth/me so initial app load does not raise 401 noise
-// when there is no session yet.
-const optionalVerifyToken = (req, res, next) => {
-	const token =
-		req.cookies?.token ||
-		(req.headers.authorization?.startsWith('Bearer ')
-			? req.headers.authorization.split(' ')[1]
-			: null);
-
-	if (!token) {
-		return res.json({ user: null });
-	}
-
-	try {
-		const decoded = jwt.verify(token, process.env.JWT_SECRET);
-		req.user = decoded;
-		req.userTenantId = decoded.role === 'platform_admin' ? null : (decoded.tenantId ?? null);
-		return next();
-	} catch (_err) {
-		return res.json({ user: null });
-	}
-};
 
 // POST /api/auth/register — requires superadmin or admin (no self-registration)
 router.post('/register', verifyToken, requireRole('superadmin', 'admin'), register);

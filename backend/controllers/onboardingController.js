@@ -1,9 +1,10 @@
-const bcrypt    = require('bcryptjs');
-const jwt       = require('jsonwebtoken');
+const bcrypt         = require('bcryptjs');
+const jwt            = require('jsonwebtoken');
 const { Tenant, Branch, User, NotificationSettings } = require('../models');
-const { sequelize } = require('../config/database');
+const { sequelize }  = require('../config/database');
 const { addTrialDays, getTenantCaps } = require('../utils/planConfig');
 const { FORBIDDEN_SLUGS, SLUG_RE, findUniqueSlug, buildTenantAppUrl } = require('../utils/tenantDomain');
+const kc             = require('../utils/keycloakAdmin');
 
 /**
  * POST /api/onboarding/register
@@ -99,6 +100,21 @@ const register = async (req, res) => {
     }, { transaction: t });
 
     await t.commit();
+
+    // ── Sync new superadmin to Keycloak (non-fatal) ───────────────────────
+    if (process.env.KEYCLOAK_URL) {
+      kc.createUser({
+        dbUserId:   user.id,
+        username:   user.username,
+        name:       user.name,
+        role:       'superadmin',
+        tenantId:   tenant.id,
+        tenantSlug: tenant.slug,
+        branchId:   user.branch_id,
+        password,             // plain-text still in scope — user logs in immediately
+        temporary:  false,
+      }).catch((err) => console.error('[KC] onboarding sync failed (non-fatal):', err.message));
+    }
 
     // ── Issue JWT ─────────────────────────────────────────────────────────
     const payload = {

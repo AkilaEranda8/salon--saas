@@ -2,6 +2,7 @@ const bcrypt = require('bcryptjs');
 const { Op } = require('sequelize');
 const { User, Branch } = require('../models');
 const { tenantWhere, byIdWhere, resolveTenantId } = require('../utils/tenantScope');
+const kc     = require('../utils/keycloakAdmin');
 
 const list = async (req, res) => {
   try {
@@ -61,6 +62,23 @@ const create = async (req, res) => {
 
     const result = user.toJSON();
     delete result.password;
+
+    // Sync to Keycloak (non-fatal — Keycloak outage must not break user creation)
+    if (process.env.KEYCLOAK_URL) {
+      kc.createUser({
+        dbUserId:   user.id,
+        username:   user.username,
+        name:       user.name,
+        email:      user.email,
+        role:       user.role || 'staff',
+        tenantId:   tenantId,
+        tenantSlug: req.tenant?.slug ?? '',
+        branchId:   user.branch_id,
+        password,             // plain-text still in scope
+        temporary:  true,     // must_change_password is always true for new staff
+      }).catch((err) => console.error('[KC] user.create sync failed (non-fatal):', err.message));
+    }
+
     return res.status(201).json(result);
   } catch (err) {
     console.error(err);
@@ -105,6 +123,26 @@ const update = async (req, res) => {
     await user.update(updates);
     const result = user.toJSON();
     delete result.password;
+
+    // Sync profile + role changes to Keycloak (non-fatal)
+    if (process.env.KEYCLOAK_URL) {
+      const kcUpdates = {};
+      if (updates.name      !== undefined) kcUpdates.name     = updates.name;
+      if (updates.email     !== undefined) kcUpdates.email    = updates.email;
+      if (updates.role      !== undefined) kcUpdates.role     = updates.role;
+      if (updates.branch_id !== undefined) kcUpdates.branchId = updates.branch_id;
+      if (updates.is_active !== undefined) kcUpdates.isActive = updates.is_active;
+      if (updates.password) {
+        // Password was changed — update in Keycloak too
+        kc.updatePassword(user.id, password, false)
+          .catch((err) => console.error('[KC] user.update password sync failed (non-fatal):', err.message));
+      }
+      if (Object.keys(kcUpdates).length) {
+        kc.updateUser(user.id, kcUpdates)
+          .catch((err) => console.error('[KC] user.update sync failed (non-fatal):', err.message));
+      }
+    }
+
     return res.json(result);
   } catch (err) {
     console.error(err);
@@ -124,6 +162,13 @@ const changePassword = async (req, res) => {
 
     const hash = await bcrypt.hash(password, 10);
     await user.update({ password: hash });
+
+    // Sync password to Keycloak (non-fatal)
+    if (process.env.KEYCLOAK_URL) {
+      kc.updatePassword(user.id, password, false)
+        .catch((err) => console.error('[KC] changePassword sync failed (non-fatal):', err.message));
+    }
+
     return res.json({ message: 'Password updated.' });
   } catch (err) {
     console.error(err);
@@ -138,7 +183,15 @@ const remove = async (req, res) => {
     if (user.role === 'superadmin') {
       return res.status(403).json({ message: 'Cannot delete superadmin.' });
     }
+    const userId = user.id;
     await user.destroy();
+
+    // Remove from Keycloak (non-fatal)
+    if (process.env.KEYCLOAK_URL) {
+      kc.deleteUser(userId)
+        .catch((err) => console.error('[KC] user.delete sync failed (non-fatal):', err.message));
+    }
+
     return res.json({ message: 'User deleted.' });
   } catch (err) {
     console.error(err);

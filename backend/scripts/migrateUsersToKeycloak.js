@@ -20,6 +20,7 @@ require('dotenv').config();
 const axios = require('axios');
 
 const { User, Tenant, Branch } = require('../models');
+const kc = require('../utils/keycloakAdmin');
 
 const KC_URL   = process.env.KEYCLOAK_URL;
 const KC_REALM = 'salon-saas';
@@ -36,6 +37,8 @@ if (!KC_URL || !KC_ADMIN || !KC_PASS) {
 }
 
 // ─── Get Keycloak admin access token ─────────────────────────────────────────
+// NOTE: token management is handled internally by keycloakAdmin.js.
+// We keep a local copy here only for the user-create calls below.
 async function getAdminToken() {
   const res = await axios.post(
     `${KC_URL}/realms/master/protocol/openid-connect/token`,
@@ -51,83 +54,21 @@ async function getAdminToken() {
 }
 
 // ─── Create a single user in Keycloak ────────────────────────────────────────
-async function createKeycloakUser(token, user, tenant) {
-  const baseUrl = `${KC_URL}/admin/realms/${KC_REALM}`;
-  const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
-
-  const tenantSlug = tenant?.slug ?? '';
-  // Namespace username to avoid collisions across tenants (both can have "admin")
-  const kcUsername = tenantSlug
-    ? `${tenantSlug}__${user.username}`
-    : user.username;
-
-  const nameParts  = (user.name || '').trim().split(' ');
-  const firstName  = nameParts[0] || user.username;
-  const lastName   = nameParts.slice(1).join(' ') || '';
-
-  const payload = {
-    username:   kcUsername,
-    email:      user.email || null,
-    firstName,
-    lastName,
-    enabled:    !!user.is_active,
-    attributes: {
-      salonRole:  [user.role],
-      dbUserId:   [String(user.id)],
-      tenantId:   [String(user.tenant_id ?? '')],
-      tenantSlug: [tenantSlug],
-      branchId:   [String(user.branch_id ?? '')],
-    },
-    credentials: [{
-      type:      'password',
-      value:     TEMP_PASSWORD,
-      temporary: true,         // forces password change on first login
-    }],
-    requiredActions: user.must_change_password
-      ? ['UPDATE_PASSWORD', 'UPDATE_PROFILE']
-      : ['UPDATE_PASSWORD'],
-  };
-
-  // Create user
-  let kcUserId;
-  try {
-    const createRes = await axios.post(`${baseUrl}/users`, payload, { headers });
-    // Keycloak returns the new user URL in Location header
-    kcUserId = createRes.headers.location?.split('/').pop();
-  } catch (err) {
-    const status = err.response?.status;
-    if (status === 409) {
-      // Already exists — fetch existing user id
-      const search = await axios.get(
-        `${baseUrl}/users?username=${encodeURIComponent(kcUsername)}&exact=true`,
-        { headers }
-      );
-      kcUserId = search.data[0]?.id;
-      if (!kcUserId) {
-        console.warn(`  ⚠ Conflict but could not find existing user: ${kcUsername}`);
-        return;
-      }
-      console.log(`  ~ Already exists, updating attributes: ${kcUsername}`);
-      await axios.put(`${baseUrl}/users/${kcUserId}`, { attributes: payload.attributes }, { headers });
-    } else {
-      throw err;
-    }
-  }
-
-  if (!kcUserId) return;
-
-  // Assign realm role
-  const rolesRes = await axios.get(
-    `${baseUrl}/roles/${encodeURIComponent(user.role)}`,
-    { headers }
-  );
-  const roleRep = rolesRes.data;
-
-  await axios.post(
-    `${baseUrl}/users/${kcUserId}/role-mappings/realm`,
-    [roleRep],
-    { headers }
-  );
+async function createKeycloakUser(_token, user, tenant) {
+  // Delegate entirely to keycloakAdmin.createUser which handles
+  // username namespacing, attributes, role assignment, AND group membership.
+  await kc.createUser({
+    dbUserId:   user.id,
+    username:   user.username,
+    name:       user.name,
+    email:      user.email,
+    role:       user.role,
+    tenantId:   user.tenant_id,
+    tenantSlug: tenant?.slug ?? '',
+    branchId:   user.branch_id,
+    password:   TEMP_PASSWORD,
+    temporary:  true,
+  });
 }
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
@@ -138,7 +79,7 @@ async function main() {
   console.log('DB connected.\n');
 
   console.log('Fetching admin token from Keycloak...');
-  const token = await getAdminToken();
+  await getAdminToken(); // warm up the keycloakAdmin token cache
   console.log('Token acquired.\n');
 
   const users = await User.findAll({
@@ -146,7 +87,23 @@ async function main() {
       { model: Tenant, as: 'tenant', attributes: ['id', 'slug', 'name'] },
       { model: Branch, as: 'branch', attributes: ['id', 'name'] },
     ],
+    order: [['tenant_id', 'ASC']],
   });
+
+  // ── Pre-create one group per tenant slug ──────────────────────────────────
+  const slugs = [...new Set(
+    users.map((u) => u.tenant?.slug).filter(Boolean)
+  )];
+  console.log(`Creating ${slugs.length} tenant groups...`);
+  for (const slug of slugs) {
+    try {
+      await kc.ensureTenantGroup(slug);
+      console.log(`  ✓ group: ${slug}`);
+    } catch (err) {
+      console.error(`  ✗ group: ${slug} — ${err.message}`);
+    }
+  }
+  console.log();
 
   console.log(`Migrating ${users.length} users...\n`);
 
@@ -156,7 +113,7 @@ async function main() {
   for (const user of users) {
     const label = `[${user.role}] ${user.tenant?.slug ?? 'platform'}/${user.username}`;
     try {
-      await createKeycloakUser(token, user, user.tenant);
+      await createKeycloakUser(null, user, user.tenant);
       console.log(`  ✓ ${label}`);
       success++;
     } catch (err) {

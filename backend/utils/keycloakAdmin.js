@@ -15,9 +15,12 @@ const KC_REALM = 'salon-saas';
 const KC_ADMIN = process.env.KC_ADMIN_USER;
 const KC_PASS  = process.env.KC_ADMIN_PASSWORD;
 
-// ─── Admin token cache ────────────────────────────────────────────────────────
+// ─── Admin token cache ──────────────────────────────────────────────────────
 let _cachedToken    = null;
 let _tokenExpiresAt = 0;
+
+// ─── Tenant group cache (slug → Keycloak group id) ───────────────────────────
+const _groupCache = new Map();
 
 async function getAdminToken() {
   const now = Date.now();
@@ -64,6 +67,78 @@ async function findByDbId(dbUserId) {
   );
   // Filter precisely — Keycloak attribute search is prefix-based
   return res.data.find((u) => u.attributes?.dbUserId?.[0] === String(dbUserId)) ?? null;
+}
+
+// ─── Group helpers ───────────────────────────────────────────────────────────
+
+/**
+ * Ensure a Keycloak group named after the tenant slug exists.
+ * Creates it if absent, then caches and returns the group id.
+ *
+ * Group structure (flat, one per tenant):
+ *   salon-saas realm
+ *     └─ regal          ← tenantSlug
+ *     └─ luxehair
+ *     └─ ...
+ *
+ * @param {string} tenantSlug
+ * @returns {Promise<string|null>} Keycloak group id
+ */
+async function ensureTenantGroup(tenantSlug) {
+  if (!KC_URL || !tenantSlug) return null;
+
+  if (_groupCache.has(tenantSlug)) return _groupCache.get(tenantSlug);
+
+  const h = await headers();
+
+  // Search for existing group
+  const searchRes = await axios.get(
+    `${baseUrl()}/groups?search=${encodeURIComponent(tenantSlug)}&exact=true&max=5`,
+    { headers: h }
+  );
+  const existing = searchRes.data.find((g) => g.name === tenantSlug);
+
+  if (existing) {
+    _groupCache.set(tenantSlug, existing.id);
+    return existing.id;
+  }
+
+  // Create new group
+  const createRes = await axios.post(
+    `${baseUrl()}/groups`,
+    { name: tenantSlug },
+    { headers: h }
+  );
+  const groupId = createRes.headers.location?.split('/').pop();
+  _groupCache.set(tenantSlug, groupId);
+  console.log(`[KC] Created tenant group: ${tenantSlug} (${groupId})`);
+  return groupId;
+}
+
+/**
+ * Add a Keycloak user to a group.
+ */
+async function addUserToGroup(kcUserId, groupId) {
+  if (!KC_URL || !kcUserId || !groupId) return;
+  const h = await headers();
+  await axios.put(
+    `${baseUrl()}/users/${kcUserId}/groups/${groupId}`,
+    {},
+    { headers: h }
+  );
+}
+
+/**
+ * Delete the Keycloak group for a tenant slug (call when tenant is deleted).
+ */
+async function deleteTenantGroup(tenantSlug) {
+  if (!KC_URL || !tenantSlug) return;
+  const groupId = await ensureTenantGroup(tenantSlug).catch(() => null);
+  if (!groupId) return;
+  const h = await headers();
+  await axios.delete(`${baseUrl()}/groups/${groupId}`, { headers: h });
+  _groupCache.delete(tenantSlug);
+  console.log(`[KC] Deleted tenant group: ${tenantSlug}`);
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
@@ -144,6 +219,12 @@ async function createUser(opts) {
 
   // Assign realm role
   await assignRole(kcUserId, role);
+
+  // Add to tenant group (creates group first if needed)
+  if (tenantSlug) {
+    const groupId = await ensureTenantGroup(tenantSlug);
+    await addUserToGroup(kcUserId, groupId);
+  }
 
   return kcUserId;
 }
@@ -279,4 +360,7 @@ module.exports = {
   deleteUser,
   setEnabled,
   findByDbId,
+  ensureTenantGroup,
+  addUserToGroup,
+  deleteTenantGroup,
 };

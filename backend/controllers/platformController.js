@@ -11,6 +11,7 @@ const { addTrialDays, getTenantCaps } = require('../utils/planConfig');
 const { slToday } = require('../utils/dateUtils');
 const { generateInvoicePdfBuffer, sendInvoiceEmail } = require('../services/invoiceDocumentService');
 const { FORBIDDEN_SLUGS, SLUG_RE, findUniqueSlug, buildTenantAppUrl } = require('../utils/tenantDomain');
+const kc = require('../utils/keycloakAdmin');
 
 const TENANT_ACTIVE_SUB_STATUSES = new Set(['active', 'trialing']);
 
@@ -259,6 +260,30 @@ const createTenant = async (req, res) => {
 
     await t.commit();
     invalidateTenantCache(tenant.slug);
+
+    // ── Sync new tenant + owner to Keycloak (non-fatal, group MUST be first) ────
+    if (process.env.KEYCLOAK_URL) {
+      (async () => {
+        try {
+          await kc.createOrGetGroup(tenant.slug, tenant.name);
+          await kc.createUser({
+            dbUserId:   owner.id,
+            username:   owner.username,
+            name:       owner.name,
+            email:      ownerEmail,
+            role:       'superadmin',
+            tenantId:   tenant.id,
+            tenantSlug: tenant.slug,
+            branchId:   branch.id,
+            password,
+            temporary:  false,
+          });
+          console.log(`[KC] platform.createTenant: synced tenant "${tenant.slug}" and owner.`);
+        } catch (err) {
+          console.error('[KC] platform.createTenant sync failed (non-fatal):', err.message);
+        }
+      })();
+    }
 
     // ── Send welcome email with account details ───────────────────────────────
     const tenantUrl = buildTenantAppUrl(cleanSlug, req);

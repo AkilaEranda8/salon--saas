@@ -63,20 +63,35 @@ const create = async (req, res) => {
     const result = user.toJSON();
     delete result.password;
 
-    // Sync to Keycloak (non-fatal — Keycloak outage must not break user creation)
+    // Sync to Keycloak — group MUST exist before user is created inside it
     if (process.env.KEYCLOAK_URL) {
-      kc.createUser({
-        dbUserId:   user.id,
-        username:   user.username,
-        name:       user.name,
-        email:      user.email,
-        role:       user.role || 'staff',
-        tenantId:   tenantId,
-        tenantSlug: req.tenant?.slug ?? '',
-        branchId:   user.branch_id,
-        password,             // plain-text still in scope
-        temporary:  true,     // must_change_password is always true for new staff
-      }).catch((err) => console.error('[KC] user.create sync failed (non-fatal):', err.message));
+      (async () => {
+        try {
+          const tenantSlug = req.tenant?.slug ?? '';
+          const tenantName = req.tenant?.name  ?? tenantSlug;
+
+          // Step 1: ensure tenant group exists (idempotent — safe to call every time)
+          if (tenantSlug) {
+            await kc.createOrGetGroup(tenantSlug, tenantName);
+          }
+
+          // Step 2: create user and add them to the group
+          await kc.createUser({
+            dbUserId:   user.id,
+            username:   user.username,
+            name:       user.name,
+            email:      user.email,
+            role:       user.role || 'staff',
+            tenantId:   tenantId,
+            tenantSlug: tenantSlug,
+            branchId:   user.branch_id,
+            password,
+            temporary:  true,
+          });
+        } catch (err) {
+          console.error('[KC] user.create sync failed (non-fatal):', err.message);
+        }
+      })();
     }
 
     return res.status(201).json(result);

@@ -10,12 +10,12 @@
 
 const axios = require('axios');
 
-const KC_URL   = process.env.KEYCLOAK_URL;
-const KC_REALM = 'salon-saas';
-const KC_ADMIN = process.env.KC_ADMIN_USER;
-const KC_PASS  = process.env.KC_ADMIN_PASSWORD;
+const KC_URL           = process.env.KEYCLOAK_URL;
+const KC_REALM         = 'salon-saas';
+const KC_CLIENT_ID     = process.env.KC_CLIENT_ID     || 'salon-backend';
+const KC_CLIENT_SECRET = process.env.KC_CLIENT_SECRET || '';
 
-// ─── Admin token cache ────────────────────────────────────────────────────────
+// ─── Admin token cache (client_credentials service-account grant) ─────────────
 let _cachedToken    = null;
 let _tokenExpiresAt = 0;
 
@@ -26,13 +26,13 @@ async function getAdminToken() {
     return _cachedToken;
   }
 
+  // Uses the salon-saas realm's own token endpoint — no master-realm admin creds needed
   const res = await axios.post(
-    `${KC_URL}/realms/master/protocol/openid-connect/token`,
+    `${KC_URL}/realms/${KC_REALM}/protocol/openid-connect/token`,
     new URLSearchParams({
-      grant_type: 'password',
-      client_id:  'admin-cli',
-      username:   KC_ADMIN,
-      password:   KC_PASS,
+      grant_type:    'client_credentials',
+      client_id:     KC_CLIENT_ID,
+      client_secret: KC_CLIENT_SECRET,
     }),
     { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
   );

@@ -62,10 +62,9 @@ function KeycloakAuthProvider({ children }) {
 
       try {
         const authenticated = await kc.init({
-          onLoad:                        'check-sso',
-          silentCheckSsoRedirectUri:     `${window.location.origin}/silent-check-sso.html`,
-          pkceMethod:                    'S256',
-          checkLoginIframe:              false,
+          onLoad:              'login-required',
+          pkceMethod:          'S256',
+          checkLoginIframe:    false,
         });
 
         if (cancelled) return;

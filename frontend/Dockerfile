@@ -3,6 +3,12 @@ FROM node:18-alpine AS build
 
 WORKDIR /app
 
+# Vite env vars must be available at BUILD time (they are inlined into the bundle)
+ARG VITE_USE_KEYCLOAK=false
+ARG VITE_KEYCLOAK_URL=
+ENV VITE_USE_KEYCLOAK=$VITE_USE_KEYCLOAK
+ENV VITE_KEYCLOAK_URL=$VITE_KEYCLOAK_URL
+
 COPY package.json package-lock.json* ./
 RUN npm ci --legacy-peer-deps
 

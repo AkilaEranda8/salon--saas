@@ -77,9 +77,10 @@ services:
       PLATFORM_URL:       ${PLATFORM_URL:-https://admin.hexalyte.com}
       SERVER_IP:          ${SERVER_IP:-}
       # Keycloak (optional — leave blank to fall back to legacy JWT)
-      KEYCLOAK_URL:       ${KEYCLOAK_URL:-}
-      KC_CLIENT_ID:       ${KC_CLIENT_ID:-salon-backend}
-      KC_CLIENT_SECRET:   ${KC_CLIENT_SECRET:-}
+      KEYCLOAK_URL:         ${KEYCLOAK_URL:-}
+      KC_CLIENT_ID:         ${KC_CLIENT_ID:-salon-backend}
+      KC_CLIENT_SECRET:     ${KC_CLIENT_SECRET:-}
+      KEYCLOAK_AUTH_ENABLED: ${KEYCLOAK_AUTH_ENABLED:-false}
     expose:
       - "5000"
     ports:
@@ -94,7 +95,11 @@ services:
       start_period: 40s
 
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      args:
+        VITE_USE_KEYCLOAK: ${VITE_USE_KEYCLOAK:-false}
+        VITE_KEYCLOAK_URL: ${VITE_KEYCLOAK_URL:-https://auth.hexalyte.com}
     restart: unless-stopped
     depends_on:
       - backend

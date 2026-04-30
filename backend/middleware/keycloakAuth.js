@@ -30,13 +30,13 @@ const PERMISSIONS = {
 // ─── Map Keycloak token claims → existing req.user shape ─────────────────────
 function mapClaims(decoded) {
   return {
-    id:         decoded.db_user_id   ?? null,
+    id:         decoded.db_user_id  ? Number(decoded.db_user_id)  : null,
     username:   decoded.preferred_username ?? null,
-    role:       decoded.salon_role   ?? null,
-    branchId:   decoded.branch_id    ?? null,
-    name:       decoded.name         ?? null,
-    tenantId:   decoded.tenant_id    ?? null,
-    tenantSlug: decoded.tenant_slug  ?? null,
+    role:       decoded.salon_role  ?? null,
+    branchId:   decoded.branch_id   ? Number(decoded.branch_id)   : null,
+    name:       decoded.name        ?? null,
+    tenantId:   decoded.tenant_id   ? Number(decoded.tenant_id)   : null,
+    tenantSlug: decoded.tenant_slug ?? null,
   };
 }
 

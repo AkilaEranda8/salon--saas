@@ -76,6 +76,10 @@ services:
       FRONTEND_BASE_URL:  ${FRONTEND_BASE_URL:-https://{slug}.salon.hexalyte.com}
       PLATFORM_URL:       ${PLATFORM_URL:-https://admin.hexalyte.com}
       SERVER_IP:          ${SERVER_IP:-}
+      # Keycloak (optional — leave blank to fall back to legacy JWT)
+      KEYCLOAK_URL:       ${KEYCLOAK_URL:-}
+      KC_CLIENT_ID:       ${KC_CLIENT_ID:-salon-backend}
+      KC_CLIENT_SECRET:   ${KC_CLIENT_SECRET:-}
     expose:
       - "5000"
     ports:

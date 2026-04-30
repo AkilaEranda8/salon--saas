@@ -15,12 +15,9 @@ const KC_REALM = 'salon-saas';
 const KC_ADMIN = process.env.KC_ADMIN_USER;
 const KC_PASS  = process.env.KC_ADMIN_PASSWORD;
 
-// ─── Admin token cache ──────────────────────────────────────────────────────
+// ─── Admin token cache ────────────────────────────────────────────────────────
 let _cachedToken    = null;
 let _tokenExpiresAt = 0;
-
-// ─── Tenant group cache (slug → Keycloak group id) ───────────────────────────
-const _groupCache = new Map();
 
 async function getAdminToken() {
   const now = Date.now();
@@ -69,79 +66,102 @@ async function findByDbId(dbUserId) {
   return res.data.find((u) => u.attributes?.dbUserId?.[0] === String(dbUserId)) ?? null;
 }
 
-// ─── Group helpers ───────────────────────────────────────────────────────────
-
 /**
- * Ensure a Keycloak group named after the tenant slug exists.
- * Creates it if absent, then caches and returns the group id.
- *
- * Group structure (flat, one per tenant):
- *   salon-saas realm
- *     └─ regal          ← tenantSlug
- *     └─ luxehair
- *     └─ ...
- *
- * @param {string} tenantSlug
- * @returns {Promise<string|null>} Keycloak group id
+ * Find a Keycloak group by name (exact match).
+ * Returns the group object or null.
  */
-async function ensureTenantGroup(tenantSlug) {
-  if (!KC_URL || !tenantSlug) return null;
-
-  if (_groupCache.has(tenantSlug)) return _groupCache.get(tenantSlug);
-
+async function findGroupBySlug(tenantSlug) {
   const h = await headers();
-
-  // Search for existing group
-  const searchRes = await axios.get(
+  const res = await axios.get(
     `${baseUrl()}/groups?search=${encodeURIComponent(tenantSlug)}&exact=true&max=5`,
     { headers: h }
   );
-  const existing = searchRes.data.find((g) => g.name === tenantSlug);
+  return res.data.find((g) => g.name === tenantSlug) ?? null;
+}
 
+// ─── Public API ───────────────────────────────────────────────────────────────
+
+// ─── Group management ─────────────────────────────────────────────────────────
+
+/**
+ * Create a Keycloak top-level group for a tenant, or return the existing one.
+ * MUST be called before creating any users for that tenant.
+ *
+ * Group name   = tenantSlug  (e.g. "regal")
+ * Group attribute tenantSlug is also stored on the group for easy lookup.
+ *
+ * @param {string} tenantSlug   — unique tenant slug
+ * @param {string} [tenantName] — human-readable name (stored as group attribute)
+ * @returns {Promise<string>} Keycloak group ID
+ */
+async function createOrGetGroup(tenantSlug, tenantName = '') {
+  if (!KC_URL) return null;
+
+  // Check if group already exists
+  const existing = await findGroupBySlug(tenantSlug);
   if (existing) {
-    _groupCache.set(tenantSlug, existing.id);
+    console.log(`[KC] Group already exists: ${tenantSlug} (${existing.id})`);
     return existing.id;
   }
 
-  // Create new group
-  const createRes = await axios.post(
+  const h = await headers();
+  const res = await axios.post(
     `${baseUrl()}/groups`,
-    { name: tenantSlug },
+    {
+      name:       tenantSlug,
+      attributes: {
+        tenantSlug: [tenantSlug],
+        tenantName: [tenantName || tenantSlug],
+      },
+    },
     { headers: h }
   );
-  const groupId = createRes.headers.location?.split('/').pop();
-  _groupCache.set(tenantSlug, groupId);
-  console.log(`[KC] Created tenant group: ${tenantSlug} (${groupId})`);
+
+  // Keycloak returns 201 with Location header containing the new group ID
+  const groupId = res.headers.location?.split('/').pop();
+  console.log(`[KC] Created group: ${tenantSlug} (${groupId})`);
   return groupId;
 }
 
 /**
- * Add a Keycloak user to a group.
+ * Add a Keycloak user to their tenant's group.
+ *
+ * @param {string} kcUserId    — Keycloak user UUID
+ * @param {string} tenantSlug  — tenant slug (group name)
  */
-async function addUserToGroup(kcUserId, groupId) {
-  if (!KC_URL || !kcUserId || !groupId) return;
+async function addUserToGroup(kcUserId, tenantSlug) {
+  if (!KC_URL || !kcUserId || !tenantSlug) return;
+
+  const group = await findGroupBySlug(tenantSlug);
+  if (!group) {
+    console.warn(`[KC] addUserToGroup: group not found for slug=${tenantSlug}. Create the group first.`);
+    return;
+  }
+
   const h = await headers();
   await axios.put(
-    `${baseUrl()}/users/${kcUserId}/groups/${groupId}`,
+    `${baseUrl()}/users/${kcUserId}/groups/${group.id}`,
     {},
     { headers: h }
   );
 }
 
 /**
- * Delete the Keycloak group for a tenant slug (call when tenant is deleted).
+ * Delete a tenant's Keycloak group.
+ * Called when a tenant is fully removed from the system.
+ *
+ * @param {string} tenantSlug
  */
-async function deleteTenantGroup(tenantSlug) {
-  if (!KC_URL || !tenantSlug) return;
-  const groupId = await ensureTenantGroup(tenantSlug).catch(() => null);
-  if (!groupId) return;
-  const h = await headers();
-  await axios.delete(`${baseUrl()}/groups/${groupId}`, { headers: h });
-  _groupCache.delete(tenantSlug);
-  console.log(`[KC] Deleted tenant group: ${tenantSlug}`);
-}
+async function deleteGroup(tenantSlug) {
+  if (!KC_URL) return;
 
-// ─── Public API ───────────────────────────────────────────────────────────────
+  const group = await findGroupBySlug(tenantSlug);
+  if (!group) return;
+
+  const h = await headers();
+  await axios.delete(`${baseUrl()}/groups/${group.id}`, { headers: h });
+  console.log(`[KC] Deleted group: ${tenantSlug}`);
+}
 
 /**
  * Create a user in Keycloak.
@@ -220,10 +240,9 @@ async function createUser(opts) {
   // Assign realm role
   await assignRole(kcUserId, role);
 
-  // Add to tenant group (creates group first if needed)
+  // Add user to their tenant group (group must already exist)
   if (tenantSlug) {
-    const groupId = await ensureTenantGroup(tenantSlug);
-    await addUserToGroup(kcUserId, groupId);
+    await addUserToGroup(kcUserId, tenantSlug);
   }
 
   return kcUserId;
@@ -354,13 +373,15 @@ async function setEnabled(dbUserId, enabled) {
 }
 
 module.exports = {
+  // Group lifecycle (must run BEFORE user creation)
+  createOrGetGroup,
+  addUserToGroup,
+  deleteGroup,
+  // User lifecycle
   createUser,
   updateUser,
   updatePassword,
   deleteUser,
   setEnabled,
   findByDbId,
-  ensureTenantGroup,
-  addUserToGroup,
-  deleteTenantGroup,
 };

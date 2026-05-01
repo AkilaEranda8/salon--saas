@@ -1,6 +1,7 @@
 const bcrypt = require('bcryptjs');
 const jwt    = require('jsonwebtoken');
 const crypto = require('crypto');
+const axios  = require('axios');
 const { Op }  = require('sequelize');
 const speakeasy = require('speakeasy');
 const qrcode    = require('qrcode');
@@ -568,4 +569,78 @@ const impersonateSession = async (req, res) => {
   }
 };
 
-module.exports = { register, login, logout, getMe, verifyLogin2FA, setup2FA, enable2FA, disable2FA, status2FA, changeOwnPassword, forgotPassword, resetPassword, forceChangePassword, impersonateSession };
+// ─── KC login proxy — POST /api/auth/kc-login ──────────────────────────────
+const KC_REALM_URL = () =>
+  `${process.env.KEYCLOAK_URL}/realms/salon-saas/protocol/openid-connect`;
+
+const kcLogin = async (req, res) => {
+  const { username, password } = req.body;
+  if (!username || !password)
+    return res.status(400).json({ message: 'Username and password required.' });
+  if (!process.env.KEYCLOAK_URL)
+    return res.status(503).json({ message: 'Keycloak not configured.' });
+  try {
+    const params = new URLSearchParams({
+      grant_type: 'password',
+      client_id:  'salon-frontend',
+      username,
+      password,
+    });
+    const r = await axios.post(`${KC_REALM_URL()}/token`, params.toString(), {
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    });
+    return res.json({
+      access_token:  r.data.access_token,
+      refresh_token: r.data.refresh_token,
+      expires_in:    r.data.expires_in,
+    });
+  } catch (err) {
+    const status = err.response?.status;
+    if (status === 401)
+      return res.status(401).json({ message: 'Invalid username or password.' });
+    console.error('[KC] kcLogin error:', err.response?.data || err.message);
+    return res.status(502).json({ message: 'Authentication service unavailable.' });
+  }
+};
+
+// ─── KC refresh proxy — POST /api/auth/kc-refresh ───────────────────────────
+const kcRefresh = async (req, res) => {
+  const { refresh_token } = req.body;
+  if (!refresh_token)
+    return res.status(400).json({ message: 'Refresh token required.' });
+  if (!process.env.KEYCLOAK_URL)
+    return res.status(503).json({ message: 'Keycloak not configured.' });
+  try {
+    const params = new URLSearchParams({
+      grant_type:    'refresh_token',
+      client_id:     'salon-frontend',
+      refresh_token,
+    });
+    const r = await axios.post(`${KC_REALM_URL()}/token`, params.toString(), {
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    });
+    return res.json({
+      access_token:  r.data.access_token,
+      refresh_token: r.data.refresh_token,
+      expires_in:    r.data.expires_in,
+    });
+  } catch {
+    return res.status(401).json({ message: 'Session expired. Please log in again.' });
+  }
+};
+
+// ─── KC logout proxy — POST /api/auth/kc-logout ─────────────────────────────
+const kcLogout = async (req, res) => {
+  const { refresh_token } = req.body;
+  if (refresh_token && process.env.KEYCLOAK_URL) {
+    try {
+      const params = new URLSearchParams({ client_id: 'salon-frontend', refresh_token });
+      await axios.post(`${KC_REALM_URL()}/logout`, params.toString(), {
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      });
+    } catch { /* non-fatal */ }
+  }
+  return res.json({ success: true });
+};
+
+module.exports = { register, login, logout, getMe, verifyLogin2FA, setup2FA, enable2FA, disable2FA, status2FA, changeOwnPassword, forgotPassword, resetPassword, forceChangePassword, impersonateSession, kcLogin, kcRefresh, kcLogout };

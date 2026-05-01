@@ -1,7 +1,16 @@
 import axios from 'axios';
 import { getTenantSlug, getCustomHostname } from '../utils/tenant';
+import {
+  getKcAccessToken,
+  isKcTokenExpiring,
+  refreshKcToken,
+  clearKcTokens,
+} from '../utils/kcTokenStore';
 
 const USE_KEYCLOAK = import.meta.env.VITE_USE_KEYCLOAK === 'true';
+
+// Paths that must NOT get an Authorization header (avoid refresh loop)
+const KC_PUBLIC_PATHS = ['/auth/kc-login', '/auth/kc-refresh', '/auth/kc-logout'];
 
 const api = axios.create({
   baseURL: '/api',
@@ -11,7 +20,7 @@ const api = axios.create({
 
 // ── Request interceptor ───────────────────────────────────────────────────────
 // 1. Attach X-Tenant-Slug / X-Tenant-Host headers (both modes)
-// 2. In Keycloak mode: refresh token if expiring within 30 s, then add Bearer header
+// 2. In Keycloak mode: refresh token if expiring, then add Bearer header
 api.interceptors.request.use(async (config) => {
   const path = window.location.pathname || '/';
   const isPlatformRoute = path.startsWith('/platform');
@@ -32,15 +41,17 @@ api.interceptors.request.use(async (config) => {
   }
 
   if (USE_KEYCLOAK) {
-    try {
-      const { default: kc } = await import('../keycloak');
-      if (kc.authenticated) {
-        // Refresh if token expires within 30 seconds
-        await kc.updateToken(30);
-        config.headers['Authorization'] = `Bearer ${kc.token}`;
+    const isPublic = KC_PUBLIC_PATHS.some((p) => config.url?.includes(p));
+    if (!isPublic) {
+      try {
+        let token = getKcAccessToken();
+        if (token && isKcTokenExpiring()) {
+          token = await refreshKcToken();
+        }
+        if (token) config.headers['Authorization'] = `Bearer ${token}`;
+      } catch {
+        // Let the request proceed; backend will return 401
       }
-    } catch {
-      // Token refresh failed — let the request proceed; backend will return 401
     }
   }
 
@@ -61,12 +72,8 @@ api.interceptors.response.use(
 
     if (status === 401 && !isLoginPath) {
       if (USE_KEYCLOAK) {
-        try {
-          const { default: kc } = await import('../keycloak');
-          kc.login({ redirectUri: window.location.href });
-        } catch {
-          window.location.href = '/login';
-        }
+        clearKcTokens();
+        window.location.href = path.startsWith('/platform') ? '/platform/login' : '/login';
       } else {
         localStorage.removeItem('zanesalon_user');
         window.location.href = '/login';

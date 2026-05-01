@@ -1,5 +1,5 @@
 const { Router } = require('express');
-const { register, login, logout, getMe, verifyLogin2FA, setup2FA, enable2FA, disable2FA, status2FA, changeOwnPassword, forgotPassword, resetPassword, forceChangePassword, impersonateSession } = require('../controllers/authController');
+const { register, login, logout, getMe, verifyLogin2FA, setup2FA, enable2FA, disable2FA, status2FA, changeOwnPassword, forgotPassword, resetPassword, forceChangePassword, impersonateSession, kcLogin, kcRefresh, kcLogout } = require('../controllers/authController');
 const { verifyToken, optionalVerifyToken, requireRole } = require('../middleware/auth');
 
 const router = Router();
@@ -39,5 +39,10 @@ router.post('/first-login-password', verifyToken, forceChangePassword);
 
 // POST /api/auth/impersonate-session — platform admin exchanges impersonation token for a session cookie
 router.post('/impersonate-session', impersonateSession);
+
+// ── Keycloak credential proxy (no auth middleware — public) ──────────────────
+router.post('/kc-login',   kcLogin);
+router.post('/kc-refresh', kcRefresh);
+router.post('/kc-logout',  kcLogout);
 
 module.exports = router;

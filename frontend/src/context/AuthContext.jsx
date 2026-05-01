@@ -1,6 +1,12 @@
-import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect } from 'react';
 import api from '../api/axios';
 import { getTenantSlug } from '../utils/tenant';
+import {
+  setKcTokens,
+  clearKcTokens,
+  getKcRefreshToken,
+  refreshKcToken,
+} from '../utils/kcTokenStore';
 
 const USE_KEYCLOAK = import.meta.env.VITE_USE_KEYCLOAK === 'true';
 
@@ -47,72 +53,51 @@ function KeycloakAuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
   const [maintenance]         = useMaintenancePolling();
   const tenantSlug            = getTenantSlug();
-  const kcRef                 = useRef(null);
 
+  // ── On mount: restore session from saved refresh token ──────────────────────
   useEffect(() => {
     let cancelled = false;
 
     async function init() {
-      // Lazy-import so legacy builds never pull in keycloak-js
-      const [{ default: Keycloak }, { default: kc }] = await Promise.all([
-        import('keycloak-js'),
-        import('../keycloak'),
-      ]);
-      kcRef.current = kc;
-
-      try {
-        const authenticated = await kc.init({
-          onLoad:              'login-required',
-          pkceMethod:          'S256',
-          checkLoginIframe:    false,
-        });
-
-        if (cancelled) return;
-
-        if (authenticated) {
-          // Fetch full user from DB (gives tenant object with logo/colors/plan)
-          try {
+      const rt = getKcRefreshToken();
+      if (rt) {
+        try {
+          const newToken = await refreshKcToken();
+          if (newToken && !cancelled) {
             const res = await api.get('/auth/me');
             if (!cancelled) setUser(res.data.user);
-          } catch {
-            if (!cancelled) setUser(null);
+          } else if (!cancelled) {
+            setUser(null);
           }
-        } else {
+        } catch {
+          clearKcTokens();
           if (!cancelled) setUser(null);
         }
-      } catch (err) {
-        console.error('[Keycloak] init error:', err);
+      } else {
         if (!cancelled) setUser(null);
-      } finally {
-        if (!cancelled) setLoading(false);
       }
+      if (!cancelled) setLoading(false);
     }
 
     init();
     return () => { cancelled = true; };
   }, []);
 
-  // Proactive token refresh every 30 s — keeps the Bearer token fresh
+  // ── Proactive token refresh every 4 minutes ──────────────────────────────────
   useEffect(() => {
     const timer = setInterval(async () => {
-      const kc = kcRef.current;
-      if (!kc?.authenticated) return;
+      if (!getKcRefreshToken()) return;
       try {
-        const refreshed = await kc.updateToken(60);
-        if (refreshed) {
-          // Re-fetch user if the refresh brought a new token with changed claims
-          const res = await api.get('/auth/me');
-          setUser(res.data.user);
-        }
+        await refreshKcToken();
       } catch {
+        clearKcTokens();
         setUser(null);
-        kc.login();
       }
-    }, 30000);
+    }, 4 * 60 * 1000);
     return () => clearInterval(timer);
   }, []);
 
-  // Force logout when maintenance kicks in for non-platform admins
+  // ── Force logout when maintenance kicks in for non-platform admins ───────────
   useEffect(() => {
     if (maintenance.enabled && user && user.role !== 'platform_admin') {
       logout();
@@ -120,28 +105,28 @@ function KeycloakAuthProvider({ children }) {
   }, [maintenance.enabled, user]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /**
-   * Redirect to Keycloak's hosted login page.
-   * Accepts an optional credentials argument for API compatibility with legacy
-   * callers (LoginPage.jsx), but Keycloak handles credentials itself.
+   * Login with username + password via the backend KC proxy.
+   * Compatible with LoginPage.jsx's existing call signature.
    */
-  const login = async (_credentials) => {
-    const kc = kcRef.current;
-    if (!kc) return;
-    await kc.login({ redirectUri: window.location.origin + window.location.pathname });
+  const login = async (credentials) => {
+    const res = await api.post('/auth/kc-login', credentials);
+    setKcTokens(res.data);
+    const me = await api.get('/auth/me');
+    setUser(me.data.user);
+    return { user: me.data.user };
   };
 
   /**
-   * No-op in Keycloak mode — 2FA is handled natively on the Keycloak login page.
+   * No-op — 2FA via KC is handled on the KC login page if enabled.
    * Kept so LoginPage.jsx callers do not throw.
    */
   const verify2FA = async () => ({ requires2fa: false });
 
   const logout = async () => {
-    const kc = kcRef.current;
+    const rt = getKcRefreshToken();
+    clearKcTokens();
     setUser(null);
-    if (kc?.authenticated) {
-      await kc.logout({ redirectUri: window.location.origin + '/login' });
-    }
+    try { await api.post('/auth/kc-logout', { refresh_token: rt }); } catch { /* non-fatal */ }
   };
 
   const refreshUser = async () => {

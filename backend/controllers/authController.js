@@ -579,11 +579,20 @@ const kcLogin = async (req, res) => {
     return res.status(400).json({ message: 'Username and password required.' });
   if (!process.env.KEYCLOAK_URL)
     return res.status(503).json({ message: 'Keycloak not configured.' });
+
+  // KC usernames are stored as "{tenantSlug}__{username}" for tenant users.
+  // Platform admins have no tenant and log in with their plain username.
+  const tenantSlug = req.tenant?.slug ?? null;
+  let kcUsername = username.trim();
+  if (tenantSlug && !kcUsername.startsWith(tenantSlug + '__')) {
+    kcUsername = `${tenantSlug}__${kcUsername}`;
+  }
+
   try {
     const params = new URLSearchParams({
       grant_type: 'password',
       client_id:  'salon-frontend',
-      username,
+      username:   kcUsername,
       password,
     });
     const r = await axios.post(`${KC_REALM_URL()}/token`, params.toString(), {

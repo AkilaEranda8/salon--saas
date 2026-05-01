@@ -58,27 +58,50 @@ class MobileApi {
     required String username,
     required String password,
   }) async {
-    final response = await http.post(
-      Uri.parse('$baseUrl/api/auth/login'),
+    // Step 1: Keycloak credential login
+    final kcRes = await http.post(
+      Uri.parse('$baseUrl/api/auth/kc-login'),
       headers: _baseHeaders(),
       body: jsonEncode({
         'username': username.trim(),
         'password': password.trim(),
       }),
     );
-    final body = _decode(response.body);
-    if (response.statusCode >= 400) {
-      throw Exception(body['message'] ?? 'Login failed');
+    final kcBody = _decode(kcRes.body);
+    if (kcRes.statusCode >= 400) {
+      throw Exception(kcBody['message'] ?? 'Login failed');
     }
-    final bodyToken = '${body['token'] ?? ''}'.trim();
-    if (bodyToken.isEmpty) {
-      final cookieHeader = response.headers['set-cookie'] ?? '';
-      final cookieToken = _extractTokenFromCookie(cookieHeader);
-      if (cookieToken.isNotEmpty) {
-        body['token'] = cookieToken;
-      }
+    final accessToken = '${kcBody['access_token'] ?? ''}'.trim();
+    if (accessToken.isEmpty) throw Exception('No access token returned');
+
+    // Step 2: Fetch user profile
+    final meRes = await http.get(
+      Uri.parse('$baseUrl/api/auth/me'),
+      headers: _authHeaders(accessToken),
+    );
+    final meBody = _decode(meRes.body);
+    if (meRes.statusCode >= 400) {
+      throw Exception(meBody['message'] ?? 'Failed to load user');
     }
-    return body;
+    return {
+      'token':         accessToken,
+      'refresh_token': kcBody['refresh_token'] ?? '',
+      'expires_in':    kcBody['expires_in'] ?? 300,
+      'user':          meBody['user'] ?? {},
+    };
+  }
+
+  Future<String?> kcRefresh({required String refreshToken}) async {
+    final res = await http.post(
+      Uri.parse('$baseUrl/api/auth/kc-refresh'),
+      headers: _baseHeaders(),
+      body: jsonEncode({'refresh_token': refreshToken}),
+    );
+    if (res.statusCode >= 400) return null;
+    final body = _decode(res.body);
+    return '${body['access_token'] ?? ''}'.trim().isEmpty
+        ? null
+        : '${body['access_token']}';
   }
 
   /// GET /api/auth/me — resolves [branchId] from linked Staff when portal row has no branch.

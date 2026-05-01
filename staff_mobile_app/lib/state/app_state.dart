@@ -46,9 +46,10 @@ class AppState extends ChangeNotifier {
     });
   }
 
-  static const _kAuthTokenKey = 'staff_auth_token';
-  static const _kUserJsonKey = 'staff_user_json';
-  static const _kSlugKey = 'salon_slug';
+  static const _kAuthTokenKey    = 'staff_auth_token';
+  static const _kUserJsonKey     = 'staff_user_json';
+  static const _kSlugKey         = 'salon_slug';
+  static const _kRefreshTokenKey = 'kc_refresh_token';
 
   MobileApi _api;
 
@@ -105,6 +106,17 @@ class AppState extends ChangeNotifier {
       if (savedSlug != null && savedSlug.isNotEmpty) {
         _api = MobileApi(baseUrl: kStaffApiBaseUrl, slug: savedSlug);
       }
+      // Try KC refresh token first for a fresh access token
+      final savedRefresh = prefs.getString(_kRefreshTokenKey) ?? '';
+      if (savedRefresh.isNotEmpty) {
+        try {
+          final newAccess = await _api.kcRefresh(refreshToken: savedRefresh);
+          if (newAccess != null && newAccess.isNotEmpty) {
+            await prefs.setString(_kAuthTokenKey, newAccess);
+          }
+        } catch (_) {}
+      }
+
       final token = prefs.getString(_kAuthTokenKey);
       if (token == null || token.trim().isEmpty) return;
       final raw = prefs.getString(_kUserJsonKey);
@@ -172,7 +184,7 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  Future<void> _persistSession(StaffUser user) async {
+  Future<void> _persistSession(StaffUser user, {String? refreshToken}) async {
     final token = user.authToken?.trim() ?? '';
     if (token.isEmpty) return;
     final prefs = await SharedPreferences.getInstance();
@@ -187,12 +199,16 @@ class AppState extends ChangeNotifier {
         'branchId': user.branchId,
       }),
     );
+    if (refreshToken != null && refreshToken.isNotEmpty) {
+      await prefs.setString(_kRefreshTokenKey, refreshToken);
+    }
   }
 
   Future<void> _clearPersistedSession() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_kAuthTokenKey);
     await prefs.remove(_kUserJsonKey);
+    await prefs.remove(_kRefreshTokenKey);
   }
 
   Future<bool> loginStaff(String username, String password) async {
@@ -200,6 +216,7 @@ class AppState extends ChangeNotifier {
       _lastError = null;
       final body = await _api.login(username: username, password: password);
       final token = '${body['token'] ?? ''}';
+      final refreshToken = '${body['refresh_token'] ?? ''}';
       if (token.trim().isEmpty) {
         _lastError = 'Login token missing from server response.';
         return false;
@@ -225,7 +242,7 @@ class AppState extends ChangeNotifier {
       } catch (_) {
         // Keep login successful even if staff list fails to preload.
       }
-      await _persistSession(_currentUser!);
+      await _persistSession(_currentUser!, refreshToken: refreshToken);
       unawaited(_registerFcmToken(token));
       notifyListeners();
       return true;

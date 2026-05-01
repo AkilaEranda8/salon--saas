@@ -195,7 +195,7 @@ async function createUser(opts) {
     email:         email || undefined,
     emailVerified: true,
     firstName:     nameParts[0] || username,
-    lastName:      nameParts.slice(1).join(' ') || '',
+    lastName:      nameParts.slice(1).join(' ') || '-',
     enabled:       true,
     attributes: {
       salonRole:  [role],

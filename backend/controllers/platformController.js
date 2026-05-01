@@ -194,9 +194,6 @@ const createTenant = async (req, res) => {
   if (!ALLOWED_STATUSES.has(status)) {
     return res.status(400).json({ message: 'Invalid status. Use active, suspended, or cancelled.' });
   }
-  if (String(password).length < 8) {
-    return res.status(400).json({ message: 'Password must be at least 8 characters.' });
-  }
 
   const t = await sequelize.transaction();
   try {

@@ -191,11 +191,12 @@ async function createUser(opts) {
   const kcUsername = tenantSlug ? `${tenantSlug}__${username}` : username;
 
   const payload = {
-    username:   kcUsername,
-    email:      email || undefined,
-    firstName:  nameParts[0] || username,
-    lastName:   nameParts.slice(1).join(' ') || '',
-    enabled:    true,
+    username:      kcUsername,
+    email:         email || undefined,
+    emailVerified: true,
+    firstName:     nameParts[0] || username,
+    lastName:      nameParts.slice(1).join(' ') || '',
+    enabled:       true,
     attributes: {
       salonRole:  [role],
       dbUserId:   [String(dbUserId)],

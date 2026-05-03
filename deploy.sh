@@ -41,11 +41,11 @@ if [ -d "$APP_DIR" ]; then
     echo ""
     echo "▸ Updating existing repo..."
     cd "$APP_DIR"
-    git pull origin master
+    git pull origin main
 else
     echo ""
     echo "▸ Cloning repository..."
-    git clone https://github.com/AkilaEranda8/zane_saloon_.git "$APP_DIR"
+    git clone https://github.com/AkilaEranda8/salon--saas.git "$APP_DIR"
     cd "$APP_DIR"
 fi
 

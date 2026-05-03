@@ -296,7 +296,7 @@ connectWithRetry().then(async () => {
       { table: 'appointments', columns: '(staff_id, date)',     name: 'idx_appt_staff_date'  },
       { table: 'payments',     columns: '(tenant_id, created_at)', name: 'idx_pay_tenant_date' },
       { table: 'payments',     columns: '(customer_id)',        name: 'idx_pay_customer'     },
-      { table: 'walk_ins',     columns: '(tenant_id, status)',  name: 'idx_walkin_tenant_status' },
+      { table: 'walk_in_queue', columns: '(tenant_id, status)',  name: 'idx_walkin_tenant_status' },
       { table: 'tenants',      columns: '(slug)',               name: 'idx_tenant_slug', unique: true },
     ];
     const [existingIndexes] = await sequelize.query(`SELECT INDEX_NAME FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE()`);

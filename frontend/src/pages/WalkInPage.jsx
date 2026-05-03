@@ -9,6 +9,7 @@ import Badge from '../components/ui/Badge';
 import { useToast } from '../components/ui/Toast';
 import { Input, Label, Textarea, Select } from '../components/ui/FormElements';
 import { computePromoFromDiscount } from '../utils/promoDiscount';
+import { getKcAccessToken } from '../utils/kcTokenStore';
 import {
   PKModal as Modal, StatCard, StaffAvatar,
   IconUsers, IconCheck, IconClock, IconCalendar,
@@ -205,10 +206,18 @@ export default function WalkInPage() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  /*  Socket.io  */
+  /*  Polling fallback — refreshes every 30 s regardless of socket state  */
   useEffect(() => {
     if (!selectedBranch) return;
-    const socket = io();
+    const t = setInterval(fetchData, 30000);
+    return () => clearInterval(t);
+  }, [selectedBranch, fetchData]);
+
+  /*  Socket.io — pass KC access token so backend auth middleware accepts it  */
+  useEffect(() => {
+    if (!selectedBranch) return;
+    const token = getKcAccessToken();
+    const socket = token ? io({ auth: { token } }) : io();
     socketRef.current = socket;
     socket.emit('join', { branchId: selectedBranch });
     socket.on('queue:updated', () => fetchData());

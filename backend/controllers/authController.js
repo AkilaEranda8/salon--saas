@@ -221,13 +221,24 @@ const logout = async (req, res) => {
 // ─── GET /api/auth/me ────────────────────────────────────────────────────────
 const getMe = async (req, res) => {
   try {
-    const user = await User.findByPk(req.user.id, {
-      attributes: { exclude: ['password'] },
-      include: [
-        { model: Branch, as: 'branch', attributes: ['id', 'name', 'color'] },
-        { model: Tenant, as: 'tenant', attributes: ['id', 'slug', 'name', 'brand_name', 'logo_sidebar_url', 'logo_header_url', 'logo_login_url', 'logo_public_url', 'primary_color', 'sidebar_style', 'font_family', 'plan', 'status', 'trial_ends_at'] },
-      ],
-    });
+    const include = [
+      { model: Branch, as: 'branch', attributes: ['id', 'name', 'color'] },
+      { model: Tenant, as: 'tenant', attributes: ['id', 'slug', 'name', 'brand_name', 'logo_sidebar_url', 'logo_header_url', 'logo_login_url', 'logo_public_url', 'primary_color', 'sidebar_style', 'font_family', 'plan', 'status', 'trial_ends_at'] },
+    ];
+    const exclude = { exclude: ['password'] };
+
+    let user = null;
+    if (req.user?.id) {
+      user = await User.findByPk(req.user.id, { attributes: exclude, include });
+    }
+    // KC token may not carry db_user_id (e.g. platform_admin) — fall back to username
+    if (!user && req.user?.username) {
+      user = await User.findOne({
+        where:      { username: req.user.username, is_active: true },
+        attributes: exclude,
+        include,
+      });
+    }
 
     if (!user) {
       return res.status(404).json({ message: 'User not found.' });

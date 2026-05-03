@@ -199,17 +199,19 @@ export default function Topbar({ onMenuClick }) {
           </button>
 
           <div style={{ display:'flex', alignItems:'center', gap:8, minWidth:0 }}>
-            <img
-              src={brandLogo}
-              alt={`${brandName} logo`}
-              style={{
-                width: 24,
-                height: 24,
-                borderRadius: 6,
-                objectFit: 'cover',
-                background: '#000',
-              }}
-            />
+            {brandLogo && (
+              <img
+                src={brandLogo}
+                alt={`${brandName} logo`}
+                style={{
+                  width: 24,
+                  height: 24,
+                  borderRadius: 6,
+                  objectFit: 'cover',
+                  background: '#000',
+                }}
+              />
+            )}
             <span style={{ fontSize:14, color:isDark ? '#94A3B8' : '#667085', fontWeight:500, whiteSpace:'nowrap' }}>{brandName}</span>
             <span style={{ color:isDark ? '#334155' : '#D0D5DD', fontSize:14, fontWeight:400 }}>/</span>
             <span style={{

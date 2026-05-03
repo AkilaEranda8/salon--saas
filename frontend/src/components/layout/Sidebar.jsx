@@ -285,11 +285,23 @@ export default function Sidebar({ collapsed, onToggle, currentUser, mobileOpen, 
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, overflow: 'hidden', flex: 1 }}>
           <div style={{ position: 'relative', flexShrink: 0 }}>
-            <img
-              src={brandLogo}
-              alt={`${brandName} logo`}
-              style={{ width: 36, height: 36, borderRadius: 10, objectFit: 'cover', border: `1.5px solid ${C.border}` }}
-            />
+            {brandLogo ? (
+              <img
+                src={brandLogo}
+                alt={`${brandName} logo`}
+                style={{ width: 36, height: 36, borderRadius: 10, objectFit: 'cover', border: `1.5px solid ${C.border}` }}
+              />
+            ) : (
+              <div style={{
+                width: 36, height: 36, borderRadius: 10,
+                background: C.accentBg,
+                border: `1.5px solid ${C.border}`,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 13, fontWeight: 800, color: C.accentTx, letterSpacing: '0.02em',
+              }}>
+                {brandName.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase()}
+              </div>
+            )}
             <div style={{
               position: 'absolute', bottom: -1, right: -1,
               width: 9, height: 9, borderRadius: '50%',

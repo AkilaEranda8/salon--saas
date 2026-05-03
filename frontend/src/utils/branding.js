@@ -38,5 +38,5 @@ export function resolveBrandLogo(branding, variant = 'default') {
     branding?.logo_url ??
     branding?.logoUrl;
 
-  return candidate || DEFAULT_LOGO_SVG;
+  return candidate || null;
 }

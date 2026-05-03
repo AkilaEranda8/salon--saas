@@ -85,7 +85,7 @@ export default function BillingInvoicesPage() {
     <PageWrapper title="Billing & Invoices" subtitle="Manage your subscription invoices and payment history">
 
       {/* ── Summary cards ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 14, marginBottom: 24, maxWidth: 900 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14, marginBottom: 24 }}>
         {[
           { label: 'Total Invoices', value: invoices.length,           sub: 'All time',         color: '#2563EB', bg: '#EFF6FF' },
           { label: 'Total Paid',     value: fmt(totalPaid, currency),   sub: 'Paid invoices',    color: '#047857', bg: '#ECFDF5' },
@@ -100,7 +100,7 @@ export default function BillingInvoicesPage() {
       </div>
 
       {/* ── Invoice list ── */}
-      <div style={{ maxWidth: 900, background: '#fff', border: '1px solid #E5E7EB', borderRadius: 14, overflow: 'hidden' }}>
+      <div style={{ background: '#fff', border: '1px solid #E5E7EB', borderRadius: 14, overflow: 'hidden' }}>
 
         {/* header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 20px', borderBottom: '1px solid #F3F4F6' }}>

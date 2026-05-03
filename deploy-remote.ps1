@@ -32,7 +32,7 @@ if (-not $u) { $u = "root" }
 
 $p = $AppPath
 if (-not $p) { $p = $env:DEPLOY_PATH }
-if (-not $p) { $p = "/root/zanesalon" }
+if (-not $p) { $p = "/root/xanesalon" }
 
 $repoRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $repoRoot

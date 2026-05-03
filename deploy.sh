@@ -35,7 +35,7 @@ else
 fi
 
 # ── 3. Clone the repository ───────────────────────────────────────────────────
-APP_DIR="/root/zanesalon"
+APP_DIR="/root/xanesalon"
 
 if [ -d "$APP_DIR" ]; then
     echo ""

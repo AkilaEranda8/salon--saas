@@ -327,6 +327,7 @@ export default function WalkInPage() {
       }
       setPaymentOk(true);
       toast('Payment collected successfully.', 'success');
+      fetchData();
       setTimeout(() => {
         setPaymentEntry(null);
         setPaymentOk(false);

@@ -121,6 +121,7 @@ export default function InventoryReorderPage() {
   const [tab, setTab]           = useState('alerts');
   const [loading, setLoading]   = useState(true);
   const [lowStock, setLowStock] = useState([]);
+  const [inventoryItems, setInventoryItems] = useState([]);
   const [reorders, setReorders] = useState([]);
   const [search, setSearch]     = useState('');
   const [filterStatus, setFilterStatus] = useState('');
@@ -137,11 +138,13 @@ export default function InventoryReorderPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [lowRes, rRes] = await Promise.all([
+      const [lowRes, inventoryRes, rRes] = await Promise.all([
         api.get('/inventory/low-stock'),
+        api.get('/inventory?limit=200'),
         api.get('/inventory/reorders'),
       ]);
       setLowStock(Array.isArray(lowRes.data) ? lowRes.data : (lowRes.data?.data ?? []));
+      setInventoryItems(Array.isArray(inventoryRes.data) ? inventoryRes.data : (inventoryRes.data?.data ?? []));
       setReorders(Array.isArray(rRes.data) ? rRes.data : []);
     } catch { addToast('Failed to load data', 'error'); }
     setLoading(false);
@@ -167,7 +170,7 @@ export default function InventoryReorderPage() {
 
   const quickCreate = (item) => {
     const qty = Number(item.reorder_qty || item.min_quantity || 0) || Math.max(10, Number(item.min_quantity || 0));
-    setForm({ inventory_id: String(item.id), quantity_requested: String(qty), supplier_name: item.supplier_name||'', supplier_contact: item.supplier_contact||'', unit_cost:'', notes:`Auto-suggested reorder for: ${item.product_name}` });
+    setForm({ inventory_id: String(item.id), quantity_requested: String(qty), supplier_name: item.supplier_name||'', supplier_contact: item.supplier_contact||'', unit_cost:'', notes:`Auto-suggested reorder for: ${item.product_name || item.name}` });
     setShowForm(true);
   };
 
@@ -197,7 +200,7 @@ export default function InventoryReorderPage() {
       if (filterStatus && r.status !== filterStatus) return false;
       if (!search) return true;
       const q = search.toLowerCase();
-      const name = r.item?.product_name || r.inventory?.product_name || '';
+      const name = r.item?.product_name || r.item?.name || r.inventory?.product_name || r.inventory?.name || '';
       return name.toLowerCase().includes(q) || (r.supplier_name||'').toLowerCase().includes(q);
     })
     .sort((a,b) => {
@@ -210,7 +213,7 @@ export default function InventoryReorderPage() {
   const displayedLow = lowStock.filter(i => {
     if (!search) return true;
     const q = search.toLowerCase();
-    return (i.product_name||'').toLowerCase().includes(q) || (i.supplier_name||'').toLowerCase().includes(q);
+    return (i.product_name||i.name||'').toLowerCase().includes(q) || (i.supplier_name||'').toLowerCase().includes(q);
   });
 
   return (
@@ -312,7 +315,7 @@ export default function InventoryReorderPage() {
                       onMouseEnter={e=>e.currentTarget.style.background=isDark?'#1E293B':'#EEF4FF'}
                       onMouseLeave={e=>e.currentTarget.style.background=rowBg}>
                       <td style={{padding:'13px 16px'}}>
-                        <div style={{fontWeight:600,color:isDark?'#E2E8F0':'#101828',fontSize:14}}>{item.product_name}</div>
+                        <div style={{fontWeight:600,color:isDark?'#E2E8F0':'#101828',fontSize:14}}>{item.product_name || item.name}</div>
                         {item.category&&<div style={{fontSize:12,color:isDark?'#94A3B8':'#98A2B3',marginTop:1}}>{item.category}</div>}
                       </td>
                       <td style={{padding:'13px 16px',textAlign:'right'}}>
@@ -368,7 +371,7 @@ export default function InventoryReorderPage() {
                   const s = r.status;
                   const meta = STATUS_META[s]??STATUS_META.draft;
                   const rowBg = isDark?(idx%2===0?'#0F172A':'#111827'):(idx%2===0?'#fff':'#FAFBFC');
-                  const itemName = r.item?.product_name||r.inventory?.product_name||`Item #${r.inventory_id}`;
+                  const itemName = r.item?.product_name||r.item?.name||r.inventory?.product_name||r.inventory?.name||`Item #${r.inventory_id}`;
                   return (
                     <tr key={r.id} style={{borderBottom:`1px solid ${isDark?'#334155':'#F2F4F7'}`,background:rowBg,transition:'background 0.15s'}}
                       onMouseEnter={e=>e.currentTarget.style.background=isDark?'#1E293B':'#EEF4FF'}
@@ -417,7 +420,7 @@ export default function InventoryReorderPage() {
             <Fld label="Inventory Item *" dark={isDark}>
               <select style={inp(isDark)} value={form.inventory_id} onChange={e=>setForm(p=>({...p,inventory_id:e.target.value}))} required>
                 <option value="">Select item</option>
-                {lowStock.map(item=><option key={item.id} value={item.id}>{item.product_name} ({item.quantity} left)</option>)}
+                {inventoryItems.map(item=><option key={item.id} value={item.id}>{item.product_name || item.name} ({item.quantity} left)</option>)}
               </select>
             </Fld>
             <Fld label="Qty Requested *" dark={isDark}>
@@ -447,7 +450,7 @@ export default function InventoryReorderPage() {
           <div style={{fontFamily:"'Inter',sans-serif"}}>
             <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:24,padding:16,background:isDark?'#1E293B':'#F9FAFB',borderRadius:12,border:isDark?'1px solid #334155':'none'}}>
               <div>
-                <div style={{fontSize:17,fontWeight:700,color:isDark?'#E2E8F0':'#101828'}}>{detailItem.item?.product_name||detailItem.inventory?.product_name||`Item #${detailItem.inventory_id}`}</div>
+                <div style={{fontSize:17,fontWeight:700,color:isDark?'#E2E8F0':'#101828'}}>{detailItem.item?.product_name||detailItem.item?.name||detailItem.inventory?.product_name||detailItem.inventory?.name||`Item #${detailItem.inventory_id}`}</div>
                 <div style={{fontSize:13,color:isDark?'#94A3B8':'#667085',marginTop:2}}>Qty: {detailItem.quantity_requested}</div>
               </div>
               <StatusBadge status={detailItem.status} />

@@ -257,16 +257,39 @@ const summary = async (req, res) => {
       where,
       attributes: [
         'branch_id',
-        [fn('SUM', col('total_amount')),    'revenue'],
+        [fn('SUM', col('total_amount')), 'revenue'],
         [fn('SUM', col('commission_amount')), 'commission'],
-        [fn('COUNT', col('id')),            'count'],
+        [fn('COUNT', col('id')), 'count'],
       ],
       group: ['branch_id'],
-      include: [{ model: Branch, as: 'branch', attributes: ['id', 'name', 'color'] }],
+      raw: true,
     });
 
-    return res.json(totals);
+    const branchIds = totals
+      .map((row) => row.branch_id)
+      .filter((id) => id !== null && id !== undefined);
+
+    const branches = branchIds.length
+      ? await Branch.findAll({
+          where: {
+            ...tenantWhere(req),
+            id: { [Op.in]: branchIds },
+          },
+          attributes: ['id', 'name', 'color'],
+          raw: true,
+        })
+      : [];
+
+    const branchMap = new Map(branches.map((branch) => [String(branch.id), branch]));
+
+    const payload = totals.map((row) => ({
+      ...row,
+      branch: branchMap.get(String(row.branch_id)) || null,
+    }));
+
+    return res.json(payload);
   } catch (err) {
+    console.error(err);
     return res.status(500).json({ message: 'Server error.' });
   }
 };

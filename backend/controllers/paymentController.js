@@ -97,9 +97,10 @@ const create = async (req, res) => {
       const staffMember = await StaffModel.findOne({ where: byIdWhere(req, staff_id), transaction: t });
       if (staffMember) {
         const commissionBase = Math.max(0, total_amount - loyalty_discount);
+        const cv = parseFloat(staffMember.commission_value) || 0;
         commission_amount = staffMember.commission_type === 'percentage'
-          ? (commissionBase * parseFloat(staffMember.commission_value)) / 100
-          : parseFloat(staffMember.commission_value);
+          ? (commissionBase * cv) / 100
+          : cv;
       }
     }
 

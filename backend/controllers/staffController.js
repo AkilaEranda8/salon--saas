@@ -87,7 +87,8 @@ const create = async (req, res) => {
     }
 
     const tenantId = resolveTenantId(req);
-    const staff = await Staff.create({ name, phone, role_title, branch_id, commission_type, commission_value, join_date, user_id: user_id || null, tenant_id: tenantId });
+    const commVal = commission_value !== '' && commission_value != null ? parseFloat(commission_value) : null;
+    const staff = await Staff.create({ name, phone, role_title, branch_id, commission_type, commission_value: commVal, join_date, user_id: user_id || null, tenant_id: tenantId });
 
     // Save all branch associations
     if (branchIds.length) {
@@ -123,6 +124,9 @@ const update = async (req, res) => {
     const updates = {};
     for (const field of allowed) {
       if (req.body[field] !== undefined) updates[field] = req.body[field];
+    }
+    if ('commission_value' in updates) {
+      updates.commission_value = updates.commission_value !== '' && updates.commission_value != null ? parseFloat(updates.commission_value) : null;
     }
 
     // Handle branch_ids array or single branch_id

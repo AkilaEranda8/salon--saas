@@ -86,7 +86,7 @@ const create = async (req, res) => {
             tenantSlug: tenantSlug,
             branchId:   user.branch_id,
             password,
-            temporary:  true,
+            temporary:  false,
           });
         } catch (err) {
           console.error('[KC] user.create sync failed (non-fatal):', err.message);

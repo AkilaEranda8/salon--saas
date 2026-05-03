@@ -209,8 +209,18 @@ export default function PlatformInvoicesPage() {
     }
   };
 
-  const handleDownloadPdf = (id) => {
-    window.open(`/api/platform/invoices/${id}/pdf`, '_blank');
+  const handleDownloadPdf = async (id, invoiceNumber) => {
+    try {
+      const res = await api.get(`/platform/invoices/${id}/pdf`, { responseType: 'blob' });
+      const blob = new Blob([res.data], { type: 'application/pdf' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = `invoice-${invoiceNumber || id}.pdf`;
+      link.click();
+      URL.revokeObjectURL(link.href);
+    } catch (err) {
+      alert(err.response?.data?.message || 'Failed to download PDF.');
+    }
   };
 
   const handleEmailInvoice = async (inv) => {
@@ -450,7 +460,7 @@ export default function PlatformInvoicesPage() {
                             </>
                           ) : null;
                         })()}
-                        <button onClick={() => handleDownloadPdf(inv.id)} title="Download PDF"
+                        <button onClick={() => handleDownloadPdf(inv.id, inv.invoice_number)} title="Download PDF"
                           style={{
                             width: 30, height: 30, borderRadius: 7,
                             border: '1.5px solid #DBEAFE', background: '#EFF6FF',

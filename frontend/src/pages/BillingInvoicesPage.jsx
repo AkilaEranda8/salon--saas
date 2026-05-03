@@ -12,6 +12,20 @@ const STATUS_COLORS = {
   cancelled: '#9CA3AF',
 };
 
+const downloadPdf = async (url, filename) => {
+  try {
+    const res = await api.get(url, { responseType: 'blob' });
+    const blob = new Blob([res.data], { type: 'application/pdf' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = filename;
+    link.click();
+    URL.revokeObjectURL(link.href);
+  } catch (err) {
+    toast.error(err.response?.data?.message || 'Failed to download PDF.');
+  }
+};
+
 export default function BillingInvoicesPage() {
   const [searchParams] = useSearchParams();
   const [invoices, setInvoices] = useState([]);
@@ -80,7 +94,7 @@ export default function BillingInvoicesPage() {
                     <td style={{ padding: '12px 0', fontSize: 13 }}>
                       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                         <button
-                          onClick={() => window.open(`/api/billing/invoices/${inv.id}/pdf`, '_blank')}
+                          onClick={() => downloadPdf(`/billing/invoices/${inv.id}/pdf`, `invoice-${inv.invoice_number || inv.id}.pdf`)}
                           style={{
                             border: '1px solid #BFDBFE',
                             background: '#EFF6FF',

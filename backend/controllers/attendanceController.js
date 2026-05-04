@@ -93,7 +93,7 @@ const summary = async (req, res) => {
     if (req.userBranchId) staffWhere.branch_id = req.userBranchId;
     else if (req.query.branchId) staffWhere.branch_id = req.query.branchId;
 
-    const where = {};
+    const where = { ...tenantWhere(req) };
     if (req.query.month) {
       const [year, month] = req.query.month.split('-');
       const start = `${year}-${month}-01`;
@@ -113,7 +113,7 @@ const summary = async (req, res) => {
         model: Staff,
         as: 'staff',
         attributes: ['id', 'name'],
-        where: Object.keys(staffWhere).length ? staffWhere : undefined,
+        where: Object.keys(staffWhere).length ? { ...tenantWhere(req), ...staffWhere } : { ...tenantWhere(req) },
       }],
     });
 

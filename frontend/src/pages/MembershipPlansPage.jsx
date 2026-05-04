@@ -115,7 +115,7 @@ function ActionBtn({ onClick, title, color, children }) {
 
 export default function MembershipPlansPage() {
   const { user }   = useAuth();
-  const { addToast } = useToast();
+  const { toast } = useToast();
   const { isDark } = useTheme();
   const canAdmin   = ['superadmin', 'admin'].includes(user?.role);
 
@@ -155,34 +155,34 @@ export default function MembershipPlansPage() {
   const savePlan = async (e) => {
     e.preventDefault(); setSaving(true);
     try {
-      if (editPlan) { await api.put(`/membership/plans/${editPlan.id}`, planForm); addToast('Plan updated','success'); }
-      else { await api.post('/membership/plans', planForm); addToast('Plan created','success'); }
+      if (editPlan) { await api.put(`/membership/plans/${editPlan.id}`, planForm); toast('Plan updated','success'); }
+      else { await api.post('/membership/plans', planForm); toast('Plan created','success'); }
       setShowPlanModal(false); setEditPlan(null); setPlanForm(blankPlan); loadPlans();
-    } catch(err) { addToast(err.response?.data?.message||'Error','error'); }
+    } catch(err) { toast(err.response?.data?.message||'Error','error'); }
     setSaving(false);
   };
 
   const deletePlan = async (id) => {
     if (!window.confirm('Delete or deactivate this plan?')) return;
-    try { await api.delete(`/membership/plans/${id}`); addToast('Plan removed','success'); loadPlans(); }
-    catch { addToast('Error','error'); }
+    try { await api.delete(`/membership/plans/${id}`); toast('Plan removed','success'); loadPlans(); }
+    catch { toast('Error','error'); }
   };
 
   const saveEnroll = async (e) => {
     e.preventDefault(); setSaving(true);
     try {
       await api.post('/membership/enroll', enrollForm);
-      addToast('Customer enrolled!','success');
+      toast('Customer enrolled!','success');
       setShowEnrollModal(false);
       setEnrollForm({ customer_id:'', plan_id:'', start_date:new Date().toISOString().slice(0,10), amount_paid:'', notes:'' });
       loadEnrollments();
-    } catch(err) { addToast(err.response?.data?.message||'Error','error'); }
+    } catch(err) { toast(err.response?.data?.message||'Error','error'); }
     setSaving(false);
   };
 
   const updateStatus = async (id, status) => {
-    try { await api.patch(`/membership/enrollments/${id}/status`,{ status }); addToast('Updated','success'); loadEnrollments(); }
-    catch { addToast('Error','error'); }
+    try { await api.patch(`/membership/enrollments/${id}/status`,{ status }); toast('Updated','success'); loadEnrollments(); }
+    catch { toast('Error','error'); }
   };
 
   /* ── Derived ── */

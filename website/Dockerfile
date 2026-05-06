@@ -9,7 +9,12 @@ RUN printf 'server {\n\
     root /usr/share/nginx/html;\n\
     index index.html;\n\
 \n\
-    # React Router - all routes serve index.html\n\
+    # Clean URL: /privacy-policy  →  /privacy-policy.html\n\
+    location = /privacy-policy {\n\
+        try_files /privacy-policy.html =404;\n\
+    }\n\
+\n\
+    # All other routes serve index.html (SPA / marketing site)\n\
     location / {\n\
         try_files $uri $uri/ /index.html;\n\
     }\n\

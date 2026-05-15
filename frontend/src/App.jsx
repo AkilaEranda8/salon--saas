@@ -54,7 +54,6 @@ import LoyaltyPage from './pages/LoyaltyPage';
 import MembershipPlansPage from './pages/MembershipPlansPage';
 import ConsentFormsPage from './pages/ConsentFormsPage';
 import KpiDashboardPage from './pages/KpiDashboardPage';
-import MarketingAutomationPage from './pages/MarketingAutomationPage';
 import InventoryReorderPage from './pages/InventoryReorderPage';
 import AdvancesPage     from './pages/AdvancesPage';
 import ExpensesPage     from './pages/ExpensesPage';
@@ -397,11 +396,6 @@ function AppShell() {
             <Route path="/kpi-dashboard" element={
               <RoleRoute roles={['superadmin', 'admin', 'manager']}>
                 <KpiDashboardPage />
-              </RoleRoute>
-            } />
-            <Route path="/marketing" element={
-              <RoleRoute roles={['superadmin', 'admin', 'manager']}>
-                <MarketingAutomationPage />
               </RoleRoute>
             } />
             <Route path="/support"      element={<SupportTicketsPage />} />

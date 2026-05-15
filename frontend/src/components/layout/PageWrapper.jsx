@@ -13,7 +13,7 @@ export default function PageWrapper({ title, subtitle, actions, children }) {
         flexDirection: 'column',
         gap,
         padding:       pad,
-        minHeight:     '100%',
+        flex:          1,
         boxSizing:     'border-box',
         fontFamily:    "'Manrope', sans-serif",
       }}

@@ -321,7 +321,7 @@ function AppShell() {
         <UpgradePlanModal />
 
         <ForcePasswordChangeModal />
-        <div className="app-surface shell-scroll" style={{ flex: 1, overflowY: 'auto', background: isDark ? '#0F172A' : '#F7F8FA' }}>
+        <div className="app-surface shell-scroll" style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', background: isDark ? '#0F172A' : '#F7F8FA' }}>
           <Routes>
             {/* ── MAIN ────────────────────────────────────── */}
             <Route path="/dashboard"    element={<DashboardPage />} />

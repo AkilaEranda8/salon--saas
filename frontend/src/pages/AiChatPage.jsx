@@ -328,7 +328,7 @@ export default function AiChatPage() {
 
       <div style={{
         display: 'flex', flexDirection: 'column',
-        height: 'calc(100vh - 148px)',
+        flex: 1, minHeight: 0,
         borderRadius: 16, overflow: 'hidden',
         border: `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : '#EAECF0'}`,
         boxShadow: isDark ? '0 4px 24px rgba(0,0,0,0.4)' : '0 4px 24px rgba(16,24,40,0.08)',

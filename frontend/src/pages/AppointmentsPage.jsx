@@ -343,6 +343,9 @@ export default function AppointmentsPage() {
   const [customerPackages, setCustomerPackages] = useState([]);
   const [loadingCustomerPackages, setLoadingCustomerPackages] = useState(false);
   const [selectedCustomerPackageId, setSelectedCustomerPackageId] = useState('');
+  const [paymentCustPackages, setPaymentCustPackages] = useState([]);
+  const [paymentCustPackageId, setPaymentCustPackageId] = useState('');
+  const [loadingPaymentPkgs, setLoadingPaymentPkgs] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -390,6 +393,24 @@ export default function AppointmentsPage() {
     setPaymentDiscountId('');
     setPaymentErr('');
     setPaymentOk(false);
+    setPaymentCustPackages([]);
+    setPaymentCustPackageId('');
+    const custId = sourceRow.customer_id || sourceRow.customer?.id;
+    if (custId) {
+      setLoadingPaymentPkgs(true);
+      const pkgSel = parsePackageSelection(sourceRow.notes || '');
+      api.get(`/packages/customer/${custId}/active`)
+        .then((r2) => {
+          const pkgs = Array.isArray(r2.data) ? r2.data : [];
+          setPaymentCustPackages(pkgs);
+          if (pkgSel.id && pkgs.find((p) => String(p.id) === String(pkgSel.id))) {
+            setPaymentCustPackageId(String(pkgSel.id));
+            setPaymentMethod('Package');
+          }
+        })
+        .catch(() => {})
+        .finally(() => setLoadingPaymentPkgs(false));
+    }
     const bid = sourceRow.branch_id || sourceRow.branch?.id || user?.branch_id;
     if (bid) {
       try {
@@ -441,7 +462,7 @@ export default function AppointmentsPage() {
         subtotal,
         loyalty_discount: 0,
         ...(paymentDiscountId ? { discount_id: Number(paymentDiscountId) } : {}),
-        splits: [{ method: paymentMethod, amount: Number(paymentAmt) }],
+        splits: [{ method: paymentMethod, amount: Number(paymentAmt), ...(paymentMethod === 'Package' && paymentCustPackageId ? { customer_package_id: Number(paymentCustPackageId) } : {}) }],
       });
       if (paymentAppt?.id) {
         const primaryId = Number(paymentServices[0] || 0);
@@ -936,11 +957,31 @@ export default function AppointmentsPage() {
                   <Input type="number" value={paymentAmt} onChange={e=>setPaymentAmt(e.target.value)} placeholder="0" />
                 </FormGroup>
                 <FormGroup label="Payment Method" required>
-                  <Select value={paymentMethod} onChange={e=>setPaymentMethod(e.target.value)}>
-                    {['Cash','Card','Bank Transfer','Online'].map(m=><option key={m} value={m}>{m}</option>)}
+                  <Select value={paymentMethod} onChange={e=>{ setPaymentMethod(e.target.value); if (e.target.value !== 'Package') setPaymentCustPackageId(''); }}>
+                    {['Cash','Card','Bank Transfer','Online','Package'].map(m=><option key={m} value={m}>{m}</option>)}
                   </Select>
                 </FormGroup>
               </div>
+              {paymentMethod === 'Package' && (
+                <FormGroup label="Customer Package">
+                  {!paymentAppt.customer_id ? (
+                    <div style={{ fontSize:12, color:'#92400E', background:'#FFFBEB', padding:'8px 12px', borderRadius:8, border:'1px solid #FDE68A' }}>No customer linked to this appointment</div>
+                  ) : loadingPaymentPkgs ? (
+                    <div style={{ fontSize:12, color:'#94A3B8', padding:'4px 0' }}>Loading packages...</div>
+                  ) : paymentCustPackages.length === 0 ? (
+                    <div style={{ fontSize:12, color:'#92400E', background:'#FFFBEB', padding:'8px 12px', borderRadius:8, border:'1px solid #FDE68A' }}>No active packages for this customer</div>
+                  ) : (
+                    <Select value={paymentCustPackageId} onChange={e => setPaymentCustPackageId(e.target.value)}>
+                      <option value="">Select package...</option>
+                      {paymentCustPackages.map(cp => (
+                        <option key={cp.id} value={cp.id}>
+                          {cp.package?.name || 'Package'} — {cp.sessions_remaining !== null ? `${cp.sessions_remaining} sessions left` : 'Unlimited'} (exp {new Date(cp.expiry_date).toLocaleDateString()})
+                        </option>
+                      ))}
+                    </Select>
+                  )}
+                </FormGroup>
+              )}
               <div style={{ background:'#F0FDF4', borderRadius:10, padding:'12px 16px', display:'flex', alignItems:'center', justifyContent:'space-between', border:'1px solid #BBF7D0' }}>
                 <span style={{ fontSize:13, fontWeight:600, color:'#166534' }}>Collected</span>
                 <span style={{ fontSize:18, fontWeight:800, color:'#059669' }}>Rs. {Number(paymentAmt||0).toLocaleString()}</span>

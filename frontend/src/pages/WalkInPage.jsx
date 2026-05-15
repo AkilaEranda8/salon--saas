@@ -149,6 +149,9 @@ export default function WalkInPage() {
   const [paymentServices,setPaymentServices]= useState([]);
   const [paymentDiscountId, setPaymentDiscountId] = useState('');
   const [paymentDiscounts, setPaymentDiscounts] = useState([]);
+  const [paymentCustPackages, setPaymentCustPackages] = useState([]);
+  const [paymentCustPackageId, setPaymentCustPackageId] = useState('');
+  const [loadingPaymentPkgs, setLoadingPaymentPkgs] = useState(false);
   const [editEntry,      setEditEntry]      = useState(null);
   const [editForm,       setEditForm]       = useState({ customerName: '', phone: '', serviceId: '', note: '' });
   const [editExtraServiceIds, setEditExtraServiceIds] = useState([]);
@@ -266,6 +269,15 @@ export default function WalkInPage() {
     setPaymentError('');
     setPaymentOk(false);
     setPaymentServices(ids);
+    setPaymentCustPackages([]);
+    setPaymentCustPackageId('');
+    if (entry.customer_id) {
+      setLoadingPaymentPkgs(true);
+      api.get(`/packages/customer/${entry.customer_id}/active`)
+        .then((r) => setPaymentCustPackages(Array.isArray(r.data) ? r.data : []))
+        .catch(() => {})
+        .finally(() => setLoadingPaymentPkgs(false));
+    }
     const bid = entry.branch_id || selectedBranch;
     if (bid) {
       try {
@@ -320,7 +332,7 @@ export default function WalkInPage() {
         subtotal,
         loyalty_discount: 0,
         ...(paymentDiscountId ? { discount_id: Number(paymentDiscountId) } : {}),
-        splits: [{ method: paymentMethod, amount: Number(paymentAmount) }],
+        splits: [{ method: paymentMethod, amount: Number(paymentAmount), ...(paymentMethod === 'Package' && paymentCustPackageId ? { customer_package_id: Number(paymentCustPackageId) } : {}) }],
       });
       if (paymentEntry.status !== 'completed') {
         await api.patch(`/walkin/${paymentEntry.id}/status`, { status: 'completed' });
@@ -1082,13 +1094,13 @@ export default function WalkInPage() {
               <div>
                 <Label>Payment Method</Label>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
-                  {['Cash', 'Card', 'Online Transfer', 'LankaQR'].map((m) => {
+                  {['Cash', 'Card', 'Online Transfer', 'LankaQR', ...(paymentEntry?.customer_id ? ['Package'] : [])].map((m) => {
                     const active = paymentMethod === m;
                     return (
                       <button
                         key={m}
                         type="button"
-                        onClick={() => setPaymentMethod(m)}
+                        onClick={() => { setPaymentMethod(m); if (m !== 'Package') setPaymentCustPackageId(''); }}
                         style={{
                           padding: '8px 18px',
                           borderRadius: 10,
@@ -1106,6 +1118,25 @@ export default function WalkInPage() {
                     );
                   })}
                 </div>
+                {paymentMethod === 'Package' && (
+                  <div style={{ marginTop: 8 }}>
+                    {loadingPaymentPkgs ? (
+                      <div style={{ fontSize: 12, color: '#94A3B8', padding: '4px 0' }}>Loading packages...</div>
+                    ) : paymentCustPackages.length === 0 ? (
+                      <div style={{ fontSize: 12, color: '#92400E', background: '#FFFBEB', padding: '8px 12px', borderRadius: 8, border: '1px solid #FDE68A' }}>No active packages for this customer</div>
+                    ) : (
+                      <select value={paymentCustPackageId} onChange={e => setPaymentCustPackageId(e.target.value)}
+                        style={{ width: '100%', padding: '9px 12px', borderRadius: 10, border: '1.5px solid #D0D5DD', fontSize: 13, fontFamily: 'inherit', background: '#fff', color: '#0F172A', outline: 'none' }}>
+                        <option value="">Select package...</option>
+                        {paymentCustPackages.map(cp => (
+                          <option key={cp.id} value={cp.id}>
+                            {cp.package?.name || 'Package'} — {cp.sessions_remaining !== null ? `${cp.sessions_remaining} sessions left` : 'Unlimited'} (exp {new Date(cp.expiry_date).toLocaleDateString()})
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
+                )}
                 {paymentMethod === 'LankaQR' && paymentAmount && Number(paymentAmount) > 0 && (
                   <button
                     type="button"

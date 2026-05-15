@@ -4,6 +4,7 @@ const { Op } = require('sequelize');
 const { verifyToken, requireRole } = require('../middleware/auth');
 const { branchAccess } = require('../middleware/branchAccess');
 const { tenantWhere, byIdWhere, resolveTenantId } = require('../utils/tenantScope');
+const { notifyWaitlistSlotAvailable } = require('../services/notificationService');
 
 const getBranchWhere = (req) => {
   const where = tenantWhere(req);
@@ -70,8 +71,13 @@ router.post('/', async (req, res) => {
 // PATCH /api/waitlist/:id/status
 router.patch('/:id/status', async (req, res) => {
   try {
-    const { Waitlist } = require('../models');
-    const entry = await Waitlist.findOne({ where: byIdWhere(req, req.params.id) });
+    const { Waitlist, Service, Branch } = require('../models');
+    const entry = await Waitlist.findOne({
+      where: byIdWhere(req, req.params.id),
+      include: [
+        { model: Service, as: 'service', attributes: ['id', 'name'], required: false },
+      ],
+    });
     if (!entry) return res.status(404).json({ message: 'Waitlist entry not found.' });
 
     const { status } = req.body;
@@ -81,6 +87,18 @@ router.patch('/:id/status', async (req, res) => {
     entry.status = status;
     if (status === 'notified') entry.notified_at = new Date();
     await entry.save();
+
+    if (status === 'notified' && entry.phone) {
+      setImmediate(async () => {
+        try {
+          const branch = await Branch.findOne({ where: { id: entry.branch_id }, attributes: ['id', 'name'] });
+          notifyWaitlistSlotAvailable(entry, branch, entry.service || null);
+        } catch (e) {
+          console.error('[waitlist] notify failed:', e.message);
+        }
+      });
+    }
+
     return res.json(entry);
   } catch (err) {
     return res.status(500).json({ message: 'Server error.' });
@@ -114,12 +132,22 @@ router.post('/notify-available', requireRole('superadmin', 'admin', 'manager'), 
     if (service_id) where.service_id = Number(service_id);
     if (date) where.preferred_date = { [Op.or]: [date, null] };
 
-    const waiting = await Waitlist.findAll({ where, order: [['createdAt', 'ASC']], limit: 5 });
+    const waiting = await Waitlist.findAll({
+      where,
+      order: [['createdAt', 'ASC']],
+      limit: 5,
+      include: [{ model: require('../models').Service, as: 'service', attributes: ['id', 'name'], required: false }],
+    });
+
+    const branch = waiting.length
+      ? await require('../models').Branch.findOne({ where: { id: Number(branch_id) }, attributes: ['id', 'name'] })
+      : null;
 
     for (const w of waiting) {
       w.status = 'notified';
       w.notified_at = new Date();
       await w.save();
+      if (w.phone) notifyWaitlistSlotAvailable(w, branch, w.service || null);
     }
     return res.json({ notified: waiting.length, entries: waiting });
   } catch (err) {

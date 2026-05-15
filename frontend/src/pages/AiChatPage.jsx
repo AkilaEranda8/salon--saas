@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import PageWrapper from '../components/layout/PageWrapper';
 import api from '../api/axios';
+import { useTheme } from '../context/ThemeContext';
 
 /* ── Quick reply suggestions ── */
 const SUGGESTIONS = [
@@ -72,15 +73,19 @@ const CSS = `
 @keyframes pulseGlow { 0%,100% { opacity:1; } 50% { opacity:0.4; } }
 `;
 
-function renderMarkdown(text) {
-  return text.split(/(\*\*[^*]+\*\*|`[^`]+`)/g).map((part, i) => {
+function renderInline(text, isDark) {
+  return text.split(/(\*\*[^*]+\*\*|\*[^*]+\*|`[^`]+`)/g).map((part, i) => {
     if (part.startsWith('**') && part.endsWith('**'))
       return <strong key={i}>{part.slice(2, -2)}</strong>;
+    if (part.startsWith('*') && part.endsWith('*') && part.length > 2)
+      return <em key={i}>{part.slice(1, -1)}</em>;
     if (part.startsWith('`') && part.endsWith('`'))
       return (
         <code key={i} style={{
-          background: '#EFF6FF', padding: '1px 6px',
-          borderRadius: 4, fontSize: '0.9em', fontFamily: 'monospace',
+          background: isDark ? 'rgba(99,102,241,0.2)' : '#EFF6FF',
+          color: isDark ? '#A5B4FC' : '#3730A3',
+          padding: '1px 6px', borderRadius: 4,
+          fontSize: '0.88em', fontFamily: 'monospace',
         }}>
           {part.slice(1, -1)}
         </code>
@@ -89,8 +94,57 @@ function renderMarkdown(text) {
   });
 }
 
-function Message({ msg }) {
+function renderMarkdown(text, isDark) {
+  const lines = text.split('\n');
+  const result = [];
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    // Headings
+    const h3 = line.match(/^###\s+(.+)/);
+    const h2 = line.match(/^##\s+(.+)/);
+    const h1 = line.match(/^#\s+(.+)/);
+    if (h3) {
+      result.push(<div key={i} style={{ fontWeight: 700, fontSize: 13.5, marginTop: 8, marginBottom: 2, color: isDark ? '#C4B5FD' : '#5B21B6' }}>{renderInline(h3[1], isDark)}</div>);
+    } else if (h2) {
+      result.push(<div key={i} style={{ fontWeight: 700, fontSize: 14, marginTop: 8, marginBottom: 2, color: isDark ? '#93C5FD' : '#1D4ED8' }}>{renderInline(h2[1], isDark)}</div>);
+    } else if (h1) {
+      result.push(<div key={i} style={{ fontWeight: 800, fontSize: 15, marginTop: 8, marginBottom: 4, color: isDark ? '#93C5FD' : '#1E3A5F' }}>{renderInline(h1[1], isDark)}</div>);
+    // Bullet lists: -, *, •
+    } else if (/^[-*•]\s+/.test(line)) {
+      result.push(
+        <div key={i} style={{ display: 'flex', gap: 6, marginTop: 2 }}>
+          <span style={{ color: isDark ? '#A5B4FC' : '#6366F1', flexShrink: 0, marginTop: 1 }}>•</span>
+          <span>{renderInline(line.replace(/^[-*•]\s+/, ''), isDark)}</span>
+        </div>
+      );
+    // Numbered lists: 1. 2. etc
+    } else if (/^\d+\.\s+/.test(line)) {
+      const num = line.match(/^(\d+)\./)[1];
+      result.push(
+        <div key={i} style={{ display: 'flex', gap: 6, marginTop: 2 }}>
+          <span style={{ color: isDark ? '#A5B4FC' : '#6366F1', flexShrink: 0, minWidth: 16, fontWeight: 600 }}>{num}.</span>
+          <span>{renderInline(line.replace(/^\d+\.\s+/, ''), isDark)}</span>
+        </div>
+      );
+    // Horizontal rule
+    } else if (/^---+$/.test(line.trim())) {
+      result.push(<hr key={i} style={{ border: 'none', borderTop: `1px solid ${isDark ? 'rgba(255,255,255,0.1)' : '#E5E7EB'}`, margin: '6px 0' }} />);
+    // Empty line → spacing
+    } else if (line.trim() === '') {
+      result.push(<div key={i} style={{ height: 6 }} />);
+    // Normal text
+    } else {
+      result.push(<span key={i}>{renderInline(line, isDark)}<br /></span>);
+    }
+    i++;
+  }
+  return result;
+}
+
+function Message({ msg, isDark, onRetry }) {
   const isBot = msg.from === 'bot';
+  const isError = msg.error === true;
   return (
     <div style={{
       display: 'flex',
@@ -102,31 +156,51 @@ function Message({ msg }) {
       {isBot && (
         <div style={{
           width: 34, height: 34, borderRadius: 10,
-          background: 'linear-gradient(135deg, #2563EB, #7C3AED)',
+          background: isError ? '#FEE2E2' : 'linear-gradient(135deg, #2563EB, #7C3AED)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          flexShrink: 0, alignSelf: 'flex-end', color: '#fff',
+          flexShrink: 0, alignSelf: 'flex-end',
+          color: isError ? '#DC2626' : '#fff',
+          border: isError ? '1px solid #FECACA' : 'none',
         }}>
           <IconBot />
         </div>
       )}
       <div style={{
         maxWidth: '72%',
-        background: isBot ? '#FFFFFF' : 'linear-gradient(135deg, #2563EB, #7C3AED)',
-        color: isBot ? '#101828' : '#FFFFFF',
+        background: isBot
+          ? (isDark ? '#1E293B' : '#FFFFFF')
+          : 'linear-gradient(135deg, #2563EB, #7C3AED)',
+        color: isBot
+          ? (isDark ? '#E2E8F0' : '#101828')
+          : '#FFFFFF',
         borderRadius: isBot ? '4px 16px 16px 16px' : '16px 4px 16px 16px',
         padding: '11px 15px',
         fontSize: 13.5,
         lineHeight: 1.65,
-        boxShadow: isBot ? '0 2px 8px rgba(0,0,0,0.07)' : '0 2px 12px rgba(37,99,235,0.28)',
-        border: isBot ? '1px solid #EAECF0' : 'none',
-        whiteSpace: 'pre-wrap',
+        boxShadow: isBot
+          ? (isDark ? '0 2px 8px rgba(0,0,0,0.3)' : '0 2px 8px rgba(0,0,0,0.07)')
+          : '0 2px 12px rgba(37,99,235,0.28)',
+        border: isBot
+          ? `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : '#EAECF0'}`
+          : 'none',
         wordBreak: 'break-word',
         fontFamily: "'Inter',sans-serif",
       }}>
-        {msg.text.split('\n').map((line, i, arr) => (
-          <span key={i}>{renderMarkdown(line)}{i < arr.length - 1 && <br />}</span>
-        ))}
-        {msg.intent && isBot && (
+        <div>{renderMarkdown(msg.text, isDark)}</div>
+        {isError && onRetry && (
+          <button
+            onClick={() => onRetry(msg.originalText)}
+            style={{
+              marginTop: 8, padding: '4px 10px', fontSize: 11.5, fontWeight: 600,
+              background: 'transparent', border: '1px solid #FECACA',
+              borderRadius: 6, color: '#DC2626', cursor: 'pointer',
+              fontFamily: "'Inter',sans-serif",
+            }}
+          >
+            ↺ Retry
+          </button>
+        )}
+        {msg.intent && isBot && !isError && (
           <div style={{
             marginTop: 8, fontSize: 10.5, fontStyle: 'italic',
             color: msg.confidence > 0.6 ? '#10B981' : msg.confidence > 0.35 ? '#F59E0B' : '#EF4444',
@@ -140,8 +214,8 @@ function Message({ msg }) {
       {!isBot && (
         <div style={{
           width: 34, height: 34, borderRadius: 10,
-          background: 'linear-gradient(135deg, #EEF4FF, #DBEAFE)',
-          border: '1.5px solid #BFDBFE',
+          background: isDark ? 'rgba(37,99,235,0.2)' : 'linear-gradient(135deg, #EEF4FF, #DBEAFE)',
+          border: `1.5px solid ${isDark ? 'rgba(37,99,235,0.4)' : '#BFDBFE'}`,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           flexShrink: 0, alignSelf: 'flex-end', color: '#2563EB',
         }}>
@@ -183,22 +257,27 @@ function TypingIndicator() {
 }
 
 export default function AiChatPage() {
+  const { isDark } = useTheme();
   const [messages, setMessages] = useState([{
     from: 'bot',
     text: "Hello! Welcome to **HEXA SALON AI**\n\nI understand natural language — just type what you need!\n\n• Book appointments\n• Services & prices\n• Branch locations\n• Today's schedule & revenue\n• Inventory alerts\n\nOr pick a quick option below",
   }]);
   const [input, setInput]         = useState('');
   const [loading, setLoading]     = useState(false);
-  const [sessionId, setSessionId] = useState(null);
-  const [connected, setConnected] = useState(null); // null=checking, true=ok, false=down
+  const [sessionId, setSessionId] = useState(() => sessionStorage.getItem('ai_session_id') || null);
+  const [connected, setConnected] = useState(null);
   const bottomRef = useRef(null);
   const inputRef  = useRef(null);
 
-  /* Health check */
+  /* Health check — initial + every 60s */
   useEffect(() => {
-    api.get('/ai/health')
-      .then(() => setConnected(true))
-      .catch(() => setConnected(false));
+    const check = () =>
+      api.get('/ai/health')
+        .then(() => setConnected(true))
+        .catch(() => setConnected(false));
+    check();
+    const interval = setInterval(check, 60_000);
+    return () => clearInterval(interval);
   }, []);
 
   /* Auto-scroll */
@@ -214,20 +293,31 @@ export default function AiChatPage() {
     setLoading(true);
     try {
       const { data } = await api.post('/ai/chat', { session_id: sessionId, message: msg });
-      setSessionId(data.session_id);
+      const newSid = data.session_id;
+      setSessionId(newSid);
+      sessionStorage.setItem('ai_session_id', newSid);
       setMessages(m => [...m, {
         from: 'bot', text: data.reply,
         intent: data.intent, confidence: data.confidence,
       }]);
     } catch {
-      setMessages(m => [...m, { from: 'bot', text: 'Sorry, I could not connect. Please try again.' }]);
+      setMessages(m => [...m, {
+        from: 'bot',
+        text: 'Sorry, I could not connect to the AI. Please try again.',
+        error: true,
+        originalText: msg,
+      }]);
     } finally {
       setLoading(false);
       setTimeout(() => inputRef.current?.focus(), 50);
     }
   }
 
-  function clearChat() {
+  async function clearChat() {
+    if (sessionId) {
+      try { await api.delete(`/ai/chat/${sessionId}`); } catch {}
+    }
+    sessionStorage.removeItem('ai_session_id');
     setMessages([{ from: 'bot', text: 'Chat cleared. How can I help you?' }]);
     setSessionId(null);
   }
@@ -240,8 +330,8 @@ export default function AiChatPage() {
         display: 'flex', flexDirection: 'column',
         height: 'calc(100vh - 148px)',
         borderRadius: 16, overflow: 'hidden',
-        border: '1px solid #EAECF0',
-        boxShadow: '0 4px 24px rgba(16,24,40,0.08)',
+        border: `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : '#EAECF0'}`,
+        boxShadow: isDark ? '0 4px 24px rgba(0,0,0,0.4)' : '0 4px 24px rgba(16,24,40,0.08)',
       }}>
 
         {/* ── Header bar ── */}
@@ -299,10 +389,10 @@ export default function AiChatPage() {
         {/* ── Messages area ── */}
         <div style={{
           flex: 1, overflowY: 'auto', padding: '20px 18px',
-          background: '#F7F9FC',
+          background: isDark ? '#0F172A' : '#F7F9FC',
           display: 'flex', flexDirection: 'column', gap: 12,
         }}>
-          {messages.map((msg, i) => <Message key={i} msg={msg} />)}
+          {messages.map((msg, i) => <Message key={i} msg={msg} isDark={isDark} onRetry={send} />)}
           {loading && <TypingIndicator />}
           <div ref={bottomRef} />
         </div>
@@ -310,8 +400,8 @@ export default function AiChatPage() {
         {/* ── Quick reply chips ── */}
         <div style={{
           padding: '10px 14px',
-          background: '#fff',
-          borderTop: '1px solid #EAECF0',
+          background: isDark ? '#1E293B' : '#fff',
+          borderTop: `1px solid ${isDark ? 'rgba(255,255,255,0.06)' : '#EAECF0'}`,
           overflowX: 'auto',
           display: 'flex', gap: 6, flexWrap: 'nowrap',
           flexShrink: 0,
@@ -324,10 +414,10 @@ export default function AiChatPage() {
               style={{
                 flexShrink: 0,
                 display: 'flex', alignItems: 'center', gap: 5,
-                background: '#F7F8FA',
-                border: '1px solid #EAECF0',
+                background: isDark ? '#0F172A' : '#F7F8FA',
+                border: `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : '#EAECF0'}`,
                 borderRadius: 20, padding: '6px 13px',
-                fontSize: 12, fontWeight: 600, color: '#344054',
+                fontSize: 12, fontWeight: 600, color: isDark ? '#94A3B8' : '#344054',
                 cursor: loading ? 'not-allowed' : 'pointer',
                 whiteSpace: 'nowrap',
                 opacity: loading ? 0.5 : 1,
@@ -336,15 +426,15 @@ export default function AiChatPage() {
               }}
               onMouseEnter={e => {
                 if (!loading) {
-                  e.currentTarget.style.background = '#EEF4FF';
-                  e.currentTarget.style.borderColor = '#BFDBFE';
+                  e.currentTarget.style.background = isDark ? 'rgba(37,99,235,0.15)' : '#EEF4FF';
+                  e.currentTarget.style.borderColor = isDark ? 'rgba(37,99,235,0.4)' : '#BFDBFE';
                   e.currentTarget.style.color = '#2563EB';
                 }
               }}
               onMouseLeave={e => {
-                e.currentTarget.style.background = '#F7F8FA';
-                e.currentTarget.style.borderColor = '#EAECF0';
-                e.currentTarget.style.color = '#344054';
+                e.currentTarget.style.background = isDark ? '#0F172A' : '#F7F8FA';
+                e.currentTarget.style.borderColor = isDark ? 'rgba(255,255,255,0.08)' : '#EAECF0';
+                e.currentTarget.style.color = isDark ? '#94A3B8' : '#344054';
               }}
             >
               <Ico d={s.icon} size={12} />
@@ -356,8 +446,8 @@ export default function AiChatPage() {
         {/* ── Input bar ── */}
         <div style={{
           display: 'flex', gap: 10, padding: '12px 14px',
-          background: '#fff',
-          borderTop: '1px solid #EAECF0',
+          background: isDark ? '#1E293B' : '#fff',
+          borderTop: `1px solid ${isDark ? 'rgba(255,255,255,0.06)' : '#EAECF0'}`,
           flexShrink: 0,
         }}>
           <input
@@ -368,14 +458,17 @@ export default function AiChatPage() {
             placeholder="Type a message… (e.g. 'book a haircut for tomorrow')"
             disabled={loading}
             style={{
-              flex: 1, border: '1.5px solid #EAECF0', borderRadius: 12,
+              flex: 1,
+              border: `1.5px solid ${isDark ? 'rgba(255,255,255,0.1)' : '#EAECF0'}`,
+              borderRadius: 12,
               padding: '10px 16px', fontSize: 13.5, outline: 'none',
-              color: '#101828', background: loading ? '#F9FAFB' : '#fff',
+              color: isDark ? '#E2E8F0' : '#101828',
+              background: isDark ? '#0F172A' : (loading ? '#F9FAFB' : '#fff'),
               fontFamily: "'Inter',sans-serif",
               transition: 'border-color 0.15s',
             }}
             onFocus={e => e.target.style.borderColor = '#2563EB'}
-            onBlur={e => e.target.style.borderColor = '#EAECF0'}
+            onBlur={e => e.target.style.borderColor = isDark ? 'rgba(255,255,255,0.1)' : '#EAECF0'}
           />
           <button
             onClick={() => send()}

@@ -368,6 +368,20 @@ async def handle_management(intent: str, token: str) -> str | None:
         lines.append("\nGo to **Customers** page for full details.")
         return "\n".join(lines)
 
+    # ── Support ticket ────────────────────────────────────────────────────
+    if intent == "support_ticket":
+        return (
+            "🎫 **Create a Support Ticket**\n\n"
+            "To raise a support request, go to:\n"
+            "**Sidebar → Support** (under the Account section)\n\n"
+            "From there you can:\n"
+            "• 📝 Create a new ticket with subject & description\n"
+            "• 📋 Track existing tickets and their status\n"
+            "• 💬 Reply to the support team in the thread\n\n"
+            "Our support team will respond as soon as possible. "
+            "Use **urgent** priority if it's blocking your operations."
+        )
+
     return None   # Not a management intent
 
 
@@ -410,6 +424,21 @@ async def handle_message(
 
     if intent == "help":
         reply = _help_message(token)
+        add_to_history(session_id, "bot", reply)
+        return reply
+
+    if intent == "support_ticket":
+        reply = (
+            "🎫 **Create a Support Ticket**\n\n"
+            "To raise a support request, go to:\n"
+            "**Sidebar → Support** (under the Account section)\n\n"
+            "From there you can:\n"
+            "• 📝 Create a new ticket with subject & description\n"
+            "• 📋 Track existing tickets and their status\n"
+            "• 💬 Reply to the support team in the thread\n\n"
+            "Our support team will respond as soon as possible. "
+            "Use **urgent** priority if it's blocking your operations."
+        )
         add_to_history(session_id, "bot", reply)
         return reply
 

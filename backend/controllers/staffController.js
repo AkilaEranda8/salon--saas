@@ -77,7 +77,7 @@ const getOne = async (req, res) => {
 
 const create = async (req, res) => {
   try {
-    const { name, phone, role_title, commission_type, commission_value, join_date, user_id, specializations } = req.body;
+    const { name, phone, role_title, commission_type, commission_value, salary_type, base_salary, join_date, user_id, specializations } = req.body;
     // Accept branch_ids (array from frontend) or fallback to branch_id (single)
     const branchIds = (req.body.branch_ids || []).map(Number).filter(Boolean);
     const branch_id = branchIds[0] || Number(req.body.branch_id) || null;
@@ -87,8 +87,10 @@ const create = async (req, res) => {
     }
 
     const tenantId = resolveTenantId(req);
-    const commVal = commission_value !== '' && commission_value != null ? parseFloat(commission_value) : null;
-    const staff = await Staff.create({ name, phone, role_title, branch_id, commission_type, commission_value: commVal, join_date, user_id: user_id || null, tenant_id: tenantId });
+    const commVal  = commission_value !== '' && commission_value != null ? parseFloat(commission_value) : null;
+    const basesal  = base_salary !== '' && base_salary != null ? parseFloat(base_salary) : 0;
+    const salType  = ['commission_only', 'salary_only', 'salary_plus_commission'].includes(salary_type) ? salary_type : 'commission_only';
+    const staff = await Staff.create({ name, phone, role_title, branch_id, commission_type, commission_value: commVal, salary_type: salType, base_salary: basesal, join_date, user_id: user_id || null, tenant_id: tenantId });
 
     // Save all branch associations
     if (branchIds.length) {
@@ -120,13 +122,20 @@ const update = async (req, res) => {
       return res.status(403).json({ message: 'Access denied. Staff belongs to a different branch.' });
     }
 
-    const allowed = ['name', 'phone', 'role_title', 'commission_type', 'commission_value', 'join_date', 'is_active', 'user_id'];
+    const allowed = ['name', 'phone', 'role_title', 'commission_type', 'commission_value', 'salary_type', 'base_salary', 'join_date', 'is_active', 'user_id'];
     const updates = {};
     for (const field of allowed) {
       if (req.body[field] !== undefined) updates[field] = req.body[field];
     }
     if ('commission_value' in updates) {
       updates.commission_value = updates.commission_value !== '' && updates.commission_value != null ? parseFloat(updates.commission_value) : null;
+    }
+    if ('base_salary' in updates) {
+      updates.base_salary = updates.base_salary !== '' && updates.base_salary != null ? parseFloat(updates.base_salary) : 0;
+    }
+    if ('salary_type' in updates) {
+      const valid = ['commission_only', 'salary_only', 'salary_plus_commission'];
+      if (!valid.includes(updates.salary_type)) updates.salary_type = 'commission_only';
     }
 
     // Handle branch_ids array or single branch_id
@@ -238,21 +247,41 @@ const commissionSummary = async (req, res) => {
       const totalCommission = parseFloat(agg.totalCommission) || 0;
       const totalAdvances   = advMap[staff.id]  || 0;
       const totalPaid       = paidMap[staff.id] || 0;
-      const netCommission   = Math.max(0, totalCommission - totalAdvances);
+      const baseSalary      = parseFloat(staff.base_salary) || 0;
+      const salaryType      = staff.salary_type || 'commission_only';
+
+      // Net payable depends on salary_type:
+      //  commission_only          → commission - advances
+      //  salary_only              → base_salary - advances
+      //  salary_plus_commission   → base_salary + commission - advances
+      let grossPayable;
+      if (salaryType === 'salary_only') {
+        grossPayable = baseSalary;
+      } else if (salaryType === 'salary_plus_commission') {
+        grossPayable = baseSalary + totalCommission;
+      } else {
+        grossPayable = totalCommission;
+      }
+      const netPayable = Math.max(0, grossPayable - totalAdvances);
+
       return {
         staffId:          staff.id,
         staffName:        staff.name,
         role:             staff.role_title,
         branchName:       staff.branch?.name || '',
+        branchId:         staff.branch_id,
         commissionType:   staff.commission_type,
         commissionValue:  staff.commission_value,
+        salaryType,
+        baseSalary,
         appointmentCount: parseInt(agg.appointmentCount) || 0,
         totalRevenue:     parseFloat(agg.totalRevenue) || 0,
         totalCommission,
+        grossPayable,
         totalAdvances,
-        netCommission,
+        netCommission:    netPayable,
         totalPaid,
-        balanceDue: Math.max(0, netCommission - totalPaid),
+        balanceDue: Math.max(0, netPayable - totalPaid),
       };
     });
 

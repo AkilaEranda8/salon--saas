@@ -18,6 +18,7 @@ const { checkSubscription }    = require('./middleware/checkSubscription');
 const { enforceMaintenanceMode } = require('./middleware/maintenanceMode');
 const { ensureCustomerProfileColumns } = require('./services/ensureCustomerProfileColumns');
 const { ensureInventorySupplierColumns } = require('./services/ensureInventorySupplierColumns');
+const ensureStaffSalaryColumns = require('./services/ensureStaffSalaryColumns');
 const platformGuard = require('./middleware/platformGuard');
 const logger        = require('./utils/logger');
 
@@ -331,6 +332,7 @@ connectWithRetry().then(async () => {
   // ── New column migrations ───────────────────────────────────────────────────
   await ensureCustomerProfileColumns();
   await ensureInventorySupplierColumns();
+  await ensureStaffSalaryColumns();
 
   server.listen(PORT, () =>
     logger.info('server_started', { port: PORT })

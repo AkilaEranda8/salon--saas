@@ -1,4 +1,4 @@
-const { CommissionPayout, Staff, Branch, User } = require('../models');
+const { CommissionPayout, Staff, Branch, User, StaffAdvance } = require('../models');
 const { tenantWhere, byIdWhere } = require('../utils/tenantScope');
 
 const getBranchWhere = (req) => {
@@ -53,6 +53,12 @@ const create = async (req, res) => {
       paid_by:   req.user?.id || null,
       tenant_id: req.userTenantId ?? req.tenant?.id ?? null,
     });
+
+    // Auto-mark this staff's pending advances for the same month as 'deducted'
+    await StaffAdvance.update(
+      { status: 'deducted' },
+      { where: { staff_id, month, status: 'pending', ...tenantWhere(req) } }
+    );
 
     const result = await CommissionPayout.findOne({
       where: { id: payout.id },

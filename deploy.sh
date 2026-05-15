@@ -2,7 +2,7 @@
 set -e
 
 echo "════════════════════════════════════════════"
-echo "  Xane Salon - VPS Deployment Script"
+echo "  Hexa Salon - VPS Deployment Script"
 echo "════════════════════════════════════════════"
 
 # ── 1. Install Docker ──────────────────────────────────────────────────────────
@@ -35,7 +35,7 @@ else
 fi
 
 # ── 3. Clone the repository ───────────────────────────────────────────────────
-APP_DIR="/root/xanesalon"
+APP_DIR="${APP_DIR:-/root/xanesalon}"
 
 if [ -d "$APP_DIR" ]; then
     echo ""
@@ -53,36 +53,21 @@ fi
 echo ""
 echo "▸ Setting up environment..."
 
+# Only write .env if it doesn't already exist (preserve production secrets)
+if [ ! -f .env ]; then
 cat > .env << 'EOF'
-DB_PASS=kjsdksdjiereihshdks
+DB_PASS=rootpass
 DB_NAME=zanesalon
-JWT_SECRET=zanesalon_jwt_secret_key_change_in_production
+JWT_SECRET=9f6b1a5d4e7c2b0a8d3f1e6c4b9a2d7f5c8e1a4b6d3f9c2e7a1b5d8f4c6e9a2
 BACKEND_PORT=5001
-DB_PORT=3307
+SUPERADMIN_EMAIL=akilaeranda8@gmail.com
 EOF
+echo "✓ .env created"
+else
+  echo "✓ .env already exists (skipped)"
+fi
 
-cat > backend/.env << 'EOF'
-DB_HOST=db
-DB_USER=root
-DB_PASS=kjsdksdjiereihshdks
-DB_NAME=zanesalon
-JWT_SECRET=zanesalon_jwt_secret_key_change_in_production
-PORT=5000
-
-# ── Email (Gmail SMTP)
-EMAIL_HOST=smtp.gmail.com
-EMAIL_PORT=587
-EMAIL_USER=your_gmail@gmail.com
-EMAIL_PASS=your_app_password
-EMAIL_FROM=Zane Salon <your_gmail@gmail.com>
-
-# ── WhatsApp (Twilio)
-TWILIO_ACCOUNT_SID=your_sid
-TWILIO_AUTH_TOKEN=your_token
-TWILIO_WHATSAPP_FROM=whatsapp:+14155238886
-EOF
-
-echo "✓ Environment files created"
+echo "✓ Environment setup done"
 
 # ── 5. Build and start containers ─────────────────────────────────────────────
 echo ""
@@ -107,8 +92,9 @@ echo "════════════════════════�
 echo ""
 docker compose ps
 echo ""
-echo "    Website:     https://salon.hexalyte.com"
-  echo "  Management:  https://admin.hexalyte.com"
-  echo "  API:         https://api.salon.hexalyte.com"
-  echo "  phpMyAdmin:  https://pma.hexalyte.com"
+echo "  Website:      https://salon.hexalyte.com"
+echo "  Privacy:      https://salon.hexalyte.com/privacy-policy"
+echo "  Management:   https://admin.hexalyte.com"
+echo "  API:          https://api.salon.hexalyte.com"
+echo "  phpMyAdmin:   https://pma.hexalyte.com"
 echo ""

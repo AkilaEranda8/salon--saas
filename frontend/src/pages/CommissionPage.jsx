@@ -161,10 +161,27 @@ export default function CommissionPage() {
       cell: ({ row: { original: r } }) => <span style={{ fontSize: 13, color: '#475467' }}>{r.branchName || ''}</span>,
     },
     {
-      id: 'rate', header: 'Rate', accessorFn: r => r.commissionValue, meta: { width: '9%' },
-      cell: ({ row: { original: r } }) => r.commissionType === 'percentage'
-        ? <span style={{ padding: '3px 8px', borderRadius: 20, background: '#EFF6FF', color: '#2563EB', fontSize: 12, fontWeight: 700 }}>{r.commissionValue}%</span>
-        : <span style={{ padding: '3px 8px', borderRadius: 20, background: '#ECFDF5', color: '#059669', fontSize: 12, fontWeight: 700 }}>Rs.{Number(r.commissionValue||0).toLocaleString()}</span>,
+      id: 'salaryType', header: 'Pay Type', accessorFn: r => r.salaryType, meta: { width: '11%' },
+      cell: ({ row: { original: r } }) => {
+        const colors = { commission_only: ['#EFF6FF','#2563EB'], salary_only: ['#F0FDF4','#059669'], salary_plus_commission: ['#FEF3C7','#D97706'] };
+        const [bg, fg] = colors[r.salaryType] || colors.commission_only;
+        const labels = { commission_only: 'Comm Only', salary_only: 'Salary', salary_plus_commission: 'Salary+Comm' };
+        return <span style={{ padding: '3px 8px', borderRadius: 20, background: bg, color: fg, fontSize: 11, fontWeight: 700 }}>{labels[r.salaryType]||r.salaryType}</span>;
+      },
+    },
+    {
+      id: 'baseSalary', header: 'Base Sal.', accessorFn: r => r.baseSalary, meta: { width: '10%', align: 'right' },
+      cell: ({ row: { original: r } }) => Number(r.baseSalary||0) > 0
+        ? <span style={{ fontWeight: 700, color: '#059669', fontFamily: "'Outfit',sans-serif", fontSize: 13 }}>{Rs(r.baseSalary)}</span>
+        : <span style={{ color: '#98A2B3', fontSize: 13 }}>—</span>,
+    },
+    {
+      id: 'rate', header: 'Comm Rate', accessorFn: r => r.commissionValue, meta: { width: '9%' },
+      cell: ({ row: { original: r } }) => r.salaryType === 'salary_only'
+        ? <span style={{ color: '#98A2B3', fontSize: 13 }}>—</span>
+        : r.commissionType === 'percentage'
+          ? <span style={{ padding: '3px 8px', borderRadius: 20, background: '#EFF6FF', color: '#2563EB', fontSize: 12, fontWeight: 700 }}>{r.commissionValue}%</span>
+          : <span style={{ padding: '3px 8px', borderRadius: 20, background: '#ECFDF5', color: '#059669', fontSize: 12, fontWeight: 700 }}>Rs.{Number(r.commissionValue||0).toLocaleString()}</span>,
     },
     {
       id: 'services', header: 'Svcs', accessorFn: r => r.appointmentCount, meta: { width: '7%', align: 'center' },
@@ -181,7 +198,11 @@ export default function CommissionPage() {
         : <span style={{ color: '#98A2B3', fontSize: 13 }}>—</span>,
     },
     {
-      id: 'net', header: 'Net Payable', accessorFn: r => r.netCommission, meta: { width: '12%', align: 'right' },
+      id: 'gross', header: 'Gross', accessorFn: r => r.grossPayable, meta: { width: '11%', align: 'right' },
+      cell: ({ row: { original: r } }) => <span style={{ fontWeight: 700, color: '#475467', fontFamily: "'Outfit',sans-serif", fontSize: 13 }}>{Rs(r.grossPayable)}</span>,
+    },
+    {
+      id: 'net', header: 'Net Payable', accessorFn: r => r.netCommission, meta: { width: '11%', align: 'right' },
       cell: ({ row: { original: r } }) => <span style={{ fontWeight: 700, color: '#7C3AED', fontFamily: "'Outfit',sans-serif", fontSize: 14 }}>{Rs(r.netCommission)}</span>,
     },
     {
@@ -218,10 +239,12 @@ export default function CommissionPage() {
     },
   ];
 
+  const SALARY_LABELS = { commission_only: 'Commission', salary_only: 'Salary', salary_plus_commission: 'Salary + Comm' };
+
   return (
     <PageWrapper
-      title="Commission"
-      subtitle="Staff commission summary by period"
+      title="Salary & Commission"
+      subtitle="Staff salary and commission summary by period"
       actions={canEmailPdfs && (
         <Button variant="secondary" loading={emailBusy} onClick={sendStaffPdfs} style={{ whiteSpace: 'nowrap' }}>
           Email staff PDF reports
@@ -233,10 +256,10 @@ export default function CommissionPage() {
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
         <StatCard label="Total Commission" value={Rs(totalComm)}     color="#D97706" icon={<IconDollar />} />
         <StatCard label="Total Revenue"    value={Rs(totalRev)}      color="#059669" icon={<IconReceipt />} />
+        <StatCard label="Gross Payable"    value={Rs(data.reduce((s,r)=>s+Number(r.grossPayable||0),0))} color="#7C3AED" icon={<IconDollar />} />
         <StatCard label="Advances (Deduct)"value={Rs(totalAdvances)} color="#DC2626" icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="5" y1="12" x2="19" y2="12"/></svg>} />
         <StatCard label="Total Paid Out"   value={Rs(totalPaid)}     color="#2563EB" icon={<IconReceipt />} />
         <StatCard label="Balance Due"      value={Rs(totalBalance)}  color={totalBalance > 0 ? '#B45309' : '#059669'} icon={<IconDollar />} />
-        <StatCard label="Staff Count"      value={data.length}       color="#7C3AED" icon={<IconUsers />} />
       </div>
 
       {emailMsg && (
@@ -273,10 +296,11 @@ export default function CommissionPage() {
         emptySub="Try selecting a different month or branch"
         footerRows={data.length > 0 ? (
           <tr style={{ background: '#F9FAFB', borderTop: '2px solid #EAECF0' }}>
-            <td style={{ padding: '13px 16px' }} colSpan={3}><span style={{ fontWeight: 700, color: '#101828', fontSize: 13, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Totals</span></td>
+            <td style={{ padding: '13px 16px' }} colSpan={5}><span style={{ fontWeight: 700, color: '#101828', fontSize: 13, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Totals</span></td>
             <td style={{ padding: '13px 16px', textAlign: 'center' }}><span style={{ fontWeight: 700, color: '#101828' }}>{totalAppts}</span></td>
             <td style={{ padding: '13px 16px', textAlign: 'right' }}><span style={{ fontWeight: 800, color: '#D97706', fontFamily: "'Outfit',sans-serif" }}>{Rs(totalComm)}</span></td>
             <td style={{ padding: '13px 16px', textAlign: 'right' }}><span style={{ fontWeight: 800, color: '#DC2626', fontFamily: "'Outfit',sans-serif" }}>−{Rs(totalAdvances)}</span></td>
+            <td style={{ padding: '13px 16px', textAlign: 'right' }}><span style={{ fontWeight: 800, color: '#475467', fontFamily: "'Outfit',sans-serif" }}>{Rs(data.reduce((s,r)=>s+Number(r.grossPayable||0),0))}</span></td>
             <td style={{ padding: '13px 16px', textAlign: 'right' }}><span style={{ fontWeight: 800, color: '#7C3AED', fontFamily: "'Outfit',sans-serif" }}>{Rs(data.reduce((s,r)=>s+Number(r.netCommission||0),0))}</span></td>
             <td style={{ padding: '13px 16px', textAlign: 'right' }}><span style={{ fontWeight: 800, color: '#059669', fontFamily: "'Outfit',sans-serif" }}>{Rs(totalPaid)}</span></td>
             <td style={{ padding: '13px 16px', textAlign: 'right' }}><span style={{ fontWeight: 800, color: '#B45309', fontFamily: "'Outfit',sans-serif" }}>{Rs(totalBalance)}</span></td>

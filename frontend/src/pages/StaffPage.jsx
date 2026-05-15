@@ -10,7 +10,7 @@ import {
   FilterBar, SearchBar, DataTable,
 } from '../components/ui/PageKit';
 
-const EMPTY = { name:'', phone:'', email:'', role_title:'', branch_ids:[], commission_type:'percentage', commission_value:'', join_date:'', is_active:true };
+const EMPTY = { name:'', phone:'', email:'', role_title:'', branch_ids:[], commission_type:'percentage', commission_value:'', salary_type:'commission_only', base_salary:'', join_date:'', is_active:true };
 
 function CommBadge({ type, value }) {
   return (
@@ -341,24 +341,52 @@ export default function StaffPage() {
               </div>
             </FormGroup>
           </div>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:10 }}>
-            <FormGroup label="Commission Type">
-              <Select value={form.commission_type||'percentage'} onChange={e => setForm(f=>({...f, commission_type:e.target.value}))}>
-                <option value="percentage">Percentage %</option>
-                <option value="fixed">Fixed Amount</option>
+          {/* Salary & Commission */}
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
+            <FormGroup label="Salary Type">
+              <Select value={form.salary_type||'commission_only'} onChange={e => setForm(f=>({...f, salary_type:e.target.value}))}>
+                <option value="commission_only">Commission Only</option>
+                <option value="salary_only">Fixed Salary Only</option>
+                <option value="salary_plus_commission">Salary + Commission</option>
               </Select>
             </FormGroup>
-            <FormGroup label={form.commission_type==='percentage' ? 'Rate (%)' : 'Amount (Rs.)'}>
-              <Input type="number" value={form.commission_value||''} onChange={e => setForm(f=>({...f, commission_value:e.target.value}))} />
-            </FormGroup>
-            <FormGroup label="Join Date"><Input type="date" value={form.join_date||''} onChange={e => setForm(f=>({...f, join_date:e.target.value}))} /></FormGroup>
+            {(form.salary_type === 'salary_only' || form.salary_type === 'salary_plus_commission') && (
+              <FormGroup label="Base Salary (Rs./month)">
+                <Input type="number" min="0" value={form.base_salary||''} onChange={e => setForm(f=>({...f, base_salary:e.target.value}))} placeholder="e.g. 30000" />
+              </FormGroup>
+            )}
           </div>
-          <FormGroup label="Specializations">
-            <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginTop:4 }}>
-              {services.map(s => (
-                <button key={s.id} onClick={() => toggleSpec(s.id)} style={{ padding:'4px 10px', borderRadius:16, border:'1.5px solid', borderColor:specs.includes(s.id)?'#2563EB':'#E4E7EC', background:specs.includes(s.id)?'#EFF6FF':'#fff', color:specs.includes(s.id)?'#2563EB':'#475467', fontWeight:specs.includes(s.id)?600:400, fontSize:12, cursor:'pointer', fontFamily:"'Inter',sans-serif" }}>{s.name}</button>
-              ))}
+          {form.salary_type !== 'salary_only' && (
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
+              <FormGroup label="Commission Type">
+                <Select value={form.commission_type||'percentage'} onChange={e => setForm(f=>({...f, commission_type:e.target.value}))}>
+                  <option value="percentage">Percentage %</option>
+                  <option value="fixed">Fixed per Service</option>
+                </Select>
+              </FormGroup>
+              <FormGroup label={form.commission_type==='percentage' ? 'Rate (%)' : 'Amount (Rs.)'}>
+                <Input type="number" value={form.commission_value||''} onChange={e => setForm(f=>({...f, commission_value:e.target.value}))} />
+              </FormGroup>
             </div>
+          )}
+          <FormGroup label="Join Date"><Input type="date" value={form.join_date||''} onChange={e => setForm(f=>({...f, join_date:e.target.value}))} /></FormGroup>
+          {services.length > 0 && (
+            <FormGroup label="Specializations">
+              <div style={{ display:'flex', flexWrap:'wrap', gap:8 }}>
+                {services.map(sv => (
+                  <label key={sv.id} style={{ display:'flex', alignItems:'center', gap:6, cursor:'pointer', fontSize:13, color:'#344054', background:specs.includes(sv.id)?'#EFF6FF':'#F9FAFB', border:specs.includes(sv.id)?'1.5px solid #2563EB':'1.5px solid #E4E7EC', borderRadius:8, padding:'4px 10px' }}>
+                    <input type="checkbox" checked={specs.includes(sv.id)} onChange={()=>toggleSpec(sv.id)} style={{ display:'none' }} />
+                    {sv.name}
+                  </label>
+                ))}
+              </div>
+            </FormGroup>
+          )}
+          <FormGroup label="Status">
+            <Select value={form.is_active ? 'true' : 'false'} onChange={e => setForm(f=>({...f, is_active:e.target.value==='true'}))}>
+              <option value="true">Active</option>
+              <option value="false">Inactive</option>
+            </Select>
           </FormGroup>
         </div>
       </Modal>

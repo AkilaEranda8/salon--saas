@@ -59,11 +59,6 @@ const Payment = sequelize.define('Payment', {
     type: DataTypes.ENUM('paid', 'pending'),
     defaultValue: 'paid',
   },
-  review_token: {
-    type: DataTypes.STRING(64),
-    allowNull: true,
-    unique: true,
-  },
   tenant_id: {
     type: DataTypes.INTEGER,
     allowNull: true,

@@ -1,7 +1,7 @@
 const { Op, fn, col, literal } = require('sequelize');
 const { sequelize } = require('../config/database');
 const { Payment, PaymentSplit, Branch, Staff, Customer, Service, Appointment, CustomerPackage, Package: PkgModel, PackageRedemption, LoyaltyRule } = require('../models');
-const { notifyPaymentReceipt, notifyLoyaltyPoints, notifyReviewRequest } = require('../services/notificationService');
+const { notifyPaymentReceipt, notifyLoyaltyPoints } = require('../services/notificationService');
 const { tenantWhere, byIdWhere, resolveTenantId } = require('../utils/tenantScope');
 const { slToday } = require('../utils/dateUtils');
 
@@ -223,11 +223,6 @@ const create = async (req, res) => {
         if (points_earned > 0) {
           notifyLoyaltyPoints(customer, points_earned, updatedPoints, branch);
         }
-        // Generate review token and send review request
-        const { randomUUID } = require('crypto');
-        const reviewToken = randomUUID();
-        await Payment.update({ review_token: reviewToken }, { where: { id: payment.id } });
-        notifyReviewRequest(payment.toJSON(), customer, service, branch, reviewToken);
       }
     }
 

@@ -644,71 +644,6 @@ async function notifyLoyaltyPoints(customer, pointsEarned, totalPoints, branch, 
   }
 }
 
-// ── 4. Review Request ─────────────────────────────────────────────────────────
-async function notifyReviewRequest(payment, customer, service, branch, token, tenantId) {
-  const phone = customer?.phone || null;
-  const email = customer?.email || null;
-  if (!phone && !email) return;
-
-  const customerName = customer?.name || payment.customer_name || 'Valued Customer';
-  const svcName      = service?.name  || 'your recent service';
-  const brName       = branch?.name   || 'HEXA SALON';
-  const brPhone      = branch?.phone  || '';
-  const base         = process.env.FRONTEND_URL || 'http://localhost';
-  const reviewUrl    = `${base}/review/${token}`;
-  const meta         = {
-    customer_name: customerName,
-    event_type:    'review_request',
-    branch_id:     branch?.id || payment.branch_id,
-  };
-  const vars = { customer_name: customerName, branch_name: brName, service_name: svcName, review_url: reviewUrl };
-
-  if (email) {
-    const tpl = await getTemplate('review_request', 'email', tenantId);
-    let subject, bodyHtml;
-    if (tpl) {
-      subject  = interpolate(tpl.subject || `How was your visit at ${brName}? — Share your feedback`, vars);
-      bodyHtml = interpolate(tpl.body, vars);
-    } else {
-      subject  = `How was your visit at ${brName}? — Share your feedback`;
-      bodyHtml = `
-      <h2 style="margin:0 0 8px;font-size:22px;color:#7c3aed;">How was your experience? ⭐</h2>
-      <p style="margin:0 0 24px;font-size:15px;color:#475569;">
-        Hi <strong>${customerName}</strong>, thank you for visiting <strong>${brName}</strong>!
-        We'd love to hear your feedback on <strong>${svcName}</strong>.
-      </p>
-      <div style="text-align:center;margin:32px 0;">
-        <a href="${reviewUrl}"
-           style="display:inline-block;padding:14px 32px;background:linear-gradient(135deg,#7c3aed,#c9a96e);color:#ffffff;text-decoration:none;border-radius:8px;font-size:16px;font-weight:700;letter-spacing:0.5px;">
-          ✍️ Leave a Review
-        </a>
-      </div>
-      <p style="margin:0;font-size:13px;color:#9ca3af;text-align:center;">
-        This link is unique to your visit and can only be used once.
-      </p>`;
-    }
-    await sendEmail({
-      to:      email,
-      subject,
-      html:    buildEmailWrapper('Share Your Review', bodyHtml, brName, brPhone),
-      meta,
-      tenantId,
-    });
-  }
-
-  if (phone) {
-    const tpl = await getTemplate('review_request', 'whatsapp', tenantId);
-    const msg = tpl
-      ? interpolate(tpl.body, vars)
-      : `⭐ *HEXA SALON — Share Your Feedback!*\n\n` +
-        `Hi ${customerName}! 😊 Thank you for visiting *${brName}*.\n\n` +
-        `How was your *${svcName}* experience? We'd love your feedback!\n\n` +
-        `👉 Leave a review (takes 30 seconds):\n${reviewUrl}\n\n` +
-        `_This link is unique and can only be used once._`;
-    await sendWhatsApp({ to: phone, message: msg, meta });
-  }
-}
-
 // ── 5. Waitlist Slot Available ────────────────────────────────────────────────
 async function notifyWaitlistSlotAvailable(waitlistEntry, branch, service) {
   const phone = waitlistEntry?.phone || null;
@@ -734,7 +669,6 @@ module.exports = {
   notifyAppointmentCompleted,
   notifyPaymentReceipt,
   notifyLoyaltyPoints,
-  notifyReviewRequest,
   notifyWaitlistSlotAvailable,
   getTemplate,
   interpolate,

@@ -57,8 +57,6 @@ import KpiDashboardPage from './pages/KpiDashboardPage';
 import InventoryReorderPage from './pages/InventoryReorderPage';
 import AdvancesPage     from './pages/AdvancesPage';
 import ExpensesPage     from './pages/ExpensesPage';
-import ReviewsPage      from './pages/ReviewsPage';
-import ReviewFormPage   from './pages/ReviewFormPage';
 import PackagesPage     from './pages/PackagesPage';
 import DiscountsPage    from './pages/DiscountsPage';
 import RecurringPage    from './pages/RecurringPage';
@@ -399,11 +397,6 @@ function AppShell() {
               </RoleRoute>
             } />
             <Route path="/support"      element={<SupportTicketsPage />} />
-            <Route path="/reviews"      element={
-              <RoleRoute roles={['superadmin', 'admin', 'manager']}>
-                <ReviewsPage />
-              </RoleRoute>
-            } />
             <Route path="/expenses"     element={<ExpensesPage />} />
             <Route path="/reminders"    element={<RemindersPage />} />
             <Route path="/consent-forms" element={<ConsentFormsPage />} />
@@ -529,7 +522,6 @@ export default function App() {
       <Route path="/customer-portal/register"  element={<CustomerRegisterPage />} />
       <Route path="/customer-portal" element={<CustomerPortalPage />} />
       <Route path="/token-display"  element={<TokenDisplayScreen />} />
-      <Route path="/review/:token"        element={<ReviewFormPage />} />
       <Route path="/reset-password/:token" element={<ResetPasswordPage />} />
       <Route path="/maintenance"          element={<MaintenancePage />} />
 

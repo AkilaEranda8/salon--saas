@@ -18,7 +18,6 @@ const WalkInQueueService = require('./WalkInQueueService');
 const Expense = require('./Expense');
 const NotificationLog = require('./NotificationLog');
 const NotificationSettings = require('./NotificationSettings');
-const Review = require('./Review');
 const Package = require('./Package');
 const CustomerPackage = require('./CustomerPackage');
 const PackageRedemption = require('./PackageRedemption');
@@ -172,14 +171,6 @@ SupportTicketReply.belongsTo(User, { foreignKey: 'user_id', as: 'author', constr
 NotificationLog.belongsTo(Branch, { foreignKey: 'branch_id', as: 'branch' });
 Branch.hasMany(NotificationLog, { foreignKey: 'branch_id', as: 'notificationLogs' });
 
-// Review
-Review.belongsTo(Branch, { foreignKey: 'branch_id', as: 'branch' });
-Review.belongsTo(Payment, { foreignKey: 'payment_id', as: 'payment' });
-Review.belongsTo(Service, { foreignKey: 'service_id', as: 'service' });
-Review.belongsTo(Staff, { foreignKey: 'staff_id', as: 'staff' });
-Branch.hasMany(Review, { foreignKey: 'branch_id', as: 'reviews' });
-Payment.hasOne(Review, { foreignKey: 'payment_id', as: 'review' });
-
 // Package
 Package.belongsTo(Branch, { foreignKey: 'branch_id', as: 'branch' });
 Branch.hasMany(Package, { foreignKey: 'branch_id', as: 'packages' });
@@ -267,7 +258,6 @@ module.exports = {
   Expense,
   NotificationLog,
   NotificationSettings,
-  Review,
   Package,
   CustomerPackage,
   PackageRedemption,

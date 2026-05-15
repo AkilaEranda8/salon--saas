@@ -2,7 +2,7 @@ const { Op } = require('sequelize');
 const { Appointment, Branch, Customer, Staff, Service } = require('../models');
 const AppointmentService = require('../models/AppointmentService');
 const { sequelize } = require('../config/database');
-const { notifyAppointmentConfirmed, notifyAppointmentCompleted } = require('../services/notificationService');
+const { notifyAppointmentConfirmed, notifyAppointmentCompleted, notifyWaitlistSlotAvailable } = require('../services/notificationService');
 const { createNextRecurring } = require('../services/recurringService');
 const { notifyBranch, notifyStaffUser } = require('../services/fcmService');
 const { tenantWhere, byIdWhere, resolveTenantId } = require('../utils/tenantScope');
@@ -424,12 +424,23 @@ const changeStatus = async (req, res) => {
           const where = { status: 'waiting', branch_id: appt.branch_id };
           if (appt.tenant_id) where.tenant_id = appt.tenant_id;
           if (appt.service_id) where.service_id = appt.service_id;
-          if (appt.date) where.preferred_date = { [Op.or]: [appt.date, null] };
-          const waiting = await Waitlist.findAll({ where, order: [['createdAt', 'ASC']], limit: 5 });
+          if (appt.date) where.preferred_date = { [Op.or]: [{ [Op.eq]: appt.date }, { [Op.is]: null }] };
+          const waiting = await Waitlist.findAll({
+            where,
+            order: [['createdAt', 'ASC']],
+            limit: 5,
+            include: [
+              { model: require('../models/Service'), as: 'service', attributes: ['id', 'name'], required: false },
+            ],
+          });
+          const branch = waiting.length
+            ? await require('../models/Branch').findOne({ where: { id: appt.branch_id }, attributes: ['id', 'name'] })
+            : null;
           for (const w of waiting) {
             w.status = 'notified';
             w.notified_at = new Date();
             await w.save();
+            notifyWaitlistSlotAvailable(w, branch, w.service || null);
           }
           if (waiting.length > 0) {
             console.log(`[waitlist] Auto-notified ${waiting.length} entries for cancelled appt #${appt.id}`);

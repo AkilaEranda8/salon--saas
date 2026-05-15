@@ -1,6 +1,6 @@
 const { Op, fn, col, literal } = require('sequelize');
 const { sequelize } = require('../config/database');
-const { Payment, PaymentSplit, Branch, Staff, Customer, Service, Appointment, CustomerPackage, Package: PkgModel, PackageRedemption } = require('../models');
+const { Payment, PaymentSplit, Branch, Staff, Customer, Service, Appointment, CustomerPackage, Package: PkgModel, PackageRedemption, LoyaltyRule } = require('../models');
 const { notifyPaymentReceipt, notifyLoyaltyPoints, notifyReviewRequest } = require('../services/notificationService');
 const { tenantWhere, byIdWhere, resolveTenantId } = require('../utils/tenantScope');
 const { slToday } = require('../utils/dateUtils');
@@ -88,15 +88,25 @@ const create = async (req, res) => {
     }
 
     const total_amount = splits.reduce((sum, s) => sum + parseFloat(s.amount || 0), 0);
-    const points_earned = 5;
+
+    // Loyalty rule — look up once, fall back to defaults (100 Rs = 1 pt)
+    const tenantId = resolveTenantId(req);
+    const loyaltyRule = await LoyaltyRule.findOne({
+      where: { tenant_id: tenantId, is_active: true },
+    }).catch(() => null);
+    const earnPerAmount = parseFloat(loyaltyRule?.earn_per_amount) || 100;
+    const earnPoints    = parseInt(loyaltyRule?.earn_points)    || 1;
+    const redeemPoints  = parseInt(loyaltyRule?.redeem_points)  || 100;
+    const redeemValue   = parseFloat(loyaltyRule?.redeem_value) || 50;
+    const points_earned = Math.floor(total_amount / earnPerAmount) * earnPoints;
 
     // Fetch staff to calculate commission
     let commission_amount = 0;
     if (staff_id) {
       const { Staff: StaffModel } = require('../models');
       const staffMember = await StaffModel.findOne({ where: byIdWhere(req, staff_id), transaction: t });
-      if (staffMember) {
-        const commissionBase = Math.max(0, total_amount - loyalty_discount);
+      if (staffMember && staffMember.salary_type !== 'salary_only') {
+        const commissionBase = Math.max(0, total_amount - loyalty_discount - promo_discount);
         const cv = parseFloat(staffMember.commission_value) || 0;
         commission_amount = staffMember.commission_type === 'percentage'
           ? (commissionBase * cv) / 100
@@ -158,7 +168,8 @@ const create = async (req, res) => {
       if (cust) {
         let newPoints = cust.loyalty_points + points_earned;
         if (usePoints && loyalty_discount > 0) {
-          const pointsUsed = Math.floor(loyalty_discount);
+          // Convert rupee discount back to points using loyalty rule ratio
+          const pointsUsed = Math.ceil((loyalty_discount / redeemValue) * redeemPoints);
           newPoints = Math.max(0, cust.loyalty_points - pointsUsed) + points_earned;
         }
         await cust.update({
@@ -232,7 +243,7 @@ const update = async (req, res) => {
   try {
     const payment = await Payment.findOne({ where: byIdWhere(req, req.params.id) });
     if (!payment) return res.status(404).json({ message: 'Payment not found.' });
-    const allowed = ['status', 'note', 'date', 'total_amount', 'method'];
+    const allowed = ['status', 'date', 'total_amount'];
     const fields  = {};
     for (const k of allowed) { if (req.body[k] !== undefined) fields[k] = req.body[k]; }
     await payment.update(fields);

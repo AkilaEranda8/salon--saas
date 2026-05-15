@@ -24,6 +24,15 @@ async function ensureStaffSalaryColumns() {
       });
       console.log('[migration] staff.base_salary column added');
     }
+
+    if (!tableDesc.email) {
+      await qi.addColumn('staff', 'email', {
+        type: require('sequelize').DataTypes.STRING(150),
+        allowNull: true,
+        after: 'phone',
+      });
+      console.log('[migration] staff.email column added');
+    }
   } catch (err) {
     console.error('[migration] ensureStaffSalaryColumns error:', err.message);
   }

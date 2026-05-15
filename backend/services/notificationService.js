@@ -709,6 +709,23 @@ async function notifyReviewRequest(payment, customer, service, branch, token, te
   }
 }
 
+// ── 5. Waitlist Slot Available ────────────────────────────────────────────────
+async function notifyWaitlistSlotAvailable(waitlistEntry, branch, service) {
+  const phone = waitlistEntry?.phone || null;
+  if (!phone) return;
+  const brName  = branch?.name  || 'the salon';
+  const svcName = service?.name || 'your requested service';
+  const message =
+    `Hi ${waitlistEntry.customer_name || 'there'}! A slot has opened up for *${svcName}* at *${brName}*. ` +
+    `Please call us or book online to confirm your appointment.`;
+  try {
+    await sendSMS({ to: phone, message });
+  } catch { /* ignore */ }
+  try {
+    await sendWhatsApp({ to: phone, message });
+  } catch { /* ignore */ }
+}
+
 module.exports = {
   sendEmail,
   sendWhatsApp,
@@ -718,6 +735,7 @@ module.exports = {
   notifyPaymentReceipt,
   notifyLoyaltyPoints,
   notifyReviewRequest,
+  notifyWaitlistSlotAvailable,
   getTemplate,
   interpolate,
 };

@@ -1,9 +1,8 @@
-"""Investigate and fix the ibdata1 lock conflict."""
-import io, sys, threading
+"""Fix MySQL ibdata1 lock — find what holds the lock and release it, then restart db."""
+import io, sys, time, threading
+
 if hasattr(sys.stdout, "buffer"):
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace", line_buffering=True)
-if hasattr(sys.stderr, "buffer"):
-    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace", line_buffering=True)
 
 import paramiko
 
@@ -16,68 +15,51 @@ for pw in ["CCaPfTjhjhjkhgkshds", "kjsdksdjiereihshdks"]:
     except paramiko.AuthenticationException:
         pass
 
-# Step 1: check volume mounts
-cmd_check = (
-    "echo '=== Docker volumes ===' && docker volume ls | grep -E 'db|salon' && "
-    "echo '=== xanesalon docker-compose volumes ===' && "
-    "grep -A5 'db:' /root/xanesalon/docker-compose.yml || true && "
-    "echo '=== salon_v1 docker-compose volumes ===' && "
-    "grep -A5 'db:' /root/salon_v1/docker-compose.yml 2>/dev/null || true && "
-    "echo '=== inspect xanesalon-db-1 mounts ===' && "
-    "docker inspect xanesalon-db-1 --format '{{json .Mounts}}' 2>/dev/null && "
-    "echo '=== inspect salon_v1-db-1 mounts ===' && "
-    "docker inspect salon_v1-db-1 --format '{{json .Mounts}}' 2>/dev/null"
-)
-_, out, _ = client.exec_command(cmd_check, timeout=30)
-result = out.read().decode("utf-8", "replace")
-print(result)
+def run(cmd, timeout=60):
+    _, o, e = client.exec_command(cmd, timeout=timeout)
+    out = o.read().decode("utf-8", "replace")
+    err = e.read().decode("utf-8", "replace")
+    if out.strip(): print(out.strip())
+    if err.strip(): print("ERR:", err.strip())
+    return out
 
-# Check if they share the same volume
-import json
-# Simple text search to detect shared volume
-if "salon_v1_db" in result and "xanesalon_db" not in result:
-    print("\n>>> Both stacks may share the same volume name! Fixing...")
-    # Stop old salon_v1 stack first to release lock, then restart xanesalon
-    fix_cmd = (
-        "echo '>>> Stopping xanesalon stack...' && "
-        "cd /root/xanesalon && docker compose stop db && "
-        "echo '>>> Stopping salon_v1 stack DB...' && "
-        "cd /root/salon_v1 && docker compose stop db 2>/dev/null || true && sleep 3 && "
-        "echo '>>> Starting xanesalon DB...' && "
-        "cd /root/xanesalon && docker compose up -d db && "
-        "echo '>>> Waiting 30s for DB...' && sleep 30 && "
-        "docker inspect --format='{{.State.Health.Status}}' xanesalon-db-1"
-    )
-    stdin2, out2, err2 = client.exec_command(fix_cmd, get_pty=True, timeout=120)
-    stdin2.close()
-    def copy_e():
-        for l in iter(err2.readline, ""): sys.stderr.write(l); sys.stderr.flush()
-    threading.Thread(target=copy_e, daemon=True).start()
-    for line in iter(out2.readline, ""):
-        sys.stdout.write(line); sys.stdout.flush()
-else:
-    print("\n>>> Volumes appear separate. Checking if same host path is used...")
-    # Try force-remove ibdata1 lock and restart db
-    fix_cmd = (
-        "cd /root/xanesalon && "
-        "echo '>>> Force stop DB container...' && "
-        "docker compose stop db && docker compose rm -f db && "
-        "echo '>>> Remove ib_logfile* and ibdata lock artifacts...' && "
-        "VOLPATH=$(docker volume inspect xanesalon_db-data --format '{{.Mountpoint}}' 2>/dev/null) && "
-        "echo \"Volume path: $VOLPATH\" && "
-        "ls $VOLPATH 2>/dev/null | head -20 && "
-        "echo '>>> Restarting DB...' && "
-        "docker compose up -d db && "
-        "sleep 30 && "
-        "docker inspect --format='{{.State.Health.Status}}' xanesalon-db-1 2>/dev/null && "
-        "echo done"
-    )
-    stdin2, out2, err2 = client.exec_command(fix_cmd, get_pty=True, timeout=120)
-    stdin2.close()
-    def copy_e():
-        for l in iter(err2.readline, ""): sys.stderr.write(l); sys.stderr.flush()
-    threading.Thread(target=copy_e, daemon=True).start()
-    for line in iter(out2.readline, ""):
-        sys.stdout.write(line); sys.stdout.flush()
+# 1. Show which containers are using each mysql volume
+print("\n=== Volume usage ===")
+run("docker ps --format '{{.Names}} {{.Mounts}}' | grep -i mysql || true")
+run("docker volume ls | grep -i mysql")
+
+# 2. Inspect what volume xanesalon db is using
+print("\n=== xanesalon-db-1 mounts ===")
+run("docker inspect xanesalon-db-1 --format '{{range .Mounts}}{{.Name}} -> {{.Destination}}{{end}}' 2>/dev/null || echo not running")
+
+# 3. Check if any other container holds the same volume
+print("\n=== All containers using mysql volumes ===")
+run(
+    "for c in $(docker ps -aq); do "
+    "  m=$(docker inspect $c --format '{{range .Mounts}}{{.Name}} {{end}}' 2>/dev/null); "
+    "  echo \"$(docker inspect $c --format '{{.Name}}') : $m\"; "
+    "done | grep -i mysql || echo none"
+)
+
+# 4. Stop all containers that share the mysql volume, then restart xanesalon db
+print("\n=== Stopping all containers on mysql volumes, restarting xanesalon db ===")
+run("docker stop $(docker ps -q) 2>/dev/null || true")
+time.sleep(3)
+run("cd /root/xanesalon && docker compose up -d db 2>&1")
+
+# 5. Wait for healthy
+print("\n=== Waiting 40s for DB to become healthy ===")
+time.sleep(40)
+run("docker inspect --format='{{.State.Health.Status}}' xanesalon-db-1 2>/dev/null")
+run("cd /root/xanesalon && docker compose logs db --tail=6 2>&1")
+
+# 6. Bring up the full stack
+print("\n=== Starting full stack ===")
+_, o, e = client.exec_command("cd /root/xanesalon && docker compose up -d 2>&1", get_pty=True, timeout=60)
+for line in iter(o.readline, ""):
+    sys.stdout.write(line); sys.stdout.flush()
+
+print("\n=== Final status ===")
+run("cd /root/xanesalon && docker compose ps")
 
 client.close()

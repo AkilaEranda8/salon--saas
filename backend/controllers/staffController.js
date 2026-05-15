@@ -16,7 +16,7 @@ const getBranchWhere = (req) => {
 const list = async (req, res) => {
   try {
     const page   = Math.max(parseInt(req.query.page)  || 1, 1);
-    const limit  = Math.min(parseInt(req.query.limit) || 20, 100);
+    const limit  = Math.min(parseInt(req.query.limit) || 20, 500);
     const offset = (page - 1) * limit;
 
     const where = getBranchWhere(req);
@@ -77,7 +77,7 @@ const getOne = async (req, res) => {
 
 const create = async (req, res) => {
   try {
-    const { name, phone, role_title, commission_type, commission_value, salary_type, base_salary, join_date, user_id, specializations } = req.body;
+    const { name, phone, email, role_title, commission_type, commission_value, salary_type, base_salary, join_date, user_id, specializations } = req.body;
     // Accept branch_ids (array from frontend) or fallback to branch_id (single)
     const branchIds = (req.body.branch_ids || []).map(Number).filter(Boolean);
     const branch_id = branchIds[0] || Number(req.body.branch_id) || null;
@@ -90,7 +90,7 @@ const create = async (req, res) => {
     const commVal  = commission_value !== '' && commission_value != null ? parseFloat(commission_value) : null;
     const basesal  = base_salary !== '' && base_salary != null ? parseFloat(base_salary) : 0;
     const salType  = ['commission_only', 'salary_only', 'salary_plus_commission'].includes(salary_type) ? salary_type : 'commission_only';
-    const staff = await Staff.create({ name, phone, role_title, branch_id, commission_type, commission_value: commVal, salary_type: salType, base_salary: basesal, join_date, user_id: user_id || null, tenant_id: tenantId });
+    const staff = await Staff.create({ name, phone, email: email || null, role_title, branch_id, commission_type, commission_value: commVal, salary_type: salType, base_salary: basesal, join_date, user_id: user_id || null, tenant_id: tenantId });
 
     // Save all branch associations
     if (branchIds.length) {
@@ -122,7 +122,7 @@ const update = async (req, res) => {
       return res.status(403).json({ message: 'Access denied. Staff belongs to a different branch.' });
     }
 
-    const allowed = ['name', 'phone', 'role_title', 'commission_type', 'commission_value', 'salary_type', 'base_salary', 'join_date', 'is_active', 'user_id'];
+    const allowed = ['name', 'phone', 'email', 'role_title', 'commission_type', 'commission_value', 'salary_type', 'base_salary', 'join_date', 'is_active', 'user_id'];
     const updates = {};
     for (const field of allowed) {
       if (req.body[field] !== undefined) updates[field] = req.body[field];
@@ -155,6 +155,17 @@ const update = async (req, res) => {
         branchIds.map((bid) => ({ staff_id: staff.id, branch_id: bid, tenant_id: resolveTenantId(req) })),
         { ignoreDuplicates: true },
       );
+    }
+
+    // Replace specializations if provided
+    if (Array.isArray(req.body.specializations)) {
+      await StaffSpecialization.destroy({ where: { staff_id: staff.id } });
+      if (req.body.specializations.length) {
+        await StaffSpecialization.bulkCreate(
+          req.body.specializations.map((sid) => ({ staff_id: staff.id, service_id: sid })),
+          { ignoreDuplicates: true },
+        );
+      }
     }
 
     return res.json(staff);
@@ -312,7 +323,21 @@ const commissionReport = async (req, res) => {
       order: [['date', 'DESC']],
     });
 
-    const total = payments.reduce((acc, p) => acc + parseFloat(p.commission_amount || 0), 0);
+    const totalCommission = payments.reduce((acc, p) => acc + parseFloat(p.commission_amount || 0), 0);
+
+    // Fetch staff salary info for correct gross calculation
+    const staffRecord = await Staff.findOne({ where: { id: req.params.id, ...tenantWhere(req) } });
+    const salaryType  = staffRecord?.salary_type || 'commission_only';
+    const baseSalary  = parseFloat(staffRecord?.base_salary) || 0;
+
+    let grossPayable;
+    if (salaryType === 'salary_only') {
+      grossPayable = baseSalary;
+    } else if (salaryType === 'salary_plus_commission') {
+      grossPayable = baseSalary + totalCommission;
+    } else {
+      grossPayable = totalCommission;
+    }
 
     // Pending advances + commission payouts for this staff for the same month
     let totalAdvances = 0;
@@ -332,13 +357,17 @@ const commissionReport = async (req, res) => {
       totalPaid     = payoutRows.reduce((s, p) => s + parseFloat(p.amount || 0), 0);
     }
 
-    const netCommission = Math.max(0, total - totalAdvances);
+    const netPayable = Math.max(0, grossPayable - totalAdvances);
     return res.json({
-      total,
+      total: totalCommission,
+      totalCommission,
+      baseSalary,
+      salaryType,
+      grossPayable,
       totalAdvances,
-      netCommission,
+      netCommission: netPayable,
       totalPaid,
-      balanceDue: Math.max(0, netCommission - totalPaid),
+      balanceDue: Math.max(0, netPayable - totalPaid),
       data: payments,
     });
   } catch (err) {

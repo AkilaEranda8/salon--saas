@@ -79,6 +79,13 @@ const remove = async (req, res) => {
   try {
     const payout = await CommissionPayout.findOne({ where: byIdWhere(req, req.params.id) });
     if (!payout) return res.status(404).json({ message: 'Payout not found.' });
+
+    // Revert advances that were auto-deducted when this payout was created
+    await StaffAdvance.update(
+      { status: 'pending' },
+      { where: { staff_id: payout.staff_id, month: payout.month, status: 'deducted', ...tenantWhere(req) } }
+    );
+
     await payout.destroy();
     return res.json({ message: 'Deleted.' });
   } catch (err) {

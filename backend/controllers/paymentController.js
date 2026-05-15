@@ -144,7 +144,7 @@ const create = async (req, res) => {
           include: [{ model: PkgModel, as: 'package' }],
           transaction: t,
         });
-        if (cp && cp.status === 'active' && cp.sessions_remaining > 0) {
+        if (cp && cp.status === 'active' && (cp.sessions_remaining === null || cp.sessions_remaining > 0)) {
           await PackageRedemption.create({
             customer_package_id: cp.id,
             payment_id: payment.id,
@@ -155,7 +155,7 @@ const create = async (req, res) => {
           }, { transaction: t });
           const newUsed = (cp.sessions_used || 0) + 1;
           const updates = { sessions_used: newUsed };
-          if (newUsed >= cp.sessions_total) updates.status = 'completed';
+          if (cp.sessions_total > 0 && newUsed >= cp.sessions_total) updates.status = 'completed';
           await cp.update(updates, { transaction: t });
         }
       }

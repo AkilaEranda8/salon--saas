@@ -319,8 +319,8 @@ const redeem = async (req, res) => {
       return res.status(400).json({ message: 'Package has expired.' });
     }
 
-    // Validate sessions remaining
-    if (cp.sessions_remaining <= 0) {
+    // Validate sessions remaining (null = unlimited membership, skip check)
+    if (cp.sessions_remaining !== null && cp.sessions_remaining <= 0) {
       await cp.update({ status: 'completed' }, { transaction: t });
       await t.commit();
       return res.status(400).json({ message: 'No sessions remaining.' });
@@ -348,7 +348,8 @@ const redeem = async (req, res) => {
     // Increment sessions_used
     const newUsed = (cp.sessions_used || 0) + 1;
     const updates = { sessions_used: newUsed };
-    if (newUsed >= cp.sessions_total) updates.status = 'completed';
+    // Only mark completed for bundles (sessions_total > 0); memberships (0) are unlimited
+    if (cp.sessions_total > 0 && newUsed >= cp.sessions_total) updates.status = 'completed';
     await cp.update(updates, { transaction: t });
 
     await t.commit();
@@ -396,8 +397,17 @@ const purchaseForAllCustomers = async (req, res) => {
     const expiryStr = expiry.toISOString().slice(0, 10);
     const today = slToday();
 
+    // Pre-fetch existing active assignments to avoid duplicates
+    const existing = await CustomerPackage.findAll({
+      where: { package_id: packageId, status: 'active', ...tenantWhere(req) },
+      attributes: ['customer_id'],
+    });
+    const alreadyHas = new Set(existing.map((e) => e.customer_id));
+
     let created = 0;
+    let skipped = 0;
     for (const c of customers) {
+      if (alreadyHas.has(c.id)) { skipped++; continue; }
       await CustomerPackage.create({
         customer_id:    c.id,
         package_id:     packageId,
@@ -415,7 +425,7 @@ const purchaseForAllCustomers = async (req, res) => {
       created++;
     }
 
-    return res.json({ message: `Package assigned to ${created} customers.`, created });
+    return res.json({ message: `Package assigned to ${created} customer(s). ${skipped} already had it.`, created, skipped });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ message: 'Server error.' });

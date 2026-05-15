@@ -20,29 +20,37 @@ def _auth_headers(token: str | None) -> dict:
     return {}
 
 
-async def get_branches() -> list:
+async def get_branches(tenant_id: int | None = None) -> list:
     try:
-        r = await _client.get(f"{SALON_BASE}/public/branches")
+        params = {}
+        if tenant_id:
+            params['tenantId'] = tenant_id
+        r = await _client.get(f"{SALON_BASE}/public/branches", params=params)
         r.raise_for_status()
         return r.json()
     except Exception:
         return []
 
 
-async def get_services() -> list:
+async def get_services(tenant_id: int | None = None) -> list:
     try:
-        r = await _client.get(f"{SALON_BASE}/public/services")
+        params = {}
+        if tenant_id:
+            params['tenantId'] = tenant_id
+        r = await _client.get(f"{SALON_BASE}/public/services", params=params)
         r.raise_for_status()
         return r.json()
     except Exception:
         return []
 
 
-async def get_staff(branch_id: int | None = None) -> list:
+async def get_staff(branch_id: int | None = None, tenant_id: int | None = None) -> list:
     try:
         params = {}
         if branch_id:
-            params["branchId"] = branch_id
+            params['branchId'] = branch_id
+        if tenant_id:
+            params['tenantId'] = tenant_id
         r = await _client.get(f"{SALON_BASE}/public/staff", params=params)
         r.raise_for_status()
         return r.json()
@@ -50,12 +58,15 @@ async def get_staff(branch_id: int | None = None) -> list:
         return []
 
 
-async def get_availability(staff_id: int, date: str) -> list:
+async def get_availability(staff_id: int, date: str, tenant_id: int | None = None) -> list:
     """Returns list of already-booked HH:MM time strings for that staff+date."""
     try:
+        params = {'staffId': staff_id, 'date': date}
+        if tenant_id:
+            params['tenantId'] = tenant_id
         r = await _client.get(
             f"{SALON_BASE}/public/availability",
-            params={"staffId": staff_id, "date": date},
+            params=params,
         )
         r.raise_for_status()
         return r.json()
@@ -206,12 +217,14 @@ async def get_dashboard(token: str, branch_id: int | None = None) -> dict:
         return {}
 
 
-async def create_booking(payload: dict) -> dict:
+async def create_booking(payload: dict, tenant_id: int | None = None) -> dict:
     """
     payload: branch_id, service_id, staff_id, customer_name,
              phone, date, time, notes (optional)
     """
     try:
+        if tenant_id and 'tenantId' not in payload:
+            payload = {**payload, 'tenantId': tenant_id}
         r = await _client.post(f"{SALON_BASE}/public/bookings", json=payload)
         r.raise_for_status()
         return {"success": True, "data": r.json()}

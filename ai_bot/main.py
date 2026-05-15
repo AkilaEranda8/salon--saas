@@ -6,10 +6,30 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import uuid
+import base64
+import json
 
 from intent_classifier import classifier
 from conversation import handle_message, reset_session, get_session
 from insights import analyze
+
+
+def extract_tenant_id(token: str | None) -> int | None:
+    """Decode JWT payload (no re-verification needed) to extract tenantId."""
+    if not token:
+        return None
+    try:
+        parts = token.split('.')
+        if len(parts) != 3:
+            return None
+        payload_b64 = parts[1]
+        padding = 4 - len(payload_b64) % 4
+        if padding != 4:
+            payload_b64 += '=' * padding
+        payload = json.loads(base64.urlsafe_b64decode(payload_b64))
+        return payload.get('tenantId') or None
+    except Exception:
+        return None
 
 app = FastAPI(title="Zane Salon AI Bot", version="1.0.0")
 
@@ -74,9 +94,12 @@ async def chat(req: ChatRequest, request: Request):
     confidence    = result["confidence"]
     needs_clarify = result["needs_clarify"]
 
+    tenant_id = extract_tenant_id(token)
+
     reply = await handle_message(
         session_id, message, intent,
         token=token,
+        tenant_id=tenant_id,
         needs_clarify=needs_clarify,
     )
 

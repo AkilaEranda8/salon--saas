@@ -45,6 +45,8 @@ class ConversationState:
     history: list = field(default_factory=list)
     # Last detected intent (for context-aware re-scoring)
     last_intent: str = ""
+    # Tenant isolation
+    tenant_id: Optional[int] = None
     # Cached data fetched from API
     services:  list = field(default_factory=list)
     staff:     list = field(default_factory=list)
@@ -374,6 +376,7 @@ async def handle_message(
     text: str,
     intent: str,
     token: str | None = None,
+    tenant_id: int | None = None,
     needs_clarify: bool = False,
 ) -> str:
     sess = get_session(session_id)
@@ -382,6 +385,9 @@ async def handle_message(
     add_to_history(session_id, "user", text)
     prev_intent = sess.last_intent
     sess.last_intent = intent
+    if tenant_id:
+        sess.tenant_id = tenant_id
+    effective_tenant = sess.tenant_id
 
     # ── Low confidence: ask clarifying question ───────────────────────────────
     if needs_clarify and sess.state == IDLE:
@@ -389,7 +395,7 @@ async def handle_message(
         add_to_history(session_id, "bot", reply)
         return reply
 
-    # ── Management queries (authenticated) ────────────────────────────────────
+    # ── Management queries (authenticated) ───────────────────────────────────
     if token and sess.state == IDLE:
         mgmt_reply = await handle_management(intent, token)
         if mgmt_reply is not None:
@@ -432,7 +438,7 @@ async def handle_message(
         return reply
 
     if intent == "book_appointment":
-        services = await salon_api.get_services()
+        services = await salon_api.get_services(tenant_id=effective_tenant)
         sess.services = services
         sess.state = AWAIT_SERVICE
         reply = (
@@ -444,13 +450,13 @@ async def handle_message(
         return reply
 
     if intent == "check_services":
-        services = await salon_api.get_services()
+        services = await salon_api.get_services(tenant_id=effective_tenant)
         reply = _format_services(services) + "\n\nWould you like to book one? Just say **book**!"
         add_to_history(session_id, "bot", reply)
         return reply
 
     if intent == "check_prices":
-        services = await salon_api.get_services()
+        services = await salon_api.get_services(tenant_id=effective_tenant)
         lines = ["**Price List:**\n"]
         for s in services:
             lines.append(f"• {s['name']}: Rs. {s['price']}")
@@ -459,19 +465,19 @@ async def handle_message(
         return reply
 
     if intent == "check_branches":
-        branches = await salon_api.get_branches()
+        branches = await salon_api.get_branches(tenant_id=effective_tenant)
         reply = _format_branches(branches)
         add_to_history(session_id, "bot", reply)
         return reply
 
     if intent == "check_staff":
-        staff = await salon_api.get_staff()
+        staff = await salon_api.get_staff(tenant_id=effective_tenant)
         reply = _format_staff(staff) + "\n\nWant to book with a specific stylist? Say **book**!"
         add_to_history(session_id, "bot", reply)
         return reply
 
     if intent == "check_availability":
-        staff = await salon_api.get_staff()
+        staff = await salon_api.get_staff(tenant_id=effective_tenant)
         sess.staff = staff
         sess.state = AWAIT_STAFF
         sess.draft = BookingDraft()
@@ -577,12 +583,13 @@ def _help_message(token: str | None) -> str:
 async def _handle_booking_flow(
     session_id: str, sess: ConversationState, text: str, intent: str
 ) -> str:
+    tid = sess.tenant_id
 
     # Allow user to restart at any point
     if intent == "book_appointment" and sess.state != AWAIT_CONFIRM:
         sess.state = AWAIT_SERVICE
         sess.draft = BookingDraft()
-        services = await salon_api.get_services()
+        services = await salon_api.get_services(tenant_id=tid)
         sess.services = services
         return (
             _format_services(services) +
@@ -591,7 +598,7 @@ async def _handle_booking_flow(
 
     # ── Step 1: Choose service ────────────────────────────────────────────────
     if sess.state == AWAIT_SERVICE:
-        services = sess.services or await salon_api.get_services()
+        services = sess.services or await salon_api.get_services(tenant_id=tid)
         sess.services = services
 
         chosen = _match_item(text, services, "name")
@@ -604,12 +611,12 @@ async def _handle_booking_flow(
         sess.draft.service_name = chosen["name"]
 
         # Only 1 branch? auto-select it
-        branches = await salon_api.get_branches()
+        branches = await salon_api.get_branches(tenant_id=tid)
         sess.branches = branches
         if len(branches) == 1:
             sess.draft.branch_id = branches[0]["id"]
 
-        staff = await salon_api.get_staff(sess.draft.branch_id)
+        staff = await salon_api.get_staff(sess.draft.branch_id, tenant_id=tid)
         sess.staff = staff
         sess.state = AWAIT_STAFF
         return (
@@ -621,7 +628,7 @@ async def _handle_booking_flow(
 
     # ── Step 2: Choose staff ──────────────────────────────────────────────────
     if sess.state == AWAIT_STAFF:
-        staff = sess.staff or await salon_api.get_staff()
+        staff = sess.staff or await salon_api.get_staff(tenant_id=tid)
 
         if re.search(r"\bany\b|\bno preference\b|\bdont care\b|anyone", text, re.I):
             chosen = staff[0] if staff else None
@@ -658,7 +665,7 @@ async def _handle_booking_flow(
             return "That date is in the past! Please choose today or a future date."
 
         sess.draft.date = parsed
-        booked_times    = await salon_api.get_availability(sess.draft.staff_id, parsed)
+        booked_times    = await salon_api.get_availability(sess.draft.staff_id, parsed, tenant_id=tid)
         free_slots      = _get_free_slots(booked_times)
 
         if not free_slots:
@@ -683,7 +690,7 @@ async def _handle_booking_flow(
             return "Couldn't read that time. Try: **10:00**, **2pm**, or **14:30**"
 
         # Check still available
-        booked = await salon_api.get_availability(sess.draft.staff_id, sess.draft.date)
+        booked = await salon_api.get_availability(sess.draft.staff_id, sess.draft.date, tenant_id=tid)
         if parsed_time in booked:
             free_slots = _get_free_slots(booked)
             return (
@@ -737,7 +744,7 @@ async def _handle_booking_flow(
                 "phone":         d.phone,
                 "date":          d.date,
                 "time":          d.time,
-            })
+            }, tenant_id=tid)
             reset_session(session_id)
             if result["success"]:
                 return (

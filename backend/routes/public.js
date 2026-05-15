@@ -65,14 +65,17 @@ router.get('/maintenance-status', async (_req, res) => {
 // ── GET /api/public/branches — active branches only ──────────────────────────
 router.get('/branches', async (req, res) => {
   try {
+    const tenantId = req.query.tenantId ? parseInt(req.query.tenantId, 10) : null;
+    const tenantWhr = tenantId ? { tenant_id: tenantId } : {};
+
     const vip = await Branch.findOne({
-      where: { name: WEB_BOOKING_BRANCH_NAME, status: 'active' },
+      where: { name: WEB_BOOKING_BRANCH_NAME, status: 'active', ...tenantWhr },
       attributes: ['id', 'name', 'address', 'phone', 'color'],
     });
     if (vip) return res.json([vip]);
 
     const branches = await Branch.findAll({
-      where: { status: 'active' },
+      where: { status: 'active', ...tenantWhr },
       attributes: ['id', 'name', 'address', 'phone', 'color'],
       order: [['name', 'ASC']],
     });
@@ -86,8 +89,11 @@ router.get('/branches', async (req, res) => {
 // ── GET /api/public/services — active services only ──────────────────────────
 router.get('/services', async (req, res) => {
   try {
+    const tenantId = req.query.tenantId ? parseInt(req.query.tenantId, 10) : null;
+    const tenantWhr = tenantId ? { tenant_id: tenantId } : {};
+
     const services = await Service.findAll({
-      where: { is_active: true },
+      where: { is_active: true, ...tenantWhr },
       attributes: ['id', 'name', 'category', 'duration_minutes', 'price', 'description'],
       order: [['category', 'ASC'], ['name', 'ASC']],
     });
@@ -98,10 +104,12 @@ router.get('/services', async (req, res) => {
   }
 });
 
-// ── GET /api/public/staff?branchId= — active staff, limited fields ──────────
+// ── GET /api/public/staff?branchId=&tenantId= — active staff, limited fields ──────────
 router.get('/staff', async (req, res) => {
   try {
+    const tenantId = req.query.tenantId ? parseInt(req.query.tenantId, 10) : null;
     const where = { is_active: true };
+    if (tenantId) where.tenant_id = tenantId;
     if (req.query.branchId) {
       const bid = parseInt(req.query.branchId, 10);
       const branchPart = await staffWhereForBranch(bid);

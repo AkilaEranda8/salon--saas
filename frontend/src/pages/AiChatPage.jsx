@@ -280,9 +280,13 @@ export default function AiChatPage() {
     return () => clearInterval(interval);
   }, []);
 
-  /* Auto-scroll */
+  const msgAreaRef = useRef(null);
+
+  /* Auto-scroll — scroll the messages container directly, never the outer page */
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const el = msgAreaRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
   }, [messages, loading]);
 
   async function send(text) {
@@ -387,11 +391,12 @@ export default function AiChatPage() {
         </div>
 
         {/* ── Messages area ── */}
-        <div style={{
+        <div ref={msgAreaRef} style={{
           flex: 1, overflowY: 'auto', padding: '20px 18px',
           background: isDark ? '#0F172A' : '#F7F9FC',
           display: 'flex', flexDirection: 'column', gap: 12,
         }}>
+          <div style={{ flex: 1 }} />
           {messages.map((msg, i) => <Message key={i} msg={msg} isDark={isDark} onRetry={send} />)}
           {loading && <TypingIndicator />}
           <div ref={bottomRef} />

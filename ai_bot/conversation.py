@@ -7,6 +7,7 @@ from datetime import datetime, date, timedelta
 from dataclasses import dataclass, field
 from typing import Optional
 import salon_api
+import llm_client
 
 
 # ── State names ──────────────────────────────────────────────────────────────
@@ -384,7 +385,7 @@ async def handle_message(
 
     # ── Low confidence: ask clarifying question ───────────────────────────────
     if needs_clarify and sess.state == IDLE:
-        reply = _clarify_response(text, prev_intent)
+        reply = await _clarify_response(text, prev_intent, sess.history)
         add_to_history(session_id, "bot", reply)
         return reply
 
@@ -491,14 +492,19 @@ async def handle_message(
         add_to_history(session_id, "bot", reply)
         return reply
 
-    # ── Context-aware fallback: use previous intent to guide ─────────────────
-    reply = _smart_fallback(text, prev_intent, bool(token))
+    # ── LLM-powered fallback ─────────────────────────────────────────────────
+    reply = await _smart_fallback(text, prev_intent, bool(token), sess.history)
     add_to_history(session_id, "bot", reply)
     return reply
 
 
-def _clarify_response(text: str, prev_intent: str) -> str:
-    """Low-confidence reply that guides user back on track."""
+async def _clarify_response(text: str, prev_intent: str, history: list) -> str:
+    """Low-confidence reply — use LLM if available, else static."""
+    if llm_client.is_available():
+        context = f"Previous topic: {prev_intent}" if prev_intent else ""
+        llm_resp = await llm_client.llm_reply(text, context=context, history=history)
+        if llm_resp:
+            return llm_resp
     base = f"I'm not quite sure what you mean by \"*{text[:40]}*\". "
     if prev_intent in ("book_appointment", "check_services", "check_prices"):
         return base + "Were you asking about **booking** or **services**? Try saying:\n• \"book appointment\"\n• \"show services\"\n• \"price list\""
@@ -507,9 +513,19 @@ def _clarify_response(text: str, prev_intent: str) -> str:
     return base + "Try saying:\n• **book** — for an appointment\n• **services** — to see what we offer\n• **help** — for all options"
 
 
-def _smart_fallback(text: str, prev_intent: str, is_staff: bool) -> str:
-    """Smarter fallback using conversation context."""
-    # Try to detect key words for helpful suggestions
+async def _smart_fallback(text: str, prev_intent: str, is_staff: bool, history: list) -> str:
+    """LLM-powered fallback — uses NVIDIA NIM if available, else static rules."""
+    if llm_client.is_available():
+        context_parts = []
+        if is_staff:
+            context_parts.append("User is a staff/manager with access to management data.")
+        if prev_intent:
+            context_parts.append(f"Previous conversation topic: {prev_intent}")
+        context = "\n".join(context_parts)
+        llm_resp = await llm_client.llm_reply(text, context=context, history=history)
+        if llm_resp:
+            return llm_resp
+    # Static fallback if LLM unavailable
     t = text.lower()
     if any(w in t for w in ["appoint", "book", "slot", "time"]):
         return "It looks like you want to **book an appointment**. Just say **book** and I'll guide you through it! 📅"

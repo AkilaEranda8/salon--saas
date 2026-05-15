@@ -119,6 +119,7 @@ services:
       - backend
     environment:
       SALON_API_URL: http://backend:5000/api
+      NVIDIA_API_KEY: ${NVIDIA_API_KEY:-}
     expose:
       - "8000"
 

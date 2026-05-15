@@ -1,6 +1,7 @@
 const { Op } = require('sequelize');
 const { SupportTicket, SupportTicketReply, Tenant, User } = require('../models');
 const { tenantWhere, byIdWhere, resolveTenantId } = require('../utils/tenantScope');
+const llm = require('../services/llmService');
 
 const STATUS_SET = new Set(['open', 'in_progress', 'waiting_customer', 'resolved', 'closed']);
 const PRIORITY_SET = new Set(['low', 'medium', 'high', 'urgent']);
@@ -221,10 +222,62 @@ const createReply = async (req, res) => {
   }
 };
 
+const aiSuggest = async (req, res) => {
+  try {
+    if (!llm.isAvailable()) {
+      return res.status(503).json({ message: 'AI service not configured.' });
+    }
+    const where = byIdWhere(req, req.params.id);
+    const ticket = await SupportTicket.findOne({
+      where,
+      include: [{
+        model: SupportTicketReply,
+        as: 'replies',
+        required: false,
+        include: [{ model: User, as: 'author', attributes: ['id', 'name', 'username'], required: false }],
+      }],
+    });
+    if (!ticket) return res.status(404).json({ message: 'Ticket not found.' });
+
+    const replies = Array.isArray(ticket.replies)
+      ? [...ticket.replies].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
+      : [];
+
+    const suggestion = await llm.suggestReply(ticket, replies);
+    if (!suggestion) return res.status(502).json({ message: 'AI did not return a suggestion. Try again.' });
+
+    return res.json({ suggestion });
+  } catch (err) {
+    console.error('support.aiSuggest error:', err);
+    return res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+const aiClassify = async (req, res) => {
+  try {
+    if (!llm.isAvailable()) {
+      return res.status(503).json({ message: 'AI service not configured.' });
+    }
+    const subject     = String(req.body?.subject || '').trim();
+    const description = String(req.body?.description || '').trim();
+    if (!subject) return res.status(400).json({ message: 'Subject is required.' });
+
+    const result = await llm.classifyTicket(subject, description);
+    if (!result) return res.status(502).json({ message: 'AI classification failed. Try again.' });
+
+    return res.json(result);
+  } catch (err) {
+    console.error('support.aiClassify error:', err);
+    return res.status(500).json({ message: 'Server error.' });
+  }
+};
+
 module.exports = {
   list,
   create,
   update,
   remove,
   createReply,
+  aiSuggest,
+  aiClassify,
 };

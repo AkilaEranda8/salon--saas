@@ -100,12 +100,15 @@ export default function SupportTicketsPage({ platformMode = false }) {
     subject: '',
     message: '',
     priority: 'medium',
+    category: 'other',
     tenant_id: '',
   });
   const [expandedTicketId, setExpandedTicketId] = useState(null);
   const [replyDrafts, setReplyDrafts] = useState({});
   const [replyInternal, setReplyInternal] = useState({});
   const [replyBusyId, setReplyBusyId] = useState(null);
+  const [aiSuggestBusy, setAiSuggestBusy] = useState({});
+  const [aiClassifyBusy, setAiClassifyBusy] = useState(false);
 
   const loadData = async (silent = false) => {
     if (silent) setRefreshing(true);
@@ -226,6 +229,41 @@ export default function SupportTicketsPage({ platformMode = false }) {
       setNotice({ type: 'error', text: err?.response?.data?.message || 'Failed to send reply.' });
     } finally {
       setReplyBusyId(null);
+    }
+  };
+
+  const handleAiSuggest = async (ticket) => {
+    setAiSuggestBusy((prev) => ({ ...prev, [ticket.id]: true }));
+    try {
+      const { data } = await api.post(`/support/${ticket.id}/ai-suggest`);
+      if (data.suggestion) {
+        setReplyDrafts((prev) => ({ ...prev, [ticket.id]: data.suggestion }));
+        setNotice({ type: 'success', text: 'AI suggestion inserted — review and edit before sending.' });
+      }
+    } catch (err) {
+      setNotice({ type: 'error', text: err?.response?.data?.message || 'AI suggest failed.' });
+    } finally {
+      setAiSuggestBusy((prev) => ({ ...prev, [ticket.id]: false }));
+    }
+  };
+
+  const handleAiClassify = async () => {
+    if (!newTicket.subject.trim()) {
+      setNotice({ type: 'error', text: 'Enter a subject first.' });
+      return;
+    }
+    setAiClassifyBusy(true);
+    try {
+      const { data } = await api.post('/support/ai-classify', {
+        subject: newTicket.subject,
+        description: newTicket.message,
+      });
+      setNewTicket((p) => ({ ...p, priority: data.priority, category: data.category }));
+      setNotice({ type: 'success', text: `AI classified: priority=${data.priority}, category=${data.category}. ${data.reason || ''}` });
+    } catch (err) {
+      setNotice({ type: 'error', text: err?.response?.data?.message || 'AI classify failed.' });
+    } finally {
+      setAiClassifyBusy(false);
     }
   };
 
@@ -489,7 +527,7 @@ export default function SupportTicketsPage({ platformMode = false }) {
                                     Send as internal note
                                   </label>
                                 )}
-                                <div>
+                                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                                   <button
                                     type="button"
                                     onClick={() => (platformMode ? sendPlatformReply(t) : sendReply(t))}
@@ -497,6 +535,15 @@ export default function SupportTicketsPage({ platformMode = false }) {
                                     style={{ border: 'none', borderRadius: 8, background: '#2563EB', color: '#fff', padding: '7px 11px', fontSize: 12, fontWeight: 700, cursor: replyBusyId === t.id ? 'not-allowed' : 'pointer', opacity: replyBusyId === t.id ? 0.75 : 1 }}
                                   >
                                     {replyBusyId === t.id ? 'Sending...' : 'Send Reply'}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleAiSuggest(t)}
+                                    disabled={!!aiSuggestBusy[t.id]}
+                                    title="Generate an AI-powered reply suggestion"
+                                    style={{ border: '1px solid #7C3AED', borderRadius: 8, background: aiSuggestBusy[t.id] ? '#EDE9FE' : '#F5F3FF', color: '#7C3AED', padding: '7px 11px', fontSize: 12, fontWeight: 700, cursor: aiSuggestBusy[t.id] ? 'not-allowed' : 'pointer', opacity: aiSuggestBusy[t.id] ? 0.7 : 1, display: 'flex', alignItems: 'center', gap: 5 }}
+                                  >
+                                    {aiSuggestBusy[t.id] ? '⏳ Thinking...' : '✨ AI Suggest'}
                                   </button>
                                 </div>
                               </div>
@@ -525,16 +572,28 @@ export default function SupportTicketsPage({ platformMode = false }) {
               />
             </label>
 
-            <label>
-              <div style={{ fontSize: 12, fontWeight: 700, color: isDark ? '#94A3B8' : '#64748B', marginBottom: 6 }}>Priority</div>
-              <select
-                value={newTicket.priority}
-                onChange={(e) => setNewTicket((p) => ({ ...p, priority: e.target.value }))}
-                style={{ width: '100%', boxSizing: 'border-box', borderRadius: 10, border: `1px solid ${isDark ? '#334155' : '#D0D5DD'}`, background: isDark ? '#0B1220' : '#fff', color: isDark ? '#E2E8F0' : '#111827', padding: '10px 11px', fontSize: 13 }}
-              >
-                {PRIORITY_LIST.map((p) => <option key={p} value={p}>{p}</option>)}
-              </select>
-            </label>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <label>
+                <div style={{ fontSize: 12, fontWeight: 700, color: isDark ? '#94A3B8' : '#64748B', marginBottom: 6 }}>Priority</div>
+                <select
+                  value={newTicket.priority}
+                  onChange={(e) => setNewTicket((p) => ({ ...p, priority: e.target.value }))}
+                  style={{ width: '100%', boxSizing: 'border-box', borderRadius: 10, border: `1px solid ${isDark ? '#334155' : '#D0D5DD'}`, background: isDark ? '#0B1220' : '#fff', color: isDark ? '#E2E8F0' : '#111827', padding: '10px 11px', fontSize: 13 }}
+                >
+                  {PRIORITY_LIST.map((p) => <option key={p} value={p}>{p}</option>)}
+                </select>
+              </label>
+              <label>
+                <div style={{ fontSize: 12, fontWeight: 700, color: isDark ? '#94A3B8' : '#64748B', marginBottom: 6 }}>Category</div>
+                <select
+                  value={newTicket.category}
+                  onChange={(e) => setNewTicket((p) => ({ ...p, category: e.target.value }))}
+                  style={{ width: '100%', boxSizing: 'border-box', borderRadius: 10, border: `1px solid ${isDark ? '#334155' : '#D0D5DD'}`, background: isDark ? '#0B1220' : '#fff', color: isDark ? '#E2E8F0' : '#111827', padding: '10px 11px', fontSize: 13 }}
+                >
+                  {['technical','billing','account','feature','other'].map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </label>
+            </div>
 
             <label>
               <div style={{ fontSize: 12, fontWeight: 700, color: isDark ? '#94A3B8' : '#64748B', marginBottom: 6 }}>Message</div>
@@ -547,14 +606,25 @@ export default function SupportTicketsPage({ platformMode = false }) {
               />
             </label>
 
-            <button
-              type="button"
-              onClick={createTicket}
-              disabled={saving || loading}
-              style={{ border: 'none', borderRadius: 10, background: '#2563EB', color: '#fff', padding: '10px 13px', fontSize: 13, fontWeight: 700, cursor: saving || loading ? 'not-allowed' : 'pointer', opacity: saving || loading ? 0.75 : 1 }}
-            >
-              {saving ? 'Creating...' : 'Create Ticket'}
-            </button>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                type="button"
+                onClick={createTicket}
+                disabled={saving || loading}
+                style={{ flex: 1, border: 'none', borderRadius: 10, background: '#2563EB', color: '#fff', padding: '10px 13px', fontSize: 13, fontWeight: 700, cursor: saving || loading ? 'not-allowed' : 'pointer', opacity: saving || loading ? 0.75 : 1 }}
+              >
+                {saving ? 'Creating...' : 'Create Ticket'}
+              </button>
+              <button
+                type="button"
+                onClick={handleAiClassify}
+                disabled={aiClassifyBusy}
+                title="Auto-detect priority and category using AI"
+                style={{ border: '1px solid #7C3AED', borderRadius: 10, background: aiClassifyBusy ? '#EDE9FE' : '#F5F3FF', color: '#7C3AED', padding: '10px 13px', fontSize: 13, fontWeight: 700, cursor: aiClassifyBusy ? 'not-allowed' : 'pointer', opacity: aiClassifyBusy ? 0.7 : 1, whiteSpace: 'nowrap' }}
+              >
+                {aiClassifyBusy ? '⏳ Classifying...' : '✨ Auto-classify'}
+              </button>
+            </div>
           </div>
         </Surface>
         )}

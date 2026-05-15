@@ -1,13 +1,13 @@
 """
 NVIDIA NIM LLM client — OpenAI-compatible API
-Model: meta/llama-3.1-8b-instruct
+Model: meta/llama-3.3-70b-instruct
 """
 import os
 from openai import AsyncOpenAI
 
 NVIDIA_API_KEY  = os.getenv("NVIDIA_API_KEY", "")
 NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
-MODEL           = "meta/llama-3.1-8b-instruct"
+MODEL           = "meta/llama-3.3-70b-instruct"
 
 _client: AsyncOpenAI | None = None
 
@@ -75,7 +75,7 @@ async def llm_reply(
             model=MODEL,
             messages=messages,
             temperature=0.35,
-            max_tokens=350,
+            max_tokens=512,
             stream=False,
         )
         return completion.choices[0].message.content.strip()

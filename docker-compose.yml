@@ -81,6 +81,7 @@ services:
       KC_CLIENT_ID:         ${KC_CLIENT_ID:-salon-backend}
       KC_CLIENT_SECRET:     ${KC_CLIENT_SECRET:-}
       KEYCLOAK_AUTH_ENABLED: ${KEYCLOAK_AUTH_ENABLED:-false}
+      NVIDIA_API_KEY: ${NVIDIA_API_KEY:-}
     expose:
       - "5000"
     ports:

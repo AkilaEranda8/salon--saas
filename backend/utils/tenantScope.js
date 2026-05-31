@@ -19,7 +19,10 @@ function tenantWhere(req) {
 }
 
 function resolveTenantId(req) {
-  return req.userTenantId ?? req.user?.tenantId ?? req.tenant?.id ?? null;
+  // Subdomain / custom-domain (X-Tenant-Slug / X-Tenant-Host) is authoritative for tenant APIs.
+  if (req.tenant?.id) return req.tenant.id;
+  if (req.user?.role === 'platform_admin') return null;
+  return req.userTenantId ?? req.user?.tenantId ?? null;
 }
 
 function byIdWhere(req, id) {

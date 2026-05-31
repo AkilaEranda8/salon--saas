@@ -1,12 +1,44 @@
 const { Op, fn, col, literal } = require('sequelize');
 const { Expense, Branch, User, Payment, Service } = require('../models');
-const { tenantWhere, byIdWhere, resolveTenantId } = require('../utils/tenantScope');
+const { byIdWhere, resolveTenantId } = require('../utils/tenantScope');
 
-// ── Branch-scope helper (mirrors pattern used across controllers) ──────────────
-const getBranchWhere = (req) => {
-  const where = tenantWhere(req);
-  if (req.userBranchId)        where.branch_id = req.userBranchId;
-  else if (req.query.branchId) where.branch_id = req.query.branchId;
+// Scope to tenant branches (works even when payment/expense rows lack tenant_id).
+const getBranchWhere = async (req) => {
+  const where = {};
+  const tenantId = resolveTenantId(req);
+
+  let tenantBranchIds = null;
+  if (tenantId) {
+    const rows = await Branch.findAll({
+      where: { tenant_id: tenantId },
+      attributes: ['id'],
+      raw: true,
+    });
+    tenantBranchIds = rows.map((r) => r.id);
+    if (tenantBranchIds.length === 0) {
+      where.branch_id = { [Op.in]: [-1] };
+      return where;
+    }
+  }
+
+  if (req.userBranchId) {
+    const bid = req.userBranchId;
+    if (tenantBranchIds && !tenantBranchIds.includes(bid)) {
+      where.branch_id = { [Op.in]: [-1] };
+    } else {
+      where.branch_id = bid;
+    }
+  } else if (req.query.branchId) {
+    const bid = parseInt(req.query.branchId, 10);
+    if (tenantBranchIds && !tenantBranchIds.includes(bid)) {
+      where.branch_id = { [Op.in]: [-1] };
+    } else {
+      where.branch_id = bid;
+    }
+  } else if (tenantBranchIds) {
+    where.branch_id = { [Op.in]: tenantBranchIds };
+  }
+
   return where;
 };
 
@@ -38,7 +70,7 @@ const list = async (req, res) => {
     const limit  = Math.min(parseInt(req.query.limit) || 20, 200);
     const offset = (page - 1) * limit;
 
-    const where = getBranchWhere(req);
+    const where = await getBranchWhere(req);
     applyDateFilter(where, req);
     if (req.query.category) where.category = req.query.category;
 
@@ -75,7 +107,7 @@ const list = async (req, res) => {
 // ── GET /api/expenses/summary ─────────────────────────────────────────────────
 const summary = async (req, res) => {
   try {
-    const where = getBranchWhere(req);
+    const where = await getBranchWhere(req);
     const year  = parseInt(req.query.year) || new Date().getFullYear();
     where.date  = { [Op.between]: [`${year}-01-01`, `${year}-12-31`] };
 
@@ -109,10 +141,13 @@ const summary = async (req, res) => {
 // ── GET /api/expenses/profit-loss ─────────────────────────────────────────────
 const profitLoss = async (req, res) => {
   try {
-    const payWhere = getBranchWhere(req);
-    const expWhere = getBranchWhere(req);
+    const payWhere = await getBranchWhere(req);
+    const expWhere = await getBranchWhere(req);
     applyDateFilter(payWhere, req);
     applyDateFilter(expWhere, req);
+
+    // Only count completed payments in revenue / commission
+    payWhere.status = 'paid';
 
     // Revenue + commission from payments
     const [payTotals] = await Payment.findAll({

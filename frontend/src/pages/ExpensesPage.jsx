@@ -20,14 +20,14 @@ export default function ExpensesPage() {
   const { user }     = useAuth();
   const canEdit      = ['superadmin','admin','manager'].includes(user?.role);
   const canAdd       = user?.role === 'superadmin';
-  const isSuperAdmin = user?.role === 'superadmin';
+  const canPickBranch = ['superadmin', 'admin'].includes(user?.role);
   const today    = new Date().toISOString().slice(0,10);
   const curMonth = today.slice(0,7);
   const [items, setItems]       = useState([]);
   const [branches, setBranches] = useState([]);
   const [pl, setPl]             = useState(null);
   const [loading, setLoading]   = useState(true);
-  const [filterBranch, setFilterBranch] = useState(isSuperAdmin ? '' : user?.branch_id || '');
+  const [filterBranch, setFilterBranch] = useState(canPickBranch ? '' : user?.branch_id || '');
   const [filterMonth, setFilterMonth]   = useState(curMonth);
   const [search, setSearch]     = useState('');
   const [showForm, setShowForm] = useState(false);
@@ -164,7 +164,7 @@ export default function ExpensesPage() {
         <input type="month" value={filterMonth} onChange={e => setFilterMonth(e.target.value)}
           style={{ padding:'7px 10px', borderRadius:9, border:'1.5px solid #E4E7EC', fontSize:13, fontFamily:"'Inter',sans-serif", outline:'none', color:'#344054' }}
           onFocus={e=>e.target.style.borderColor='#2563EB'} onBlur={e=>e.target.style.borderColor='#E4E7EC'} />
-        {isSuperAdmin && (
+        {canPickBranch && (
           <select value={filterBranch} onChange={e => setFilterBranch(e.target.value)}
             style={{ padding:'7px 12px', borderRadius:9, border:'1.5px solid #E4E7EC', fontSize:13, fontFamily:"'Inter',sans-serif", outline:'none', color:'#344054', background:'#fff' }}>
             <option value="">All Branches</option>
@@ -225,7 +225,7 @@ export default function ExpensesPage() {
         footer={<><Button variant="secondary" onClick={() => setShowForm(false)}>Cancel</Button><Button variant="primary" loading={saving} onClick={handleSave}>{editItem ? 'Save' : 'Add Expense'}</Button></>}>
         {formErr && <div style={{ background:'#FEF2F2', color:'#DC2626', padding:'9px 13px', borderRadius:9, marginBottom:16, fontSize:13, border:'1px solid #FEE2E2' }}>{formErr}</div>}
         <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
-          {isSuperAdmin && <FormGroup label="Branch"><Select value={form.branch_id||''} onChange={e => setForm(f=>({...f, branch_id:e.target.value}))}><option value="">Select branch</option>{branches.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}</Select></FormGroup>}
+          {canPickBranch && <FormGroup label="Branch"><Select value={form.branch_id||''} onChange={e => setForm(f=>({...f, branch_id:e.target.value}))}><option value="">Select branch</option>{branches.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}</Select></FormGroup>}
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
             <FormGroup label="Category"><Select value={form.category} onChange={e => setForm(f=>({...f, category:e.target.value}))}>{CATS.map(c=><option key={c} value={c}>{c}</option>)}</Select></FormGroup>
             <FormGroup label="Date"><Input type="date" value={form.date||''} onChange={e => setForm(f=>({...f, date:e.target.value}))} /></FormGroup>

@@ -39,12 +39,15 @@ export default function ExpensesPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [from, to] = filterMonth ? [`${filterMonth}-01`, `${filterMonth}-31`] : ['', ''];
-      const params = { limit:200, ...(filterBranch ? { branchId:filterBranch } : {}), ...(from ? { from, to } : {}) };
+      const params = {
+        limit: 200,
+        ...(filterBranch ? { branchId: filterBranch } : {}),
+        ...(filterMonth ? { month: filterMonth } : {}),
+      };
       const [expR, brR, plR] = await Promise.all([
         api.get('/expenses', { params }),
         api.get('/branches', { params:{ limit:100 } }),
-        api.get('/expenses/profit-loss', { params:{ ...(filterBranch ? { branchId:filterBranch } : {}), ...(from ? { from, to } : {}) } }),
+        api.get('/expenses/profit-loss', { params }),
       ]);
       setItems(Array.isArray(expR.data) ? expR.data : (expR.data?.data ?? []));
       setBranches(Array.isArray(brR.data) ? brR.data : (brR.data?.data ?? []));

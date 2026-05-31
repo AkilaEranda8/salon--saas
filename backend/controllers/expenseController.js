@@ -1,6 +1,6 @@
 const { Op, fn, col, literal } = require('sequelize');
 const { Expense, Branch, User, Payment, Service } = require('../models');
-const { tenantWhere } = require('../utils/tenantScope');
+const { tenantWhere, byIdWhere, resolveTenantId } = require('../utils/tenantScope');
 
 // ── Branch-scope helper (mirrors pattern used across controllers) ──────────────
 const getBranchWhere = (req) => {
@@ -17,15 +17,29 @@ const applyMonthFilter = (where, month) => {
   where.date = { [Op.between]: [`${year}-${mon}-01`, `${year}-${mon}-${lastDay}`] };
 };
 
+const applyDateFilter = (where, req) => {
+  if (req.query.month) {
+    applyMonthFilter(where, req.query.month);
+    return;
+  }
+  if (req.query.from && req.query.to) {
+    where.date = { [Op.between]: [req.query.from, req.query.to] };
+  } else if (req.query.from) {
+    where.date = { [Op.gte]: req.query.from };
+  } else if (req.query.to) {
+    where.date = { [Op.lte]: req.query.to };
+  }
+};
+
 // ── GET /api/expenses ─────────────────────────────────────────────────────────
 const list = async (req, res) => {
   try {
     const page   = Math.max(parseInt(req.query.page)  || 1, 1);
-    const limit  = Math.min(parseInt(req.query.limit) || 20, 100);
+    const limit  = Math.min(parseInt(req.query.limit) || 20, 200);
     const offset = (page - 1) * limit;
 
     const where = getBranchWhere(req);
-    applyMonthFilter(where, req.query.month);
+    applyDateFilter(where, req);
     if (req.query.category) where.category = req.query.category;
 
     const { count, rows } = await Expense.findAndCountAll({
@@ -95,17 +109,10 @@ const summary = async (req, res) => {
 // ── GET /api/expenses/profit-loss ─────────────────────────────────────────────
 const profitLoss = async (req, res) => {
   try {
-    const payWhere = {};
-    const expWhere = {};
-    if (req.userBranchId) {
-      payWhere.branch_id = req.userBranchId;
-      expWhere.branch_id = req.userBranchId;
-    } else if (req.query.branchId) {
-      payWhere.branch_id = req.query.branchId;
-      expWhere.branch_id = req.query.branchId;
-    }
-    applyMonthFilter(payWhere, req.query.month);
-    applyMonthFilter(expWhere, req.query.month);
+    const payWhere = getBranchWhere(req);
+    const expWhere = getBranchWhere(req);
+    applyDateFilter(payWhere, req);
+    applyDateFilter(expWhere, req);
 
     // Revenue + commission from payments
     const [payTotals] = await Payment.findAll({
@@ -176,7 +183,8 @@ const profitLoss = async (req, res) => {
 // ── GET /api/expenses/:id ─────────────────────────────────────────────────────
 const getOne = async (req, res) => {
   try {
-    const expense = await Expense.findByPk(req.params.id, {
+    const expense = await Expense.findOne({
+      where: byIdWhere(req, req.params.id),
       include: [
         { model: Branch, as: 'branch',  attributes: ['id', 'name'] },
         { model: User,   as: 'creator', attributes: ['id', 'name'] },
@@ -193,16 +201,26 @@ const getOne = async (req, res) => {
 const create = async (req, res) => {
   try {
     const { branch_id, category, title, amount, date, paid_to, payment_method, receipt_number, notes } = req.body;
-    if (!branch_id || !category || !title || !amount || !date) {
+    const effectiveBranchId = req.userBranchId || branch_id;
+    if (!effectiveBranchId || !category || !title || !amount || !date) {
       return res.status(400).json({ message: 'branch_id, category, title, amount, and date are required.' });
     }
+
+    const tenantId = resolveTenantId(req);
+    if (tenantId) {
+      const branch = await Branch.findOne({ where: { id: effectiveBranchId, tenant_id: tenantId } });
+      if (!branch) return res.status(403).json({ message: 'Invalid branch for this tenant.' });
+    }
+
     const expense = await Expense.create({
-      branch_id, category, title, amount, date,
+      branch_id:      effectiveBranchId,
+      category, title, amount, date,
       paid_to:        paid_to        || null,
       payment_method: payment_method || null,
       receipt_number: receipt_number || null,
       notes:          notes          || null,
       created_by:     req.user?.id   || null,
+      tenant_id:      tenantId,
     });
     return res.status(201).json(expense);
   } catch (err) {
@@ -214,10 +232,9 @@ const create = async (req, res) => {
 // ── PUT /api/expenses/:id ─────────────────────────────────────────────────────
 const update = async (req, res) => {
   try {
-    const expense = await Expense.findByPk(req.params.id);
+    const expense = await Expense.findOne({ where: byIdWhere(req, req.params.id) });
     if (!expense) return res.status(404).json({ message: 'Expense not found.' });
 
-    // Branch-scoped users may only update their own branch's records
     if (req.userBranchId && expense.branch_id !== req.userBranchId) {
       return res.status(403).json({ message: 'Access denied.' });
     }
@@ -236,8 +253,12 @@ const update = async (req, res) => {
 // ── DELETE /api/expenses/:id ──────────────────────────────────────────────────
 const remove = async (req, res) => {
   try {
-    const expense = await Expense.findByPk(req.params.id);
+    const expense = await Expense.findOne({ where: byIdWhere(req, req.params.id) });
     if (!expense) return res.status(404).json({ message: 'Expense not found.' });
+
+    if (req.userBranchId && expense.branch_id !== req.userBranchId) {
+      return res.status(403).json({ message: 'Access denied.' });
+    }
     await expense.destroy();
     return res.json({ message: 'Expense deleted.' });
   } catch (err) {

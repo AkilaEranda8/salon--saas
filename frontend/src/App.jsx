@@ -397,7 +397,11 @@ function AppShell() {
               </RoleRoute>
             } />
             <Route path="/support"      element={<SupportTicketsPage />} />
-            <Route path="/expenses"     element={<ExpensesPage />} />
+            <Route path="/expenses"     element={
+              <RoleRoute roles={['superadmin', 'admin', 'manager']}>
+                <ExpensesPage />
+              </RoleRoute>
+            } />
             <Route path="/reminders"    element={<RemindersPage />} />
             <Route path="/consent-forms" element={<ConsentFormsPage />} />
             <Route path="/notifications" element={

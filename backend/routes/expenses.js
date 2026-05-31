@@ -4,7 +4,7 @@ const { verifyToken, requireRole } = require('../middleware/auth');
 const { branchAccess } = require('../middleware/branchAccess');
 
 const router = Router();
-router.use(verifyToken, branchAccess);
+router.use(verifyToken, branchAccess, requireRole('superadmin', 'admin', 'manager'));
 
 // Specific paths before :id to avoid shadowing
 router.get('/summary',     ctrl.summary);

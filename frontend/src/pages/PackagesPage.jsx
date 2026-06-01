@@ -6,7 +6,7 @@ import Button from '../components/ui/Button';
 import {
   IconPkg, IconCheck, IconDollar, IconUsers, IconTag,
   StatCard, PKModal as Modal,
-  FilterBar, SearchBar, DataTable,
+  FilterBar, DataTable, ActionBtn, IconEdit, IconTrash, IconStop,
 } from '../components/ui/PageKit';
 
 /*  constants  */
@@ -194,7 +194,7 @@ export default function PackagesPage() {
   const [soldLoading,  setSoldLoading]  = useState(false);
   const [filterStatus, setFilterStatus] = useState('');
   const [filterBranch, setFilterBranch] = useState('');
-  const [soldSearch,   setSoldSearch]   = useState('');
+  const [filterPkgType, setFilterPkgType] = useState('');
 
   const [showSellModal,  setShowSellModal]  = useState(false);
   const [sellStep,       setSellStep]       = useState(1);
@@ -267,11 +267,228 @@ export default function PackagesPage() {
   const bundleCount    = packages.filter(p => p.type === 'bundle').length;
   const memberCount    = packages.filter(p => p.type === 'membership').length;
 
-  const visibleSold = useMemo(() => {
-    if (!soldSearch.trim()) return soldPkgs;
-    const q = soldSearch.toLowerCase();
-    return soldPkgs.filter(cp => cp.customer?.name?.toLowerCase().includes(q) || cp.package?.name?.toLowerCase().includes(q));
-  }, [soldPkgs, soldSearch]);
+  const displayedPackages = useMemo(() => {
+    if (!filterPkgType) return packages;
+    return packages.filter((p) => p.type === filterPkgType);
+  }, [packages, filterPkgType]);
+
+  const templateColumns = useMemo(() => [
+    {
+      accessorKey: 'name',
+      header: 'Package',
+      meta: { width: '22%' },
+      cell: ({ row }) => {
+        const pkg = row.original;
+        return (
+          <>
+            <div style={{ fontWeight: 600, color: '#101828', fontSize: 14 }}>{pkg.name}</div>
+            {pkg.description && <div style={{ fontSize: 12, color: MUTED, marginTop: 2 }}>{pkg.description}</div>}
+          </>
+        );
+      },
+    },
+    {
+      accessorKey: 'type',
+      header: 'Type',
+      meta: { width: '10%' },
+      cell: ({ getValue }) => {
+        const tb = TYPE_BADGE[getValue()] || TYPE_BADGE.bundle;
+        return (
+          <span style={{ padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700, background: tb.bg, color: tb.color }}>
+            {getValue() === 'bundle' ? 'Bundle' : 'Membership'}
+          </span>
+        );
+      },
+    },
+    {
+      id: 'services',
+      accessorFn: (pkg) => (pkg.serviceDetails || []).map((s) => s.name).join(', '),
+      header: 'Services',
+      meta: { width: '24%' },
+      cell: ({ row }) => {
+        const svcList = row.original.serviceDetails || [];
+        if (!svcList.length) return <span style={{ color: MUTED }}>—</span>;
+        return (
+          <span style={{ fontSize: 13, color: '#475467' }}>
+            {svcList.map((s) => s.name).join(', ')}
+          </span>
+        );
+      },
+    },
+    {
+      accessorKey: 'package_price',
+      header: 'Price',
+      meta: { width: '12%', align: 'right' },
+      cell: ({ row }) => {
+        const pkg = row.original;
+        const discPct = Number(pkg.discount_percent) || 0;
+        return (
+          <div style={{ textAlign: 'right' }}>
+            {discPct > 0 && (
+              <div style={{ fontSize: 11, color: MUTED, textDecoration: 'line-through' }}>
+                Rs. {Number(pkg.original_price || 0).toLocaleString()}
+              </div>
+            )}
+            <div style={{ fontWeight: 700, color: '#101828' }}>Rs. {Number(pkg.package_price).toLocaleString()}</div>
+          </div>
+        );
+      },
+    },
+    {
+      id: 'validity',
+      accessorFn: (pkg) => `${pkg.validity_days || 0}d · ${pkg.sessions_count || 0} sessions`,
+      header: 'Validity',
+      meta: { width: '14%' },
+      cell: ({ row }) => {
+        const pkg = row.original;
+        return <span style={{ fontSize: 13, color: '#344054' }}>{pkg.validity_days} days · {pkg.sessions_count} sessions</span>;
+      },
+    },
+    {
+      accessorKey: 'is_active',
+      header: 'Status',
+      meta: { width: '10%', align: 'center' },
+      cell: ({ getValue }) => {
+        const active = getValue() !== false;
+        return (
+          <span style={{ padding: '3px 10px', borderRadius: 20, fontSize: 12, fontWeight: 600, background: active ? '#ECFDF5' : '#F9FAFB', color: active ? '#059669' : '#6B7280' }}>
+            {active ? 'Active' : 'Inactive'}
+          </span>
+        );
+      },
+    },
+    {
+      id: 'actions',
+      header: 'Actions',
+      meta: { width: '8%', align: 'center' },
+      enableSorting: false,
+      cell: ({ row }) => {
+        const pkg = row.original;
+        if (!canEdit) return null;
+        return (
+          <div style={{ display: 'flex', gap: 4, justifyContent: 'center', flexWrap: 'wrap' }}>
+            <ActionBtn onClick={() => openEditPkg(pkg)} title="Edit" color="#D97706"><IconEdit /></ActionBtn>
+            <ActionBtn onClick={() => handleTogglePkg(pkg)} title={pkg.is_active ? 'Deactivate' : 'Activate'} color={pkg.is_active ? '#6B7280' : '#059669'}>
+              {pkg.is_active ? <IconStop /> : <IconCheck />}
+            </ActionBtn>
+            <ActionBtn onClick={() => openSellModal(pkg)} title="Sell" color="#2563EB"><IconDollar /></ActionBtn>
+            <ActionBtn onClick={() => handleDeletePkg(pkg.id)} title="Delete" color="#DC2626"><IconTrash /></ActionBtn>
+          </div>
+        );
+      },
+    },
+  ], [canEdit]);
+
+  const soldColumns = useMemo(() => [
+    {
+      id: 'customer',
+      header: 'Customer',
+      meta: { width: '20%' },
+      accessorFn: (r) => `${r.customer?.name || ''} ${r.customer?.phone || ''}`.trim(),
+      cell: ({ row }) => {
+        const cp = row.original;
+        return (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ width: 34, height: 34, borderRadius: '50%', background: '#EFF6FF', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontWeight: 700, fontSize: 14, color: '#2563EB' }}>
+              {(cp.customer?.name || '?')[0].toUpperCase()}
+            </div>
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 600, color: '#101828' }}>{cp.customer?.name || ''}</div>
+              <div style={{ fontSize: 12, color: MUTED }}>{cp.customer?.phone || ''}</div>
+            </div>
+          </div>
+        );
+      },
+    },
+    {
+      id: 'package',
+      header: 'Package',
+      meta: { width: '18%' },
+      accessorFn: (r) => r.package?.name || '',
+      cell: ({ row }) => {
+        const cp = row.original;
+        const tb2 = TYPE_BADGE[cp.package?.type] || TYPE_BADGE.bundle;
+        return (
+          <>
+            <div style={{ fontSize: 13, fontWeight: 600, color: '#101828', marginBottom: 3 }}>{cp.package?.name || ''}</div>
+            <span style={{ padding: '2px 8px', borderRadius: 10, fontSize: 11, fontWeight: 600, background: tb2.bg, color: tb2.color }}>
+              {cp.package?.type}
+            </span>
+          </>
+        );
+      },
+    },
+    {
+      id: 'purchased',
+      header: 'Purchased',
+      meta: { width: '13%' },
+      accessorFn: (r) => r.purchase_date || '',
+      cell: ({ getValue }) => (
+        <span style={{ fontSize: 13, color: '#344054', whiteSpace: 'nowrap' }}>
+          {getValue() ? new Date(getValue()).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' }) : ''}
+        </span>
+      ),
+    },
+    {
+      id: 'expiry',
+      header: 'Expiry',
+      meta: { width: '13%' },
+      accessorFn: (r) => r.expiry_date || '',
+      cell: ({ row }) => {
+        const cp = row.original;
+        const dl = daysLeft(cp.expiry_date);
+        return (
+          <div style={{ whiteSpace: 'nowrap' }}>
+            <div style={{ fontSize: 13, color: '#344054' }}>
+              {cp.expiry_date ? new Date(cp.expiry_date).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' }) : ''}
+            </div>
+            {dl !== null && (
+              <div style={{ fontSize: 12, fontWeight: 600, marginTop: 2, color: dl < 0 ? '#DC2626' : dl < 7 ? '#D97706' : '#059669' }}>
+                {dl < 0 ? 'Expired' : dl === 0 ? 'Expires today' : `${dl} days left`}
+              </div>
+            )}
+          </div>
+        );
+      },
+    },
+    {
+      id: 'sessions',
+      header: 'Sessions',
+      meta: { width: '18%' },
+      cell: ({ row }) => <SessionBar used={row.original.sessions_used || 0} total={row.original.sessions_total || 0} />,
+    },
+    {
+      id: 'status',
+      header: 'Status',
+      meta: { width: '12%', align: 'center' },
+      accessorFn: (r) => r.status || '',
+      cell: ({ row }) => {
+        const sb = STATUS_BADGE[row.original.status] || STATUS_BADGE.active;
+        return (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 10px', borderRadius: 10, fontSize: 11, fontWeight: 700, background: sb.bg, color: sb.color }}>
+            <span style={{ width: 5, height: 5, borderRadius: '50%', background: sb.color }} />
+            {row.original.status}
+          </span>
+        );
+      },
+    },
+    {
+      id: 'action',
+      header: 'Action',
+      meta: { width: '6%', align: 'center' },
+      enableSorting: false,
+      cell: ({ row }) => {
+        const cp = row.original;
+        if (!canEdit || cp.status !== 'active') return null;
+        return (
+          <button type="button" onClick={() => openRedeemModal(cp)} title="Redeem Session"
+            style={{ padding: '5px 10px', borderRadius: 8, border: '1.5px solid #E4E7EC', background: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 600, color: '#059669' }}>
+            Redeem
+          </button>
+        );
+      },
+    },
+  ], [canEdit]);
 
   /*  package CRUD  */
   const openCreatePkg = () => {
@@ -497,159 +714,103 @@ export default function PackagesPage() {
       {activeTab === 'templates' && (
         <>
           {pkgError && <div style={{ padding:'12px 16px', background:'#FEE2E2', borderRadius:10, color:'#DC2626', fontSize:13 }}>{pkgError}</div>}
-          {pkgLoading ? (
-            <div style={{ textAlign:'center', padding:60, color:'#64748B', fontFamily:"'Inter',sans-serif" }}>Loading packages</div>
-          ) : packages.length === 0 ? (
-            <div style={{ textAlign:'center', padding:80 }}>
-              <div style={{ color:'#CBD5E1', marginBottom:12 }}><IconPkg /></div>
-              <div style={{ fontSize:18, fontWeight:700, color:'#344054', marginBottom:6, fontFamily:"'Inter',sans-serif" }}>No packages yet</div>
-              <div style={{ fontSize:14, color:'#64748B', marginBottom:20, fontFamily:"'Inter',sans-serif" }}>Create your first package template to get started</div>
-              {canEdit && <button onClick={openCreatePkg} style={{ background:'#2563EB', color:'#fff', border:'none', borderRadius:10, padding:'9px 20px', fontSize:13, fontWeight:700, cursor:'pointer', fontFamily:"'Inter',sans-serif" }}>+ Create Package</button>}
+          <FilterBar>
+            <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+              {[
+                { val: '', label: 'All' },
+                { val: 'bundle', label: 'Bundles' },
+                { val: 'membership', label: 'Memberships' },
+              ].map(({ val, label }) => {
+                const active = filterPkgType === val;
+                const tb = val ? TYPE_BADGE[val] : null;
+                return (
+                  <button key={val || 'all'} type="button" onClick={() => setFilterPkgType(val)}
+                    style={{ padding:'6px 14px', borderRadius:20, border:'1.5px solid', cursor:'pointer', fontSize:12, fontWeight:600, fontFamily:"'Inter',sans-serif",
+                      borderColor: active ? (tb?.color || '#2563EB') : '#E4E7EC',
+                      background: active ? (tb?.bg || '#EFF6FF') : '#fff',
+                      color: active ? (tb?.color || '#2563EB') : '#64748B' }}>
+                    {label}
+                  </button>
+                );
+              })}
             </div>
-          ) : (
-            <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(300px,1fr))', gap:20 }}>
-              {packages.map(pkg => (
-                <PackageCard key={pkg.id} pkg={pkg} canEdit={canEdit}
-                  onEdit={openEditPkg} onToggle={handleTogglePkg} onDelete={handleDeletePkg} onSell={openSellModal} />
-              ))}
-            </div>
-          )}
+          </FilterBar>
+          <DataTable
+            columns={templateColumns}
+            data={displayedPackages}
+            loading={pkgLoading}
+            emptyMessage="No packages yet"
+            emptySub="Create your first package template to get started"
+            searchableColumns={[
+              { id: 'name', title: 'Package' },
+              { id: 'services', title: 'Service' },
+            ]}
+            filterableColumns={[{
+              id: 'type',
+              title: 'Type',
+              options: [
+                { label: 'Bundle', value: 'bundle' },
+                { label: 'Membership', value: 'membership' },
+              ],
+            }]}
+          />
         </>
       )}
 
       {/* TAB: Sold Packages */}
       {activeTab === 'sold' && (
-        <div style={{ background:'#fff', borderRadius:16, border:'1px solid #EAECF0', overflow:'hidden', boxShadow:'0 1px 4px rgba(16,24,40,0.07)' }}>
-          <div style={{ padding:'16px 20px', borderBottom:'1px solid #F2F4F7' }}>
-            <FilterBar>
-              <SearchBar value={soldSearch} onChange={setSoldSearch} placeholder="Search customer or package" />
+        <>
+          <FilterBar>
+            <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
               {[['','All'],['active','Active'],['expired','Expired'],['completed','Completed']].map(([val,label]) => (
-                <button key={val} onClick={() => { setFilterStatus(val); setSoldPage(1); }}
-                  style={{ padding:'6px 14px', borderRadius:10, cursor:'pointer', fontSize:12, fontWeight:600, fontFamily:"'Inter',sans-serif", border:'1.5px solid', transition:'all 0.15s',
+                <button key={val} type="button" onClick={() => { setFilterStatus(val); setSoldPage(1); }}
+                  style={{ padding:'6px 14px', borderRadius:20, cursor:'pointer', fontSize:12, fontWeight:600, fontFamily:"'Inter',sans-serif", border:'1.5px solid',
                     borderColor:filterStatus===val?'#2563EB':'#E4E7EC',
                     background:  filterStatus===val?'#EFF6FF':'#fff',
                     color:       filterStatus===val?'#2563EB':'#64748B' }}>
                   {label}
                 </button>
               ))}
-              {isAdmin && (
-                <select value={filterBranch} onChange={e=>{ setFilterBranch(e.target.value); setSoldPage(1); }}
-                  style={{ padding:'6px 10px', borderRadius:9, border:'1.5px solid #E4E7EC', fontSize:13, fontFamily:"'Inter',sans-serif", outline:'none', color:'#344054', background:'#fff' }}>
-                  <option value="">All Branches</option>
-                  {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-                </select>
-              )}
-              <span style={{ marginLeft:'auto', fontSize:13, color:'#64748B', fontFamily:"'Inter',sans-serif" }}>{soldTotal} record{soldTotal!==1?'s':''}</span>
-            </FilterBar>
-          </div>
+            </div>
+            {isAdmin && (
+              <select value={filterBranch} onChange={e=>{ setFilterBranch(e.target.value); setSoldPage(1); }}
+                style={{ padding:'7px 12px', borderRadius:9, border:'1.5px solid #E4E7EC', fontSize:13, fontFamily:"'Inter',sans-serif", outline:'none', color:'#344054', background:'#fff' }}>
+                <option value="">All Branches</option>
+                {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+              </select>
+            )}
+          </FilterBar>
 
-          <DataTable noShell compact
-            columns={[
-              { id:'customer', header:'Customer', meta:{ width:'20%' },
-                accessorFn: r => r.customer?.name || '',
-                cell: ({ row }) => {
-                  const cp = row.original;
-                  return (
-                    <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-                      <div style={{ width:34, height:34, borderRadius:'50%', background:'#EFF6FF', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, fontWeight:700, fontSize:14, color:'#2563EB', fontFamily:"'Outfit',sans-serif" }}>
-                        {(cp.customer?.name||'?')[0].toUpperCase()}
-                      </div>
-                      <div>
-                        <div style={{ fontSize:14, fontWeight:600, color:'#101828', fontFamily:"'Inter',sans-serif" }}>{cp.customer?.name||''}</div>
-                        <div style={{ fontSize:12, color:'#64748B', fontFamily:"'Inter',sans-serif" }}>{cp.customer?.phone||''}</div>
-                      </div>
-                    </div>
-                  );
-                }
-              },
-              { id:'package', header:'Package', meta:{ width:'18%' },
-                accessorFn: r => r.package?.name || '',
-                cell: ({ row }) => {
-                  const cp = row.original;
-                  const tb2 = TYPE_BADGE[cp.package?.type] || TYPE_BADGE.bundle;
-                  return (
-                    <>
-                      <div style={{ fontSize:13, fontWeight:600, color:'#101828', marginBottom:3, fontFamily:"'Inter',sans-serif" }}>{cp.package?.name||''}</div>
-                      <span style={{ padding:'2px 8px', borderRadius:10, fontSize:11, fontWeight:600, background:tb2.bg, color:tb2.color, fontFamily:"'Inter',sans-serif" }}>
-                        {cp.package?.type}
-                      </span>
-                    </>
-                  );
-                }
-              },
-              { id:'purchased', header:'Purchased', meta:{ width:'13%' },
-                accessorFn: r => r.purchase_date || '',
-                cell: ({ getValue }) => <span style={{ fontSize:13, color:'#344054', whiteSpace:'nowrap', fontFamily:"'Inter',sans-serif" }}>
-                  {getValue() ? new Date(getValue()).toLocaleDateString('en-US',{day:'numeric',month:'short',year:'numeric'}) : ''}
-                </span>
-              },
-              { id:'expiry', header:'Expiry', meta:{ width:'13%' },
-                accessorFn: r => r.expiry_date || '',
-                cell: ({ row }) => {
-                  const cp = row.original;
-                  const dl = daysLeft(cp.expiry_date);
-                  return (
-                    <div style={{ whiteSpace:'nowrap' }}>
-                      <div style={{ fontSize:13, color:'#344054', fontFamily:"'Inter',sans-serif" }}>
-                        {cp.expiry_date ? new Date(cp.expiry_date).toLocaleDateString('en-US',{day:'numeric',month:'short',year:'numeric'}) : ''}
-                      </div>
-                      {dl !== null && (
-                        <div style={{ fontSize:12, fontWeight:600, marginTop:2, fontFamily:"'Inter',sans-serif", color:dl<0?'#DC2626':dl<7?'#D97706':'#059669' }}>
-                          {dl<0?'Expired':dl===0?'Expires today':`${dl} days left`}
-                        </div>
-                      )}
-                    </div>
-                  );
-                }
-              },
-              { id:'sessions', header:'Sessions', meta:{ width:'18%', padding:'12px 16px' },
-                cell: ({ row }) => <SessionBar used={row.original.sessions_used||0} total={row.original.sessions_total||0} />
-              },
-              { id:'status', header:'Status', meta:{ width:'12%', align:'center' },
-                accessorFn: r => r.status || '',
-                cell: ({ row }) => {
-                  const sb = STATUS_BADGE[row.original.status] || STATUS_BADGE.active;
-                  return (
-                    <span style={{ display:'inline-flex', alignItems:'center', gap:5, padding:'3px 10px', borderRadius:10, fontSize:11, fontWeight:700, background:sb.bg, color:sb.color, fontFamily:"'Inter',sans-serif" }}>
-                      <span style={{ width:5, height:5, borderRadius:'50%', background:sb.color }} />
-                      {row.original.status}
-                    </span>
-                  );
-                }
-              },
-              { id:'action', header:'Action', meta:{ width:'6%', align:'center' },
-                cell: ({ row }) => {
-                  const cp = row.original;
-                  if (!canEdit || cp.status !== 'active') return null;
-                  return (
-                    <button onClick={() => openRedeemModal(cp)} title="Redeem Session"
-                      style={{ padding:'5px 10px', borderRadius:8, border:'1.5px solid #E4E7EC', background:'#fff', cursor:'pointer', fontSize:12, fontWeight:600, color:'#059669', fontFamily:"'Inter',sans-serif" }}>
-                      Redeem
-                    </button>
-                  );
-                }
-              },
-            ]}
-            data={visibleSold}
+          <DataTable
+            columns={soldColumns}
+            data={soldPkgs}
             loading={soldLoading}
             emptyMessage="No sold packages found"
             emptySub="Sold packages will appear here"
+            pagination={false}
+            searchableColumns={[
+              { id: 'customer', title: 'Customer' },
+              { id: 'package', title: 'Package' },
+            ]}
           />
 
-          {soldPages > 1 && (
-            <div style={{ display:'flex', gap:6, padding:'12px 16px', justifyContent:'center', borderTop:'1px solid #F2F4F7' }}>
-              {Array.from({ length:Math.min(soldPages,10) }, (_,i) => (
-                <button key={i} onClick={() => setSoldPage(i+1)}
-                  style={{ width:34, height:34, borderRadius:8, border:'1.5px solid', cursor:'pointer', fontWeight:600, fontSize:13, fontFamily:"'Inter',sans-serif", transition:'all 0.15s',
-                    borderColor:soldPage===i+1?'#2563EB':'#E4E7EC',
-                    background:  soldPage===i+1?'#2563EB':'#fff',
-                    color:       soldPage===i+1?'#fff':'#344054' }}>
-                  {i+1}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
+          <div style={{ padding:'4px 4px 0', display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:8 }}>
+            <span style={{ fontSize:12, color:'#64748B' }}>Showing {soldPkgs.length} of {soldTotal}</span>
+            {soldPages > 1 && (
+              <div style={{ display:'flex', gap:6 }}>
+                {Array.from({ length:Math.min(soldPages,10) }, (_,i) => (
+                  <button key={i} type="button" onClick={() => setSoldPage(i+1)}
+                    style={{ width:34, height:34, borderRadius:8, border:'1.5px solid', cursor:'pointer', fontWeight:600, fontSize:13, fontFamily:"'Inter',sans-serif",
+                      borderColor:soldPage===i+1?'#2563EB':'#E4E7EC',
+                      background:  soldPage===i+1?'#2563EB':'#fff',
+                      color:       soldPage===i+1?'#fff':'#344054' }}>
+                    {i+1}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </>
       )}
 
       {/*  Package Modal  */}

@@ -588,6 +588,22 @@ function IconColumns() {
   );
 }
 
+function IconTableGrid() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+      <rect x="3" y="3" width="18" height="18" rx="2" /><line x1="3" y1="9" x2="21" y2="9" /><line x1="3" y1="15" x2="21" y2="15" /><line x1="9" y1="3" x2="9" y2="21" />
+    </svg>
+  );
+}
+
+function IconLayoutCards() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+      <rect x="3" y="3" width="7" height="9" rx="1" /><rect x="14" y="3" width="7" height="5" rx="1" /><rect x="14" y="12" width="7" height="9" rx="1" /><rect x="3" y="16" width="7" height="5" rx="1" />
+    </svg>
+  );
+}
+
 /* ─── Per-row actions menu (use column id: "actions") ────────────────────── */
 export function TableActionsRow({ actions = [] }) {
   const [open, setOpen] = useState(false);
@@ -755,7 +771,9 @@ export function DataTable({
   const totalFiltered = table.getFilteredRowModel().rows.length;
   const { pageIndex, pageSize } = table.getState().pagination;
   const pageCount = table.getPageCount();
-  const hasToolbar = craft || searchableColumns?.length || filterableColumns?.length || enableColumnVisibility;
+  const hasToolbar = !!(searchableColumns?.length || filterableColumns?.length || enableColumnVisibility);
+  const useCraftToolbar = hasToolbar && !compact;
+  const tb = TABLE_STYLE_TOKENS.craft;
 
   const activeFilters = columnFilters.filter(f => f.value != null && f.value !== '');
 
@@ -770,42 +788,80 @@ export function DataTable({
     return String(value);
   };
 
-  const inputStyle = craft ? {
-    padding: '8px 12px 8px 34px', borderRadius: 8, border: ts.inputBorder, fontSize: 13,
-    fontFamily: "'Inter',sans-serif", outline: 'none', color: ts.inputColor, background: ts.inputBg,
-    minWidth: 160, flex: '1 1 160px', maxWidth: 220,
+  const inputStyle = useCraftToolbar ? {
+    padding: '8px 12px', borderRadius: 8, border: tb.inputBorder, fontSize: 13,
+    fontFamily: "'Inter',sans-serif", outline: 'none', color: tb.inputColor, background: tb.inputBg,
+    minWidth: 160, flex: '0 1 200px', maxWidth: 240,
   } : {
-    padding: '7px 10px', borderRadius: 8, border: '1.5px solid #E4E7EC', fontSize: 13,
+    padding: '7px 12px', borderRadius: 8, border: '1.5px solid #E4E7EC', fontSize: 13,
     fontFamily: "'Inter',sans-serif", outline: 'none', color: '#344054', background: '#fff',
+    minWidth: 140, flex: '1 1 160px', maxWidth: 220,
+  };
+  const searchInputStyle = {
+    ...inputStyle,
+    width: '100%',
+    boxSizing: 'border-box',
+    paddingLeft: 36,
+    paddingRight: 12,
   };
 
   const inner = (
     <>
       {hasToolbar && (
-        <div style={{
-          display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center', padding: '12px 14px',
-          borderBottom: craft ? ts.toolbarBorder : '1px solid #F2F4F7',
-          background: craft ? ts.toolbarBg : '#FAFBFC',
-        }}>
-          {craft && (
-            <div style={{ display: 'flex', borderRadius: 8, border: ts.inputBorder, overflow: 'hidden', flexShrink: 0 }}>
-              {['table', 'cards'].map(mode => (
+        <div
+          className={useCraftToolbar ? 'pk-table-toolbar' : undefined}
+          style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            alignItems: 'center',
+            gap: 10,
+            padding: useCraftToolbar ? '12px 16px' : '12px 14px',
+            borderBottom: useCraftToolbar ? tb.toolbarBorder : '1px solid #F2F4F7',
+            background: useCraftToolbar ? tb.toolbarBg : '#FAFBFC',
+          }}
+        >
+          {useCraftToolbar && (
+            <div style={{ display: 'flex', borderRadius: 8, border: tb.inputBorder, overflow: 'hidden', flexShrink: 0 }}>
+              {[
+                { mode: 'table', label: 'Table', icon: <IconTableGrid /> },
+                { mode: 'cards', label: 'Cards', icon: <IconLayoutCards /> },
+              ].map(({ mode, label, icon }) => (
                 <button key={mode} type="button" onClick={() => setViewMode(mode)}
                   style={{
-                    padding: '7px 14px', border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600,
-                    fontFamily: "'Inter',sans-serif", textTransform: 'capitalize',
-                    background: viewMode === mode ? '#fafafa' : ts.inputBg,
-                    color: viewMode === mode ? '#09090b' : ts.footerText,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    padding: '7px 14px',
+                    border: 'none',
+                    cursor: 'pointer',
+                    fontSize: 13,
+                    fontWeight: 600,
+                    fontFamily: "'Inter',sans-serif",
+                    background: viewMode === mode ? '#fafafa' : tb.inputBg,
+                    color: viewMode === mode ? '#09090b' : tb.footerText,
                   }}>
-                  {mode}
+                  {icon}
+                  {label}
                 </button>
               ))}
             </div>
           )}
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, flex: 1, alignItems: 'center', justifyContent: craft ? 'center' : 'flex-start' }}>
+          <div style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: 8,
+            flex: 1,
+            alignItems: 'center',
+            justifyContent: useCraftToolbar ? 'center' : 'flex-start',
+            minWidth: 0,
+          }}>
             {searchableColumns?.map(sc => (
-              <div key={sc.id} style={{ position: 'relative', flex: craft ? '0 1 200px' : '1 1 200px', minWidth: 140 }}>
-                <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: ts.inputPlaceholder || '#98A2B3', display: 'flex', pointerEvents: 'none' }}>
+              <div key={sc.id} style={{ position: 'relative', flex: '0 1 200px', minWidth: 160, maxWidth: 240 }}>
+                <span style={{
+                  position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)',
+                  color: useCraftToolbar ? tb.inputPlaceholder : '#98A2B3',
+                  display: 'flex', alignItems: 'center', pointerEvents: 'none', zIndex: 1,
+                }}>
                   <IconSearch />
                 </span>
                 <input
@@ -813,7 +869,7 @@ export function DataTable({
                   value={String(columnFilters.find(f => f.id === sc.id)?.value ?? '')}
                   onChange={e => setColFilter(sc.id, e.target.value)}
                   placeholder={sc.placeholder || `Filter ${sc.title}…`}
-                  style={inputStyle}
+                  style={searchInputStyle}
                 />
               </div>
             ))}
@@ -827,13 +883,11 @@ export function DataTable({
                 ))}
               </select>
             ))}
-            {activeFilters.map(f => (
+            {!useCraftToolbar && activeFilters.map(f => (
               <span key={f.id} style={{
                 display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderRadius: 999,
                 fontSize: 12, fontWeight: 600, fontFamily: "'Inter',sans-serif",
-                background: craft ? 'rgba(59,130,246,0.15)' : '#EFF6FF',
-                color: craft ? '#93c5fd' : '#2563EB',
-                border: craft ? '1px solid rgba(59,130,246,0.35)' : '1px solid #BFDBFE',
+                background: '#EFF6FF', color: '#2563EB', border: '1px solid #BFDBFE',
               }}>
                 {filterLabel(f.id, f.value)}
                 <button type="button" aria-label={`Clear ${f.id} filter`}
@@ -844,41 +898,73 @@ export function DataTable({
               </span>
             ))}
           </div>
-          {activeFilters.length > 0 && (
-            <button type="button" onClick={() => setColumnFilters([])}
-              style={{ ...inputStyle, padding: '8px 12px', cursor: 'pointer', flex: '0 0 auto', minWidth: 'auto' }}>
-              Reset
-            </button>
-          )}
-          {enableColumnVisibility && (
-            <div style={{ position: 'relative', marginLeft: craft ? 0 : 'auto', flexShrink: 0 }}>
-              <button type="button" onClick={() => setShowColMenu(o => !o)}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, marginLeft: useCraftToolbar ? 0 : 'auto' }}>
+            {activeFilters.length > 0 && (
+              <button type="button" onClick={() => setColumnFilters([])}
                 style={{
-                  ...inputStyle, padding: '8px 14px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6,
-                  minWidth: 'auto', flex: '0 0 auto',
+                  ...inputStyle, padding: '8px 12px', cursor: 'pointer', flex: '0 0 auto', minWidth: 'auto',
+                  color: useCraftToolbar ? tb.inputColor : '#344054',
                 }}>
-                {craft && <IconColumns />}
-                Columns
+                Reset
               </button>
-              {showColMenu && (
-                <>
-                  <div style={{ position: 'fixed', inset: 0, zIndex: 40 }} onClick={() => setShowColMenu(false)} />
-                  <div style={{
-                    position: 'absolute', right: 0, top: '100%', marginTop: 4, zIndex: 41,
-                    background: craft ? '#18181b' : '#fff',
-                    border: craft ? ts.inputBorder : '1px solid #E4E7EC',
-                    borderRadius: 8, padding: 8, minWidth: 160,
-                    boxShadow: '0 8px 24px rgba(0,0,0,0.35)',
+            )}
+            {enableColumnVisibility && (
+              <div style={{ position: 'relative', flexShrink: 0 }}>
+                <button type="button" onClick={() => setShowColMenu(o => !o)}
+                  style={{
+                    ...inputStyle,
+                    padding: '8px 14px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    minWidth: 'auto',
+                    flex: '0 0 auto',
                   }}>
-                    {table.getAllLeafColumns().filter(c => c.getCanHide()).map(col => (
-                      <label key={col.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 4px', fontSize: 13, cursor: 'pointer', color: craft ? ts.bodyColor : '#344054' }}>
-                        <input type="checkbox" checked={col.getIsVisible()} onChange={col.getToggleVisibilityHandler()} />
-                        {typeof col.columnDef.header === 'string' ? col.columnDef.header : col.id}
-                      </label>
-                    ))}
-                  </div>
-                </>
-              )}
+                  {useCraftToolbar && <IconColumns />}
+                  Columns
+                </button>
+                {showColMenu && (
+                  <>
+                    <div style={{ position: 'fixed', inset: 0, zIndex: 40 }} onClick={() => setShowColMenu(false)} />
+                    <div style={{
+                      position: 'absolute', right: 0, top: '100%', marginTop: 4, zIndex: 41,
+                      background: useCraftToolbar ? '#18181b' : '#fff',
+                      border: useCraftToolbar ? tb.inputBorder : '1px solid #E4E7EC',
+                      borderRadius: 8, padding: 8, minWidth: 160,
+                      boxShadow: '0 8px 24px rgba(0,0,0,0.35)',
+                    }}>
+                      {table.getAllLeafColumns().filter(c => c.getCanHide()).map(col => (
+                        <label key={col.id} style={{
+                          display: 'flex', alignItems: 'center', gap: 8, padding: '6px 4px', fontSize: 13,
+                          cursor: 'pointer', color: useCraftToolbar ? tb.bodyColor : '#344054',
+                        }}>
+                          <input type="checkbox" checked={col.getIsVisible()} onChange={col.getToggleVisibilityHandler()} />
+                          {typeof col.columnDef.header === 'string' ? col.columnDef.header : col.id}
+                        </label>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+          {useCraftToolbar && activeFilters.length > 0 && (
+            <div style={{ width: '100%', display: 'flex', flexWrap: 'wrap', gap: 6, paddingTop: 2 }}>
+              {activeFilters.map(f => (
+                <span key={f.id} style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderRadius: 999,
+                  fontSize: 12, fontWeight: 600, fontFamily: "'Inter',sans-serif",
+                  background: 'rgba(59,130,246,0.15)', color: '#93c5fd', border: '1px solid rgba(59,130,246,0.35)',
+                }}>
+                  {filterLabel(f.id, f.value)}
+                  <button type="button" aria-label={`Clear ${f.id} filter`}
+                    onClick={() => setColFilter(f.id, '')}
+                    style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: 0, lineHeight: 1, color: 'inherit', fontSize: 14, opacity: 0.85 }}>
+                    ×
+                  </button>
+                </span>
+              ))}
             </div>
           )}
         </div>
@@ -1008,6 +1094,12 @@ export function DataTable({
       overflow: 'hidden',
       boxShadow: ts.shellShadow,
     }}>
+      {useCraftToolbar && (
+        <style>{`
+          .pk-table-toolbar input::placeholder { color: #71717a; opacity: 1; }
+          .pk-table-toolbar select option { background: #18181b; color: #fafafa; }
+        `}</style>
+      )}
       {inner}
     </div>
   );

@@ -1,0 +1,51 @@
+/* TableCraft (react-table-craft) — Tailwind utilities only; no preflight (app uses global.css). */
+@layer theme, base, components, utilities;
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+
+@source "../../node_modules/react-table-craft/dist/**/*.js";
+@source "../components/table/**/*.{js,jsx}";
+
+@theme {
+  --color-background: #ffffff;
+  --color-foreground: #101828;
+  --color-primary: #2563eb;
+  --color-primary-foreground: #ffffff;
+  --color-muted: #f1f5f9;
+  --color-muted-foreground: #475467;
+  --color-popover: #ffffff;
+  --color-popover-foreground: #101828;
+  --color-accent: #f1f5f9;
+  --color-accent-foreground: #101828;
+  --color-border: #e5e7eb;
+  --color-input: #e5e7eb;
+  --color-ring: #2563eb;
+  --color-brand: #2563eb;
+  --color-brand-foreground: #ffffff;
+  --color-brand-muted: #eff6ff;
+  --color-card: #ffffff;
+  --color-card-foreground: #101828;
+  --color-destructive: #dc2626;
+  --color-destructive-foreground: #ffffff;
+}
+
+[data-theme='dark'] .tablecraft-root {
+  --color-background: #1e293b;
+  --color-foreground: #e2e8f0;
+  --color-primary: #60a5fa;
+  --color-primary-foreground: #0f172a;
+  --color-muted: #334155;
+  --color-muted-foreground: #94a3b8;
+  --color-popover: #1e293b;
+  --color-popover-foreground: #e2e8f0;
+  --color-accent: #334155;
+  --color-accent-foreground: #e2e8f0;
+  --color-border: #2a3a52;
+  --color-input: #2a3a52;
+  --color-ring: #60a5fa;
+  --color-brand: #60a5fa;
+  --color-brand-foreground: #0f172a;
+  --color-brand-muted: rgba(37, 99, 235, 0.18);
+  --color-card: #1e293b;
+  --color-card-foreground: #e2e8f0;
+}

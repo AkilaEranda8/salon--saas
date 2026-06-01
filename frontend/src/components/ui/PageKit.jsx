@@ -505,6 +505,105 @@ export function EmptyRow({ cols = 5, message = 'No records found', sub = 'Try ad
   );
 }
 
+function columnHeaderLabel(column) {
+  const h = column.columnDef.header;
+  if (typeof h === 'string') return h;
+  if (column.id === '_rowNum') return '#';
+  return String(column.id || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
+function DataTableCardsGrid({ table, loading, emptyMessage, emptySub, ts }) {
+  const rows = table.getRowModel().rows;
+  if (loading) {
+    return (
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+        gap: 16,
+        padding: 16,
+      }}>
+        {Array.from({ length: 6 }).map((_, i) => (
+          <div key={i} style={{
+            height: 148,
+            borderRadius: 12,
+            background: 'linear-gradient(90deg, #F2F4F7 25%, #E8EAED 50%, #F2F4F7 75%)',
+            backgroundSize: '200% 100%',
+            animation: 'pk-shimmer 1.4s infinite',
+          }} />
+        ))}
+      </div>
+    );
+  }
+  if (!rows.length) {
+    return (
+      <div style={{ padding: '48px 16px', textAlign: 'center', background: '#FAFBFC' }}>
+        <div style={{ color: '#344054', fontWeight: 700, fontSize: 15, fontFamily: "'Inter',sans-serif" }}>{emptyMessage}</div>
+        {emptySub && (
+          <div style={{ color: '#98A2B3', fontSize: 13, marginTop: 6, fontFamily: "'Inter',sans-serif" }}>{emptySub}</div>
+        )}
+      </div>
+    );
+  }
+  return (
+    <div style={{
+      display: 'grid',
+      gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+      gap: 16,
+      padding: 16,
+    }}>
+      {rows.map(row => {
+        const cells = row.getVisibleCells();
+        const actionCell = cells.find(c => c.column.id === 'actions');
+        const bodyCells = cells.filter(c => c.column.id !== 'actions' && c.column.id !== '_rowNum');
+        return (
+          <div
+            key={row.id}
+            style={{
+              background: '#fff',
+              border: '1px solid #EAECF0',
+              borderRadius: 12,
+              padding: '14px 16px',
+              boxShadow: '0 1px 3px rgba(16,24,40,0.06)',
+            }}
+          >
+            {bodyCells.map(cell => (
+              <div key={cell.id} style={{ marginBottom: 10 }}>
+                <div style={{
+                  fontSize: 11,
+                  fontWeight: 600,
+                  color: '#667085',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.04em',
+                  marginBottom: 4,
+                  fontFamily: "'Inter',sans-serif",
+                }}>
+                  {columnHeaderLabel(cell.column)}
+                </div>
+                <div style={{ fontSize: 14, color: ts.bodyColor || '#101828', fontFamily: "'Inter',sans-serif" }}>
+                  {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                </div>
+              </div>
+            ))}
+            {actionCell && (
+              <div style={{
+                marginTop: 4,
+                paddingTop: 10,
+                borderTop: '1px solid #F2F4F7',
+                display: 'flex',
+                justifyContent: 'flex-end',
+                flexWrap: 'wrap',
+                gap: 4,
+              }}>
+                {flexRender(actionCell.column.columnDef.cell, actionCell.getContext())}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 /* ─── Pagination bar ─────────────────────────────────────────────────────── */
 export function Pagination({ page, total, limit, onPageChange }) {
   const totalPages = Math.ceil(total / limit);
@@ -828,6 +927,7 @@ export function DataTable({
   const pageCount = table.getPageCount();
   const hasToolbar = !!(searchableColumns?.length || filterableColumns?.length || enableColumnVisibility);
   const useFullToolbar = hasToolbar && !compact;
+  const showCardsView = useFullToolbar && viewMode === 'cards';
   const tbar = TABLECRAFT_TOOLBAR;
 
   const activeFilters = columnFilters.filter(f => f.value != null && f.value !== '');
@@ -1025,6 +1125,17 @@ export function DataTable({
           )}
         </div>
       )}
+      {showCardsView ? (
+        <div className="pk-data-table-cards">
+          <DataTableCardsGrid
+            table={table}
+            loading={loading}
+            emptyMessage={emptyMessage}
+            emptySub={emptySub}
+            ts={ts}
+          />
+        </div>
+      ) : (
       <div
         style={{ overflowX: 'auto' }}
         className={[
@@ -1103,6 +1214,7 @@ export function DataTable({
         </table>
         <style>{'@keyframes pk-shimmer { to { background-position:-200% 0; } }'}</style>
       </div>
+      )}
       {pagination && !loading && totalFiltered > 0 && (
         <div style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12,

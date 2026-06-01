@@ -73,6 +73,7 @@ import BrandingSettingsPage  from './pages/BrandingSettingsPage';
 import PaymentSettingsPage   from './pages/PaymentSettingsPage';
 import DomainSettingsPage  from './pages/DomainSettingsPage';
 import ThemeOptionsPage from './pages/ThemeOptionsPage';
+import TableCraftDemoPage from './pages/TableCraftDemoPage';
 import TwoFactorPage from './pages/TwoFactorPage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
 
@@ -439,6 +440,11 @@ function AppShell() {
             <Route path="/themes"       element={
               <RoleRoute roles={['superadmin', 'admin', 'manager', 'staff']}>
                 <ThemeOptionsPage />
+              </RoleRoute>
+            } />
+            <Route path="/tablecraft-demo" element={
+              <RoleRoute roles={['superadmin', 'admin']}>
+                <TableCraftDemoPage />
               </RoleRoute>
             } />
             <Route path="/users"        element={

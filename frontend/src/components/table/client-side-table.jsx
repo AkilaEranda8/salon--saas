@@ -1,2 +1,2 @@
-/** TableCraft-compatible entry — same API as `ClientSideTable` in react-table-craft docs. */
-export { ClientSideTable, DataTable, CRAFT_TABLE_DEFAULTS, CRAFT_TABLE_COMPACT } from '../ui/PageKit';
+/** npm `react-table-craft` — use for new pages; existing list pages still use PageKit `DataTable`. */
+export { ClientSideTable, DataTable } from './tablecraft-adapter';

@@ -1,1 +1,1 @@
-export { DataTableColumnHeader } from '../ui/PageKit';
+export { DataTableColumnHeader } from 'react-table-craft';

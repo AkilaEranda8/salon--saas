@@ -45,9 +45,15 @@ function getInitialSidebarAppearance() {
 }
 
 function getInitialTableStyle() {
-  if (typeof window === 'undefined') return 'craft';
+  if (typeof window === 'undefined') return 'default';
   const s = window.localStorage.getItem(TABLE_STYLE_KEY);
-  return ['craft', 'default', 'minimal', 'bordered', 'card', 'ink', 'violet', 'forest', 'sunset', 'rose', 'arctic'].includes(s) ? s : 'craft';
+  // Legacy: black TableCraft default — migrate to light standard tables
+  if (s === 'craft') {
+    window.localStorage.setItem(TABLE_STYLE_KEY, 'default');
+    return 'default';
+  }
+  const valid = ['craft', 'default', 'minimal', 'bordered', 'card', 'ink', 'violet', 'forest', 'sunset', 'rose', 'arctic'];
+  return valid.includes(s) ? s : 'default';
 }
 
 function hexToRgb(hex) {

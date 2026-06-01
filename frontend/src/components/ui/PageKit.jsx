@@ -536,7 +536,7 @@ export function TR({ children, idx, ts }) {
 /* ─── Sortable column header (TableCraft-style helper) ───────────────────── */
 export function DataTableColumnHeader({ column, title, ts }) {
   const sorted = column.getIsSorted();
-  const t = ts || TABLE_STYLE_TOKENS.craft;
+  const t = ts || TABLE_STYLE_TOKENS.default;
   const sortColor = sorted ? (t.sortActive || '#2563EB') : (t.sortIdle || '#C4C9D4');
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
@@ -684,10 +684,8 @@ export function DataTable({
   const pagination = compact ? false : (paginationProp ?? true);
   const showRowNumbers = compact ? false : (showRowNumbersProp ?? true);
   const enableColumnVisibility = compact ? false : (enableColumnVisibilityProp ?? true);
-  const { tableStyle = 'craft' } = useTheme();
-  const ts = compact
-    ? (TABLE_STYLE_TOKENS[tableStyle] || TABLE_STYLE_TOKENS.minimal)
-    : TABLE_STYLE_TOKENS.craft;
+  const { tableStyle = 'default' } = useTheme();
+  const ts = TABLE_STYLE_TOKENS[tableStyle] || TABLE_STYLE_TOKENS.default;
   const craft = !!ts.isCraft;
   const [sorting, setSorting] = useState([]);
   const [columnFilters, setColumnFilters] = useState([]);

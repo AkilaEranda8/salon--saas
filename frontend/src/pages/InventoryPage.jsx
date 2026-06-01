@@ -8,7 +8,7 @@ import { useToast } from '../components/ui/Toast';
 import {
   IconEdit, IconTrash, IconPlus, IconBox,
   ActionBtn, StatCard, PKModal as Modal,
-  FilterBar, SearchBar, DataTable,
+  FilterBar, DataTable,
 } from '../components/ui/PageKit';
 
 const DEFAULT_CATS = ['Shampoo','Conditioner','Color','Tools','Accessories','Consumables','Other'];
@@ -30,7 +30,6 @@ export default function InventoryPage() {
   const [loading, setLoading]     = useState(true);
   const [filterBranch, setFilterBranch] = useState(isSuperAdmin ? '' : user?.branch_id || '');
   const [filterLow, setFilterLow]       = useState(false);
-  const [search, setSearch]       = useState('');
   const [showForm, setShowForm]   = useState(false);
   const [showAdjust, setShowAdjust] = useState(false);
   const [editItem, setEditItem]   = useState(null);
@@ -84,17 +83,11 @@ export default function InventoryPage() {
 
   const lowCount = items.filter(i => i.quantity <= i.min_quantity).length;
   const allCats = [...new Set([...DEFAULT_CATS, ...items.map(i => i.category).filter(Boolean)])].sort();
-  const displayed = items.filter(i => {
-    if (!search) return true;
-    const q = search.toLowerCase();
-    return i.name?.toLowerCase().includes(q) || i.category?.toLowerCase().includes(q);
-  });
-
   const columns = [
     {
       id: 'name',
       header: 'Item',
-      accessorFn: row => row.name,
+      accessorFn: row => `${row.name || ''} ${row.category || ''}`.trim(),
       meta: { width: '22%' },
       cell: ({ row: { original: row } }) => {
         const isLow = row.quantity <= row.min_quantity;
@@ -186,7 +179,6 @@ export default function InventoryPage() {
 
       {/* Filter Bar */}
       <FilterBar>
-        <SearchBar value={search} onChange={setSearch} placeholder="Search inventory" />
         {isSuperAdmin && (
           <select value={filterBranch} onChange={e => setFilterBranch(e.target.value)}
             style={{ padding:'7px 12px', borderRadius:9, border:'1.5px solid #E4E7EC', fontSize:13, fontFamily:"'Inter',sans-serif", outline:'none', color:'#344054', background:'#fff' }}>
@@ -208,10 +200,16 @@ export default function InventoryPage() {
       {/* Table */}
       <DataTable
         columns={columns}
-        data={displayed}
+        data={items}
         loading={loading}
         emptyMessage="No inventory items found"
         emptySub="Try adjusting your filters or add a new item"
+        searchableColumns={[{ id: 'name', title: 'Item' }]}
+        filterableColumns={[{
+          id: 'category',
+          title: 'Category',
+          options: allCats.map(c => ({ label: c, value: c })),
+        }]}
       />
 
       {/* Add / Edit Modal */}

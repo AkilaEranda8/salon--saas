@@ -7,7 +7,7 @@ import PageWrapper from '../components/layout/PageWrapper';
 import {
   IconEye, IconEdit, IconTrash, IconPlus, IconUsers,
   StaffAvatar, ActionBtn, StatCard, Drawer, PKModal as Modal,
-  FilterBar, SearchBar, DataTable,
+  FilterBar, DataTable,
 } from '../components/ui/PageKit';
 
 const TIER       = pts => pts >= 500 ? 'Gold' : pts >= 200 ? 'Silver' : 'Bronze';
@@ -42,7 +42,6 @@ export default function CustomersPage() {
   const [branches, setBranches]     = useState([]);
   const [loading, setLoading]       = useState(true);
   const [filterBranch, setFilterBranch] = useState(isSuperAdmin ? '' : user?.branch_id || '');
-  const [search, setSearch]         = useState('');
   const [showForm, setShowForm]     = useState(false);
   const [showProfile, setShowProfile] = useState(false);
   const [editItem, setEditItem]     = useState(null);
@@ -98,19 +97,13 @@ export default function CustomersPage() {
   const tierCounts = { Gold: 0, Silver: 0, Bronze: 0 };
   customers.forEach(c => { tierCounts[TIER(c.loyalty_points || 0)]++; });
 
-  const displayed = customers.filter(c => {
-    if (!search) return true;
-    const q = search.toLowerCase();
-    return c.name?.toLowerCase().includes(q) || c.phone?.toLowerCase().includes(q) || c.email?.toLowerCase().includes(q);
-  });
-
   const p = profileItem;
 
   const columns = [
     {
       id: 'name',
       header: 'Customer',
-      accessorFn: row => row.name,
+      accessorFn: row => `${row.name || ''} ${row.phone || ''} ${row.email || ''}`.trim(),
       meta: { width: '22%' },
       cell: ({ row: { original: row } }) => {
         const tier = TIER(row.loyalty_points || 0);
@@ -191,7 +184,6 @@ export default function CustomersPage() {
 
       {/* Filter Bar */}
       <FilterBar>
-        <SearchBar value={search} onChange={setSearch} placeholder="Search customers" />
         {isSuperAdmin && (
           <select value={filterBranch} onChange={e => setFilterBranch(e.target.value)}
             style={{ padding: '7px 12px', borderRadius: 9, border: '1.5px solid #E4E7EC', fontSize: 13, fontFamily: "'Inter',sans-serif", outline: 'none', color: '#344054', background: '#fff' }}>
@@ -204,10 +196,11 @@ export default function CustomersPage() {
       {/* Table */}
       <DataTable
         columns={columns}
-        data={displayed}
+        data={customers}
         loading={loading}
         emptyMessage="No customers found"
         emptySub="Try adjusting your search or add a new customer"
+        searchableColumns={[{ id: 'name', title: 'Customer' }]}
       />
 
       {/* Add / Edit Modal */}

@@ -797,7 +797,7 @@ export default function NotificationsPage() {
           </FilterBar>
         </div>
 
-        <DataTable noShell
+        <DataTable noShell compact
           columns={[
             { accessorKey:'event_type', header:'Event Type', meta:{ width:'15%' },
               cell: ({ getValue }) => {

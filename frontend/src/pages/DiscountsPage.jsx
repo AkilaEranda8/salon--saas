@@ -8,7 +8,7 @@ import { useToast } from '../components/ui/Toast';
 import {
   IconPlus, IconEdit, IconTrash, IconTag,
   ActionBtn, StatCard, PKModal as Modal,
-  FilterBar, SearchBar, DataTable,
+  FilterBar, DataTable,
 } from '../components/ui/PageKit';
 
 const EMPTY = {
@@ -51,7 +51,6 @@ export default function DiscountsPage() {
   const [branches, setBranches] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filterStatus, setFilterStatus] = useState('All');
-  const [search, setSearch] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState(null);
   const [form, setForm] = useState(EMPTY);
@@ -149,16 +148,14 @@ export default function DiscountsPage() {
   const displayed = rows.filter(r => {
     const s = getStatus(r);
     if (filterStatus !== 'All' && s !== filterStatus.toLowerCase()) return false;
-    if (!search) return true;
-    const q = search.toLowerCase();
-    return r.name?.toLowerCase().includes(q) || r.code?.toLowerCase().includes(q);
+    return true;
   });
 
   const columns = [
     {
       id: 'name',
       header: 'Discount',
-      accessorFn: r => r.name,
+      accessorFn: r => `${r.name || ''} ${r.code || ''}`.trim(),
       cell: ({ row: { original: r } }) => (
         <div>
           <div style={{ fontWeight: 600, color: '#101828', fontSize: 14 }}>{r.name}</div>
@@ -271,7 +268,6 @@ export default function DiscountsPage() {
       </div>
 
       <FilterBar>
-        <SearchBar value={search} onChange={setSearch} placeholder="Search by name or code..." />
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           {STATUS_TABS.map(tab => {
             const active = filterStatus === tab;
@@ -291,6 +287,7 @@ export default function DiscountsPage() {
         loading={loading}
         emptyMessage="No discounts found"
         emptySub="Create a discount to offer promo deals in the payment screen"
+        searchableColumns={[{ id: 'name', title: 'Discount' }]}
       />
 
       <Modal

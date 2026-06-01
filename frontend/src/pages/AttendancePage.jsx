@@ -6,7 +6,7 @@ import { Input, FormGroup } from '../components/ui/FormElements';
 import PageWrapper from '../components/layout/PageWrapper';
 import { useToast } from '../components/ui/Toast';
 import {
-  FilterBar, SearchBar, DataTable, StaffAvatar, PKModal as Modal,
+  FilterBar, DataTable, StaffAvatar, PKModal as Modal,
   IconUsers, IconCheck, IconStop, IconClock, IconPlus,
 } from '../components/ui/PageKit';
 
@@ -87,7 +87,6 @@ export default function AttendancePage() {
 
   const [date, setDate]               = useState(today);
   const [filterBranch, setFilterBranch] = useState(isSuperAdmin ? '' : user?.branch_id || '');
-  const [search, setSearch]           = useState('');
   const [records, setRecords]         = useState([]);
   const [branches, setBranches]       = useState([]);
   const [staffList, setStaffList]     = useState([]);
@@ -174,19 +173,12 @@ export default function AttendancePage() {
   const noClockIn    = records.filter(r => r.status === 'present' && !r.check_in).length;
   const noClockOut   = records.filter(r => r.check_in && !r.check_out).length;
 
-  /* ── filter ──────────────────────────────────────────────────────── */
-  const displayed = staffList.filter(s => {
-    if (!search) return true;
-    const q = search.toLowerCase();
-    return s.name?.toLowerCase().includes(q) || s.role_title?.toLowerCase().includes(q) || s.phone?.includes(q);
-  });
-
   /* ── columns ─────────────────────────────────────────────────────── */
   const columns = [
     {
       id: 'staff',
       header: 'Staff Member',
-      accessorFn: row => row.name,
+      accessorFn: row => `${row.name || ''} ${row.role_title || ''} ${row.phone || ''}`.trim(),
       meta: { width: '20%' },
       cell: ({ row: { original: staff } }) => {
         const isSaving = saving[staff.id];
@@ -357,7 +349,6 @@ export default function AttendancePage() {
 
       {/* ── Filter Bar ──────────────────────────────────────────────── */}
       <FilterBar>
-        <SearchBar value={search} onChange={setSearch} placeholder="Search staff..." />
         {isSuperAdmin && (
           <select value={filterBranch} onChange={e => setFilterBranch(e.target.value)}
             style={{ padding:'7px 12px', borderRadius:9, border:'1.5px solid #E4E7EC', fontSize:13, fontFamily:"'Inter',sans-serif", outline:'none', color:'#344054', background:'#fff' }}>
@@ -375,10 +366,11 @@ export default function AttendancePage() {
       {/* ── Table ───────────────────────────────────────────────────── */}
       <DataTable
         columns={columns}
-        data={displayed}
+        data={staffList}
         loading={loading}
         emptyMessage="No staff found"
         emptySub="Add staff or select a specific branch"
+        searchableColumns={[{ id: 'staff', title: 'Staff' }]}
       />
 
       {/* ── Add Attendance Modal ────────────────────────────────────── */}

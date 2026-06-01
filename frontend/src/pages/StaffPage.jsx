@@ -7,7 +7,7 @@ import PageWrapper from '../components/layout/PageWrapper';
 import {
   IconEye, IconEdit, IconTrash, IconPlus, IconUsers,
   StaffAvatar, ActionBtn, StatCard, Drawer, PKModal as Modal,
-  FilterBar, SearchBar, DataTable,
+  FilterBar, DataTable,
 } from '../components/ui/PageKit';
 
 const EMPTY = { name:'', phone:'', email:'', role_title:'', branch_ids:[], commission_type:'percentage', commission_value:'', salary_type:'commission_only', base_salary:'', join_date:'', is_active:true };
@@ -33,7 +33,6 @@ export default function StaffPage() {
   const [filterBranch, setFilterBranch] = useState(
     seesAllBranches ? '' : (user?.branch_id ?? user?.branchId ?? ''),
   );
-  const [search, setSearch]             = useState('');
   const [showForm, setShowForm]         = useState(false);
   const [showProfile, setShowProfile]   = useState(false);
   const [editItem, setEditItem]         = useState(null);
@@ -139,19 +138,13 @@ export default function StaffPage() {
   const handleDelete = async id => { if (!window.confirm('Delete this staff member?')) return; await api.delete(`/staff/${id}`); load(); };
 
   const activeCount = staff.filter(s => s.is_active !== false).length;
-  const displayed   = staff.filter(s => {
-    if (!search) return true;
-    const q = search.toLowerCase();
-    return s.name?.toLowerCase().includes(q) || s.role_title?.toLowerCase().includes(q) || s.phone?.includes(q) || (s.email && String(s.email).toLowerCase().includes(q));
-  });
-
   const p = profileItem;
 
   const columns = [
     {
       id: 'name',
       header: 'Staff Member',
-      accessorFn: row => row.name,
+      accessorFn: row => `${row.name || ''} ${row.role_title || ''} ${row.phone || ''} ${row.email || ''}`.trim(),
       meta: { width: '22%' },
       cell: ({ row: { original: row } }) => (
         <div style={{ display:'flex', alignItems:'center', gap:10 }}>
@@ -260,7 +253,6 @@ export default function StaffPage() {
 
       {/* Filter Bar */}
       <FilterBar>
-        <SearchBar value={search} onChange={setSearch} placeholder="Search staff" />
         {seesAllBranches && (
           <select value={filterBranch} onChange={e => setFilterBranch(e.target.value)}
             style={{ padding:'7px 12px', borderRadius:9, border:'1.5px solid #E4E7EC', fontSize:13, fontFamily:"'Inter',sans-serif", outline:'none', color:'#344054', background:'#fff' }}>
@@ -273,10 +265,11 @@ export default function StaffPage() {
       {/* Table */}
       <DataTable
         columns={columns}
-        data={displayed}
+        data={staff}
         loading={loading}
         emptyMessage="No staff found"
         emptySub="Try adjusting your search or add a staff member"
+        searchableColumns={[{ id: 'name', title: 'Staff' }]}
       />
 
       {/* Add / Edit Modal */}

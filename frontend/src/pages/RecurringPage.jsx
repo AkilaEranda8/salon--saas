@@ -154,6 +154,10 @@ export default function RecurringPage() {
         loading={loading}
         emptyMessage="No recurring appointments found"
         emptySub="Recurring chains appear when appointments are set to repeat"
+        searchableColumns={[
+          { id: 'customer', title: 'Customer' },
+          { id: 'service', title: 'Service' },
+        ]}
       />
 
       {/* View History Modal */}

@@ -543,7 +543,7 @@ export default function PackagesPage() {
             </FilterBar>
           </div>
 
-          <DataTable noShell
+          <DataTable noShell compact
             columns={[
               { id:'customer', header:'Customer', meta:{ width:'20%' },
                 accessorFn: r => r.customer?.name || '',

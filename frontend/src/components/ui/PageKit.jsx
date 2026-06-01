@@ -4,7 +4,10 @@
  * PagBtn, StatusBadge, SearchBar, icons …
  */
 import { useState, useEffect, useMemo } from 'react';
-import { useReactTable, getCoreRowModel, getSortedRowModel, flexRender } from '@tanstack/react-table';
+import {
+  useReactTable, getCoreRowModel, getSortedRowModel, getFilteredRowModel,
+  getPaginationRowModel, flexRender,
+} from '@tanstack/react-table';
 import { createPortal } from 'react-dom';
 import { useTheme } from '../../context/ThemeContext';
 
@@ -493,14 +496,78 @@ export function TR({ children, idx, ts }) {
   );
 }
 
+/* ─── Sortable column header (TableCraft-style helper) ───────────────────── */
+export function DataTableColumnHeader({ column, title }) {
+  const sorted = column.getIsSorted();
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+      {title}
+      {column.getCanSort() && (
+        <span style={{ fontSize: 10, color: sorted ? '#2563EB' : '#C4C9D4' }}>
+          {sorted === 'asc' ? '▲' : sorted === 'desc' ? '▼' : '⇅'}
+        </span>
+      )}
+    </span>
+  );
+}
+
+/* ─── Per-row actions menu (use column id: "actions") ────────────────────── */
+export function TableActionsRow({ actions = [] }) {
+  const [open, setOpen] = useState(false);
+  if (!actions.length) return null;
+  return (
+    <div style={{ position: 'relative', display: 'inline-block' }}>
+      <button type="button" onClick={() => setOpen(o => !o)} aria-label="Row actions"
+        style={{ border: '1px solid #E4E7EC', borderRadius: 6, background: '#fff', padding: '4px 8px', cursor: 'pointer', fontSize: 16, lineHeight: 1, color: '#475467' }}>
+        ⋯
+      </button>
+      {open && (
+        <>
+          <div style={{ position: 'fixed', inset: 0, zIndex: 40 }} onClick={() => setOpen(false)} />
+          <div style={{ position: 'absolute', right: 0, top: '100%', marginTop: 4, zIndex: 41, minWidth: 140, background: '#fff', border: '1px solid #E4E7EC', borderRadius: 8, boxShadow: '0 4px 16px rgba(16,24,40,0.12)', overflow: 'hidden' }}>
+            {actions.map((a, i) => (
+              <button key={i} type="button" onClick={() => { setOpen(false); a.onClick?.(); }}
+                style={{ display: 'block', width: '100%', textAlign: 'left', padding: '9px 12px', border: 'none', background: '#fff', cursor: 'pointer', fontSize: 13, fontFamily: "'Inter',sans-serif", color: a.variant === 'destructive' ? '#DC2626' : '#344054' }}
+                onMouseEnter={e => { e.currentTarget.style.background = '#F9FAFB'; }}
+                onMouseLeave={e => { e.currentTarget.style.background = '#fff'; }}>
+                {a.label}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+const toolbarInputStyle = {
+  padding: '7px 10px', borderRadius: 8, border: '1.5px solid #E4E7EC', fontSize: 13,
+  fontFamily: "'Inter',sans-serif", outline: 'none', color: '#344054', background: '#fff',
+};
+
 /* ─── DataTable (powered by @tanstack/react-table) ──────────────────────── */
 /*
- * columns: TanStack column defs — use accessorKey/accessorFn + cell + meta:{ width, align }
- * data:    array of row objects
- * loading: boolean — shows skeleton rows
- * footerRows: optional JSX appended after data rows (e.g. a totals row)
- * noShell: skip the outer white card wrapper (use when embedded inside another card)
+ * TableCraft-equivalent props (Vite / no Tailwind):
+ *   searchableColumns — [{ id, title }]
+ *   filterableColumns — [{ id, title, options: [{ label, value }] }]
+ *   pagination, pageSize, pageSizeOptions
+ *   showRowNumbers, enableColumnVisibility
  */
+/** Default TableCraft-style table props for list pages */
+export const CRAFT_TABLE_DEFAULTS = {
+  pagination: true,
+  pageSize: 10,
+  showRowNumbers: true,
+  enableColumnVisibility: true,
+};
+
+/** Embedded / modal tables — toolbar & pagination off */
+export const CRAFT_TABLE_COMPACT = {
+  pagination: false,
+  showRowNumbers: false,
+  enableColumnVisibility: false,
+};
+
 export function DataTable({
   columns,
   data,
@@ -509,79 +576,227 @@ export function DataTable({
   emptySub     = 'Try adjusting your filters',
   footerRows,
   noShell = false,
+  compact = false,
+  pagination: paginationProp,
+  pageSize: initialPageSize = 10,
+  pageSizeOptions = [10, 20, 50, 100],
+  searchableColumns = null,
+  filterableColumns = null,
+  showRowNumbers: showRowNumbersProp,
+  enableColumnVisibility: enableColumnVisibilityProp,
 }) {
+  const pagination = compact ? false : (paginationProp ?? true);
+  const showRowNumbers = compact ? false : (showRowNumbersProp ?? true);
+  const enableColumnVisibility = compact ? false : (enableColumnVisibilityProp ?? true);
   const { tableStyle = 'default' } = useTheme();
   const ts = TABLE_STYLE_TOKENS[tableStyle] || TABLE_STYLE_TOKENS.default;
   const [sorting, setSorting] = useState([]);
+  const [globalFilter, setGlobalFilter] = useState('');
+  const [columnFilters, setColumnFilters] = useState([]);
+  const [columnVisibility, setColumnVisibility] = useState({});
+  const [showColMenu, setShowColMenu] = useState(false);
+  const [paginationState, setPaginationState] = useState({
+    pageIndex: 0,
+    pageSize: pagination ? initialPageSize : 100_000,
+  });
+
   const stableData = useMemo(() => data ?? [], [data]);
+
+  const tableColumns = useMemo(() => {
+    const facetIds = new Set((filterableColumns || []).map(f => f.id));
+    const base = columns.map(col => {
+      const colId = col.id || col.accessorKey;
+      const header = typeof col.header === 'string'
+        ? ({ column }) => <DataTableColumnHeader column={column} title={col.header} />
+        : col.header;
+      return {
+        ...col,
+        header,
+        enableSorting: col.enableSorting ?? (col.id !== 'actions' && col.id !== '_rowNum'),
+        ...(facetIds.has(colId) ? { filterFn: 'equals' } : {}),
+      };
+    });
+    const hasIndexCol = base.some(c => c.id === 'rank' || c.id === '_rowNum' || c.header === '#');
+    if (!showRowNumbers || hasIndexCol) return base;
+    return [{
+      id: '_rowNum',
+      header: '#',
+      enableSorting: false,
+      enableHiding: false,
+      cell: ({ row, table: tbl }) => {
+        const { pageIndex, pageSize } = tbl.getState().pagination;
+        return row.index + 1 + pageIndex * pageSize;
+      },
+      meta: { width: '48px', align: 'center' },
+    }, ...base];
+  }, [columns, showRowNumbers]);
+
+  const searchIds = useMemo(
+    () => (searchableColumns || []).map(c => c.id),
+    [searchableColumns],
+  );
 
   const table = useReactTable({
     data: stableData,
-    columns,
-    state: { sorting },
+    columns: tableColumns,
+    state: { sorting, globalFilter, columnFilters, columnVisibility, pagination: paginationState },
     onSortingChange: setSorting,
+    onGlobalFilterChange: setGlobalFilter,
+    onColumnFiltersChange: setColumnFilters,
+    onColumnVisibilityChange: setColumnVisibility,
+    onPaginationChange: setPaginationState,
+    globalFilterFn: searchIds.length
+      ? (row, _cid, filterValue) => {
+          const q = String(filterValue || '').toLowerCase().trim();
+          if (!q) return true;
+          return searchIds.some(id => String(row.getValue(id) ?? '').toLowerCase().includes(q));
+        }
+      : undefined,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
+    getFilteredRowModel: getFilteredRowModel(),
+    getPaginationRowModel: pagination ? getPaginationRowModel() : undefined,
   });
 
-  const colCount = columns.length;
+  const colCount = table.getVisibleLeafColumns().length;
+  const totalFiltered = table.getFilteredRowModel().rows.length;
+  const { pageIndex, pageSize } = table.getState().pagination;
+  const pageCount = table.getPageCount();
+  const hasToolbar = searchableColumns?.length || filterableColumns?.length || enableColumnVisibility;
+
+  const activeFilters = columnFilters.filter(f => f.value != null && f.value !== '');
 
   const inner = (
-    <div style={{ overflowX: 'auto' }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: "'Inter',sans-serif", tableLayout: 'fixed' }}>
-        <colgroup>
-          {table.getAllColumns().map(col => (
-            <col key={col.id} style={{ width: col.columnDef.meta?.width ?? 'auto' }} />
-          ))}
-        </colgroup>
-        <thead>
-          {table.getHeaderGroups().map(hg => (
-            <tr key={hg.id}>
-              {hg.headers.map(header => {
-                const canSort = header.column.getCanSort();
-                const sorted  = header.column.getIsSorted();
-                return (
-                  <Th key={header.id}
-                    ts={ts}
-                    align={header.column.columnDef.meta?.align}
-                    onClick={canSort ? header.column.getToggleSortingHandler() : undefined}
-                    sortActive={!!sorted}
-                    sortDir={sorted || 'asc'}
-                  >
-                    {flexRender(header.column.columnDef.header, header.getContext())}
-                  </Th>
-                );
-              })}
-            </tr>
-          ))}
-        </thead>
-        <tbody>
-          {loading ? (
-            <SkeletonRows cols={colCount} rows={5} />
-          ) : table.getRowModel().rows.length === 0 ? (
-            <EmptyRow cols={colCount} message={emptyMessage} sub={emptySub} />
-          ) : (
-            <>
-              {table.getRowModel().rows.map((row, idx) => (
-                <TR key={row.id} idx={idx} ts={ts}>
-                  {row.getVisibleCells().map(cell => (
-                    <td key={cell.id} style={{
-                      padding: cell.column.columnDef.meta?.padding ?? ts.cellPadding,
-                      textAlign: cell.column.columnDef.meta?.align ?? 'left',
-                      borderRight: ts.cellBorderRight,
-                    }}>
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                    </td>
-                  ))}
-                </TR>
-              ))}
-              {footerRows}
-            </>
+    <>
+      {hasToolbar && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', padding: '12px 16px', borderBottom: '1px solid #F2F4F7', background: '#FAFBFC' }}>
+          {searchableColumns?.length > 0 && (
+            <input type="text" value={globalFilter} onChange={e => setGlobalFilter(e.target.value)}
+              placeholder={`Search ${searchableColumns.map(c => c.title).join(', ')}…`}
+              style={{ ...toolbarInputStyle, minWidth: 200, flex: '1 1 200px' }} />
           )}
-        </tbody>
-      </table>
-      <style>{'@keyframes pk-shimmer { to { background-position:-200% 0; } }'}</style>
-    </div>
+          {filterableColumns?.map(fc => (
+            <select key={fc.id} value={String(columnFilters.find(f => f.id === fc.id)?.value ?? '')}
+              onChange={e => {
+                const v = e.target.value;
+                setColumnFilters(prev => {
+                  const rest = prev.filter(f => f.id !== fc.id);
+                  return v ? [...rest, { id: fc.id, value: v }] : rest;
+                });
+              }}
+              style={{ ...toolbarInputStyle, cursor: 'pointer' }}>
+              <option value="">{fc.title}: All</option>
+              {fc.options.map(o => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          ))}
+          {activeFilters.length > 0 && (
+            <button type="button" onClick={() => setColumnFilters([])}
+              style={{ ...toolbarInputStyle, cursor: 'pointer', color: '#475467' }}>
+              Reset filters
+            </button>
+          )}
+          {enableColumnVisibility && (
+            <div style={{ position: 'relative', marginLeft: 'auto' }}>
+              <button type="button" onClick={() => setShowColMenu(o => !o)} style={{ ...toolbarInputStyle, cursor: 'pointer' }}>
+                Columns ▾
+              </button>
+              {showColMenu && (
+                <>
+                  <div style={{ position: 'fixed', inset: 0, zIndex: 40 }} onClick={() => setShowColMenu(false)} />
+                  <div style={{ position: 'absolute', right: 0, top: '100%', marginTop: 4, zIndex: 41, background: '#fff', border: '1px solid #E4E7EC', borderRadius: 8, padding: 8, minWidth: 160, boxShadow: '0 4px 12px rgba(16,24,40,0.1)' }}>
+                    {table.getAllLeafColumns().filter(c => c.getCanHide()).map(col => (
+                      <label key={col.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 4px', fontSize: 13, cursor: 'pointer' }}>
+                        <input type="checkbox" checked={col.getIsVisible()} onChange={col.getToggleVisibilityHandler()} />
+                        {typeof col.columnDef.header === 'string' ? col.columnDef.header : col.id}
+                      </label>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: "'Inter',sans-serif", tableLayout: 'fixed' }}>
+          <colgroup>
+            {table.getVisibleLeafColumns().map(col => (
+              <col key={col.id} style={{ width: col.columnDef.meta?.width ?? 'auto' }} />
+            ))}
+          </colgroup>
+          <thead>
+            {table.getHeaderGroups().map(hg => (
+              <tr key={hg.id}>
+                {hg.headers.map(header => {
+                  const canSort = header.column.getCanSort();
+                  const sorted  = header.column.getIsSorted();
+                  return (
+                    <Th key={header.id}
+                      ts={ts}
+                      align={header.column.columnDef.meta?.align}
+                      onClick={canSort ? header.column.getToggleSortingHandler() : undefined}
+                      sortActive={!!sorted}
+                      sortDir={sorted || 'asc'}
+                    >
+                      {flexRender(header.column.columnDef.header, header.getContext())}
+                    </Th>
+                  );
+                })}
+              </tr>
+            ))}
+          </thead>
+          <tbody>
+            {loading ? (
+              <SkeletonRows cols={colCount} rows={5} />
+            ) : table.getRowModel().rows.length === 0 ? (
+              <EmptyRow cols={colCount} message={emptyMessage} sub={emptySub} />
+            ) : (
+              <>
+                {table.getRowModel().rows.map((row, idx) => (
+                  <TR key={row.id} idx={idx} ts={ts}>
+                    {row.getVisibleCells().map(cell => (
+                      <td key={cell.id} style={{
+                        padding: cell.column.columnDef.meta?.padding ?? ts.cellPadding,
+                        textAlign: cell.column.columnDef.meta?.align ?? 'left',
+                        borderRight: ts.cellBorderRight,
+                      }}>
+                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                      </td>
+                    ))}
+                  </TR>
+                ))}
+                {footerRows}
+              </>
+            )}
+          </tbody>
+        </table>
+        <style>{'@keyframes pk-shimmer { to { background-position:-200% 0; } }'}</style>
+      </div>
+      {pagination && !loading && totalFiltered > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, padding: '10px 16px', borderTop: '1px solid #F2F4F7', background: '#FAFBFC' }}>
+          <span style={{ fontSize: 12, color: '#475467' }}>
+            {totalFiltered === 0 ? 'No rows' : (
+              <>Showing {pageIndex * pageSize + 1}–{Math.min((pageIndex + 1) * pageSize, totalFiltered)} of {totalFiltered}</>
+            )}
+          </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <label style={{ fontSize: 12, color: '#475467', display: 'flex', alignItems: 'center', gap: 6 }}>
+              Rows
+              <select value={pageSize} onChange={e => table.setPageSize(Number(e.target.value))} style={toolbarInputStyle}>
+                {pageSizeOptions.map(n => <option key={n} value={n}>{n}</option>)}
+              </select>
+            </label>
+            <PagBtn onClick={() => table.setPageIndex(0)} disabled={!table.getCanPreviousPage()} label="«" />
+            <PagBtn onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()} label="‹" />
+            <span style={{ fontSize: 12, color: '#475467' }}>{pageIndex + 1} / {Math.max(1, pageCount)}</span>
+            <PagBtn onClick={() => table.nextPage()} disabled={!table.getCanNextPage()} label="›" />
+            <PagBtn onClick={() => table.setPageIndex(pageCount - 1)} disabled={!table.getCanNextPage()} label="»" />
+          </div>
+        </div>
+      )}
+    </>
   );
 
   if (noShell) return inner;

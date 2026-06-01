@@ -8,7 +8,7 @@ import PageWrapper from '../components/layout/PageWrapper';
 import { useToast } from '../components/ui/Toast';
 import {
   IconEye, IconEdit, IconPlus, IconDollar, IconReceipt, IconCalendar,
-  ActionBtn, StatCard, PKModal as Modal, FilterBar, SearchBar,
+  ActionBtn, StatCard, PKModal as Modal, FilterBar,
   DataTable,
 } from '../components/ui/PageKit';
 import { computePromoFromDiscount } from '../utils/promoDiscount';
@@ -447,7 +447,6 @@ export default function PaymentsPage() {
   const [loading, setLoading]     = useState(true);
   const [filterBranch, setFilterBranch] = useState(hasFixedBranch ? user.branchId : '');
   const [filterMonth, setFilterMonth]   = useState(curMonth);
-  const [search, setSearch]       = useState('');
   const [showForm, setShowForm]   = useState(false);
   const [editId, setEditId]       = useState(null);
   const [showInvoice, setShowInvoice] = useState(false);
@@ -647,12 +646,6 @@ export default function PaymentsPage() {
     });
   }, [showForm, form.total_amount, form.loyalty_discount, form.discount_id, discounts, form.splits.length]);
 
-  const displayed = payments.filter(p => {
-    if (!search) return true;
-    const q = search.toLowerCase();
-    return p.customer_name?.toLowerCase().includes(q) || p.service?.name?.toLowerCase().includes(q) || p.staff?.name?.toLowerCase().includes(q);
-  });
-
   return (
     <PageWrapper title="Payments" subtitle="Revenue tracking and payment recording"
       actions={canEdit && <Button variant="primary" onClick={openAdd} style={{ display:'flex', alignItems:'center', gap:6 }}><IconPlus /> Record Payment</Button>}>
@@ -669,7 +662,6 @@ export default function PaymentsPage() {
 
       {/* Filter Bar */}
       <FilterBar>
-        <SearchBar value={search} onChange={setSearch} placeholder="Search payments" />
         <input type="month" value={filterMonth} onChange={e => setFilterMonth(e.target.value)}
           style={{ padding:'7px 12px', borderRadius:9, border:'1.5px solid #E4E7EC', fontSize:13, fontFamily:"'Inter',sans-serif", outline:'none', color:'#344054' }} />
         {isAdmin && !hasFixedBranch && (
@@ -696,7 +688,8 @@ export default function PaymentsPage() {
               );
             }
           },
-          { accessorKey:'customer_name', header:'Customer', meta:{ width:'18%' },
+          { id:'search', header:'Customer', meta:{ width:'18%' },
+            accessorFn: r => `${r.customer_name || ''} ${r.service?.name || ''} ${r.staff?.name || ''}`.trim(),
             cell: ({ row }) => (
               <>
                 <div style={{ fontWeight:600, color:'#101828', fontSize:14 }}>{row.original.customer_name || 'Walk-in'}</div>
@@ -737,10 +730,11 @@ export default function PaymentsPage() {
             )
           },
         ]}
-        data={displayed}
+        data={payments}
         loading={loading}
         emptyMessage="No payments recorded"
         emptySub="Use the Record Payment button to add transactions"
+        searchableColumns={[{ id: 'search', title: 'Payment' }]}
       />
 
       {/* Record Payment Modal */}

@@ -8,7 +8,7 @@ import { useToast } from '../components/ui/Toast';
 import {
   IconEye, IconEdit, IconTrash, IconPlus, IconTag,
   ActionBtn, StatCard, PKModal as Modal,
-  FilterBar, SearchBar, DataTable,
+  FilterBar, DataTable,
 } from '../components/ui/PageKit';
 
 const CAT_COLOR = { Hair: '#2563EB', Beard: '#7C3AED', Skin: '#EA580C', Nail: '#D97706', Massage: '#059669', Other: '#64748B' };
@@ -23,7 +23,6 @@ export default function ServicesPage() {
   const [allSvcs, setAllSvcs]   = useState([]);
   const [loading, setLoading]   = useState(true);
   const [filterCat, setFilterCat] = useState('All');
-  const [search, setSearch]     = useState('');
   const [categories, setCategories] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [showView, setShowView] = useState(false);
@@ -96,19 +95,13 @@ export default function ServicesPage() {
   };
   const handleDelete = async id => { if (!window.confirm('Delete this service?')) return; await api.delete(`/services/${id}`); load(); };
 
-  const displayed = services.filter(s => {
-    if (!search) return true;
-    const q = search.toLowerCase();
-    return s.name?.toLowerCase().includes(q) || s.category?.toLowerCase().includes(q) || s.description?.toLowerCase().includes(q);
-  });
-
   const selectCats = [...new Set([...(form.category ? [form.category] : []), ...CATS])];
 
   const columns = [
     {
       id: 'name',
       header: 'Service',
-      accessorFn: row => row.name,
+      accessorFn: row => `${row.name || ''} ${row.category || ''} ${row.description || ''}`.trim(),
       meta: { width: '24%' },
       cell: ({ row: { original: row } }) => <span style={{ fontWeight: 600, color: '#101828', fontSize: 14 }}>{row.name}</span>,
     },
@@ -172,7 +165,6 @@ export default function ServicesPage() {
 
       {/* Filter Bar */}
       <FilterBar>
-        <SearchBar value={search} onChange={setSearch} placeholder="Search services" />
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           {['All', ...CATS].map(cat => {
             const active = filterCat === cat;
@@ -191,10 +183,16 @@ export default function ServicesPage() {
       {/* Table */}
       <DataTable
         columns={columns}
-        data={displayed}
+        data={services}
         loading={loading}
         emptyMessage="No services found"
         emptySub="Try adjusting your filters or add a new service"
+        searchableColumns={[{ id: 'name', title: 'Service' }]}
+        filterableColumns={[{
+          id: 'category',
+          title: 'Category',
+          options: CATS.map(c => ({ label: c, value: c })),
+        }]}
       />
 
       {/* Add / Edit Modal */}

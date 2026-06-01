@@ -490,7 +490,7 @@ export default function ReportsPage() {
       </div>
 
       <Card title="Service Details">
-        <DataTable data={services} columns={svcColumns} pageSize={10}/>
+        <DataTable data={services} columns={svcColumns} pageSize={10} searchableColumns={[{ id: 'service', title: 'Service' }]} />
       </Card>
     </>
   );
@@ -558,7 +558,7 @@ export default function ReportsPage() {
       </div>
 
       <Card title="Staff Details">
-        <DataTable data={staffRep} columns={staffColumns} pageSize={10}/>
+        <DataTable data={staffRep} columns={staffColumns} pageSize={10} showRowNumbers={false} searchableColumns={[{ id: 'name', title: 'Staff' }]} />
       </Card>
     </>
   );
@@ -634,7 +634,7 @@ export default function ReportsPage() {
         </div>
 
         <Card title="All Customers">
-          <DataTable data={customers} columns={custColumns} pageSize={15}/>
+          <DataTable data={customers} columns={custColumns} pageSize={15} searchableColumns={[{ id: 'name', title: 'Customer' }]} />
         </Card>
       </>
     );
@@ -696,7 +696,7 @@ export default function ReportsPage() {
       </div>
 
       <Card title="All Expenses">
-        <DataTable data={expenses} columns={expColumns} pageSize={15}/>
+        <DataTable data={expenses} columns={expColumns} pageSize={15} searchableColumns={[{ id: 'title', title: 'Expense' }]} />
       </Card>
     </>
   );

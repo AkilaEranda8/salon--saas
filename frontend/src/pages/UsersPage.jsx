@@ -6,7 +6,7 @@ import { Input, Select, FormGroup } from '../components/ui/FormElements';
 import PageWrapper from '../components/layout/PageWrapper';
 import {
   IconEdit, IconTrash, IconPlus, IconUsers, IconCheck, IconStop,
-  ActionBtn, StatCard, PKModal as Modal, FilterBar, SearchBar,
+  ActionBtn, StatCard, PKModal as Modal, FilterBar,
   DataTable, StaffAvatar,
 } from '../components/ui/PageKit';
 
@@ -46,7 +46,6 @@ export default function UsersPage() {
   const [branches, setBranches]   = useState([]);
   const [filterRole, setFilterRole]     = useState('');
   const [filterBranch, setFilterBranch] = useState('');
-  const [search, setSearch]       = useState('');
   const [showForm, setShowForm]   = useState(false);
   const [showPwd, setShowPwd]     = useState(false);
   const [editItem, setEditItem]   = useState(null);
@@ -120,10 +119,6 @@ export default function UsersPage() {
   const pages = Math.ceil(total / 20);
   const filterRoles = isSuperadmin ? ROLES : ROLES.filter(r => r !== 'superadmin');
 
-  const displayed = search
-    ? users.filter(u => u.name?.toLowerCase().includes(search.toLowerCase()) || u.username?.toLowerCase().includes(search.toLowerCase()))
-    : users;
-
   return (
     <PageWrapper title="Users" subtitle="Manage portal accounts and access"
       actions={isAdmin && <Button variant="primary" onClick={openCreate} style={{ display:'flex', alignItems:'center', gap:6 }}><IconPlus /> Add User</Button>}>
@@ -137,7 +132,6 @@ export default function UsersPage() {
 
       {/* Filter Bar */}
       <FilterBar>
-        <SearchBar value={search} onChange={setSearch} placeholder="Search users" />
         <select value={filterRole} onChange={e => { setFilterRole(e.target.value); setPage(1); }}
           style={{ padding:'7px 12px', borderRadius:9, border:'1.5px solid #E4E7EC', fontSize:13, fontFamily:"'Inter',sans-serif", outline:'none', color:'#344054', background:'#fff' }}>
           <option value="">All Roles</option>
@@ -153,7 +147,7 @@ export default function UsersPage() {
       {/* Table */}
       <DataTable
         columns={[
-          { accessorKey:'name', header:'User', meta:{ width:'24%' },
+          { id:'name', accessorFn: u => `${u.name || ''} ${u.username || ''}`.trim(), header:'User', meta:{ width:'24%' },
             cell: ({ row }) => {
               const u = row.original;
               const isMe = u.id === user?.id;
@@ -208,10 +202,12 @@ export default function UsersPage() {
             }
           },
         ]}
-        data={displayed}
+        data={users}
         loading={loading}
         emptyMessage="No users found"
         emptySub="Try adjusting your filters or add a new user"
+        pagination={false}
+        searchableColumns={[{ id: 'name', title: 'User' }]}
       />
 
       {/* Pagination */}

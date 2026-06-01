@@ -5,9 +5,9 @@ import Button from '../components/ui/Button';
 import { Input, Select, FormGroup } from '../components/ui/FormElements';
 import PageWrapper from '../components/layout/PageWrapper';
 import {
-  IconEdit, IconTrash, IconPlus, IconDollar, IconCalendar,
-  ActionBtn, StatCard, PKModal as Modal,
-  FilterBar, SearchBar, DataTable,
+  IconPlus, IconDollar, IconCalendar,
+  StatCard, PKModal as Modal,
+  FilterBar, DataTable, TableActionsRow,
 } from '../components/ui/PageKit';
 
 const CATS    = ['Rent','Utilities','Supplies','Salary','Marketing','Maintenance','Other'];
@@ -29,7 +29,6 @@ export default function ExpensesPage() {
   const [loading, setLoading]   = useState(true);
   const [filterBranch, setFilterBranch] = useState(canPickBranch ? '' : user?.branch_id || '');
   const [filterMonth, setFilterMonth]   = useState(curMonth);
-  const [search, setSearch]     = useState('');
   const [showForm, setShowForm] = useState(false);
   const [editItem, setEditItem] = useState(null);
   const [form, setForm]         = useState(EMPTY);
@@ -74,12 +73,6 @@ export default function ExpensesPage() {
   const catTotals = CATS.reduce((acc, c) => { acc[c] = items.filter(i=>i.category===c).reduce((s,i)=>s+Number(i.amount||0),0); return acc; }, {});
   const totalExp  = items.reduce((s, i) => s+Number(i.amount||0), 0);
 
-  const displayed = items.filter(i => {
-    if (!search) return true;
-    const q = search.toLowerCase();
-    return i.title?.toLowerCase().includes(q) || i.paid_to?.toLowerCase().includes(q) || i.category?.toLowerCase().includes(q);
-  });
-
   const columns = [
     {
       id: 'date',
@@ -91,7 +84,7 @@ export default function ExpensesPage() {
     {
       id: 'title',
       header: 'Expense',
-      accessorFn: row => row.title,
+      accessorFn: row => `${row.title || ''} ${row.paid_to || ''}`.trim(),
       meta: { width: '22%' },
       cell: ({ row: { original: row } }) => (
         <>
@@ -136,10 +129,10 @@ export default function ExpensesPage() {
       enableSorting: false,
       meta: { width: '10%', align: 'center' },
       cell: ({ row: { original: row } }) => canEdit ? (
-        <div style={{ display:'flex', gap:4, justifyContent:'center' }}>
-          <ActionBtn onClick={() => openEdit(row)} title="Edit" color="#D97706"><IconEdit /></ActionBtn>
-          <ActionBtn onClick={() => handleDelete(row.id)} title="Delete" color="#DC2626"><IconTrash /></ActionBtn>
-        </div>
+        <TableActionsRow actions={[
+          { label: 'Edit', onClick: () => openEdit(row) },
+          { label: 'Delete', variant: 'destructive', onClick: () => handleDelete(row.id) },
+        ]} />
       ) : null,
     },
   ];
@@ -159,7 +152,6 @@ export default function ExpensesPage() {
 
       {/* Filter Bar */}
       <FilterBar>
-        <SearchBar value={search} onChange={setSearch} placeholder="Search expenses" />
         <span style={{ color:'#98A2B3', display:'flex' }}><IconCalendar /></span>
         <input type="month" value={filterMonth} onChange={e => setFilterMonth(e.target.value)}
           style={{ padding:'7px 10px', borderRadius:9, border:'1.5px solid #E4E7EC', fontSize:13, fontFamily:"'Inter',sans-serif", outline:'none', color:'#344054' }}
@@ -214,10 +206,22 @@ export default function ExpensesPage() {
       {/* Table */}
       <DataTable
         columns={columns}
-        data={displayed}
+        data={items}
         loading={loading}
         emptyMessage="No expenses recorded"
         emptySub="Try adjusting your filters or add a new expense"
+        pagination
+        pageSize={10}
+        showRowNumbers
+        enableColumnVisibility
+        searchableColumns={[{ id: 'title', title: 'Expense' }]}
+        filterableColumns={[
+          {
+            id: 'category',
+            title: 'Category',
+            options: CATS.map(c => ({ label: c, value: c })),
+          },
+        ]}
       />
 
       {/* Add / Edit Modal */}

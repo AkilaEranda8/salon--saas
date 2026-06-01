@@ -212,6 +212,27 @@ const TABLE_STYLE_TOKENS = {
   },
 };
 
+/** Light TableCraft toolbar (filters / columns) — matches default table, not black craft shell */
+const TABLECRAFT_TOOLBAR = {
+  toolbarBg: '#FAFBFC',
+  toolbarBorder: '1px solid #F2F4F7',
+  inputBg: '#fff',
+  inputBorder: '1.5px solid #E4E7EC',
+  inputColor: '#344054',
+  inputPlaceholder: '#98A2B3',
+  segmentBorder: '1.5px solid #E4E7EC',
+  segmentActiveBg: '#fff',
+  segmentInactiveBg: '#F9FAFB',
+  segmentActiveColor: '#101828',
+  segmentInactiveColor: '#667085',
+  menuBg: '#fff',
+  menuBorder: '1px solid #E4E7EC',
+  menuColor: '#344054',
+  chipBg: '#EFF6FF',
+  chipColor: '#2563EB',
+  chipBorder: '1px solid #BFDBFE',
+};
+
 /* ─── Icons ─────────────────────────────────────────────────────────────── */
 export const IconEye    = () => <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>;
 export const IconEdit   = () => <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>;
@@ -806,8 +827,8 @@ export function DataTable({
   const { pageIndex, pageSize } = table.getState().pagination;
   const pageCount = table.getPageCount();
   const hasToolbar = !!(searchableColumns?.length || filterableColumns?.length || enableColumnVisibility);
-  const useCraftToolbar = hasToolbar && !compact;
-  const tb = TABLE_STYLE_TOKENS.craft;
+  const useFullToolbar = hasToolbar && !compact;
+  const tbar = TABLECRAFT_TOOLBAR;
 
   const activeFilters = columnFilters.filter(f => f.value != null && f.value !== '');
 
@@ -822,9 +843,9 @@ export function DataTable({
     return String(value);
   };
 
-  const inputStyle = useCraftToolbar ? {
-    padding: '8px 12px', borderRadius: 8, border: tb.inputBorder, fontSize: 13,
-    fontFamily: "'Inter',sans-serif", outline: 'none', color: tb.inputColor, background: tb.inputBg,
+  const inputStyle = useFullToolbar ? {
+    padding: '8px 12px', borderRadius: 8, border: tbar.inputBorder, fontSize: 13,
+    fontFamily: "'Inter',sans-serif", outline: 'none', color: tbar.inputColor, background: tbar.inputBg,
     minWidth: 160, flex: '0 1 200px', maxWidth: 240,
   } : {
     padding: '7px 12px', borderRadius: 8, border: '1.5px solid #E4E7EC', fontSize: 13,
@@ -843,19 +864,19 @@ export function DataTable({
     <>
       {hasToolbar && (
         <div
-          className={useCraftToolbar ? 'pk-table-toolbar' : undefined}
+          className={useFullToolbar ? 'pk-table-toolbar pk-table-toolbar--light' : undefined}
           style={{
             display: 'flex',
             flexWrap: 'wrap',
             alignItems: 'center',
             gap: 10,
-            padding: useCraftToolbar ? '12px 16px' : '12px 14px',
-            borderBottom: useCraftToolbar ? tb.toolbarBorder : '1px solid #F2F4F7',
-            background: useCraftToolbar ? tb.toolbarBg : '#FAFBFC',
+            padding: useFullToolbar ? '12px 16px' : '12px 14px',
+            borderBottom: useFullToolbar ? tbar.toolbarBorder : '1px solid #F2F4F7',
+            background: useFullToolbar ? tbar.toolbarBg : '#FAFBFC',
           }}
         >
-          {useCraftToolbar && (
-            <div style={{ display: 'flex', borderRadius: 8, border: tb.inputBorder, overflow: 'hidden', flexShrink: 0 }}>
+          {useFullToolbar && (
+            <div style={{ display: 'flex', borderRadius: 8, border: tbar.segmentBorder, overflow: 'hidden', flexShrink: 0, background: tbar.segmentInactiveBg }}>
               {[
                 { mode: 'table', label: 'Table', icon: <IconTableGrid /> },
                 { mode: 'cards', label: 'Cards', icon: <IconLayoutCards /> },
@@ -871,8 +892,9 @@ export function DataTable({
                     fontSize: 13,
                     fontWeight: 600,
                     fontFamily: "'Inter',sans-serif",
-                    background: viewMode === mode ? '#fafafa' : tb.inputBg,
-                    color: viewMode === mode ? '#09090b' : tb.footerText,
+                    background: viewMode === mode ? tbar.segmentActiveBg : 'transparent',
+                    color: viewMode === mode ? tbar.segmentActiveColor : tbar.segmentInactiveColor,
+                    boxShadow: viewMode === mode ? '0 1px 3px rgba(16,24,40,0.08)' : 'none',
                   }}>
                   {icon}
                   {label}
@@ -886,14 +908,14 @@ export function DataTable({
             gap: 8,
             flex: 1,
             alignItems: 'center',
-            justifyContent: useCraftToolbar ? 'center' : 'flex-start',
+            justifyContent: useFullToolbar ? 'center' : 'flex-start',
             minWidth: 0,
           }}>
             {searchableColumns?.map(sc => (
               <div key={sc.id} style={{ position: 'relative', flex: '0 1 200px', minWidth: 160, maxWidth: 240 }}>
                 <span style={{
                   position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)',
-                  color: useCraftToolbar ? tb.inputPlaceholder : '#98A2B3',
+                  color: useFullToolbar ? tbar.inputPlaceholder : '#98A2B3',
                   display: 'flex', alignItems: 'center', pointerEvents: 'none', zIndex: 1,
                 }}>
                   <IconSearch />
@@ -917,11 +939,11 @@ export function DataTable({
                 ))}
               </select>
             ))}
-            {!useCraftToolbar && activeFilters.map(f => (
+            {!useFullToolbar && activeFilters.map(f => (
               <span key={f.id} style={{
                 display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderRadius: 999,
                 fontSize: 12, fontWeight: 600, fontFamily: "'Inter',sans-serif",
-                background: '#EFF6FF', color: '#2563EB', border: '1px solid #BFDBFE',
+                background: tbar.chipBg, color: tbar.chipColor, border: `1px solid ${tbar.chipBorder}`,
               }}>
                 {filterLabel(f.id, f.value)}
                 <button type="button" aria-label={`Clear ${f.id} filter`}
@@ -932,12 +954,12 @@ export function DataTable({
               </span>
             ))}
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, marginLeft: useCraftToolbar ? 0 : 'auto' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, marginLeft: useFullToolbar ? 0 : 'auto' }}>
             {activeFilters.length > 0 && (
               <button type="button" onClick={() => setColumnFilters([])}
                 style={{
                   ...inputStyle, padding: '8px 12px', cursor: 'pointer', flex: '0 0 auto', minWidth: 'auto',
-                  color: useCraftToolbar ? tb.inputColor : '#344054',
+                  color: tbar.inputColor,
                 }}>
                 Reset
               </button>
@@ -955,7 +977,7 @@ export function DataTable({
                     minWidth: 'auto',
                     flex: '0 0 auto',
                   }}>
-                  {useCraftToolbar && <IconColumns />}
+                  {useFullToolbar && <IconColumns />}
                   Columns
                 </button>
                 {showColMenu && (
@@ -963,15 +985,15 @@ export function DataTable({
                     <div style={{ position: 'fixed', inset: 0, zIndex: 40 }} onClick={() => setShowColMenu(false)} />
                     <div style={{
                       position: 'absolute', right: 0, top: '100%', marginTop: 4, zIndex: 41,
-                      background: useCraftToolbar ? '#18181b' : '#fff',
-                      border: useCraftToolbar ? tb.inputBorder : '1px solid #E4E7EC',
+                      background: tbar.menuBg,
+                      border: tbar.menuBorder,
                       borderRadius: 8, padding: 8, minWidth: 160,
-                      boxShadow: '0 8px 24px rgba(0,0,0,0.35)',
+                      boxShadow: '0 8px 24px rgba(16,24,40,0.12)',
                     }}>
                       {table.getAllLeafColumns().filter(c => c.getCanHide()).map(col => (
                         <label key={col.id} style={{
                           display: 'flex', alignItems: 'center', gap: 8, padding: '6px 4px', fontSize: 13,
-                          cursor: 'pointer', color: useCraftToolbar ? tb.bodyColor : '#344054',
+                          cursor: 'pointer', color: tbar.menuColor,
                         }}>
                           <input type="checkbox" checked={col.getIsVisible()} onChange={col.getToggleVisibilityHandler()} />
                           {typeof col.columnDef.header === 'string' ? col.columnDef.header : col.id}
@@ -983,13 +1005,13 @@ export function DataTable({
               </div>
             )}
           </div>
-          {useCraftToolbar && activeFilters.length > 0 && (
+          {useFullToolbar && activeFilters.length > 0 && (
             <div style={{ width: '100%', display: 'flex', flexWrap: 'wrap', gap: 6, paddingTop: 2 }}>
               {activeFilters.map(f => (
                 <span key={f.id} style={{
                   display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderRadius: 999,
                   fontSize: 12, fontWeight: 600, fontFamily: "'Inter',sans-serif",
-                  background: 'rgba(59,130,246,0.15)', color: '#93c5fd', border: '1px solid rgba(59,130,246,0.35)',
+                  background: tbar.chipBg, color: tbar.chipColor, border: `1px solid ${tbar.chipBorder}`,
                 }}>
                   {filterLabel(f.id, f.value)}
                   <button type="button" aria-label={`Clear ${f.id} filter`}
@@ -1136,10 +1158,9 @@ export function DataTable({
       overflow: 'hidden',
       boxShadow: ts.shellShadow,
     }}>
-      {useCraftToolbar && (
+      {useFullToolbar && (
         <style>{`
-          .pk-table-toolbar input::placeholder { color: #71717a; opacity: 1; }
-          .pk-table-toolbar select option { background: #18181b; color: #fafafa; }
+          .pk-table-toolbar--light input::placeholder { color: #98A2B3; opacity: 1; }
         `}</style>
       )}
       {inner}

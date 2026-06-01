@@ -173,6 +173,43 @@ const TABLE_STYLE_TOKENS = {
     cellPadding: '13px 16px',
     cellBorderRight: 'none',
   },
+  craft: {
+    isCraft: true,
+    shellBorder: '1px solid #27272a',
+    shellRadius: 12,
+    shellShadow: '0 4px 24px rgba(0,0,0,0.45)',
+    shellBg: '#09090b',
+    headerBg: '#18181b',
+    headerBorder: '1px solid #27272a',
+    headerColor: '#a1a1aa',
+    thPadding: '11px 14px',
+    thBorderRight: 'none',
+    thUppercase: true,
+    rowEven: '#09090b',
+    rowOdd: '#09090b',
+    rowHover: '#18181b',
+    rowBorder: '1px solid #27272a',
+    cellPadding: '14px 14px',
+    cellBorderRight: 'none',
+    bodyColor: '#fafafa',
+    bodyMuted: '#a1a1aa',
+    toolbarBg: '#09090b',
+    toolbarBorder: '1px solid #27272a',
+    inputBg: '#18181b',
+    inputBorder: '1px solid #3f3f46',
+    inputColor: '#fafafa',
+    inputPlaceholder: '#71717a',
+    footerBg: '#09090b',
+    footerBorder: '1px solid #27272a',
+    footerText: '#a1a1aa',
+    pagActiveBg: '#fafafa',
+    pagActiveColor: '#09090b',
+    pagBg: '#18181b',
+    pagBorder: '1px solid #3f3f46',
+    pagColor: '#d4d4d8',
+    sortActive: '#fafafa',
+    sortIdle: '#52525b',
+  },
 };
 
 /* ─── Icons ─────────────────────────────────────────────────────────────── */
@@ -408,8 +445,8 @@ export function Th({ children, align = 'left', onClick, sortActive, sortDir, ts 
   const t = ts || TABLE_STYLE_TOKENS.default;
   return (
     <th onClick={onClick} style={{
-      padding: t.thPadding, textAlign: align, fontSize: 11, fontWeight: 700,
-      color: t.headerColor, textTransform: 'uppercase', letterSpacing: '0.06em',
+      padding: t.thPadding, textAlign: align, fontSize: 11, fontWeight: 600,
+      color: t.headerColor, textTransform: t.thUppercase ? 'uppercase' : 'uppercase', letterSpacing: '0.05em',
       background: t.headerBg,
       borderBottom: t.headerBorder,
       borderRight: t.thBorderRight,
@@ -418,7 +455,7 @@ export function Th({ children, align = 'left', onClick, sortActive, sortDir, ts 
     }}>
       {children}
       {onClick && (
-        <span style={{ fontSize: 10, marginLeft: 4, color: sortActive ? '#2563EB' : '#C4C9D4' }}>
+        <span style={{ fontSize: 10, marginLeft: 4, color: sortActive ? (t.sortActive || '#2563EB') : (t.sortIdle || '#C4C9D4') }}>
           {sortDir === 'asc' ? '▲' : '▼'}
         </span>
       )}
@@ -497,17 +534,57 @@ export function TR({ children, idx, ts }) {
 }
 
 /* ─── Sortable column header (TableCraft-style helper) ───────────────────── */
-export function DataTableColumnHeader({ column, title }) {
+export function DataTableColumnHeader({ column, title, ts }) {
   const sorted = column.getIsSorted();
+  const t = ts || TABLE_STYLE_TOKENS.craft;
+  const sortColor = sorted ? (t.sortActive || '#2563EB') : (t.sortIdle || '#C4C9D4');
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
       {title}
       {column.getCanSort() && (
-        <span style={{ fontSize: 10, color: sorted ? '#2563EB' : '#C4C9D4' }}>
+        <span style={{ fontSize: 10, color: sortColor, opacity: sorted ? 1 : 0.7 }}>
           {sorted === 'asc' ? '▲' : sorted === 'desc' ? '▼' : '⇅'}
         </span>
       )}
     </span>
+  );
+}
+
+/** TableCraft-style status pill */
+export function TableCraftStatusBadge({ status }) {
+  const key = String(status || '').toLowerCase();
+  const map = {
+    active:   { bg: 'rgba(34,197,94,0.12)',  color: '#4ade80',  border: 'rgba(34,197,94,0.35)' },
+    inactive: { bg: 'rgba(113,113,122,0.2)', color: '#a1a1aa', border: 'rgba(113,113,122,0.4)' },
+    pending:  { bg: 'rgba(245,158,11,0.12)', color: '#fbbf24', border: 'rgba(245,158,11,0.35)' },
+  };
+  const s = map[key] || map.inactive;
+  const label = status ? String(status).charAt(0).toUpperCase() + String(status).slice(1) : '—';
+  return (
+    <span style={{
+      display: 'inline-block', padding: '4px 11px', borderRadius: 999, fontSize: 12, fontWeight: 600,
+      background: s.bg, color: s.color, border: `1px solid ${s.border}`,
+    }}>
+      {label}
+    </span>
+  );
+}
+
+function craftPageNumbers(current, total) {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i);
+  const pages = [0];
+  if (current > 2) pages.push('...');
+  for (let i = Math.max(1, current - 1); i <= Math.min(total - 2, current + 1); i++) pages.push(i);
+  if (current < total - 3) pages.push('...');
+  pages.push(total - 1);
+  return pages;
+}
+
+function IconColumns() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+      <rect x="3" y="3" width="7" height="18" rx="1" /><rect x="14" y="3" width="7" height="18" rx="1" />
+    </svg>
   );
 }
 
@@ -540,10 +617,6 @@ export function TableActionsRow({ actions = [] }) {
   );
 }
 
-const toolbarInputStyle = {
-  padding: '7px 10px', borderRadius: 8, border: '1.5px solid #E4E7EC', fontSize: 13,
-  fontFamily: "'Inter',sans-serif", outline: 'none', color: '#344054', background: '#fff',
-};
 
 /* ─── DataTable (powered by @tanstack/react-table) ──────────────────────── */
 /*
@@ -588,11 +661,14 @@ export function DataTable({
   const pagination = compact ? false : (paginationProp ?? true);
   const showRowNumbers = compact ? false : (showRowNumbersProp ?? true);
   const enableColumnVisibility = compact ? false : (enableColumnVisibilityProp ?? true);
-  const { tableStyle = 'default' } = useTheme();
-  const ts = TABLE_STYLE_TOKENS[tableStyle] || TABLE_STYLE_TOKENS.default;
+  const { tableStyle = 'craft' } = useTheme();
+  const ts = compact
+    ? (TABLE_STYLE_TOKENS[tableStyle] || TABLE_STYLE_TOKENS.minimal)
+    : TABLE_STYLE_TOKENS.craft;
+  const craft = !!ts.isCraft;
   const [sorting, setSorting] = useState([]);
-  const [globalFilter, setGlobalFilter] = useState('');
   const [columnFilters, setColumnFilters] = useState([]);
+  const [viewMode, setViewMode] = useState('table');
   const [columnVisibility, setColumnVisibility] = useState({});
   const [showColMenu, setShowColMenu] = useState(false);
   const [paginationState, setPaginationState] = useState({
@@ -604,23 +680,25 @@ export function DataTable({
 
   const tableColumns = useMemo(() => {
     const facetIds = new Set((filterableColumns || []).map(f => f.id));
+    const searchIds = new Set((searchableColumns || []).map(f => f.id));
     const base = columns.map(col => {
       const colId = col.id || col.accessorKey;
       const header = typeof col.header === 'string'
-        ? ({ column }) => <DataTableColumnHeader column={column} title={col.header} />
+        ? ({ column }) => <DataTableColumnHeader column={column} title={col.header} ts={ts} />
         : col.header;
       return {
         ...col,
         header,
         enableSorting: col.enableSorting ?? (col.id !== 'actions' && col.id !== '_rowNum'),
         ...(facetIds.has(colId) ? { filterFn: 'equals' } : {}),
+        ...(searchIds.has(colId) ? { filterFn: 'includesString' } : {}),
       };
     });
     const hasIndexCol = base.some(c => c.id === 'rank' || c.id === '_rowNum' || c.header === '#');
     if (!showRowNumbers || hasIndexCol) return base;
     return [{
       id: '_rowNum',
-      header: '#',
+      header: craft ? 'NO' : '#',
       enableSorting: false,
       enableHiding: false,
       cell: ({ row, table: tbl }) => {
@@ -629,29 +707,23 @@ export function DataTable({
       },
       meta: { width: '48px', align: 'center' },
     }, ...base];
-  }, [columns, showRowNumbers]);
+  }, [columns, showRowNumbers, craft, ts]);
 
-  const searchIds = useMemo(
-    () => (searchableColumns || []).map(c => c.id),
-    [searchableColumns],
-  );
+  const setColFilter = (id, value) => {
+    setColumnFilters(prev => {
+      const rest = prev.filter(f => f.id !== id);
+      return value ? [...rest, { id, value }] : rest;
+    });
+  };
 
   const table = useReactTable({
     data: stableData,
     columns: tableColumns,
-    state: { sorting, globalFilter, columnFilters, columnVisibility, pagination: paginationState },
+    state: { sorting, columnFilters, columnVisibility, pagination: paginationState },
     onSortingChange: setSorting,
-    onGlobalFilterChange: setGlobalFilter,
     onColumnFiltersChange: setColumnFilters,
     onColumnVisibilityChange: setColumnVisibility,
     onPaginationChange: setPaginationState,
-    globalFilterFn: searchIds.length
-      ? (row, _cid, filterValue) => {
-          const q = String(filterValue || '').toLowerCase().trim();
-          if (!q) return true;
-          return searchIds.some(id => String(row.getValue(id) ?? '').toLowerCase().includes(q));
-        }
-      : undefined,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
@@ -662,52 +734,96 @@ export function DataTable({
   const totalFiltered = table.getFilteredRowModel().rows.length;
   const { pageIndex, pageSize } = table.getState().pagination;
   const pageCount = table.getPageCount();
-  const hasToolbar = searchableColumns?.length || filterableColumns?.length || enableColumnVisibility;
+  const hasToolbar = craft || searchableColumns?.length || filterableColumns?.length || enableColumnVisibility;
 
   const activeFilters = columnFilters.filter(f => f.value != null && f.value !== '');
+
+  const inputStyle = craft ? {
+    padding: '8px 12px 8px 34px', borderRadius: 8, border: ts.inputBorder, fontSize: 13,
+    fontFamily: "'Inter',sans-serif", outline: 'none', color: ts.inputColor, background: ts.inputBg,
+    minWidth: 160, flex: '1 1 160px', maxWidth: 220,
+  } : {
+    padding: '7px 10px', borderRadius: 8, border: '1.5px solid #E4E7EC', fontSize: 13,
+    fontFamily: "'Inter',sans-serif", outline: 'none', color: '#344054', background: '#fff',
+  };
 
   const inner = (
     <>
       {hasToolbar && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', padding: '12px 16px', borderBottom: '1px solid #F2F4F7', background: '#FAFBFC' }}>
-          {searchableColumns?.length > 0 && (
-            <input type="text" value={globalFilter} onChange={e => setGlobalFilter(e.target.value)}
-              placeholder={`Search ${searchableColumns.map(c => c.title).join(', ')}…`}
-              style={{ ...toolbarInputStyle, minWidth: 200, flex: '1 1 200px' }} />
-          )}
-          {filterableColumns?.map(fc => (
-            <select key={fc.id} value={String(columnFilters.find(f => f.id === fc.id)?.value ?? '')}
-              onChange={e => {
-                const v = e.target.value;
-                setColumnFilters(prev => {
-                  const rest = prev.filter(f => f.id !== fc.id);
-                  return v ? [...rest, { id: fc.id, value: v }] : rest;
-                });
-              }}
-              style={{ ...toolbarInputStyle, cursor: 'pointer' }}>
-              <option value="">{fc.title}: All</option>
-              {fc.options.map(o => (
-                <option key={o.value} value={o.value}>{o.label}</option>
+        <div style={{
+          display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center', padding: '12px 14px',
+          borderBottom: craft ? ts.toolbarBorder : '1px solid #F2F4F7',
+          background: craft ? ts.toolbarBg : '#FAFBFC',
+        }}>
+          {craft && (
+            <div style={{ display: 'flex', borderRadius: 8, border: ts.inputBorder, overflow: 'hidden', flexShrink: 0 }}>
+              {['table', 'cards'].map(mode => (
+                <button key={mode} type="button" onClick={() => setViewMode(mode)}
+                  style={{
+                    padding: '7px 14px', border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600,
+                    fontFamily: "'Inter',sans-serif", textTransform: 'capitalize',
+                    background: viewMode === mode ? '#fafafa' : ts.inputBg,
+                    color: viewMode === mode ? '#09090b' : ts.footerText,
+                  }}>
+                  {mode}
+                </button>
               ))}
-            </select>
-          ))}
+            </div>
+          )}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, flex: 1, alignItems: 'center', justifyContent: craft ? 'center' : 'flex-start' }}>
+            {searchableColumns?.map(sc => (
+              <div key={sc.id} style={{ position: 'relative', flex: craft ? '0 1 200px' : '1 1 200px', minWidth: 140 }}>
+                <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: ts.inputPlaceholder || '#98A2B3', display: 'flex', pointerEvents: 'none' }}>
+                  <IconSearch />
+                </span>
+                <input
+                  type="text"
+                  value={String(columnFilters.find(f => f.id === sc.id)?.value ?? '')}
+                  onChange={e => setColFilter(sc.id, e.target.value)}
+                  placeholder={sc.placeholder || `Filter ${sc.title}…`}
+                  style={inputStyle}
+                />
+              </div>
+            ))}
+            {filterableColumns?.map(fc => (
+              <select key={fc.id} value={String(columnFilters.find(f => f.id === fc.id)?.value ?? '')}
+                onChange={e => setColFilter(fc.id, e.target.value)}
+                style={{ ...inputStyle, paddingLeft: 12, cursor: 'pointer' }}>
+                <option value="">{fc.title}: All</option>
+                {fc.options.map(o => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+            ))}
+          </div>
           {activeFilters.length > 0 && (
             <button type="button" onClick={() => setColumnFilters([])}
-              style={{ ...toolbarInputStyle, cursor: 'pointer', color: '#475467' }}>
-              Reset filters
+              style={{ ...inputStyle, padding: '8px 12px', cursor: 'pointer', flex: '0 0 auto', minWidth: 'auto' }}>
+              Reset
             </button>
           )}
           {enableColumnVisibility && (
-            <div style={{ position: 'relative', marginLeft: 'auto' }}>
-              <button type="button" onClick={() => setShowColMenu(o => !o)} style={{ ...toolbarInputStyle, cursor: 'pointer' }}>
-                Columns ▾
+            <div style={{ position: 'relative', marginLeft: craft ? 0 : 'auto', flexShrink: 0 }}>
+              <button type="button" onClick={() => setShowColMenu(o => !o)}
+                style={{
+                  ...inputStyle, padding: '8px 14px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6,
+                  minWidth: 'auto', flex: '0 0 auto',
+                }}>
+                {craft && <IconColumns />}
+                Columns
               </button>
               {showColMenu && (
                 <>
                   <div style={{ position: 'fixed', inset: 0, zIndex: 40 }} onClick={() => setShowColMenu(false)} />
-                  <div style={{ position: 'absolute', right: 0, top: '100%', marginTop: 4, zIndex: 41, background: '#fff', border: '1px solid #E4E7EC', borderRadius: 8, padding: 8, minWidth: 160, boxShadow: '0 4px 12px rgba(16,24,40,0.1)' }}>
+                  <div style={{
+                    position: 'absolute', right: 0, top: '100%', marginTop: 4, zIndex: 41,
+                    background: craft ? '#18181b' : '#fff',
+                    border: craft ? ts.inputBorder : '1px solid #E4E7EC',
+                    borderRadius: 8, padding: 8, minWidth: 160,
+                    boxShadow: '0 8px 24px rgba(0,0,0,0.35)',
+                  }}>
                     {table.getAllLeafColumns().filter(c => c.getCanHide()).map(col => (
-                      <label key={col.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 4px', fontSize: 13, cursor: 'pointer' }}>
+                      <label key={col.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 4px', fontSize: 13, cursor: 'pointer', color: craft ? ts.bodyColor : '#344054' }}>
                         <input type="checkbox" checked={col.getIsVisible()} onChange={col.getToggleVisibilityHandler()} />
                         {typeof col.columnDef.header === 'string' ? col.columnDef.header : col.id}
                       </label>
@@ -719,7 +835,20 @@ export function DataTable({
           )}
         </div>
       )}
-      <div style={{ overflowX: 'auto' }}>
+      <div style={{ overflowX: 'auto' }} className={craft ? 'pk-craft-table' : undefined}>
+        {craft && (
+          <style>{`
+            .pk-craft-table tbody td { color: #fafafa; }
+            .pk-craft-table tbody td [style*="color:#101828"],
+            .pk-craft-table tbody td [style*="color: #101828"],
+            .pk-craft-table tbody td [style*="color:#344054"],
+            .pk-craft-table tbody td [style*="color: #344054"],
+            .pk-craft-table tbody td [style*="color:#475467"],
+            .pk-craft-table tbody td [style*="color: #475467"] { color: #e4e4e7 !important; }
+            .pk-craft-table tbody td [style*="color:#98A2B3"],
+            .pk-craft-table tbody td [style*="color: #98A2B3"] { color: #a1a1aa !important; }
+          `}</style>
+        )}
         <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: "'Inter',sans-serif", tableLayout: 'fixed' }}>
           <colgroup>
             {table.getVisibleLeafColumns().map(col => (
@@ -761,6 +890,8 @@ export function DataTable({
                         padding: cell.column.columnDef.meta?.padding ?? ts.cellPadding,
                         textAlign: cell.column.columnDef.meta?.align ?? 'left',
                         borderRight: ts.cellBorderRight,
+                        color: ts.bodyColor || '#101828',
+                        fontSize: 14,
                       }}>
                         {flexRender(cell.column.columnDef.cell, cell.getContext())}
                       </td>
@@ -775,24 +906,45 @@ export function DataTable({
         <style>{'@keyframes pk-shimmer { to { background-position:-200% 0; } }'}</style>
       </div>
       {pagination && !loading && totalFiltered > 0 && (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, padding: '10px 16px', borderTop: '1px solid #F2F4F7', background: '#FAFBFC' }}>
-          <span style={{ fontSize: 12, color: '#475467' }}>
-            {totalFiltered === 0 ? 'No rows' : (
-              <>Showing {pageIndex * pageSize + 1}–{Math.min((pageIndex + 1) * pageSize, totalFiltered)} of {totalFiltered}</>
-            )}
-          </span>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-            <label style={{ fontSize: 12, color: '#475467', display: 'flex', alignItems: 'center', gap: 6 }}>
-              Rows
-              <select value={pageSize} onChange={e => table.setPageSize(Number(e.target.value))} style={toolbarInputStyle}>
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12,
+          padding: '12px 14px', borderTop: craft ? ts.footerBorder : '1px solid #F2F4F7',
+          background: craft ? ts.footerBg : '#FAFBFC',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 13, color: craft ? ts.footerText : '#475467' }}>
+              Showing <strong style={{ color: craft ? ts.bodyColor : '#344054' }}>{pageIndex * pageSize + 1}-{Math.min((pageIndex + 1) * pageSize, totalFiltered)}</strong>
+              {' '}of <strong style={{ color: craft ? ts.bodyColor : '#344054' }}>{totalFiltered}</strong> records
+            </span>
+            <label style={{ fontSize: 13, color: craft ? ts.footerText : '#475467', display: 'flex', alignItems: 'center', gap: 8 }}>
+              Rows Per Page
+              <select value={pageSize} onChange={e => table.setPageSize(Number(e.target.value))}
+                style={{ ...inputStyle, padding: '6px 28px 6px 10px', minWidth: 64, flex: '0 0 auto' }}>
                 {pageSizeOptions.map(n => <option key={n} value={n}>{n}</option>)}
               </select>
             </label>
-            <PagBtn onClick={() => table.setPageIndex(0)} disabled={!table.getCanPreviousPage()} label="«" />
-            <PagBtn onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()} label="‹" />
-            <span style={{ fontSize: 12, color: '#475467' }}>{pageIndex + 1} / {Math.max(1, pageCount)}</span>
-            <PagBtn onClick={() => table.nextPage()} disabled={!table.getCanNextPage()} label="›" />
-            <PagBtn onClick={() => table.setPageIndex(pageCount - 1)} disabled={!table.getCanNextPage()} label="»" />
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+            {craft ? (
+              <>
+                <CraftPagBtn ts={ts} onClick={() => table.setPageIndex(0)} disabled={!table.getCanPreviousPage()} label="«" />
+                <CraftPagBtn ts={ts} onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()} label="‹ Previous" />
+                {craftPageNumbers(pageIndex, pageCount).map((n, i) => n === '...'
+                  ? <span key={`e${i}`} style={{ padding: '0 4px', color: ts.footerText, fontSize: 13 }}>…</span>
+                  : <CraftPagBtn key={n} ts={ts} onClick={() => table.setPageIndex(n)} active={n === pageIndex} label={String(n + 1)} />
+                )}
+                <CraftPagBtn ts={ts} onClick={() => table.nextPage()} disabled={!table.getCanNextPage()} label="Next ›" />
+                <CraftPagBtn ts={ts} onClick={() => table.setPageIndex(pageCount - 1)} disabled={!table.getCanNextPage()} label="»" />
+              </>
+            ) : (
+              <>
+                <PagBtn onClick={() => table.setPageIndex(0)} disabled={!table.getCanPreviousPage()} label="«" />
+                <PagBtn onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()} label="‹" />
+                <span style={{ fontSize: 12, color: '#475467' }}>{pageIndex + 1} / {Math.max(1, pageCount)}</span>
+                <PagBtn onClick={() => table.nextPage()} disabled={!table.getCanNextPage()} label="›" />
+                <PagBtn onClick={() => table.setPageIndex(pageCount - 1)} disabled={!table.getCanNextPage()} label="»" />
+              </>
+            )}
           </div>
         </div>
       )}
@@ -801,8 +953,36 @@ export function DataTable({
 
   if (noShell) return inner;
   return (
-    <div style={{ background: '#fff', borderRadius: ts.shellRadius, border: ts.shellBorder, overflow: 'hidden', boxShadow: ts.shellShadow }}>
+    <div style={{
+      background: ts.shellBg || '#fff',
+      borderRadius: ts.shellRadius,
+      border: ts.shellBorder,
+      overflow: 'hidden',
+      boxShadow: ts.shellShadow,
+    }}>
       {inner}
     </div>
+  );
+}
+
+function CraftPagBtn({ onClick, disabled, active, label, ts }) {
+  const [hov, setHov] = useState(false);
+  return (
+    <button type="button" onClick={onClick} disabled={disabled}
+      onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
+      style={{
+        minWidth: 32, height: 32, padding: '0 10px',
+        border: active ? 'none' : ts.pagBorder,
+        borderRadius: 8,
+        background: active ? ts.pagActiveBg : (hov && !disabled ? '#27272a' : ts.pagBg),
+        color: active ? ts.pagActiveColor : (disabled ? '#52525b' : ts.pagColor),
+        fontSize: 13, fontWeight: active ? 700 : 500,
+        fontFamily: "'Inter',sans-serif",
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        transition: 'all 0.12s',
+        opacity: disabled ? 0.45 : 1,
+      }}>
+      {label}
+    </button>
   );
 }

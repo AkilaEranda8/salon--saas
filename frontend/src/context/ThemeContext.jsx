@@ -45,9 +45,9 @@ function getInitialSidebarAppearance() {
 }
 
 function getInitialTableStyle() {
-  if (typeof window === 'undefined') return 'default';
+  if (typeof window === 'undefined') return 'craft';
   const s = window.localStorage.getItem(TABLE_STYLE_KEY);
-  return ['default', 'minimal', 'bordered', 'card', 'ink', 'violet', 'forest', 'sunset', 'rose', 'arctic'].includes(s) ? s : 'default';
+  return ['craft', 'default', 'minimal', 'bordered', 'card', 'ink', 'violet', 'forest', 'sunset', 'rose', 'arctic'].includes(s) ? s : 'craft';
 }
 
 function hexToRgb(hex) {

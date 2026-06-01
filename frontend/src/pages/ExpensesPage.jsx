@@ -214,13 +214,9 @@ export default function ExpensesPage() {
         pageSize={10}
         showRowNumbers
         enableColumnVisibility
-        searchableColumns={[{ id: 'title', title: 'Expense' }]}
-        filterableColumns={[
-          {
-            id: 'category',
-            title: 'Category',
-            options: CATS.map(c => ({ label: c, value: c })),
-          },
+        searchableColumns={[
+          { id: 'title', title: 'Name', placeholder: 'Filter Name…' },
+          { id: 'category', title: 'Category', placeholder: 'Filter Category…' },
         ]}
       />
 

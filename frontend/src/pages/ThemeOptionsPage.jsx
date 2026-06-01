@@ -755,6 +755,25 @@ export default function ThemeOptionsPage() {
               ),
             },
             {
+              value: 'craft',
+              label: 'TableCraft',
+              description: 'Dark TableCraft-style tables with toolbar filters and pagination.',
+              preview: (
+                <div style={{ width: 130, height: 72, borderRadius: 8, overflow: 'hidden', border: '1px solid #27272a', background: '#09090b' }}>
+                  <div style={{ height: 14, background: '#18181b', borderBottom: '1px solid #27272a', display: 'flex', gap: 4, padding: '0 6px', alignItems: 'center' }}>
+                    <div style={{ width: 22, height: 6, background: '#3f3f46', borderRadius: 2 }} />
+                    <div style={{ flex: 1, height: 6, background: '#27272a', borderRadius: 2 }} />
+                  </div>
+                  {[0, 1, 2].map(i => (
+                    <div key={i} style={{ height: 12, background: '#09090b', borderBottom: '1px solid #27272a', display: 'flex', alignItems: 'center', padding: '0 6px', gap: 4 }}>
+                      <div style={{ width: 8, height: 4, background: '#52525b', borderRadius: 1 }} />
+                      <div style={{ flex: 1, height: 4, background: '#3f3f46', borderRadius: 1 }} />
+                    </div>
+                  ))}
+                </div>
+              ),
+            },
+            {
               value: 'arctic',
               label: 'Arctic',
               description: 'Icy sky-blue header with cool frosty row tints.',

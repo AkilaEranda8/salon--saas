@@ -8,24 +8,9 @@ import { Input, Select, FormGroup } from '../components/ui/FormElements';
 import PageWrapper from '../components/layout/PageWrapper';
 import { computePromoFromDiscount } from '../utils/promoDiscount';
 import {
-  StaffAvatar,
-  IconClose, IconPlus, IconCalendar,
+  DataTable, ActionBtn, StaffAvatar, PagBtn,
+  IconEye, IconEdit, IconTrash, IconClose, IconPlus, IconCalendar,
 } from '../components/ui/PageKit';
-import { createTableConfig } from 'react-table-craft';
-import { ClientSideTable } from '@/components/table/client-side-table';
-import { DataTableColumnHeader } from '@/components/table/data-table-column-header';
-import { TableActionsRow } from '@/components/table/table-actions-row';
-import '@/styles/appointments-table.css';
-
-const APPT_TABLE_CONFIG = createTableConfig({
-  features: { viewToggle: false, enableCardView: false },
-});
-
-function customerAvatarHue(name = '') {
-  let h = 0;
-  for (let i = 0; i < name.length; i += 1) h = name.charCodeAt(i) + ((h << 5) - h);
-  return Math.abs(h) % 360;
-}
 
 const IconMoney    = () => <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>;
 
@@ -530,66 +515,38 @@ export default function AppointmentsPage() {
 
   const filteredStaff = form.branch_id ? staffList.filter(s => s.branch_id==form.branch_id) : staffList;
   const counts = APPT_STATUSES.reduce((acc,s) => { acc[s]=appts.filter(a=>a.status===s).length; return acc; }, {});
-  const totalPages = Math.max(1, Math.ceil(total / LIMIT));
-
-  const paginationData = useMemo(() => ({
-    paginationResponse: {
-      meta: {
-        current_page: page,
-        last_page: totalPages,
-        per_page: LIMIT,
-        total,
-      },
-    },
-    onPageChange: (p) => setPage(p),
-    onPageSizeChange: () => {},
-  }), [page, totalPages, total]);
+  const totalPages = Math.ceil(total / LIMIT);
 
   const apptColumns = useMemo(() => [
     {
       accessorKey: 'customer_name',
-      header: ({ column }) => <DataTableColumnHeader column={column} title="Customer" />,
+      header: 'Customer',
       meta: { width: '18%' },
       cell: ({ row }) => {
         const r = row.original;
-        const name = r.customer_name || 'Guest';
-        const hue = customerAvatarHue(name);
         return (
-          <div className="appt-customer-cell">
-            <span
-              className="appt-customer-avatar"
-              style={{ background: `linear-gradient(135deg, hsl(${hue}, 62%, 48%), hsl(${hue}, 70%, 38%))` }}
-            >
-              {name.charAt(0).toUpperCase()}
-            </span>
-            <div>
-              <div className="appt-customer-name">{name}</div>
-              {r.phone && <div className="appt-customer-phone">{r.phone}</div>}
-            </div>
-          </div>
+          <>
+            <div style={{ fontWeight: 600, color: isDark ? '#E2E8F0' : '#101828', fontSize: 14 }}>{r.customer_name}</div>
+            {r.phone && <div style={{ fontSize: 12, color: isDark ? '#94A3B8' : '#98A2B3', marginTop: 1 }}>{r.phone}</div>}
+          </>
         );
       },
     },
     {
       id: 'services',
       accessorFn: (r) => getAllServiceNamesForAppt(r).join(', '),
-      header: ({ column }) => <DataTableColumnHeader column={column} title="Service" />,
+      header: 'Service',
       meta: { width: '15%' },
-      cell: ({ row }) => {
-        const names = getAllServiceNamesForAppt(row.original);
-        return (
-          <div className="appt-service-pills">
-            {names.map((name) => (
-              <span key={name} className="appt-svc-pill">{name}</span>
-            ))}
-          </div>
-        );
-      },
+      cell: ({ getValue }) => (
+        <span style={{ background: isDark ? '#1E293B' : '#F2F4F7', padding: '3px 9px', borderRadius: 6, fontSize: 13, fontWeight: 500, color: isDark ? '#CBD5E1' : '#475467' }}>
+          {getValue()}
+        </span>
+      ),
     },
     {
       id: 'staff',
       accessorFn: (r) => r.staff?.name || '',
-      header: ({ column }) => <DataTableColumnHeader column={column} title="Staff" />,
+      header: 'Staff',
       meta: { width: '16%' },
       cell: ({ row }) => {
         const r = row.original;
@@ -604,33 +561,33 @@ export default function AppointmentsPage() {
     {
       id: 'date',
       accessorFn: (r) => `${r.date || ''} ${r.time || ''}`,
-      header: ({ column }) => <DataTableColumnHeader column={column} title="Date & Time" />,
+      header: 'Date & Time',
       meta: { width: '15%' },
       cell: ({ row }) => {
         const r = row.original;
         return (
           <>
-            <div className="appt-date-main">
+            <div style={{ fontWeight: 600, color: isDark ? '#E2E8F0' : '#101828', fontSize: 13 }}>
               {r.date ? new Date(r.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : ''}
             </div>
-            {r.time && <div className="appt-date-time">{r.time}</div>}
+            {r.time && <div style={{ fontSize: 12, color: isDark ? '#94A3B8' : '#98A2B3', marginTop: 1 }}>{r.time}</div>}
           </>
         );
       },
     },
     {
       accessorKey: 'amount',
-      header: ({ column }) => <DataTableColumnHeader column={column} title="Amount" />,
+      header: 'Amount',
       meta: { width: '12%', align: 'right' },
       cell: ({ row }) => (
-        <span className="appt-amount">
+        <span style={{ fontWeight: 700, color: '#059669', fontSize: 14 }}>
           Rs. {Number(row.original.amount || row.original.service?.price || 0).toLocaleString()}
         </span>
       ),
     },
     {
       accessorKey: 'status',
-      header: ({ column }) => <DataTableColumnHeader column={column} title="Status" />,
+      header: 'Status',
       meta: { width: '14%' },
       cell: ({ row }) => {
         const r = row.original;
@@ -638,12 +595,8 @@ export default function AppointmentsPage() {
         const meta = STATUS_META[s] ?? STATUS_META.pending;
         if (!canEdit || s === 'completed' || s === 'cancelled') return <StatusBadge status={s} />;
         return (
-          <select
-            value={s}
-            onChange={(e) => handleStatusChange(r.id, e.target.value)}
-            className="appt-status-select"
-            style={{ borderColor: `${meta.color}55`, background: meta.bg, color: meta.color }}
-          >
+          <select value={s} onChange={(e) => handleStatusChange(r.id, e.target.value)}
+            style={{ padding: '4px 10px', borderRadius: 20, border: `1.5px solid ${meta.color}40`, background: meta.bg, color: meta.color, fontWeight: 700, fontSize: 12, fontFamily: "'Inter',sans-serif", outline: 'none', cursor: 'pointer' }}>
             {APPT_STATUSES.filter((st) => st !== 'completed').map((st) => <option key={st} value={st}>{STATUS_META[st].label}</option>)}
           </select>
         );
@@ -651,27 +604,23 @@ export default function AppointmentsPage() {
     },
     {
       id: 'actions',
-      header: '',
+      header: 'Actions',
       meta: { width: '10%', align: 'center' },
       enableSorting: false,
       cell: ({ row }) => {
         const r = row.original;
         const s = r.status;
         return (
-          <TableActionsRow
-            showAction={{ action: () => openDetail(r) }}
-            editAction={canEdit ? { action: () => openEdit(r) } : undefined}
-            deleteAction={canEdit ? { action: () => confirmDelete(r.id) } : undefined}
-            dropMoreActions={
-              canEdit && s === 'in_service'
-                ? [{ text: 'Collect Payment', function: () => openPayment(r) }]
-                : undefined
-            }
-          />
+          <div style={{ display: 'flex', gap: 4, justifyContent: 'center' }}>
+            <ActionBtn onClick={() => openDetail(r)} title="View" color="#2563EB"><IconEye /></ActionBtn>
+            {canEdit && s === 'in_service' && <ActionBtn onClick={() => openPayment(r)} title="Collect Payment" color="#059669"><IconMoney /></ActionBtn>}
+            {canEdit && <ActionBtn onClick={() => openEdit(r)} title="Edit" color="#D97706"><IconEdit /></ActionBtn>}
+            {canEdit && <ActionBtn onClick={() => confirmDelete(r.id)} title="Delete" color="#DC2626"><IconTrash /></ActionBtn>}
+          </div>
         );
       },
     },
-  ], [canEdit, isDark, handleStatusChange]);
+  ], [canEdit, isDark]);
 
   return (
     <PageWrapper title="Appointments" subtitle={`${total} total appointments`}
@@ -686,70 +635,60 @@ export default function AppointmentsPage() {
       </div>
 
       {/* Filter Bar */}
-      <div className="appt-filters-bar">
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          {[{ val: '', label: 'All' }, ...APPT_STATUSES.map((s) => ({ val: s, label: STATUS_META[s].label }))].map(({ val, label }) => {
-            const active = filterStatus === val;
-            const meta = val ? STATUS_META[val] : null;
-            const cnt = val ? counts[val] : total;
+      <div style={{ background:isDark?'#111827':'#fff', borderRadius:14, border:`1px solid ${isDark?'#334155':'#EAECF0'}`, padding:'14px 16px', display:'flex', gap:10, flexWrap:'wrap', alignItems:'center', boxShadow:isDark?'0 8px 20px rgba(2,6,23,0.35)':'0 1px 4px rgba(16,24,40,0.04)' }}>
+        <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+          {[{val:'',label:'All'},...APPT_STATUSES.map(s=>({val:s,label:STATUS_META[s].label}))].map(({val,label}) => {
+            const active=filterStatus===val, meta=val?STATUS_META[val]:null, cnt=val?counts[val]:appts.length;
             return (
-              <button
-                key={val}
-                type="button"
-                className={`appt-status-chip${active ? ' appt-status-chip--active' : ''}`}
-                onClick={() => { setFilterStatus(val); setPage(1); }}
-                style={active ? {
-                  borderColor: meta?.color ?? '#2563EB',
-                  background: meta?.bg ?? '#EFF6FF',
-                  color: meta?.color ?? '#2563EB',
-                } : undefined}
-              >
-                {label}
-                {cnt > 0 && <span style={{ marginLeft: 5, opacity: 0.75 }}>({cnt})</span>}
+              <button key={val} onClick={()=>{setFilterStatus(val);setPage(1);}} style={{ padding:'6px 14px', borderRadius:20, border:'1.5px solid', borderColor:active?(meta?.color??'#2563EB'):(isDark?'#334155':'#E4E7EC'), background:active?(meta?.bg??'#EFF6FF'):(isDark?'#0F172A':'#fff'), color:active?(meta?.color??'#2563EB'):(isDark?'#CBD5E1':'#667085'), fontWeight:active?700:500, fontSize:12, cursor:'pointer', fontFamily:"'Inter',sans-serif", whiteSpace:'nowrap' }}>
+                {label}{cnt>0?<span style={{ marginLeft:5, opacity:0.7 }}>({cnt})</span>:''}
               </button>
             );
           })}
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto' }}>
-          <span style={{ color: isDark ? '#94A3B8' : '#98A2B3', display: 'flex' }}><IconCalendar /></span>
-          <input
-            type="date"
-            className="appt-filter-date"
-            value={filterDate}
-            onChange={(e) => { setFilterDate(e.target.value); setPage(1); }}
-          />
-          {filterDate && (
-            <button type="button" onClick={() => setFilterDate('')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: isDark ? '#94A3B8' : '#98A2B3', display: 'flex', padding: 2 }}>
-              <IconClose />
-            </button>
-          )}
+        <div style={{ display:'flex', alignItems:'center', gap:6, marginLeft:'auto' }}>
+          <span style={{ color:isDark?'#94A3B8':'#98A2B3', display:'flex' }}><IconCalendar /></span>
+          <input type="date" value={filterDate} onChange={e=>{setFilterDate(e.target.value);setPage(1);}}
+            style={{ padding:'7px 10px', borderRadius:9, border:`1.5px solid ${isDark?'#334155':'#E4E7EC'}`, fontSize:13, fontFamily:"'Inter',sans-serif", outline:'none', color:isDark?'#E2E8F0':'#344054', background:isDark?'#0F172A':'#fff' }}
+            onFocus={e=>e.target.style.borderColor='#2563EB'} onBlur={e=>e.target.style.borderColor=isDark?'#334155':'#E4E7EC'} />
+          {filterDate && <button onClick={()=>setFilterDate('')} style={{ background:'none', border:'none', cursor:'pointer', color:isDark?'#94A3B8':'#98A2B3', display:'flex', padding:2 }}><IconClose /></button>}
         </div>
         {isSuperAdmin && (
-          <select className="appt-filter-branch" value={filterBranch} onChange={(e) => { setFilterBranch(e.target.value); setPage(1); }}>
+          <select value={filterBranch} onChange={e=>{setFilterBranch(e.target.value);setPage(1);}}
+            style={{ padding:'7px 12px', borderRadius:9, border:`1.5px solid ${isDark?'#334155':'#E4E7EC'}`, fontSize:13, fontFamily:"'Inter',sans-serif", outline:'none', color:isDark?'#E2E8F0':'#344054', background:isDark?'#0F172A':'#fff' }}>
             <option value="">All Branches</option>
-            {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+            {branches.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}
           </select>
         )}
       </div>
 
-      <div className="appointments-table-shell">
-        <ClientSideTable
-          className="appointments-tablecraft"
-          config={APPT_TABLE_CONFIG}
-          columns={apptColumns}
-          data={appts}
-          loading={loading}
-          pageSize={LIMIT}
-          pageCount={totalPages}
-          isQueryPagination
-          paginationData={paginationData}
-          searchableColumns={[
-            { id: 'customer_name', title: 'Customer' },
-            { id: 'services', title: 'Service' },
-            { id: 'staff', title: 'Staff' },
-          ]}
-          isShowExportButtons={{ isShow: true, fileName: 'appointments' }}
-        />
+      <DataTable
+        columns={apptColumns}
+        data={appts}
+        loading={loading}
+        emptyMessage="No appointments found"
+        emptySub="Try adjusting your filters or add a new appointment"
+        pagination={false}
+        searchableColumns={[
+          { id: 'customer_name', title: 'Customer' },
+          { id: 'services', title: 'Service' },
+          { id: 'staff', title: 'Staff' },
+        ]}
+      />
+      <div style={{ padding:'4px 4px 0', display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:8 }}>
+        <span style={{ fontSize:12, color:isDark?'#94A3B8':'#98A2B3' }}>Showing {appts.length} of {total}</span>
+        {totalPages > 1 && (
+          <div style={{ display:'flex', gap:4 }}>
+            <PagBtn onClick={() => setPage(1)} disabled={page === 1} label="«" />
+            <PagBtn onClick={() => setPage((p) => p - 1)} disabled={page === 1} label="‹" />
+            {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+              const p = Math.max(1, Math.min(totalPages - 4, page - 2)) + i;
+              return <PagBtn key={p} onClick={() => setPage(p)} active={p === page} label={p} />;
+            })}
+            <PagBtn onClick={() => setPage((p) => p + 1)} disabled={page === totalPages} label="›" />
+            <PagBtn onClick={() => setPage(totalPages)} disabled={page === totalPages} label="»" />
+          </div>
+        )}
       </div>
 
       {/* New / Edit Modal */}

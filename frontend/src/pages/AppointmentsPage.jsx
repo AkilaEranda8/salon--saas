@@ -11,9 +11,21 @@ import {
   StaffAvatar,
   IconClose, IconPlus, IconCalendar,
 } from '../components/ui/PageKit';
+import { createTableConfig } from 'react-table-craft';
 import { ClientSideTable } from '@/components/table/client-side-table';
 import { DataTableColumnHeader } from '@/components/table/data-table-column-header';
 import { TableActionsRow } from '@/components/table/table-actions-row';
+import '@/styles/appointments-table.css';
+
+const APPT_TABLE_CONFIG = createTableConfig({
+  features: { viewToggle: false, enableCardView: false },
+});
+
+function customerAvatarHue(name = '') {
+  let h = 0;
+  for (let i = 0; i < name.length; i += 1) h = name.charCodeAt(i) + ((h << 5) - h);
+  return Math.abs(h) % 360;
+}
 
 const IconMoney    = () => <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>;
 
@@ -540,11 +552,21 @@ export default function AppointmentsPage() {
       meta: { width: '18%' },
       cell: ({ row }) => {
         const r = row.original;
+        const name = r.customer_name || 'Guest';
+        const hue = customerAvatarHue(name);
         return (
-          <>
-            <div style={{ fontWeight: 600, color: isDark ? '#E2E8F0' : '#101828', fontSize: 14 }}>{r.customer_name}</div>
-            {r.phone && <div style={{ fontSize: 12, color: isDark ? '#94A3B8' : '#98A2B3', marginTop: 1 }}>{r.phone}</div>}
-          </>
+          <div className="appt-customer-cell">
+            <span
+              className="appt-customer-avatar"
+              style={{ background: `linear-gradient(135deg, hsl(${hue}, 62%, 48%), hsl(${hue}, 70%, 38%))` }}
+            >
+              {name.charAt(0).toUpperCase()}
+            </span>
+            <div>
+              <div className="appt-customer-name">{name}</div>
+              {r.phone && <div className="appt-customer-phone">{r.phone}</div>}
+            </div>
+          </div>
         );
       },
     },
@@ -553,11 +575,16 @@ export default function AppointmentsPage() {
       accessorFn: (r) => getAllServiceNamesForAppt(r).join(', '),
       header: ({ column }) => <DataTableColumnHeader column={column} title="Service" />,
       meta: { width: '15%' },
-      cell: ({ getValue }) => (
-        <span style={{ background: isDark ? '#1E293B' : '#F2F4F7', padding: '3px 9px', borderRadius: 6, fontSize: 13, fontWeight: 500, color: isDark ? '#CBD5E1' : '#475467' }}>
-          {getValue()}
-        </span>
-      ),
+      cell: ({ row }) => {
+        const names = getAllServiceNamesForAppt(row.original);
+        return (
+          <div className="appt-service-pills">
+            {names.map((name) => (
+              <span key={name} className="appt-svc-pill">{name}</span>
+            ))}
+          </div>
+        );
+      },
     },
     {
       id: 'staff',
@@ -583,10 +610,10 @@ export default function AppointmentsPage() {
         const r = row.original;
         return (
           <>
-            <div style={{ fontWeight: 600, color: isDark ? '#E2E8F0' : '#101828', fontSize: 13 }}>
+            <div className="appt-date-main">
               {r.date ? new Date(r.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : ''}
             </div>
-            {r.time && <div style={{ fontSize: 12, color: isDark ? '#94A3B8' : '#98A2B3', marginTop: 1 }}>{r.time}</div>}
+            {r.time && <div className="appt-date-time">{r.time}</div>}
           </>
         );
       },
@@ -596,7 +623,7 @@ export default function AppointmentsPage() {
       header: ({ column }) => <DataTableColumnHeader column={column} title="Amount" />,
       meta: { width: '12%', align: 'right' },
       cell: ({ row }) => (
-        <span style={{ fontWeight: 700, color: '#059669', fontSize: 14 }}>
+        <span className="appt-amount">
           Rs. {Number(row.original.amount || row.original.service?.price || 0).toLocaleString()}
         </span>
       ),
@@ -611,8 +638,12 @@ export default function AppointmentsPage() {
         const meta = STATUS_META[s] ?? STATUS_META.pending;
         if (!canEdit || s === 'completed' || s === 'cancelled') return <StatusBadge status={s} />;
         return (
-          <select value={s} onChange={(e) => handleStatusChange(r.id, e.target.value)}
-            style={{ padding: '4px 10px', borderRadius: 20, border: `1.5px solid ${meta.color}40`, background: meta.bg, color: meta.color, fontWeight: 700, fontSize: 12, fontFamily: "'Inter',sans-serif", outline: 'none', cursor: 'pointer' }}>
+          <select
+            value={s}
+            onChange={(e) => handleStatusChange(r.id, e.target.value)}
+            className="appt-status-select"
+            style={{ borderColor: `${meta.color}55`, background: meta.bg, color: meta.color }}
+          >
             {APPT_STATUSES.filter((st) => st !== 'completed').map((st) => <option key={st} value={st}>{STATUS_META[st].label}</option>)}
           </select>
         );
@@ -655,48 +686,71 @@ export default function AppointmentsPage() {
       </div>
 
       {/* Filter Bar */}
-      <div style={{ background:isDark?'#111827':'#fff', borderRadius:14, border:`1px solid ${isDark?'#334155':'#EAECF0'}`, padding:'14px 16px', display:'flex', gap:10, flexWrap:'wrap', alignItems:'center', boxShadow:isDark?'0 8px 20px rgba(2,6,23,0.35)':'0 1px 4px rgba(16,24,40,0.04)' }}>
-        <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
-          {[{val:'',label:'All'},...APPT_STATUSES.map(s=>({val:s,label:STATUS_META[s].label}))].map(({val,label}) => {
-            const active=filterStatus===val, meta=val?STATUS_META[val]:null, cnt=val?counts[val]:appts.length;
+      <div className="appt-filters-bar">
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {[{ val: '', label: 'All' }, ...APPT_STATUSES.map((s) => ({ val: s, label: STATUS_META[s].label }))].map(({ val, label }) => {
+            const active = filterStatus === val;
+            const meta = val ? STATUS_META[val] : null;
+            const cnt = val ? counts[val] : total;
             return (
-              <button key={val} onClick={()=>{setFilterStatus(val);setPage(1);}} style={{ padding:'6px 14px', borderRadius:20, border:'1.5px solid', borderColor:active?(meta?.color??'#2563EB'):(isDark?'#334155':'#E4E7EC'), background:active?(meta?.bg??'#EFF6FF'):(isDark?'#0F172A':'#fff'), color:active?(meta?.color??'#2563EB'):(isDark?'#CBD5E1':'#667085'), fontWeight:active?700:500, fontSize:12, cursor:'pointer', fontFamily:"'Inter',sans-serif", whiteSpace:'nowrap' }}>
-                {label}{cnt>0?<span style={{ marginLeft:5, opacity:0.7 }}>({cnt})</span>:''}
+              <button
+                key={val}
+                type="button"
+                className={`appt-status-chip${active ? ' appt-status-chip--active' : ''}`}
+                onClick={() => { setFilterStatus(val); setPage(1); }}
+                style={active ? {
+                  borderColor: meta?.color ?? '#2563EB',
+                  background: meta?.bg ?? '#EFF6FF',
+                  color: meta?.color ?? '#2563EB',
+                } : undefined}
+              >
+                {label}
+                {cnt > 0 && <span style={{ marginLeft: 5, opacity: 0.75 }}>({cnt})</span>}
               </button>
             );
           })}
         </div>
-        <div style={{ display:'flex', alignItems:'center', gap:6, marginLeft:'auto' }}>
-          <span style={{ color:isDark?'#94A3B8':'#98A2B3', display:'flex' }}><IconCalendar /></span>
-          <input type="date" value={filterDate} onChange={e=>{setFilterDate(e.target.value);setPage(1);}}
-            style={{ padding:'7px 10px', borderRadius:9, border:`1.5px solid ${isDark?'#334155':'#E4E7EC'}`, fontSize:13, fontFamily:"'Inter',sans-serif", outline:'none', color:isDark?'#E2E8F0':'#344054', background:isDark?'#0F172A':'#fff' }}
-            onFocus={e=>e.target.style.borderColor='#2563EB'} onBlur={e=>e.target.style.borderColor=isDark?'#334155':'#E4E7EC'} />
-          {filterDate && <button onClick={()=>setFilterDate('')} style={{ background:'none', border:'none', cursor:'pointer', color:isDark?'#94A3B8':'#98A2B3', display:'flex', padding:2 }}><IconClose /></button>}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto' }}>
+          <span style={{ color: isDark ? '#94A3B8' : '#98A2B3', display: 'flex' }}><IconCalendar /></span>
+          <input
+            type="date"
+            className="appt-filter-date"
+            value={filterDate}
+            onChange={(e) => { setFilterDate(e.target.value); setPage(1); }}
+          />
+          {filterDate && (
+            <button type="button" onClick={() => setFilterDate('')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: isDark ? '#94A3B8' : '#98A2B3', display: 'flex', padding: 2 }}>
+              <IconClose />
+            </button>
+          )}
         </div>
         {isSuperAdmin && (
-          <select value={filterBranch} onChange={e=>{setFilterBranch(e.target.value);setPage(1);}}
-            style={{ padding:'7px 12px', borderRadius:9, border:`1.5px solid ${isDark?'#334155':'#E4E7EC'}`, fontSize:13, fontFamily:"'Inter',sans-serif", outline:'none', color:isDark?'#E2E8F0':'#344054', background:isDark?'#0F172A':'#fff' }}>
+          <select className="appt-filter-branch" value={filterBranch} onChange={(e) => { setFilterBranch(e.target.value); setPage(1); }}>
             <option value="">All Branches</option>
-            {branches.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}
+            {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
           </select>
         )}
       </div>
 
-      <ClientSideTable
-        columns={apptColumns}
-        data={appts}
-        loading={loading}
-        pageSize={LIMIT}
-        pageCount={totalPages}
-        isQueryPagination
-        paginationData={paginationData}
-        searchableColumns={[
-          { id: 'customer_name', title: 'Customer' },
-          { id: 'services', title: 'Service' },
-          { id: 'staff', title: 'Staff' },
-        ]}
-        isShowExportButtons={{ isShow: true, fileName: 'appointments' }}
-      />
+      <div className="appointments-table-shell">
+        <ClientSideTable
+          className="appointments-tablecraft"
+          config={APPT_TABLE_CONFIG}
+          columns={apptColumns}
+          data={appts}
+          loading={loading}
+          pageSize={LIMIT}
+          pageCount={totalPages}
+          isQueryPagination
+          paginationData={paginationData}
+          searchableColumns={[
+            { id: 'customer_name', title: 'Customer' },
+            { id: 'services', title: 'Service' },
+            { id: 'staff', title: 'Staff' },
+          ]}
+          isShowExportButtons={{ isShow: true, fileName: 'appointments' }}
+        />
+      </div>
 
       {/* New / Edit Modal */}
       <Modal open={showForm} onClose={()=>setShowForm(false)} title={editItem?'Edit Appointment':'New Appointment'} size="lg" dark={isDark}

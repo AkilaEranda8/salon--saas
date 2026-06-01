@@ -19,10 +19,12 @@ export function ClientSideTable({
   pageCount,
   data = [],
   pageSize = 10,
+  className = '',
   ...props
 }) {
+  const rootClass = ['tablecraft-root', className].filter(Boolean).join(' ');
   return (
-    <div className="tablecraft-root">
+    <div className={rootClass}>
       <RtcClientSideTable
         {...mapLoadingProps({ loading, isLoading, ...props })}
         data={data}

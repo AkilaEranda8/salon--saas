@@ -5,6 +5,7 @@ import {
 } from 'recharts';
 import api from '../../api/axios';
 import { useTheme } from '../../context/ThemeContext';
+import { DataTable, CRAFT_TABLE_COMPACT } from '../../components/ui/PageKit';
 
 /* ─── Colours ────────────────────────────────────────────────────── */
 const PLAN_COLORS = {
@@ -222,6 +223,70 @@ export default function PlatformDashboardPage() {
   const recentTenants = stats?.recentTenants || [];
   const mrr = stats?.estimatedMrr ? `$${stats.estimatedMrr.toLocaleString()}` : '$0';
 
+  const recentTenantColumns = useMemo(() => [
+    {
+      id: 'name',
+      header: 'Salon Name',
+      accessorFn: row => `${row.name || ''} ${row.slug || ''}`.trim(),
+      meta: { width: '28%' },
+      cell: ({ row: { original: t } }) => (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{
+            width: 30, height: 30, borderRadius: 8, flexShrink: 0,
+            background: `${PLAN_COLORS[t.plan] ?? '#6B7280'}22`,
+            color: PLAN_COLORS[t.plan] ?? '#6B7280',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontWeight: 800, fontSize: 13,
+          }}>
+            {t.name?.[0]?.toUpperCase() || '?'}
+          </div>
+          <span style={{ fontWeight: 700, color: isDark ? '#F1F5F9' : '#111827' }}>{t.name}</span>
+        </div>
+      ),
+    },
+    {
+      id: 'slug',
+      header: 'Slug',
+      accessorKey: 'slug',
+      meta: { width: '18%' },
+      cell: ({ row: { original: t } }) => (
+        <span style={{ color: isDark ? '#64748B' : '#9CA3AF', fontFamily: 'monospace', fontSize: 12 }}>{t.slug}</span>
+      ),
+    },
+    {
+      id: 'plan',
+      header: 'Plan',
+      accessorKey: 'plan',
+      meta: { width: '14%' },
+      cell: ({ row: { original: t } }) => (
+        <span style={{
+          background: `${PLAN_COLORS[t.plan] ?? '#6B7280'}1A`,
+          color: PLAN_COLORS[t.plan] ?? '#6B7280',
+          borderRadius: 6, padding: '3px 9px',
+          fontSize: 11, fontWeight: 700, textTransform: 'capitalize',
+        }}>{t.plan}</span>
+      ),
+    },
+    {
+      id: 'status',
+      header: 'Status',
+      accessorKey: 'status',
+      meta: { width: '16%' },
+      cell: ({ row: { original: t } }) => <StatusPill status={t.status} />,
+    },
+    {
+      id: 'createdAt',
+      header: 'Registered',
+      accessorKey: 'createdAt',
+      meta: { width: '18%' },
+      cell: ({ row: { original: t } }) => (
+        <span style={{ color: isDark ? '#64748B' : '#9CA3AF', fontSize: 12, whiteSpace: 'nowrap' }}>
+          {t.createdAt ? new Date(t.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : '—'}
+        </span>
+      ),
+    },
+  ], [isDark]);
+
   const now = new Date();
   const hour = now.getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
@@ -229,8 +294,6 @@ export default function PlatformDashboardPage() {
   const pageBg = isDark
     ? 'linear-gradient(160deg, #0D1B2A 0%, #0F172A 100%)'
     : 'linear-gradient(160deg, #F0F4FF 0%, #F8FAFC 100%)';
-
-  const skeletonColor = isDark ? '#334155' : '#E5E7EB';
 
   return (
     <div style={{ padding: 'clamp(16px, 2.5vw, 32px)', minHeight: '100%', background: pageBg, boxSizing: 'border-box', fontFamily: "'DM Sans', sans-serif" }}>
@@ -467,77 +530,27 @@ export default function PlatformDashboardPage() {
         dark={isDark}
         noPad
       >
-        {loading ? (
-          <div style={{ padding: '20px 22px' }}>
-            {[...Array(4)].map((_, i) => (
-              <div key={i} style={{ height: 14, borderRadius: 6, background: skeletonColor, marginBottom: 12, opacity: 1 - i * 0.15 }} />
-            ))}
-          </div>
-        ) : recentTenants.length > 0 ? (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-              <thead>
-                <tr style={{ background: isDark ? 'rgba(255,255,255,0.03)' : '#F9FAFB' }}>
-                  {['Salon Name', 'Slug', 'Plan', 'Status', 'Registered'].map(h => (
-                    <th key={h} style={{
-                      textAlign: 'left', padding: '10px 22px',
-                      color: isDark ? '#64748B' : '#9CA3AF',
-                      fontWeight: 700, fontSize: 10.5, textTransform: 'uppercase', letterSpacing: 0.7,
-                      whiteSpace: 'nowrap',
-                    }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {recentTenants.map((t, idx) => (
-                  <tr
-                    key={t.id}
-                    style={{
-                      borderTop: `1px solid ${isDark ? '#334155' : '#F1F5F9'}`,
-                      background: idx % 2 === 0 ? 'transparent' : (isDark ? 'rgba(255,255,255,0.015)' : 'rgba(249,250,251,0.6)'),
-                    }}
-                  >
-                    <td style={{ padding: '11px 22px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <div style={{
-                          width: 30, height: 30, borderRadius: 8, flexShrink: 0,
-                          background: `${PLAN_COLORS[t.plan] ?? '#6B7280'}22`,
-                          color: PLAN_COLORS[t.plan] ?? '#6B7280',
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          fontWeight: 800, fontSize: 13,
-                        }}>
-                          {t.name?.[0]?.toUpperCase() || '?'}
-                        </div>
-                        <span style={{ fontWeight: 700, color: isDark ? '#F1F5F9' : '#111827' }}>{t.name}</span>
-                      </div>
-                    </td>
-                    <td style={{ padding: '11px 22px', color: isDark ? '#64748B' : '#9CA3AF', fontFamily: 'monospace', fontSize: 12 }}>
-                      {t.slug}
-                    </td>
-                    <td style={{ padding: '11px 22px' }}>
-                      <span style={{
-                        background: `${PLAN_COLORS[t.plan] ?? '#6B7280'}1A`,
-                        color: PLAN_COLORS[t.plan] ?? '#6B7280',
-                        borderRadius: 6, padding: '3px 9px',
-                        fontSize: 11, fontWeight: 700, textTransform: 'capitalize',
-                      }}>{t.plan}</span>
-                    </td>
-                    <td style={{ padding: '11px 22px' }}>
-                      <StatusPill status={t.status} />
-                    </td>
-                    <td style={{ padding: '11px 22px', color: isDark ? '#64748B' : '#9CA3AF', fontSize: 12, whiteSpace: 'nowrap' }}>
-                      {t.createdAt ? new Date(t.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : '—'}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <div style={{ padding: '28px 22px', textAlign: 'center', color: isDark ? '#475569' : '#D1D5DB', fontSize: 13 }}>
-            No tenants registered yet.
-          </div>
-        )}
+        <DataTable
+          {...CRAFT_TABLE_COMPACT}
+          columns={recentTenantColumns}
+          data={recentTenants}
+          loading={loading}
+          emptyMessage="No tenants registered yet"
+          emptySub="New sign-ups will appear here"
+          searchableColumns={[{ id: 'name', title: 'Salon', placeholder: 'Filter salon…' }]}
+          filterableColumns={[
+            {
+              id: 'plan',
+              title: 'Plan',
+              options: Object.keys(PLAN_COLORS).map(p => ({ label: p.charAt(0).toUpperCase() + p.slice(1), value: p })),
+            },
+            {
+              id: 'status',
+              title: 'Status',
+              options: Object.keys(STATUS_LABELS).map(s => ({ label: STATUS_LABELS[s], value: s })),
+            },
+          ]}
+        />
       </Card>
     </div>
   );

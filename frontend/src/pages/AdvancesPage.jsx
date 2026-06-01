@@ -185,6 +185,7 @@ export default function AdvancesPage() {
       </FilterBar>
 
       <DataTable columns={columns} data={items} loading={loading}
+        searchableColumns={[{ id: 'staff', title: 'Staff' }]}
         emptyMessage="No advances for this period"
         emptySub="Add an advance using the button above"
         footerRows={items.length > 0 ? (

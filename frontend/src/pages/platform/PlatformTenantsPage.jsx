@@ -1,6 +1,7 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import api from '../../api/axios';
 import { useTheme } from '../../context/ThemeContext';
+import { DataTable } from '../../components/ui/PageKit';
 
 const PLAN_COLORS = {
   trial:      { bg: '#FEF3C7', text: '#92400E', border: '#F59E0B' },
@@ -103,10 +104,6 @@ export default function PlatformTenantsPage() {
   const [tenants, setTenants]     = useState([]);
   const [total, setTotal]         = useState(0);
   const [loading, setLoading]     = useState(true);
-  const [search, setSearch]       = useState('');
-  const [filterPlan, setFilterPlan]     = useState('');
-  const [filterStatus, setFilterStatus] = useState('');
-  const [page, setPage]           = useState(1);
   const [editTenant, setEditTenant] = useState(null); // { id, name, plan, status }
   const [createOpen, setCreateOpen] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -130,8 +127,6 @@ export default function PlatformTenantsPage() {
   const [detailStats, setDetailStats] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
 
-  const PER_PAGE = 20;
-
   const normalizeTenantsPayload = (payload) => {
     if (Array.isArray(payload)) {
       return { rows: payload, total: payload.length };
@@ -147,14 +142,7 @@ export default function PlatformTenantsPage() {
 
   const fetchTenants = useCallback(() => {
     setLoading(true);
-    const params = new URLSearchParams();
-    if (search)       params.set('search', search);
-    if (filterPlan)   params.set('plan', filterPlan);
-    if (filterStatus) params.set('status', filterStatus);
-    params.set('page', page);
-    params.set('limit', PER_PAGE);
-
-    api.get(`/platform/tenants?${params}`)
+    api.get('/platform/tenants?limit=1000')
       .then(r => {
         const { rows, total: totalCount } = normalizeTenantsPayload(r.data);
         setTenants(rows);
@@ -162,7 +150,7 @@ export default function PlatformTenantsPage() {
       })
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, [search, filterPlan, filterStatus, page]);
+  }, []);
 
   useEffect(() => { fetchTenants(); }, [fetchTenants]);
 
@@ -289,8 +277,6 @@ export default function PlatformTenantsPage() {
     }
   };
 
-  const totalPages = Math.ceil(total / PER_PAGE);
-
   const AVATAR_PALETTE = ['#6366F1','#8B5CF6','#EC4899','#F59E0B','#10B981','#3B82F6','#EF4444','#14B8A6','#F97316','#06B6D4'];
   const getAvatar = (name = '') => ({
     bg:      AVATAR_PALETTE[(name.charCodeAt(0) ?? 0) % AVATAR_PALETTE.length],
@@ -315,6 +301,150 @@ export default function PlatformTenantsPage() {
       }}>{children}</button>
     );
   };
+
+  const columns = useMemo(() => [
+    {
+      id: 'name',
+      header: 'Salon',
+      accessorFn: row => `${row.name || ''} ${row.email || ''} ${row.slug || ''}`.trim(),
+      meta: { width: '22%' },
+      cell: ({ row: { original: t } }) => {
+        const av = getAvatar(t.name);
+        return (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{
+              width: 36, height: 36, borderRadius: 10, background: av.bg,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              color: '#fff', fontSize: 13, fontWeight: 700, flexShrink: 0,
+              boxShadow: `0 2px 8px ${av.bg}55`,
+            }}>{av.initials}</div>
+            <div>
+              <div style={{ fontWeight: 700, color: isDark ? '#F1F5F9' : '#111827' }}>{t.name}</div>
+              <div style={{ fontSize: 11, color: isDark ? '#475569' : '#9CA3AF', marginTop: 1 }}>{t.email || '—'}</div>
+            </div>
+          </div>
+        );
+      },
+    },
+    {
+      id: 'slug',
+      header: 'Subdomain',
+      accessorKey: 'slug',
+      meta: { width: '14%' },
+      cell: ({ row: { original: t } }) => (
+        <a href={`https://${t.slug}.salon.hexalyte.com`} target="_blank" rel="noopener noreferrer"
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: 4,
+            padding: '3px 10px', borderRadius: 6,
+            background: isDark ? 'rgba(129,140,248,0.12)' : '#EEF2FF',
+            color: isDark ? '#818CF8' : '#4338CA',
+            fontFamily: 'monospace', fontSize: 12, fontWeight: 600,
+            textDecoration: 'none',
+            border: `1px solid ${isDark ? 'rgba(129,140,248,0.25)' : '#E0E7FF'}`,
+          }}>
+          {t.slug}<span style={{ fontSize: 9, opacity: 0.6 }}>↗</span>
+        </a>
+      ),
+    },
+    {
+      id: 'plan',
+      header: 'Plan',
+      accessorKey: 'plan',
+      meta: { width: '12%' },
+      cell: ({ row: { original: t } }) => {
+        const pc = PLAN_COLORS[t.plan] ?? PLAN_COLORS.trial;
+        const trialEnds = t.trial_ends_at ? new Date(t.trial_ends_at) : null;
+        const trialExpired = trialEnds && trialEnds < new Date();
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+            <Badge colors={pc}>{t.plan}</Badge>
+            {t.plan === 'trial' && trialEnds && (
+              <span style={{ fontSize: 10, color: trialExpired ? '#EF4444' : '#9CA3AF', fontWeight: 500 }}>
+                {trialExpired ? 'Expired' : `ends ${trialEnds.toLocaleDateString()}`}
+              </span>
+            )}
+          </div>
+        );
+      },
+    },
+    {
+      id: 'status',
+      header: 'Status',
+      accessorKey: 'status',
+      meta: { width: '11%' },
+      cell: ({ row: { original: t } }) => {
+        const sc = STATUS_COLORS[t.status] ?? STATUS_COLORS.cancelled;
+        return (
+          <div style={{
+            display: 'inline-flex', alignItems: 'center', gap: 5,
+            padding: '4px 10px', borderRadius: 20,
+            background: sc.bg, border: `1px solid ${sc.dot}44`,
+          }}>
+            <span style={{ width: 6, height: 6, borderRadius: '50%', background: sc.dot, display: 'block', flexShrink: 0, boxShadow: `0 0 4px ${sc.dot}` }} />
+            <span style={{ fontSize: 11, color: sc.text, fontWeight: 700, textTransform: 'capitalize' }}>{t.status}</span>
+          </div>
+        );
+      },
+    },
+    {
+      id: 'payment_gateway',
+      header: 'Gateway',
+      accessorKey: 'payment_gateway',
+      meta: { width: '10%' },
+      cell: ({ row: { original: t } }) => (
+        <span style={{
+          display: 'inline-block',
+          padding: '3px 10px', borderRadius: 6, fontSize: 11, fontWeight: 600,
+          background: t.payment_gateway && t.payment_gateway !== 'none'
+            ? (isDark ? 'rgba(129,140,248,0.12)' : '#EEF2FF')
+            : (isDark ? 'rgba(255,255,255,0.04)' : '#F3F4F6'),
+          color: t.payment_gateway && t.payment_gateway !== 'none'
+            ? (isDark ? '#818CF8' : '#4338CA')
+            : (isDark ? '#475569' : '#9CA3AF'),
+          textTransform: 'capitalize',
+        }}>
+          {t.payment_gateway && t.payment_gateway !== 'none' ? t.payment_gateway : '—'}
+        </span>
+      ),
+    },
+    {
+      id: 'createdAt',
+      header: 'Joined',
+      accessorKey: 'createdAt',
+      meta: { width: '11%' },
+      cell: ({ row: { original: t } }) => (
+        <span style={{ color: isDark ? '#475569' : '#9CA3AF', fontSize: 12, whiteSpace: 'nowrap' }}>
+          {t.createdAt ? new Date(t.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
+        </span>
+      ),
+    },
+    {
+      id: 'actions',
+      header: 'Actions',
+      enableSorting: false,
+      meta: { width: '20%', align: 'center' },
+      cell: ({ row: { original: t } }) => (
+        <div style={{ display: 'flex', gap: 4, alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap' }}>
+          <IBtn onClick={() => openDetail(t)} title="View details"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></IBtn>
+          <IBtn
+            onClick={() => handleImpersonate(t)}
+            disabled={impersonating === t.id || t.status !== 'active'}
+            title={t.status !== 'active' ? 'Tenant must be active' : 'Login as tenant'}
+            bg="#F5F3FF" border="#DDD6FE">
+            {impersonating === t.id ? <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> : <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>}
+          </IBtn>
+          {t.status === 'active' && (
+            <IBtn onClick={() => handleQuickStatus(t, 'suspend')} title="Suspend" bg="#FFF5F5" border="#FEE2E2"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg></IBtn>
+          )}
+          {t.status === 'suspended' && (
+            <IBtn onClick={() => handleQuickStatus(t, 'activate')} title="Activate" bg="#F0FDF4" border="#D1FAE5"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="5 3 19 12 5 21 5 3"/></svg></IBtn>
+          )}
+          <IBtn onClick={() => setEditTenant({ ...t })} title="Edit plan / status"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></IBtn>
+          <IBtn onClick={() => handleDelete(t)} title="Delete tenant" border="#FEE2E2"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg></IBtn>
+        </div>
+      ),
+    },
+  ], [isDark, impersonating]);
 
   const pageBg = isDark
     ? 'linear-gradient(160deg, #0D1B2A 0%, #0F172A 100%)'
@@ -386,232 +516,34 @@ export default function PlatformTenantsPage() {
         })}
       </div>
 
-      {/* ── Toolbar ─────────────────────────────────────────────────────── */}
-      <div style={{
-        background: isDark ? '#1E293B' : '#fff',
-        border: `1px solid ${isDark ? '#334155' : '#E8ECEF'}`,
-        borderRadius: 14, padding: '10px 14px',
-        boxShadow: isDark ? '0 4px 14px rgba(0,0,0,0.2)' : '0 2px 8px rgba(15,23,42,0.06)',
-        marginBottom: 14, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap',
-      }}>
-        <div style={{ position: 'relative', flex: '1 1 200px', maxWidth: 270 }}>
-          <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', lineHeight: 0, pointerEvents: 'none' }}>
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={isDark ? '#475569' : '#9CA3AF'} strokeWidth="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          </span>
-          <input
-            placeholder="Search salons or slugs…"
-            value={search}
-            onChange={e => { setSearch(e.target.value); setPage(1); }}
-            style={{
-              width: '100%', padding: '8px 10px 8px 32px',
-              border: `1.5px solid ${isDark ? '#334155' : '#E5E7EB'}`, borderRadius: 9,
-              fontSize: 13, outline: 'none',
-              background: isDark ? '#0F172A' : '#F9FAFB',
-              color: isDark ? '#E2E8F0' : '#111827',
-              boxSizing: 'border-box',
-            }}
-          />
-        </div>
-
-        <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', alignItems: 'center' }}>
-          {['', ...PLANS].map(p => {
-            const active = filterPlan === p;
-            const label = p === '' ? 'All Plans' : p.charAt(0).toUpperCase() + p.slice(1);
-            return (
-              <button key={p} onClick={() => { setFilterPlan(p); setPage(1); }}
-                style={{
-                  padding: '5px 12px', borderRadius: 20, fontSize: 12, fontWeight: 600,
-                  cursor: 'pointer',
-                  border: `1.5px solid ${active ? '#4F46E5' : (isDark ? '#334155' : '#E5E7EB')}`,
-                  background: active ? '#4F46E5' : 'transparent',
-                  color: active ? '#fff' : (isDark ? '#94A3B8' : '#6B7280'),
-                  transition: 'all 0.12s',
-                }}>{label}</button>
-            );
-          })}
-        </div>
-
-        <select value={filterStatus} onChange={e => { setFilterStatus(e.target.value); setPage(1); }}
-          style={{
-            padding: '7px 10px', border: `1.5px solid ${isDark ? '#334155' : '#E5E7EB'}`, borderRadius: 9,
-            fontSize: 12, outline: 'none', background: isDark ? '#0F172A' : '#fff', color: isDark ? '#E2E8F0' : '#374151', cursor: 'pointer',
-          }}>
-          <option value="">All Statuses</option>
-          <option value="active">Active</option>
-          <option value="suspended">Suspended</option>
-          <option value="cancelled">Cancelled</option>
-        </select>
-
-        <div style={{ marginLeft: 'auto', fontSize: 12, color: isDark ? '#475569' : '#9CA3AF', fontWeight: 600, whiteSpace: 'nowrap' }}>
-          {loading ? '…' : `${total} results`}
-        </div>
-      </div>
-
-      {/* ── Table ───────────────────────────────────────────────────────── */}
-      <div style={{ background: isDark ? '#1E293B' : '#fff', border: `1px solid ${isDark ? '#334155' : '#E8ECEF'}`, borderRadius: 18, boxShadow: isDark ? '0 8px 24px rgba(0,0,0,0.25)' : '0 4px 18px rgba(15,23,42,0.07)', overflow: 'hidden' }}>
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-            <thead>
-              <tr style={{ background: isDark ? 'rgba(255,255,255,0.03)' : '#F8F9FC', borderBottom: `1px solid ${isDark ? '#334155' : '#EEF2FF'}` }}>
-                {['Salon', 'Subdomain', 'Plan', 'Status', 'Gateway', 'Joined', 'Actions'].map(h => (
-                  <th key={h} style={{
-                    textAlign: 'left', padding: '12px 16px',
-                    color: isDark ? '#475569' : '#9CA3AF', fontWeight: 700, fontSize: 10.5,
-                    textTransform: 'uppercase', letterSpacing: 0.8,
-                    whiteSpace: 'nowrap',
-                  }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr>
-                  <td colSpan={7} style={{ padding: 52, textAlign: 'center', color: isDark ? '#475569' : '#9CA3AF' }}>
-                    <div style={{ fontWeight: 600 }}>Loading tenants…</div>
-                  </td>
-                </tr>
-              ) : tenants.length === 0 ? (
-                <tr>
-                  <td colSpan={7} style={{ padding: 52, textAlign: 'center' }}>
-                    <div style={{ fontSize: 15, fontWeight: 700, color: isDark ? '#E2E8F0' : '#374151' }}>No tenants</div>
-                    <div style={{ fontSize: 12, color: isDark ? '#475569' : '#9CA3AF', marginTop: 4 }}>
-                      {search || filterPlan || filterStatus ? 'Try adjusting your filters' : 'Create the first tenant to get started'}
-                    </div>
-                  </td>
-                </tr>
-              ) : tenants.map((t) => {
-                const pc   = PLAN_COLORS[t.plan]    ?? PLAN_COLORS.trial;
-                const sc   = STATUS_COLORS[t.status] ?? STATUS_COLORS.cancelled;
-                const trialEnds    = t.trial_ends_at ? new Date(t.trial_ends_at) : null;
-                const trialExpired = trialEnds && trialEnds < new Date();
-                const av   = getAvatar(t.name);
-                return (
-                  <tr key={t.id} style={{ borderBottom: `1px solid ${isDark ? '#334155' : '#F3F4F6'}` }}
-                    onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.03)' : '#FAFAFF'}
-                    onMouseLeave={e => e.currentTarget.style.background = ''}>
-
-                    {/* Salon — avatar + name + email */}
-                    <td style={{ padding: '11px 16px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <div style={{
-                          width: 36, height: 36, borderRadius: 10, background: av.bg,
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          color: '#fff', fontSize: 13, fontWeight: 700, flexShrink: 0,
-                          boxShadow: `0 2px 8px ${av.bg}55`,
-                        }}>{av.initials}</div>
-                        <div>
-                          <div style={{ fontWeight: 700, color: isDark ? '#F1F5F9' : '#111827' }}>{t.name}</div>
-                          <div style={{ fontSize: 11, color: isDark ? '#475569' : '#9CA3AF', marginTop: 1 }}>{t.email || '—'}</div>
-                        </div>
-                      </div>
-                    </td>
-
-                    {/* Subdomain slug pill */}
-                    <td style={{ padding: '11px 16px' }}>
-                      <a href={`https://${t.slug}.salon.hexalyte.com`} target="_blank" rel="noopener noreferrer"
-                        style={{
-                          display: 'inline-flex', alignItems: 'center', gap: 4,
-                          padding: '3px 10px', borderRadius: 6,
-                          background: isDark ? 'rgba(129,140,248,0.12)' : '#EEF2FF',
-                          color: isDark ? '#818CF8' : '#4338CA',
-                          fontFamily: 'monospace', fontSize: 12, fontWeight: 600,
-                          textDecoration: 'none',
-                          border: `1px solid ${isDark ? 'rgba(129,140,248,0.25)' : '#E0E7FF'}`,
-                        }}>
-                        {t.slug}<span style={{ fontSize: 9, opacity: 0.6 }}>↗</span>
-                      </a>
-                    </td>
-
-                    {/* Plan + trial expiry */}
-                    <td style={{ padding: '11px 16px' }}>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                        <Badge colors={pc}>{t.plan}</Badge>
-                        {t.plan === 'trial' && trialEnds && (
-                          <span style={{ fontSize: 10, color: trialExpired ? '#EF4444' : '#9CA3AF', fontWeight: 500 }}>
-                            {trialExpired ? 'Expired' : `ends ${trialEnds.toLocaleDateString()}`}
-                          </span>
-                        )}
-                      </div>
-                    </td>
-
-                    {/* Status pill */}
-                    <td style={{ padding: '11px 16px' }}>
-                      <div style={{
-                        display: 'inline-flex', alignItems: 'center', gap: 5,
-                        padding: '4px 10px', borderRadius: 20,
-                        background: sc.bg, border: `1px solid ${sc.dot}44`,
-                      }}>
-                        <span style={{ width: 6, height: 6, borderRadius: '50%', background: sc.dot, display: 'block', flexShrink: 0, boxShadow: `0 0 4px ${sc.dot}` }} />
-                        <span style={{ fontSize: 11, color: sc.text, fontWeight: 700, textTransform: 'capitalize' }}>{t.status}</span>
-                      </div>
-                    </td>
-
-                    {/* Payment Gateway */}
-                    <td style={{ padding: '11px 16px' }}>
-                      <span style={{
-                        display: 'inline-block',
-                        padding: '3px 10px', borderRadius: 6, fontSize: 11, fontWeight: 600,
-                        background: t.payment_gateway && t.payment_gateway !== 'none'
-                          ? (isDark ? 'rgba(129,140,248,0.12)' : '#EEF2FF')
-                          : (isDark ? 'rgba(255,255,255,0.04)' : '#F3F4F6'),
-                        color: t.payment_gateway && t.payment_gateway !== 'none'
-                          ? (isDark ? '#818CF8' : '#4338CA')
-                          : (isDark ? '#475569' : '#9CA3AF'),
-                        textTransform: 'capitalize',
-                      }}>
-                        {t.payment_gateway && t.payment_gateway !== 'none' ? t.payment_gateway : '—'}
-                      </span>
-                    </td>
-
-                    {/* Joined */}
-                    <td style={{ padding: '11px 16px', color: isDark ? '#475569' : '#9CA3AF', fontSize: 12, whiteSpace: 'nowrap' }}>
-                      {t.createdAt ? new Date(t.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
-                    </td>
-
-                    {/* Actions — compact icon buttons */}
-                    <td style={{ padding: '11px 16px' }}>
-                      <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-                        <IBtn onClick={() => openDetail(t)} title="View details"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></IBtn>
-                        <IBtn
-                          onClick={() => handleImpersonate(t)}
-                          disabled={impersonating === t.id || t.status !== 'active'}
-                          title={t.status !== 'active' ? 'Tenant must be active' : 'Login as tenant'}
-                          bg="#F5F3FF" border="#DDD6FE">
-                          {impersonating === t.id ? <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> : <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>}
-                        </IBtn>
-                        {t.status === 'active' && (
-                          <IBtn onClick={() => handleQuickStatus(t, 'suspend')} title="Suspend" bg="#FFF5F5" border="#FEE2E2"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg></IBtn>
-                        )}
-                        {t.status === 'suspended' && (
-                          <IBtn onClick={() => handleQuickStatus(t, 'activate')} title="Activate" bg="#F0FDF4" border="#D1FAE5"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="5 3 19 12 5 21 5 3"/></svg></IBtn>
-                        )}
-                        <IBtn onClick={() => setEditTenant({ ...t })} title="Edit plan / status"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></IBtn>
-                        <IBtn onClick={() => handleDelete(t)} title="Delete tenant" border="#FEE2E2"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg></IBtn>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* ── Pagination ──────────────────────────────────────────────────── */}
-      {totalPages > 1 && (
-        <div style={{ display: 'flex', justifyContent: 'center', gap: 6, marginTop: 18 }}>
-          {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
-            <button key={p} onClick={() => setPage(p)} style={{
-              width: 34, height: 34, borderRadius: 9,
-              border: `1.5px solid ${p === page ? '#4338CA' : '#E5E7EB'}`,
-              background: p === page ? '#4338CA' : '#fff',
-              color: p === page ? '#fff' : '#374151',
-              cursor: 'pointer', fontSize: 13, fontWeight: p === page ? 700 : 400,
-              boxShadow: p === page ? '0 2px 8px rgba(67,56,202,0.3)' : 'none',
-            }}>{p}</button>
-          ))}
-        </div>
-      )}
+      <DataTable
+        columns={columns}
+        data={tenants}
+        loading={loading}
+        emptyMessage="No tenants"
+        emptySub="Try adjusting your filters or create the first tenant"
+        pagination
+        pageSize={20}
+        showRowNumbers
+        enableColumnVisibility
+        searchableColumns={[{ id: 'name', title: 'Salon', placeholder: 'Search salons or slugs…' }]}
+        filterableColumns={[
+          {
+            id: 'plan',
+            title: 'Plan',
+            options: PLANS.map(p => ({ label: p.charAt(0).toUpperCase() + p.slice(1), value: p })),
+          },
+          {
+            id: 'status',
+            title: 'Status',
+            options: [
+              { label: 'Active', value: 'active' },
+              { label: 'Suspended', value: 'suspended' },
+              { label: 'Cancelled', value: 'cancelled' },
+            ],
+          },
+        ]}
+      />
 
       {/* ── Tenant detail side drawer ──────────────────────────────── */}
       {detailTenant && (() => {

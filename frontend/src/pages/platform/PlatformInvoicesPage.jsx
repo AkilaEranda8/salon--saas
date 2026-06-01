@@ -1,7 +1,8 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
 import { getUploadUrl } from '../../utils/tenant';
+import { DataTable } from '../../components/ui/PageKit';
 
 const STATUS_COLORS = {
   draft:    { bg: '#F3F4F6', text: '#374151', dot: '#9CA3AF' },
@@ -52,7 +53,6 @@ export default function PlatformInvoicesPage() {
   const [page, setPage] = useState(1);
   const [filterStatus, setFilterStatus] = useState('');
   const [filterPayment, setFilterPayment] = useState(''); // 'paid', 'unpaid', or ''
-  const [search, setSearch] = useState('');
   const [createOpen, setCreateOpen] = useState(false);
   const [createForm, setCreateForm] = useState({
     tenant_id: '',
@@ -234,6 +234,140 @@ export default function PlatformInvoicesPage() {
 
   const totalPages = Math.ceil(total / PER_PAGE);
 
+  const invoiceColumns = useMemo(() => [
+    {
+      accessorKey: 'invoice_number',
+      header: 'Invoice #',
+      meta: { width: '12%' },
+      cell: ({ getValue }) => (
+        <span style={{ fontWeight: 600, color: '#4338CA', fontFamily: 'monospace', fontSize: 12 }}>{getValue()}</span>
+      ),
+    },
+    {
+      id: 'tenant',
+      accessorFn: (inv) => `${inv.tenant?.name || ''} ${inv.tenant?.slug || ''}`.trim(),
+      header: 'Tenant',
+      meta: { width: '18%' },
+      cell: ({ row }) => {
+        const inv = row.original;
+        return (
+          <>
+            <div style={{ fontWeight: 600, color: '#1E1B4B' }}>{inv.tenant?.name || '—'}</div>
+            <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 1 }}>{inv.tenant?.slug || '—'}</div>
+          </>
+        );
+      },
+    },
+    {
+      accessorKey: 'amount',
+      header: 'Amount',
+      meta: { width: '10%' },
+      cell: ({ getValue }) => (
+        <span style={{ fontWeight: 700, color: '#374151', fontSize: 13 }}>${parseFloat(getValue()).toFixed(2)}</span>
+      ),
+    },
+    {
+      id: 'period',
+      accessorFn: (inv) => `${inv.billing_period_start || ''} ${inv.billing_period_end || ''}`,
+      header: 'Period',
+      meta: { width: '14%' },
+      cell: ({ row }) => {
+        const inv = row.original;
+        return (
+          <span style={{ color: '#6B7280', fontSize: 12 }}>
+            {inv.billing_period_start ? new Date(inv.billing_period_start).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '—'}
+            {' - '}
+            {inv.billing_period_end ? new Date(inv.billing_period_end).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '—'}
+          </span>
+        );
+      },
+    },
+    {
+      accessorKey: 'status',
+      header: 'Status',
+      meta: { width: '10%' },
+      cell: ({ getValue }) => {
+        const sc = STATUS_COLORS[getValue()] ?? STATUS_COLORS.draft;
+        return <Badge colors={sc}>{getValue()}</Badge>;
+      },
+    },
+    {
+      accessorKey: 'issued_at',
+      header: 'Issued',
+      meta: { width: '12%' },
+      cell: ({ getValue }) => {
+        const issuedDate = getValue() ? new Date(getValue()) : null;
+        return (
+          <span style={{ color: '#9CA3AF', fontSize: 12, whiteSpace: 'nowrap' }}>
+            {issuedDate ? issuedDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
+          </span>
+        );
+      },
+    },
+    {
+      id: 'actions',
+      header: 'Actions',
+      enableSorting: false,
+      cell: ({ row }) => {
+        const inv = row.original;
+        const bsId = getBankSlipId(inv.notes);
+        const isPending = inv.status === 'issued';
+        return (
+          <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
+            {bsId && (
+              <>
+                {inv.pdf_url && (
+                  <button type="button" onClick={() => openSlip(inv.pdf_url)} title="View uploaded bank slip"
+                    style={{ height: 30, padding: '0 10px', borderRadius: 7, border: '1.5px solid #C7D2FE', background: '#EEF2FF', cursor: 'pointer', fontSize: 11, fontWeight: 600, color: '#4338CA', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                    View Slip
+                  </button>
+                )}
+                {isPending && (
+                  <>
+                    <button type="button" onClick={() => handleApproveSlip(bsId)} disabled={slipActing} title="Approve bank slip"
+                      style={{ height: 30, padding: '0 10px', borderRadius: 7, border: '1.5px solid #6EE7B7', background: '#ECFDF5', cursor: slipActing ? 'not-allowed' : 'pointer', fontSize: 11, fontWeight: 700, color: '#065F46', whiteSpace: 'nowrap', flexShrink: 0, opacity: slipActing ? 0.6 : 1 }}>
+                      Approve
+                    </button>
+                    <button type="button" onClick={() => { setRejectSlip({ bankSlipId: bsId, invoiceId: inv.id }); setRejectReason(''); }} disabled={slipActing} title="Reject bank slip"
+                      style={{ height: 30, padding: '0 10px', borderRadius: 7, border: '1.5px solid #FCA5A5', background: '#FEF2F2', cursor: slipActing ? 'not-allowed' : 'pointer', fontSize: 11, fontWeight: 700, color: '#991B1B', whiteSpace: 'nowrap', flexShrink: 0, opacity: slipActing ? 0.6 : 1 }}>
+                      Reject
+                    </button>
+                  </>
+                )}
+              </>
+            )}
+            <button type="button" onClick={() => handleDownloadPdf(inv.id, inv.invoice_number)} title="Download PDF"
+              style={{ width: 30, height: 30, borderRadius: 7, border: '1.5px solid #DBEAFE', background: '#EFF6FF', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            </button>
+            <button type="button" onClick={() => handleEmailInvoice(inv)} title="Send Email"
+              style={{ width: 30, height: 30, borderRadius: 7, border: '1.5px solid #D1FAE5', background: '#ECFDF5', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 4h16v16H4z"/><path d="M4 7l8 6 8-6"/></svg>
+            </button>
+            <button type="button" onClick={() => {
+              setEditInvoice(inv);
+              setEditForm({
+                status: inv.status,
+                paid_at: inv.paid_at ? new Date(inv.paid_at).toISOString().split('T')[0] : '',
+                additional_charges: inv.additional_charges,
+                discount: inv.discount,
+                notes: inv.notes,
+              });
+              setEditError('');
+            }} title="Edit invoice"
+              style={{ width: 30, height: 30, borderRadius: 7, border: '1.5px solid #E5E7EB', background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+            </button>
+            <button type="button" onClick={() => handleDelete(inv.id)} title="Delete invoice"
+              style={{ width: 30, height: 30, borderRadius: 7, border: '1.5px solid #FEE2E2', background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+            </button>
+          </div>
+        );
+      },
+    },
+  ], [slipActing]);
+
   return (
     <div style={{ padding: '24px 28px', background: 'var(--app-bg)', minHeight: '100%' }}>
 
@@ -285,23 +419,6 @@ export default function PlatformInvoicesPage() {
         boxShadow: '0 1px 3px rgba(0,0,0,0.06)', marginBottom: 14,
         display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap',
       }}>
-        <div style={{ position: 'relative', flex: '1 1 200px', maxWidth: 260 }}>
-          <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', lineHeight: 0, pointerEvents: 'none' }}>
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#9CA3AF" strokeWidth="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          </span>
-          <input
-            placeholder="Search invoices…"
-            value={search}
-            onChange={e => { setSearch(e.target.value); setPage(1); }}
-            style={{
-              width: '100%', padding: '7px 10px 7px 30px',
-              border: '1.5px solid #E5E7EB', borderRadius: 8,
-              fontSize: 13, outline: 'none', background: '#FAFAFA', color: '#1E1B4B',
-              boxSizing: 'border-box',
-            }}
-          />
-        </div>
-
         <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', alignItems: 'center' }}>
           {['', 'paid', 'unpaid'].map(p => {
             const active = filterPayment === p;
@@ -335,186 +452,18 @@ export default function PlatformInvoicesPage() {
         </div>
       </div>
 
-      {/* ── Table ───────────────────────────────────────────────────────── */}
-      <div style={{ background: '#fff', borderRadius: 14, boxShadow: '0 1px 4px rgba(0,0,0,0.07)', overflow: 'hidden' }}>
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-            <thead>
-              <tr style={{ background: '#F8F7FF', borderBottom: '2px solid #EEF2FF' }}>
-                {['Invoice #', 'Tenant', 'Amount', 'Period', 'Status', 'Issued', 'Actions'].map(h => (
-                  <th key={h} style={{
-                    textAlign: 'left', padding: '11px 16px',
-                    color: '#7C3AED', fontWeight: 700, fontSize: 10.5,
-                    textTransform: 'uppercase', letterSpacing: 0.8,
-                    whiteSpace: 'nowrap',
-                  }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr>
-                  <td colSpan={7} style={{ padding: 52, textAlign: 'center', color: '#9CA3AF' }}>
-                    <div style={{ fontWeight: 600 }}>Loading invoices…</div>
-                  </td>
-                </tr>
-              ) : invoices.length === 0 ? (
-                <tr>
-                  <td colSpan={7} style={{ padding: 52, textAlign: 'center' }}>
-                    <div style={{ fontSize: 15, fontWeight: 700, color: '#374151' }}>No invoices</div>
-                    <div style={{ fontSize: 12, color: '#9CA3AF', marginTop: 4 }}>
-                      {search || filterStatus ? 'Try adjusting your filters' : 'Create the first invoice to get started'}
-                    </div>
-                  </td>
-                </tr>
-              ) : invoices.map((inv) => {
-                const sc = STATUS_COLORS[inv.status] ?? STATUS_COLORS.draft;
-                const issuedDate = inv.issued_at ? new Date(inv.issued_at) : null;
-                return (
-                  <tr key={inv.id} style={{ borderBottom: '1px solid #F3F4F6' }}
-                    onMouseEnter={e => e.currentTarget.style.background = '#FAFAFF'}
-                    onMouseLeave={e => e.currentTarget.style.background = ''}>
-
-                    {/* Invoice number */}
-                    <td style={{ padding: '11px 16px', fontWeight: 600, color: '#4338CA', fontFamily: 'monospace', fontSize: 12 }}>
-                      {inv.invoice_number}
-                    </td>
-
-                    {/* Tenant name + slug */}
-                    <td style={{ padding: '11px 16px' }}>
-                      <div style={{ fontWeight: 600, color: '#1E1B4B' }}>{inv.tenant?.name || '—'}</div>
-                      <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 1 }}>{inv.tenant?.slug || '—'}</div>
-                    </td>
-
-                    {/* Amount */}
-                    <td style={{ padding: '11px 16px', fontWeight: 700, color: '#374151', fontSize: 13 }}>
-                      ${parseFloat(inv.amount).toFixed(2)}
-                    </td>
-
-                    {/* Period */}
-                    <td style={{ padding: '11px 16px', color: '#6B7280', fontSize: 12 }}>
-                      {inv.billing_period_start ? new Date(inv.billing_period_start).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '—'}
-                      {' - '}
-                      {inv.billing_period_end ? new Date(inv.billing_period_end).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '—'}
-                    </td>
-
-                    {/* Status */}
-                    <td style={{ padding: '11px 16px' }}>
-                      <Badge colors={sc}>{inv.status}</Badge>
-                    </td>
-
-                    {/* Issued date */}
-                    <td style={{ padding: '11px 16px', color: '#9CA3AF', fontSize: 12, whiteSpace: 'nowrap' }}>
-                      {issuedDate ? issuedDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
-                    </td>
-
-                    {/* Actions */}
-                    <td style={{ padding: '11px 16px' }}>
-                      <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
-                        {/* Bank slip actions – shown when invoice has a bank slip reference and is not yet resolved */}
-                        {(() => {
-                          const bsId = getBankSlipId(inv.notes);
-                          const isPending = inv.status === 'issued';
-                          return bsId ? (
-                            <>
-                              {inv.pdf_url && (
-                                <button
-                                  onClick={() => openSlip(inv.pdf_url)}
-                                  title="View uploaded bank slip"
-                                  style={{
-                                    height: 30, padding: '0 10px', borderRadius: 7,
-                                    border: '1.5px solid #C7D2FE', background: '#EEF2FF',
-                                    cursor: 'pointer', fontSize: 11, fontWeight: 600, color: '#4338CA',
-                                    whiteSpace: 'nowrap', flexShrink: 0,
-                                  }}
-                                >View Slip</button>
-                              )}
-                              {isPending && (
-                                <>
-                                  <button
-                                    onClick={() => handleApproveSlip(bsId)}
-                                    disabled={slipActing}
-                                    title="Approve bank slip"
-                                    style={{
-                                      height: 30, padding: '0 10px', borderRadius: 7,
-                                      border: '1.5px solid #6EE7B7', background: '#ECFDF5',
-                                      cursor: slipActing ? 'not-allowed' : 'pointer',
-                                      fontSize: 11, fontWeight: 700, color: '#065F46',
-                                      whiteSpace: 'nowrap', flexShrink: 0, opacity: slipActing ? 0.6 : 1,
-                                    }}
-                                  >Approve</button>
-                                  <button
-                                    onClick={() => { setRejectSlip({ bankSlipId: bsId, invoiceId: inv.id }); setRejectReason(''); }}
-                                    disabled={slipActing}
-                                    title="Reject bank slip"
-                                    style={{
-                                      height: 30, padding: '0 10px', borderRadius: 7,
-                                      border: '1.5px solid #FCA5A5', background: '#FEF2F2',
-                                      cursor: slipActing ? 'not-allowed' : 'pointer',
-                                      fontSize: 11, fontWeight: 700, color: '#991B1B',
-                                      whiteSpace: 'nowrap', flexShrink: 0, opacity: slipActing ? 0.6 : 1,
-                                    }}
-                                  >Reject</button>
-                                </>
-                              )}
-                            </>
-                          ) : null;
-                        })()}
-                        <button onClick={() => handleDownloadPdf(inv.id, inv.invoice_number)} title="Download PDF"
-                          style={{
-                            width: 30, height: 30, borderRadius: 7,
-                            border: '1.5px solid #DBEAFE', background: '#EFF6FF',
-                            cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            fontSize: 14, flexShrink: 0,
-                          }}>
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                        </button>
-                        <button onClick={() => handleEmailInvoice(inv)} title="Send Email"
-                          style={{
-                            width: 30, height: 30, borderRadius: 7,
-                            border: '1.5px solid #D1FAE5', background: '#ECFDF5',
-                            cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            fontSize: 14, flexShrink: 0,
-                          }}>
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 4h16v16H4z"/><path d="M4 7l8 6 8-6"/></svg>
-                        </button>
-                        <button onClick={() => {
-                          setEditInvoice(inv);
-                          setEditForm({
-                            status: inv.status,
-                            paid_at: inv.paid_at ? new Date(inv.paid_at).toISOString().split('T')[0] : '',
-                            additional_charges: inv.additional_charges,
-                            discount: inv.discount,
-                            notes: inv.notes,
-                          });
-                          setEditError('');
-                        }} title="Edit invoice"
-                          style={{
-                            width: 30, height: 30, borderRadius: 7,
-                            border: '1.5px solid #E5E7EB', background: '#fff',
-                            cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            fontSize: 14, opacity: 1, flexShrink: 0, transition: 'opacity 0.15s',
-                          }}>
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                        </button>
-                        <button onClick={() => handleDelete(inv.id)} title="Delete invoice" border="#FEE2E2"
-                          style={{
-                            width: 30, height: 30, borderRadius: 7,
-                            border: '1.5px solid #FEE2E2', background: '#fff',
-                            cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            fontSize: 14, opacity: 1, flexShrink: 0, transition: 'opacity 0.15s',
-                          }}>
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      <DataTable
+        columns={invoiceColumns}
+        data={invoices}
+        loading={loading}
+        emptyMessage="No invoices"
+        emptySub={filterStatus ? 'Try adjusting your filters' : 'Create the first invoice to get started'}
+        pagination={false}
+        searchableColumns={[
+          { id: 'invoice_number', title: 'Invoice #' },
+          { id: 'tenant', title: 'Tenant' },
+        ]}
+      />
 
       {/* ── Pagination ──────────────────────────────────────────────────── */}
       {totalPages > 1 && (

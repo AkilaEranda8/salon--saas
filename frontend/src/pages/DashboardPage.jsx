@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -10,6 +10,7 @@ import PageWrapper       from '../components/layout/PageWrapper';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import { useToast }      from '../components/ui/Toast';
 import { Select }        from '../components/ui/FormElements';
+import { DataTable, TableCraftStatusBadge } from '../components/ui/PageKit';
 
 /*  helpers  */
 const fmt   = n => `Rs. ${Number(n || 0).toLocaleString()}`;
@@ -376,6 +377,36 @@ export default function DashboardPage() {
   const completedPct    = Math.round(((apptStatus.find(x => x.name === 'Completed')?.value || 0) / totalAppts) * 100);
   const netProfit       = (stats?.monthRevenue || 0) - (stats?.monthCommission || 0) - monthExpenses;
 
+  const apptColumns = useMemo(() => [
+    {
+      id: 'customer',
+      header: 'Customer',
+      accessorFn: row => row.customer?.name,
+      cell: ({ row: { original: a } }) => <span style={{ fontWeight: 600 }}>{a.customer?.name || ''}</span>,
+    },
+    { id: 'service', header: 'Service', accessorFn: row => row.service?.name, cell: ({ row: { original: a } }) => a.service?.name || '' },
+    { id: 'staff', header: 'Staff', accessorFn: row => row.staff?.name, cell: ({ row: { original: a } }) => a.staff?.name || '' },
+    { id: 'date', header: 'Date', accessorKey: 'date' },
+    { id: 'time', header: 'Time', accessorKey: 'time' },
+    {
+      id: 'status',
+      header: 'Status',
+      accessorKey: 'status',
+      cell: ({ getValue }) => <TableCraftStatusBadge status={getValue()} />,
+    },
+    {
+      id: 'amount',
+      header: 'Amount',
+      accessorFn: row => row.payment?.total_amount,
+      meta: { align: 'right' },
+      cell: ({ row: { original: a } }) => (
+        <span style={{ fontWeight: 700, color: '#60a5fa' }}>
+          {a.payment ? fmt(a.payment.total_amount) : ''}
+        </span>
+      ),
+    },
+  ], []);
+
   const linkBtn = (label, path, pill) => (
     <button
       onClick={() => navigate(path)}
@@ -652,47 +683,19 @@ export default function DashboardPage() {
           <span style={{ fontSize:15, fontWeight:700, color:'#111827' }}>Recent Appointments</span>
           {linkBtn('View all →', '/appointments', true)}
         </div>
-        <div style={{ padding:'0 22px 22px' }}>
-          {loading ? (
-            <Sk h={120} mb={0} />
-          ) : (
-            <div style={{ overflowX:'auto' }}>
-              <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13, fontFamily:"'Inter',sans-serif" }}>
-                <thead>
-                  <tr>
-                    {['Customer','Service','Staff','Date','Time','Status','Amount'].map(h => (
-                      <th key={h} style={{ padding:'12px 10px', textAlign:'left', fontSize:11, fontWeight:700, color:'#667085', textTransform:'uppercase', letterSpacing:'0.06em', borderBottom:'1.5px solid #E4E7EC', whiteSpace:'nowrap', background:'linear-gradient(180deg, #F8F9FC 0%, #F1F3F9 100%)' }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {appts.length === 0 ? (
-                    <tr><td colSpan={7} style={{ padding:'24px 0', textAlign:'center', color:'#9CA3AF' }}>No appointments today</td></tr>
-                  ) : appts.map(a => {
-                    const sc = STATUS_COLOR[a.status] || STATUS_COLOR.pending;
-                    return (
-                      <tr key={a.id} style={{ borderBottom:'1px solid #F9FAFB', transition:'background .1s' }}
-                        onMouseEnter={e => e.currentTarget.style.background='#EEF4FF'}
-                        onMouseLeave={e => e.currentTarget.style.background=''}
-                      >
-                        <td style={{ padding:'11px 10px', fontWeight:600, color:'#111827' }}>{a.customer?.name || ''}</td>
-                        <td style={{ padding:'11px 10px', color:'#374151' }}>{a.service?.name || ''}</td>
-                        <td style={{ padding:'11px 10px', color:'#6B7280' }}>{a.staff?.name || ''}</td>
-                        <td style={{ padding:'11px 10px', color:'#6B7280', whiteSpace:'nowrap' }}>{a.date || ''}</td>
-                        <td style={{ padding:'11px 10px', color:'#6B7280' }}>{a.time || ''}</td>
-                        <td style={{ padding:'11px 10px' }}>
-                          <span style={{ fontSize:11, padding:'4px 10px', borderRadius:20, background:sc.bg, color:sc.text, fontWeight:700, textTransform:'capitalize' }}>{a.status}</span>
-                        </td>
-                        <td style={{ padding:'11px 10px', fontWeight:700, color:'#2563EB', whiteSpace:'nowrap' }}>
-                          {a.payment ? fmt(a.payment.total_amount) : ''}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
+        <div style={{ padding:'0 12px 12px' }}>
+          <DataTable
+            noShell
+            compact
+            pagination={false}
+            showRowNumbers={false}
+            enableColumnVisibility={false}
+            columns={apptColumns}
+            data={appts}
+            loading={loading}
+            emptyMessage="No appointments today"
+            searchableColumns={[{ id: 'customer', title: 'Customer' }]}
+          />
         </div>
       </Card>
 

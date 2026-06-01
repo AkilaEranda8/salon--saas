@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import api from '../../api/axios';
 import { useTheme } from '../../context/ThemeContext';
+import { DataTable, CRAFT_TABLE_COMPACT } from '../../components/ui/PageKit';
 
 const SEVERITY_COLORS = {
   critical: { bg: '#FEE2E2', text: '#991B1B', border: '#FCA5A5' },
@@ -9,7 +10,7 @@ const SEVERITY_COLORS = {
   info: { bg: '#DBEAFE', text: '#1E40AF', border: '#93C5FD' },
 };
 
-function Surface({ title, subtitle, children, dark = false, rightAction = null }) {
+function Surface({ title, subtitle, children, dark = false, rightAction = null, noPad = false }) {
   return (
     <section
       style={{
@@ -17,10 +18,10 @@ function Surface({ title, subtitle, children, dark = false, rightAction = null }
         border: `1px solid ${dark ? '#334155' : '#E5E7EB'}`,
         background: dark ? '#111827' : '#FFFFFF',
         boxShadow: dark ? '0 12px 28px rgba(2,6,23,0.35)' : '0 12px 26px rgba(15,23,42,0.08)',
-        padding: '18px 18px 16px',
+        padding: noPad ? '18px 0 0' : '18px 18px 16px',
       }}
     >
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, marginBottom: 12 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, marginBottom: 12, padding: noPad ? '0 18px' : 0 }}>
         <div>
           <div style={{ fontSize: 15, fontWeight: 800, color: dark ? '#F8FAFC' : '#0F172A' }}>{title}</div>
           {subtitle && <div style={{ marginTop: 4, fontSize: 12, color: dark ? '#94A3B8' : '#64748B' }}>{subtitle}</div>}
@@ -170,6 +171,49 @@ export default function PlatformSystemControlPage() {
     const overall = monitoring?.health?.overall || 'unknown';
     return { api, db, overall };
   }, [monitoring]);
+
+  const maintenanceLogColumns = useMemo(() => [
+    {
+      id: 'createdAt',
+      header: 'Time',
+      accessorKey: 'createdAt',
+      meta: { width: '38%' },
+      cell: ({ row: { original: row } }) => (
+        <span style={{ color: isDark ? '#E2E8F0' : '#1F2937', fontSize: 12 }}>
+          {row.createdAt ? new Date(row.createdAt).toLocaleString() : '-'}
+        </span>
+      ),
+    },
+    {
+      id: 'changedBy',
+      header: 'Changed By',
+      accessorFn: row => row.changedBy?.name || row.changedBy?.username || 'system',
+      meta: { width: '34%' },
+      cell: ({ row: { original: row } }) => (
+        <span style={{ color: isDark ? '#94A3B8' : '#475467', fontSize: 12 }}>
+          {row.changedBy?.name || row.changedBy?.username || 'system'}
+        </span>
+      ),
+    },
+    {
+      id: 'enabled',
+      header: 'State',
+      accessorFn: row => (row.enabled ? 'enabled' : 'disabled'),
+      meta: { width: '28%' },
+      cell: ({ row: { original: row } }) => (
+        <span style={{
+          borderRadius: 999,
+          padding: '3px 8px',
+          fontSize: 11,
+          fontWeight: 700,
+          background: row.enabled ? '#FEE2E2' : '#ECFDF5',
+          color: row.enabled ? '#B91C1C' : '#065F46',
+        }}>
+          {row.enabled ? 'Enabled' : 'Disabled'}
+        </span>
+      ),
+    },
+  ], [isDark]);
 
   return (
     <div style={{ width: '100%', minHeight: '100%', padding: '28px clamp(16px,2.4vw,34px) 44px', boxSizing: 'border-box', background: cardBg }}>
@@ -352,48 +396,28 @@ export default function PlatformSystemControlPage() {
           )}
         </Surface>
 
-        <Surface dark={isDark} title="Maintenance Logs" subtitle="Recent changes made by platform admins.">
-          {maintenanceLogs.length === 0 ? (
-            <div style={{ fontSize: 13, color: isDark ? '#94A3B8' : '#6B7280' }}>No maintenance changes recorded yet.</div>
-          ) : (
-            <div style={{ maxHeight: 290, overflowY: 'auto', borderRadius: 10, border: `1px solid ${isDark ? '#1F2937' : '#F1F5F9'}` }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-                <thead>
-                  <tr style={{ background: isDark ? '#0B1220' : '#F8FAFC', borderBottom: `1px solid ${isDark ? '#1F2937' : '#E5E7EB'}` }}>
-                    <th style={{ textAlign: 'left', padding: '8px 10px', color: isDark ? '#94A3B8' : '#64748B' }}>Time</th>
-                    <th style={{ textAlign: 'left', padding: '8px 10px', color: isDark ? '#94A3B8' : '#64748B' }}>Changed By</th>
-                    <th style={{ textAlign: 'left', padding: '8px 10px', color: isDark ? '#94A3B8' : '#64748B' }}>State</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {maintenanceLogs.map((row) => (
-                    <tr key={row.id} style={{ borderBottom: `1px solid ${isDark ? '#1F2937' : '#F8FAFC'}` }}>
-                      <td style={{ padding: '8px 10px', color: isDark ? '#E2E8F0' : '#1F2937' }}>
-                        {row.createdAt ? new Date(row.createdAt).toLocaleString() : '-'}
-                      </td>
-                      <td style={{ padding: '8px 10px', color: isDark ? '#94A3B8' : '#475467' }}>
-                        {row.changedBy?.name || row.changedBy?.username || 'system'}
-                      </td>
-                      <td style={{ padding: '8px 10px' }}>
-                        <span
-                          style={{
-                            borderRadius: 999,
-                            padding: '3px 8px',
-                            fontSize: 11,
-                            fontWeight: 700,
-                            background: row.enabled ? '#FEE2E2' : '#ECFDF5',
-                            color: row.enabled ? '#B91C1C' : '#065F46',
-                          }}
-                        >
-                          {row.enabled ? 'Enabled' : 'Disabled'}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+        <Surface dark={isDark} title="Maintenance Logs" subtitle="Recent changes made by platform admins." noPad>
+          <div style={{ maxHeight: 320, overflow: 'hidden' }}>
+            <DataTable
+              {...CRAFT_TABLE_COMPACT}
+              columns={maintenanceLogColumns}
+              data={maintenanceLogs}
+              loading={loading}
+              emptyMessage="No maintenance changes recorded yet"
+              emptySub="Changes will appear here when maintenance mode is toggled"
+              searchableColumns={[{ id: 'changedBy', title: 'User', placeholder: 'Filter user…' }]}
+              filterableColumns={[
+                {
+                  id: 'enabled',
+                  title: 'State',
+                  options: [
+                    { label: 'Enabled', value: 'enabled' },
+                    { label: 'Disabled', value: 'disabled' },
+                  ],
+                },
+              ]}
+            />
+          </div>
         </Surface>
       </div>
     </div>

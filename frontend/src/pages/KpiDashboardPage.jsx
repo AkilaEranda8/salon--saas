@@ -1,9 +1,10 @@
-import { useState, useEffect, useCallback, createPortal } from 'react';
+import { useState, useEffect, useCallback, useMemo, createPortal } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, LineChart, Line } from 'recharts';
 import api from '../api/axios';
 import PageWrapper from '../components/layout/PageWrapper';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
+import { FilterBar, DataTable, ActionBtn, IconEye } from '../components/ui/PageKit';
 
 const Rs = (n) => `Rs. ${Number(n || 0).toLocaleString()}`;
 
@@ -18,7 +19,6 @@ const MEDAL = ['🥇', '🥈', '🥉'];
 /* ── Icons ── */
 const IconRefresh = () => <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>;
 const IconClose   = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>;
-const IconEye     = () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>;
 const IconTrend   = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>;
 const IconCal     = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>;
 const IconBranch  = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>;
@@ -65,17 +65,6 @@ const UtilBar = ({ value, color, dark }) => (
     <div style={{ width:`${Math.min(100,value)}%`, height:'100%', background:color, borderRadius:99, transition:'width 0.6s ease' }} />
   </div>
 );
-
-/* ── ActionBtn ── */
-function ActionBtn({ onClick, title, color, children }) {
-  const [hov, setHov] = useState(false);
-  return (
-    <button onClick={onClick} title={title} onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
-      style={{ width:30, height:30, borderRadius:8, border:`1.5px solid ${color}30`, display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', transition:'all 0.15s', background:hov?`${color}20`:`${color}10`, color, transform:hov?'scale(1.1)':'scale(1)' }}>
-      {children}
-    </button>
-  );
-}
 
 export default function KpiDashboardPage() {
   const { user }    = useAuth();
@@ -139,6 +128,135 @@ export default function KpiDashboardPage() {
 
   const C = { border: isDark?'#334155':'#EAECF0', card: isDark?'#111827':'#fff', text: isDark?'#E2E8F0':'#101828', sub: isDark?'#94A3B8':'#667085', muted: isDark?'#64748B':'#98A2B3', hover: isDark?'#1E293B':'#F8FAFF' };
 
+  const tableRows = useMemo(
+    () => sorted.map((b, idx) => ({ ...b, _rank: idx + 1 })),
+    [sorted],
+  );
+
+  const revLabel = period === 'today' ? 'Today' : period === 'week' ? 'Week' : 'Month';
+
+  const branchColumns = useMemo(() => [
+    {
+      id: 'name',
+      header: 'Branch',
+      accessorFn: (row) => row.name || '',
+      enableSorting: false,
+      meta: { width: '22%' },
+      cell: ({ row: { original: b } }) => {
+        const idx = b._rank - 1;
+        const branchColor = b.color || '#2563EB';
+        return (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ width: 34, height: 34, borderRadius: 10, background: `${branchColor}18`, border: `1.5px solid ${branchColor}30`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, flexShrink: 0 }}>
+              {idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : '🏢'}
+            </div>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 14, color: C.text }}>{b.name}</div>
+              <div style={{ fontSize: 11, color: C.muted, marginTop: 1 }}>Branch #{b.id}</div>
+            </div>
+          </div>
+        );
+      },
+    },
+    {
+      id: 'revenue',
+      header: `Revenue (${revLabel})`,
+      accessorFn: (row) => row._revenue,
+      enableSorting: false,
+      meta: { width: '14%', align: 'right' },
+      cell: ({ row: { original: b } }) => (
+        <div style={{ textAlign: 'right' }}>
+          <div style={{ fontWeight: 800, fontSize: 15, color: b.color || '#2563EB' }}>{Rs(b._revenue)}</div>
+          {b.tx_week > 0 && period === 'week' && <div style={{ fontSize: 11, color: C.muted, marginTop: 1 }}>{b.tx_week} txns</div>}
+        </div>
+      ),
+    },
+    {
+      id: 'appointments',
+      header: 'Appts',
+      accessorFn: (row) => row.appointments_today,
+      enableSorting: false,
+      meta: { width: '9%', align: 'center' },
+      cell: ({ row: { original: b } }) => (
+        <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 36, height: 36, borderRadius: 10, background: '#ECFDF5', border: '1px solid #A7F3D0', fontWeight: 800, fontSize: 16, color: '#059669' }}>{b.appointments_today || 0}</span>
+      ),
+    },
+    {
+      id: 'walkins',
+      header: 'Walk-ins',
+      accessorFn: (row) => row.walkin_today,
+      enableSorting: false,
+      meta: { width: '9%', align: 'center' },
+      cell: ({ row: { original: b } }) => (
+        <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 36, height: 36, borderRadius: 10, background: '#FFFBEB', border: '1px solid #FDE68A', fontWeight: 800, fontSize: 16, color: '#D97706' }}>{b.walkin_today || 0}</span>
+      ),
+    },
+    {
+      id: 'customers',
+      header: 'Customers',
+      accessorFn: (row) => row.customer_count,
+      enableSorting: false,
+      meta: { width: '10%', align: 'center' },
+      cell: ({ row: { original: b } }) => (
+        <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 36, height: 36, borderRadius: 10, background: '#F5F3FF', border: '1px solid #DDD6FE', fontWeight: 800, fontSize: 16, color: '#7C3AED' }}>{b.customer_count || 0}</span>
+      ),
+    },
+    {
+      id: 'utilization',
+      header: 'Completion',
+      accessorFn: (row) => row.utilization_rate,
+      enableSorting: false,
+      meta: { width: '18%' },
+      cell: ({ row: { original: b } }) => {
+        const utilColor = b.utilization_rate >= 70 ? '#059669' : b.utilization_rate < 30 ? '#EF4444' : '#D97706';
+        return (
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 5 }}>
+              <span style={{ fontSize: 12, fontWeight: 800, color: utilColor }}>{b.utilization_rate || 0}%</span>
+              {b.appointments_breakdown && (
+                <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
+                  {Object.entries(b.appointments_breakdown).slice(0, 2).map(([st, cnt]) => {
+                    const sc = st === 'completed' ? '#059669' : st === 'confirmed' ? '#2563EB' : st === 'cancelled' ? '#DC2626' : '#D97706';
+                    return <span key={st} style={{ fontSize: 9, fontWeight: 700, padding: '1px 5px', borderRadius: 99, background: `${sc}14`, color: sc, border: `1px solid ${sc}25`, textTransform: 'capitalize' }}>{st.replace('_', ' ')} {cnt}</span>;
+                  })}
+                </div>
+              )}
+            </div>
+            <UtilBar value={b.utilization_rate || 0} color={utilColor} dark={isDark} />
+          </div>
+        );
+      },
+    },
+    {
+      id: 'top_staff',
+      header: 'Top Staff',
+      accessorFn: (row) => row.top_staff?.[0]?.name || '',
+      enableSorting: false,
+      meta: { width: '12%' },
+      cell: ({ row: { original: b } }) => {
+        const topStar = b.top_staff?.[0];
+        return topStar ? (
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ fontSize: 14 }}>🥇</span>
+              <span style={{ fontWeight: 600, fontSize: 12, color: C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{topStar.name}</span>
+            </div>
+            <div style={{ fontSize: 11, color: '#2563EB', fontWeight: 700, marginTop: 2, marginLeft: 20 }}>{Rs(topStar.revenue)}</div>
+          </div>
+        ) : <span style={{ color: C.muted, fontSize: 12 }}>—</span>;
+      },
+    },
+    {
+      id: 'actions',
+      header: '',
+      enableSorting: false,
+      meta: { width: '6%', align: 'center' },
+      cell: ({ row: { original: b } }) => (
+        <ActionBtn onClick={() => setDetailBranch(b)} title="View Details" color="#2563EB"><IconEye /></ActionBtn>
+      ),
+    },
+  ], [C.text, C.muted, isDark, period, revLabel]);
+
   return (
     <>
     <PageWrapper title="Multi-Branch KPI Dashboard" subtitle="Real-time performance metrics across all branches"
@@ -192,7 +310,7 @@ export default function KpiDashboardPage() {
       </div>
 
       {/* ── Filter Bar ── */}
-      <div style={{ background:C.card, borderRadius:14, border:`1px solid ${C.border}`, padding:'12px 16px', display:'flex', gap:8, flexWrap:'wrap', alignItems:'center', boxShadow:isDark?'0 8px 20px rgba(2,6,23,0.35)':'0 1px 4px rgba(16,24,40,0.04)' }}>
+      <FilterBar>
         <span style={{ fontSize:12, fontWeight:700, color:C.sub, fontFamily:"'Inter',sans-serif", flexShrink:0 }}>Branch:</span>
         {[{id:'all',name:'All Branches'},...branches].map(b => {
           const active = branchFilter === String(b.id);
@@ -211,7 +329,7 @@ export default function KpiDashboardPage() {
             </button>
           ))}
         </div>
-      </div>
+      </FilterBar>
 
       {/* ── Bar Chart ── */}
       {!loading && chartData.length > 1 && (
@@ -234,133 +352,15 @@ export default function KpiDashboardPage() {
       )}
 
       {/* ── Branch Table ── */}
-      <div style={{ background:C.card, borderRadius:14, border:`1px solid ${C.border}`, overflow:'hidden', boxShadow:isDark?'0 8px 20px rgba(2,6,23,0.35)':'0 1px 4px rgba(16,24,40,0.04)' }}>
-        <div style={{ overflowX:'auto' }}>
-          <table style={{ width:'100%', borderCollapse:'collapse', fontFamily:"'Inter',sans-serif", tableLayout:'fixed' }}>
-            <colgroup>
-              <col style={{width:'22%'}}/><col style={{width:'14%'}}/><col style={{width:'9%'}}/><col style={{width:'9%'}}/><col style={{width:'10%'}}/><col style={{width:'18%'}}/><col style={{width:'12%'}}/><col style={{width:'6%'}}/>
-            </colgroup>
-            <thead>
-              <tr>
-                {[
-                  {col:'name',      label:'Branch'},
-                  {col:'revenue',   label:`Revenue (${period==='today'?'Today':period==='week'?'Week':'Month'})`, align:'right'},
-                  {col:'appointments', label:'Appts', align:'center'},
-                  {col:null,        label:'Walk-ins', align:'center'},
-                  {col:null,        label:'Customers', align:'center'},
-                  {col:'utilization', label:'Completion', align:'left'},
-                  {col:null,        label:'Top Staff',  align:'left'},
-                  {col:null,        label:'',           align:'center'},
-                ].map(({col,label,align='left'}, hi) => (
-                  <th key={hi} onClick={col?()=>handleSort(col):undefined}
-                    style={{ padding:'12px 16px', textAlign:align, fontSize:11, fontWeight:700, color:C.sub, textTransform:'uppercase', letterSpacing:'0.06em', background:isDark?'#1E293B':'linear-gradient(180deg,#F8F9FC 0%,#F1F3F9 100%)', borderBottom:`1.5px solid ${C.border}`, whiteSpace:'nowrap', cursor:col?'pointer':'default', userSelect:'none' }}>
-                    {label}
-                    {col && (sortBy===col
-                      ? <span style={{ fontSize:10, marginLeft:3, color:isDark?'#93C5FD':'#2563EB' }}>{sortDir==='desc'?'↓':'↑'}</span>
-                      : <span style={{ opacity:0.3, fontSize:10, marginLeft:3 }}>⇅</span>)}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? Array.from({length:4}).map((_,i) => (
-                <tr key={i}>{Array.from({length:8}).map((_,j) => (
-                  <td key={j} style={{padding:'16px'}}><div style={{height:13, borderRadius:6, width:`${55+(j*11)%38}%`, background:isDark?'linear-gradient(90deg,#1E293B 25%,#334155 50%,#1E293B 75%)':'linear-gradient(90deg,#F2F4F7 25%,#E8EAED 50%,#F2F4F7 75%)', backgroundSize:'200% 100%', animation:'shimmer 1.4s infinite'}} /></td>
-                ))}</tr>
-              )) : sorted.length === 0 ? (
-                <tr><td colSpan={8} style={{padding:'52px 16px', textAlign:'center'}}>
-                  <div style={{fontSize:40, marginBottom:12}}>📊</div>
-                  <div style={{fontWeight:600, fontSize:15, color:C.text}}>No branch data</div>
-                  <div style={{fontSize:13, marginTop:4, color:C.sub}}>Select a different branch or check that branches are active.</div>
-                </td></tr>
-              ) : sorted.map((b, idx) => {
-                const utilColor   = b.utilization_rate >= 70 ? '#059669' : b.utilization_rate < 30 ? '#EF4444' : '#D97706';
-                const branchColor = b.color || '#2563EB';
-                const rowBg = isDark ? (idx%2===0?'#0F172A':'#111827') : (idx%2===0?'#fff':'#FAFBFC');
-                const topStar = b.top_staff?.[0];
-                return (
-                  <tr key={b.id} style={{borderBottom:`1px solid ${C.border}`, background:rowBg, transition:'background 0.15s'}}
-                    onMouseEnter={e => e.currentTarget.style.background=isDark?'#1E293B':'#EEF4FF'}
-                    onMouseLeave={e => e.currentTarget.style.background=rowBg}>
-
-                    {/* Branch name */}
-                    <td style={{padding:'14px 16px'}}>
-                      <div style={{display:'flex', alignItems:'center', gap:10}}>
-                        <div style={{width:34, height:34, borderRadius:10, background:`${branchColor}18`, border:`1.5px solid ${branchColor}30`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:15, flexShrink:0}}>
-                          {idx===0?'🥇':idx===1?'🥈':idx===2?'🥉':'🏢'}
-                        </div>
-                        <div>
-                          <div style={{fontWeight:700, fontSize:14, color:C.text}}>{b.name}</div>
-                          <div style={{fontSize:11, color:C.muted, marginTop:1}}>Branch #{b.id}</div>
-                        </div>
-                      </div>
-                    </td>
-
-                    {/* Revenue */}
-                    <td style={{padding:'14px 16px', textAlign:'right'}}>
-                      <div style={{fontWeight:800, fontSize:15, color:branchColor}}>{Rs(b._revenue)}</div>
-                      {b.tx_week>0 && period==='week' && <div style={{fontSize:11, color:C.muted, marginTop:1}}>{b.tx_week} txns</div>}
-                    </td>
-
-                    {/* Appointments */}
-                    <td style={{padding:'14px 16px', textAlign:'center'}}>
-                      <span style={{display:'inline-flex', alignItems:'center', justifyContent:'center', width:36, height:36, borderRadius:10, background:'#ECFDF5', border:'1px solid #A7F3D0', fontWeight:800, fontSize:16, color:'#059669'}}>{b.appointments_today||0}</span>
-                    </td>
-
-                    {/* Walk-ins */}
-                    <td style={{padding:'14px 16px', textAlign:'center'}}>
-                      <span style={{display:'inline-flex', alignItems:'center', justifyContent:'center', width:36, height:36, borderRadius:10, background:'#FFFBEB', border:'1px solid #FDE68A', fontWeight:800, fontSize:16, color:'#D97706'}}>{b.walkin_today||0}</span>
-                    </td>
-
-                    {/* Customers */}
-                    <td style={{padding:'14px 16px', textAlign:'center'}}>
-                      <span style={{display:'inline-flex', alignItems:'center', justifyContent:'center', width:36, height:36, borderRadius:10, background:'#F5F3FF', border:'1px solid #DDD6FE', fontWeight:800, fontSize:16, color:'#7C3AED'}}>{b.customer_count||0}</span>
-                    </td>
-
-                    {/* Completion rate */}
-                    <td style={{padding:'14px 16px'}}>
-                      <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:5}}>
-                        <span style={{fontSize:12, fontWeight:800, color:utilColor}}>{b.utilization_rate||0}%</span>
-                        {b.appointments_breakdown && (
-                          <div style={{display:'flex', gap:3, flexWrap:'wrap'}}>
-                            {Object.entries(b.appointments_breakdown).slice(0,2).map(([st,cnt]) => {
-                              const sc = st==='completed'?'#059669':st==='confirmed'?'#2563EB':st==='cancelled'?'#DC2626':'#D97706';
-                              return <span key={st} style={{fontSize:9, fontWeight:700, padding:'1px 5px', borderRadius:99, background:`${sc}14`, color:sc, border:`1px solid ${sc}25`, textTransform:'capitalize'}}>{st.replace('_',' ')} {cnt}</span>;
-                            })}
-                          </div>
-                        )}
-                      </div>
-                      <UtilBar value={b.utilization_rate||0} color={utilColor} dark={isDark} />
-                    </td>
-
-                    {/* Top staff */}
-                    <td style={{padding:'14px 16px'}}>
-                      {topStar ? (
-                        <div>
-                          <div style={{display:'flex', alignItems:'center', gap:6}}>
-                            <span style={{fontSize:14}}>🥇</span>
-                            <span style={{fontWeight:600, fontSize:12, color:C.text, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{topStar.name}</span>
-                          </div>
-                          <div style={{fontSize:11, color:'#2563EB', fontWeight:700, marginTop:2, marginLeft:20}}>{Rs(topStar.revenue)}</div>
-                        </div>
-                      ) : <span style={{color:C.muted, fontSize:12}}>—</span>}
-                    </td>
-
-                    {/* Action */}
-                    <td style={{padding:'14px 16px', textAlign:'center'}}>
-                      <ActionBtn onClick={() => setDetailBranch(b)} title="View Details" color="#2563EB"><IconEye /></ActionBtn>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-        <div style={{padding:'10px 16px', borderTop:`1px solid ${C.border}`, fontSize:12, color:C.muted, display:'flex', justifyContent:'space-between'}}>
-          <span>Showing {sorted.length} of {branches.length} branches</span>
-          <span>Sorted by {sortBy} {sortDir==='desc'?'↓':'↑'}</span>
-        </div>
-      </div>
+      <DataTable
+        columns={branchColumns}
+        data={tableRows}
+        loading={loading}
+        showRowNumbers={false}
+        emptyMessage="No branch data"
+        emptySub="Select a different branch or check that branches are active."
+        pageSize={20}
+      />
 
       {/* ── Footer ── */}
       <p style={{ margin:0, fontSize:12, color:C.muted, textAlign:'center', fontFamily:"'Inter',sans-serif" }}>

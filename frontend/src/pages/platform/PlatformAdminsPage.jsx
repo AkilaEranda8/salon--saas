@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import api from '../../api/axios';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
+import { DataTable, TableCraftStatusBadge, CRAFT_TABLE_DEFAULTS } from '../../components/ui/PageKit';
 
 function Surface({ title, subtitle, children, dark = false, rightAction = null }) {
   return (
@@ -150,7 +151,6 @@ export default function PlatformAdminsPage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [query, setQuery] = useState('');
   const [notice, setNotice] = useState({ type: '', text: '' });
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
@@ -175,16 +175,6 @@ export default function PlatformAdminsPage() {
   useEffect(() => {
     loadAdmins(false);
   }, []);
-
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return admins;
-    return admins.filter((a) =>
-      String(a.name || '').toLowerCase().includes(q)
-      || String(a.username || '').toLowerCase().includes(q)
-      || String(a.id || '').includes(q)
-    );
-  }, [admins, query]);
 
   const activeCount = useMemo(() => admins.filter((a) => a.is_active !== false).length, [admins]);
 
@@ -225,6 +215,72 @@ export default function PlatformAdminsPage() {
       setNotice({ type: 'error', text: err?.response?.data?.message || 'Failed to delete admin.' });
     }
   };
+
+  const columns = useMemo(() => [
+    {
+      id: 'name',
+      header: 'Name',
+      accessorFn: (row) => row.name || 'Platform Admin',
+      cell: ({ row: { original: admin } }) => (
+        <span style={{ fontWeight: 700, color: isDark ? '#E2E8F0' : '#0F172A' }}>{admin.name || 'Platform Admin'}</span>
+      ),
+    },
+    {
+      id: 'username',
+      header: 'Username',
+      accessorFn: (row) => row.username || '',
+      cell: ({ row: { original: admin } }) => (
+        <span style={{ color: isDark ? '#CBD5E1' : '#334155' }}>{admin.username}</span>
+      ),
+    },
+    {
+      id: 'created',
+      header: 'Created',
+      accessorFn: (row) => row.createdAt || '',
+      enableSorting: false,
+      cell: ({ row: { original: admin } }) => (
+        <span style={{ color: isDark ? '#CBD5E1' : '#334155' }}>
+          {admin.createdAt ? new Date(admin.createdAt).toLocaleString() : '-'}
+        </span>
+      ),
+    },
+    {
+      id: 'status',
+      header: 'Status',
+      accessorFn: (row) => (row.is_active !== false ? 'active' : 'inactive'),
+      cell: ({ row: { original: admin } }) => (
+        <TableCraftStatusBadge status={admin.is_active !== false ? 'active' : 'inactive'} />
+      ),
+    },
+    {
+      id: 'actions',
+      header: 'Actions',
+      enableSorting: false,
+      cell: ({ row: { original: admin } }) => {
+        const isSelf = String(admin.id) === String(user?.id);
+        return isSelf ? (
+          <span style={{ fontSize: 11, color: isDark ? '#94A3B8' : '#6B7280', fontWeight: 700 }}>Current account</span>
+        ) : (
+          <button
+            type="button"
+            onClick={() => deleteAdmin(admin)}
+            style={{
+              border: '1px solid #FECACA',
+              background: '#FEF2F2',
+              color: '#B91C1C',
+              borderRadius: 9,
+              padding: '7px 10px',
+              fontSize: 12,
+              fontWeight: 700,
+              cursor: 'pointer',
+            }}
+          >
+            Delete
+          </button>
+        );
+      },
+    },
+  ], [isDark, user?.id]);
 
   const pageBg = isDark
     ? 'radial-gradient(circle at top left, rgba(59,130,246,0.15), transparent 35%), linear-gradient(180deg,#0F172A 0%, #0B1220 100%)'
@@ -303,86 +359,25 @@ export default function PlatformAdminsPage() {
       )}
 
       <Surface dark={isDark} title="Admin Directory" subtitle="Create, search, and remove platform administrator accounts.">
-        <div style={{ marginBottom: 12 }}>
-          <input
-            type="text"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search by name, username, or ID"
-            style={{
-              width: '100%',
-              boxSizing: 'border-box',
-              borderRadius: 10,
-              border: `1px solid ${isDark ? '#334155' : '#D0D5DD'}`,
-              background: isDark ? '#0B1220' : '#fff',
-              color: isDark ? '#E2E8F0' : '#111827',
-              padding: '10px 11px',
-              fontSize: 13,
-            }}
-          />
-        </div>
-
-        <div style={{ maxHeight: 460, overflow: 'auto', borderRadius: 12, border: `1px solid ${isDark ? '#1E293B' : '#E5E7EB'}` }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 700 }}>
-            <thead>
-              <tr style={{ position: 'sticky', top: 0, background: isDark ? '#0B1220' : '#F8FAFC', zIndex: 1 }}>
-                <th style={{ textAlign: 'left', padding: '10px 11px', color: isDark ? '#94A3B8' : '#6B7280' }}>Name</th>
-                <th style={{ textAlign: 'left', padding: '10px 11px', color: isDark ? '#94A3B8' : '#6B7280' }}>Username</th>
-                <th style={{ textAlign: 'left', padding: '10px 11px', color: isDark ? '#94A3B8' : '#6B7280' }}>Created</th>
-                <th style={{ textAlign: 'left', padding: '10px 11px', color: isDark ? '#94A3B8' : '#6B7280' }}>Status</th>
-                <th style={{ textAlign: 'left', padding: '10px 11px', color: isDark ? '#94A3B8' : '#6B7280' }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr>
-                  <td colSpan={5} style={{ padding: '14px 11px', color: isDark ? '#94A3B8' : '#6B7280' }}>Loading admins...</td>
-                </tr>
-              ) : filtered.length === 0 ? (
-                <tr>
-                  <td colSpan={5} style={{ padding: '14px 11px', color: isDark ? '#94A3B8' : '#6B7280' }}>No admins found.</td>
-                </tr>
-              ) : filtered.map((admin) => {
-                const isSelf = String(admin.id) === String(user?.id);
-                const active = admin.is_active !== false;
-                return (
-                  <tr key={admin.id} style={{ borderTop: `1px solid ${isDark ? '#1E293B' : '#F1F5F9'}` }}>
-                    <td style={{ padding: '10px 11px', color: isDark ? '#E2E8F0' : '#0F172A', fontWeight: 700 }}>{admin.name || 'Platform Admin'}</td>
-                    <td style={{ padding: '10px 11px', color: isDark ? '#CBD5E1' : '#334155' }}>{admin.username}</td>
-                    <td style={{ padding: '10px 11px', color: isDark ? '#CBD5E1' : '#334155' }}>{admin.createdAt ? new Date(admin.createdAt).toLocaleString() : '-'}</td>
-                    <td style={{ padding: '10px 11px' }}>
-                      <span style={{ display: 'inline-flex', alignItems: 'center', borderRadius: 999, padding: '4px 9px', background: active ? '#D1FAE5' : '#FEE2E2', color: active ? '#065F46' : '#991B1B', fontSize: 11, fontWeight: 700 }}>
-                        {active ? 'active' : 'inactive'}
-                      </span>
-                    </td>
-                    <td style={{ padding: '10px 11px' }}>
-                      {isSelf ? (
-                        <span style={{ fontSize: 11, color: isDark ? '#94A3B8' : '#6B7280', fontWeight: 700 }}>Current account</span>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => deleteAdmin(admin)}
-                          style={{
-                            border: '1px solid #FECACA',
-                            background: '#FEF2F2',
-                            color: '#B91C1C',
-                            borderRadius: 9,
-                            padding: '7px 10px',
-                            fontSize: 12,
-                            fontWeight: 700,
-                            cursor: 'pointer',
-                          }}
-                        >
-                          Delete
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+        <DataTable
+          columns={columns}
+          data={admins}
+          loading={loading}
+          emptyMessage="No admins found."
+          searchableColumns={[
+            { id: 'name', title: 'Name' },
+            { id: 'username', title: 'Username' },
+          ]}
+          filterableColumns={[{
+            id: 'status',
+            title: 'Status',
+            options: [
+              { label: 'Active', value: 'active' },
+              { label: 'Inactive', value: 'inactive' },
+            ],
+          }]}
+          {...CRAFT_TABLE_DEFAULTS}
+        />
       </Surface>
 
       {showModal && (

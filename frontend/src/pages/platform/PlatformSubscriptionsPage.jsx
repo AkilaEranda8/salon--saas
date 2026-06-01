@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import api from '../../api/axios';
 import { useTheme } from '../../context/ThemeContext';
+import { DataTable } from '../../components/ui/PageKit';
 
 const PLAN_COLORS = {
   trial:      { bg: '#FEF3C7', text: '#92400E' },
@@ -148,11 +149,6 @@ export default function PlatformSubscriptionsPage() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [formError, setFormError] = useState('');
-  const [search, setSearch] = useState('');
-  const [planFilter, setPlanFilter] = useState('all');
-  const [statusFilter, setStatusFilter] = useState('all');
-  const [sortBy, setSortBy] = useState('tenant');
-  const [sortDir, setSortDir] = useState('asc');
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -236,51 +232,7 @@ export default function PlatformSubscriptionsPage() {
     return totals;
   }, [rows]);
 
-  const filteredRows = useMemo(() => {
-    const query = search.trim().toLowerCase();
-    const list = rows.filter((row) => {
-      const matchesQuery = !query
-        || row.tenantName.toLowerCase().includes(query)
-        || row.tenantSlug.toLowerCase().includes(query)
-        || row.stripe_subscription_id.toLowerCase().includes(query)
-        || row.stripe_price_id.toLowerCase().includes(query);
-
-      const matchesPlan = planFilter === 'all' || row.plan === planFilter;
-      const matchesStatus = statusFilter === 'all' || row.status === statusFilter;
-      return matchesQuery && matchesPlan && matchesStatus;
-    });
-
-    const sorted = [...list].sort((left, right) => {
-      const getValue = (item) => {
-        switch (sortBy) {
-          case 'status': return item.status || '';
-          case 'plan': return item.plan || '';
-          case 'tenant': return item.tenantName || '';
-          case 'period': return item.current_period_end || '';
-          default: return item.tenantName || '';
-        }
-      };
-
-      const leftValue = getValue(left).toString().toLowerCase();
-      const rightValue = getValue(right).toString().toLowerCase();
-      if (leftValue < rightValue) return sortDir === 'asc' ? -1 : 1;
-      if (leftValue > rightValue) return sortDir === 'asc' ? 1 : -1;
-      return 0;
-    });
-
-    return sorted;
-  }, [rows, search, planFilter, statusFilter, sortBy, sortDir]);
-
   const accent = isDark ? '#A78BFA' : '#4338CA';
-
-  const toggleSort = (next) => {
-    if (sortBy === next) {
-      setSortDir((current) => (current === 'asc' ? 'desc' : 'asc'));
-      return;
-    }
-    setSortBy(next);
-    setSortDir(next === 'period' ? 'desc' : 'asc');
-  };
 
   const openCreate = () => {
     setEditing(null);
@@ -364,6 +316,89 @@ export default function PlatformSubscriptionsPage() {
     }
   };
 
+  const subColumns = useMemo(() => [
+    {
+      id: 'tenant',
+      header: 'Tenant',
+      accessorFn: row => `${row.tenantName} ${row.tenantSlug} ${row.stripe_subscription_id || ''} ${row.stripe_price_id || ''}`,
+      meta: { width: '22%' },
+      cell: ({ row: { original: sub } }) => (
+        <>
+          <div style={{ fontWeight: 700 }}>{sub.tenantName}</div>
+          <div style={{ marginTop: 3, color: '#a1a1aa', fontSize: 12, fontFamily: 'monospace' }}>{sub.tenantSlug}</div>
+        </>
+      ),
+    },
+    {
+      id: 'plan',
+      header: 'Plan',
+      accessorKey: 'plan',
+      meta: { width: '10%' },
+      cell: ({ row: { original: sub } }) => {
+        const pc = PLAN_COLORS[sub.plan] ?? PLAN_COLORS.basic;
+        return <Pill bg={pc.bg} color={pc.text}>{sub.plan}</Pill>;
+      },
+    },
+    {
+      id: 'status',
+      header: 'Status',
+      accessorKey: 'status',
+      meta: { width: '14%' },
+      cell: ({ row: { original: sub } }) => {
+        const sc = SUB_STATUS_COLORS[sub.status] ?? SUB_STATUS_COLORS.past_due;
+        return (
+          <>
+            <Pill bg={sc.bg} color={sc.text}>{sub.status}</Pill>
+            <div style={{ marginTop: 6, fontSize: 12, color: '#a1a1aa' }}>{formatRelativeDays(sub.current_period_end)}</div>
+          </>
+        );
+      },
+    },
+    {
+      id: 'period',
+      header: 'Period end',
+      accessorFn: row => row.current_period_end,
+      meta: { width: '16%' },
+      cell: ({ row: { original: sub } }) => (
+        <>
+          <div style={{ fontSize: 12, fontWeight: 700 }}>Ends {formatDate(sub.current_period_end)}</div>
+          <div style={{ marginTop: 4, fontSize: 12, color: '#a1a1aa' }}>Starts {formatDate(sub.current_period_start)}</div>
+          {sub.cancel_at_period_end && <div style={{ marginTop: 5 }}><Pill bg="#FEF3C7" color="#92400E">cancel at period end</Pill></div>}
+        </>
+      ),
+    },
+    {
+      id: 'stripe',
+      header: 'Stripe refs',
+      accessorFn: row => `${row.stripe_subscription_id || ''} ${row.stripe_price_id || ''}`,
+      meta: { width: '20%' },
+      cell: ({ row: { original: sub } }) => (
+        <>
+          <div style={{ fontFamily: 'monospace', fontSize: 12, fontWeight: 600 }}>{sub.stripe_subscription_id}</div>
+          <div style={{ marginTop: 4, fontFamily: 'monospace', fontSize: 12, color: '#a1a1aa' }}>{sub.stripe_price_id}</div>
+        </>
+      ),
+    },
+    {
+      id: 'actions',
+      header: 'Actions',
+      enableSorting: false,
+      meta: { width: '18%' },
+      cell: ({ row: { original: sub } }) => (
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button type="button" onClick={() => openEdit(sub)} style={{ padding: '8px 12px', border: '1px solid #3f3f46', borderRadius: 10, background: '#18181b', color: '#e4e4e7', cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>Edit</button>
+          <button type="button" onClick={() => handleDelete(sub)} style={{ padding: '8px 12px', border: '1px solid #FECACA', borderRadius: 10, background: '#FEF2F2', color: '#B91C1C', cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>Delete</button>
+          {sub.status !== 'active' && (
+            <button type="button" onClick={() => quickUpdateStatus(sub, 'active')} style={{ padding: '8px 12px', border: '1px solid #BBF7D0', borderRadius: 10, background: '#F0FDF4', color: '#166534', cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>Set Active</button>
+          )}
+          {sub.status === 'active' && (
+            <button type="button" onClick={() => quickUpdateStatus(sub, 'past_due')} style={{ padding: '8px 12px', border: '1px solid #FDE68A', borderRadius: 10, background: '#FFFBEB', color: '#B45309', cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>Mark Past Due</button>
+          )}
+        </div>
+      ),
+    },
+  ], []);
+
   return (
     <div style={{
       padding: '28px 32px 40px',
@@ -438,229 +473,25 @@ export default function PlatformSubscriptionsPage() {
         <StatCard label="Overdue" value={summary.overdue} hint="Past due / expired periods" accent="#DC2626" dark={isDark} />
       </div>
 
-      <div style={{
-        marginBottom: 18,
-        display: 'grid',
-        gridTemplateColumns: '1.5fr 0.8fr 0.8fr auto',
-        gap: 12,
-        alignItems: 'center',
-        padding: 16,
-        borderRadius: 18,
-        border: `1px solid ${isDark ? '#334155' : '#E5E7EB'}`,
-        background: isDark ? '#111827' : '#FFFFFF',
-        boxShadow: isDark ? '0 18px 50px rgba(2, 6, 23, 0.35)' : PANEL_SHADOW,
-      }}>
-        <div style={{ position: 'relative' }}>
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by tenant, slug, or Stripe reference"
-            style={{
-              width: '100%',
-              borderRadius: 14,
-              border: `1px solid ${isDark ? '#334155' : '#D0D5DD'}`,
-              background: isDark ? '#0B1220' : '#FAFBFF',
-              color: isDark ? '#E2E8F0' : '#111827',
-              padding: '12px 14px',
-              fontSize: 13,
-              outline: 'none',
-            }}
-          />
-        </div>
-
-        <select value={planFilter} onChange={(e) => setPlanFilter(e.target.value)} style={{
-          borderRadius: 14,
-          border: `1px solid ${isDark ? '#334155' : '#D0D5DD'}`,
-          background: isDark ? '#0B1220' : '#FAFBFF',
-          color: isDark ? '#E2E8F0' : '#111827',
-          padding: '12px 14px',
-          fontSize: 13,
-          outline: 'none',
-        }}>
-          <option value="all">All plans</option>
-          {PLANS.map((plan) => <option key={plan} value={plan}>{plan}</option>)}
-        </select>
-
-        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} style={{
-          borderRadius: 14,
-          border: `1px solid ${isDark ? '#334155' : '#D0D5DD'}`,
-          background: isDark ? '#0B1220' : '#FAFBFF',
-          color: isDark ? '#E2E8F0' : '#111827',
-          padding: '12px 14px',
-          fontSize: 13,
-          outline: 'none',
-        }}>
-          <option value="all">All statuses</option>
-          {STATUSES.map((status) => <option key={status} value={status}>{status}</option>)}
-        </select>
-
-        <button
-          onClick={() => { setSearch(''); setPlanFilter('all'); setStatusFilter('all'); }}
-          style={{
-            border: `1px solid ${isDark ? '#334155' : '#D0D5DD'}`,
-            background: 'transparent',
-            color: isDark ? '#E2E8F0' : '#344054',
-            borderRadius: 14,
-            padding: '12px 16px',
-            fontSize: 13,
-            fontWeight: 600,
-            cursor: 'pointer',
-          }}
-        >
-          Reset
-        </button>
-      </div>
-
       {error && (
         <div style={{ marginBottom: 14, color: '#B91C1C', background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 14, padding: '10px 14px', fontSize: 12, boxShadow: '0 8px 18px rgba(220,38,38,0.08)' }}>
           {error}
         </div>
       )}
 
-      <div style={{
-        background: isDark ? '#111827' : '#FFFFFF',
-        borderRadius: 20,
-        border: `1px solid ${isDark ? '#334155' : '#E5E7EB'}`,
-        boxShadow: isDark ? '0 18px 50px rgba(2, 6, 23, 0.35)' : PANEL_SHADOW,
-        overflow: 'hidden',
-      }}>
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 980 }}>
-            <thead>
-              <tr style={{ borderBottom: `1px solid ${isDark ? '#334155' : '#E5E7EB'}`, background: isDark ? '#0B1220' : '#F8FAFF' }}>
-                {[
-                  ['tenant', 'Tenant'],
-                  ['plan', 'Plan'],
-                  ['status', 'Status'],
-                  ['period', 'Period end'],
-                  ['stripe', 'Stripe refs'],
-                  ['', 'Actions'],
-                ].map(([key, label]) => (
-                  <th
-                    key={label}
-                    onClick={key ? () => toggleSort(key) : undefined}
-                    style={{
-                      textAlign: 'left',
-                      padding: '14px 16px',
-                      color: isDark ? '#94A3B8' : '#667085',
-                      fontWeight: 800,
-                      fontSize: 11,
-                      textTransform: 'uppercase',
-                      letterSpacing: 0.9,
-                      whiteSpace: 'nowrap',
-                      cursor: key ? 'pointer' : 'default',
-                      userSelect: 'none',
-                    }}
-                  >
-                    {label}
-                    {sortBy === key && key && <span style={{ marginLeft: 6, color: accent }}>{sortDir === 'asc' ? '↑' : '↓'}</span>}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr><td colSpan={6} style={{ padding: 44, textAlign: 'center', color: isDark ? '#94A3B8' : '#9CA3AF' }}>Loading…</td></tr>
-              ) : filteredRows.length === 0 ? (
-                <tr>
-                  <td colSpan={6} style={{ padding: 44, textAlign: 'center' }}>
-                    <div style={{ fontSize: 15, fontWeight: 700, color: isDark ? '#E2E8F0' : '#111827' }}>No subscriptions match your filters</div>
-                    <div style={{ marginTop: 6, fontSize: 13, color: isDark ? '#94A3B8' : '#667085' }}>Try another search term or create a new subscription.</div>
-                  </td>
-                </tr>
-              ) : filteredRows.map((sub, index) => {
-                const pc = PLAN_COLORS[sub.plan] ?? PLAN_COLORS.basic;
-                const sc = SUB_STATUS_COLORS[sub.status] ?? SUB_STATUS_COLORS.past_due;
-                const rowBg = index % 2 === 0 ? (isDark ? '#111827' : '#FFFFFF') : (isDark ? '#0F172A' : '#FCFCFD');
-                return (
-                  <tr key={sub.id} style={{ borderBottom: `1px solid ${isDark ? '#1F2937' : '#F1F5F9'}`, background: rowBg }}>
-                    <td style={{ padding: '15px 16px' }}>
-                      <div style={{ fontWeight: 700, color: isDark ? '#F8FAFC' : '#111827' }}>{sub.tenantName}</div>
-                      <div style={{ marginTop: 3, color: isDark ? '#94A3B8' : '#667085', fontSize: 12, fontFamily: 'monospace' }}>{sub.tenantSlug}</div>
-                    </td>
-                    <td style={{ padding: '15px 16px' }}>
-                      <Pill bg={pc.bg} color={pc.text}>{sub.plan}</Pill>
-                    </td>
-                    <td style={{ padding: '15px 16px' }}>
-                      <Pill bg={sc.bg} color={sc.text}>{sub.status}</Pill>
-                      <div style={{ marginTop: 6, fontSize: 12, color: isDark ? '#94A3B8' : '#667085' }}>{formatRelativeDays(sub.current_period_end)}</div>
-                    </td>
-                    <td style={{ padding: '15px 16px' }}>
-                      <div style={{ color: isDark ? '#E2E8F0' : '#111827', fontSize: 12, fontWeight: 700 }}>Ends {formatDate(sub.current_period_end)}</div>
-                      <div style={{ marginTop: 4, color: isDark ? '#94A3B8' : '#667085', fontSize: 12 }}>Starts {formatDate(sub.current_period_start)}</div>
-                      {sub.cancel_at_period_end && (
-                        <div style={{ marginTop: 5 }}>
-                          <Pill bg="#FEF3C7" color="#92400E">cancel at period end</Pill>
-                        </div>
-                      )}
-                    </td>
-                    <td style={{ padding: '15px 16px' }}>
-                      <div style={{ color: isDark ? '#E2E8F0' : '#111827', fontFamily: 'monospace', fontSize: 12, fontWeight: 600 }}>{sub.stripe_subscription_id}</div>
-                      <div style={{ marginTop: 4, color: isDark ? '#94A3B8' : '#667085', fontFamily: 'monospace', fontSize: 12 }}>{sub.stripe_price_id}</div>
-                    </td>
-                    <td style={{ padding: '15px 16px' }}>
-                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                        <button onClick={() => openEdit(sub)} style={{
-                          padding: '8px 12px',
-                          border: `1px solid ${isDark ? '#334155' : '#D0D5DD'}`,
-                          borderRadius: 10,
-                          background: isDark ? '#0B1220' : '#FFFFFF',
-                          color: isDark ? '#E2E8F0' : '#344054',
-                          cursor: 'pointer',
-                          fontSize: 12,
-                          fontWeight: 700,
-                        }}>
-                          Edit
-                        </button>
-                        <button onClick={() => handleDelete(sub)} style={{
-                          padding: '8px 12px',
-                          border: '1px solid #FECACA',
-                          borderRadius: 10,
-                          background: '#FEF2F2',
-                          color: '#B91C1C',
-                          cursor: 'pointer',
-                          fontSize: 12,
-                          fontWeight: 700,
-                        }}>
-                          Delete
-                        </button>
-                        {sub.status !== 'active' && (
-                          <button onClick={() => quickUpdateStatus(sub, 'active')} style={{
-                            padding: '8px 12px',
-                            border: '1px solid #BBF7D0',
-                            borderRadius: 10,
-                            background: '#F0FDF4',
-                            color: '#166534',
-                            cursor: 'pointer',
-                            fontSize: 12,
-                            fontWeight: 700,
-                          }}>
-                            Set Active
-                          </button>
-                        )}
-                        {sub.status === 'active' && (
-                          <button onClick={() => quickUpdateStatus(sub, 'past_due')} style={{
-                            padding: '8px 12px',
-                            border: '1px solid #FDE68A',
-                            borderRadius: 10,
-                            background: '#FFFBEB',
-                            color: '#B45309',
-                            cursor: 'pointer',
-                            fontSize: 12,
-                            fontWeight: 700,
-                          }}>
-                            Mark Past Due
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      <DataTable
+        columns={subColumns}
+        data={rows}
+        loading={loading}
+        pageSize={20}
+        emptyMessage="No subscriptions match your filters"
+        emptySub="Try another search term or create a new subscription."
+        searchableColumns={[{ id: 'tenant', title: 'Tenant' }]}
+        filterableColumns={[
+          { id: 'plan', title: 'Plan', options: PLANS.map(p => ({ label: p, value: p })) },
+          { id: 'status', title: 'Status', options: STATUSES.map(s => ({ label: s, value: s })) },
+        ]}
+      />
 
       {modalOpen && (
         <Modal title={editing ? 'Edit Subscription' : 'Create Subscription'} onClose={() => setModalOpen(false)}>

@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import api from '../api/axios';
 import { useTheme } from '../context/ThemeContext';
+import { DataTable } from '../components/ui/PageKit';
 
 const STATUS_LIST = ['open', 'in_progress', 'waiting_customer', 'resolved', 'closed'];
 const PRIORITY_LIST = ['low', 'medium', 'high', 'urgent'];
@@ -309,6 +310,102 @@ export default function SupportTicketsPage({ platformMode = false }) {
     ? 'radial-gradient(circle at top left, rgba(20,184,166,0.15), transparent 35%), linear-gradient(180deg,#0F172A 0%, #0B1220 100%)'
     : 'radial-gradient(circle at top left, rgba(20,184,166,0.1), transparent 35%), linear-gradient(180deg,#F6FFFE 0%, #F4F7FA 100%)';
 
+  const expandedTicket = tickets.find((t) => t.id === expandedTicketId);
+
+  const ticketColumns = useMemo(() => {
+    const btn = (label, onClick, style) => (
+      <button type="button" onClick={onClick} style={style}>{label}</button>
+    );
+    const baseBtn = {
+      border: `1px solid ${isDark ? '#334155' : '#D0D5DD'}`,
+      background: isDark ? '#0B1220' : '#fff',
+      color: isDark ? '#E2E8F0' : '#344054',
+      borderRadius: 8,
+      padding: '6px 9px',
+      fontSize: 11,
+      fontWeight: 700,
+      cursor: 'pointer',
+    };
+    const cols = [
+      {
+        accessorKey: 'subject',
+        header: 'Subject',
+        meta: { width: platformMode ? '28%' : '32%' },
+        cell: ({ row }) => {
+          const t = row.original;
+          return (
+            <>
+              <div style={{ color: isDark ? '#E2E8F0' : '#0F172A', fontWeight: 700 }}>{t.subject || `Ticket #${t.id}`}</div>
+              <div style={{ marginTop: 4, color: isDark ? '#94A3B8' : '#64748B', fontSize: 12, maxWidth: 330, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.description || 'No description'}</div>
+              {t.ticket_no && <div style={{ marginTop: 3, color: isDark ? '#64748B' : '#94A3B8', fontSize: 11, fontFamily: 'monospace' }}>{t.ticket_no}</div>}
+            </>
+          );
+        },
+      },
+    ];
+    if (platformMode) {
+      cols.push({
+        id: 'tenant',
+        accessorFn: (t) => t.tenant?.name || '',
+        header: 'Tenant',
+        meta: { width: '16%' },
+        cell: ({ row }) => {
+          const t = row.original;
+          return (
+            <span style={{ color: isDark ? '#CBD5E1' : '#334155' }}>
+              {t.tenant?.name ? `${t.tenant.name} (${t.tenant.slug})` : (t.tenant_id ? `Tenant #${t.tenant_id}` : 'N/A')}
+            </span>
+          );
+        },
+      });
+    }
+    cols.push(
+      {
+        accessorKey: 'priority',
+        header: 'Priority',
+        meta: { width: '10%' },
+        cell: ({ getValue }) => <Pill value={getValue()} palette={PRIORITY_COLORS[getValue()]} />,
+      },
+      {
+        accessorKey: 'status',
+        header: 'Status',
+        meta: { width: '12%' },
+        cell: ({ getValue }) => <Pill value={getValue()} palette={STATUS_COLORS[getValue()]} />,
+      },
+      {
+        accessorKey: 'updatedAt',
+        header: 'Updated',
+        meta: { width: '14%' },
+        cell: ({ getValue }) => (
+          <span style={{ color: isDark ? '#CBD5E1' : '#334155' }}>
+            {getValue() ? new Date(getValue()).toLocaleString() : '-'}
+          </span>
+        ),
+      },
+      {
+        id: 'actions',
+        header: 'Actions',
+        enableSorting: false,
+        cell: ({ row }) => {
+          const t = row.original;
+          const expanded = expandedTicketId === t.id;
+          const replies = Array.isArray(t.replies) ? t.replies : [];
+          return (
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {btn(expanded ? 'Hide Thread' : `View Thread (${replies.length})`, () => setExpandedTicketId(expanded ? null : t.id), baseBtn)}
+              {platformMode && t.status !== 'in_progress' && btn('In Progress', () => updateTicket(t, { status: 'in_progress' }), { ...baseBtn, border: '1px solid #FDE68A', background: '#FFFBEB', color: '#92400E' })}
+              {platformMode && t.status !== 'resolved' && btn('Resolve', () => updateTicket(t, { status: 'resolved' }), { ...baseBtn, border: '1px solid #BBF7D0', background: '#F0FDF4', color: '#166534' })}
+              {platformMode && t.status !== 'waiting_customer' && t.status !== 'closed' && btn('Waiting Customer', () => updateTicket(t, { status: 'waiting_customer' }), { ...baseBtn, border: '1px solid #FDE68A', background: '#FFFBEB', color: '#92400E' })}
+              {platformMode && t.status !== 'closed' && btn('Close', () => updateTicket(t, { status: 'closed' }), { ...baseBtn, border: '1px solid #E5E7EB', background: '#F8FAFC', color: '#374151' })}
+              {platformMode && btn('Delete', () => removeTicket(t), { ...baseBtn, border: '1px solid #FECACA', background: '#FEF2F2', color: '#B91C1C' })}
+            </div>
+          );
+        },
+      },
+    );
+    return cols;
+  }, [platformMode, isDark, expandedTicketId]);
+
   return (
     <div style={{ width: '100%', minHeight: '100%', padding: '28px clamp(16px,2.4vw,34px) 44px', boxSizing: 'border-box', background: pageBg }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, alignItems: 'flex-start', flexWrap: 'wrap', marginBottom: 18 }}>
@@ -421,141 +518,89 @@ export default function SupportTicketsPage({ platformMode = false }) {
             </button>
           </div>
 
-          <div style={{ maxHeight: 420, overflow: 'auto', borderRadius: 12, border: `1px solid ${isDark ? '#1E293B' : '#E5E7EB'}` }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: platformMode ? 880 : 700 }}>
-              <thead>
-                <tr style={{ position: 'sticky', top: 0, background: isDark ? '#0B1220' : '#F8FAFC', zIndex: 1 }}>
-                  <th style={{ textAlign: 'left', padding: '10px 11px', color: isDark ? '#94A3B8' : '#6B7280' }}>Subject</th>
-                  {platformMode && <th style={{ textAlign: 'left', padding: '10px 11px', color: isDark ? '#94A3B8' : '#6B7280' }}>Tenant</th>}
-                  <th style={{ textAlign: 'left', padding: '10px 11px', color: isDark ? '#94A3B8' : '#6B7280' }}>Priority</th>
-                  <th style={{ textAlign: 'left', padding: '10px 11px', color: isDark ? '#94A3B8' : '#6B7280' }}>Status</th>
-                  <th style={{ textAlign: 'left', padding: '10px 11px', color: isDark ? '#94A3B8' : '#6B7280' }}>Updated</th>
-                  <th style={{ textAlign: 'left', padding: '10px 11px', color: isDark ? '#94A3B8' : '#6B7280' }}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {loading ? (
-                  <tr><td colSpan={platformMode ? 6 : 5} style={{ padding: '14px 11px', color: isDark ? '#94A3B8' : '#6B7280' }}>Loading tickets...</td></tr>
-                ) : tickets.length === 0 ? (
-                  <tr><td colSpan={platformMode ? 6 : 5} style={{ padding: '14px 11px', color: isDark ? '#94A3B8' : '#6B7280' }}>No tickets found.</td></tr>
-                ) : tickets.map((t) => {
-                  const expanded = expandedTicketId === t.id;
-                  const replies = Array.isArray(t.replies) ? [...t.replies].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt)) : [];
-
-                  return (
-                    <React.Fragment key={t.id}>
-                      <tr style={{ borderTop: `1px solid ${isDark ? '#1E293B' : '#F1F5F9'}` }}>
-                        <td style={{ padding: '10px 11px' }}>
-                          <div style={{ color: isDark ? '#E2E8F0' : '#0F172A', fontWeight: 700 }}>{t.subject || `Ticket #${t.id}`}</div>
-                          <div style={{ marginTop: 4, color: isDark ? '#94A3B8' : '#64748B', fontSize: 12, maxWidth: 330, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.description || 'No description'}</div>
-                          {t.ticket_no && <div style={{ marginTop: 3, color: isDark ? '#64748B' : '#94A3B8', fontSize: 11, fontFamily: 'monospace' }}>{t.ticket_no}</div>}
-                        </td>
-                        {platformMode && (
-                          <td style={{ padding: '10px 11px', color: isDark ? '#CBD5E1' : '#334155' }}>
-                            {t.tenant?.name ? `${t.tenant.name} (${t.tenant.slug})` : (t.tenant_id ? `Tenant #${t.tenant_id}` : 'N/A')}
-                          </td>
-                        )}
-                        <td style={{ padding: '10px 11px' }}><Pill value={t.priority} palette={PRIORITY_COLORS[t.priority]} /></td>
-                        <td style={{ padding: '10px 11px' }}><Pill value={t.status} palette={STATUS_COLORS[t.status]} /></td>
-                        <td style={{ padding: '10px 11px', color: isDark ? '#CBD5E1' : '#334155' }}>{t.updatedAt ? new Date(t.updatedAt).toLocaleString() : '-'}</td>
-                        <td style={{ padding: '10px 11px' }}>
-                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                            <button type="button" onClick={() => setExpandedTicketId(expanded ? null : t.id)} style={{ border: `1px solid ${isDark ? '#334155' : '#D0D5DD'}`, background: isDark ? '#0B1220' : '#fff', color: isDark ? '#E2E8F0' : '#344054', borderRadius: 8, padding: '6px 9px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>{expanded ? 'Hide Thread' : `View Thread (${replies.length})`}</button>
-                            {platformMode && t.status !== 'in_progress' && (
-                              <button type="button" onClick={() => updateTicket(t, { status: 'in_progress' })} style={{ border: '1px solid #FDE68A', background: '#FFFBEB', color: '#92400E', borderRadius: 8, padding: '6px 9px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>In Progress</button>
-                            )}
-                            {platformMode && t.status !== 'resolved' && (
-                              <button type="button" onClick={() => updateTicket(t, { status: 'resolved' })} style={{ border: '1px solid #BBF7D0', background: '#F0FDF4', color: '#166534', borderRadius: 8, padding: '6px 9px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>Resolve</button>
-                            )}
-                            {platformMode && t.status !== 'waiting_customer' && t.status !== 'closed' && (
-                              <button type="button" onClick={() => updateTicket(t, { status: 'waiting_customer' })} style={{ border: '1px solid #FDE68A', background: '#FFFBEB', color: '#92400E', borderRadius: 8, padding: '6px 9px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>Waiting Customer</button>
-                            )}
-                            {platformMode && t.status !== 'closed' && (
-                              <button type="button" onClick={() => updateTicket(t, { status: 'closed' })} style={{ border: '1px solid #E5E7EB', background: '#F8FAFC', color: '#374151', borderRadius: 8, padding: '6px 9px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>Close</button>
-                            )}
-                            {platformMode && (
-                              <button type="button" onClick={() => removeTicket(t)} style={{ border: '1px solid #FECACA', background: '#FEF2F2', color: '#B91C1C', borderRadius: 8, padding: '6px 9px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>Delete</button>
-                            )}
+          <div style={{ maxHeight: expandedTicket ? 'none' : 420, overflow: 'auto', borderRadius: 12, border: `1px solid ${isDark ? '#1E293B' : '#E5E7EB'}` }}>
+            <DataTable
+              noShell
+              compact
+              columns={ticketColumns}
+              data={tickets}
+              loading={loading}
+              emptyMessage="No tickets found."
+              pagination={false}
+              showRowNumbers={false}
+              searchableColumns={[{ id: 'subject', title: 'Subject' }]}
+            />
+            {expandedTicket && (() => {
+              const t = expandedTicket;
+              const replies = Array.isArray(t.replies) ? [...t.replies].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt)) : [];
+              return (
+                <div style={{ padding: '10px 11px 14px', borderTop: `1px solid ${isDark ? '#1E293B' : '#E5E7EB'}` }}>
+                  <div style={{ border: `1px solid ${isDark ? '#334155' : '#E5E7EB'}`, borderRadius: 10, background: isDark ? '#0B1220' : '#FAFBFF', padding: 10 }}>
+                    <div style={{ marginBottom: 8, fontSize: 12, fontWeight: 800, color: isDark ? '#94A3B8' : '#64748B' }}>Conversation — {t.subject || `Ticket #${t.id}`}</div>
+                    <div style={{ display: 'grid', gap: 8, marginBottom: 10, maxHeight: 240, overflow: 'auto' }}>
+                      <div style={{ borderRadius: 8, border: `1px solid ${isDark ? '#1E293B' : '#E5E7EB'}`, background: isDark ? '#111827' : '#FFFFFF', padding: '8px 9px' }}>
+                        <div style={{ fontSize: 11, fontWeight: 800, color: isDark ? '#CBD5E1' : '#334155' }}>Initial Ticket</div>
+                        <div style={{ marginTop: 3, fontSize: 12, color: isDark ? '#E2E8F0' : '#111827' }}>{t.description || '-'}</div>
+                      </div>
+                      {replies.length === 0 ? (
+                        <div style={{ fontSize: 12, color: isDark ? '#94A3B8' : '#64748B' }}>No replies yet.</div>
+                      ) : replies.map((r) => (
+                        <div key={r.id} style={{ borderRadius: 8, border: `1px solid ${isDark ? '#1E293B' : '#E5E7EB'}`, background: isDark ? '#111827' : '#FFFFFF', padding: '8px 9px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                            <div style={{ fontSize: 11, fontWeight: 800, color: isDark ? '#CBD5E1' : '#334155' }}>{r.author?.name || r.author?.username || `User #${r.user_id}`}</div>
+                            <div style={{ fontSize: 10, color: isDark ? '#94A3B8' : '#64748B' }}>{r.createdAt ? new Date(r.createdAt).toLocaleString() : '-'}</div>
                           </div>
-                        </td>
-                      </tr>
-
-                      {expanded && (
-                        <tr>
-                          <td colSpan={platformMode ? 6 : 5} style={{ padding: '10px 11px 14px' }}>
-                            <div style={{ border: `1px solid ${isDark ? '#334155' : '#E5E7EB'}`, borderRadius: 10, background: isDark ? '#0B1220' : '#FAFBFF', padding: 10 }}>
-                              <div style={{ marginBottom: 8, fontSize: 12, fontWeight: 800, color: isDark ? '#94A3B8' : '#64748B' }}>Conversation</div>
-                              <div style={{ display: 'grid', gap: 8, marginBottom: 10, maxHeight: 240, overflow: 'auto' }}>
-                                <div style={{ borderRadius: 8, border: `1px solid ${isDark ? '#1E293B' : '#E5E7EB'}`, background: isDark ? '#111827' : '#FFFFFF', padding: '8px 9px' }}>
-                                  <div style={{ fontSize: 11, fontWeight: 800, color: isDark ? '#CBD5E1' : '#334155' }}>Initial Ticket</div>
-                                  <div style={{ marginTop: 3, fontSize: 12, color: isDark ? '#E2E8F0' : '#111827' }}>{t.description || '-'}</div>
-                                </div>
-
-                                {replies.length === 0 ? (
-                                  <div style={{ fontSize: 12, color: isDark ? '#94A3B8' : '#64748B' }}>No replies yet.</div>
-                                ) : replies.map((r) => (
-                                  <div key={r.id} style={{ borderRadius: 8, border: `1px solid ${isDark ? '#1E293B' : '#E5E7EB'}`, background: isDark ? '#111827' : '#FFFFFF', padding: '8px 9px' }}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-                                      <div style={{ fontSize: 11, fontWeight: 800, color: isDark ? '#CBD5E1' : '#334155' }}>{r.author?.name || r.author?.username || `User #${r.user_id}`}</div>
-                                      <div style={{ fontSize: 10, color: isDark ? '#94A3B8' : '#64748B' }}>{r.createdAt ? new Date(r.createdAt).toLocaleString() : '-'}</div>
-                                    </div>
-                                    {r.is_internal && (
-                                      <div style={{ marginTop: 4 }}>
-                                        <Pill value="internal" palette={{ bg: '#F3E8FF', text: '#7C3AED' }} />
-                                      </div>
-                                    )}
-                                    <div style={{ marginTop: 4, fontSize: 12, color: isDark ? '#E2E8F0' : '#111827', whiteSpace: 'pre-wrap' }}>{r.message}</div>
-                                  </div>
-                                ))}
-                              </div>
-
-                              <div style={{ display: 'grid', gap: 8 }}>
-                                <textarea
-                                  rows={3}
-                                  value={replyDrafts[t.id] || ''}
-                                  onChange={(e) => setReplyDrafts((prev) => ({ ...prev, [t.id]: e.target.value }))}
-                                  placeholder="Write your reply..."
-                                  style={{ width: '100%', boxSizing: 'border-box', borderRadius: 8, border: `1px solid ${isDark ? '#334155' : '#D0D5DD'}`, background: isDark ? '#0B1220' : '#fff', color: isDark ? '#E2E8F0' : '#111827', padding: '8px 9px', fontSize: 12, resize: 'vertical' }}
-                                />
-                                {platformMode && (
-                                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontSize: 12, color: isDark ? '#CBD5E1' : '#334155', fontWeight: 600 }}>
-                                    <input
-                                      type="checkbox"
-                                      checked={!!replyInternal[t.id]}
-                                      onChange={(e) => setReplyInternal((prev) => ({ ...prev, [t.id]: e.target.checked }))}
-                                    />
-                                    Send as internal note
-                                  </label>
-                                )}
-                                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                                  <button
-                                    type="button"
-                                    onClick={() => (platformMode ? sendPlatformReply(t) : sendReply(t))}
-                                    disabled={replyBusyId === t.id}
-                                    style={{ border: 'none', borderRadius: 8, background: '#2563EB', color: '#fff', padding: '7px 11px', fontSize: 12, fontWeight: 700, cursor: replyBusyId === t.id ? 'not-allowed' : 'pointer', opacity: replyBusyId === t.id ? 0.75 : 1 }}
-                                  >
-                                    {replyBusyId === t.id ? 'Sending...' : 'Send Reply'}
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleAiSuggest(t)}
-                                    disabled={!!aiSuggestBusy[t.id]}
-                                    title="Generate an AI-powered reply suggestion"
-                                    style={{ border: '1px solid #7C3AED', borderRadius: 8, background: aiSuggestBusy[t.id] ? '#EDE9FE' : '#F5F3FF', color: '#7C3AED', padding: '7px 11px', fontSize: 12, fontWeight: 700, cursor: aiSuggestBusy[t.id] ? 'not-allowed' : 'pointer', opacity: aiSuggestBusy[t.id] ? 0.7 : 1, display: 'flex', alignItems: 'center', gap: 5 }}
-                                  >
-                                    {aiSuggestBusy[t.id] ? '⏳ Thinking...' : '✨ AI Suggest'}
-                                  </button>
-                                </div>
-                              </div>
+                          {r.is_internal && (
+                            <div style={{ marginTop: 4 }}>
+                              <Pill value="internal" palette={{ bg: '#F3E8FF', text: '#7C3AED' }} />
                             </div>
-                          </td>
-                        </tr>
+                          )}
+                          <div style={{ marginTop: 4, fontSize: 12, color: isDark ? '#E2E8F0' : '#111827', whiteSpace: 'pre-wrap' }}>{r.message}</div>
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{ display: 'grid', gap: 8 }}>
+                      <textarea
+                        rows={3}
+                        value={replyDrafts[t.id] || ''}
+                        onChange={(e) => setReplyDrafts((prev) => ({ ...prev, [t.id]: e.target.value }))}
+                        placeholder="Write your reply..."
+                        style={{ width: '100%', boxSizing: 'border-box', borderRadius: 8, border: `1px solid ${isDark ? '#334155' : '#D0D5DD'}`, background: isDark ? '#0B1220' : '#fff', color: isDark ? '#E2E8F0' : '#111827', padding: '8px 9px', fontSize: 12, resize: 'vertical' }}
+                      />
+                      {platformMode && (
+                        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontSize: 12, color: isDark ? '#CBD5E1' : '#334155', fontWeight: 600 }}>
+                          <input
+                            type="checkbox"
+                            checked={!!replyInternal[t.id]}
+                            onChange={(e) => setReplyInternal((prev) => ({ ...prev, [t.id]: e.target.checked }))}
+                          />
+                          Send as internal note
+                        </label>
                       )}
-                    </React.Fragment>
-                  );
-                })}
-              </tbody>
-            </table>
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                        <button
+                          type="button"
+                          onClick={() => (platformMode ? sendPlatformReply(t) : sendReply(t))}
+                          disabled={replyBusyId === t.id}
+                          style={{ border: 'none', borderRadius: 8, background: '#2563EB', color: '#fff', padding: '7px 11px', fontSize: 12, fontWeight: 700, cursor: replyBusyId === t.id ? 'not-allowed' : 'pointer', opacity: replyBusyId === t.id ? 0.75 : 1 }}
+                        >
+                          {replyBusyId === t.id ? 'Sending...' : 'Send Reply'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleAiSuggest(t)}
+                          disabled={!!aiSuggestBusy[t.id]}
+                          title="Generate an AI-powered reply suggestion"
+                          style={{ border: '1px solid #7C3AED', borderRadius: 8, background: aiSuggestBusy[t.id] ? '#EDE9FE' : '#F5F3FF', color: '#7C3AED', padding: '7px 11px', fontSize: 12, fontWeight: 700, cursor: aiSuggestBusy[t.id] ? 'not-allowed' : 'pointer', opacity: aiSuggestBusy[t.id] ? 0.7 : 1, display: 'flex', alignItems: 'center', gap: 5 }}
+                        >
+                          {aiSuggestBusy[t.id] ? '⏳ Thinking...' : '✨ AI Suggest'}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         </Surface>
 

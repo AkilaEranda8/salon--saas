@@ -1,8 +1,8 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import api from '../api/axios';
 import PageWrapper from '../components/layout/PageWrapper';
-import { StatCard } from '../components/ui/PageKit';
+import { StatCard, DataTable } from '../components/ui/PageKit';
 import Button from '../components/ui/Button';
 import { useToast } from '../components/ui/Toast';
 import { useAuth } from '../context/AuthContext';
@@ -117,6 +117,90 @@ export default function LoyaltyPage() {
   const totalPts = leaderboard.reduce((s, c) => s + (c.loyalty_points || 0), 0);
   const topPts   = leaderboard[0]?.loyalty_points || 0;
   const tierCounts = tierDistribution(leaderboard);
+
+  const leaderboardRows = useMemo(
+    () => leaderboard.map((c, i) => ({ ...c, _rank: i + 1 })),
+    [leaderboard],
+  );
+
+  const leaderboardColumns = useMemo(() => [
+    {
+      id: 'rank',
+      header: '#',
+      enableSorting: false,
+      meta: { width: '56px', align: 'center' },
+      cell: ({ row: { original: c } }) => {
+        const i = c._rank - 1;
+        return (
+          <span style={{ fontWeight: 800, fontSize: 14, color: ['#FFD700', '#94A3B8', '#CD7F32'][i] || '#98A2B3' }}>
+            {i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : c._rank}
+          </span>
+        );
+      },
+    },
+    {
+      id: 'name',
+      header: 'Name',
+      accessorFn: (row) => row.name || '',
+      meta: { width: '22%' },
+      cell: ({ row: { original: c } }) => (
+        <span style={{ fontWeight: 600, color: '#101828' }}>{c.name}</span>
+      ),
+    },
+    {
+      id: 'phone',
+      header: 'Phone',
+      accessorFn: (row) => row.phone || '',
+      meta: { width: '14%' },
+      cell: ({ row: { original: c } }) => (
+        <span style={{ color: '#667085' }}>{c.phone || '—'}</span>
+      ),
+    },
+    {
+      id: 'tier',
+      header: 'Tier',
+      accessorFn: (row) => getTier(row.loyalty_points || 0).name,
+      meta: { width: '12%' },
+      cell: ({ row: { original: c } }) => {
+        const tier = getTier(c.loyalty_points || 0);
+        return (
+          <span style={{
+            display: 'inline-block', padding: '2px 10px', borderRadius: 99,
+            fontSize: 11, fontWeight: 700,
+            background: `${tier.color}18`, color: tier.color,
+            border: `1px solid ${tier.color}30`,
+          }}>{tier.name}</span>
+        );
+      },
+    },
+    {
+      id: 'points',
+      header: 'Points',
+      accessorFn: (row) => row.loyalty_points,
+      meta: { width: '12%', align: 'right' },
+      cell: ({ row: { original: c } }) => (
+        <span style={{ fontWeight: 700, color: '#7C3AED' }}>{Number(c.loyalty_points).toLocaleString()}</span>
+      ),
+    },
+    {
+      id: 'total_spent',
+      header: 'Total Spent',
+      accessorFn: (row) => row.total_spent,
+      meta: { width: '14%', align: 'right' },
+      cell: ({ row: { original: c } }) => (
+        <span style={{ color: '#344054' }}>{Rs(c.total_spent)}</span>
+      ),
+    },
+    {
+      id: 'visits',
+      header: 'Visits',
+      accessorFn: (row) => row.visits,
+      meta: { width: '10%', align: 'center' },
+      cell: ({ row: { original: c } }) => (
+        <span style={{ color: '#344054' }}>{c.visits}</span>
+      ),
+    },
+  ], []);
 
   const inp = {
     padding: '10px 14px', borderRadius: 10, border: '1.5px solid #E5E7EB', fontSize: 13.5,
@@ -421,51 +505,14 @@ export default function LoyaltyPage() {
             No loyalty members yet
           </div>
         ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13.5, fontFamily: "'Inter', sans-serif" }}>
-              <thead>
-                <tr>
-                  {['#', 'Name', 'Phone', 'Tier', 'Points', 'Total Spent', 'Visits'].map((h) => (
-                    <th key={h} style={{
-                      padding: '10px 12px', textAlign: 'left', fontWeight: 700,
-                      color: '#667085', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em',
-                      borderBottom: '2px solid #EAECF0',
-                    }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {leaderboard.map((c, i) => {
-                  const tier = getTier(c.loyalty_points || 0);
-                  return (
-                    <motion.tr
-                      key={c.id}
-                      initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-                      transition={{ delay: i * 0.02 }}
-                      style={{ borderBottom: '1px solid #F2F4F7', background: i < 3 ? '#FFFBEB08' : 'transparent' }}
-                    >
-                      <td style={{ padding: '10px 12px', fontWeight: 800, fontSize: 14, color: ['#FFD700', '#94A3B8', '#CD7F32'][i] || '#98A2B3' }}>
-                        {i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : i + 1}
-                      </td>
-                      <td style={{ padding: '10px 12px', fontWeight: 600, color: '#101828' }}>{c.name}</td>
-                      <td style={{ padding: '10px 12px', color: '#667085' }}>{c.phone || '—'}</td>
-                      <td style={{ padding: '10px 12px' }}>
-                        <span style={{
-                          display: 'inline-block', padding: '2px 10px', borderRadius: 99,
-                          fontSize: 11, fontWeight: 700,
-                          background: `${tier.color}18`, color: tier.color,
-                          border: `1px solid ${tier.color}30`,
-                        }}>{tier.name}</span>
-                      </td>
-                      <td style={{ padding: '10px 12px', fontWeight: 700, color: '#7C3AED' }}>{Number(c.loyalty_points).toLocaleString()}</td>
-                      <td style={{ padding: '10px 12px', color: '#344054' }}>{Rs(c.total_spent)}</td>
-                      <td style={{ padding: '10px 12px', color: '#344054' }}>{c.visits}</td>
-                    </motion.tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+          <DataTable
+            columns={leaderboardColumns}
+            data={leaderboardRows}
+            showRowNumbers={false}
+            searchableColumns={[{ id: 'name', title: 'Name' }]}
+            emptyMessage="No loyalty members yet"
+            pageSize={20}
+          />
         )}
       </motion.div>
 

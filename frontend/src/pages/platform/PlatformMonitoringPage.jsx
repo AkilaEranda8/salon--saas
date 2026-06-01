@@ -5,6 +5,7 @@ import {
 } from 'recharts';
 import api from '../../api/axios';
 import { useTheme } from '../../context/ThemeContext';
+import { DataTable, CRAFT_TABLE_COMPACT } from '../../components/ui/PageKit';
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 const ALERT_PALETTE = {
@@ -49,15 +50,15 @@ function pct(arr, p) {
 }
 
 // ── Sub-components ─────────────────────────────────────────────────────────────
-function Surface({ title, subtitle, children, dark, rightAction, style = {} }) {
+function Surface({ title, subtitle, children, dark, rightAction, noPad, style = {} }) {
   return (
     <section style={{
       borderRadius: 18, border: `1px solid ${dark ? '#1E293B' : '#E5E7EB'}`,
       background: dark ? '#111827' : '#FFFFFF',
       boxShadow: dark ? '0 8px 24px rgba(2,6,23,0.38)' : '0 8px 20px rgba(15,23,42,0.06)',
-      padding: '18px 18px 16px', ...style,
+      padding: noPad ? '18px 0 0' : '18px 18px 16px', ...style,
     }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, marginBottom: 14 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, marginBottom: 14, padding: noPad ? '0 18px' : 0 }}>
         <div>
           <div style={{ fontSize: 14, fontWeight: 800, color: dark ? '#F1F5F9' : '#0F172A' }}>{title}</div>
           {subtitle && <div style={{ marginTop: 3, fontSize: 12, color: dark ? '#64748B' : '#94A3B8' }}>{subtitle}</div>}
@@ -197,9 +198,72 @@ export default function PlatformMonitoringPage() {
   }, [monitoring]);
 
   const recentApiRows  = monitoring?.apiRealtime?.recent || [];
+  const apiTableData   = useMemo(
+    () => [...recentApiRows].reverse().slice(0, 50),
+    [recentApiRows],
+  );
   const recentErrors   = monitoring?.recentFailedNotifications || [];
   const isHealthy      = health.overall === 'healthy';
   const pal            = isDark ? ALERT_PALETTE_DARK : ALERT_PALETTE;
+
+  const apiMethodOptions = useMemo(() => {
+    const methods = [...new Set(apiTableData.map(r => r.method).filter(Boolean))];
+    return methods.map(m => ({ label: m, value: m }));
+  }, [apiTableData]);
+
+  const apiColumns = useMemo(() => [
+    {
+      id: 'at',
+      header: 'Time',
+      accessorKey: 'at',
+      meta: { width: '14%' },
+      cell: ({ row: { original: row } }) => (
+        <span style={{ color: isDark ? '#475569' : '#9CA3AF', whiteSpace: 'nowrap', fontSize: 12 }}>
+          {new Date(row.at).toLocaleTimeString()}
+        </span>
+      ),
+    },
+    {
+      id: 'method',
+      header: 'Method',
+      accessorKey: 'method',
+      meta: { width: '10%' },
+      cell: ({ row: { original: row } }) => (
+        <span style={{ fontWeight: 800, color: isDark ? '#E2E8F0' : '#0F172A', whiteSpace: 'nowrap', fontSize: 12 }}>{row.method}</span>
+      ),
+    },
+    {
+      id: 'path',
+      header: 'Path',
+      accessorKey: 'path',
+      meta: { width: '42%' },
+      cell: ({ row: { original: row } }) => (
+        <span style={{ color: isDark ? '#94A3B8' : '#374151', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block', fontSize: 12 }} title={row.path}>{row.path}</span>
+      ),
+    },
+    {
+      id: 'status',
+      header: 'Status',
+      accessorFn: row => String(row.status ?? ''),
+      meta: { width: '10%', align: 'center' },
+      cell: ({ row: { original: row } }) => {
+        const s = row.status || 0;
+        const sc = s >= 500 ? '#EF4444' : s >= 400 ? '#F59E0B' : '#10B981';
+        return <span style={{ fontWeight: 800, color: sc, fontSize: 12 }}>{s}</span>;
+      },
+    },
+    {
+      id: 'durationMs',
+      header: 'ms',
+      accessorKey: 'durationMs',
+      meta: { width: '10%', align: 'right' },
+      cell: ({ row: { original: row } }) => {
+        const ms = row.durationMs ?? 0;
+        const mc = ms > 1000 ? '#EF4444' : ms > 500 ? '#F59E0B' : isDark ? '#94A3B8' : '#6B7280';
+        return <span style={{ fontWeight: 700, color: mc, fontSize: 12 }}>{ms}</span>;
+      },
+    },
+  ], [isDark]);
 
   const pageBg = isDark
     ? 'radial-gradient(ellipse at top left, rgba(56,189,248,0.10) 0%, transparent 40%), linear-gradient(180deg,#0A111E 0%,#07090F 100%)'
@@ -449,37 +513,17 @@ export default function PlatformMonitoringPage() {
 
       {/* ── API Logs + Failed Notifications ── */}
       <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr', gap: 14 }}>
-        <Surface dark={isDark} title="Recent API Requests" subtitle={`Last ${Math.min(recentApiRows.length, 50)} requests captured by middleware`}>
-          <div style={{ maxHeight: 320, overflow: 'auto', borderRadius: 12, border: `1px solid ${isDark ? '#1E293B' : '#E5E7EB'}` }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-              <thead>
-                <tr style={{ position: 'sticky', top: 0, background: isDark ? '#0B1220' : '#F8FAFC', zIndex: 1 }}>
-                  {['Time', 'Method', 'Path', 'Status', 'ms'].map((h, i) => (
-                    <th key={h} style={{ textAlign: i === 4 ? 'right' : 'left', padding: '9px 10px', fontSize: 11, fontWeight: 700, color: isDark ? '#475569' : '#9CA3AF', textTransform: 'uppercase', letterSpacing: 0.6, borderBottom: `1px solid ${isDark ? '#1E293B' : '#E5E7EB'}` }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {recentApiRows.length === 0 ? (
-                  <tr><td colSpan={5} style={{ padding: '16px 10px', color: isDark ? '#475569' : '#9CA3AF', fontSize: 12 }}>No request traces yet.</td></tr>
-                ) : [...recentApiRows].reverse().slice(0, 50).map((row, idx) => {
-                  const s = row.status || 0;
-                  const sc = s >= 500 ? '#EF4444' : s >= 400 ? '#F59E0B' : '#10B981';
-                  const ms = row.durationMs ?? 0;
-                  const mc = ms > 1000 ? '#EF4444' : ms > 500 ? '#F59E0B' : isDark ? '#94A3B8' : '#6B7280';
-                  return (
-                    <tr key={`${row.at}-${idx}`} style={{ borderTop: `1px solid ${isDark ? '#0F172A' : '#F1F5F9'}` }}>
-                      <td style={{ padding: '7px 10px', color: isDark ? '#475569' : '#9CA3AF', whiteSpace: 'nowrap' }}>{new Date(row.at).toLocaleTimeString()}</td>
-                      <td style={{ padding: '7px 10px', fontWeight: 800, color: isDark ? '#E2E8F0' : '#0F172A', whiteSpace: 'nowrap' }}>{row.method}</td>
-                      <td style={{ padding: '7px 10px', color: isDark ? '#94A3B8' : '#374151', maxWidth: 280, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={row.path}>{row.path}</td>
-                      <td style={{ padding: '7px 10px', fontWeight: 800, color: sc }}>{s}</td>
-                      <td style={{ padding: '7px 10px', textAlign: 'right', fontWeight: 700, color: mc }}>{ms}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+        <Surface dark={isDark} title="Recent API Requests" subtitle={`Last ${Math.min(recentApiRows.length, 50)} requests captured by middleware`} noPad>
+          <DataTable
+            {...CRAFT_TABLE_COMPACT}
+            columns={apiColumns}
+            data={apiTableData}
+            loading={loading}
+            emptyMessage="No request traces yet"
+            emptySub="API middleware has not captured requests"
+            searchableColumns={[{ id: 'path', title: 'Path', placeholder: 'Filter path…' }]}
+            filterableColumns={apiMethodOptions.length ? [{ id: 'method', title: 'Method', options: apiMethodOptions }] : []}
+          />
         </Surface>
 
         <Surface dark={isDark} title="Failed Notifications" subtitle="Most recent delivery failures">

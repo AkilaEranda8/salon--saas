@@ -1,6 +1,7 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import api from '../../api/axios';
 import { useTheme } from '../../context/ThemeContext';
+import { DataTable } from '../../components/ui/PageKit';
 
 /* ── Icons ───────────────────────────────────────────────────────────── */
 const Ico = ({ d, size = 16 }) => (
@@ -512,6 +513,104 @@ export default function PlatformPlansPage() {
   const card = isDark ? '#111827' : '#FFFFFF';
   const bdr  = isDark ? '#334155' : '#E5E7EB';
 
+  const actionColors = { created: '#059669', updated: '#2563EB', deleted: '#DC2626' };
+  const actionBg = { created: '#D1FAE5', updated: '#DBEAFE', deleted: '#FEE2E2' };
+
+  const logColumns = useMemo(() => [
+    {
+      accessorKey: 'createdAt',
+      header: 'Time',
+      meta: { width: '14%' },
+      cell: ({ getValue }) => (
+        <span style={{ color: sub, whiteSpace: 'nowrap', fontFamily: "'JetBrains Mono', monospace", fontSize: 11 }}>
+          {new Date(getValue()).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+        </span>
+      ),
+    },
+    {
+      id: 'plan',
+      accessorFn: (log) => `${log.plan_label} ${log.plan_key}`,
+      header: 'Plan',
+      meta: { width: '16%' },
+      cell: ({ row }) => {
+        const log = row.original;
+        return (
+          <>
+            <span style={{ fontWeight: 700, color: txt('#0F172A') }}>{log.plan_label}</span>
+            <span style={{ fontSize: 10, color: sub, marginLeft: 6, fontWeight: 500 }}>({log.plan_key})</span>
+          </>
+        );
+      },
+    },
+    {
+      accessorKey: 'action',
+      header: 'Action',
+      meta: { width: '10%' },
+      cell: ({ getValue }) => (
+        <span style={{
+          display: 'inline-block', padding: '3px 10px', borderRadius: 99,
+          fontSize: 11, fontWeight: 700, textTransform: 'uppercase',
+          background: isDark ? `${actionColors[getValue()]}25` : actionBg[getValue()],
+          color: actionColors[getValue()],
+        }}>
+          {getValue()}
+        </span>
+      ),
+    },
+    {
+      id: 'fields',
+      accessorFn: (log) => (log.changed_fields || []).join(', '),
+      header: 'Changed Fields',
+      meta: { width: '18%' },
+      cell: ({ row }) => {
+        const log = row.original;
+        return log.changed_fields?.length > 0
+          ? log.changed_fields.map((f) => (
+              <span key={f} style={{ display: 'inline-block', padding: '2px 7px', margin: '1px 3px', borderRadius: 6, background: isDark ? '#334155' : '#F1F5F9', fontSize: 11, fontWeight: 600 }}>
+                {f}
+              </span>
+            ))
+          : <span style={{ color: sub }}>—</span>;
+      },
+    },
+    {
+      id: 'diff',
+      header: 'Old → New',
+      meta: { width: '28%' },
+      enableSorting: false,
+      cell: ({ row }) => {
+        const log = row.original;
+        if (log.action === 'updated' && log.old_values && log.new_values) {
+          return (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+              {Object.keys(log.old_values).map((k) => (
+                <div key={k} style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <span style={{ fontWeight: 600, color: sub, minWidth: 70 }}>{k}:</span>
+                  <span style={{ color: '#DC2626', textDecoration: 'line-through', fontFamily: "'JetBrains Mono', monospace", fontSize: 11 }}>
+                    {typeof log.old_values[k] === 'object' ? JSON.stringify(log.old_values[k]) : String(log.old_values[k] ?? '—')}
+                  </span>
+                  <span style={{ color: sub }}>→</span>
+                  <span style={{ color: '#059669', fontWeight: 600, fontFamily: "'JetBrains Mono', monospace", fontSize: 11 }}>
+                    {typeof log.new_values[k] === 'object' ? JSON.stringify(log.new_values[k]) : String(log.new_values[k] ?? '—')}
+                  </span>
+                </div>
+              ))}
+            </div>
+          );
+        }
+        return <span style={{ color: sub }}>—</span>;
+      },
+    },
+    {
+      accessorKey: 'changed_by',
+      header: 'By',
+      meta: { width: '10%' },
+      cell: ({ getValue }) => (
+        <span style={{ color: sub, fontSize: 11, fontWeight: 600 }}>{getValue() || '—'}</span>
+      ),
+    },
+  ], [isDark, sub, txt]);
+
   return (
     <div style={{ minHeight: '100vh', background: bg, padding: '28px 28px 60px', fontFamily: "'Inter', sans-serif" }}>
 
@@ -635,82 +734,20 @@ export default function PlatformPlansPage() {
               <div style={{ padding: 32, textAlign: 'center', color: sub, fontSize: 13 }}>No change logs yet.</div>
             ) : (
               <div style={{ maxHeight: 500, overflowY: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
-                  <thead>
-                    <tr style={{ background: isDark ? '#1E293B' : '#F8FAFC', borderBottom: `1px solid ${bdr}` }}>
-                      {['Time', 'Plan', 'Action', 'Changed Fields', 'Old → New', 'By'].map(h => (
-                        <th key={h} style={{
-                          padding: '10px 14px', textAlign: 'left', fontSize: 11, fontWeight: 800,
-                          textTransform: 'uppercase', letterSpacing: 0.5, color: sub,
-                          position: 'sticky', top: 0, background: isDark ? '#1E293B' : '#F8FAFC',
-                        }}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {changeLogs.map((log) => {
-                      const actionColors = { created: '#059669', updated: '#2563EB', deleted: '#DC2626' };
-                      const actionBg = { created: '#D1FAE5', updated: '#DBEAFE', deleted: '#FEE2E2' };
-                      return (
-                        <tr key={log.id} style={{ borderBottom: `1px solid ${bdr}`, transition: 'background 0.1s' }}
-                          onMouseEnter={e => e.currentTarget.style.background = isDark ? '#1E293B' : '#F9FAFB'}
-                          onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                        >
-                          <td style={{ padding: '10px 14px', color: sub, whiteSpace: 'nowrap', fontFamily: "'JetBrains Mono', monospace", fontSize: 11 }}>
-                            {new Date(log.createdAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                          </td>
-                          <td style={{ padding: '10px 14px', fontWeight: 700, color: txt('#0F172A') }}>
-                            {log.plan_label}
-                            <span style={{ fontSize: 10, color: sub, marginLeft: 6, fontWeight: 500 }}>({log.plan_key})</span>
-                          </td>
-                          <td style={{ padding: '10px 14px' }}>
-                            <span style={{
-                              display: 'inline-block', padding: '3px 10px', borderRadius: 99,
-                              fontSize: 11, fontWeight: 700, textTransform: 'uppercase',
-                              background: isDark ? `${actionColors[log.action]}25` : actionBg[log.action],
-                              color: actionColors[log.action],
-                            }}>
-                              {log.action}
-                            </span>
-                          </td>
-                          <td style={{ padding: '10px 14px', color: txt('#374151'), fontSize: 12 }}>
-                            {log.changed_fields?.length > 0
-                              ? log.changed_fields.map(f => (
-                                  <span key={f} style={{ display: 'inline-block', padding: '2px 7px', margin: '1px 3px', borderRadius: 6, background: isDark ? '#334155' : '#F1F5F9', fontSize: 11, fontWeight: 600 }}>
-                                    {f}
-                                  </span>
-                                ))
-                              : <span style={{ color: sub }}>—</span>
-                            }
-                          </td>
-                          <td style={{ padding: '10px 14px', fontSize: 11.5, maxWidth: 280 }}>
-                            {log.action === 'updated' && log.old_values && log.new_values ? (
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                                {Object.keys(log.old_values).map(k => (
-                                  <div key={k} style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-                                    <span style={{ fontWeight: 600, color: sub, minWidth: 70 }}>{k}:</span>
-                                    <span style={{ color: '#DC2626', textDecoration: 'line-through', fontFamily: "'JetBrains Mono', monospace", fontSize: 11 }}>
-                                      {typeof log.old_values[k] === 'object' ? JSON.stringify(log.old_values[k]) : String(log.old_values[k] ?? '—')}
-                                    </span>
-                                    <span style={{ color: sub }}>→</span>
-                                    <span style={{ color: '#059669', fontWeight: 600, fontFamily: "'JetBrains Mono', monospace", fontSize: 11 }}>
-                                      {typeof log.new_values[k] === 'object' ? JSON.stringify(log.new_values[k]) : String(log.new_values[k] ?? '—')}
-                                    </span>
-                                  </div>
-                                ))}
-                              </div>
-                            ) : (
-                              <span style={{ color: sub }}>—</span>
-                            )}
-                          </td>
-                          <td style={{ padding: '10px 14px', color: sub, fontSize: 11, fontWeight: 600 }}>
-                            {log.changed_by || '—'}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                <DataTable
+                  noShell
+                  compact
+                  columns={logColumns}
+                  data={changeLogs}
+                  loading={logsLoading}
+                  emptyMessage="No change logs yet."
+                  pagination={false}
+                  showRowNumbers={false}
+                  searchableColumns={[
+                    { id: 'plan', title: 'Plan' },
+                    { id: 'fields', title: 'Fields' },
+                  ]}
+                />
               </div>
             )}
           </div>

@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useCallback } from 'react';
+﻿import { useState, useEffect, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import api from '../api/axios';
 import PageWrapper from '../components/layout/PageWrapper';
@@ -6,6 +6,7 @@ import Button from '../components/ui/Button';
 import { useToast } from '../components/ui/Toast';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
+import { DataTable, FilterBar } from '../components/ui/PageKit';
 
 /* â”€â”€ Icons â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 const IconPlus    = () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>;
@@ -131,11 +132,8 @@ export default function WaitlistPage() {
   const [staff, setStaff]           = useState([]);
   const [branches, setBranches]     = useState([]);
   const [loading, setLoading]       = useState(true);
-  const [search, setSearch]         = useState('');
   const [filterStatus, setFilterStatus]   = useState('');
   const [filterBranch, setFilterBranch]   = useState(user?.branch_id || '');
-  const [sortKey, setSortKey]   = useState('createdAt');
-  const [sortDir, setSortDir]   = useState('desc');
   const [showForm, setShowForm]     = useState(false);
   const [saving, setSaving]         = useState(false);
   const [deleteId, setDeleteId]     = useState(null);
@@ -214,32 +212,93 @@ export default function WaitlistPage() {
   /* â”€â”€ Derived â”€â”€ */
   const counts = STATUSES.reduce((acc, s) => { acc[s] = allEntries.filter(e => e.status === s).length; return acc; }, {});
 
-  const handleSort = (key) => { if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc'); else { setSortKey(key); setSortDir('asc'); } };
-  const SortIco = ({ col }) => sortKey !== col
-    ? <span style={{ opacity:0.3, fontSize:10, marginLeft:4 }}>â‡…</span>
-    : <span style={{ fontSize:10, marginLeft:4, color:isDark?'#93C5FD':'#2563EB' }}>{sortDir==='asc'?'â†‘':'â†“'}</span>;
-  const Th = ({ children, col, align = 'left' }) => (
-    <th onClick={col ? () => handleSort(col) : undefined}
-      style={{ padding:'12px 16px', textAlign:align, fontSize:11, fontWeight:700, color:isDark?'#94A3B8':'#667085', textTransform:'uppercase', letterSpacing:'0.06em', background:isDark?'#1E293B':'linear-gradient(180deg,#F8F9FC 0%,#F1F3F9 100%)', borderBottom:`1.5px solid ${isDark?'#334155':'#E4E7EC'}`, whiteSpace:'nowrap', cursor:col?'pointer':'default', userSelect:'none' }}>
-      {children}{col && <SortIco col={col} />}
-    </th>
-  );
-
-  const displayed = entries
-    .filter(e => {
-      if (!search) return true;
-      const q = search.toLowerCase();
-      return (e.customer_name||'').toLowerCase().includes(q)
-        || (e.phone||'').toLowerCase().includes(q)
-        || (e.service?.name||'').toLowerCase().includes(q)
-        || (e.staff?.name||'').toLowerCase().includes(q);
-    })
-    .sort((a, b) => {
-      let av = a[sortKey], bv = b[sortKey];
-      if (av < bv) return sortDir === 'asc' ? -1 : 1;
-      if (av > bv) return sortDir === 'asc' ? 1 : -1;
-      return 0;
-    });
+  const columns = useMemo(() => [
+    {
+      id: 'customer_name',
+      header: 'Customer',
+      accessorFn: row => `${row.customer_name || ''} ${row.phone || ''} ${row.service?.name || ''} ${row.staff?.name || ''}`.trim(),
+      meta: { width: '22%' },
+      cell: ({ row: { original: row } }) => (
+        <>
+          <div style={{ fontWeight: 600, fontSize: 14 }}>{row.customer_name}</div>
+          {row.phone && <div style={{ fontSize: 12, color: '#a1a1aa', marginTop: 1 }}>{row.phone}</div>}
+        </>
+      ),
+    },
+    {
+      id: 'service',
+      header: 'Service',
+      accessorFn: row => row.service?.name,
+      meta: { width: '16%' },
+      cell: ({ row: { original: row } }) => row.service
+        ? <span style={{ background: 'rgba(255,255,255,0.06)', padding: '3px 9px', borderRadius: 6, fontSize: 13 }}>{row.service.name}</span>
+        : <span style={{ fontSize: 13, color: '#71717a' }}>Any</span>,
+    },
+    {
+      id: 'staff',
+      header: 'Staff',
+      accessorFn: row => row.staff?.name,
+      meta: { width: '14%' },
+      cell: ({ row: { original: row } }) => row.staff
+        ? <span style={{ fontSize: 13 }}>{row.staff.name}</span>
+        : <span style={{ fontSize: 13, color: '#71717a' }}>Any</span>,
+    },
+    {
+      id: 'preferred_date',
+      header: 'Preference',
+      accessorFn: row => `${row.preferred_date || ''} ${row.preferred_time || ''}`,
+      meta: { width: '18%' },
+      cell: ({ row: { original: row } }) => (
+        <>
+          {row.preferred_date && <div style={{ fontWeight: 600, fontSize: 13 }}>{row.preferred_date}</div>}
+          {row.preferred_time && <div style={{ fontSize: 12, color: '#a1a1aa', marginTop: 1 }}>{row.preferred_time}</div>}
+          {!row.preferred_date && !row.preferred_time && <span style={{ color: '#71717a' }}>—</span>}
+        </>
+      ),
+    },
+    {
+      id: 'status',
+      header: 'Status',
+      accessorKey: 'status',
+      meta: { width: '14%' },
+      cell: ({ row: { original: row } }) => {
+        const s = row.status;
+        const meta = STATUS_META[s] ?? STATUS_META.waiting;
+        return canManage && s !== 'booked' && s !== 'cancelled' ? (
+          <select value={s} onChange={ev => updateStatus(row.id, ev.target.value)}
+            style={{ padding: '4px 10px', borderRadius: 20, border: `1.5px solid ${meta.color}40`, background: meta.bg, color: meta.color, fontWeight: 700, fontSize: 12, fontFamily: "'Inter',sans-serif", outline: 'none', cursor: 'pointer' }}>
+            {STATUSES.filter(st => st !== 'booked').map(st => <option key={st} value={st}>{STATUS_META[st].label}</option>)}
+          </select>
+        ) : <StatusBadge status={s} />;
+      },
+    },
+    {
+      id: 'actions',
+      header: 'Actions',
+      enableSorting: false,
+      meta: { width: '16%', align: 'center' },
+      cell: ({ row: { original: row } }) => {
+        const s = row.status;
+        return (
+          <div style={{ display: 'flex', gap: 4, justifyContent: 'center' }}>
+            <ActionBtn onClick={() => setDetailItem(row)} title="View" color="#2563EB"><IconEye /></ActionBtn>
+            {canManage && s === 'waiting' && (
+              <ActionBtn onClick={() => updateStatus(row.id, 'notified')} title="Notify" color="#2563EB"><IconBell /></ActionBtn>
+            )}
+            {canManage && (s === 'waiting' || s === 'notified') && (
+              <ActionBtn onClick={() => updateStatus(row.id, 'booked')} title="Mark Booked" color="#059669"><IconCheck /></ActionBtn>
+            )}
+            {canManage && s !== 'cancelled' && s !== 'booked' && (
+              <ActionBtn onClick={() => updateStatus(row.id, 'cancelled')} title="Cancel" color="#DC2626"><IconX /></ActionBtn>
+            )}
+            {canManage && (
+              <ActionBtn onClick={() => setDeleteId(row.id)} title="Delete" color="#DC2626"><IconTrash /></ActionBtn>
+            )}
+          </div>
+        );
+      },
+    },
+  ], [canManage, updateStatus]);
 
   return (
     <PageWrapper title="Smart Waitlist" subtitle={`${allEntries.length} total entries`}
@@ -261,14 +320,7 @@ export default function WaitlistPage() {
           icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>} />
       </div>
 
-      {/* â”€â”€ Filter Bar â”€â”€ */}
-      <div style={{ background:isDark?'#111827':'#fff', borderRadius:14, border:`1px solid ${isDark?'#334155':'#EAECF0'}`, padding:'14px 16px', display:'flex', gap:10, flexWrap:'wrap', alignItems:'center', boxShadow:isDark?'0 8px 20px rgba(2,6,23,0.35)':'0 1px 4px rgba(16,24,40,0.04)' }}>
-        <div style={{ position:'relative', flex:1, minWidth:200 }}>
-          <span style={{ position:'absolute', left:10, top:'50%', transform:'translateY(-50%)', color:isDark?'#94A3B8':'#98A2B3', pointerEvents:'none', display:'flex' }}><IconSearch /></span>
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search name, phone, service, staffâ€¦"
-            style={{ width:'100%', padding:'8px 12px 8px 34px', borderRadius:9, border:`1.5px solid ${isDark?'#334155':'#E4E7EC'}`, fontSize:13, fontFamily:"'Inter',sans-serif", outline:'none', boxSizing:'border-box', color:isDark?'#E2E8F0':'#101828', background:isDark?'#0F172A':'#FAFAFA' }}
-            onFocus={e=>e.target.style.borderColor='#2563EB'} onBlur={e=>e.target.style.borderColor=isDark?'#334155':'#E4E7EC'} />
-        </div>
+      <FilterBar>
         <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
           {[{val:'',label:'All'},...STATUSES.map(s=>({val:s,label:STATUS_META[s].label}))].map(({val,label}) => {
             const active = filterStatus === val;
@@ -289,122 +341,16 @@ export default function WaitlistPage() {
             {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
           </select>
         )}
-      </div>
+      </FilterBar>
 
-      {/* â”€â”€ Table â”€â”€ */}
-      <div style={{ background:isDark?'#111827':'#fff', borderRadius:14, border:`1px solid ${isDark?'#334155':'#EAECF0'}`, overflow:'hidden', boxShadow:isDark?'0 8px 20px rgba(2,6,23,0.35)':'0 1px 4px rgba(16,24,40,0.04)' }}>
-        <div style={{ overflowX:'auto' }}>
-          <table style={{ width:'100%', borderCollapse:'collapse', fontFamily:"'Inter',sans-serif", tableLayout:'fixed' }}>
-            <colgroup>
-              <col style={{ width:'22%' }} /><col style={{ width:'16%' }} /><col style={{ width:'14%' }} />
-              <col style={{ width:'18%' }} /><col style={{ width:'14%' }} /><col style={{ width:'16%' }} />
-            </colgroup>
-            <thead>
-              <tr>
-                <Th col="customer_name">Customer</Th>
-                <Th>Service</Th>
-                <Th>Staff</Th>
-                <Th col="preferred_date">Preference</Th>
-                <Th col="status">Status</Th>
-                <Th align="center">Actions</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? Array.from({ length:5 }).map((_,i) => (
-                <tr key={i}>{Array.from({ length:6 }).map((_,j) => (
-                  <td key={j} style={{ padding:'14px 16px' }}>
-                    <div style={{ height:13, borderRadius:6, width:`${50+(j*13)%40}%`, background:isDark?'linear-gradient(90deg,#1E293B 25%,#334155 50%,#1E293B 75%)':'linear-gradient(90deg,#F2F4F7 25%,#E8EAED 50%,#F2F4F7 75%)', backgroundSize:'200% 100%', animation:'shimmer 1.4s infinite' }} />
-                  </td>
-                ))}</tr>
-              )) : displayed.length === 0 ? (
-                <tr><td colSpan={6} style={{ padding:'52px 16px', textAlign:'center' }}>
-                  <div style={{ fontSize:40, marginBottom:12 }}>â³</div>
-                  <div style={{ color:isDark?'#E2E8F0':'#344054', fontWeight:600, fontSize:15 }}>No waitlist entries found</div>
-                  <div style={{ color:isDark?'#94A3B8':'#98A2B3', fontSize:13, marginTop:4 }}>Try adjusting filters or add a customer</div>
-                </td></tr>
-              ) : displayed.map((row, idx) => {
-                const s = row.status;
-                const meta = STATUS_META[s] ?? STATUS_META.waiting;
-                const rowBg = isDark
-                  ? (idx % 2 === 0 ? '#0F172A' : '#111827')
-                  : (idx % 2 === 0 ? '#fff' : '#FAFBFC');
-                return (
-                  <tr key={row.id} style={{ borderBottom:`1px solid ${isDark?'#334155':'#F2F4F7'}`, background:rowBg, transition:'background 0.15s' }}
-                    onMouseEnter={e => e.currentTarget.style.background = isDark?'#1E293B':'#EEF4FF'}
-                    onMouseLeave={e => e.currentTarget.style.background = rowBg}>
-
-                    {/* Customer */}
-                    <td style={{ padding:'13px 16px' }}>
-                      <div style={{ fontWeight:600, color:isDark?'#E2E8F0':'#101828', fontSize:14, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{row.customer_name}</div>
-                      {row.phone && <div style={{ fontSize:12, color:isDark?'#94A3B8':'#98A2B3', marginTop:1 }}>{row.phone}</div>}
-                    </td>
-
-                    {/* Service */}
-                    <td style={{ padding:'13px 16px' }}>
-                      {row.service
-                        ? <span style={{ background:isDark?'#1E293B':'#F2F4F7', padding:'3px 9px', borderRadius:6, fontSize:13, fontWeight:500, color:isDark?'#CBD5E1':'#475467' }}>{row.service.name}</span>
-                        : <span style={{ fontSize:13, color:isDark?'#64748B':'#D0D5DD' }}>Any</span>
-                      }
-                    </td>
-
-                    {/* Staff */}
-                    <td style={{ padding:'13px 16px' }}>
-                      {row.staff
-                        ? <span style={{ fontSize:13, fontWeight:500, color:isDark?'#CBD5E1':'#344054' }}>{row.staff.name}</span>
-                        : <span style={{ fontSize:13, color:isDark?'#64748B':'#D0D5DD' }}>Any</span>
-                      }
-                    </td>
-
-                    {/* Preference */}
-                    <td style={{ padding:'13px 16px' }}>
-                      {row.preferred_date
-                        ? <div style={{ fontWeight:600, color:isDark?'#E2E8F0':'#101828', fontSize:13 }}>{row.preferred_date}</div>
-                        : null}
-                      {row.preferred_time
-                        ? <div style={{ fontSize:12, color:isDark?'#94A3B8':'#98A2B3', marginTop:1 }}>{row.preferred_time}</div>
-                        : null}
-                      {!row.preferred_date && !row.preferred_time && <span style={{ fontSize:13, color:isDark?'#64748B':'#D0D5DD' }}>â€”</span>}
-                    </td>
-
-                    {/* Status */}
-                    <td style={{ padding:'13px 16px' }}>
-                      {canManage && s !== 'booked' && s !== 'cancelled' ? (
-                        <select value={s} onChange={ev => updateStatus(row.id, ev.target.value)}
-                          style={{ padding:'4px 10px', borderRadius:20, border:`1.5px solid ${meta.color}40`, background:meta.bg, color:meta.color, fontWeight:700, fontSize:12, fontFamily:"'Inter',sans-serif", outline:'none', cursor:'pointer' }}>
-                          {STATUSES.filter(st => st !== 'booked').map(st => <option key={st} value={st}>{STATUS_META[st].label}</option>)}
-                        </select>
-                      ) : <StatusBadge status={s} />}
-                    </td>
-
-                    {/* Actions */}
-                    <td style={{ padding:'13px 16px', textAlign:'center' }}>
-                      <div style={{ display:'flex', gap:4, justifyContent:'center' }}>
-                        <ActionBtn onClick={() => setDetailItem(row)} title="View" color="#2563EB"><IconEye /></ActionBtn>
-                        {canManage && s === 'waiting' && (
-                          <ActionBtn onClick={() => updateStatus(row.id, 'notified')} title="Notify" color="#2563EB"><IconBell /></ActionBtn>
-                        )}
-                        {canManage && (s === 'waiting' || s === 'notified') && (
-                          <ActionBtn onClick={() => updateStatus(row.id, 'booked')} title="Mark Booked" color="#059669"><IconCheck /></ActionBtn>
-                        )}
-                        {canManage && s !== 'cancelled' && s !== 'booked' && (
-                          <ActionBtn onClick={() => updateStatus(row.id, 'cancelled')} title="Cancel" color="#DC2626"><IconX /></ActionBtn>
-                        )}
-                        {canManage && (
-                          <ActionBtn onClick={() => setDeleteId(row.id)} title="Delete" color="#DC2626"><IconTrash /></ActionBtn>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-          <style>{'@keyframes shimmer { to { background-position:-200% 0; } }'}</style>
-        </div>
-        <div style={{ padding:'10px 16px', borderTop:`1px solid ${isDark?'#334155':'#F2F4F7'}`, fontSize:12, color:isDark?'#94A3B8':'#98A2B3' }}>
-          Showing {displayed.length} of {allEntries.length} entries
-        </div>
-      </div>
+      <DataTable
+        columns={columns}
+        data={entries}
+        loading={loading}
+        emptyMessage="No waitlist entries found"
+        emptySub="Try adjusting filters or add a customer"
+        searchableColumns={[{ id: 'customer_name', title: 'Customer' }]}
+      />
 
       {/* â”€â”€ Add Modal â”€â”€ */}
       <Modal open={showForm} onClose={() => setShowForm(false)} title="Add to Waitlist" size="md" dark={isDark}

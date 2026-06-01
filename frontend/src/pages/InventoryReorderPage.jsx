@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import api from '../api/axios';
 import PageWrapper from '../components/layout/PageWrapper';
@@ -6,6 +6,7 @@ import Button from '../components/ui/Button';
 import { useToast } from '../components/ui/Toast';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
+import { DataTable, FilterBar } from '../components/ui/PageKit';
 
 /* ── Icons ──────────────────────────────────────────────────────────────── */
 const IconPlus   = () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>;
@@ -123,10 +124,7 @@ export default function InventoryReorderPage() {
   const [lowStock, setLowStock] = useState([]);
   const [inventoryItems, setInventoryItems] = useState([]);
   const [reorders, setReorders] = useState([]);
-  const [search, setSearch]     = useState('');
   const [filterStatus, setFilterStatus] = useState('');
-  const [sortKey, setSortKey]   = useState('createdAt');
-  const [sortDir, setSortDir]   = useState('desc');
   const [saving, setSaving]     = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [detailItem, setDetailItem] = useState(null);
@@ -185,36 +183,108 @@ export default function InventoryReorderPage() {
   /* ── Derived ── */
   const counts = STATUSES.reduce((acc, s) => { acc[s] = reorders.filter(r => r.status === s).length; return acc; }, {});
 
-  const handleSort = (key) => { if (sortKey===key) setSortDir(d=>d==='asc'?'desc':'asc'); else { setSortKey(key); setSortDir('asc'); } };
-  const SortIco = ({ col }) => sortKey!==col
-    ? <span style={{ opacity:0.3, fontSize:10, marginLeft:4 }}>⇅</span>
-    : <span style={{ fontSize:10, marginLeft:4, color:isDark?'#93C5FD':'#2563EB' }}>{sortDir==='asc'?'↑':'↓'}</span>;
-  const Th = ({ children, col, align='left' }) => (
-    <th onClick={col?()=>handleSort(col):undefined} style={{ padding:'12px 16px', textAlign:align, fontSize:11, fontWeight:700, color:isDark?'#94A3B8':'#667085', textTransform:'uppercase', letterSpacing:'0.06em', background:isDark?'#1E293B':'linear-gradient(180deg,#F8F9FC 0%,#F1F3F9 100%)', borderBottom:`1.5px solid ${isDark?'#334155':'#E4E7EC'}`, whiteSpace:'nowrap', cursor:col?'pointer':'default', userSelect:'none' }}>
-      {children}{col&&<SortIco col={col} />}
-    </th>
-  );
+  const reorderData = useMemo(() => (
+    filterStatus ? reorders.filter(r => r.status === filterStatus) : reorders
+  ), [reorders, filterStatus]);
 
-  const displayedReorders = reorders
-    .filter(r => {
-      if (filterStatus && r.status !== filterStatus) return false;
-      if (!search) return true;
-      const q = search.toLowerCase();
-      const name = r.item?.product_name || r.item?.name || r.inventory?.product_name || r.inventory?.name || '';
-      return name.toLowerCase().includes(q) || (r.supplier_name||'').toLowerCase().includes(q);
-    })
-    .sort((a,b) => {
-      let av = a[sortKey], bv = b[sortKey];
-      if (av<bv) return sortDir==='asc'?-1:1;
-      if (av>bv) return sortDir==='asc'?1:-1;
-      return 0;
-    });
+  const lowColumns = useMemo(() => [
+    {
+      id: 'product_name',
+      header: 'Product',
+      accessorFn: row => `${row.product_name || row.name || ''} ${row.supplier_name || ''}`,
+      cell: ({ row: { original: item } }) => (
+        <>
+          <div style={{ fontWeight: 600, fontSize: 14 }}>{item.product_name || item.name}</div>
+          {item.category && <div style={{ fontSize: 12, color: '#a1a1aa', marginTop: 1 }}>{item.category}</div>}
+        </>
+      ),
+    },
+    {
+      id: 'quantity',
+      header: 'Stock',
+      accessorKey: 'quantity',
+      meta: { align: 'right' },
+      cell: ({ row: { original: item } }) => (
+        <span style={{ fontWeight: 800, color: '#DC2626', fontSize: 15 }}>{item.quantity}{item.unit ? ` ${item.unit}` : ''}</span>
+      ),
+    },
+    { id: 'min_quantity', header: 'Min', accessorKey: 'min_quantity', meta: { align: 'right' } },
+    { id: 'reorder_qty', header: 'Reorder Qty', accessorFn: row => row.reorder_qty, meta: { align: 'right' }, cell: ({ getValue }) => getValue() || '—' },
+    { id: 'supplier', header: 'Supplier', accessorFn: row => row.supplier_name, cell: ({ getValue }) => getValue() || '—' },
+    {
+      id: 'action',
+      header: 'Action',
+      enableSorting: false,
+      meta: { align: 'center' },
+      cell: ({ row: { original: item } }) => canManage ? (
+        <ActionBtn onClick={() => quickCreate(item)} title="Create Reorder" color="#2563EB"><IconZap /></ActionBtn>
+      ) : null,
+    },
+  ], [canManage]);
 
-  const displayedLow = lowStock.filter(i => {
-    if (!search) return true;
-    const q = search.toLowerCase();
-    return (i.product_name||i.name||'').toLowerCase().includes(q) || (i.supplier_name||'').toLowerCase().includes(q);
-  });
+  const reorderColumns = useMemo(() => [
+    {
+      id: 'inventory_id',
+      header: 'Item',
+      accessorFn: row => {
+        const item = row.item || row.inventory;
+        return `${item?.product_name || item?.name || ''} ${row.supplier_name || ''}`;
+      },
+      cell: ({ row: { original: r } }) => {
+        const itemName = r.item?.product_name || r.item?.name || r.inventory?.product_name || r.inventory?.name || `Item #${r.inventory_id}`;
+        return <div style={{ fontWeight: 600, fontSize: 14 }}>{itemName}</div>;
+      },
+    },
+    { id: 'quantity_requested', header: 'Qty', accessorKey: 'quantity_requested', meta: { align: 'right' } },
+    {
+      id: 'supplier',
+      header: 'Supplier',
+      accessorFn: row => row.supplier_name,
+      cell: ({ row: { original: r } }) => (
+        <>
+          <div>{r.supplier_name || '—'}</div>
+          {r.supplier_contact && <div style={{ fontSize: 11, color: '#a1a1aa' }}>{r.supplier_contact}</div>}
+        </>
+      ),
+    },
+    {
+      id: 'unit_cost',
+      header: 'Unit Cost',
+      accessorKey: 'unit_cost',
+      meta: { align: 'right' },
+      cell: ({ getValue }) => getValue() ? `Rs. ${Number(getValue()).toFixed(2)}` : '—',
+    },
+    {
+      id: 'status',
+      header: 'Status',
+      accessorKey: 'status',
+      cell: ({ row: { original: r } }) => {
+        const s = r.status;
+        const meta = STATUS_META[s] ?? STATUS_META.draft;
+        return canManage && s !== 'received' && s !== 'cancelled' ? (
+          <select value={s} onChange={ev => updateStatus(r.id, ev.target.value)}
+            style={{ padding: '4px 10px', borderRadius: 20, border: `1.5px solid ${meta.color}40`, background: meta.bg, color: meta.color, fontWeight: 700, fontSize: 12, fontFamily: "'Inter',sans-serif", outline: 'none', cursor: 'pointer' }}>
+            {STATUSES.filter(st => st !== 'received' || s === 'received').map(st => <option key={st} value={st}>{STATUS_META[st].label}</option>)}
+          </select>
+        ) : <StatusBadge status={s} />;
+      },
+    },
+    {
+      id: 'createdAt',
+      header: 'Date',
+      accessorFn: row => row.created_at || row.createdAt,
+      cell: ({ row: { original: r } }) => new Date(r.created_at || r.createdAt).toLocaleDateString(),
+    },
+    {
+      id: 'actions',
+      header: 'Action',
+      enableSorting: false,
+      meta: { align: 'center' },
+      cell: ({ row: { original: r } }) => (
+        <ActionBtn onClick={() => setDetailItem(r)} title="View Details" color="#2563EB"><IconEye /></ActionBtn>
+      ),
+    },
+  ], [canManage]);
 
   return (
     <PageWrapper title="Inventory Reorders" subtitle="Track low stock and manage reorder lifecycle"
@@ -236,15 +306,7 @@ export default function InventoryReorderPage() {
           icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>} />
       </div>
 
-      {/* ── Tab + Filter Bar ── */}
-      <div style={{ background:isDark?'#111827':'#fff', borderRadius:14, border:`1px solid ${isDark?'#334155':'#EAECF0'}`, padding:'14px 16px', display:'flex', gap:10, flexWrap:'wrap', alignItems:'center', boxShadow:isDark?'0 8px 20px rgba(2,6,23,0.35)':'0 1px 4px rgba(16,24,40,0.04)' }}>
-        {/* Search */}
-        <div style={{ position:'relative', flex:1, minWidth:200 }}>
-          <span style={{ position:'absolute', left:10, top:'50%', transform:'translateY(-50%)', color:isDark?'#94A3B8':'#98A2B3', pointerEvents:'none', display:'flex' }}><IconSearch /></span>
-          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search item, supplier…"
-            style={{ width:'100%', padding:'8px 12px 8px 34px', borderRadius:9, border:`1.5px solid ${isDark?'#334155':'#E4E7EC'}`, fontSize:13, fontFamily:"'Inter',sans-serif", outline:'none', boxSizing:'border-box', color:isDark?'#E2E8F0':'#101828', background:isDark?'#0F172A':'#FAFAFA' }}
-            onFocus={onFoc} onBlur={onBlr(isDark)} />
-        </div>
+      <FilterBar>
         {/* Tab pills */}
         <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
           {[{val:'alerts',label:'⚠ Low Stock',cnt:lowStock.length},{val:'reorders',label:'📦 Reorders',cnt:reorders.length}].map(({val,label,cnt}) => {
@@ -278,138 +340,31 @@ export default function InventoryReorderPage() {
           style={{ width:34, height:34, borderRadius:9, border:`1.5px solid ${isDark?'#334155':'#E4E7EC'}`, background:isDark?'#0F172A':'#fff', color:isDark?'#94A3B8':'#667085', display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', flexShrink:0 }}>
           <IconRefresh />
         </button>
-      </div>
+      </FilterBar>
 
-      {/* ── Tables ── */}
-      {tab==='alerts' ? (
-        /* LOW STOCK TABLE */
-        <div style={{ background:isDark?'#111827':'#fff', borderRadius:14, border:`1px solid ${isDark?'#334155':'#EAECF0'}`, overflow:'hidden', boxShadow:isDark?'0 8px 20px rgba(2,6,23,0.35)':'0 1px 4px rgba(16,24,40,0.04)' }}>
-          <div style={{ overflowX:'auto' }}>
-            <table style={{ width:'100%', borderCollapse:'collapse', fontFamily:"'Inter',sans-serif", tableLayout:'fixed' }}>
-              <colgroup>
-                <col style={{width:'26%'}}/><col style={{width:'12%'}}/><col style={{width:'12%'}}/><col style={{width:'12%'}}/><col style={{width:'20%'}}/><col style={{width:'18%'}}/>
-              </colgroup>
-              <thead><tr>
-                <Th col="product_name">Product</Th>
-                <Th col="quantity" align="right">Stock</Th>
-                <Th col="min_quantity" align="right">Min</Th>
-                <Th col="reorder_qty" align="right">Reorder Qty</Th>
-                <Th>Supplier</Th>
-                <Th align="center">Action</Th>
-              </tr></thead>
-              <tbody>
-                {loading ? Array.from({length:4}).map((_,i)=>(
-                  <tr key={i}>{Array.from({length:6}).map((_,j)=>(
-                    <td key={j} style={{padding:'14px 16px'}}><div style={{height:13,borderRadius:6,width:`${50+(j*13)%40}%`,background:isDark?'linear-gradient(90deg,#1E293B 25%,#334155 50%,#1E293B 75%)':'linear-gradient(90deg,#F2F4F7 25%,#E8EAED 50%,#F2F4F7 75%)',backgroundSize:'200% 100%',animation:'shimmer 1.4s infinite'}}/></td>
-                  ))}</tr>
-                )) : displayedLow.length===0 ? (
-                  <tr><td colSpan={6} style={{padding:'52px 16px',textAlign:'center'}}>
-                    <div style={{fontSize:40,marginBottom:12}}>✅</div>
-                    <div style={{color:isDark?'#E2E8F0':'#344054',fontWeight:600,fontSize:15}}>All good — no low stock alerts</div>
-                    <div style={{color:isDark?'#94A3B8':'#98A2B3',fontSize:13,marginTop:4}}>Stock levels are above minimum thresholds</div>
-                  </td></tr>
-                ) : displayedLow.map((item,idx)=>{
-                  const rowBg = isDark?(idx%2===0?'#0F172A':'#111827'):(idx%2===0?'#fff':'#FAFBFC');
-                  return (
-                    <tr key={item.id} style={{borderBottom:`1px solid ${isDark?'#334155':'#F2F4F7'}`,background:rowBg,transition:'background 0.15s'}}
-                      onMouseEnter={e=>e.currentTarget.style.background=isDark?'#1E293B':'#EEF4FF'}
-                      onMouseLeave={e=>e.currentTarget.style.background=rowBg}>
-                      <td style={{padding:'13px 16px'}}>
-                        <div style={{fontWeight:600,color:isDark?'#E2E8F0':'#101828',fontSize:14}}>{item.product_name || item.name}</div>
-                        {item.category&&<div style={{fontSize:12,color:isDark?'#94A3B8':'#98A2B3',marginTop:1}}>{item.category}</div>}
-                      </td>
-                      <td style={{padding:'13px 16px',textAlign:'right'}}>
-                        <span style={{fontWeight:800,color:'#DC2626',fontSize:15}}>{item.quantity}</span>
-                        {item.unit&&<span style={{fontSize:12,color:isDark?'#94A3B8':'#98A2B3',marginLeft:4}}>{item.unit}</span>}
-                      </td>
-                      <td style={{padding:'13px 16px',textAlign:'right',color:isDark?'#94A3B8':'#98A2B3',fontSize:13}}>{item.min_quantity}</td>
-                      <td style={{padding:'13px 16px',textAlign:'right',color:isDark?'#94A3B8':'#667085',fontSize:13}}>{item.reorder_qty||'—'}</td>
-                      <td style={{padding:'13px 16px',color:isDark?'#94A3B8':'#667085',fontSize:13,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{item.supplier_name||'—'}</td>
-                      <td style={{padding:'13px 16px',textAlign:'center'}}>
-                        {canManage&&<ActionBtn onClick={()=>quickCreate(item)} title="Create Reorder" color="#2563EB"><IconZap /></ActionBtn>}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-            <style>{'@keyframes shimmer{to{background-position:-200% 0}}'}</style>
-          </div>
-          <div style={{padding:'10px 16px',borderTop:`1px solid ${isDark?'#334155':'#F2F4F7'}`,fontSize:12,color:isDark?'#94A3B8':'#98A2B3'}}>
-            {displayedLow.length} low stock item{displayedLow.length!==1?'s':''} requiring attention
-          </div>
-        </div>
+      {tab === 'alerts' ? (
+        <DataTable
+          columns={lowColumns}
+          data={lowStock}
+          loading={loading}
+          emptyMessage="All good — no low stock alerts"
+          emptySub="Stock levels are above minimum thresholds"
+          searchableColumns={[{ id: 'product_name', title: 'Product' }]}
+        />
       ) : (
-        /* REORDER HISTORY TABLE */
-        <div style={{background:isDark?'#111827':'#fff',borderRadius:14,border:`1px solid ${isDark?'#334155':'#EAECF0'}`,overflow:'hidden',boxShadow:isDark?'0 8px 20px rgba(2,6,23,0.35)':'0 1px 4px rgba(16,24,40,0.04)'}}>
-          <div style={{overflowX:'auto'}}>
-            <table style={{width:'100%',borderCollapse:'collapse',fontFamily:"'Inter',sans-serif",tableLayout:'fixed'}}>
-              <colgroup>
-                <col style={{width:'22%'}}/><col style={{width:'10%'}}/><col style={{width:'18%'}}/><col style={{width:'12%'}}/><col style={{width:'14%'}}/><col style={{width:'12%'}}/><col style={{width:'12%'}}/>
-              </colgroup>
-              <thead><tr>
-                <Th col="inventory_id">Item</Th>
-                <Th col="quantity_requested" align="right">Qty</Th>
-                <Th>Supplier</Th>
-                <Th col="unit_cost" align="right">Unit Cost</Th>
-                <Th col="status">Status</Th>
-                <Th col="createdAt">Date</Th>
-                <Th align="center">Action</Th>
-              </tr></thead>
-              <tbody>
-                {loading ? Array.from({length:5}).map((_,i)=>(
-                  <tr key={i}>{Array.from({length:7}).map((_,j)=>(
-                    <td key={j} style={{padding:'14px 16px'}}><div style={{height:13,borderRadius:6,width:`${50+(j*13)%40}%`,background:isDark?'linear-gradient(90deg,#1E293B 25%,#334155 50%,#1E293B 75%)':'linear-gradient(90deg,#F2F4F7 25%,#E8EAED 50%,#F2F4F7 75%)',backgroundSize:'200% 100%',animation:'shimmer 1.4s infinite'}}/></td>
-                  ))}</tr>
-                )) : displayedReorders.length===0 ? (
-                  <tr><td colSpan={7} style={{padding:'52px 16px',textAlign:'center'}}>
-                    <div style={{fontSize:40,marginBottom:12}}>📦</div>
-                    <div style={{color:isDark?'#E2E8F0':'#344054',fontWeight:600,fontSize:15}}>No reorders found</div>
-                    <div style={{color:isDark?'#94A3B8':'#98A2B3',fontSize:13,marginTop:4}}>Create a reorder from a low stock alert</div>
-                  </td></tr>
-                ) : displayedReorders.map((r,idx)=>{
-                  const s = r.status;
-                  const meta = STATUS_META[s]??STATUS_META.draft;
-                  const rowBg = isDark?(idx%2===0?'#0F172A':'#111827'):(idx%2===0?'#fff':'#FAFBFC');
-                  const itemName = r.item?.product_name||r.item?.name||r.inventory?.product_name||r.inventory?.name||`Item #${r.inventory_id}`;
-                  return (
-                    <tr key={r.id} style={{borderBottom:`1px solid ${isDark?'#334155':'#F2F4F7'}`,background:rowBg,transition:'background 0.15s'}}
-                      onMouseEnter={e=>e.currentTarget.style.background=isDark?'#1E293B':'#EEF4FF'}
-                      onMouseLeave={e=>e.currentTarget.style.background=rowBg}>
-                      <td style={{padding:'13px 16px'}}>
-                        <div style={{fontWeight:600,color:isDark?'#E2E8F0':'#101828',fontSize:14,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{itemName}</div>
-                      </td>
-                      <td style={{padding:'13px 16px',textAlign:'right',fontWeight:700,color:isDark?'#E2E8F0':'#101828',fontSize:15}}>{r.quantity_requested}</td>
-                      <td style={{padding:'13px 16px',color:isDark?'#94A3B8':'#667085',fontSize:13,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
-                        {r.supplier_name||'—'}
-                        {r.supplier_contact&&<div style={{fontSize:11,marginTop:1,color:isDark?'#64748B':'#98A2B3'}}>{r.supplier_contact}</div>}
-                      </td>
-                      <td style={{padding:'13px 16px',textAlign:'right',fontSize:13,color:isDark?'#94A3B8':'#667085'}}>{r.unit_cost?`Rs. ${Number(r.unit_cost).toFixed(2)}`:'—'}</td>
-                      <td style={{padding:'13px 16px'}}>
-                        {canManage && s!=='received' && s!=='cancelled' ? (
-                          <select value={s} onChange={ev=>updateStatus(r.id,ev.target.value)}
-                            style={{padding:'4px 10px',borderRadius:20,border:`1.5px solid ${meta.color}40`,background:meta.bg,color:meta.color,fontWeight:700,fontSize:12,fontFamily:"'Inter',sans-serif",outline:'none',cursor:'pointer'}}>
-                            {STATUSES.filter(st=>st!=='received'||s==='received').map(st=><option key={st} value={st}>{STATUS_META[st].label}</option>)}
-                          </select>
-                        ):<StatusBadge status={s}/>}
-                      </td>
-                      <td style={{padding:'13px 16px',color:isDark?'#94A3B8':'#98A2B3',fontSize:12}}>
-                        {new Date(r.created_at||r.createdAt).toLocaleDateString()}
-                      </td>
-                      <td style={{padding:'13px 16px',textAlign:'center'}}>
-                        <ActionBtn onClick={()=>setDetailItem(r)} title="View Details" color="#2563EB"><IconEye /></ActionBtn>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-          <div style={{padding:'10px 16px',borderTop:`1px solid ${isDark?'#334155':'#F2F4F7'}`,fontSize:12,color:isDark?'#94A3B8':'#98A2B3',display:'flex',justifyContent:'space-between'}}>
-            <span>Showing {displayedReorders.length} of {reorders.length} reorders</span>
-            <span>Receiving a reorder auto-increases stock in inventory</span>
-          </div>
-        </div>
+        <DataTable
+          columns={reorderColumns}
+          data={reorderData}
+          loading={loading}
+          emptyMessage="No reorders found"
+          emptySub="Create a reorder from a low stock alert"
+          searchableColumns={[{ id: 'inventory_id', title: 'Item' }]}
+          filterableColumns={[{
+            id: 'status',
+            title: 'Status',
+            options: STATUSES.map(s => ({ label: STATUS_META[s].label, value: s })),
+          }]}
+        />
       )}
 
       {/* ── New Reorder Modal ── */}

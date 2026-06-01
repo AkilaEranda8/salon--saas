@@ -1,11 +1,11 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import api from '../api/axios';
 import PageWrapper from '../components/layout/PageWrapper';
 import Button from '../components/ui/Button';
 import { useToast } from '../components/ui/Toast';
 import { useAuth } from '../context/AuthContext';
-import { StatCard } from '../components/ui/PageKit';
+import { StatCard, DataTable } from '../components/ui/PageKit';
 
 
 const Rs = (n) => `Rs. ${Number(n || 0).toLocaleString()}`;
@@ -120,6 +120,64 @@ export default function MembershipPlansPage() {
 
   const activeEnrollments = enrollments.filter((e) => e.status === 'active').length;
   const activePlans = plans.filter((p) => p.is_active !== false).length;
+
+  const enrollColumns = useMemo(() => [
+    {
+      id: 'customer',
+      header: 'Customer',
+      accessorFn: row => `${row.customer?.name || ''} ${row.customer?.phone || ''}`,
+      cell: ({ row: { original: e } }) => (
+        <>
+          <div style={{ fontWeight: 700 }}>{e.customer?.name || '—'}</div>
+          <div style={{ fontSize: 11, color: '#a1a1aa', marginTop: 1 }}>{e.customer?.phone}</div>
+        </>
+      ),
+    },
+    {
+      id: 'plan',
+      header: 'Plan',
+      accessorFn: row => row.plan?.name,
+      cell: ({ row: { original: e } }) => (
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 600 }}>
+          <span style={{ width: 8, height: 8, borderRadius: '50%', background: e.plan?.color || '#6366f1' }} />
+          {e.plan?.name || '—'}
+        </span>
+      ),
+    },
+    { id: 'start_date', header: 'Start', accessorKey: 'start_date' },
+    { id: 'end_date', header: 'End', accessorFn: row => row.end_date || '—' },
+    { id: 'credits', header: 'Credits', accessorKey: 'free_credits_remaining' },
+    {
+      id: 'amount_paid',
+      header: 'Amount Paid',
+      accessorKey: 'amount_paid',
+      cell: ({ row: { original: e } }) => <span style={{ fontWeight: 600 }}>{Rs(e.amount_paid)}</span>,
+    },
+    {
+      id: 'status',
+      header: 'Status',
+      accessorKey: 'status',
+      cell: ({ row: { original: e } }) => {
+        const sc = STATUS_COLOR[e.status] || STATUS_COLOR.active;
+        return (
+          <span style={{ padding: '4px 12px', borderRadius: 99, fontSize: 11, fontWeight: 700, background: sc.bg, color: sc.text, border: `1px solid ${sc.border}`, textTransform: 'capitalize' }}>
+            {e.status}
+          </span>
+        );
+      },
+    },
+    {
+      id: 'actions',
+      header: 'Actions',
+      enableSorting: false,
+      cell: ({ row: { original: e } }) => e.status === 'active' ? (
+        <button type="button" onClick={() => updateEnrollStatus(e.id, 'cancelled')}
+          style={{ padding: '5px 12px', borderRadius: 8, border: '1.5px solid #FECACA', background: '#FEF2F2', color: '#DC2626', cursor: 'pointer', fontSize: 11, fontWeight: 700, fontFamily: "'Inter', sans-serif" }}>
+          Cancel
+        </button>
+      ) : null,
+    },
+  ], []);
 
   const inp = {
     padding: '10px 14px', borderRadius: 10, border: '1.5px solid #E5E7EB', fontSize: 13.5,
@@ -615,89 +673,23 @@ export default function MembershipPlansPage() {
             </div>
           </motion.div>
         ) : (
-          <motion.div
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            style={{
-              background: '#fff', borderRadius: 18, border: '1.5px solid #EAECF0',
-              boxShadow: '0 2px 10px rgba(16,24,40,0.06)', overflow: 'hidden',
-            }}
-          >
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, fontFamily: "'Inter', sans-serif" }}>
-                <thead>
-                  <tr style={{ background: '#F9FAFB' }}>
-                    {['Customer', 'Plan', 'Start', 'End', 'Credits', 'Amount Paid', 'Status', 'Actions'].map((h) => (
-                      <th key={h} style={{
-                        padding: '12px 16px', textAlign: 'left', fontWeight: 700,
-                        color: '#344054', fontSize: 11, textTransform: 'uppercase',
-                        letterSpacing: '0.05em', borderBottom: '2px solid #EAECF0',
-                      }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {enrollments.map((e, idx) => {
-                    const sc = STATUS_COLOR[e.status] || STATUS_COLOR.active;
-                    return (
-                      <motion.tr
-                        key={e.id}
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        transition={{ delay: idx * 0.02 }}
-                        style={{ borderBottom: '1px solid #F2F4F7' }}
-                      >
-                        <td style={{ padding: '12px 16px' }}>
-                          <div style={{ fontWeight: 700, color: '#101828' }}>{e.customer?.name || '—'}</div>
-                          <div style={{ fontSize: 11, color: '#98A2B3', marginTop: 1 }}>{e.customer?.phone}</div>
-                        </td>
-                        <td style={{ padding: '12px 16px' }}>
-                          <span style={{
-                            display: 'inline-flex', alignItems: 'center', gap: 6,
-                            fontWeight: 600, color: '#344054',
-                          }}>
-                            <span style={{
-                              width: 8, height: 8, borderRadius: '50%',
-                              background: e.plan?.color || '#6366f1', flexShrink: 0,
-                            }} />
-                            {e.plan?.name || '—'}
-                          </span>
-                        </td>
-                        <td style={{ padding: '12px 16px', color: '#667085' }}>{e.start_date}</td>
-                        <td style={{ padding: '12px 16px', color: '#667085' }}>{e.end_date || '—'}</td>
-                        <td style={{ padding: '12px 16px', fontWeight: 700, color: '#101828' }}>{e.free_credits_remaining}</td>
-                        <td style={{ padding: '12px 16px', fontWeight: 600 }}>{Rs(e.amount_paid)}</td>
-                        <td style={{ padding: '12px 16px' }}>
-                          <span style={{
-                            padding: '4px 12px', borderRadius: 99, fontSize: 11, fontWeight: 700,
-                            background: sc.bg, color: sc.text, border: `1px solid ${sc.border}`,
-                            textTransform: 'capitalize',
-                          }}>
-                            {e.status}
-                          </span>
-                        </td>
-                        <td style={{ padding: '12px 16px' }}>
-                          {e.status === 'active' && (
-                            <button
-                              onClick={() => updateEnrollStatus(e.id, 'cancelled')}
-                              style={{
-                                padding: '5px 12px', borderRadius: 8,
-                                border: '1.5px solid #FECACA', background: '#FEF2F2',
-                                color: '#DC2626', cursor: 'pointer', fontSize: 11,
-                                fontWeight: 700, transition: 'all 0.15s',
-                                fontFamily: "'Inter', sans-serif",
-                              }}
-                            >
-                              Cancel
-                            </button>
-                          )}
-                        </td>
-                      </motion.tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
+            <DataTable
+              columns={enrollColumns}
+              data={enrollments}
+              loading={loading}
+              emptyMessage="No enrollments yet"
+              emptySub="Enroll your first customer in a membership plan."
+              searchableColumns={[
+                { id: 'customer', title: 'Customer' },
+                { id: 'plan', title: 'Plan' },
+              ]}
+              filterableColumns={[{
+                id: 'status',
+                title: 'Status',
+                options: Object.keys(STATUS_COLOR).map(s => ({ label: s, value: s })),
+              }]}
+            />
           </motion.div>
         )
       )}

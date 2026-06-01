@@ -1,10 +1,11 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import api from '../api/axios';
 import PageWrapper from '../components/layout/PageWrapper';
 import { useToast } from '../components/ui/Toast';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
+import { DataTable } from '../components/ui/PageKit';
 
 /* ── SVG icon helper ─────────────────────────────────────────────────── */
 const Ico = ({ d, size = 16 }) => (
@@ -413,6 +414,81 @@ export default function ConsentFormsPage() {
     } catch { addToast('Could not load record', 'error'); }
   };
 
+  const recordColumns = useMemo(() => [
+    {
+      id: 'customer',
+      header: 'Customer',
+      accessorFn: row => `${row.customer?.name || ''} ${row.customer?.phone || ''}`,
+      cell: ({ row: { original: r } }) => (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ width: 30, height: 30, borderRadius: 9, flexShrink: 0, background: 'rgba(99,102,241,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 800, color: '#6366F1' }}>
+            {(r.customer?.name || '?')[0].toUpperCase()}
+          </div>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: 13 }}>{r.customer?.name || '—'}</div>
+            <div style={{ fontSize: 11, color: '#a1a1aa' }}>{r.customer?.phone || ''}</div>
+          </div>
+        </div>
+      ),
+    },
+    {
+      id: 'form',
+      header: 'Form',
+      accessorFn: row => row.form?.title,
+      cell: ({ row: { original: r } }) => <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 180, fontWeight: 600 }}>{r.form?.title || '—'}</div>,
+    },
+    {
+      id: 'category',
+      header: 'Category',
+      accessorFn: row => row.form?.category,
+      cell: ({ row: { original: r } }) => {
+        if (!r.form?.category) return null;
+        const catStyle = CAT_STYLE[r.form.category] || CAT_STYLE.other;
+        return (
+          <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 999, background: catStyle.bg, color: catStyle.color, textTransform: 'capitalize' }}>
+            {r.form.category.replace(/_/g, ' ')}
+          </span>
+        );
+      },
+    },
+    {
+      id: 'signed_at',
+      header: 'Signed At',
+      accessorKey: 'signed_at',
+      cell: ({ row: { original: r } }) => (
+        <>
+          <div style={{ fontSize: 12 }}>{r.signed_at ? new Date(r.signed_at).toLocaleDateString() : '—'}</div>
+          <div style={{ fontSize: 10, color: '#a1a1aa' }}>{r.signed_at ? new Date(r.signed_at).toLocaleTimeString() : ''}</div>
+        </>
+      ),
+    },
+    {
+      id: 'appointment',
+      header: 'Appointment',
+      accessorKey: 'appointment_id',
+      cell: ({ getValue }) => getValue() ? <span style={{ fontWeight: 600 }}>#{getValue()}</span> : '—',
+    },
+    {
+      id: 'signature',
+      header: 'Signature',
+      accessorFn: row => row.signature_data,
+      cell: ({ row: { original: r } }) => r.signature_data
+        ? <span style={{ fontSize: 11, fontWeight: 700, color: '#059669' }}>Signed</span>
+        : <span style={{ fontSize: 11, color: '#a1a1aa' }}>Unsigned</span>,
+    },
+    {
+      id: 'actions',
+      header: '',
+      enableSorting: false,
+      cell: ({ row: { original: r } }) => (
+        <button type="button" onClick={() => viewRecord(r.id)}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 12px', borderRadius: 8, border: '1px solid #3f3f46', background: '#18181b', color: '#93c5fd', cursor: 'pointer', fontSize: 12, fontWeight: 700, fontFamily: "'Inter',sans-serif" }}>
+          View
+        </button>
+      ),
+    },
+  ], []);
+
   /* ── local colours ── */
   const surface  = isDark ? '#151B2D' : '#fff';
   const border   = isDark ? '#1E293B' : '#E5E7EB';
@@ -704,112 +780,17 @@ export default function ConsentFormsPage() {
               </motion.div>
             )
             : (
-              <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-                  <thead>
-                    <tr style={{
-                      background: isDark ? '#1A1F2E' : '#F9FAFB',
-                      borderBottom: `2px solid ${border}`,
-                    }}>
-                      {['Customer', 'Form', 'Category', 'Signed At', 'Appointment', 'Signature', ''].map((h) => (
-                        <th key={h} style={{
-                          padding: '11px 14px', textAlign: 'left',
-                          fontSize: 10, fontWeight: 800, letterSpacing: '0.07em',
-                          textTransform: 'uppercase', color: isDark ? '#475569' : '#9CA3AF',
-                          whiteSpace: 'nowrap',
-                        }}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {records.map((r, i) => {
-                      const catStyle = CAT_STYLE[r.form?.category] || CAT_STYLE.other;
-                      return (
-                        <motion.tr
-                          key={r.id}
-                          initial={{ opacity: 0, x: -6 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          transition={{ delay: i * 0.03 }}
-                          style={{ borderBottom: `1px solid ${border}` }}
-                          onMouseEnter={(e) => { e.currentTarget.style.background = hover; }}
-                          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
-                        >
-                          {/* Customer */}
-                          <td style={{ padding: '12px 14px' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                              <div style={{
-                                width: 30, height: 30, borderRadius: 9, flexShrink: 0,
-                                background: isDark ? 'rgba(99,102,241,0.15)' : '#EEF2FF',
-                                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                fontSize: 12, fontWeight: 800, color: '#6366F1',
-                              }}>
-                                {(r.customer?.name || '?')[0].toUpperCase()}
-                              </div>
-                              <div>
-                                <div style={{ fontWeight: 700, color: textMain, fontSize: 13 }}>{r.customer?.name || '—'}</div>
-                                <div style={{ fontSize: 11, color: textSub }}>{r.customer?.phone || ''}</div>
-                              </div>
-                            </div>
-                          </td>
-                          {/* Form */}
-                          <td style={{ padding: '12px 14px', color: textMain, fontWeight: 600, maxWidth: 180 }}>
-                            <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.form?.title || '—'}</div>
-                          </td>
-                          {/* Category */}
-                          <td style={{ padding: '12px 14px' }}>
-                            {r.form?.category && (
-                              <span style={{
-                                fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 999,
-                                background: isDark ? 'rgba(99,102,241,0.12)' : catStyle.bg,
-                                color: isDark ? '#818CF8' : catStyle.color,
-                                textTransform: 'capitalize', whiteSpace: 'nowrap',
-                              }}>
-                                {r.form.category.replace(/_/g, ' ')}
-                              </span>
-                            )}
-                          </td>
-                          {/* Signed At */}
-                          <td style={{ padding: '12px 14px', color: textSub, fontSize: 12, whiteSpace: 'nowrap' }}>
-                            {r.signed_at ? new Date(r.signed_at).toLocaleDateString() : '—'}
-                            <div style={{ fontSize: 10 }}>{r.signed_at ? new Date(r.signed_at).toLocaleTimeString() : ''}</div>
-                          </td>
-                          {/* Appointment */}
-                          <td style={{ padding: '12px 14px', color: textSub, fontSize: 12 }}>
-                            {r.appointment_id ? <span style={{ fontWeight: 600 }}>#{r.appointment_id}</span> : '—'}
-                          </td>
-                          {/* Signature status */}
-                          <td style={{ padding: '12px 14px' }}>
-                            {r.signature_data
-                              ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 700, background: isDark ? 'rgba(5,150,105,0.12)' : '#D1FAE5', color: '#059669', borderRadius: 999, padding: '3px 10px' }}>
-                                  <Ico d={ICONS.check} size={11} /> Signed
-                                </span>
-                              : <span style={{ fontSize: 11, color: textSub }}>Unsigned</span>
-                            }
-                          </td>
-                          {/* Actions */}
-                          <td style={{ padding: '12px 14px' }}>
-                            <button
-                              onClick={() => viewRecord(r.id)}
-                              style={{
-                                display: 'inline-flex', alignItems: 'center', gap: 5,
-                                padding: '5px 12px', borderRadius: 8,
-                                border: `1.5px solid ${isDark ? '#2D3748' : '#BFDBFE'}`,
-                                background: isDark ? '#1A1F2E' : '#EFF6FF',
-                                color: isDark ? '#818CF8' : '#1D4ED8',
-                                cursor: 'pointer', fontSize: 12, fontWeight: 700,
-                                fontFamily: "'Inter',sans-serif",
-                                transition: 'all 0.15s',
-                              }}
-                            >
-                              <Ico d={ICONS.eye} size={13} /> View
-                            </button>
-                          </td>
-                        </motion.tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+              <DataTable
+                columns={recordColumns}
+                data={records}
+                loading={loading}
+                emptyMessage="No signed records yet"
+                emptySub="Signed consent records will appear here once customers sign a form."
+                searchableColumns={[
+                  { id: 'customer', title: 'Customer' },
+                  { id: 'form', title: 'Form' },
+                ]}
+              />
             )
       )}
 

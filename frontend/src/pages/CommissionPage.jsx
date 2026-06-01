@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
 import Button from '../components/ui/Button';
@@ -114,6 +114,46 @@ export default function CommissionPage() {
     setAllPayouts(p => p.filter(x => x.id !== id));
     load();
   };
+
+  const payoutColumns = useMemo(() => [
+    {
+      id: 'date',
+      header: 'Date',
+      accessorKey: 'date',
+      cell: ({ row: { original: p } }) => p.date ? new Date(p.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—',
+    },
+    {
+      id: 'staff',
+      header: 'Staff',
+      accessorFn: row => row.staff?.name,
+      cell: ({ row: { original: p } }) => (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <StaffAvatar name={p.staff?.name || '?'} size={28} />
+          <span style={{ fontWeight: 600 }}>{p.staff?.name || '—'}</span>
+        </div>
+      ),
+    },
+    {
+      id: 'amount',
+      header: 'Amount',
+      accessorKey: 'amount',
+      meta: { align: 'right' },
+      cell: ({ row: { original: p } }) => <span style={{ fontWeight: 700, color: '#059669', fontFamily: "'Outfit',sans-serif", fontSize: 14 }}>{Rs(p.amount)}</span>,
+    },
+    { id: 'notes', header: 'Notes', accessorFn: row => row.notes, cell: ({ row: { original: p } }) => p.notes || '—' },
+    { id: 'paidBy', header: 'Paid By', accessorFn: row => row.paidBy?.name },
+    {
+      id: 'actions',
+      header: '',
+      enableSorting: false,
+      meta: { width: '48px' },
+      cell: ({ row: { original: p } }) => canPay ? (
+        <button type="button" onClick={() => deletePayout(p.id)} title="Delete" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#F04438', padding: 4, display: 'flex' }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+        </button>
+      ) : null,
+    },
+  ], [canPay]);
 
   const openPay = row => {
     setPayRow(row);
@@ -333,43 +373,19 @@ export default function CommissionPage() {
         {showAllPay && (
           allPayLoading ? (
             <div style={{ textAlign: 'center', padding: 24, color: '#98A2B3', fontSize: 13 }}>Loading…</div>
-          ) : allPayouts.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: 24, color: '#98A2B3', fontSize: 13 }}>No payments recorded for this period.</div>
           ) : (
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-              <thead>
-                <tr style={{ background: '#F9FAFB', borderTop: '1px solid #EAECF0' }}>
-                  {['Date','Staff','Amount','Notes','Paid By',''].map(h => (
-                    <th key={h} style={{ padding: '9px 14px', textAlign: h === 'Amount' ? 'right' : 'left', fontWeight: 700, color: '#475467', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em', borderBottom: '1px solid #EAECF0' }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {allPayouts.map(p => (
-                  <tr key={p.id} style={{ borderBottom: '1px solid #F2F4F7' }}>
-                    <td style={{ padding: '10px 14px', color: '#344054', whiteSpace: 'nowrap' }}>
-                      {p.date ? new Date(p.date).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}) : '—'}
-                    </td>
-                    <td style={{ padding: '10px 14px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <StaffAvatar name={p.staff?.name || '?'} size={28} />
-                        <span style={{ fontWeight: 600, color: '#101828' }}>{p.staff?.name || '—'}</span>
-                      </div>
-                    </td>
-                    <td style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 700, color: '#059669', fontFamily: "'Outfit',sans-serif", fontSize: 14 }}>{Rs(p.amount)}</td>
-                    <td style={{ padding: '10px 14px', color: '#667085' }}>{p.notes || '—'}</td>
-                    <td style={{ padding: '10px 14px', color: '#667085' }}>{p.paidBy?.name || '—'}</td>
-                    <td style={{ padding: '10px 14px' }}>
-                      {canPay && (
-                        <button onClick={() => deletePayout(p.id)} title="Delete" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#F04438', padding: 4, borderRadius: 6, display: 'flex' }}>
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <DataTable
+              noShell
+              compact
+              pagination={false}
+              showRowNumbers={false}
+              enableColumnVisibility={false}
+              columns={payoutColumns}
+              data={allPayouts}
+              loading={allPayLoading}
+              emptyMessage="No payments recorded for this period."
+              searchableColumns={[{ id: 'staff', title: 'Staff' }]}
+            />
           )
         )}
       </div>
@@ -378,40 +394,23 @@ export default function CommissionPage() {
       <Modal open={!!histRow} title={histRow ? `Payment History — ${histRow.staffName}` : ''} onClose={() => setHistRow(null)} size="md">
         {histLoading ? (
           <div style={{ textAlign: 'center', padding: 32, color: '#98A2B3' }}>Loading…</div>
-        ) : histData.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: 32, color: '#98A2B3', fontSize: 13 }}>No payments recorded for this period.</div>
         ) : (
           <>
             <div style={{ background: '#ECFDF5', color: '#065F46', padding: '9px 14px', borderRadius: 9, fontSize: 13, marginBottom: 14, display: 'flex', gap: 16 }}>
               <span>Total Paid: <strong>{Rs(histData.reduce((s,p)=>s+Number(p.amount||0),0))}</strong></span>
               <span>{histData.length} payment{histData.length !== 1 ? 's' : ''}</span>
             </div>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-              <thead>
-                <tr style={{ background: '#F9FAFB' }}>
-                  {['Date','Amount','Notes','Paid By',''].map(h => (
-                    <th key={h} style={{ padding: '8px 12px', textAlign: h === 'Amount' ? 'right' : 'left', fontWeight: 700, color: '#475467', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em', borderBottom: '1px solid #EAECF0' }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {histData.map(p => (
-                  <tr key={p.id} style={{ borderBottom: '1px solid #F2F4F7' }}>
-                    <td style={{ padding: '10px 12px', color: '#344054' }}>{p.date ? new Date(p.date).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}) : '—'}</td>
-                    <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, color: '#059669', fontFamily: "'Outfit',sans-serif" }}>{Rs(p.amount)}</td>
-                    <td style={{ padding: '10px 12px', color: '#667085' }}>{p.notes || '—'}</td>
-                    <td style={{ padding: '10px 12px', color: '#667085' }}>{p.paidBy?.name || '—'}</td>
-                    <td style={{ padding: '10px 12px' }}>
-                      {canPay && (
-                        <button onClick={() => deletePayout(p.id)} title="Delete" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#F04438', padding: 4 }}>
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <DataTable
+              noShell
+              compact
+              pagination={false}
+              showRowNumbers={false}
+              enableColumnVisibility={false}
+              columns={payoutColumns.filter(c => c.id !== 'staff')}
+              data={histData}
+              loading={histLoading}
+              emptyMessage="No payments recorded for this period."
+            />
           </>
         )}
       </Modal>

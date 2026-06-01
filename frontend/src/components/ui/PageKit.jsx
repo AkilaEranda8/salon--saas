@@ -634,12 +634,35 @@ export const CRAFT_TABLE_DEFAULTS = {
   enableColumnVisibility: true,
 };
 
+/** Convert legacy `{ key, label, render?, width?, align? }` columns to TanStack ColumnDef */
+export function toColumnDefs(cols) {
+  return (cols || []).map(col => {
+    const id = col.id || col.key || col.accessorKey;
+    return {
+      id,
+      accessorKey: col.accessorKey ?? col.key,
+      accessorFn: col.accessorFn,
+      header: col.header ?? col.label ?? id,
+      meta: { width: col.width, align: col.align, padding: col.padding, ...(col.meta || {}) },
+      enableSorting: col.enableSorting ?? (col.sortable !== false && col.id !== 'actions'),
+      cell: col.cell ?? (col.render
+        ? ({ row }) => col.render(row.original, row.index)
+        : undefined),
+    };
+  });
+}
+
 /** Embedded / modal tables — toolbar & pagination off */
 export const CRAFT_TABLE_COMPACT = {
   pagination: false,
   showRowNumbers: false,
   enableColumnVisibility: false,
 };
+
+/** TableCraft `ClientSideTable` alias — `pageCount` is optional and ignored (pagination is computed client-side). */
+export function ClientSideTable({ pageCount: _pageCount, ...props }) {
+  return <DataTable {...props} />;
+}
 
 export function DataTable({
   columns,
@@ -738,6 +761,17 @@ export function DataTable({
 
   const activeFilters = columnFilters.filter(f => f.value != null && f.value !== '');
 
+  const filterLabel = (filterId, value) => {
+    const fc = filterableColumns?.find(f => f.id === filterId);
+    if (fc) {
+      const opt = fc.options.find(o => String(o.value) === String(value));
+      return opt ? `${fc.title}: ${opt.label}` : `${fc.title}: ${value}`;
+    }
+    const sc = searchableColumns?.find(f => f.id === filterId);
+    if (sc) return `${sc.title}: "${value}"`;
+    return String(value);
+  };
+
   const inputStyle = craft ? {
     padding: '8px 12px 8px 34px', borderRadius: 8, border: ts.inputBorder, fontSize: 13,
     fontFamily: "'Inter',sans-serif", outline: 'none', color: ts.inputColor, background: ts.inputBg,
@@ -794,6 +828,22 @@ export function DataTable({
                   <option key={o.value} value={o.value}>{o.label}</option>
                 ))}
               </select>
+            ))}
+            {activeFilters.map(f => (
+              <span key={f.id} style={{
+                display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderRadius: 999,
+                fontSize: 12, fontWeight: 600, fontFamily: "'Inter',sans-serif",
+                background: craft ? 'rgba(59,130,246,0.15)' : '#EFF6FF',
+                color: craft ? '#93c5fd' : '#2563EB',
+                border: craft ? '1px solid rgba(59,130,246,0.35)' : '1px solid #BFDBFE',
+              }}>
+                {filterLabel(f.id, f.value)}
+                <button type="button" aria-label={`Clear ${f.id} filter`}
+                  onClick={() => setColFilter(f.id, '')}
+                  style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: 0, lineHeight: 1, color: 'inherit', fontSize: 14, opacity: 0.85 }}>
+                  ×
+                </button>
+              </span>
             ))}
           </div>
           {activeFilters.length > 0 && (

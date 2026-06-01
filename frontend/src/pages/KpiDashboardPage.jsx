@@ -360,6 +360,7 @@ export default function KpiDashboardPage() {
         emptyMessage="No branch data"
         emptySub="Select a different branch or check that branches are active."
         pageSize={20}
+        searchableColumns={[{ id: 'name', title: 'Branch' }]}
       />
 
       {/* ── Footer ── */}

@@ -6,6 +6,7 @@ const PRIMARY_COLOR_KEY      = 'salon-primary-color';
 const FONT_FAMILY_KEY        = 'salon-font-family';
 const SIDEBAR_APPEARANCE_KEY = 'salon-sidebar-appearance';
 const TABLE_STYLE_KEY        = 'salon-table-style';
+const TABLE_DENSITY_KEY      = 'salon-table-density';
 
 const ThemeContext = createContext(null);
 
@@ -56,6 +57,12 @@ function getInitialTableStyle() {
   return valid.includes(s) ? s : 'default';
 }
 
+function getInitialTableDensity() {
+  if (typeof window === 'undefined') return 'comfortable';
+  const d = window.localStorage.getItem(TABLE_DENSITY_KEY);
+  return d === 'compact' ? 'compact' : 'comfortable';
+}
+
 function hexToRgb(hex) {
   const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
   return result
@@ -80,6 +87,7 @@ export function ThemeProvider({ children }) {
   const [fontFamily, setFontFamily]           = useState(getInitialFontFamily);
   const [sidebarAppearance, setSidebarAppearance] = useState(getInitialSidebarAppearance);
   const [tableStyle, setTableStyle]           = useState(getInitialTableStyle);
+  const [tableDensity, setTableDensity]       = useState(getInitialTableDensity);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -120,6 +128,10 @@ export function ThemeProvider({ children }) {
     window.localStorage.setItem(TABLE_STYLE_KEY, tableStyle);
   }, [tableStyle]);
 
+  useEffect(() => {
+    window.localStorage.setItem(TABLE_DENSITY_KEY, tableDensity);
+  }, [tableDensity]);
+
   const value = useMemo(() => ({
     mode,
     setMode,
@@ -135,7 +147,9 @@ export function ThemeProvider({ children }) {
     setSidebarAppearance,
     tableStyle,
     setTableStyle,
-  }), [mode, sidebarStyle, primaryColor, fontFamily, sidebarAppearance, tableStyle]);
+    tableDensity,
+    setTableDensity,
+  }), [mode, sidebarStyle, primaryColor, fontFamily, sidebarAppearance, tableStyle, tableDensity]);
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 }

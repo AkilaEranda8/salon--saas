@@ -179,6 +179,57 @@ export default function MembershipPlansPage() {
     },
   ], []);
 
+  const planColumns = useMemo(() => [
+    {
+      id: 'name',
+      header: 'Plan',
+      accessorKey: 'name',
+      cell: ({ row: { original: plan } }) => (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ width: 10, height: 10, borderRadius: '50%', background: plan.color || '#6366f1' }} />
+          <span style={{ fontWeight: 700, color: '#101828' }}>{plan.name}</span>
+          {plan.is_active === false && (
+            <span style={{ fontSize: 10, fontWeight: 700, color: '#9CA3AF', background: '#F3F4F6', padding: '2px 8px', borderRadius: 99 }}>INACTIVE</span>
+          )}
+        </div>
+      ),
+    },
+    {
+      id: 'price',
+      header: 'Price',
+      accessorFn: row => row.price,
+      cell: ({ row: { original: plan } }) => (
+        <span style={{ fontWeight: 800 }}>{Rs(plan.price)} <span style={{ fontWeight: 500, color: '#98A2B3', fontSize: 12 }}>/ {CYCLES[plan.billing_cycle] || plan.billing_cycle}</span></span>
+      ),
+    },
+    { id: 'discount_percent', header: 'Discount %', accessorKey: 'discount_percent', meta: { align: 'center' } },
+    { id: 'free_services_count', header: 'Free credits', accessorKey: 'free_services_count', meta: { align: 'center' } },
+    {
+      id: 'description',
+      header: 'Description',
+      accessorFn: row => row.description || '',
+      cell: ({ getValue }) => <span style={{ fontSize: 13, color: '#667085' }}>{getValue() || '—'}</span>,
+    },
+    ...(canAdmin ? [{
+      id: 'actions',
+      header: '',
+      enableSorting: false,
+      meta: { width: '140px', align: 'center' },
+      cell: ({ row: { original: plan } }) => (
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
+          <button type="button" onClick={() => { setEditPlan(plan); setPlanForm(plan); setShowPlanForm(true); }}
+            style={{ padding: '6px 14px', borderRadius: 8, border: '1.5px solid #E4E7EC', background: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 700, color: '#344054' }}>
+            Edit
+          </button>
+          <button type="button" onClick={() => deletePlan(plan.id)}
+            style={{ padding: '6px 12px', borderRadius: 8, border: '1.5px solid #FECACA', background: '#FEF2F2', cursor: 'pointer', color: '#DC2626', fontSize: 12, fontWeight: 700 }}>
+            Delete
+          </button>
+        </div>
+      ),
+    }] : []),
+  ], [canAdmin]);
+
   const inp = {
     padding: '10px 14px', borderRadius: 10, border: '1.5px solid #E5E7EB', fontSize: 13.5,
     width: '100%', boxSizing: 'border-box', fontFamily: "'Inter', sans-serif",
@@ -413,167 +464,15 @@ export default function MembershipPlansPage() {
         </motion.div>
       )}
 
-      {/* ── Plans Grid ── */}
       {tab === 'plans' && (
-        <>
-          {plans.length > 0 && (
-            <div>
-              <h2 style={{
-                margin: '0 0 4px', fontSize: 20, fontWeight: 800, color: '#101828',
-                fontFamily: "'Sora', 'Manrope', sans-serif", letterSpacing: '-0.3px',
-              }}>
-                Your Membership Plans
-              </h2>
-              <p style={{ margin: 0, fontSize: 13, color: '#667085', fontFamily: "'Inter', sans-serif" }}>
-                Manage plans and customize benefits for your customers.
-              </p>
-            </div>
-          )}
-
-          <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', alignItems: 'stretch' }}>
-            {plans.length === 0 && (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                style={{
-                  width: '100%', textAlign: 'center', padding: '50px 20px',
-                  background: 'linear-gradient(135deg, #F9FAFB, #F3F4F6)',
-                  borderRadius: 18, border: '2px dashed #D1D5DB',
-                }}
-              >
-                <div style={{ fontSize: 40, marginBottom: 12 }}>📋</div>
-                <div style={{ fontSize: 16, fontWeight: 700, color: '#374151', marginBottom: 4, fontFamily: "'Sora', sans-serif" }}>
-                  No membership plans yet
-                </div>
-                <div style={{ fontSize: 13, color: '#667085', fontFamily: "'Inter', sans-serif" }}>
-                  Create your first plan to start enrolling customers.
-                </div>
-              </motion.div>
-            )}
-
-            {plans.map((plan, i) => {
-              const theme = getPlanTheme(plan.color, i);
-              const features = [];
-              if (plan.discount_percent > 0) features.push(`${plan.discount_percent}% off all services`);
-              if (plan.free_services_count > 0) features.push(`${plan.free_services_count} free service credits`);
-              if (plan.bonus_loyalty_points > 0) features.push(`${plan.bonus_loyalty_points} bonus loyalty points`);
-              if (plan.billing_cycle) features.push(`Billed ${CYCLES[plan.billing_cycle]?.toLowerCase() || plan.billing_cycle}`);
-
-              const isMostExpensive = plans.length > 1 && plan.price === Math.max(...plans.map(p => Number(p.price || 0)));
-
-              return (
-                <motion.div
-                  key={plan.id}
-                  initial={{ opacity: 0, y: 16 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.05 + i * 0.07 }}
-                  whileHover={{ translateY: -3 }}
-                  style={{
-                    flex: 1, minWidth: 250,
-                    background: isMostExpensive ? `linear-gradient(160deg, ${theme.light} 0%, ${theme.light}CC 100%)` : '#fff',
-                    border: `1.5px solid ${isMostExpensive ? theme.text : '#EAECF0'}`,
-                    borderRadius: 18, padding: '26px 22px',
-                    position: 'relative',
-                    boxShadow: isMostExpensive ? `0 8px 32px ${theme.text}22` : '0 2px 8px rgba(16,24,40,0.06)',
-                    display: 'flex', flexDirection: 'column',
-                    transition: 'box-shadow 0.18s',
-                  }}
-                >
-                  {isMostExpensive && (
-                    <div style={{
-                      position: 'absolute', top: -14, left: '50%', transform: 'translateX(-50%)',
-                      background: theme.gradient,
-                      color: '#fff', fontSize: 11, fontWeight: 800,
-                      padding: '4px 16px', borderRadius: 99,
-                      letterSpacing: '0.07em', textTransform: 'uppercase',
-                      boxShadow: `0 2px 8px ${theme.text}55`,
-                      whiteSpace: 'nowrap', fontFamily: "'Inter', sans-serif",
-                    }}>
-                      Most Popular
-                    </div>
-                  )}
-
-                  {/* Plan header */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-                    <div>
-                      <span style={{ fontSize: 17, fontWeight: 800, color: theme.text, fontFamily: "'Sora', 'Manrope', sans-serif" }}>
-                        {plan.name}
-                      </span>
-                      {plan.is_active === false && (
-                        <span style={{ marginLeft: 8, fontSize: 10, fontWeight: 700, color: '#9CA3AF', background: '#F3F4F6', padding: '2px 8px', borderRadius: 99 }}>
-                          INACTIVE
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Description */}
-                  {plan.description && (
-                    <p style={{ fontSize: 12.5, color: '#667085', margin: '0 0 14px', lineHeight: 1.5, fontFamily: "'Inter', sans-serif" }}>
-                      {plan.description}
-                    </p>
-                  )}
-
-                  {/* Price */}
-                  <div style={{ marginBottom: 18 }}>
-                    <span style={{ fontSize: 29, fontWeight: 900, color: '#101828', fontFamily: "'Sora', sans-serif" }}>
-                      {Rs(plan.price)}
-                    </span>
-                    <span style={{ fontSize: 13.5, color: '#98A2B3', fontWeight: 500, fontFamily: "'Inter', sans-serif" }}>
-                      {' '}/ {CYCLES[plan.billing_cycle] || plan.billing_cycle}
-                    </span>
-                  </div>
-
-                  {/* Features */}
-                  <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 22px', flexGrow: 1 }}>
-                    {features.map((f) => (
-                      <li key={f} style={{
-                        display: 'flex', alignItems: 'center', gap: 9,
-                        padding: '5px 0', fontSize: 13.5, color: '#344054',
-                        borderBottom: '1px solid #F2F4F7',
-                        fontFamily: "'Inter', sans-serif",
-                      }}>
-                        <span style={{ color: theme.text, flexShrink: 0, fontSize: 13 }}>✓</span>
-                        {f}
-                      </li>
-                    ))}
-                  </ul>
-
-                  {/* Action Buttons */}
-                  {canAdmin && (
-                    <div style={{ display: 'flex', gap: 8 }}>
-                      <button
-                        onClick={() => { setEditPlan(plan); setPlanForm(plan); setShowPlanForm(true); }}
-                        style={{
-                          flex: 1, padding: '10px 0', borderRadius: 10,
-                          background: theme.light, border: `1.5px solid ${theme.border}`,
-                          cursor: 'pointer', fontSize: 13, fontWeight: 700,
-                          color: theme.text, display: 'flex', alignItems: 'center',
-                          justifyContent: 'center', gap: 6, transition: 'all 0.15s',
-                          fontFamily: "'Inter', sans-serif",
-                        }}
-                      >
-                        Edit
-                      </button>
-                      <button
-                        onClick={() => deletePlan(plan.id)}
-                        style={{
-                          padding: '10px 14px', borderRadius: 10,
-                          border: '1.5px solid #FECACA', background: '#FEF2F2',
-                          cursor: 'pointer', color: '#DC2626', display: 'flex',
-                          alignItems: 'center', justifyContent: 'center',
-                          transition: 'all 0.15s',
-                        }}
-                      >
-                        🗑
-                      </button>
-                    </div>
-                  )}
-                </motion.div>
-              );
-            })}
-          </div>
-        </>
+        <DataTable
+          columns={planColumns}
+          data={plans}
+          loading={loading}
+          emptyMessage="No membership plans yet"
+          emptySub="Create your first plan to start enrolling customers."
+          searchableColumns={[{ id: 'name', title: 'Plan' }]}
+        />
       )}
 
       {/* ── Enroll Form Modal ── */}

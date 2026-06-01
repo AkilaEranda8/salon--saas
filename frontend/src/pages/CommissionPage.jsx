@@ -347,6 +347,7 @@ export default function CommissionPage() {
             <td />
           </tr>
         ) : null}
+        searchableColumns={[{ id: 'staff', title: 'Staff' }]}
       />
 
       {/* ── All Payments Section ──────────────────────────────────────── */}

@@ -441,10 +441,10 @@ export function TableShell({ children }) {
 }
 
 /* ─── Table header cell ──────────────────────────────────────────────────── */
-export function Th({ children, align = 'left', onClick, sortActive, sortDir, ts }) {
+export function Th({ children, align = 'left', onClick, sortActive, sortDir, ts, className }) {
   const t = ts || TABLE_STYLE_TOKENS.default;
   return (
-    <th onClick={onClick} style={{
+    <th className={className} onClick={onClick} style={{
       padding: t.thPadding, textAlign: align, fontSize: 11, fontWeight: 600,
       color: t.headerColor, textTransform: t.thUppercase ? 'uppercase' : 'uppercase', letterSpacing: '0.05em',
       background: t.headerBg,
@@ -605,7 +605,12 @@ function IconLayoutCards() {
 }
 
 /* ─── Per-row actions menu (use column id: "actions") ────────────────────── */
-export function TableActionsRow({ actions = [] }) {
+export function TableActionsRow({ actions: actionsProp, showAction, editAction, deleteAction }) {
+  const actions = actionsProp ?? [
+    showAction && { label: showAction.label || 'View', onClick: showAction.action },
+    editAction && { label: editAction.label || 'Edit', onClick: editAction.action },
+    deleteAction && { label: deleteAction.label || 'Delete', onClick: deleteAction.action, variant: 'destructive' },
+  ].filter(Boolean);
   const [open, setOpen] = useState(false);
   if (!actions.length) return null;
   return (
@@ -650,6 +655,29 @@ export const CRAFT_TABLE_DEFAULTS = {
   enableColumnVisibility: true,
 };
 
+function applyTableDensity(ts, density) {
+  if (density !== 'compact') return ts;
+  return {
+    ...ts,
+    thPadding: '5px 12px',
+    cellPadding: '6px 12px',
+  };
+}
+
+/** First 1–2 filterable text columns — enables TableCraft toolbar when searchableColumns omitted */
+export function inferSearchableColumns(columns) {
+  const out = [];
+  for (const col of columns || []) {
+    const id = col.id || col.accessorKey;
+    if (!id || id === 'actions' || id === '_rowNum' || id === 'rank') continue;
+    if (!col.accessorFn && !col.accessorKey) continue;
+    const title = typeof col.header === 'string' ? col.header : String(id).replace(/_/g, ' ');
+    out.push({ id, title: title.charAt(0).toUpperCase() + title.slice(1) });
+    if (out.length >= 2) break;
+  }
+  return out.length ? out : null;
+}
+
 /** Convert legacy `{ key, label, render?, width?, align? }` columns to TanStack ColumnDef */
 export function toColumnDefs(cols) {
   return (cols || []).map(col => {
@@ -692,7 +720,7 @@ export function DataTable({
   pagination: paginationProp,
   pageSize: initialPageSize = 10,
   pageSizeOptions = [10, 20, 50, 100],
-  searchableColumns = null,
+  searchableColumns: searchableColumnsProp = undefined,
   filterableColumns = null,
   showRowNumbers: showRowNumbersProp,
   enableColumnVisibility: enableColumnVisibilityProp,
@@ -700,8 +728,8 @@ export function DataTable({
   const pagination = compact ? false : (paginationProp ?? true);
   const showRowNumbers = compact ? false : (showRowNumbersProp ?? true);
   const enableColumnVisibility = compact ? false : (enableColumnVisibilityProp ?? true);
-  const { tableStyle = 'default' } = useTheme();
-  const ts = TABLE_STYLE_TOKENS[tableStyle] || TABLE_STYLE_TOKENS.default;
+  const { tableStyle = 'default', tableDensity = 'comfortable' } = useTheme();
+  const ts = applyTableDensity(TABLE_STYLE_TOKENS[tableStyle] || TABLE_STYLE_TOKENS.default, tableDensity);
   const craft = !!ts.isCraft;
   const [sorting, setSorting] = useState([]);
   const [columnFilters, setColumnFilters] = useState([]);
@@ -714,6 +742,12 @@ export function DataTable({
   });
 
   const stableData = useMemo(() => data ?? [], [data]);
+
+  const searchableColumns = useMemo(() => {
+    if (searchableColumnsProp !== undefined) return searchableColumnsProp;
+    if (compact || noShell) return null;
+    return inferSearchableColumns(columns);
+  }, [searchableColumnsProp, compact, noShell, columns]);
 
   const tableColumns = useMemo(() => {
     const facetIds = new Set((filterableColumns || []).map(f => f.id));
@@ -969,7 +1003,14 @@ export function DataTable({
           )}
         </div>
       )}
-      <div style={{ overflowX: 'auto' }} className={craft ? 'pk-craft-table' : undefined}>
+      <div
+        style={{ overflowX: 'auto' }}
+        className={[
+          'pk-data-table',
+          craft ? 'pk-craft-table' : '',
+          tableDensity === 'compact' ? 'table-compact' : 'table-comfortable',
+        ].filter(Boolean).join(' ')}
+      >
         {craft && (
           <style>{`
             .pk-craft-table tbody td { color: #fafafa; }
@@ -997,6 +1038,7 @@ export function DataTable({
                   const sorted  = header.column.getIsSorted();
                   return (
                     <Th key={header.id}
+                      className="table-header"
                       ts={ts}
                       align={header.column.columnDef.meta?.align}
                       onClick={canSort ? header.column.getToggleSortingHandler() : undefined}
@@ -1020,12 +1062,12 @@ export function DataTable({
                 {table.getRowModel().rows.map((row, idx) => (
                   <TR key={row.id} idx={idx} ts={ts}>
                     {row.getVisibleCells().map(cell => (
-                      <td key={cell.id} style={{
+                      <td key={cell.id} className="table-cell" style={{
                         padding: cell.column.columnDef.meta?.padding ?? ts.cellPadding,
                         textAlign: cell.column.columnDef.meta?.align ?? 'left',
                         borderRight: ts.cellBorderRight,
                         color: ts.bodyColor || '#101828',
-                        fontSize: 14,
+                        fontSize: tableDensity === 'compact' ? 12 : 14,
                       }}>
                         {flexRender(cell.column.columnDef.cell, cell.getContext())}
                       </td>

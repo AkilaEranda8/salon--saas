@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import PageWrapper from '../components/layout/PageWrapper';
 import api from '../api/axios';
 import toast from 'react-hot-toast';
+import TableDensityToggle from '../components/ui/TableDensityToggle';
 
 /* ── SVG icons ─────────────────────────────────────────────────────────────── */
 const IconSun    = () => <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>;
@@ -364,7 +365,7 @@ function MinimalSidebarPreview() {
 
 /* ── Main page ─────────────────────────────────────────────────────────────── */
 export default function ThemeOptionsPage() {
-  const { mode, setMode, sidebarStyle, setSidebarStyle, primaryColor, setPrimaryColor, fontFamily, setFontFamily, sidebarAppearance, setSidebarAppearance, tableStyle, setTableStyle } = useTheme();
+  const { mode, setMode, sidebarStyle, setSidebarStyle, primaryColor, setPrimaryColor, fontFamily, setFontFamily, sidebarAppearance, setSidebarAppearance, tableStyle, setTableStyle, tableDensity } = useTheme();
   const [layoutSaving, setLayoutSaving] = useState(false);
   const { user, refreshUser } = useAuth();
   const isAdmin = user?.role === 'superadmin' || user?.role === 'admin';
@@ -806,6 +807,18 @@ export default function ThemeOptionsPage() {
               />
             );
           })}
+        </div>
+      </SectionCard>
+
+      <SectionCard
+        title="Table row density"
+        subtitle="TableCraft list tables — comfortable spacing or compact rows (applies to all DataTable pages)."
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+          <TableDensityToggle />
+          <span style={{ fontSize: 13, color: C.muted, fontFamily: "'Inter', sans-serif" }}>
+            Current: <strong style={{ color: C.text }}>{tableDensity === 'compact' ? 'Compact' : 'Comfortable'}</strong>
+          </span>
         </div>
       </SectionCard>
 

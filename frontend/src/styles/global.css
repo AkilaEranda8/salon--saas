@@ -366,3 +366,18 @@ button:focus:not(:focus-visible) { outline: none; }
   pointer-events: none;
   z-index: 999;
 }
+
+/* ── TableCraft row density (DataTable / PageKit) ───────────────── */
+.table-compact .table-cell {
+  padding: 0.4rem 0.75rem !important;
+  font-size: 0.75rem !important;
+}
+.table-compact .table-header {
+  padding: 0.35rem 0.75rem !important;
+}
+.table-comfortable .table-cell {
+  padding: 0.875rem 1rem !important;
+}
+.table-comfortable .table-header {
+  padding: 0.75rem 1rem !important;
+}

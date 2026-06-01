@@ -1,65 +1,16 @@
-﻿import { useState, useEffect, useCallback } from 'react';
+﻿import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
 import Button from '../components/ui/Button';
 import { Input, Select, FormGroup } from '../components/ui/FormElements';
 import PageWrapper from '../components/layout/PageWrapper';
-import { PKModal as Modal, StatCard, IconUsers, IconCheck, IconStop } from '../components/ui/PageKit';
+import { PKModal as Modal, StatCard, IconUsers, IconCheck, IconStop, DataTable, ActionBtn } from '../components/ui/PageKit';
 
 const EMPTY = { name:'', address:'', phone:'', manager_name:'', status:'active', color:'#2563EB' };
 const BRANCH_COLORS = ['#2563EB','#7C3AED','#0891B2','#059669','#DC2626','#D97706','#DB2777'];
 
 function EditIcon() {
   return <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>;
-}
-
-function BranchCard({ branch, onEdit, onToggleStatus, canEdit }) {
-  const active = branch.status === 'active';
-  return (
-    <div style={{ background:'#fff', borderRadius:16, boxShadow:'0 1px 4px rgba(16,24,40,0.07)', overflow:'hidden',
-      border:'1px solid #EAECF0', transition:'box-shadow 0.2s' }}
-      onMouseEnter={e => e.currentTarget.style.boxShadow='0 8px 24px rgba(16,24,40,0.12)'}
-      onMouseLeave={e => e.currentTarget.style.boxShadow='0 1px 4px rgba(16,24,40,0.07)'}>
-      <div style={{ height:5, background: branch.color || '#2563EB' }} />
-      <div style={{ padding:20 }}>
-        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:12 }}>
-          <div>
-            <h3 style={{ margin:0, fontFamily:"'Outfit',sans-serif", fontWeight:800, fontSize:17, color:'#101828' }}>{branch.name}</h3>
-            <p style={{ margin:'4px 0 0', fontSize:13, color:'#475467' }}>{branch.address}</p>
-          </div>
-          <span style={{ padding:'3px 10px', borderRadius:20, fontSize:12, fontWeight:600,
-            background:active?'#ECFDF5':'#F9FAFB', color:active?'#059669':'#6B7280' }}>
-            {active ? 'Active' : 'Inactive'}
-          </span>
-        </div>
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, margin:'14px 0', padding:12, background:'#F9FAFB', borderRadius:10 }}>
-          <div>
-            <div style={{ fontSize:11, color:'#98A2B3', textTransform:'uppercase', fontWeight:600, marginBottom:2 }}>Phone</div>
-            <div style={{ fontSize:13, fontWeight:600, color:'#101828' }}>{branch.phone || ''}</div>
-          </div>
-          <div>
-            <div style={{ fontSize:11, color:'#98A2B3', textTransform:'uppercase', fontWeight:600, marginBottom:2 }}>Manager</div>
-            <div style={{ fontSize:13, fontWeight:600, color:'#101828' }}>{branch.manager_name || ''}</div>
-          </div>
-        </div>
-        {canEdit && (
-          <div style={{ display:'flex', gap:8 }}>
-            <button onClick={() => onEdit(branch)}
-              style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', gap:6, padding:'7px 0', borderRadius:9, border:'1.5px solid #E4E7EC', background:'#fff', color:'#344054', fontSize:13, fontWeight:600, cursor:'pointer', fontFamily:"'Inter',sans-serif", transition:'all 0.15s' }}
-              onMouseEnter={e => { e.currentTarget.style.borderColor='#D97706'; e.currentTarget.style.color='#D97706'; }}
-              onMouseLeave={e => { e.currentTarget.style.borderColor='#E4E7EC'; e.currentTarget.style.color='#344054'; }}>
-              <EditIcon /> Edit
-            </button>
-            <button onClick={() => onToggleStatus(branch)}
-              style={{ flex:1, padding:'7px 0', borderRadius:9, border:'1.5px solid', fontSize:13, fontWeight:600, cursor:'pointer', fontFamily:"'Inter',sans-serif", transition:'all 0.15s',
-                borderColor:active?'#E4E7EC':'#ECFDF5', background:active?'#F9FAFB':'#ECFDF5', color:active?'#6B7280':'#059669' }}>
-              {active ? 'Deactivate' : 'Activate'}
-            </button>
-          </div>
-        )}
-      </div>
-    </div>
-  );
 }
 
 export default function BranchesPage() {
@@ -105,6 +56,52 @@ export default function BranchesPage() {
 
   const active = branches.filter(b => b.status === 'active');
 
+  const columns = useMemo(() => [
+    {
+      id: 'name',
+      header: 'Branch',
+      accessorKey: 'name',
+      cell: ({ row: { original: b } }) => (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ width: 10, height: 10, borderRadius: '50%', background: b.color || '#2563EB', flexShrink: 0 }} />
+          <div>
+            <div style={{ fontWeight: 700, fontSize: 14, color: '#101828' }}>{b.name}</div>
+            <div style={{ fontSize: 12, color: '#98A2B3', marginTop: 2 }}>{b.address || '—'}</div>
+          </div>
+        </div>
+      ),
+    },
+    { id: 'phone', header: 'Phone', accessorKey: 'phone', cell: ({ getValue }) => getValue() || '—' },
+    { id: 'manager_name', header: 'Manager', accessorKey: 'manager_name', cell: ({ getValue }) => getValue() || '—' },
+    {
+      id: 'status',
+      header: 'Status',
+      accessorKey: 'status',
+      cell: ({ getValue }) => {
+        const active = getValue() === 'active';
+        return (
+          <span style={{ padding: '3px 10px', borderRadius: 20, fontSize: 12, fontWeight: 600, background: active ? '#ECFDF5' : '#F9FAFB', color: active ? '#059669' : '#6B7280' }}>
+            {active ? 'Active' : 'Inactive'}
+          </span>
+        );
+      },
+    },
+    ...(canEdit ? [{
+      id: 'actions',
+      header: '',
+      enableSorting: false,
+      meta: { width: '120px', align: 'center' },
+      cell: ({ row: { original: b } }) => (
+        <div style={{ display: 'flex', gap: 4, justifyContent: 'center' }}>
+          <ActionBtn onClick={() => openEdit(b)} title="Edit" color="#D97706"><EditIcon /></ActionBtn>
+          <ActionBtn onClick={() => handleToggle(b)} title={b.status === 'active' ? 'Deactivate' : 'Activate'} color={b.status === 'active' ? '#6B7280' : '#059669'}>
+            {b.status === 'active' ? <IconStop /> : <IconCheck />}
+          </ActionBtn>
+        </div>
+      ),
+    }] : []),
+  ], [canEdit]);
+
   return (
     <PageWrapper title="Branches" subtitle={`${branches.length} branch${branches.length !== 1 ? 'es' : ''} configured`}
       actions={canEdit && <Button variant="primary" onClick={openAdd} style={{ display:'flex', alignItems:'center', gap:6 }}>
@@ -119,27 +116,25 @@ export default function BranchesPage() {
         <StatCard label="Inactive"       value={branches.length - active.length} color="#6B7280" icon={<IconStop />} />
       </div>
 
-      {/* Branch Cards Grid */}
-      {loading ? (
-        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(290px,1fr))', gap:16 }}>
-          {[1,2,3].map(i => <div key={i} style={{ height:200, borderRadius:16, background:'#F9FAFB', animation:'pulse 1.5s infinite', boxShadow:'0 1px 4px rgba(0,0,0,0.05)' }} />)}
-        </div>
-      ) : (
-        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(290px,1fr))', gap:16 }}>
-          {branches.map(b => (
-            <BranchCard key={b.id} branch={b} onEdit={openEdit} onToggleStatus={handleToggle} canEdit={canEdit} />
-          ))}
-          {branches.length === 0 && (
-            <div style={{ gridColumn:'1/-1', textAlign:'center', padding:'60px 0', background:'#fff', borderRadius:16, border:'1px solid #EAECF0' }}>
-              <div style={{ fontSize:40, marginBottom:10, color:'#E4E7EC' }}>
-                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#CBD5E1" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-              </div>
-              <div style={{ fontSize:15, fontWeight:600, color:'#475467' }}>No branches configured</div>
-              <div style={{ fontSize:13, color:'#98A2B3', marginTop:4 }}>Add your first branch to get started</div>
-            </div>
-          )}
-        </div>
-      )}
+      <DataTable
+        columns={columns}
+        data={branches}
+        loading={loading}
+        emptyMessage="No branches configured"
+        emptySub="Add your first branch to get started"
+        searchableColumns={[
+          { id: 'name', title: 'Branch' },
+          { id: 'manager_name', title: 'Manager' },
+        ]}
+        filterableColumns={[{
+          id: 'status',
+          title: 'Status',
+          options: [
+            { label: 'Active', value: 'active' },
+            { label: 'Inactive', value: 'inactive' },
+          ],
+        }]}
+      />
 
       {/* Add/Edit Modal */}
       <Modal open={showForm} onClose={() => setShowForm(false)} title={editItem ? 'Edit Branch' : 'Add Branch'} size="md"

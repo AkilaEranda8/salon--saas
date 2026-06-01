@@ -1,4 +1,4 @@
-﻿import { useEffect, useState, useCallback } from 'react';
+﻿import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
 import PageWrapper from '../components/layout/PageWrapper';
@@ -6,73 +6,11 @@ import { useToast } from '../components/ui/Toast';
 import {
   IconEdit, IconTrash, IconPlus, IconCheck, IconBell,
   ActionBtn, StatCard, PKModal as Modal,
-  FilterBar, SearchBar,
+  FilterBar, DataTable,
 } from '../components/ui/PageKit';
 
 const PRI_COLOR = { low:'#64748B', medium:'#D97706', high:'#DC2626', urgent:'#7C3AED' };
 const PRI_BG    = { low:'#F8FAFC', medium:'#FEF3C7', high:'#FEE2E2', urgent:'#F5F3FF' };
-
-function ReminderCard({ reminder, idx, onEdit, onDelete, onToggle }) {
-  const color = PRI_COLOR[reminder.priority] || '#64748B';
-  const bg    = PRI_BG[reminder.priority]    || '#F8FAFC';
-  const done  = !!reminder.is_done;
-  const overdue = !done && reminder.due_date && new Date(reminder.due_date) < new Date();
-  return (
-    <div style={{
-      display:'flex', alignItems:'center', gap:16, padding:'16px 20px',
-      background: done ? '#F9FAFB' : bg,
-      borderLeft:`4px solid ${color}`,
-      borderBottom:'1px solid #F2F4F7',
-      opacity: done ? 0.7 : 1,
-      transition:'background 0.15s',
-    }}>
-      {/* Toggle done */}
-      <button type="button" onClick={() => onToggle(reminder)}
-        title={done ? 'Mark pending' : 'Mark done'}
-        style={{
-          width:28, height:28, borderRadius:'50%', border:`2px solid ${done?'#059669':color}`,
-          background: done ? '#059669' : 'transparent',
-          display:'flex', alignItems:'center', justifyContent:'center',
-          cursor:'pointer', flexShrink:0, transition:'all 0.15s',
-        }}>
-        {done && <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>}
-      </button>
-
-      {/* Content */}
-      <div style={{ flex:1, minWidth:0 }}>
-        <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
-          <span style={{ fontSize:14, fontWeight:700, color: done?'#98A2B3':'#101828', textDecoration: done?'line-through':'none', fontFamily:"'Inter',sans-serif" }}>
-            {reminder.title}
-          </span>
-          <span style={{ padding:'2px 9px', borderRadius:8, fontSize:11, fontWeight:700, background:`${color}20`, color }}>
-            {reminder.priority}
-          </span>
-          {overdue && (
-            <span style={{ padding:'2px 9px', borderRadius:8, fontSize:11, fontWeight:700, background:'#FEE2E2', color:'#DC2626' }}>
-              Overdue
-            </span>
-          )}
-        </div>
-        {reminder.body && (
-          <div style={{ fontSize:12, color:'#64748B', marginTop:3, fontFamily:"'Inter',sans-serif" }}>{reminder.body}</div>
-        )}
-        {reminder.due_date && (
-          <div style={{ fontSize:11, color: overdue?'#DC2626':'#98A2B3', marginTop:4, fontFamily:"'Inter',sans-serif" }}>
-            Due: {new Date(reminder.due_date).toLocaleDateString('en-US',{ day:'numeric', month:'short', year:'numeric' })}
-          </div>
-        )}
-      </div>
-
-      {/* Actions */}
-      {!done && (
-        <div style={{ display:'flex', gap:4, flexShrink:0 }}>
-          <ActionBtn onClick={() => onEdit(reminder)} title="Edit" color="#D97706"><IconEdit /></ActionBtn>
-          <ActionBtn onClick={() => onDelete(reminder.id)} title="Delete" color="#DC2626"><IconTrash /></ActionBtn>
-        </div>
-      )}
-    </div>
-  );
-}
 
 const BLANK = { title:'', body:'', priority:'medium', due_date:'', branch_id:'' };
 
@@ -83,7 +21,6 @@ export default function RemindersPage() {
   const [items, setItems]           = useState([]);
   const [loading, setLoading]       = useState(false);
   const [filter, setFilter]         = useState('all');
-  const [search, setSearch]         = useState('');
   const [modalOpen, setModalOpen]   = useState(false);
   const [editing, setEditing]       = useState(null);
   const [form, setForm]             = useState(BLANK);
@@ -109,12 +46,11 @@ export default function RemindersPage() {
   const overdue  = pending.filter(i => i.due_date && new Date(i.due_date) < new Date());
   const urgent   = pending.filter(i => i.priority === 'urgent');
 
-  const visible = items.filter(i => {
+  const tableData = useMemo(() => items.filter(i => {
     if (filter === 'pending' && i.is_done) return false;
-    if (filter === 'done'    && !i.is_done) return false;
-    if (search && !i.title.toLowerCase().includes(search.toLowerCase())) return false;
+    if (filter === 'done' && !i.is_done) return false;
     return true;
-  });
+  }), [items, filter]);
 
   const openAdd  = () => { setEditing(null); setForm({ ...BLANK, branch_id: user?.branch_id || '' }); setModalOpen(true); };
   const openEdit = r  => { setEditing(r); setForm({ title:r.title||'', body:r.body||'', priority:r.priority||'medium', due_date:r.due_date?r.due_date.substring(0,10):'', branch_id:r.branch_id||'' }); setModalOpen(true); };
@@ -144,6 +80,74 @@ export default function RemindersPage() {
     catch { toast('Failed to update.', 'error'); }
   };
 
+  const columns = useMemo(() => [
+    {
+      id: 'done',
+      header: '',
+      enableSorting: false,
+      meta: { width: '48px', align: 'center' },
+      cell: ({ row: { original: r } }) => {
+        const done = !!r.is_done;
+        const color = PRI_COLOR[r.priority] || '#64748B';
+        return (
+          <button type="button" onClick={() => toggle(r)} title={done ? 'Mark pending' : 'Mark done'}
+            style={{
+              width: 28, height: 28, borderRadius: '50%', border: `2px solid ${done ? '#059669' : color}`,
+              background: done ? '#059669' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+            }}>
+            {done && <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>}
+          </button>
+        );
+      },
+    },
+    {
+      id: 'title',
+      header: 'Reminder',
+      accessorKey: 'title',
+      cell: ({ row: { original: r } }) => {
+        const done = !!r.is_done;
+        const overdue = !done && r.due_date && new Date(r.due_date) < new Date();
+        return (
+          <div>
+            <div style={{ fontWeight: 700, color: done ? '#98A2B3' : '#101828', textDecoration: done ? 'line-through' : 'none' }}>{r.title}</div>
+            {r.body && <div style={{ fontSize: 12, color: '#64748B', marginTop: 2 }}>{r.body}</div>}
+            {overdue && <span style={{ fontSize: 11, fontWeight: 700, color: '#DC2626' }}>Overdue</span>}
+          </div>
+        );
+      },
+    },
+    {
+      id: 'priority',
+      header: 'Priority',
+      accessorKey: 'priority',
+      cell: ({ getValue }) => {
+        const p = getValue();
+        const color = PRI_COLOR[p] || '#64748B';
+        return <span style={{ padding: '2px 9px', borderRadius: 8, fontSize: 11, fontWeight: 700, background: `${color}20`, color }}>{p}</span>;
+      },
+    },
+    {
+      id: 'due_date',
+      header: 'Due',
+      accessorFn: row => row.due_date || '',
+      cell: ({ row: { original: r } }) => r.due_date
+        ? new Date(r.due_date).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })
+        : '—',
+    },
+    {
+      id: 'actions',
+      header: '',
+      enableSorting: false,
+      meta: { width: '90px', align: 'center' },
+      cell: ({ row: { original: r } }) => !r.is_done && (
+        <div style={{ display: 'flex', gap: 4, justifyContent: 'center' }}>
+          <ActionBtn onClick={() => openEdit(r)} title="Edit" color="#D97706"><IconEdit /></ActionBtn>
+          <ActionBtn onClick={() => remove(r.id)} title="Delete" color="#DC2626"><IconTrash /></ActionBtn>
+        </div>
+      ),
+    },
+  ], []);
+
   const fld = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
   return (
@@ -158,12 +162,8 @@ export default function RemindersPage() {
         <StatCard label="Urgent" value={urgent.length} icon={<IconBell />} color="#7C3AED" />
       </div>
 
-      {/* Filter + List Panel */}
-      <div style={{ background:'#fff', borderRadius:16, border:'1px solid #EAECF0', overflow:'hidden', boxShadow:'0 1px 4px rgba(16,24,40,0.07)' }}>
-        <div style={{ padding:'16px 20px', borderBottom:'1px solid #F2F4F7' }}>
+      <div style={{ marginBottom: 12 }}>
           <FilterBar>
-            <SearchBar value={search} onChange={setSearch} placeholder="Search reminders" />
-
             {/* Filter pills */}
             {['all','pending','done'].map(f => (
               <button key={f} type="button" onClick={() => setFilter(f)}
@@ -196,22 +196,21 @@ export default function RemindersPage() {
               <IconPlus /><span>Add Reminder</span>
             </button>
           </FilterBar>
-        </div>
-
-        {loading ? (
-          <div style={{ padding:48, textAlign:'center', color:'#98A2B3', fontSize:14, fontFamily:"'Inter',sans-serif" }}>Loading</div>
-        ) : visible.length === 0 ? (
-          <div style={{ padding:64, textAlign:'center' }}>
-            <div style={{ fontSize:36, marginBottom:12, color:'#CBD5E1' }}><IconBell /></div>
-            <div style={{ fontSize:14, fontWeight:600, color:'#344054', fontFamily:"'Inter',sans-serif" }}>No reminders found</div>
-            <div style={{ fontSize:12, color:'#98A2B3', marginTop:4, fontFamily:"'Inter',sans-serif" }}>Add your first reminder to stay organised</div>
-          </div>
-        ) : (
-          visible.map((r, idx) => (
-            <ReminderCard key={r.id} reminder={r} idx={idx} onEdit={openEdit} onDelete={remove} onToggle={toggle} />
-          ))
-        )}
       </div>
+
+      <DataTable
+        columns={columns}
+        data={tableData}
+        loading={loading}
+        emptyMessage="No reminders found"
+        emptySub="Add your first reminder to stay organised"
+        searchableColumns={[{ id: 'title', title: 'Reminder' }]}
+        filterableColumns={[{
+          id: 'priority',
+          title: 'Priority',
+          options: ['low', 'medium', 'high', 'urgent'].map(p => ({ label: p, value: p })),
+        }]}
+      />
 
       {/* Modal */}
       <Modal open={modalOpen} onClose={closeModal} title={editing ? 'Edit Reminder' : 'New Reminder'} width={480}

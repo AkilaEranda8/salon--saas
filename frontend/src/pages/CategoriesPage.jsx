@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
 import Button from '../components/ui/Button';
@@ -7,7 +7,7 @@ import PageWrapper from '../components/layout/PageWrapper';
 import { useToast } from '../components/ui/Toast';
 import {
   IconPlus, IconEdit, IconTrash, IconTag,
-  ActionBtn, StatCard, PKModal as Modal, SearchBar, FilterBar,
+  ActionBtn, StatCard, PKModal as Modal, DataTable,
 } from '../components/ui/PageKit';
 
 const DEFAULT_COLORS = {
@@ -34,7 +34,6 @@ export default function CategoriesPage() {
   const canEdit = ['superadmin', 'admin'].includes(user?.role);
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
   const [showAdd, setShowAdd] = useState(false);
   const [showRename, setShowRename] = useState(false);
   const [newName, setNewName] = useState('');
@@ -54,7 +53,46 @@ export default function CategoriesPage() {
   useEffect(() => { load(); }, [load]);
 
   const totalServices = categories.reduce((s, c) => s + Number(c.count || 0), 0);
-  const displayed = categories.filter(c => !search || c.category?.toLowerCase().includes(search.toLowerCase()));
+
+  const columns = useMemo(() => [
+    {
+      id: 'category',
+      header: 'Category',
+      accessorKey: 'category',
+      cell: ({ row: { original: cat } }) => {
+        const s = getCatStyle(cat.category);
+        return (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ width: 36, height: 36, borderRadius: 10, background: s.bg, color: s.color, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <IconTag />
+            </div>
+            <span style={{ fontSize: 15, fontWeight: 700, color: '#101828' }}>{cat.category}</span>
+          </div>
+        );
+      },
+    },
+    {
+      id: 'count',
+      header: 'Services',
+      accessorKey: 'count',
+      meta: { align: 'center', width: '100px' },
+      cell: ({ getValue }) => (
+        <span style={{ fontWeight: 700, color: '#059669' }}>{getValue()} service{Number(getValue()) !== 1 ? 's' : ''}</span>
+      ),
+    },
+    ...(canEdit ? [{
+      id: 'actions',
+      header: '',
+      enableSorting: false,
+      meta: { width: '100px', align: 'center' },
+      cell: ({ row: { original: cat } }) => (
+        <div style={{ display: 'flex', gap: 4, justifyContent: 'center' }}>
+          <ActionBtn onClick={() => { setRenameCat(cat.category); setRenameVal(cat.category); setFormErr(''); setShowRename(true); }} title="Rename" color="#D97706"><IconEdit /></ActionBtn>
+          <ActionBtn onClick={() => handleDelete(cat.category)} title="Delete" color="#DC2626"><IconTrash /></ActionBtn>
+        </div>
+      ),
+    }] : []),
+  ], [canEdit]);
 
   const handleAdd = async () => {
     if (!newName.trim()) return setFormErr('Enter category name');
@@ -106,74 +144,14 @@ export default function CategoriesPage() {
         <StatCard label="Total Services" value={totalServices} color="#059669" icon={<IconTag />} />
       </div>
 
-      {/* Search */}
-      <FilterBar>
-        <SearchBar value={search} onChange={setSearch} placeholder="Search categories" />
-      </FilterBar>
-
-      {/* Category Grid */}
-      {loading ? (
-        <div style={{ textAlign: 'center', padding: 60, color: '#98A2B3' }}>Loading...</div>
-      ) : displayed.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: 60 }}>
-          <div style={{ fontSize: 40, marginBottom: 8 }}>📂</div>
-          <div style={{ fontSize: 16, fontWeight: 700, color: '#101828', marginBottom: 4 }}>No categories found</div>
-          <div style={{ fontSize: 13, color: '#98A2B3' }}>Add a category to organize your services</div>
-        </div>
-      ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 }}>
-          {displayed.map(cat => {
-            const s = getCatStyle(cat.category);
-            return (
-              <div key={cat.category} style={{
-                background: '#fff', borderRadius: 16, border: '1px solid #E4E7EC',
-                padding: 24, display: 'flex', flexDirection: 'column', gap: 12,
-                transition: 'box-shadow 0.15s',
-                boxShadow: '0 1px 3px rgba(16,24,40,0.06)',
-              }}
-              onMouseEnter={e => e.currentTarget.style.boxShadow = '0 4px 16px rgba(16,24,40,0.1)'}
-              onMouseLeave={e => e.currentTarget.style.boxShadow = '0 1px 3px rgba(16,24,40,0.06)'}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                    <div style={{
-                      width: 42, height: 42, borderRadius: 12, background: s.bg,
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      color: s.color, flexShrink: 0,
-                    }}>
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                        strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />
-                        <line x1="7" y1="7" x2="7.01" y2="7" />
-                      </svg>
-                    </div>
-                    <div>
-                      <div style={{ fontSize: 16, fontWeight: 700, color: '#101828', fontFamily: "'Outfit',sans-serif" }}>{cat.category}</div>
-                      <div style={{ fontSize: 12, color: '#98A2B3', marginTop: 2 }}>
-                        {cat.count} service{cat.count != 1 ? 's' : ''}
-                      </div>
-                    </div>
-                  </div>
-                  {canEdit && (
-                    <div style={{ display: 'flex', gap: 4 }}>
-                      <ActionBtn onClick={() => { setRenameCat(cat.category); setRenameVal(cat.category); setFormErr(''); setShowRename(true); }} title="Rename" color="#D97706"><IconEdit /></ActionBtn>
-                      <ActionBtn onClick={() => handleDelete(cat.category)} title="Delete" color="#DC2626"><IconTrash /></ActionBtn>
-                    </div>
-                  )}
-                </div>
-                <div style={{
-                  height: 4, borderRadius: 4, background: '#F2F4F7', overflow: 'hidden',
-                }}>
-                  <div style={{
-                    height: '100%', borderRadius: 4, background: s.color,
-                    width: totalServices > 0 ? `${(Number(cat.count) / totalServices) * 100}%` : '0%',
-                    transition: 'width 0.3s',
-                  }} />
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
+      <DataTable
+        columns={columns}
+        data={categories}
+        loading={loading}
+        emptyMessage="No categories found"
+        emptySub="Add a category to organize your services"
+        searchableColumns={[{ id: 'category', title: 'Category' }]}
+      />
 
       {/* Add Modal */}
       <Modal open={showAdd} onClose={() => setShowAdd(false)} title="Add Category" size="sm"

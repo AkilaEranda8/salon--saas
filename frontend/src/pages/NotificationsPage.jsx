@@ -843,6 +843,10 @@ export default function NotificationsPage() {
           loading={logLoading}
           emptyMessage="No notifications found"
           emptySub="Notification delivery records will appear here"
+          searchableColumns={[
+            { id: 'customer', title: 'Customer' },
+            { id: 'company', title: 'Branch' },
+          ]}
         />
 
         {logPages > 1 && (

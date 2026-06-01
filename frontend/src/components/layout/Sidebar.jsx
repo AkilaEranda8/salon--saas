@@ -75,13 +75,6 @@ const NAV_GROUPS = [
   ]},
 ];
 
-const ROLE_META = {
-  superadmin: { label: 'Super Admin', color: '#818CF8', bg: 'rgba(99,102,241,0.14)' },
-  admin:      { label: 'Admin',       color: '#60A5FA', bg: 'rgba(59,130,246,0.14)' },
-  manager:    { label: 'Manager',     color: '#34D399', bg: 'rgba(16,185,129,0.14)' },
-  staff:      { label: 'Staff',       color: '#FBBF24', bg: 'rgba(245,158,11,0.14)' },
-};
-
 function getColors(isDark, sidebarAppearance, sidebarStyle, primaryColor) {
   const dark = isDark || sidebarAppearance === 'dark' || ['gradient', 'hexa'].includes(sidebarStyle);
   if (sidebarStyle === 'hexa') return {
@@ -219,13 +212,9 @@ export default function Sidebar({ collapsed, onToggle, currentUser, mobileOpen, 
   const STYLE = sidebarStyle || 'default';
   const C = getColors(isDark, sidebarAppearance, STYLE, primaryColor);
   const role = currentUser?.role || 'staff';
-  const rm = ROLE_META[role] || ROLE_META.staff;
   const tenantBranding = currentUser?.tenant || {};
   const brandName = resolveBrandName(tenantBranding);
   const brandLogo = resolveBrandLogo(tenantBranding, 'sidebar');
-  const initials = currentUser?.name
-    ? currentUser.name.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase()
-    : '?';
 
   const isFloating = !isMobile && ['compact', 'floating', 'glass'].includes(STYLE);
   const isGlass    = STYLE === 'glass';
@@ -345,50 +334,6 @@ export default function Sidebar({ collapsed, onToggle, currentUser, mobileOpen, 
           </button>
         )}
       </div>
-
-      {/* ── User card ── */}
-      {!ec && (
-        <div style={{
-          margin:       '10px 10px 2px',
-          padding:      '10px 12px',
-          borderRadius: 12,
-          background:   C.userBg,
-          border:       `1px solid ${C.border}`,
-          display:      'flex',
-          alignItems:   'center',
-          gap:          10,
-          flexShrink:   0,
-        }}>
-          <div style={{
-            width: 36, height: 36, borderRadius: 10, flexShrink: 0,
-            background: C.accentBg,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 13, fontWeight: 700, color: C.accentTx, letterSpacing: '0.02em',
-          }}>
-            {initials}
-          </div>
-          <div style={{ overflow: 'hidden', flex: 1 }}>
-            <div style={{
-              fontSize: 13, fontWeight: 600, color: C.text,
-              whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-            }}>
-              {currentUser?.name || 'User'}
-            </div>
-            <span style={{
-              display:    'inline-block',
-              fontSize:   10,
-              fontWeight: 700,
-              padding:    '1px 7px',
-              borderRadius: 20,
-              background: rm.bg,
-              color:      rm.color,
-              letterSpacing: '0.04em',
-            }}>
-              {rm.label}
-            </span>
-          </div>
-        </div>
-      )}
 
       {/* ── Nav ── */}
       <nav className="sb-nav-rd" style={{ flex: 1, overflowY: 'auto', padding: ec ? '8px 6px' : '8px 10px' }}>

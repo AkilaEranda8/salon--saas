@@ -626,7 +626,8 @@ const kcLogin = async (req, res) => {
     });
   } catch (err) {
     const status = err.response?.status;
-    if (status === 401)
+    const errorCode = err.response?.data?.error;
+    if (status === 401 || (status === 400 && errorCode === 'invalid_grant'))
       return res.status(401).json({ message: 'Invalid username or password.' });
     console.error('[KC] kcLogin error:', err.response?.data || err.message);
     return res.status(502).json({ message: 'Authentication service unavailable.' });
@@ -653,7 +654,12 @@ const kcRefresh = async (req, res) => {
       refresh_token: r.data.refresh_token,
       expires_in:    r.data.expires_in,
     });
-  } catch {
+  } catch (err) {
+    const status = err.response?.status;
+    const errorCode = err.response?.data?.error;
+    if (status === 400 && errorCode === 'invalid_grant') {
+      return res.status(401).json({ message: 'Session expired. Please log in again.' });
+    }
     return res.status(401).json({ message: 'Session expired. Please log in again.' });
   }
 };

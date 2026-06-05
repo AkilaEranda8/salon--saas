@@ -584,6 +584,17 @@ const impersonateSession = async (req, res) => {
 const KC_REALM_URL = () =>
   `${process.env.KEYCLOAK_URL}/realms/salon-saas/protocol/openid-connect`;
 
+const KC_CLIENT_ID = process.env.KC_CLIENT_ID || 'salon-frontend';
+const KC_CLIENT_SECRET = process.env.KC_CLIENT_SECRET || '';
+
+const addKcClientAuth = (params) => {
+  params.set('client_id', KC_CLIENT_ID);
+  if (KC_CLIENT_SECRET) {
+    params.set('client_secret', KC_CLIENT_SECRET);
+  }
+  return params;
+};
+
 const kcLogin = async (req, res) => {
   const { username, password } = req.body;
   if (!username || !password)
@@ -600,12 +611,11 @@ const kcLogin = async (req, res) => {
   }
 
   try {
-    const params = new URLSearchParams({
+    const params = addKcClientAuth(new URLSearchParams({
       grant_type: 'password',
-      client_id:  'salon-frontend',
       username:   kcUsername,
       password,
-    });
+    }));
     const r = await axios.post(`${KC_REALM_URL()}/token`, params.toString(), {
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     });
@@ -631,11 +641,10 @@ const kcRefresh = async (req, res) => {
   if (!process.env.KEYCLOAK_URL)
     return res.status(503).json({ message: 'Keycloak not configured.' });
   try {
-    const params = new URLSearchParams({
+    const params = addKcClientAuth(new URLSearchParams({
       grant_type:    'refresh_token',
-      client_id:     'salon-frontend',
       refresh_token,
-    });
+    }));
     const r = await axios.post(`${KC_REALM_URL()}/token`, params.toString(), {
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     });
@@ -654,7 +663,7 @@ const kcLogout = async (req, res) => {
   const { refresh_token } = req.body;
   if (refresh_token && process.env.KEYCLOAK_URL) {
     try {
-      const params = new URLSearchParams({ client_id: 'salon-frontend', refresh_token });
+      const params = addKcClientAuth(new URLSearchParams({ refresh_token }));
       await axios.post(`${KC_REALM_URL()}/logout`, params.toString(), {
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       });

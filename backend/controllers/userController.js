@@ -65,33 +65,35 @@ const create = async (req, res) => {
 
     // Sync to Keycloak — group MUST exist before user is created inside it
     if (process.env.KEYCLOAK_URL) {
-      (async () => {
-        try {
-          const tenantSlug = req.tenant?.slug ?? '';
-          const tenantName = req.tenant?.name  ?? tenantSlug;
+      try {
+        const tenantSlug = req.tenant?.slug ?? '';
+        const tenantName = req.tenant?.name  ?? tenantSlug;
 
-          // Step 1: ensure tenant group exists (idempotent — safe to call every time)
-          if (tenantSlug) {
-            await kc.createOrGetGroup(tenantSlug, tenantName);
-          }
-
-          // Step 2: create user and add them to the group
-          await kc.createUser({
-            dbUserId:   user.id,
-            username:   user.username,
-            name:       user.name,
-            email:      user.email,
-            role:       user.role || 'staff',
-            tenantId:   tenantId,
-            tenantSlug: tenantSlug,
-            branchId:   user.branch_id,
-            password,
-            temporary:  false,
-          });
-        } catch (err) {
-          console.error('[KC] user.create sync failed (non-fatal):', err.message);
+        // Step 1: ensure tenant group exists (idempotent — safe to call every time)
+        if (tenantSlug) {
+          await kc.createOrGetGroup(tenantSlug, tenantName);
         }
-      })();
+
+        // Step 2: create user and add them to the group
+        await kc.createUser({
+          dbUserId:   user.id,
+          username:   user.username,
+          name:       user.name,
+          email:      user.email,
+          role:       user.role || 'staff',
+          tenantId:   tenantId,
+          tenantSlug: tenantSlug,
+          branchId:   user.branch_id,
+          password,
+          temporary:  false,
+        });
+      } catch (err) {
+        console.error('[KC] user.create sync failed:', err.response?.data || err.message);
+        await user.destroy();
+        return res.status(502).json({
+          message: 'User created in database, but Keycloak sync failed. Please try again.',
+        });
+      }
     }
 
     return res.status(201).json(result);

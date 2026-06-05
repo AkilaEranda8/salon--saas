@@ -584,13 +584,13 @@ const impersonateSession = async (req, res) => {
 const KC_REALM_URL = () =>
   `${process.env.KEYCLOAK_URL}/realms/salon-saas/protocol/openid-connect`;
 
-const KC_CLIENT_ID = process.env.KC_CLIENT_ID || 'salon-frontend';
-const KC_CLIENT_SECRET = process.env.KC_CLIENT_SECRET || '';
+const KC_PUBLIC_CLIENT_ID = process.env.KC_PUBLIC_CLIENT_ID || 'salon-frontend';
+const KC_PUBLIC_CLIENT_SECRET = process.env.KC_PUBLIC_CLIENT_SECRET || '';
 
 const addKcClientAuth = (params) => {
-  params.set('client_id', KC_CLIENT_ID);
-  if (KC_CLIENT_SECRET) {
-    params.set('client_secret', KC_CLIENT_SECRET);
+  params.set('client_id', KC_PUBLIC_CLIENT_ID);
+  if (KC_PUBLIC_CLIENT_SECRET) {
+    params.set('client_secret', KC_PUBLIC_CLIENT_SECRET);
   }
   return params;
 };

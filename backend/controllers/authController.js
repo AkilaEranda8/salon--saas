@@ -266,8 +266,15 @@ const getMe = async (req, res) => {
     }
 
     const { userWithMobileFeatures, loadTenantRoleDefaultsByTenantId } = require('./userController');
+    const { resolveStaffRecordForRequest } = require('../utils/resolveUserBranch');
     const tenantRoleDefaults = await loadTenantRoleDefaultsByTenantId(user.tenant_id);
     const payload = userWithMobileFeatures(user, tenantRoleDefaults);
+
+    if (!payload.staffProfile?.id) {
+      const staff = await resolveStaffRecordForRequest(req);
+      if (staff) payload.staffProfile = staff.toJSON();
+    }
+
     if (!payload.branch_id && payload.staffProfile?.branch_id) {
       payload.branch_id = payload.staffProfile.branch_id;
       if (payload.staffProfile.branch) payload.branch = payload.staffProfile.branch;

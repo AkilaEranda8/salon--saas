@@ -340,9 +340,13 @@ async function linkedStaffIdForUser(req) {
 
 const myCommission = async (req, res) => {
   try {
-    const staffId = await linkedStaffIdForUser(req);
+    const { resolveStaffRecordForRequest } = require('../utils/resolveUserBranch');
+    const staff = await resolveStaffRecordForRequest(req);
+    const staffId = staff?.id;
     if (!staffId) {
-      return res.status(404).json({ message: 'No staff profile linked to your account.' });
+      return res.status(404).json({
+        message: 'No staff profile linked to your account. Ask admin to link your login to a staff member (same name/email).',
+      });
     }
     req.params.id = String(staffId);
     return commissionReport(req, res);

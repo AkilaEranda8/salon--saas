@@ -1,5 +1,27 @@
-const { Staff, User } = require('../models');
+const { Op } = require('sequelize');
+const { Staff, User, Branch } = require('../models');
 const { tenantWhere } = require('./tenantScope');
+
+const STAFF_LINK_ROLES = new Set(['staff', 'manager']);
+
+function normalizeKey(value) {
+  return `${value ?? ''}`.trim().toLowerCase();
+}
+
+function candidateNameKeys(user, req) {
+  const keys = new Set();
+  const add = (v) => {
+    const k = normalizeKey(v);
+    if (k) keys.add(k);
+  };
+  add(user?.name);
+  add(user?.username);
+  add(req?.user?.name);
+  add(req?.user?.username);
+  const raw = `${req?.user?.username ?? user?.username ?? ''}`.trim();
+  if (raw.includes('__')) add(raw.split('__').pop());
+  return keys;
+}
 
 /**
  * Resolve portal users.id from JWT (db_user_id) or username (Keycloak preferred_username).
@@ -30,16 +52,84 @@ async function resolveDbUserId(req) {
 }
 
 /**
- * Staff.id for the logged-in portal user (staff.user_id link).
+ * Find (and optionally link) the Staff row for the logged-in portal user.
  */
-async function linkedStaffIdForRequest(req) {
+async function resolveStaffRecordForRequest(req, { autoLink = true } = {}) {
+  const scope = tenantWhere(req);
   const userId = await resolveDbUserId(req);
   if (!userId) return null;
 
-  const staff = await Staff.findOne({
-    where: { user_id: userId, ...tenantWhere(req) },
-    attributes: ['id'],
+  const staffInclude = [
+    { model: Branch, as: 'branch', attributes: ['id', 'name', 'color'] },
+  ];
+
+  const linked = await Staff.findOne({
+    where: { user_id: userId, ...scope },
+    attributes: ['id', 'name', 'branch_id', 'user_id', 'email'],
+    include: staffInclude,
   });
+  if (linked) return linked;
+
+  const user = await User.findOne({
+    where: { id: userId, ...scope },
+    attributes: ['id', 'name', 'username', 'email', 'branch_id', 'role'],
+  });
+  if (!user) return null;
+
+  const role = normalizeKey(user.role);
+  if (!STAFF_LINK_ROLES.has(role)) return null;
+
+  const nameKeys = candidateNameKeys(user, req);
+  const emailKey = normalizeKey(user.email);
+  if (!nameKeys.size && !emailKey) return null;
+
+  const where = {
+    ...scope,
+    user_id: { [Op.is]: null },
+    is_active: true,
+  };
+  if (user.branch_id) where.branch_id = user.branch_id;
+
+  const pool = await Staff.findAll({
+    where,
+    attributes: ['id', 'name', 'branch_id', 'user_id', 'email'],
+    include: staffInclude,
+    limit: 50,
+  });
+
+  const matches = pool.filter((row) => {
+    const staffName = normalizeKey(row.name);
+    const staffEmail = normalizeKey(row.email);
+    if (nameKeys.has(staffName)) return true;
+    if (emailKey && staffEmail && emailKey === staffEmail) return true;
+    return false;
+  });
+
+  let match = null;
+  if (matches.length === 1) {
+    match = matches[0];
+  } else if (matches.length > 1) {
+    const prefer = normalizeKey(user.name) || normalizeKey(user.username);
+    match = matches.find((r) => normalizeKey(r.name) === prefer) || null;
+  }
+
+  if (!match) return null;
+
+  if (autoLink) {
+    await match.update({ user_id: user.id });
+    if (!user.branch_id && match.branch_id) {
+      await user.update({ branch_id: match.branch_id });
+    }
+  }
+
+  return match;
+}
+
+/**
+ * Staff.id for the logged-in portal user (staff.user_id link, with name/email fallback).
+ */
+async function linkedStaffIdForRequest(req) {
+  const staff = await resolveStaffRecordForRequest(req);
   return staff?.id ?? null;
 }
 
@@ -65,6 +155,12 @@ async function primaryBranchIdFromStaffUser(user, tenantId) {
 
 /** Branch id for manager/staff when JWT has no branch_id claim. */
 async function primaryBranchIdForRequest(req) {
+  const staff = await resolveStaffRecordForRequest(req, { autoLink: false });
+  if (staff?.branch_id != null) {
+    const n = Number(staff.branch_id);
+    if (Number.isFinite(n)) return n;
+  }
+
   const userId = await resolveDbUserId(req);
   if (!userId) return null;
   return primaryBranchIdFromStaffUser({ id: userId }, req.userTenantId ?? req.user?.tenantId);
@@ -72,6 +168,7 @@ async function primaryBranchIdForRequest(req) {
 
 module.exports = {
   resolveDbUserId,
+  resolveStaffRecordForRequest,
   linkedStaffIdForRequest,
   primaryBranchIdFromStaffUser,
   primaryBranchIdForRequest,

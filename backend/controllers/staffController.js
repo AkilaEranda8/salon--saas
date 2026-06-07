@@ -1,6 +1,16 @@
 const { Op, fn, col, literal } = require('sequelize');
 const { Staff, Branch, StaffBranch, StaffSpecialization, Service, Appointment, Payment, User, StaffAdvance, CommissionPayout } = require('../models');
 const { tenantWhere, byIdWhere, resolveTenantId } = require('../utils/tenantScope');
+const { normalizeStaffSpecializations } = require('../utils/commissionCalculator');
+
+function buildSpecRows(staffId, rawSpecs, staffDefaults) {
+  return normalizeStaffSpecializations(rawSpecs, staffDefaults).map((s) => ({
+    staff_id: staffId,
+    service_id: s.service_id,
+    commission_type: s.commission_type,
+    commission_value: s.commission_value,
+  }));
+}
 
 // Helper: resolve branch filter from role
 const getBranchWhere = (req) => {
@@ -101,8 +111,11 @@ const create = async (req, res) => {
     }
 
     if (Array.isArray(specializations) && specializations.length) {
-      const specs = specializations.map((sid) => ({ staff_id: staff.id, service_id: sid }));
-      await StaffSpecialization.bulkCreate(specs, { ignoreDuplicates: true });
+      const specs = buildSpecRows(staff.id, specializations, {
+        commission_type,
+        commission_value: commVal,
+      });
+      if (specs.length) await StaffSpecialization.bulkCreate(specs, { ignoreDuplicates: true });
     }
 
     return res.status(201).json(staff);
@@ -160,12 +173,21 @@ const update = async (req, res) => {
     // Replace specializations if provided
     if (Array.isArray(req.body.specializations)) {
       await StaffSpecialization.destroy({ where: { staff_id: staff.id } });
-      if (req.body.specializations.length) {
-        await StaffSpecialization.bulkCreate(
-          req.body.specializations.map((sid) => ({ staff_id: staff.id, service_id: sid })),
-          { ignoreDuplicates: true },
-        );
-      }
+      const specDefaults = {
+        commission_type: updates.commission_type ?? staff.commission_type,
+        commission_value: 'commission_value' in updates ? updates.commission_value : staff.commission_value,
+      };
+      const specs = buildSpecRows(staff.id, req.body.specializations, specDefaults);
+      if (specs.length) await StaffSpecialization.bulkCreate(specs, { ignoreDuplicates: true });
+    } else if ('commission_type' in updates || 'commission_value' in updates) {
+      // Keep per-service rows in sync when only the staff-level rate changes.
+      await StaffSpecialization.update(
+        {
+          commission_type: updates.commission_type ?? staff.commission_type,
+          commission_value: 'commission_value' in updates ? updates.commission_value : staff.commission_value,
+        },
+        { where: { staff_id: staff.id } },
+      );
     }
 
     return res.json(staff);
@@ -383,16 +405,18 @@ const setSpecializations = async (req, res) => {
       return res.status(400).json({ message: 'serviceIds must be an array.' });
     }
 
-    const staff = await Staff.findOne({ where: byIdWhere(req, req.params.id), attributes: ['id'] });
+    const staff = await Staff.findOne({ where: byIdWhere(req, req.params.id) });
     if (!staff) return res.status(404).json({ message: 'Staff not found.' });
 
     // Replace all existing specializations
     await StaffSpecialization.destroy({ where: { staff_id: staff.id } });
 
-    if (serviceIds.length) {
-      const specs = serviceIds.map((sid) => ({ staff_id: staff.id, service_id: sid }));
-      await StaffSpecialization.bulkCreate(specs);
-    }
+    const rawSpecs = Array.isArray(req.body.specializations) ? req.body.specializations : serviceIds;
+    const specs = buildSpecRows(staff.id, rawSpecs, {
+      commission_type: staff.commission_type,
+      commission_value: staff.commission_value,
+    });
+    if (specs.length) await StaffSpecialization.bulkCreate(specs);
 
     const updated = await StaffSpecialization.findAll({
       where: { staff_id: staff.id },

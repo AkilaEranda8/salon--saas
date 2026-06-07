@@ -15,6 +15,14 @@ const StaffSpecialization = sequelize.define('StaffSpecialization', {
     type: DataTypes.INTEGER,
     allowNull: false,
   },
+  commission_type: {
+    type: DataTypes.ENUM('percentage', 'fixed'),
+    allowNull: true,
+  },
+  commission_value: {
+    type: DataTypes.DECIMAL(10, 2),
+    allowNull: true,
+  },
 }, {
   tableName: 'staff_specializations',
   timestamps: false,

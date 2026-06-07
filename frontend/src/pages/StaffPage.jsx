@@ -116,7 +116,13 @@ export default function StaffPage() {
       const payload = {
         ...form,
         branch_ids: form.branch_ids.map((x) => Number(x)).filter((n) => Number.isFinite(n)),
-        specializations: specs,
+        specializations: specs.map((service_id) => ({
+          service_id,
+          commission_type: form.commission_type || 'percentage',
+          commission_value: form.commission_value !== '' && form.commission_value != null
+            ? parseFloat(form.commission_value)
+            : null,
+        })),
       };
       delete payload.branch_id;
       const saved = editItem ? await api.put(`/staff/${editItem.id}`, payload) : await api.post('/staff', payload);
@@ -358,12 +364,36 @@ export default function StaffPage() {
                 </Select>
               </FormGroup>
               <FormGroup label={form.commission_type==='percentage' ? 'Rate (%)' : 'Amount (Rs.)'}>
-                <Input type="number" value={form.commission_value||''} onChange={e => setForm(f=>({...f, commission_value:e.target.value}))} />
+                <Input type="number" min="0" value={form.commission_value||''} onChange={e => setForm(f=>({...f, commission_value:e.target.value}))} />
               </FormGroup>
             </div>
           )}
           <FormGroup label="Join Date"><Input type="date" value={form.join_date||''} onChange={e => setForm(f=>({...f, join_date:e.target.value}))} /></FormGroup>
-          {services.length > 0 && (
+          {form.salary_type !== 'salary_only' && services.length > 0 && (
+            <FormGroup label="Services (commission)">
+              <p style={{ fontSize:12, color:'#667085', margin:'0 0 10px', lineHeight:1.45 }}>
+                Select services this staff performs. The commission rate above applies to <strong>every selected service</strong>.
+              </p>
+              <div style={{ display:'flex', flexWrap:'wrap', gap:8 }}>
+                {services.filter((sv) => sv.is_active !== false).map(sv => {
+                  const selected = specs.includes(sv.id);
+                  return (
+                    <label key={sv.id} style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer', fontSize:13, color:'#344054', background:selected?'#EFF6FF':'#F9FAFB', border:selected?'1.5px solid #2563EB':'1.5px solid #E4E7EC', borderRadius:10, padding:'6px 12px' }}>
+                      <input type="checkbox" checked={selected} onChange={()=>toggleSpec(sv.id)} />
+                      <span>{sv.name}</span>
+                      {selected && form.commission_value !== '' && form.commission_value != null && (
+                        <CommBadge type={form.commission_type||'percentage'} value={form.commission_value} />
+                      )}
+                    </label>
+                  );
+                })}
+              </div>
+              {specs.length > 0 && (!form.commission_value && form.commission_value !== 0) && (
+                <p style={{ fontSize:12, color:'#D97706', marginTop:8 }}>Set a commission rate so all selected services earn commission on payments.</p>
+              )}
+            </FormGroup>
+          )}
+          {form.salary_type === 'salary_only' && services.length > 0 && (
             <FormGroup label="Specializations">
               <div style={{ display:'flex', flexWrap:'wrap', gap:8 }}>
                 {services.map(sv => (
@@ -416,7 +446,10 @@ export default function StaffPage() {
                 <h4 style={{ margin:'0 0 10px', fontSize:13, fontWeight:700, color:'#475467', textTransform:'uppercase' }}>Specializations</h4>
                 <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
                   {p.specializations.map(s => (
-                    <span key={s.id} style={{ padding:'4px 10px', borderRadius:16, background:'#EFF6FF', color:'#2563EB', fontSize:12, fontWeight:600 }}>{s.service?.name || s.service_id}</span>
+                    <span key={s.id} style={{ display:'inline-flex', alignItems:'center', gap:6, padding:'4px 10px', borderRadius:16, background:'#EFF6FF', color:'#2563EB', fontSize:12, fontWeight:600 }}>
+                      {s.service?.name || s.service_id}
+                      <CommBadge type={s.commission_type || p.commission_type} value={s.commission_value ?? p.commission_value} />
+                    </span>
                   ))}
                 </div>
               </div>

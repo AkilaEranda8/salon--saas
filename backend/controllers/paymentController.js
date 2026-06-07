@@ -1,6 +1,7 @@
 const { Op, fn, col, literal } = require('sequelize');
 const { sequelize } = require('../config/database');
-const { Payment, PaymentSplit, Branch, Staff, Customer, Service, Appointment, CustomerPackage, Package: PkgModel, PackageRedemption, LoyaltyRule } = require('../models');
+const { Payment, PaymentSplit, Branch, Staff, StaffSpecialization, Customer, Service, Appointment, AppointmentService, CustomerPackage, Package: PkgModel, PackageRedemption, LoyaltyRule } = require('../models');
+const { calculatePaymentCommission } = require('../utils/commissionCalculator');
 const { notifyPaymentReceipt, notifyLoyaltyPoints } = require('../services/notificationService');
 const { tenantWhere, byIdWhere, resolveTenantId } = require('../utils/tenantScope');
 const { slToday } = require('../utils/dateUtils');
@@ -73,8 +74,9 @@ const create = async (req, res) => {
   const t = await sequelize.transaction();
   try {
     const {
-      branch_id, staff_id, customer_id, service_id, appointment_id,
-      customer_name, phone, walkin_token, splits = [], loyalty_discount = 0, promo_discount = 0, usePoints = false,
+      branch_id, staff_id, customer_id, service_id, service_ids, appointment_id,
+      customer_name, phone, walkin_token, splits = [], subtotal: bodySubtotal,
+      loyalty_discount = 0, promo_discount = 0, usePoints = false,
     } = req.body;
 
     if (!branch_id) {
@@ -100,17 +102,55 @@ const create = async (req, res) => {
     const redeemValue   = parseFloat(loyaltyRule?.redeem_value) || 50;
     const points_earned = Math.floor(total_amount / earnPerAmount) * earnPoints;
 
-    // Fetch staff to calculate commission
+    // Staff commission — per selected service (staff_specializations) or staff default
     let commission_amount = 0;
     if (staff_id) {
-      const { Staff: StaffModel } = require('../models');
-      const staffMember = await StaffModel.findOne({ where: byIdWhere(req, staff_id), transaction: t });
-      if (staffMember && staffMember.salary_type !== 'salary_only') {
-        const commissionBase = Math.max(0, total_amount - loyalty_discount - promo_discount);
-        const cv = parseFloat(staffMember.commission_value) || 0;
-        commission_amount = staffMember.commission_type === 'percentage'
-          ? (commissionBase * cv) / 100
-          : cv;
+      const staffMember = await Staff.findOne({
+        where: byIdWhere(req, staff_id),
+        include: [{ model: StaffSpecialization, as: 'specializations' }],
+        transaction: t,
+      });
+      if (staffMember) {
+        let ids = Array.isArray(service_ids) && service_ids.length
+          ? service_ids.map(Number).filter(Boolean)
+          : (service_id ? [Number(service_id)].filter(Boolean) : []);
+
+        if (!ids.length && appointment_id) {
+          const links = await AppointmentService.findAll({
+            where: { appointment_id: Number(appointment_id) },
+            attributes: ['service_id'],
+            transaction: t,
+          });
+          ids = links.map((l) => Number(l.service_id)).filter(Boolean);
+          if (!ids.length) {
+            const appt = await Appointment.findOne({
+              where: byIdWhere(req, appointment_id),
+              attributes: ['service_id'],
+              transaction: t,
+            });
+            if (appt?.service_id) ids = [Number(appt.service_id)];
+          }
+        }
+
+        const servicePrices = {};
+        if (ids.length) {
+          const svcRows = await Service.findAll({
+            where: { id: ids, ...tenantWhere(req) },
+            attributes: ['id', 'price'],
+            transaction: t,
+          });
+          for (const svc of svcRows) servicePrices[svc.id] = svc.price;
+        }
+        commission_amount = calculatePaymentCommission({
+          staff: staffMember,
+          specializations: staffMember.specializations || [],
+          serviceIds: ids,
+          servicePrices,
+          total_amount,
+          subtotal: bodySubtotal,
+          loyalty_discount,
+          promo_discount,
+        });
       }
     }
 

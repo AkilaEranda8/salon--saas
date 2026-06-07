@@ -369,118 +369,167 @@ class _UserCard extends StatelessWidget {
       ),
       child: Padding(
         padding: const EdgeInsets.all(14),
-        child: Row(children: [
-          // Avatar
-          Container(
-            width: 44, height: 44,
-            decoration: BoxDecoration(
-              color: active ? _roleBg(role) : const Color(0xFFF3F4F6),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Center(
-              child: Text(initial,
-                style: TextStyle(
-                  fontSize: 18, fontWeight: FontWeight.w800,
-                  color: active ? _roleColor(role) : _muted,
-                )),
-            ),
-          ),
-          const SizedBox(width: 12),
-          // Info
-          Expanded(child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(children: [
-                Expanded(
-                  child: Text(name,
-                    style: TextStyle(
-                      fontSize: 14, fontWeight: FontWeight.w700,
-                      color: active ? _ink : _muted, letterSpacing: -0.2),
-                    overflow: TextOverflow.ellipsis),
-                ),
-                if (!active)
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFEE2E2),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: const Text('Inactive',
-                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Color(0xFFDC2626))),
-                  ),
-              ]),
-              const SizedBox(height: 3),
-              Text('@$username', style: const TextStyle(fontSize: 12, color: _muted)),
-              if (branch.isNotEmpty)
-                Text(branch, style: const TextStyle(fontSize: 11, color: _muted)),
-              if (role != 'superadmin')
-                Text(
-                  '$featureCount / ${MobileFeatures.allKeys.length} app features enabled',
-                  style: const TextStyle(fontSize: 11, color: _emerald, fontWeight: FontWeight.w600),
-                ),
-            ],
-          )),
-          const SizedBox(width: 10),
-          // Role badge + actions
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              GestureDetector(
-                onTap: isSuperAdmin ? onRoleTap : null,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
                   decoration: BoxDecoration(
-                    color: _roleBg(role),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: _roleColor(role).withValues(alpha: 0.25)),
+                    color: active ? _roleBg(role) : const Color(0xFFF3F4F6),
+                    borderRadius: BorderRadius.circular(12),
                   ),
-                  child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    Text(role,
-                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: _roleColor(role))),
-                    if (isSuperAdmin) ...[
-                      const SizedBox(width: 4),
-                      Icon(Icons.edit_rounded, size: 11, color: _roleColor(role)),
-                    ],
-                  ]),
+                  child: Center(
+                    child: Text(
+                      initial,
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        color: active ? _roleColor(role) : _muted,
+                      ),
+                    ),
+                  ),
                 ),
-              ),
-              if (canEditFeatures) ...[
-                const SizedBox(height: 8),
-                GestureDetector(
-                  onTap: onFeaturesTap,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFEFF6FF),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: const Text(
-                      'App Features',
-                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Color(0xFF2563EB)),
-                    ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              name,
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w700,
+                                color: active ? _ink : _muted,
+                                letterSpacing: -0.2,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          if (!active)
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFFEE2E2),
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: const Text(
+                                'Inactive',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w700,
+                                  color: Color(0xFFDC2626),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 3),
+                      Text('@$username', style: const TextStyle(fontSize: 12, color: _muted)),
+                      if (branch.isNotEmpty)
+                        Text(branch, style: const TextStyle(fontSize: 11, color: _muted)),
+                      if (role != 'superadmin')
+                        Text(
+                          '$featureCount / ${MobileFeatures.allKeys.length} features enabled',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: _emerald,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                    ],
                   ),
                 ),
               ],
-              const SizedBox(height: 8),
-              GestureDetector(
-                onTap: onToggleActive,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: active ? const Color(0xFFECFDF5) : const Color(0xFFF3F4F6),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    active ? 'Deactivate' : 'Activate',
-                    style: TextStyle(
-                      fontSize: 10, fontWeight: FontWeight.w700,
-                      color: active ? const Color(0xFF059669) : _muted),
-                  ),
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _UserActionChip(
+                  label: role,
+                  icon: isSuperAdmin ? Icons.badge_outlined : Icons.badge_rounded,
+                  bg: _roleBg(role),
+                  fg: _roleColor(role),
+                  border: _roleColor(role).withValues(alpha: 0.25),
+                  onTap: isSuperAdmin ? onRoleTap : null,
                 ),
+                if (canEditFeatures)
+                  _UserActionChip(
+                    label: 'Features',
+                    icon: Icons.tune_rounded,
+                    bg: const Color(0xFFEFF6FF),
+                    fg: const Color(0xFF2563EB),
+                    border: const Color(0xFFBFDBFE),
+                    onTap: onFeaturesTap,
+                  ),
+                _UserActionChip(
+                  label: active ? 'Deactivate' : 'Activate',
+                  icon: active ? Icons.pause_circle_outline : Icons.play_circle_outline,
+                  bg: active ? const Color(0xFFECFDF5) : const Color(0xFFF3F4F6),
+                  fg: active ? const Color(0xFF059669) : _muted,
+                  border: active ? const Color(0xFFA7F3D0) : _border,
+                  onTap: onToggleActive,
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _UserActionChip extends StatelessWidget {
+  const _UserActionChip({
+    required this.label,
+    required this.icon,
+    required this.bg,
+    required this.fg,
+    required this.border,
+    this.onTap,
+  });
+
+  final String label;
+  final IconData icon;
+  final Color bg;
+  final Color fg;
+  final Color border;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(20),
+        child: Ink(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: bg,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: border),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 14, color: fg),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: fg),
               ),
             ],
           ),
-        ]),
+        ),
       ),
     );
   }

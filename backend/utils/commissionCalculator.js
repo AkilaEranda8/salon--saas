@@ -67,18 +67,17 @@ function normalizeStaffSpecializations(raw, staffDefaults = {}) {
         if (!service_id) return null;
         return {
           service_id,
-          commission_type: defaultType,
-          commission_value: defaultVal,
+          commission_type: null,
+          commission_value: null,
         };
       }
       const service_id = Number(item.service_id);
       if (!service_id) return null;
+      const hasOverride = item.commission_value != null && item.commission_value !== '';
       return {
         service_id,
-        commission_type: item.commission_type || defaultType,
-        commission_value: item.commission_value != null && item.commission_value !== ''
-          ? parseFloat(item.commission_value)
-          : defaultVal,
+        commission_type: hasOverride ? (item.commission_type || defaultType) : null,
+        commission_value: hasOverride ? parseFloat(item.commission_value) : null,
       };
     })
     .filter(Boolean);

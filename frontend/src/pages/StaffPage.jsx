@@ -39,6 +39,7 @@ export default function StaffPage() {
   const [profileItem, setProfileItem]   = useState(null);
   const [form, setForm]                 = useState(EMPTY);
   const [specs, setSpecs]               = useState([]);
+  const [specOverrides, setSpecOverrides] = useState({});
   const [saving, setSaving]             = useState(false);
   const [formErr, setFormErr]           = useState('');
   const [loadErr, setLoadErr]         = useState('');
@@ -76,6 +77,7 @@ export default function StaffPage() {
     setEditItem(null);
     setForm({ ...EMPTY, branch_ids: myBranchId != null ? [String(myBranchId)] : [], join_date: new Date().toISOString().slice(0,10) });
     setSpecs([]);
+    setSpecOverrides({});
     setPhotoFile(null);
     setPhotoPreview('');
     setRemovePhoto(false);
@@ -88,7 +90,15 @@ export default function StaffPage() {
       : (row.branch_id != null || row.branch?.id != null ? [String(row.branch_id ?? row.branch?.id)] : []);
     setEditItem(row);
     setForm({ ...row, branch_ids: fromM2m, join_date: row.join_date?.slice(0,10)||'' });
-    setSpecs((row.specializations||[]).map(s=>s.service_id));
+    const selected = (row.specializations || []).map((s) => s.service_id);
+    const overrides = {};
+    for (const s of row.specializations || []) {
+      if (s.commission_value != null && s.commission_value !== '') {
+        overrides[s.service_id] = String(s.commission_value);
+      }
+    }
+    setSpecs(selected);
+    setSpecOverrides(overrides);
     setPhotoFile(null);
     setPhotoPreview(row.photo_url || '');
     setRemovePhoto(false);
@@ -96,7 +106,22 @@ export default function StaffPage() {
     setShowForm(true);
   };
   const openProfile = row => { setProfileItem(row); setShowProfile(true); };
-  const toggleSpec  = id => setSpecs(sp => sp.includes(id) ? sp.filter(x=>x!==id) : [...sp, id]);
+  const toggleSpec = (id) => {
+    if (specs.includes(id)) {
+      setSpecs((sp) => sp.filter((x) => x !== id));
+      setSpecOverrides((o) => {
+        const next = { ...o };
+        delete next[id];
+        return next;
+      });
+    } else {
+      setSpecs((sp) => [...sp, id]);
+      setSpecOverrides((o) => ({ ...o, [id]: o[id] ?? '' }));
+    }
+  };
+  const setSpecOverride = (id, value) => {
+    setSpecOverrides((o) => ({ ...o, [id]: value }));
+  };
   const toggleBranch = (id) => {
     const s = String(id);
     setForm((f) => {
@@ -113,7 +138,7 @@ export default function StaffPage() {
     if (!form.name || !form.branch_ids?.length) return setFormErr('Name and at least one branch are required');
     if (form.salary_type !== 'salary_only' && specs.length > 0
         && (form.commission_value === '' || form.commission_value == null)) {
-      return setFormErr('Set a commission rate for the selected services.');
+      return setFormErr('Set a default commission rate for this staff member.');
     }
     setSaving(true);
     try {
@@ -126,7 +151,15 @@ export default function StaffPage() {
         salary_type: form.salary_type || 'commission_only',
         join_date: form.join_date || null,
         is_active: form.is_active !== false,
-        service_ids: specs.map((id) => Number(id)).filter((n) => Number.isFinite(n)),
+        specializations: specs.map((id) => {
+          const raw = specOverrides[id];
+          const hasOverride = raw !== '' && raw != null;
+          return {
+            service_id: Number(id),
+            commission_type: form.commission_type || 'percentage',
+            commission_value: hasOverride ? parseFloat(raw) : null,
+          };
+        }),
       };
       if (form.salary_type !== 'salary_only') {
         payload.commission_type = form.commission_type || 'percentage';
@@ -377,33 +410,52 @@ export default function StaffPage() {
                   <option value="fixed">Fixed per Service</option>
                 </Select>
               </FormGroup>
-              <FormGroup label={form.commission_type==='percentage' ? 'Rate (%)' : 'Amount (Rs.)'}>
-                <Input type="number" min="0" value={form.commission_value||''} onChange={e => setForm(f=>({...f, commission_value:e.target.value}))} />
+              <FormGroup label={form.commission_type==='percentage' ? 'Default Commission %' : 'Default Commission (Rs.)'}>
+                <Input type="number" min="0" step="0.01" value={form.commission_value||''} onChange={e => setForm(f=>({...f, commission_value:e.target.value}))} placeholder="e.g. 10" />
               </FormGroup>
             </div>
           )}
           <FormGroup label="Join Date"><Input type="date" value={form.join_date||''} onChange={e => setForm(f=>({...f, join_date:e.target.value}))} /></FormGroup>
           {form.salary_type !== 'salary_only' && services.length > 0 && (
-            <FormGroup label="Services (commission)">
+            <FormGroup label="Service Commission Setup">
               <p style={{ fontSize:12, color:'#667085', margin:'0 0 10px', lineHeight:1.45 }}>
-                Select services this staff performs. The commission rate above applies to <strong>every selected service</strong>.
+                Select services and optionally set a <strong>custom commission</strong> per service. Leave custom rate empty to use the default commission above.
               </p>
-              <div style={{ display:'flex', flexWrap:'wrap', gap:8 }}>
-                {services.filter((sv) => sv.is_active !== false).map(sv => {
+              <div style={{ border:'1px solid #E4E7EC', borderRadius:12, overflow:'hidden' }}>
+                <div style={{ display:'grid', gridTemplateColumns:'40px 1fr 140px', gap:8, padding:'8px 12px', background:'#F9FAFB', fontSize:11, fontWeight:700, color:'#667085', textTransform:'uppercase' }}>
+                  <span></span>
+                  <span>Service</span>
+                  <span>Custom {form.commission_type==='percentage' ? '%' : 'Rs.'}</span>
+                </div>
+                {services.filter((sv) => sv.is_active !== false).map((sv) => {
                   const selected = specs.includes(sv.id);
+                  const overrideVal = specOverrides[sv.id] ?? '';
+                  const defaultLabel = form.commission_value !== '' && form.commission_value != null
+                    ? (form.commission_type === 'percentage' ? `Default ${form.commission_value}%` : `Default Rs.${form.commission_value}`)
+                    : 'Default';
                   return (
-                    <label key={sv.id} style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer', fontSize:13, color:'#344054', background:selected?'#EFF6FF':'#F9FAFB', border:selected?'1.5px solid #2563EB':'1.5px solid #E4E7EC', borderRadius:10, padding:'6px 12px' }}>
-                      <input type="checkbox" checked={selected} onChange={()=>toggleSpec(sv.id)} />
-                      <span>{sv.name}</span>
-                      {selected && form.commission_value !== '' && form.commission_value != null && (
-                        <CommBadge type={form.commission_type||'percentage'} value={form.commission_value} />
+                    <div key={sv.id} style={{ display:'grid', gridTemplateColumns:'40px 1fr 140px', gap:8, alignItems:'center', padding:'8px 12px', borderTop:'1px solid #F2F4F7', background:selected?'#FAFBFF':'#fff' }}>
+                      <input type="checkbox" checked={selected} onChange={() => toggleSpec(sv.id)} />
+                      <span style={{ fontSize:13, color:'#344054', fontWeight:selected?600:400 }}>{sv.name}</span>
+                      {selected ? (
+                        <Input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={overrideVal}
+                          onChange={(e) => setSpecOverride(sv.id, e.target.value)}
+                          placeholder={defaultLabel}
+                          style={{ fontSize:13 }}
+                        />
+                      ) : (
+                        <span style={{ fontSize:12, color:'#D0D5DD' }}>—</span>
                       )}
-                    </label>
+                    </div>
                   );
                 })}
               </div>
               {specs.length > 0 && (!form.commission_value && form.commission_value !== 0) && (
-                <p style={{ fontSize:12, color:'#D97706', marginTop:8 }}>Set a commission rate so all selected services earn commission on payments.</p>
+                <p style={{ fontSize:12, color:'#D97706', marginTop:8 }}>Set a default commission rate — services without a custom rate will use it.</p>
               )}
             </FormGroup>
           )}
@@ -457,14 +509,24 @@ export default function StaffPage() {
             </div>
             {(p.specializations||[]).length > 0 && (
               <div>
-                <h4 style={{ margin:'0 0 10px', fontSize:13, fontWeight:700, color:'#475467', textTransform:'uppercase' }}>Specializations</h4>
-                <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
-                  {p.specializations.map(s => (
-                    <span key={s.id} style={{ display:'inline-flex', alignItems:'center', gap:6, padding:'4px 10px', borderRadius:16, background:'#EFF6FF', color:'#2563EB', fontSize:12, fontWeight:600 }}>
-                      {s.service?.name || s.service_id}
-                      <CommBadge type={s.commission_type || p.commission_type} value={s.commission_value ?? p.commission_value} />
-                    </span>
-                  ))}
+                <h4 style={{ margin:'0 0 10px', fontSize:13, fontWeight:700, color:'#475467', textTransform:'uppercase' }}>Service Commission</h4>
+                <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+                  {p.specializations.map((s) => {
+                    const hasOverride = s.commission_value != null && s.commission_value !== '';
+                    const type = s.commission_type || p.commission_type;
+                    return (
+                      <div key={s.id} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'8px 12px', background:'#F9FAFB', borderRadius:8, fontSize:13 }}>
+                        <span style={{ fontWeight:600, color:'#344054' }}>{s.service?.name || s.service_id}</span>
+                        {hasOverride ? (
+                          <CommBadge type={type} value={s.commission_value} />
+                        ) : (
+                          <span style={{ fontSize:12, color:'#667085' }}>
+                            Default ({type === 'percentage' ? `${p.commission_value}%` : `Rs.${Number(p.commission_value||0).toLocaleString()}`})
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}

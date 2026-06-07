@@ -12,6 +12,30 @@ function buildSpecRows(staffId, rawSpecs, staffDefaults) {
   }));
 }
 
+function extractSpecializationItems(body = {}) {
+  if (Array.isArray(body.specializations)) {
+    return body.specializations
+      .map((item) => {
+        if (item == null) return null;
+        const service_id = Number(item.service_id ?? item);
+        if (!service_id) return null;
+        const hasOverride = item.commission_value != null && item.commission_value !== '';
+        return {
+          service_id,
+          commission_type: hasOverride && item.commission_type ? item.commission_type : null,
+          commission_value: hasOverride ? parseFloat(item.commission_value) : null,
+        };
+      })
+      .filter(Boolean);
+  }
+  if (Array.isArray(body.service_ids)) {
+    return body.service_ids
+      .map((id) => ({ service_id: Number(id), commission_type: null, commission_value: null }))
+      .filter((item) => item.service_id > 0);
+  }
+  return [];
+}
+
 function parseCommissionValue(raw) {
   if (raw === '' || raw == null || Number.isNaN(parseFloat(raw))) return null;
   return parseFloat(raw);
@@ -39,30 +63,22 @@ function parseStaffCommission(body = {}, { forCreate = false } = {}) {
   return out;
 }
 
-function extractServiceIds(body = {}) {
-  if (Array.isArray(body.service_ids) && body.service_ids.length) {
-    return [...new Set(body.service_ids.map(Number).filter((id) => id > 0))];
-  }
-  if (!Array.isArray(body.specializations)) return [];
-  return [...new Set(
-    body.specializations
-      .map((item) => (item != null && typeof item === 'object' ? Number(item.service_id) : Number(item)))
-      .filter((id) => id > 0),
-  )];
-}
-
-async function replaceStaffSpecializations(staffId, serviceIds, staffDefaults) {
+async function replaceStaffSpecializations(staffId, items) {
   await StaffSpecialization.destroy({ where: { staff_id: staffId } });
-  if (!serviceIds.length) return;
-  const specs = buildSpecRows(staffId, serviceIds, staffDefaults);
-  if (specs.length) await StaffSpecialization.bulkCreate(specs, { ignoreDuplicates: true });
+  if (!items.length) return;
+  const rows = items.map((item) => ({
+    staff_id: staffId,
+    service_id: item.service_id,
+    commission_type: item.commission_type,
+    commission_value: item.commission_value,
+  }));
+  await StaffSpecialization.bulkCreate(rows, { ignoreDuplicates: true });
 }
 
-/** Keep existing per-service commission; only add/remove rows and optionally refresh rates when commission changed. */
-async function syncStaffSpecializations(staffId, serviceIds, staffDefaults, { forceCommissionSync = false } = {}) {
+async function syncStaffSpecializations(staffId, items) {
   const existing = await StaffSpecialization.findAll({ where: { staff_id: staffId } });
   const existingByService = new Map(existing.map((row) => [Number(row.service_id), row]));
-  const nextIds = new Set(serviceIds);
+  const nextIds = new Set(items.map((item) => item.service_id));
 
   const toRemove = existing.filter((row) => !nextIds.has(Number(row.service_id)));
   if (toRemove.length) {
@@ -71,20 +87,17 @@ async function syncStaffSpecializations(staffId, serviceIds, staffDefaults, { fo
     });
   }
 
-  const toAdd = serviceIds.filter((id) => !existingByService.has(id));
-  if (toAdd.length) {
-    const specs = buildSpecRows(staffId, toAdd, staffDefaults);
-    if (specs.length) await StaffSpecialization.bulkCreate(specs, { ignoreDuplicates: true });
-  }
-
-  if (forceCommissionSync && serviceIds.length) {
-    await StaffSpecialization.update(
-      {
-        commission_type: staffDefaults.commission_type,
-        commission_value: staffDefaults.commission_value,
-      },
-      { where: { staff_id: staffId, service_id: serviceIds } },
-    );
+  for (const item of items) {
+    const row = existingByService.get(item.service_id);
+    const data = {
+      commission_type: item.commission_type,
+      commission_value: item.commission_value,
+    };
+    if (row) {
+      await row.update(data);
+    } else {
+      await StaffSpecialization.create({ staff_id: staffId, service_id: item.service_id, ...data });
+    }
   }
 }
 
@@ -177,10 +190,10 @@ const create = async (req, res) => {
     const commission_type = parsed.commission_type || 'percentage';
     const commission_value = parsed.commission_value;
     const base_salary = parsed.base_salary ?? 0;
-    const serviceIds = extractServiceIds(req.body);
+    const specItems = extractSpecializationItems(req.body);
 
-    if (salary_type !== 'salary_only' && serviceIds.length && (commission_value == null || commission_value <= 0)) {
-      return res.status(400).json({ message: 'Commission rate is required when services are selected.' });
+    if (salary_type !== 'salary_only' && specItems.length && (commission_value == null || commission_value <= 0)) {
+      return res.status(400).json({ message: 'Default commission rate is required when services are selected.' });
     }
 
     const tenantId = resolveTenantId(req);
@@ -207,10 +220,7 @@ const create = async (req, res) => {
       );
     }
 
-    await replaceStaffSpecializations(staff.id, serviceIds, {
-      commission_type,
-      commission_value: commission_value ?? 0,
-    });
+    await replaceStaffSpecializations(staff.id, specItems);
 
     const created = await Staff.findOne({
       where: { id: staff.id },
@@ -245,17 +255,6 @@ const update = async (req, res) => {
     for (const field of allowed) {
       if (req.body[field] !== undefined) updates[field] = req.body[field];
     }
-    const nextCommissionType = req.body.commission_type !== undefined
-      ? (['percentage', 'fixed'].includes(req.body.commission_type) ? req.body.commission_type : staff.commission_type)
-      : staff.commission_type;
-    const nextCommissionValue = req.body.commission_value !== undefined
-      ? parseCommissionValue(req.body.commission_value)
-      : parseFloat(staff.commission_value);
-    const commissionChanged = (
-      (req.body.commission_type !== undefined && nextCommissionType !== staff.commission_type)
-      || (req.body.commission_value !== undefined && nextCommissionValue !== parseFloat(staff.commission_value))
-    );
-
     const parsed = parseStaffCommission(req.body);
     for (const [key, value] of Object.entries(parsed)) {
       if (value !== undefined) updates[key] = value;
@@ -281,30 +280,16 @@ const update = async (req, res) => {
     }
 
     const refreshedStaff = await Staff.findOne({ where: { id: staff.id } });
-    const specDefaults = {
-      commission_type: refreshedStaff.commission_type || 'percentage',
-      commission_value: refreshedStaff.commission_value,
-    };
     const effectiveSalaryType = refreshedStaff.salary_type || 'commission_only';
     const hasServicePayload = Array.isArray(req.body.specializations) || Array.isArray(req.body.service_ids);
 
     if (hasServicePayload) {
-      const serviceIds = extractServiceIds(req.body);
-      const effectiveCommission = commissionChanged ? updates.commission_value : specDefaults.commission_value;
-      if (effectiveSalaryType !== 'salary_only' && serviceIds.length && (effectiveCommission == null || effectiveCommission <= 0)) {
-        return res.status(400).json({ message: 'Commission rate is required when services are selected.' });
+      const specItems = extractSpecializationItems(req.body);
+      const effectiveCommission = refreshedStaff.commission_value;
+      if (effectiveSalaryType !== 'salary_only' && specItems.length && (effectiveCommission == null || parseFloat(effectiveCommission) <= 0)) {
+        return res.status(400).json({ message: 'Default commission rate is required when services are selected.' });
       }
-      await syncStaffSpecializations(staff.id, serviceIds, specDefaults, {
-        forceCommissionSync: commissionChanged,
-      });
-    } else if (commissionChanged) {
-      await StaffSpecialization.update(
-        {
-          commission_type: specDefaults.commission_type,
-          commission_value: specDefaults.commission_value,
-        },
-        { where: { staff_id: staff.id } },
-      );
+      await syncStaffSpecializations(staff.id, specItems);
     }
 
     const refreshed = await Staff.findOne({
@@ -539,12 +524,11 @@ const setSpecializations = async (req, res) => {
     // Replace all existing specializations
     await StaffSpecialization.destroy({ where: { staff_id: staff.id } });
 
-    const rawSpecs = Array.isArray(req.body.specializations) ? req.body.specializations : serviceIds;
-    const specs = buildSpecRows(staff.id, rawSpecs, {
-      commission_type: staff.commission_type,
-      commission_value: staff.commission_value,
+    const specItems = extractSpecializationItems({
+      specializations: req.body.specializations,
+      service_ids: serviceIds,
     });
-    if (specs.length) await StaffSpecialization.bulkCreate(specs);
+    await replaceStaffSpecializations(staff.id, specItems);
 
     const updated = await StaffSpecialization.findAll({
       where: { staff_id: staff.id },

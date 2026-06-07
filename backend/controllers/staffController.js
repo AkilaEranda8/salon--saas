@@ -12,22 +12,31 @@ function buildSpecRows(staffId, rawSpecs, staffDefaults) {
   }));
 }
 
-function parseStaffCommission(body = {}) {
+function parseCommissionValue(raw) {
+  if (raw === '' || raw == null || Number.isNaN(parseFloat(raw))) return null;
+  return parseFloat(raw);
+}
+
+function parseStaffCommission(body = {}, { forCreate = false } = {}) {
   const salary_type = ['commission_only', 'salary_only', 'salary_plus_commission'].includes(body.salary_type)
     ? body.salary_type
-    : 'commission_only';
+    : (forCreate ? 'commission_only' : undefined);
   const commission_type = ['percentage', 'fixed'].includes(body.commission_type)
     ? body.commission_type
-    : 'percentage';
-  const raw = body.commission_value;
-  const commission_value = raw !== '' && raw != null && !Number.isNaN(parseFloat(raw))
-    ? parseFloat(raw)
-    : 0;
-  const rawSalary = body.base_salary;
-  const base_salary = rawSalary !== '' && rawSalary != null && !Number.isNaN(parseFloat(rawSalary))
-    ? parseFloat(rawSalary)
-    : 0;
-  return { salary_type, commission_type, commission_value, base_salary };
+    : (forCreate ? 'percentage' : undefined);
+  const commission_value = body.commission_value !== undefined
+    ? parseCommissionValue(body.commission_value)
+    : (forCreate ? null : undefined);
+  const base_salary = body.base_salary !== undefined
+    ? (parseCommissionValue(body.base_salary) ?? 0)
+    : (forCreate ? 0 : undefined);
+
+  const out = {};
+  if (salary_type !== undefined) out.salary_type = salary_type;
+  if (commission_type !== undefined) out.commission_type = commission_type;
+  if (commission_value !== undefined) out.commission_value = commission_value;
+  if (base_salary !== undefined) out.base_salary = base_salary;
+  return out;
 }
 
 function extractServiceIds(body = {}) {
@@ -47,6 +56,36 @@ async function replaceStaffSpecializations(staffId, serviceIds, staffDefaults) {
   if (!serviceIds.length) return;
   const specs = buildSpecRows(staffId, serviceIds, staffDefaults);
   if (specs.length) await StaffSpecialization.bulkCreate(specs, { ignoreDuplicates: true });
+}
+
+/** Keep existing per-service commission; only add/remove rows and optionally refresh rates when commission changed. */
+async function syncStaffSpecializations(staffId, serviceIds, staffDefaults, { forceCommissionSync = false } = {}) {
+  const existing = await StaffSpecialization.findAll({ where: { staff_id: staffId } });
+  const existingByService = new Map(existing.map((row) => [Number(row.service_id), row]));
+  const nextIds = new Set(serviceIds);
+
+  const toRemove = existing.filter((row) => !nextIds.has(Number(row.service_id)));
+  if (toRemove.length) {
+    await StaffSpecialization.destroy({
+      where: { staff_id: staffId, service_id: toRemove.map((row) => row.service_id) },
+    });
+  }
+
+  const toAdd = serviceIds.filter((id) => !existingByService.has(id));
+  if (toAdd.length) {
+    const specs = buildSpecRows(staffId, toAdd, staffDefaults);
+    if (specs.length) await StaffSpecialization.bulkCreate(specs, { ignoreDuplicates: true });
+  }
+
+  if (forceCommissionSync && serviceIds.length) {
+    await StaffSpecialization.update(
+      {
+        commission_type: staffDefaults.commission_type,
+        commission_value: staffDefaults.commission_value,
+      },
+      { where: { staff_id: staffId, service_id: serviceIds } },
+    );
+  }
 }
 
 // Helper: resolve branch filter from role
@@ -133,10 +172,14 @@ const create = async (req, res) => {
       return res.status(400).json({ message: 'Name and branch are required.' });
     }
 
-    const { salary_type, commission_type, commission_value, base_salary } = parseStaffCommission(req.body);
+    const parsed = parseStaffCommission(req.body, { forCreate: true });
+    const salary_type = parsed.salary_type || 'commission_only';
+    const commission_type = parsed.commission_type || 'percentage';
+    const commission_value = parsed.commission_value;
+    const base_salary = parsed.base_salary ?? 0;
     const serviceIds = extractServiceIds(req.body);
 
-    if (salary_type !== 'salary_only' && serviceIds.length && commission_value <= 0) {
+    if (salary_type !== 'salary_only' && serviceIds.length && (commission_value == null || commission_value <= 0)) {
       return res.status(400).json({ message: 'Commission rate is required when services are selected.' });
     }
 
@@ -148,7 +191,7 @@ const create = async (req, res) => {
       role_title,
       branch_id,
       commission_type,
-      commission_value,
+      commission_value: commission_value ?? 0,
       salary_type,
       base_salary,
       join_date,
@@ -166,7 +209,7 @@ const create = async (req, res) => {
 
     await replaceStaffSpecializations(staff.id, serviceIds, {
       commission_type,
-      commission_value,
+      commission_value: commission_value ?? 0,
     });
 
     const created = await Staff.findOne({
@@ -202,12 +245,20 @@ const update = async (req, res) => {
     for (const field of allowed) {
       if (req.body[field] !== undefined) updates[field] = req.body[field];
     }
-    if ('commission_type' in updates || 'commission_value' in updates || 'salary_type' in updates || 'base_salary' in updates) {
-      const parsed = parseStaffCommission({ ...staff.toJSON(), ...req.body, ...updates });
-      updates.commission_type = parsed.commission_type;
-      updates.commission_value = parsed.commission_value;
-      updates.salary_type = parsed.salary_type;
-      updates.base_salary = parsed.base_salary;
+    const nextCommissionType = req.body.commission_type !== undefined
+      ? (['percentage', 'fixed'].includes(req.body.commission_type) ? req.body.commission_type : staff.commission_type)
+      : staff.commission_type;
+    const nextCommissionValue = req.body.commission_value !== undefined
+      ? parseCommissionValue(req.body.commission_value)
+      : parseFloat(staff.commission_value);
+    const commissionChanged = (
+      (req.body.commission_type !== undefined && nextCommissionType !== staff.commission_type)
+      || (req.body.commission_value !== undefined && nextCommissionValue !== parseFloat(staff.commission_value))
+    );
+
+    const parsed = parseStaffCommission(req.body);
+    for (const [key, value] of Object.entries(parsed)) {
+      if (value !== undefined) updates[key] = value;
     }
 
     // Handle branch_ids array or single branch_id
@@ -229,20 +280,24 @@ const update = async (req, res) => {
       );
     }
 
+    const refreshedStaff = await Staff.findOne({ where: { id: staff.id } });
     const specDefaults = {
-      commission_type: updates.commission_type ?? staff.commission_type,
-      commission_value: 'commission_value' in updates ? updates.commission_value : staff.commission_value,
+      commission_type: refreshedStaff.commission_type || 'percentage',
+      commission_value: refreshedStaff.commission_value,
     };
-    const effectiveSalaryType = updates.salary_type ?? staff.salary_type;
+    const effectiveSalaryType = refreshedStaff.salary_type || 'commission_only';
     const hasServicePayload = Array.isArray(req.body.specializations) || Array.isArray(req.body.service_ids);
 
     if (hasServicePayload) {
       const serviceIds = extractServiceIds(req.body);
-      if (effectiveSalaryType !== 'salary_only' && serviceIds.length && (specDefaults.commission_value == null || specDefaults.commission_value <= 0)) {
+      const effectiveCommission = commissionChanged ? updates.commission_value : specDefaults.commission_value;
+      if (effectiveSalaryType !== 'salary_only' && serviceIds.length && (effectiveCommission == null || effectiveCommission <= 0)) {
         return res.status(400).json({ message: 'Commission rate is required when services are selected.' });
       }
-      await replaceStaffSpecializations(staff.id, serviceIds, specDefaults);
-    } else if ('commission_type' in updates || 'commission_value' in updates) {
+      await syncStaffSpecializations(staff.id, serviceIds, specDefaults, {
+        forceCommissionSync: commissionChanged,
+      });
+    } else if (commissionChanged) {
       await StaffSpecialization.update(
         {
           commission_type: specDefaults.commission_type,

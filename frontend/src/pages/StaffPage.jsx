@@ -123,16 +123,22 @@ export default function StaffPage() {
         email: form.email || '',
         role_title: form.role_title || '',
         branch_ids: form.branch_ids.map((x) => Number(x)).filter((n) => Number.isFinite(n)),
-        commission_type: form.commission_type || 'percentage',
-        commission_value: form.commission_value !== '' && form.commission_value != null
-          ? parseFloat(form.commission_value)
-          : 0,
         salary_type: form.salary_type || 'commission_only',
-        base_salary: form.base_salary !== '' && form.base_salary != null ? parseFloat(form.base_salary) : 0,
         join_date: form.join_date || null,
         is_active: form.is_active !== false,
         service_ids: specs.map((id) => Number(id)).filter((n) => Number.isFinite(n)),
       };
+      if (form.salary_type !== 'salary_only') {
+        payload.commission_type = form.commission_type || 'percentage';
+        if (form.commission_value !== '' && form.commission_value != null) {
+          payload.commission_value = parseFloat(form.commission_value);
+        }
+      }
+      if (form.salary_type === 'salary_only' || form.salary_type === 'salary_plus_commission') {
+        if (form.base_salary !== '' && form.base_salary != null) {
+          payload.base_salary = parseFloat(form.base_salary);
+        }
+      }
       const saved = editItem ? await api.put(`/staff/${editItem.id}`, payload) : await api.post('/staff', payload);
       const staffId = editItem?.id || saved?.data?.id;
       if (staffId && removePhoto) {

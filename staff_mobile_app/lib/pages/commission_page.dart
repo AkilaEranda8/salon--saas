@@ -77,13 +77,10 @@ class _CommissionPageState extends State<CommissionPage> {
     _load();
   }
 
-  /// Team mode: load all staff in scope (branch for staff/manager; all branches for superadmin/admin unless filtered).
+  /// Team mode: superadmin/admin/manager see all staff; regular staff see only their own.
   bool get _teamMode {
     final r = AppStateScope.of(context).currentUser?.role ?? '';
-    return r == 'superadmin' ||
-        r == 'admin' ||
-        r == 'manager' ||
-        r == 'staff';
+    return r == 'superadmin' || r == 'admin' || r == 'manager';
   }
 
   Future<void> _load() async {
@@ -148,7 +145,7 @@ class _CommissionPageState extends State<CommissionPage> {
         if (!mounted) return;
         setState(() {
           _summaries       = const [];
-          _selectedStaffId = null;
+          _selectedStaffId = result.staffId;
           _rows            = result.records;
           _total           = result.total;
           _totalAdvances   = result.totalAdvances;
@@ -159,6 +156,8 @@ class _CommissionPageState extends State<CommissionPage> {
           _staffName       = result.staffName;
           _loading         = false;
         });
+        final sid = result.staffId;
+        if (sid != null && sid.isNotEmpty) _loadPayouts(sid);
       }
     } catch (e) {
       if (!mounted) return;
@@ -209,11 +208,13 @@ class _CommissionPageState extends State<CommissionPage> {
     if (ok) {
       _load();
     } else {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(app.lastError ?? 'Failed'),
-        backgroundColor: const Color(0xFFDC2626),
-        behavior: SnackBarBehavior.floating,
-      ));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(app.lastError ?? 'Failed'),
+          backgroundColor: const Color(0xFFDC2626),
+          behavior: SnackBarBehavior.floating,
+        ));
+      }
     }
   }
 
@@ -1306,8 +1307,10 @@ class _RecordPayoutSheetState extends State<_RecordPayoutSheet> {
                   final d = await showDatePicker(
                     context: context, initialDate: DateTime.now(),
                     firstDate: DateTime(2020), lastDate: DateTime(2030));
-                  if (d != null) setState(() => _date =
-                    '${d.year}-${d.month.toString().padLeft(2,'0')}-${d.day.toString().padLeft(2,'0')}');
+                  if (d != null) {
+                    setState(() => _date =
+                      '${d.year}-${d.month.toString().padLeft(2,'0')}-${d.day.toString().padLeft(2,'0')}');
+                  }
                 },
                 child: Container(height: 50,
                   decoration: BoxDecoration(
@@ -1392,9 +1395,7 @@ class _PaySalarySheetState extends State<_PaySalarySheet> {
 
   double _totalComm     = 0;
   double _totalAdvances = 0;
-  double _netPayable    = 0;
   double _alreadyPaid   = 0;
-  double _balanceDue    = 0;
 
   List<Map<String, dynamic>> _pendingAdvances = [];
   Set<String> _toDeduct = {};
@@ -1432,19 +1433,19 @@ class _PaySalarySheetState extends State<_PaySalarySheet> {
       setState(() {
         _totalComm     = comm.total;
         _totalAdvances = comm.totalAdvances;
-        _netPayable    = comm.netCommission;
         _alreadyPaid   = comm.totalPaid;
-        _balanceDue    = comm.balanceDue;
         _pendingAdvances = adv;
         _toDeduct = adv.map((a) => '${a['id']}').toSet();
         _amountCtrl.text = comm.balanceDue.toStringAsFixed(0);
         _loading = false;
       });
     } catch (e) {
-      if (mounted) setState(() {
-        _error = e.toString().replaceFirst('Exception: ', '');
-        _loading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _error = e.toString().replaceFirst('Exception: ', '');
+          _loading = false;
+        });
+      }
     }
   }
 
@@ -1617,8 +1618,8 @@ class _PaySalarySheetState extends State<_PaySalarySheet> {
                     final d = await showDatePicker(
                       context: context, initialDate: DateTime.now(),
                       firstDate: DateTime(2020), lastDate: DateTime(2030));
-                    if (d != null) {
-                      if (mounted) setState(() => _date =
+                    if (d != null && mounted) {
+                      setState(() => _date =
                         '${d.year}-${d.month.toString().padLeft(2,'0')}-${d.day.toString().padLeft(2,'0')}');
                     }
                   },

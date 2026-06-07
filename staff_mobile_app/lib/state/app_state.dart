@@ -263,8 +263,18 @@ class AppState extends ChangeNotifier {
     final branchMap = user['branch'] is Map
         ? Map<String, dynamic>.from(user['branch'])
         : const <String, dynamic>{};
-    final rawBranchId =
-        user['branchId'] ?? user['branch_id'] ?? branchMap['id'] ?? prev?.branchId;
+    final staffProfile = user['staffProfile'] is Map
+        ? Map<String, dynamic>.from(user['staffProfile'])
+        : const <String, dynamic>{};
+    final staffBranchMap = staffProfile['branch'] is Map
+        ? Map<String, dynamic>.from(staffProfile['branch'])
+        : const <String, dynamic>{};
+    final rawBranchId = user['branchId'] ??
+        user['branch_id'] ??
+        branchMap['id'] ??
+        staffProfile['branch_id'] ??
+        staffBranchMap['id'] ??
+        prev?.branchId;
     final branchId = '${rawBranchId ?? ''}'.trim();
     return StaffUser(
       id: '${user['id'] ?? prev?.id ?? ''}',
@@ -460,10 +470,24 @@ class AppState extends ChangeNotifier {
     final token = _currentUser?.authToken;
     if (token == null || token.isEmpty) return branches;
     final loaded = await _api.fetchBranches(token: token);
+    final role = (_currentUser?.role ?? '').toLowerCase();
+    final assignedBranch = (_currentUser?.branchId ?? '').trim();
+    final seesAllBranches = role == 'superadmin' || role == 'admin';
+    List<Map<String, dynamic>> scoped = loaded;
+    if (!seesAllBranches && assignedBranch.isNotEmpty) {
+      scoped = loaded
+          .where((b) => '${b['id'] ?? ''}' == assignedBranch)
+          .toList();
+      if (scoped.isEmpty) {
+        scoped = [
+          {'id': assignedBranch, 'name': 'My Branch'},
+        ];
+      }
+    }
     _branches
       ..clear()
       ..addAll(
-        loaded.map(
+        scoped.map(
           (b) => {
             'id': '${b['id'] ?? ''}',
             'name': '${b['name'] ?? ''}',

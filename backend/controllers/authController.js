@@ -5,7 +5,7 @@ const axios  = require('axios');
 const { Op }  = require('sequelize');
 const speakeasy = require('speakeasy');
 const qrcode    = require('qrcode');
-const { User, Branch, Tenant, RevokedToken } = require('../models');
+const { User, Branch, Tenant, RevokedToken, Staff } = require('../models');
 const { getMaintenanceMode } = require('../services/systemSettings');
 
 const isLocalRequest = (req) => {
@@ -224,6 +224,13 @@ const getMe = async (req, res) => {
     const include = [
       { model: Branch, as: 'branch', attributes: ['id', 'name', 'color'] },
       { model: Tenant, as: 'tenant', attributes: ['id', 'slug', 'name', 'brand_name', 'logo_sidebar_url', 'logo_header_url', 'logo_login_url', 'logo_public_url', 'primary_color', 'sidebar_style', 'font_family', 'plan', 'status', 'trial_ends_at'] },
+      {
+        model: Staff,
+        as: 'staffProfile',
+        attributes: ['id', 'branch_id', 'name'],
+        required: false,
+        include: [{ model: Branch, as: 'branch', attributes: ['id', 'name', 'color'] }],
+      },
     ];
     const exclude = { exclude: ['password'] };
 
@@ -246,7 +253,13 @@ const getMe = async (req, res) => {
 
     const { userWithMobileFeatures, loadTenantRoleDefaultsByTenantId } = require('./userController');
     const tenantRoleDefaults = await loadTenantRoleDefaultsByTenantId(user.tenant_id);
-    return res.json({ user: userWithMobileFeatures(user, tenantRoleDefaults) });
+    const payload = userWithMobileFeatures(user, tenantRoleDefaults);
+    if (!payload.branch_id && payload.staffProfile?.branch_id) {
+      payload.branch_id = payload.staffProfile.branch_id;
+      if (payload.staffProfile.branch) payload.branch = payload.staffProfile.branch;
+    }
+    payload.branchId = payload.branch_id ?? payload.branchId ?? null;
+    return res.json({ user: payload });
   } catch (err) {
     console.error('getMe error:', err);
     return res.status(500).json({ message: 'Server error.' });

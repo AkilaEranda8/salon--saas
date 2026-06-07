@@ -49,7 +49,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
         actions: [
           ValueListenableBuilder<List<AppNotification>>(
             valueListenable: NotificationStore.instance.notifications,
-            builder: (_, list, __) {
+            builder: (_, list, _) {
               if (list.isEmpty) return const SizedBox.shrink();
               return TextButton(
                 onPressed: () async {
@@ -87,12 +87,12 @@ class _NotificationsPageState extends State<NotificationsPage> {
       ),
       body: ValueListenableBuilder<List<AppNotification>>(
         valueListenable: NotificationStore.instance.notifications,
-        builder: (_, list, __) {
+        builder: (_, list, _) {
           if (list.isEmpty) return _emptyState();
           return ListView.separated(
             padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
             itemCount: list.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 8),
+            separatorBuilder: (_, _) => const SizedBox(height: 8),
             itemBuilder: (_, i) => _NotifCard(
               notification: list[i],
               onDismiss: () => NotificationStore.instance.remove(list[i].id),

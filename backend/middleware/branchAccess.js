@@ -3,6 +3,7 @@
  *
  * - For manager/staff: sets req.userBranchIds (1–2 ids) and req.userBranchId (primary),
  *   so controllers can auto-filter queries.
+ * - Branch id comes from JWT first; if missing, from linked Staff.branch_id (add-staff API).
  * - For superadmin/admin: req.userBranchId / req.userBranchIds are null (sees all branches
  *   within their tenant).
  * - For platform_admin: sees everything across all tenants.
@@ -12,31 +13,40 @@
  * Must be used AFTER verifyToken.
  */
 const { jwtBranchIds } = require('../utils/branchScope');
+const { primaryBranchIdFromStaffUser } = require('../utils/resolveUserBranch');
 
-const branchAccess = (req, res, next) => {
-  if (!req.user) return next();
+const branchAccess = async (req, res, next) => {
+  try {
+    if (!req.user) return next();
 
-  const { role, tenantId } = req.user;
+    const { role, tenantId } = req.user;
 
-  // Cross-tenant token reuse protection
-  if (req.tenant && role !== 'platform_admin') {
-    if (tenantId !== req.tenant.id) {
-      return res.status(403).json({ message: 'Token does not match this tenant.' });
+    // Cross-tenant token reuse protection
+    if (req.tenant && role !== 'platform_admin') {
+      if (tenantId !== req.tenant.id) {
+        return res.status(403).json({ message: 'Token does not match this tenant.' });
+      }
     }
+
+    req.userTenantId = (role === 'platform_admin') ? null : (tenantId ?? null);
+
+    if (role === 'manager' || role === 'staff') {
+      let ids = jwtBranchIds(req.user);
+      if (!ids.length) {
+        const fromStaff = await primaryBranchIdFromStaffUser(req.user, req.userTenantId);
+        if (fromStaff != null) ids = [fromStaff];
+      }
+      req.userBranchIds = ids;
+      req.userBranchId  = ids[0] ?? null;
+    } else {
+      req.userBranchIds = null;
+      req.userBranchId  = null;
+    }
+
+    next();
+  } catch (err) {
+    next(err);
   }
-
-  if (role === 'manager' || role === 'staff') {
-    req.userBranchIds = jwtBranchIds(req.user);
-    req.userBranchId  = req.userBranchIds[0] ?? req.user.branchId ?? null;
-  } else {
-    req.userBranchIds = null;
-    req.userBranchId  = null;
-  }
-
-  // Expose tenant ID for controllers
-  req.userTenantId = (role === 'platform_admin') ? null : (tenantId ?? null);
-
-  next();
 };
 
 module.exports = { branchAccess };

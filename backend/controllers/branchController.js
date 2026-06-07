@@ -8,8 +8,11 @@ const list = async (req, res) => {
     const limit  = Math.min(parseInt(req.query.limit) || 50, 100);
     const offset = (page - 1) * limit;
 
+    const where = tenantWhere(req);
+    if (req.userBranchId) where.id = req.userBranchId;
+
     const { count, rows } = await Branch.findAndCountAll({
-      where:  tenantWhere(req),
+      where,
       limit,
       offset,
       order: [['name', 'ASC']],
@@ -24,6 +27,9 @@ const list = async (req, res) => {
 
 const getOne = async (req, res) => {
   try {
+    if (req.userBranchId && String(req.params.id) !== String(req.userBranchId)) {
+      return res.status(403).json({ message: 'Access denied for this branch.' });
+    }
     const branch = await Branch.findOne({ where: byIdWhere(req, req.params.id) });
     if (!branch) return res.status(404).json({ message: 'Branch not found.' });
     return res.json(branch);

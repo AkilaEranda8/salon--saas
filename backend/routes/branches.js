@@ -1,10 +1,11 @@
 const { Router } = require('express');
 const ctrl = require('../controllers/branchController');
 const { verifyToken, requireRole } = require('../middleware/auth');
+const { branchAccess } = require('../middleware/branchAccess');
 const { checkLimit } = require('../middleware/planLimits');
 
 const router = Router();
-router.use(verifyToken);
+router.use(verifyToken, branchAccess);
 
 router.get('/',            requireRole('superadmin', 'admin', 'manager', 'staff'), ctrl.list);
 router.get('/:id',         requireRole('superadmin', 'admin', 'manager', 'staff'), ctrl.getOne);

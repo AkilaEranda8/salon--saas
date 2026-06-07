@@ -75,7 +75,7 @@ class _ExpensesPageState extends State<ExpensesPage> {
       ]);
       if (mounted) {
         setState(() {
-          _expenses = results[0] as List<Map<String, dynamic>>;
+          _expenses = results[0];
           _branches = results[1] as List<Map<String, String>>;
         });
       }

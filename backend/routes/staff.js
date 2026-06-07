@@ -9,6 +9,7 @@ router.use(verifyToken, branchAccess);
 
 router.get('/',                         ctrl.list);
 router.get('/commission',               ctrl.commissionSummary);
+router.get('/me/commission',            ctrl.myCommission);
 router.get('/:id',                      ctrl.getOne);
 router.post('/',                        requireRole('superadmin', 'admin', 'manager'), checkLimit('staff'), ctrl.create);
 router.put('/:id',                      requireRole('superadmin', 'admin', 'manager'), ctrl.update);

@@ -221,6 +221,7 @@ const create = async (req, res) => {
     }
 
     await replaceStaffSpecializations(staff.id, specItems);
+    await syncLinkedUserBranch(staff, tenantId);
 
     const created = await Staff.findOne({
       where: { id: staff.id },
@@ -303,6 +304,8 @@ const update = async (req, res) => {
       ],
     });
 
+    await syncLinkedUserBranch(refreshedStaff || staff, resolveTenantId(req));
+
     return res.json(refreshed || staff);
   } catch (err) {
     return res.status(500).json({ message: 'Server error.' });
@@ -321,8 +324,42 @@ const remove = async (req, res) => {
   }
 };
 
+async function syncLinkedUserBranch(staff, tenantId) {
+  if (!staff?.user_id || !staff?.branch_id) return;
+  await User.update(
+    { branch_id: staff.branch_id },
+    { where: { id: staff.user_id, ...(tenantId != null ? { tenant_id: tenantId } : {}) } },
+  );
+}
+
+async function linkedStaffIdForUser(req) {
+  if (!req.user?.id) return null;
+  const staff = await Staff.findOne({
+    where: { user_id: req.user.id, ...tenantWhere(req) },
+    attributes: ['id'],
+  });
+  return staff?.id ?? null;
+}
+
+const myCommission = async (req, res) => {
+  try {
+    const staffId = await linkedStaffIdForUser(req);
+    if (!staffId) {
+      return res.status(404).json({ message: 'No staff profile linked to your account.' });
+    }
+    req.params.id = String(staffId);
+    return commissionReport(req, res);
+  } catch (err) {
+    return res.status(500).json({ message: 'Server error.' });
+  }
+};
+
 const commissionSummary = async (req, res) => {
   try {
+    const role = (req.user?.role || '').toLowerCase();
+    if (role === 'staff') {
+      return res.status(403).json({ message: 'Not authorized to view all staff commission.' });
+    }
     const { month, year, branchId } = req.query;
     const staffWhere = tenantWhere(req);
     if (req.userBranchId) staffWhere.branch_id = req.userBranchId;
@@ -440,6 +477,13 @@ const commissionSummary = async (req, res) => {
 
 const commissionReport = async (req, res) => {
   try {
+    const role = (req.user?.role || '').toLowerCase();
+    if (role === 'staff') {
+      const ownId = await linkedStaffIdForUser(req);
+      if (!ownId || String(ownId) !== String(req.params.id)) {
+        return res.status(403).json({ message: 'You can only view your own commission.' });
+      }
+    }
     const where = { staff_id: req.params.id, ...tenantWhere(req) };
     if (req.query.month) {
       const [year, month] = req.query.month.split('-');
@@ -503,6 +547,7 @@ const commissionReport = async (req, res) => {
       netCommission: netPayable,
       totalPaid,
       balanceDue: Math.max(0, netPayable - totalPaid),
+      staff: staffRecord ? { id: staffRecord.id, name: staffRecord.name } : null,
       data: payments,
     });
   } catch (err) {
@@ -541,4 +586,4 @@ const setSpecializations = async (req, res) => {
   }
 };
 
-module.exports = { list, getOne, create, update, remove, commissionSummary, commissionReport, setSpecializations };
+module.exports = { list, getOne, create, update, remove, myCommission, commissionSummary, commissionReport, setSpecializations };

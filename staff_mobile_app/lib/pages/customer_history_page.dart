@@ -62,16 +62,18 @@ class _CustomerHistoryPageState extends State<CustomerHistoryPage> {
       final token = app.currentUser?.authToken ?? '';
       final results = await Future.wait([
         app.api.fetchCustomerDetail(token: token, customerId: widget.customer.id),
-        app.api.fetchPayments(token: token, customerId: '${widget.customer.id}', limit: 50)
+        app.api.fetchPayments(token: token, customerId: widget.customer.id, limit: 50)
             .then((list) => list.map((p) => {
               'id': p.id, 'date': p.date, 'total_amount': p.totalAmount,
               'service': {'name': p.serviceName}, 'staff': {'name': p.staffName},
             }).toList()),
       ]);
-      if (mounted) setState(() {
-        _detail   = results[0] as Map<String, dynamic>;
-        _payments = (results[1] as List).cast<Map<String, dynamic>>();
-      });
+      if (mounted) {
+        setState(() {
+          _detail   = results[0] as Map<String, dynamic>;
+          _payments = (results[1] as List).cast<Map<String, dynamic>>();
+        });
+      }
     } catch (e) {
       if (mounted) setState(() => _error = e.toString().replaceFirst('Exception: ', ''));
     }

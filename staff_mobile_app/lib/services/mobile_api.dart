@@ -33,6 +33,7 @@ class MyCommissionResult {
     required this.netCommission,
     required this.totalPaid,
     required this.balanceDue,
+    this.staffId,
     this.staffName,
   });
 
@@ -42,6 +43,7 @@ class MyCommissionResult {
   final double totalPaid;
   final double balanceDue;
   final List<CommissionRecord> records;
+  final String? staffId;
   final String? staffName;
 }
 
@@ -675,6 +677,8 @@ class MobileApi {
     final totalAdv  = advRaw  is num ? advRaw.toDouble()  : double.tryParse('$advRaw')  ?? 0;
     final netComm   = netRaw  is num ? netRaw.toDouble()  : double.tryParse('$netRaw')  ?? (totalComm - totalAdv).clamp(0, double.infinity);
     final tPaid     = paidRaw is num ? paidRaw.toDouble() : double.tryParse('$paidRaw') ?? 0;
+    final staffIdRaw = '${staffMap['id'] ?? ''}'.trim();
+    final staffNameRaw = '${staffMap['name'] ?? ''}'.trim();
     return MyCommissionResult(
       total:         totalComm,
       totalAdvances: totalAdv,
@@ -682,7 +686,8 @@ class MobileApi {
       totalPaid:     tPaid,
       balanceDue:    balRaw is num ? balRaw.toDouble() : double.tryParse('$balRaw') ?? (netComm - tPaid).clamp(0, double.infinity),
       records:       records,
-      staffName: '${staffMap['name'] ?? ''}'.trim().isEmpty ? null : '${staffMap['name']}',
+      staffId:   staffIdRaw.isEmpty ? null : staffIdRaw,
+      staffName: staffNameRaw.isEmpty ? null : staffNameRaw,
     );
   }
 
@@ -764,6 +769,8 @@ class MobileApi {
     final totalAdv2  = advRaw2  is num ? advRaw2.toDouble()  : double.tryParse('$advRaw2')  ?? 0;
     final netComm2   = netRaw2  is num ? netRaw2.toDouble()  : double.tryParse('$netRaw2')  ?? (totalComm2 - totalAdv2).clamp(0, double.infinity);
     final tPaid2     = paidRaw2 is num ? paidRaw2.toDouble() : double.tryParse('$paidRaw2') ?? 0;
+    final staffIdRaw2 = '${staffMap['id'] ?? staffId}'.trim();
+    final staffNameRaw2 = '${staffMap['name'] ?? ''}'.trim();
     return MyCommissionResult(
       total:         totalComm2,
       totalAdvances: totalAdv2,
@@ -771,7 +778,8 @@ class MobileApi {
       totalPaid:     tPaid2,
       balanceDue:    balRaw2 is num ? balRaw2.toDouble() : double.tryParse('$balRaw2') ?? (netComm2 - tPaid2).clamp(0, double.infinity),
       records:       records,
-      staffName: '${staffMap['name'] ?? ''}'.trim().isEmpty ? null : '${staffMap['name']}',
+      staffId:   staffIdRaw2.isEmpty ? null : staffIdRaw2,
+      staffName: staffNameRaw2.isEmpty ? null : staffNameRaw2,
     );
   }
 

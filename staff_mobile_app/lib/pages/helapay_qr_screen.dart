@@ -139,7 +139,7 @@ class _HelaPayQRScreenState extends State<HelaPayQRScreen> {
               child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
             );
           },
-          errorBuilder: (_, __, ___) => const SizedBox(
+          errorBuilder: (_, _, _) => const SizedBox(
             width: 220, height: 220,
             child: Center(
               child: Text('QR load failed\nCheck internet',

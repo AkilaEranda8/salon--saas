@@ -11,7 +11,17 @@ const getBranchWhere = (req) => {
 const list = async (req, res) => {
   try {
     const where = getBranchWhere(req);
-    if (req.query.staffId) where.staff_id = req.query.staffId;
+    const role = (req.user?.role || '').toLowerCase();
+    if (role === 'staff') {
+      const staff = await Staff.findOne({
+        where: { user_id: req.user.id, ...tenantWhere(req) },
+        attributes: ['id'],
+      });
+      if (!staff) return res.json({ data: [], total: 0 });
+      where.staff_id = staff.id;
+    } else if (req.query.staffId) {
+      where.staff_id = req.query.staffId;
+    }
     if (req.query.month)   where.month    = req.query.month;
 
     const rows = await CommissionPayout.findAll({

@@ -75,7 +75,7 @@ class _DashboardPageState extends State<DashboardPage>
       await Future.wait([
         if (s.isFeatureEnabled(MobileFeatures.appointments) && s.hasPermission(StaffPermission.canViewAppointments)) s.loadAppointments(),
         if (s.isFeatureEnabled(MobileFeatures.customers) && s.hasPermission(StaffPermission.canViewCustomers))    s.loadCustomers(),
-        s.loadServices(),
+        if (s.isFeatureEnabled(MobileFeatures.services)) s.loadServices(),
       ]);
     } catch (_) {
       if (mounted) setState(() => _error = 'Could not load data — check your connection.');
@@ -96,13 +96,6 @@ class _DashboardPageState extends State<DashboardPage>
 
   void _go(Widget page) =>
       Navigator.of(context).push(MaterialPageRoute(builder: (_) => page));
-
-  void _noPerm() => ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-    content: const Text('No permission for this section'),
-    backgroundColor: _g900,
-    behavior: SnackBarBehavior.floating,
-    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-  ));
 
   static String _greeting() {
     final h = DateTime.now().hour;
@@ -150,28 +143,8 @@ class _DashboardPageState extends State<DashboardPage>
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
 
-                    // ── Stats 2×2 ─────────────────────────────────────────────
-                    _statRow([
-                      _StatData('Appointments', '${s.appointments.length}',
-                          Icons.event_rounded, _g900, _g100,
-                          onTap: s.hasPermission(StaffPermission.canViewAppointments)
-                              ? () => _go(const AppointmentsPage()) : null),
-                      _StatData('Customers', '${s.customers.length}',
-                          Icons.people_alt_rounded,
-                          const Color(0xFF2563EB), const Color(0xFFDBEAFE),
-                          onTap: s.hasPermission(StaffPermission.canViewCustomers)
-                              ? () => _go(const CustomersPage()) : null),
-                    ]),
-                    const SizedBox(height: 10),
-                    _statRow([
-                      _StatData('Services', '${s.services.length}',
-                          Icons.content_cut_rounded,
-                          const Color(0xFF7C3AED), const Color(0xFFEDE9FE)),
-                      _StatData('My Role',
-                          (user?.role ?? 'staff').toUpperCase(),
-                          Icons.shield_rounded, _gold,
-                          const Color(0xFFFEF3C7)),
-                    ]),
+                    // ── Stats (hidden when feature disabled) ──────────────────
+                    ..._buildStatSections(s, user),
                     const SizedBox(height: 24),
 
                     // ── Quick Actions ─────────────────────────────────────────
@@ -180,17 +153,18 @@ class _DashboardPageState extends State<DashboardPage>
                     _buildActions(s),
                     const SizedBox(height: 24),
 
-                    // ── Recent Appointments ───────────────────────────────────
-                    Row(children: [
-                      const Expanded(child: _SectionLabel(text: 'Recent Appointments')),
-                      _TextChip(
-                        label: 'See all',
-                        onTap: s.hasPermission(StaffPermission.canViewAppointments)
-                            ? () => _go(const AppointmentsPage()) : null,
-                      ),
-                    ]),
-                    const SizedBox(height: 12),
-                    _recentSection(s),
+                    if (s.isFeatureEnabled(MobileFeatures.appointments)
+                        && s.hasPermission(StaffPermission.canViewAppointments)) ...[
+                      Row(children: [
+                        const Expanded(child: _SectionLabel(text: 'Recent Appointments')),
+                        _TextChip(
+                          label: 'See all',
+                          onTap: () => _go(const AppointmentsPage()),
+                        ),
+                      ]),
+                      const SizedBox(height: 12),
+                      _recentSection(s),
+                    ],
 
                     if (_error != null) ...[
                       const SizedBox(height: 14),
@@ -214,6 +188,47 @@ class _DashboardPageState extends State<DashboardPage>
         .expand((w) => [w, const SizedBox(width: 10)])
         .toList()..removeLast(),
   );
+
+  List<Widget> _buildStatSections(AppState s, StaffUser? user) {
+    final stats = <_StatData>[
+      if (s.isFeatureEnabled(MobileFeatures.appointments)
+          && s.hasPermission(StaffPermission.canViewAppointments))
+        _StatData('Appointments', '${s.appointments.length}',
+            Icons.event_rounded, _g900, _g100,
+            onTap: () => _go(const AppointmentsPage())),
+      if (s.isFeatureEnabled(MobileFeatures.customers)
+          && s.hasPermission(StaffPermission.canViewCustomers))
+        _StatData('Customers', '${s.customers.length}',
+            Icons.people_alt_rounded,
+            const Color(0xFF2563EB), const Color(0xFFDBEAFE),
+            onTap: () => _go(const CustomersPage())),
+      if (s.isFeatureEnabled(MobileFeatures.services))
+        _StatData('Services', '${s.services.length}',
+            Icons.content_cut_rounded,
+            const Color(0xFF7C3AED), const Color(0xFFEDE9FE)),
+      _StatData('My Role',
+          (user?.role ?? 'staff').toUpperCase(),
+          Icons.shield_rounded, _gold,
+          const Color(0xFFFEF3C7)),
+    ];
+    if (stats.isEmpty) return const [];
+
+    const cols = 2;
+    final rows = <Widget>[];
+    for (int i = 0; i < stats.length; i += cols) {
+      final rowItems = stats.sublist(i, (i + cols).clamp(0, stats.length));
+      if (rowItems.length == 1) {
+        rows.add(Row(children: [
+          Expanded(child: _StatCard(data: rowItems[0])),
+          const Expanded(child: SizedBox()),
+        ]));
+      } else {
+        rows.add(_statRow(rowItems));
+      }
+      if (i + cols < stats.length) rows.add(const SizedBox(height: 10));
+    }
+    return rows;
+  }
 
   Widget _buildActions(AppState s) {
     final items = [
@@ -265,9 +280,16 @@ class _DashboardPageState extends State<DashboardPage>
           [const Color(0xFF374151), const Color(0xFF9CA3AF)],
           const PermissionsPage(),
           ok: s.isFeatureEnabled(MobileFeatures.userPermissions) && s.hasPermission(StaffPermission.canManagePermissions)),
-    ];
+    ].where((item) => item.ok).toList();
 
-    // 3-column grid
+    if (items.isEmpty) {
+      return _HintCard(
+        icon: Icons.dashboard_customize_rounded,
+        text: 'No quick actions are enabled for your account.',
+      );
+    }
+
+    // 3-column grid — only enabled features
     const cols = 3;
     const gap  = 10.0;
     final rows = <Widget>[];
@@ -280,9 +302,7 @@ class _DashboardPageState extends State<DashboardPage>
               Expanded(
                 child: _NavTile(
                   data: rowItems[j],
-                  onTap: rowItems[j].ok
-                      ? () => _go(rowItems[j].page)
-                      : _noPerm,
+                  onTap: () => _go(rowItems[j].page),
                 ),
               )
             else
@@ -297,10 +317,6 @@ class _DashboardPageState extends State<DashboardPage>
   }
 
   Widget _recentSection(AppState s) {
-    if (!s.hasPermission(StaffPermission.canViewAppointments)) {
-      return _HintCard(icon: Icons.lock_outline_rounded,
-          text: 'No permission to view appointments.');
-    }
     if (_loadFuture != null) {
       return FutureBuilder<void>(
         future: _loadFuture,
@@ -680,9 +696,8 @@ class _NavTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final enabled = data.ok;
-    final c0 = enabled ? data.colors[0] : const Color(0xFFCBD5E1);
-    final c1 = enabled ? data.colors[1] : const Color(0xFFE2E8F0);
+    final c0 = data.colors[0];
+    final c1 = data.colors[1];
 
     return GestureDetector(
       onTap: onTap,
@@ -696,50 +711,46 @@ class _NavTile extends StatelessWidget {
             end: Alignment.bottomRight,
             colors: [c0, c1],
           ),
-          boxShadow: enabled
-              ? [BoxShadow(color: c1.withValues(alpha: 0.38),
-                    blurRadius: 12, offset: const Offset(0, 5))]
-              : const [BoxShadow(color: Color(0x10000000),
-                    blurRadius: 4, offset: Offset(0, 2))],
+          boxShadow: [
+            BoxShadow(
+              color: c1.withValues(alpha: 0.38),
+              blurRadius: 12,
+              offset: const Offset(0, 5),
+            ),
+          ],
         ),
         child: Stack(children: [
-          // Orb
-          if (enabled) Positioned(
+          Positioned(
             top: -16, right: -16,
             child: _Blob(56, Colors.white.withValues(alpha: 0.10)),
           ),
-          // Content
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 13, 10, 11),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                // Icon
                 Container(
                   width: 36, height: 36,
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(10),
-                    color: Colors.white.withValues(alpha: enabled ? 0.18 : 0.28),
+                    color: Colors.white.withValues(alpha: 0.18),
                   ),
-                  child: Icon(data.icon,
-                    color: Colors.white.withValues(alpha: enabled ? 1.0 : 0.50),
-                    size: 19),
+                  child: Icon(data.icon, color: Colors.white, size: 19),
                 ),
-                // Label row
                 Row(children: [
                   Expanded(
                     child: Text(data.label,
                       maxLines: 1, overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: Colors.white.withValues(alpha: enabled ? 0.95 : 0.45),
+                      style: const TextStyle(
+                        color: Color(0xF2FFFFFF),
                         fontSize: 11.5,
                         fontWeight: FontWeight.w700,
                       )),
                   ),
                   Icon(
-                    enabled ? Icons.arrow_forward_rounded : Icons.lock_outline_rounded,
-                    color: Colors.white.withValues(alpha: enabled ? 0.50 : 0.35),
+                    Icons.arrow_forward_rounded,
+                    color: Colors.white.withValues(alpha: 0.50),
                     size: 12,
                   ),
                 ]),

@@ -240,11 +240,25 @@ const getMe = async (req, res) => {
     }
     // KC token may not carry db_user_id (e.g. platform_admin) — fall back to username
     if (!user && req.user?.username) {
+      const raw = `${req.user.username}`.trim();
+      const tenantScope = req.user.tenantId != null
+        ? { tenant_id: req.user.tenantId }
+        : {};
       user = await User.findOne({
-        where:      { username: req.user.username, is_active: true },
+        where:      { username: raw, is_active: true, ...tenantScope },
         attributes: exclude,
         include,
       });
+      if (!user && raw.includes('__')) {
+        const short = raw.split('__').pop();
+        if (short) {
+          user = await User.findOne({
+            where:      { username: short, is_active: true, ...tenantScope },
+            attributes: exclude,
+            include,
+          });
+        }
+      }
     }
 
     if (!user) {

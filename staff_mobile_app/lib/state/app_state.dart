@@ -276,6 +276,8 @@ class AppState extends ChangeNotifier {
         staffBranchMap['id'] ??
         prev?.branchId;
     final branchId = '${rawBranchId ?? ''}'.trim();
+    final rawStaffId = staffProfile['id'] ?? prev?.linkedStaffId;
+    final linkedStaffId = '${rawStaffId ?? ''}'.trim();
     return StaffUser(
       id: '${user['id'] ?? prev?.id ?? ''}',
       username: '${user['username'] ?? prev?.username ?? ''}',
@@ -284,6 +286,9 @@ class AppState extends ChangeNotifier {
       isActive: true,
       role: role,
       branchId: (branchId.isEmpty || branchId.toLowerCase() == 'null') ? null : branchId,
+      linkedStaffId: (linkedStaffId.isEmpty || linkedStaffId.toLowerCase() == 'null')
+          ? null
+          : linkedStaffId,
       authToken: token,
       permissions: _permissionsFromRole(role),
       mobileFeatures: MobileFeatures.parseMap(user['mobile_features']),
@@ -546,6 +551,10 @@ class AppState extends ChangeNotifier {
     final token = _currentUser?.authToken;
     if (token == null || token.isEmpty) {
       throw Exception('Missing auth token (cannot load commission).');
+    }
+    final staffId = _currentUser?.linkedStaffId?.trim() ?? '';
+    if (staffId.isNotEmpty) {
+      return loadStaffCommissionReport(staffId: staffId, month: month);
     }
     return _api.fetchMyCommission(token: token, month: month);
   }

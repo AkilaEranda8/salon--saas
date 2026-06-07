@@ -332,13 +332,10 @@ async function syncLinkedUserBranch(staff, tenantId) {
   );
 }
 
+const { linkedStaffIdForRequest } = require('../utils/resolveUserBranch');
+
 async function linkedStaffIdForUser(req) {
-  if (!req.user?.id) return null;
-  const staff = await Staff.findOne({
-    where: { user_id: req.user.id, ...tenantWhere(req) },
-    attributes: ['id'],
-  });
-  return staff?.id ?? null;
+  return linkedStaffIdForRequest(req);
 }
 
 const myCommission = async (req, res) => {

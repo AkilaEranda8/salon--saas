@@ -13,7 +13,7 @@
  * Must be used AFTER verifyToken.
  */
 const { jwtBranchIds } = require('../utils/branchScope');
-const { primaryBranchIdFromStaffUser } = require('../utils/resolveUserBranch');
+const { primaryBranchIdForRequest } = require('../utils/resolveUserBranch');
 
 const branchAccess = async (req, res, next) => {
   try {
@@ -33,7 +33,7 @@ const branchAccess = async (req, res, next) => {
     if (role === 'manager' || role === 'staff') {
       let ids = jwtBranchIds(req.user);
       if (!ids.length) {
-        const fromStaff = await primaryBranchIdFromStaffUser(req.user, req.userTenantId);
+        const fromStaff = await primaryBranchIdForRequest(req);
         if (fromStaff != null) ids = [fromStaff];
       }
       req.userBranchIds = ids;

@@ -18,6 +18,7 @@ class StaffUser {
     Map<String, bool>? mobileFeatures,
     this.role = 'staff',
     this.branchId,
+    this.linkedStaffId,
     this.authToken,
   })  : permissions = Set<StaffPermission>.from(permissions),
         mobileFeatures = Map<String, bool>.from(mobileFeatures ?? const {});
@@ -31,5 +32,7 @@ class StaffUser {
   final Map<String, bool> mobileFeatures;
   final String role;
   final String? branchId;
+  /// Staff table id from GET /api/auth/me → staffProfile (for commission, etc.).
+  final String? linkedStaffId;
   final String? authToken;
 }

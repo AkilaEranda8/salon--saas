@@ -262,6 +262,8 @@ class _CommissionPageState extends State<CommissionPage> {
 
   bool get _isEmptyState {
     if (_teamMode && _selectedStaffId == null) return _summaries.isEmpty;
+    final hasTotals = _total > 0 || _netCommission > 0 || _totalPaid > 0;
+    if (hasTotals || _payouts.isNotEmpty) return false;
     if (_teamMode && _selectedStaffId != null) return _rows.isEmpty;
     return _rows.isEmpty;
   }

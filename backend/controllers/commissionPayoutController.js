@@ -13,12 +13,10 @@ const list = async (req, res) => {
     const where = getBranchWhere(req);
     const role = (req.user?.role || '').toLowerCase();
     if (role === 'staff') {
-      const staff = await Staff.findOne({
-        where: { user_id: req.user.id, ...tenantWhere(req) },
-        attributes: ['id'],
-      });
-      if (!staff) return res.json({ data: [], total: 0 });
-      where.staff_id = staff.id;
+      const { linkedStaffIdForRequest } = require('../utils/resolveUserBranch');
+      const staffId = await linkedStaffIdForRequest(req);
+      if (!staffId) return res.json({ data: [], total: 0 });
+      where.staff_id = staffId;
     } else if (req.query.staffId) {
       where.staff_id = req.query.staffId;
     }

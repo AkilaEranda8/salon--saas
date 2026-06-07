@@ -111,20 +111,28 @@ export default function StaffPage() {
 
   const handleSave = async () => {
     if (!form.name || !form.branch_ids?.length) return setFormErr('Name and at least one branch are required');
+    if (form.salary_type !== 'salary_only' && specs.length > 0
+        && (form.commission_value === '' || form.commission_value == null)) {
+      return setFormErr('Set a commission rate for the selected services.');
+    }
     setSaving(true);
     try {
       const payload = {
-        ...form,
+        name: form.name,
+        phone: form.phone || '',
+        email: form.email || '',
+        role_title: form.role_title || '',
         branch_ids: form.branch_ids.map((x) => Number(x)).filter((n) => Number.isFinite(n)),
-        specializations: specs.map((service_id) => ({
-          service_id,
-          commission_type: form.commission_type || 'percentage',
-          commission_value: form.commission_value !== '' && form.commission_value != null
-            ? parseFloat(form.commission_value)
-            : null,
-        })),
+        commission_type: form.commission_type || 'percentage',
+        commission_value: form.commission_value !== '' && form.commission_value != null
+          ? parseFloat(form.commission_value)
+          : 0,
+        salary_type: form.salary_type || 'commission_only',
+        base_salary: form.base_salary !== '' && form.base_salary != null ? parseFloat(form.base_salary) : 0,
+        join_date: form.join_date || null,
+        is_active: form.is_active !== false,
+        service_ids: specs.map((id) => Number(id)).filter((n) => Number.isFinite(n)),
       };
-      delete payload.branch_id;
       const saved = editItem ? await api.put(`/staff/${editItem.id}`, payload) : await api.post('/staff', payload);
       const staffId = editItem?.id || saved?.data?.id;
       if (staffId && removePhoto) {

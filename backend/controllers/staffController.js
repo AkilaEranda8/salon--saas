@@ -12,6 +12,43 @@ function buildSpecRows(staffId, rawSpecs, staffDefaults) {
   }));
 }
 
+function parseStaffCommission(body = {}) {
+  const salary_type = ['commission_only', 'salary_only', 'salary_plus_commission'].includes(body.salary_type)
+    ? body.salary_type
+    : 'commission_only';
+  const commission_type = ['percentage', 'fixed'].includes(body.commission_type)
+    ? body.commission_type
+    : 'percentage';
+  const raw = body.commission_value;
+  const commission_value = raw !== '' && raw != null && !Number.isNaN(parseFloat(raw))
+    ? parseFloat(raw)
+    : 0;
+  const rawSalary = body.base_salary;
+  const base_salary = rawSalary !== '' && rawSalary != null && !Number.isNaN(parseFloat(rawSalary))
+    ? parseFloat(rawSalary)
+    : 0;
+  return { salary_type, commission_type, commission_value, base_salary };
+}
+
+function extractServiceIds(body = {}) {
+  if (Array.isArray(body.service_ids) && body.service_ids.length) {
+    return [...new Set(body.service_ids.map(Number).filter((id) => id > 0))];
+  }
+  if (!Array.isArray(body.specializations)) return [];
+  return [...new Set(
+    body.specializations
+      .map((item) => (item != null && typeof item === 'object' ? Number(item.service_id) : Number(item)))
+      .filter((id) => id > 0),
+  )];
+}
+
+async function replaceStaffSpecializations(staffId, serviceIds, staffDefaults) {
+  await StaffSpecialization.destroy({ where: { staff_id: staffId } });
+  if (!serviceIds.length) return;
+  const specs = buildSpecRows(staffId, serviceIds, staffDefaults);
+  if (specs.length) await StaffSpecialization.bulkCreate(specs, { ignoreDuplicates: true });
+}
+
 // Helper: resolve branch filter from role
 const getBranchWhere = (req) => {
   const where = tenantWhere(req);
@@ -87,7 +124,7 @@ const getOne = async (req, res) => {
 
 const create = async (req, res) => {
   try {
-    const { name, phone, email, role_title, commission_type, commission_value, salary_type, base_salary, join_date, user_id, specializations } = req.body;
+    const { name, phone, email, role_title, join_date, user_id } = req.body;
     // Accept branch_ids (array from frontend) or fallback to branch_id (single)
     const branchIds = (req.body.branch_ids || []).map(Number).filter(Boolean);
     const branch_id = branchIds[0] || Number(req.body.branch_id) || null;
@@ -96,11 +133,28 @@ const create = async (req, res) => {
       return res.status(400).json({ message: 'Name and branch are required.' });
     }
 
+    const { salary_type, commission_type, commission_value, base_salary } = parseStaffCommission(req.body);
+    const serviceIds = extractServiceIds(req.body);
+
+    if (salary_type !== 'salary_only' && serviceIds.length && commission_value <= 0) {
+      return res.status(400).json({ message: 'Commission rate is required when services are selected.' });
+    }
+
     const tenantId = resolveTenantId(req);
-    const commVal  = commission_value !== '' && commission_value != null ? parseFloat(commission_value) : null;
-    const basesal  = base_salary !== '' && base_salary != null ? parseFloat(base_salary) : 0;
-    const salType  = ['commission_only', 'salary_only', 'salary_plus_commission'].includes(salary_type) ? salary_type : 'commission_only';
-    const staff = await Staff.create({ name, phone, email: email || null, role_title, branch_id, commission_type, commission_value: commVal, salary_type: salType, base_salary: basesal, join_date, user_id: user_id || null, tenant_id: tenantId });
+    const staff = await Staff.create({
+      name,
+      phone,
+      email: email || null,
+      role_title,
+      branch_id,
+      commission_type,
+      commission_value,
+      salary_type,
+      base_salary,
+      join_date,
+      user_id: user_id || null,
+      tenant_id: tenantId,
+    });
 
     // Save all branch associations
     if (branchIds.length) {
@@ -110,15 +164,23 @@ const create = async (req, res) => {
       );
     }
 
-    if (Array.isArray(specializations) && specializations.length) {
-      const specs = buildSpecRows(staff.id, specializations, {
-        commission_type,
-        commission_value: commVal,
-      });
-      if (specs.length) await StaffSpecialization.bulkCreate(specs, { ignoreDuplicates: true });
-    }
+    await replaceStaffSpecializations(staff.id, serviceIds, {
+      commission_type,
+      commission_value,
+    });
 
-    return res.status(201).json(staff);
+    const created = await Staff.findOne({
+      where: { id: staff.id },
+      include: [
+        {
+          model: StaffSpecialization,
+          as: 'specializations',
+          include: [{ model: Service, as: 'service', attributes: ['id', 'name', 'category'] }],
+        },
+      ],
+    });
+
+    return res.status(201).json(created || staff);
   } catch (err) {
     console.error('Staff create error:', err);
     return res.status(500).json({ message: err.message || 'Server error.' });
@@ -140,15 +202,12 @@ const update = async (req, res) => {
     for (const field of allowed) {
       if (req.body[field] !== undefined) updates[field] = req.body[field];
     }
-    if ('commission_value' in updates) {
-      updates.commission_value = updates.commission_value !== '' && updates.commission_value != null ? parseFloat(updates.commission_value) : null;
-    }
-    if ('base_salary' in updates) {
-      updates.base_salary = updates.base_salary !== '' && updates.base_salary != null ? parseFloat(updates.base_salary) : 0;
-    }
-    if ('salary_type' in updates) {
-      const valid = ['commission_only', 'salary_only', 'salary_plus_commission'];
-      if (!valid.includes(updates.salary_type)) updates.salary_type = 'commission_only';
+    if ('commission_type' in updates || 'commission_value' in updates || 'salary_type' in updates || 'base_salary' in updates) {
+      const parsed = parseStaffCommission({ ...staff.toJSON(), ...req.body, ...updates });
+      updates.commission_type = parsed.commission_type;
+      updates.commission_value = parsed.commission_value;
+      updates.salary_type = parsed.salary_type;
+      updates.base_salary = parsed.base_salary;
     }
 
     // Handle branch_ids array or single branch_id
@@ -170,27 +229,41 @@ const update = async (req, res) => {
       );
     }
 
-    // Replace specializations if provided
-    if (Array.isArray(req.body.specializations)) {
-      await StaffSpecialization.destroy({ where: { staff_id: staff.id } });
-      const specDefaults = {
-        commission_type: updates.commission_type ?? staff.commission_type,
-        commission_value: 'commission_value' in updates ? updates.commission_value : staff.commission_value,
-      };
-      const specs = buildSpecRows(staff.id, req.body.specializations, specDefaults);
-      if (specs.length) await StaffSpecialization.bulkCreate(specs, { ignoreDuplicates: true });
+    const specDefaults = {
+      commission_type: updates.commission_type ?? staff.commission_type,
+      commission_value: 'commission_value' in updates ? updates.commission_value : staff.commission_value,
+    };
+    const effectiveSalaryType = updates.salary_type ?? staff.salary_type;
+    const hasServicePayload = Array.isArray(req.body.specializations) || Array.isArray(req.body.service_ids);
+
+    if (hasServicePayload) {
+      const serviceIds = extractServiceIds(req.body);
+      if (effectiveSalaryType !== 'salary_only' && serviceIds.length && (specDefaults.commission_value == null || specDefaults.commission_value <= 0)) {
+        return res.status(400).json({ message: 'Commission rate is required when services are selected.' });
+      }
+      await replaceStaffSpecializations(staff.id, serviceIds, specDefaults);
     } else if ('commission_type' in updates || 'commission_value' in updates) {
-      // Keep per-service rows in sync when only the staff-level rate changes.
       await StaffSpecialization.update(
         {
-          commission_type: updates.commission_type ?? staff.commission_type,
-          commission_value: 'commission_value' in updates ? updates.commission_value : staff.commission_value,
+          commission_type: specDefaults.commission_type,
+          commission_value: specDefaults.commission_value,
         },
         { where: { staff_id: staff.id } },
       );
     }
 
-    return res.json(staff);
+    const refreshed = await Staff.findOne({
+      where: { id: staff.id },
+      include: [
+        {
+          model: StaffSpecialization,
+          as: 'specializations',
+          include: [{ model: Service, as: 'service', attributes: ['id', 'name', 'category'] }],
+        },
+      ],
+    });
+
+    return res.json(refreshed || staff);
   } catch (err) {
     return res.status(500).json({ message: 'Server error.' });
   }

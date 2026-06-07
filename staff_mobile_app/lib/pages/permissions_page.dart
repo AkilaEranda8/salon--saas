@@ -107,6 +107,32 @@ class _PermissionsPageState extends State<PermissionsPage> {
     ));
   }
 
+  Future<void> _showRoleDefaultsEditor() async {
+    final app = AppStateScope.of(context);
+    if (app.currentUser?.role != 'superadmin') {
+      _showSnack('Only superadmin can edit default access.');
+      return;
+    }
+    try {
+      final data = await app.loadMobileRoleDefaults();
+      if (!mounted) return;
+      final effective = data['effective'] as Map? ?? {};
+      final initial = <String, Map<String, bool>>{};
+      for (final role in ['admin', 'manager', 'staff']) {
+        initial[role] = MobileFeatures.parseMap(effective[role]);
+      }
+      final saved = await showModalBottomSheet<bool>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (_) => _RoleDefaultsSheet(initialDefaults: initial),
+      );
+      if (saved == true) await _load();
+    } catch (e) {
+      _showSnack(e.toString().replaceFirst('Exception: ', ''));
+    }
+  }
+
   Future<void> _showFeatureEditor(Map<String, dynamic> user) async {
     final app = AppStateScope.of(context);
     if (app.currentUser?.role != 'superadmin') {
@@ -193,6 +219,12 @@ class _PermissionsPageState extends State<PermissionsPage> {
         title: Text(isSA ? 'Users & App Features' : 'User Permissions',
           style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700, letterSpacing: -0.3)),
         actions: [
+          if (isSA)
+            IconButton(
+              icon: const Icon(Icons.tune_rounded, size: 22),
+              tooltip: 'Default access by role',
+              onPressed: _showRoleDefaultsEditor,
+            ),
           IconButton(
             icon: const Icon(Icons.refresh_rounded, size: 22),
             onPressed: _load,
@@ -523,6 +555,164 @@ class _RolePickerSheet extends StatelessWidget {
             );
           }),
         ],
+      ),
+    );
+  }
+}
+
+// ── Role default access editor (superadmin) ───────────────────────────────────
+class _RoleDefaultsSheet extends StatefulWidget {
+  const _RoleDefaultsSheet({required this.initialDefaults});
+  final Map<String, Map<String, bool>> initialDefaults;
+
+  @override
+  State<_RoleDefaultsSheet> createState() => _RoleDefaultsSheetState();
+}
+
+class _RoleDefaultsSheetState extends State<_RoleDefaultsSheet> {
+  static const _roles = ['admin', 'manager', 'staff'];
+  late Map<String, Map<String, bool>> _defaults;
+  String _selectedRole = 'staff';
+  bool _saving = false;
+  String _error = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _defaults = {
+      for (final r in _roles)
+        r: Map<String, bool>.from(widget.initialDefaults[r] ?? {}),
+    };
+  }
+
+  Future<void> _save() async {
+    setState(() { _saving = true; _error = ''; });
+    final app = AppStateScope.of(context);
+    final ok = await app.saveMobileRoleDefaults(_defaults);
+    setState(() => _saving = false);
+    if (!mounted) return;
+    if (ok) {
+      Navigator.of(context).pop(true);
+    } else {
+      setState(() => _error = app.lastError ?? 'Save failed');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final roleFeatures = _defaults[_selectedRole] ?? {};
+    return DraggableScrollableSheet(
+      initialChildSize: 0.85,
+      minChildSize: 0.5,
+      maxChildSize: 0.95,
+      builder: (context, scrollController) => Container(
+        decoration: const BoxDecoration(
+          color: _surface,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: Column(
+          children: [
+            const SizedBox(height: 10),
+            Container(width: 40, height: 4, decoration: BoxDecoration(color: _border, borderRadius: BorderRadius.circular(99))),
+            const Padding(
+              padding: EdgeInsets.fromLTRB(20, 16, 20, 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Default Access by Role',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: _ink)),
+                  SizedBox(height: 4),
+                  Text('Set which app features are ON by default for each role. Individual users can still be customized.',
+                    style: TextStyle(fontSize: 12, color: _muted)),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Row(
+                children: _roles.map((r) {
+                  final selected = r == _selectedRole;
+                  return Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      child: GestureDetector(
+                        onTap: () => setState(() => _selectedRole = r),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          decoration: BoxDecoration(
+                            color: selected ? _roleBg(r) : _canvas,
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: selected ? _roleColor(r) : _border),
+                          ),
+                          child: Text(
+                            r[0].toUpperCase() + r.substring(1),
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: selected ? _roleColor(r) : _muted,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
+            if (_error.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Text(_error, style: const TextStyle(color: Color(0xFFDC2626), fontSize: 12)),
+              ),
+            Expanded(
+              child: ListView.builder(
+                controller: scrollController,
+                padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+                itemCount: MobileFeatures.allKeys.length,
+                itemBuilder: (_, i) {
+                  final key = MobileFeatures.allKeys[i];
+                  final enabled = roleFeatures[key] == true;
+                  return SwitchListTile(
+                    title: Text(MobileFeatures.labelFor(key),
+                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: _ink)),
+                    subtitle: Text('Default for $_selectedRole',
+                      style: const TextStyle(fontSize: 11, color: _muted)),
+                    value: enabled,
+                    activeThumbColor: _emerald,
+                    onChanged: (v) => setState(() {
+                      _defaults[_selectedRole] = {
+                        ...roleFeatures,
+                        key: v,
+                      };
+                    }),
+                  );
+                },
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+              child: Row(children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: _saving ? null : () => Navigator.of(context).pop(false),
+                    child: const Text('Cancel'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: _saving ? null : _save,
+                    style: ElevatedButton.styleFrom(backgroundColor: _emerald, foregroundColor: Colors.white),
+                    child: _saving
+                        ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                        : const Text('Save Defaults'),
+                  ),
+                ),
+              ]),
+            ),
+          ],
+        ),
       ),
     );
   }

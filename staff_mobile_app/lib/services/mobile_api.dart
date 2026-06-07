@@ -1148,6 +1148,36 @@ class MobileApi {
     return body;
   }
 
+  /// GET /api/users/mobile-features/role-defaults — tenant role default access (superadmin).
+  Future<Map<String, dynamic>> fetchMobileRoleDefaults({required String token}) async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/api/users/mobile-features/role-defaults'),
+      headers: _authHeaders(token),
+    );
+    final body = _decode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['message'] ?? 'Failed to load role defaults');
+    }
+    return body;
+  }
+
+  /// PUT /api/users/mobile-features/role-defaults — save tenant role defaults (superadmin).
+  Future<Map<String, dynamic>> updateMobileRoleDefaults({
+    required String token,
+    required Map<String, Map<String, bool>> defaults,
+  }) async {
+    final response = await http.put(
+      Uri.parse('$baseUrl/api/users/mobile-features/role-defaults'),
+      headers: _authHeaders(token),
+      body: jsonEncode({'defaults': defaults}),
+    );
+    final body = _decode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['message'] ?? 'Failed to update role defaults');
+    }
+    return body;
+  }
+
   /// PUT /api/users/:id/mobile-features — save per-user feature toggles (superadmin).
   Future<Map<String, dynamic>> updateUserMobileFeatures({
     required String token,

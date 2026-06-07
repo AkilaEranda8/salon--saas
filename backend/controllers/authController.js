@@ -244,8 +244,9 @@ const getMe = async (req, res) => {
       return res.status(404).json({ message: 'User not found.' });
     }
 
-    const { userWithMobileFeatures } = require('./userController');
-    return res.json({ user: userWithMobileFeatures(user) });
+    const { userWithMobileFeatures, loadTenantRoleDefaultsByTenantId } = require('./userController');
+    const tenantRoleDefaults = await loadTenantRoleDefaultsByTenantId(user.tenant_id);
+    return res.json({ user: userWithMobileFeatures(user, tenantRoleDefaults) });
   } catch (err) {
     console.error('getMe error:', err);
     return res.status(500).json({ message: 'Server error.' });

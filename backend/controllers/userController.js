@@ -1,23 +1,41 @@
 const bcrypt = require('bcryptjs');
 const { Op } = require('sequelize');
-const { User, Branch } = require('../models');
+const { User, Branch, Tenant } = require('../models');
 const { tenantWhere, byIdWhere, resolveTenantId } = require('../utils/tenantScope');
 const kc = require('../utils/keycloakAdmin');
 const {
   MOBILE_FEATURE_CATALOG,
+  CONFIGURABLE_ROLES,
+  getSystemRoleDefaults,
   getRoleDefaults,
+  getAllRoleDefaults,
+  parseTenantRoleDefaults,
   parseStoredOverrides,
   resolveMobileFeatures,
   computeOverrides,
   sanitizeEffectiveInput,
+  sanitizeTenantRoleDefaultsInput,
 } = require('../utils/mobileAppFeatures');
 
-function userWithMobileFeatures(user) {
+async function loadTenantRoleDefaults(req) {
+  const tenantId = resolveTenantId(req);
+  if (!tenantId) return {};
+  const tenant = await Tenant.findByPk(tenantId, { attributes: ['mobile_role_defaults'] });
+  return parseTenantRoleDefaults(tenant?.mobile_role_defaults);
+}
+
+async function loadTenantRoleDefaultsByTenantId(tenantId) {
+  if (!tenantId) return {};
+  const tenant = await Tenant.findByPk(tenantId, { attributes: ['mobile_role_defaults'] });
+  return parseTenantRoleDefaults(tenant?.mobile_role_defaults);
+}
+
+function userWithMobileFeatures(user, tenantRoleDefaults = {}) {
   const json = user.toJSON ? user.toJSON() : { ...user };
   delete json.password;
   const overrides = parseStoredOverrides(json.mobile_features);
   json.mobile_features_overrides = overrides;
-  json.mobile_features = resolveMobileFeatures(json.role, overrides);
+  json.mobile_features = resolveMobileFeatures(json.role, overrides, tenantRoleDefaults);
   return json;
 }
 
@@ -40,11 +58,12 @@ const list = async (req, res) => {
       include: [{ model: Branch, as: 'branch', attributes: ['id', 'name'] }],
     });
 
+    const tenantRoleDefaults = await loadTenantRoleDefaults(req);
     return res.json({
       total: count,
       page,
       limit,
-      data: rows.map((row) => userWithMobileFeatures(row)),
+      data: rows.map((row) => userWithMobileFeatures(row, tenantRoleDefaults)),
     });
   } catch (err) {
     console.error(err);
@@ -250,9 +269,10 @@ const getMobileFeatures = async (req, res) => {
     });
     if (!user) return res.status(404).json({ message: 'User not found.' });
 
+    const tenantRoleDefaults = await loadTenantRoleDefaults(req);
     const overrides = parseStoredOverrides(user.mobile_features);
-    const defaults = getRoleDefaults(user.role);
-    const effective = resolveMobileFeatures(user.role, overrides);
+    const defaults = getRoleDefaults(user.role, tenantRoleDefaults);
+    const effective = resolveMobileFeatures(user.role, overrides, tenantRoleDefaults);
 
     return res.json({
       userId: user.id,
@@ -282,16 +302,73 @@ const updateMobileFeatures = async (req, res) => {
       return res.status(403).json({ message: 'Superadmin always has all mobile features.' });
     }
 
-    const effective = sanitizeEffectiveInput(req.body);
-    const overrides = computeOverrides(user.role, effective);
+    const tenantRoleDefaults = await loadTenantRoleDefaults(req);
+    const effective = sanitizeEffectiveInput(req.body, user.role, tenantRoleDefaults);
+    const overrides = computeOverrides(user.role, effective, tenantRoleDefaults);
     await user.update({ mobile_features: Object.keys(overrides).length ? overrides : null });
 
     const refreshed = await User.findByPk(user.id, { attributes: { exclude: ['password'] } });
     return res.json({
       message: 'Mobile features updated.',
-      ...userWithMobileFeatures(refreshed),
-      defaults: getRoleDefaults(refreshed.role),
+      ...userWithMobileFeatures(refreshed, tenantRoleDefaults),
+      defaults: getRoleDefaults(refreshed.role, tenantRoleDefaults),
       overrides: parseStoredOverrides(refreshed.mobile_features),
+    });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+const getMobileRoleDefaults = async (req, res) => {
+  try {
+    const tenantRoleDefaults = await loadTenantRoleDefaults(req);
+    return res.json({
+      catalog: MOBILE_FEATURE_CATALOG,
+      roles: CONFIGURABLE_ROLES,
+      systemDefaults: {
+        admin: getSystemRoleDefaults('admin'),
+        manager: getSystemRoleDefaults('manager'),
+        staff: getSystemRoleDefaults('staff'),
+      },
+      tenantDefaults: tenantRoleDefaults,
+      effective: {
+        admin: getRoleDefaults('admin', tenantRoleDefaults),
+        manager: getRoleDefaults('manager', tenantRoleDefaults),
+        staff: getRoleDefaults('staff', tenantRoleDefaults),
+      },
+    });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+const updateMobileRoleDefaults = async (req, res) => {
+  try {
+    if (req.user?.role !== 'superadmin') {
+      return res.status(403).json({ message: 'Only superadmin can update role default access.' });
+    }
+    const tenantId = resolveTenantId(req);
+    if (!tenantId) return res.status(400).json({ message: 'Tenant not found.' });
+
+    const tenant = await Tenant.findByPk(tenantId);
+    if (!tenant) return res.status(404).json({ message: 'Tenant not found.' });
+
+    const next = sanitizeTenantRoleDefaultsInput(req.body);
+    await tenant.update({ mobile_role_defaults: Object.keys(next).length ? next : null });
+
+    const tenantRoleDefaults = parseTenantRoleDefaults(tenant.mobile_role_defaults);
+    return res.json({
+      message: 'Role default access updated.',
+      catalog: MOBILE_FEATURE_CATALOG,
+      roles: CONFIGURABLE_ROLES,
+      tenantDefaults: tenantRoleDefaults,
+      effective: {
+        admin: getRoleDefaults('admin', tenantRoleDefaults),
+        manager: getRoleDefaults('manager', tenantRoleDefaults),
+        staff: getRoleDefaults('staff', tenantRoleDefaults),
+      },
     });
   } catch (err) {
     console.error(err);
@@ -306,7 +383,10 @@ module.exports = {
   changePassword,
   remove,
   mobileFeaturesCatalog,
+  getMobileRoleDefaults,
+  updateMobileRoleDefaults,
   getMobileFeatures,
   updateMobileFeatures,
   userWithMobileFeatures,
+  loadTenantRoleDefaultsByTenantId,
 };

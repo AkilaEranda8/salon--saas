@@ -127,6 +127,11 @@ const Tenant = sequelize.define('Tenant', {
     type: DataTypes.STRING(500),
     allowNull: true,
   },
+  mobile_role_defaults: {
+    type: DataTypes.JSON,
+    allowNull: true,
+    comment: 'Per-role default mobile app feature access for this tenant',
+  },
 }, {
   tableName: 'tenants',
   timestamps: true,

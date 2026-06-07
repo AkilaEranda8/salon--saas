@@ -5,8 +5,10 @@ const { verifyToken, requireRole } = require('../middleware/auth');
 const router = Router();
 router.use(verifyToken);
 
-router.get('/mobile-features/catalog', requireRole('superadmin'), ctrl.mobileFeaturesCatalog);
-router.get('/:id/mobile-features',       requireRole('superadmin'), ctrl.getMobileFeatures);
+router.get('/mobile-features/catalog',       requireRole('superadmin'), ctrl.mobileFeaturesCatalog);
+router.get('/mobile-features/role-defaults', requireRole('superadmin'), ctrl.getMobileRoleDefaults);
+router.put('/mobile-features/role-defaults', requireRole('superadmin'), ctrl.updateMobileRoleDefaults);
+router.get('/:id/mobile-features',           requireRole('superadmin'), ctrl.getMobileFeatures);
 router.put('/:id/mobile-features',     requireRole('superadmin'), ctrl.updateMobileFeatures);
 
 router.get('/',             requireRole('superadmin', 'admin'), ctrl.list);

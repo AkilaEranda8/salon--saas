@@ -1186,6 +1186,31 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  /// GET /api/users/mobile-features/role-defaults (superadmin).
+  Future<Map<String, dynamic>> loadMobileRoleDefaults() async {
+    final token = _currentUser?.authToken;
+    if (token == null || token.isEmpty) {
+      throw Exception('Missing auth token.');
+    }
+    return _api.fetchMobileRoleDefaults(token: token);
+  }
+
+  /// PUT /api/users/mobile-features/role-defaults (superadmin).
+  Future<bool> saveMobileRoleDefaults(Map<String, Map<String, bool>> defaults) async {
+    final token = _currentUser?.authToken;
+    if (token == null || token.isEmpty) {
+      _lastError = 'Missing auth token.';
+      return false;
+    }
+    try {
+      await _api.updateMobileRoleDefaults(token: token, defaults: defaults);
+      return true;
+    } catch (e) {
+      _lastError = e.toString().replaceFirst('Exception: ', '');
+      return false;
+    }
+  }
+
   /// GET /api/users/:id/mobile-features (superadmin).
   Future<Map<String, dynamic>> loadUserMobileFeatures(String userId) async {
     final token = _currentUser?.authToken;

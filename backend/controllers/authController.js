@@ -244,7 +244,8 @@ const getMe = async (req, res) => {
       return res.status(404).json({ message: 'User not found.' });
     }
 
-    return res.json({ user });
+    const { userWithMobileFeatures } = require('./userController');
+    return res.json({ user: userWithMobileFeatures(user) });
   } catch (err) {
     console.error('getMe error:', err);
     return res.status(500).json({ message: 'Server error.' });

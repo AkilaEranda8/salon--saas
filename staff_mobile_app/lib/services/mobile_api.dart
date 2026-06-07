@@ -129,7 +129,7 @@ class MobileApi {
         headers: _authHeaders(token),
         body: jsonEncode({
           'fcm_token': fcmToken,
-          if (deviceInfo != null) 'device_info': deviceInfo,
+          if (deviceInfo != null && deviceInfo.isNotEmpty) 'device_info': deviceInfo,
         }),
       );
     } catch (_) {}
@@ -1132,6 +1132,40 @@ class MobileApi {
     return body;
   }
 
+  /// GET /api/users/:id/mobile-features — effective feature map for a user (superadmin).
+  Future<Map<String, dynamic>> fetchUserMobileFeatures({
+    required String token,
+    required String userId,
+  }) async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/api/users/$userId/mobile-features'),
+      headers: _authHeaders(token),
+    );
+    final body = _decode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['message'] ?? 'Failed to load mobile features');
+    }
+    return body;
+  }
+
+  /// PUT /api/users/:id/mobile-features — save per-user feature toggles (superadmin).
+  Future<Map<String, dynamic>> updateUserMobileFeatures({
+    required String token,
+    required String userId,
+    required Map<String, bool> features,
+  }) async {
+    final response = await http.put(
+      Uri.parse('$baseUrl/api/users/$userId/mobile-features'),
+      headers: _authHeaders(token),
+      body: jsonEncode({'features': features}),
+    );
+    final body = _decode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['message'] ?? 'Failed to update mobile features');
+    }
+    return body;
+  }
+
   /// GET /api/expenses — list expenses, optionally filtered by branchId and month (YYYY-MM).
   Future<Map<String, dynamic>> fetchExpenses({
     required String token,
@@ -1173,7 +1207,7 @@ class MobileApi {
         'amount':         amount,
         'date':           date,
         if (paidTo != null && paidTo.isNotEmpty) 'paid_to': paidTo,
-        if (paymentMethod != null) 'payment_method': paymentMethod,
+        if (paymentMethod != null && paymentMethod.isNotEmpty) 'payment_method': paymentMethod,
         if (receiptNumber != null && receiptNumber.isNotEmpty) 'receipt_number': receiptNumber,
         if (notes != null && notes.isNotEmpty) 'notes': notes,
       }),
@@ -1219,17 +1253,5 @@ class MobileApi {
     } on FormatException {
       return const [];
     }
-  }
-
-  String _extractTokenFromCookie(String setCookie) {
-    if (setCookie.isEmpty) return '';
-    final parts = setCookie.split(';');
-    for (final part in parts) {
-      final chunk = part.trim();
-      if (chunk.startsWith('token=')) {
-        return chunk.substring('token='.length).trim();
-      }
-    }
-    return '';
   }
 }

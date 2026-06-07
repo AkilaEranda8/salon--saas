@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../models/appointment.dart';
 import '../models/salon_service.dart';
+import '../models/mobile_feature.dart';
 import '../models/staff_user.dart';
 import '../state/app_state.dart';
 import '../services/notification_store.dart';
@@ -72,8 +73,8 @@ class _DashboardPageState extends State<DashboardPage>
     final s = AppStateScope.of(context);
     try {
       await Future.wait([
-        if (s.hasPermission(StaffPermission.canViewAppointments)) s.loadAppointments(),
-        if (s.hasPermission(StaffPermission.canViewCustomers))    s.loadCustomers(),
+        if (s.isFeatureEnabled(MobileFeatures.appointments) && s.hasPermission(StaffPermission.canViewAppointments)) s.loadAppointments(),
+        if (s.isFeatureEnabled(MobileFeatures.customers) && s.hasPermission(StaffPermission.canViewCustomers))    s.loadCustomers(),
         s.loadServices(),
       ]);
     } catch (_) {
@@ -219,42 +220,51 @@ class _DashboardPageState extends State<DashboardPage>
       _NavData('Appointments', Icons.calendar_month_rounded,
           [const Color(0xFF1B3A2D), const Color(0xFF2D6A4F)],
           const AppointmentsPage(),
-          ok: s.hasPermission(StaffPermission.canViewAppointments)),
+          ok: s.isFeatureEnabled(MobileFeatures.appointments) && s.hasPermission(StaffPermission.canViewAppointments)),
       _NavData('Customers', Icons.people_alt_rounded,
           [const Color(0xFF1D4ED8), const Color(0xFF3B82F6)],
           const CustomersPage(),
-          ok: s.hasPermission(StaffPermission.canViewCustomers)),
+          ok: s.isFeatureEnabled(MobileFeatures.customers) && s.hasPermission(StaffPermission.canViewCustomers)),
       _NavData('Services', Icons.design_services_rounded,
           [const Color(0xFF6D28D9), const Color(0xFF8B5CF6)],
-          const ServicesPage()),
+          const ServicesPage(),
+          ok: s.isFeatureEnabled(MobileFeatures.services)),
       _NavData('Payments', Icons.payments_rounded,
           [const Color(0xFF0369A1), const Color(0xFF06B6D4)],
-          const PaymentsPage()),
+          const PaymentsPage(),
+          ok: s.isFeatureEnabled(MobileFeatures.payments)),
       _NavData('Calendar', Icons.calendar_today_rounded,
           [const Color(0xFF9D174D), const Color(0xFFEC4899)],
-          const CalendarPage()),
+          const CalendarPage(),
+          ok: s.isFeatureEnabled(MobileFeatures.calendar)),
       _NavData('Walk-in', Icons.directions_walk_rounded,
           [const Color(0xFFB45309), const Color(0xFFF59E0B)],
-          const WalkInPage()),
+          const WalkInPage(),
+          ok: s.isFeatureEnabled(MobileFeatures.walkin)),
       _NavData('Staff', Icons.badge_rounded,
           [const Color(0xFF047857), const Color(0xFF10B981)],
-          const StaffPage()),
+          const StaffPage(),
+          ok: s.isFeatureEnabled(MobileFeatures.staff)),
       _NavData('Commission', Icons.monetization_on_rounded,
           [const Color(0xFF15803D), const Color(0xFF22C55E)],
-          const CommissionPage()),
+          const CommissionPage(),
+          ok: s.isFeatureEnabled(MobileFeatures.commission)),
       _NavData('AI Chat', Icons.smart_toy_rounded,
           [const Color(0xFF6B21A8), const Color(0xFFA855F7)],
-          const AiChatPage()),
+          const AiChatPage(),
+          ok: s.isFeatureEnabled(MobileFeatures.aiChat)),
       _NavData('Reminders', Icons.notifications_active_rounded,
           [const Color(0xFFBE123C), const Color(0xFFF43F5E)],
-          const RemindersPage()),
+          const RemindersPage(),
+          ok: s.isFeatureEnabled(MobileFeatures.reminders)),
       _NavData('Expenses', Icons.receipt_long_rounded,
           [const Color(0xFFB91C1C), const Color(0xFFEF4444)],
-          const ExpensesPage()),
+          const ExpensesPage(),
+          ok: s.isFeatureEnabled(MobileFeatures.expenses)),
       _NavData('Permissions', Icons.admin_panel_settings_rounded,
           [const Color(0xFF374151), const Color(0xFF9CA3AF)],
           const PermissionsPage(),
-          ok: s.hasPermission(StaffPermission.canManagePermissions)),
+          ok: s.isFeatureEnabled(MobileFeatures.userPermissions) && s.hasPermission(StaffPermission.canManagePermissions)),
     ];
 
     // 3-column grid
@@ -375,7 +385,7 @@ class _Header extends StatelessWidget {
               // ── Bell icon with unread badge ──────────────────────────
               ValueListenableBuilder<List<AppNotification>>(
                 valueListenable: NotificationStore.instance.notifications,
-                builder: (_, list, __) {
+                builder: (_, list, _) {
                   final unread = list.where((n) => !n.isRead).length;
                   return GestureDetector(
                     onTap: onNotifications,

@@ -11,6 +11,7 @@ import '../models/payment_record.dart';
 import '../models/salon_service.dart';
 import '../models/staff_commission_summary.dart';
 import '../models/staff_member.dart';
+import '../models/mobile_feature.dart';
 import '../models/staff_user.dart';
 import '../models/walkin_entry.dart';
 import '../services/mobile_api.dart';
@@ -134,6 +135,7 @@ class AppState extends ChangeNotifier {
         branchId: (bid.isEmpty || bid.toLowerCase() == 'null') ? null : bid,
         authToken: token,
         permissions: _permissionsFromRole(role),
+        mobileFeatures: const {},
       );
       try {
         await loadStaffList();
@@ -157,27 +159,7 @@ class AppState extends ChangeNotifier {
       final body = await _api.fetchMe(token: token);
       final user = Map<String, dynamic>.from(body['user'] as Map? ?? {});
       if (user.isEmpty) return;
-      final role = '${user['role'] ?? 'staff'}';
-      final branchMap = user['branch'] is Map
-          ? Map<String, dynamic>.from(user['branch'])
-          : const <String, dynamic>{};
-      final rawBranchId =
-          user['branchId'] ?? user['branch_id'] ?? branchMap['id'];
-      final branchId = '${rawBranchId ?? ''}'.trim();
-      _currentUser = StaffUser(
-        id: '${user['id'] ?? prev.id}',
-        username: '${user['username'] ?? prev.username}',
-        password: '',
-        displayName:
-            '${user['name'] ?? user['username'] ?? prev.displayName}',
-        isActive: true,
-        role: role,
-        branchId: (branchId.isEmpty || branchId.toLowerCase() == 'null')
-            ? null
-            : branchId,
-        authToken: token,
-        permissions: _permissionsFromRole(role),
-      );
+      _currentUser = _staffUserFromApi(user, token: token, prev: prev);
       await _persistSession(_currentUser!);
     } catch (_) {
       /* keep restored session */
@@ -222,21 +204,7 @@ class AppState extends ChangeNotifier {
         return false;
       }
       final user = Map<String, dynamic>.from(body['user'] as Map? ?? {});
-      final role = '${user['role'] ?? 'staff'}';
-      final branchMap = user['branch'] is Map ? Map<String, dynamic>.from(user['branch']) : const <String, dynamic>{};
-      final rawBranchId = user['branchId'] ?? user['branch_id'] ?? branchMap['id'];
-      final branchId = '${rawBranchId ?? ''}'.trim();
-      _currentUser = StaffUser(
-        id: '${user['id'] ?? ''}',
-        username: '${user['username'] ?? username}',
-        password: '',
-        displayName: '${user['name'] ?? user['username'] ?? 'Staff'}',
-        isActive: true,
-        role: role,
-        branchId: (branchId.isEmpty || branchId.toLowerCase() == 'null') ? null : branchId,
-        authToken: token,
-        permissions: _permissionsFromRole(role),
-      );
+      _currentUser = _staffUserFromApi(user, token: token);
       try {
         await loadStaffList();
       } catch (_) {
@@ -276,6 +244,40 @@ class AppState extends ChangeNotifier {
 
   bool hasPermission(StaffPermission permission) {
     return _currentUser?.permissions.contains(permission) ?? false;
+  }
+
+  /// Superadmin always sees every mobile feature; others use server-resolved map.
+  bool isFeatureEnabled(String featureKey) {
+    final user = _currentUser;
+    if (user == null) return false;
+    if (user.role.trim().toLowerCase() == 'superadmin') return true;
+    return user.mobileFeatures[featureKey] == true;
+  }
+
+  StaffUser _staffUserFromApi(
+    Map<String, dynamic> user, {
+    required String token,
+    StaffUser? prev,
+  }) {
+    final role = '${user['role'] ?? prev?.role ?? 'staff'}';
+    final branchMap = user['branch'] is Map
+        ? Map<String, dynamic>.from(user['branch'])
+        : const <String, dynamic>{};
+    final rawBranchId =
+        user['branchId'] ?? user['branch_id'] ?? branchMap['id'] ?? prev?.branchId;
+    final branchId = '${rawBranchId ?? ''}'.trim();
+    return StaffUser(
+      id: '${user['id'] ?? prev?.id ?? ''}',
+      username: '${user['username'] ?? prev?.username ?? ''}',
+      password: '',
+      displayName: '${user['name'] ?? user['username'] ?? prev?.displayName ?? 'Staff'}',
+      isActive: true,
+      role: role,
+      branchId: (branchId.isEmpty || branchId.toLowerCase() == 'null') ? null : branchId,
+      authToken: token,
+      permissions: _permissionsFromRole(role),
+      mobileFeatures: MobileFeatures.parseMap(user['mobile_features']),
+    );
   }
 
   void addItem(String title, String description) {
@@ -1177,6 +1179,38 @@ class AppState extends ChangeNotifier {
     }
     try {
       await _api.updateUser(token: token, userId: userId, role: role);
+      return true;
+    } catch (e) {
+      _lastError = e.toString().replaceFirst('Exception: ', '');
+      return false;
+    }
+  }
+
+  /// GET /api/users/:id/mobile-features (superadmin).
+  Future<Map<String, dynamic>> loadUserMobileFeatures(String userId) async {
+    final token = _currentUser?.authToken;
+    if (token == null || token.isEmpty) {
+      throw Exception('Missing auth token.');
+    }
+    return _api.fetchUserMobileFeatures(token: token, userId: userId);
+  }
+
+  /// PUT /api/users/:id/mobile-features (superadmin).
+  Future<bool> saveUserMobileFeatures({
+    required String userId,
+    required Map<String, bool> features,
+  }) async {
+    final token = _currentUser?.authToken;
+    if (token == null || token.isEmpty) {
+      _lastError = 'Missing auth token.';
+      return false;
+    }
+    try {
+      await _api.updateUserMobileFeatures(
+        token: token,
+        userId: userId,
+        features: features,
+      );
       return true;
     } catch (e) {
       _lastError = e.toString().replaceFirst('Exception: ', '');

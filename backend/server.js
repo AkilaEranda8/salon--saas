@@ -20,6 +20,7 @@ const { ensureCustomerProfileColumns } = require('./services/ensureCustomerProfi
 const { ensureInventorySupplierColumns } = require('./services/ensureInventorySupplierColumns');
 const ensureStaffSalaryColumns = require('./services/ensureStaffSalaryColumns');
 const ensureStaffSpecCommissionColumns = require('./services/ensureStaffSpecCommissionColumns');
+const ensureUserMobileFeaturesColumn = require('./services/ensureUserMobileFeaturesColumn');
 const { ensureStaffPhotoColumn } = require('./services/ensureStaffPhotoColumn');
 const platformGuard = require('./middleware/platformGuard');
 const logger        = require('./utils/logger');
@@ -335,6 +336,7 @@ connectWithRetry().then(async () => {
   await ensureInventorySupplierColumns();
   await ensureStaffSalaryColumns();
   await ensureStaffSpecCommissionColumns();
+  await ensureUserMobileFeaturesColumn();
   await ensureStaffPhotoColumn();
 
   server.listen(PORT, () =>

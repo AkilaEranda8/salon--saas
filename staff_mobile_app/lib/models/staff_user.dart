@@ -15,10 +15,12 @@ class StaffUser {
     required this.displayName,
     required this.isActive,
     required Set<StaffPermission> permissions,
+    Map<String, bool>? mobileFeatures,
     this.role = 'staff',
     this.branchId,
     this.authToken,
-  }) : permissions = Set<StaffPermission>.from(permissions);
+  })  : permissions = Set<StaffPermission>.from(permissions),
+        mobileFeatures = Map<String, bool>.from(mobileFeatures ?? const {});
 
   final String id;
   final String username;
@@ -26,6 +28,7 @@ class StaffUser {
   final String displayName;
   final bool isActive;
   final Set<StaffPermission> permissions;
+  final Map<String, bool> mobileFeatures;
   final String role;
   final String? branchId;
   final String? authToken;

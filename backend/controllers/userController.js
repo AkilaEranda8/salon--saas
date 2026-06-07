@@ -2,7 +2,24 @@ const bcrypt = require('bcryptjs');
 const { Op } = require('sequelize');
 const { User, Branch } = require('../models');
 const { tenantWhere, byIdWhere, resolveTenantId } = require('../utils/tenantScope');
-const kc     = require('../utils/keycloakAdmin');
+const kc = require('../utils/keycloakAdmin');
+const {
+  MOBILE_FEATURE_CATALOG,
+  getRoleDefaults,
+  parseStoredOverrides,
+  resolveMobileFeatures,
+  computeOverrides,
+  sanitizeEffectiveInput,
+} = require('../utils/mobileAppFeatures');
+
+function userWithMobileFeatures(user) {
+  const json = user.toJSON ? user.toJSON() : { ...user };
+  delete json.password;
+  const overrides = parseStoredOverrides(json.mobile_features);
+  json.mobile_features_overrides = overrides;
+  json.mobile_features = resolveMobileFeatures(json.role, overrides);
+  return json;
+}
 
 const list = async (req, res) => {
   try {
@@ -23,7 +40,12 @@ const list = async (req, res) => {
       include: [{ model: Branch, as: 'branch', attributes: ['id', 'name'] }],
     });
 
-    return res.json({ total: count, page, limit, data: rows });
+    return res.json({
+      total: count,
+      page,
+      limit,
+      data: rows.map((row) => userWithMobileFeatures(row)),
+    });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ message: 'Server error.' });
@@ -216,4 +238,75 @@ const remove = async (req, res) => {
   }
 };
 
-module.exports = { list, create, update, changePassword, remove };
+const mobileFeaturesCatalog = async (_req, res) => {
+  return res.json({ catalog: MOBILE_FEATURE_CATALOG });
+};
+
+const getMobileFeatures = async (req, res) => {
+  try {
+    const user = await User.findOne({
+      where: byIdWhere(req, req.params.id),
+      attributes: { exclude: ['password'] },
+    });
+    if (!user) return res.status(404).json({ message: 'User not found.' });
+
+    const overrides = parseStoredOverrides(user.mobile_features);
+    const defaults = getRoleDefaults(user.role);
+    const effective = resolveMobileFeatures(user.role, overrides);
+
+    return res.json({
+      userId: user.id,
+      name: user.name,
+      username: user.username,
+      role: user.role,
+      catalog: MOBILE_FEATURE_CATALOG,
+      defaults,
+      overrides,
+      effective,
+    });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+const updateMobileFeatures = async (req, res) => {
+  try {
+    if (req.user?.role !== 'superadmin') {
+      return res.status(403).json({ message: 'Only superadmin can manage mobile app features.' });
+    }
+
+    const user = await User.findOne({ where: byIdWhere(req, req.params.id) });
+    if (!user) return res.status(404).json({ message: 'User not found.' });
+    if (user.role === 'superadmin') {
+      return res.status(403).json({ message: 'Superadmin always has all mobile features.' });
+    }
+
+    const effective = sanitizeEffectiveInput(req.body);
+    const overrides = computeOverrides(user.role, effective);
+    await user.update({ mobile_features: Object.keys(overrides).length ? overrides : null });
+
+    const refreshed = await User.findByPk(user.id, { attributes: { exclude: ['password'] } });
+    return res.json({
+      message: 'Mobile features updated.',
+      ...userWithMobileFeatures(refreshed),
+      defaults: getRoleDefaults(refreshed.role),
+      overrides: parseStoredOverrides(refreshed.mobile_features),
+    });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+module.exports = {
+  list,
+  create,
+  update,
+  changePassword,
+  remove,
+  mobileFeaturesCatalog,
+  getMobileFeatures,
+  updateMobileFeatures,
+  userWithMobileFeatures,
+};

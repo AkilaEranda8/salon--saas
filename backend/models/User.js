@@ -62,6 +62,11 @@ const User = sequelize.define('User', {
     type: DataTypes.BOOLEAN,
     defaultValue: false,
   },
+  mobile_features: {
+    type: DataTypes.JSON,
+    allowNull: true,
+    comment: 'Per-user mobile app feature overrides (merged with role defaults)',
+  },
   password_reset_token: {
     type: DataTypes.STRING(64),
     allowNull: true,

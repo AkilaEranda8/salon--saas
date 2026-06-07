@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../models/mobile_feature.dart';
 import '../state/app_state.dart';
 
 // ── Palette ───────────────────────────────────────────────────────────────────
@@ -106,6 +107,41 @@ class _PermissionsPageState extends State<PermissionsPage> {
     ));
   }
 
+  Future<void> _showFeatureEditor(Map<String, dynamic> user) async {
+    final app = AppStateScope.of(context);
+    if (app.currentUser?.role != 'superadmin') {
+      _showSnack('Only superadmin can manage app features.');
+      return;
+    }
+    if ('${user['role']}' == 'superadmin') {
+      _showSnack('Superadmin always has all app features.');
+      return;
+    }
+    try {
+      final data = await app.loadUserMobileFeatures('${user['id']}');
+      if (!mounted) return;
+      final effective = MobileFeatures.parseMap(data['effective']);
+      final defaults = MobileFeatures.parseMap(data['defaults']);
+      final saved = await showModalBottomSheet<bool>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (_) => _FeatureEditorSheet(
+          userId: '${user['id']}',
+          userName: '${user['name'] ?? user['username']}',
+          role: '${user['role'] ?? 'staff'}',
+          initialFeatures: effective,
+          roleDefaults: defaults,
+        ),
+      );
+      if (saved == true) {
+        await _load();
+      }
+    } catch (e) {
+      _showSnack(e.toString().replaceFirst('Exception: ', ''));
+    }
+  }
+
   void _showRolePicker(Map<String, dynamic> user) {
     final app      = AppStateScope.of(context);
     final isSA     = app.currentUser?.role == 'superadmin';
@@ -154,8 +190,8 @@ class _PermissionsPageState extends State<PermissionsPage> {
         backgroundColor: _forest,
         foregroundColor: Colors.white,
         elevation: 0,
-        title: const Text('User Permissions',
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, letterSpacing: -0.3)),
+        title: Text(isSA ? 'Users & App Features' : 'User Permissions',
+          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700, letterSpacing: -0.3)),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh_rounded, size: 22),
@@ -235,6 +271,7 @@ class _PermissionsPageState extends State<PermissionsPage> {
                             isSuperAdmin: isSA,
                             onRoleTap: () => _showRolePicker(filtered[i]),
                             onToggleActive: () => _toggleActive(filtered[i]),
+                            onFeaturesTap: () => _showFeatureEditor(filtered[i]),
                           ),
                         ),
         ),
@@ -270,11 +307,13 @@ class _UserCard extends StatelessWidget {
     required this.isSuperAdmin,
     required this.onRoleTap,
     required this.onToggleActive,
+    required this.onFeaturesTap,
   });
   final Map<String, dynamic> user;
   final bool isSuperAdmin;
   final VoidCallback onRoleTap;
   final VoidCallback onToggleActive;
+  final VoidCallback onFeaturesTap;
 
   @override
   Widget build(BuildContext context) {
@@ -284,6 +323,9 @@ class _UserCard extends StatelessWidget {
     final branch   = (user['branch'] as Map?)?['name'] ?? '';
     final active   = user['is_active'] as bool? ?? true;
     final initial  = name.isNotEmpty ? name[0].toUpperCase() : '?';
+    final features = MobileFeatures.parseMap(user['mobile_features']);
+    final featureCount = MobileFeatures.enabledCount(features);
+    final canEditFeatures = isSuperAdmin && role != 'superadmin';
 
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
@@ -339,6 +381,11 @@ class _UserCard extends StatelessWidget {
               Text('@$username', style: const TextStyle(fontSize: 12, color: _muted)),
               if (branch.isNotEmpty)
                 Text(branch, style: const TextStyle(fontSize: 11, color: _muted)),
+              if (role != 'superadmin')
+                Text(
+                  '$featureCount / ${MobileFeatures.allKeys.length} app features enabled',
+                  style: const TextStyle(fontSize: 11, color: _emerald, fontWeight: FontWeight.w600),
+                ),
             ],
           )),
           const SizedBox(width: 10),
@@ -365,6 +412,23 @@ class _UserCard extends StatelessWidget {
                   ]),
                 ),
               ),
+              if (canEditFeatures) ...[
+                const SizedBox(height: 8),
+                GestureDetector(
+                  onTap: onFeaturesTap,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEFF6FF),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: const Text(
+                      'App Features',
+                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Color(0xFF2563EB)),
+                    ),
+                  ),
+                ),
+              ],
               const SizedBox(height: 8),
               GestureDetector(
                 onTap: onToggleActive,
@@ -459,6 +523,137 @@ class _RolePickerSheet extends StatelessWidget {
             );
           }),
         ],
+      ),
+    );
+  }
+}
+
+// ── Mobile app feature editor (superadmin) ────────────────────────────────────
+class _FeatureEditorSheet extends StatefulWidget {
+  const _FeatureEditorSheet({
+    required this.userId,
+    required this.userName,
+    required this.role,
+    required this.initialFeatures,
+    required this.roleDefaults,
+  });
+
+  final String userId;
+  final String userName;
+  final String role;
+  final Map<String, bool> initialFeatures;
+  final Map<String, bool> roleDefaults;
+
+  @override
+  State<_FeatureEditorSheet> createState() => _FeatureEditorSheetState();
+}
+
+class _FeatureEditorSheetState extends State<_FeatureEditorSheet> {
+  late Map<String, bool> _features;
+  bool _saving = false;
+  String _error = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _features = Map<String, bool>.from(widget.initialFeatures);
+  }
+
+  Future<void> _save() async {
+    setState(() { _saving = true; _error = ''; });
+    final app = AppStateScope.of(context);
+    final ok = await app.saveUserMobileFeatures(
+      userId: widget.userId,
+      features: _features,
+    );
+    setState(() => _saving = false);
+    if (!mounted) return;
+    if (ok) {
+      Navigator.of(context).pop(true);
+    } else {
+      setState(() => _error = app.lastError ?? 'Save failed');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return DraggableScrollableSheet(
+      initialChildSize: 0.82,
+      minChildSize: 0.45,
+      maxChildSize: 0.95,
+      builder: (context, scrollController) => Container(
+        decoration: const BoxDecoration(
+          color: _surface,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: Column(
+          children: [
+            const SizedBox(height: 10),
+            Container(width: 40, height: 4, decoration: BoxDecoration(color: _border, borderRadius: BorderRadius.circular(99))),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('App Features — ${widget.userName}',
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: _ink)),
+                  const SizedBox(height: 4),
+                  Text('Role: ${widget.role}. Disabled items are hidden from this user\'s dashboard.',
+                    style: const TextStyle(fontSize: 12, color: _muted)),
+                ],
+              ),
+            ),
+            if (_error.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Text(_error, style: const TextStyle(color: Color(0xFFDC2626), fontSize: 12)),
+              ),
+            Expanded(
+              child: ListView.builder(
+                controller: scrollController,
+                padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+                itemCount: MobileFeatures.allKeys.length,
+                itemBuilder: (_, i) {
+                  final key = MobileFeatures.allKeys[i];
+                  final enabled = _features[key] == true;
+                  final isDefault = widget.roleDefaults[key] == true;
+                  return SwitchListTile(
+                    title: Text(MobileFeatures.labelFor(key),
+                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: _ink)),
+                    subtitle: Text(
+                      isDefault ? 'Default for ${widget.role}' : 'Off by default for ${widget.role}',
+                      style: const TextStyle(fontSize: 11, color: _muted),
+                    ),
+                    value: enabled,
+                    activeThumbColor: _emerald,
+                    onChanged: (v) => setState(() => _features[key] = v),
+                  );
+                },
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+              child: Row(children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: _saving ? null : () => Navigator.of(context).pop(false),
+                    child: const Text('Cancel'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: _saving ? null : _save,
+                    style: ElevatedButton.styleFrom(backgroundColor: _emerald, foregroundColor: Colors.white),
+                    child: _saving
+                        ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                        : const Text('Save'),
+                  ),
+                ),
+              ]),
+            ),
+          ],
+        ),
       ),
     );
   }

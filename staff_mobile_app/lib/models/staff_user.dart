@@ -19,6 +19,8 @@ class StaffUser {
     this.role = 'staff',
     this.branchId,
     this.linkedStaffId,
+    this.tenantSlug,
+    this.tenantName,
     this.authToken,
   })  : permissions = Set<StaffPermission>.from(permissions),
         mobileFeatures = Map<String, bool>.from(mobileFeatures ?? const {});
@@ -34,5 +36,7 @@ class StaffUser {
   final String? branchId;
   /// Staff table id from GET /api/auth/me → staffProfile (for commission, etc.).
   final String? linkedStaffId;
+  final String? tenantSlug;
+  final String? tenantName;
   final String? authToken;
 }

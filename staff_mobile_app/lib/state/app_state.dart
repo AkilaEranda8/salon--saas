@@ -278,6 +278,11 @@ class AppState extends ChangeNotifier {
     final branchId = '${rawBranchId ?? ''}'.trim();
     final rawStaffId = staffProfile['id'] ?? prev?.linkedStaffId;
     final linkedStaffId = '${rawStaffId ?? ''}'.trim();
+    final tenantMap = user['tenant'] is Map
+        ? Map<String, dynamic>.from(user['tenant'])
+        : const <String, dynamic>{};
+    final tenantSlug = '${tenantMap['slug'] ?? prev?.tenantSlug ?? ''}'.trim();
+    final tenantName = '${tenantMap['name'] ?? tenantMap['brand_name'] ?? prev?.tenantName ?? ''}'.trim();
     return StaffUser(
       id: '${user['id'] ?? prev?.id ?? ''}',
       username: '${user['username'] ?? prev?.username ?? ''}',
@@ -289,6 +294,8 @@ class AppState extends ChangeNotifier {
       linkedStaffId: (linkedStaffId.isEmpty || linkedStaffId.toLowerCase() == 'null')
           ? null
           : linkedStaffId,
+      tenantSlug: tenantSlug.isEmpty ? null : tenantSlug,
+      tenantName: tenantName.isEmpty ? null : tenantName,
       authToken: token,
       permissions: _permissionsFromRole(role),
       mobileFeatures: MobileFeatures.parseMap(user['mobile_features']),

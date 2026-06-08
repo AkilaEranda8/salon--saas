@@ -344,8 +344,14 @@ const myCommission = async (req, res) => {
     const staff = await resolveStaffRecordForRequest(req);
     const staffId = staff?.id;
     if (!staffId) {
+      const salon = req.tenant?.name || req.tenant?.slug || 'this salon';
+      const slug = req.tenant?.slug ? ` (login salon: ${req.tenant.slug})` : '';
       return res.status(404).json({
-        message: 'No staff profile linked to your account. Ask admin to link your login to a staff member (same name/email).',
+        message:
+          `No staff profile linked in ${salon}${slug}. `
+          + 'Web admin → Staff: add a staff member with the same name as this login, or link user_id.',
+        tenant_slug: req.tenant?.slug ?? null,
+        tenant_name: req.tenant?.name ?? null,
       });
     }
     req.params.id = String(staffId);

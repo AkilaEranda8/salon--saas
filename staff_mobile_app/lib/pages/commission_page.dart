@@ -765,7 +765,10 @@ class _CommissionPageState extends State<CommissionPage> {
         fontWeight: FontWeight.w700, letterSpacing: 0.5)),
   );
 
-  Widget _buildError() => Center(child: Column(
+  Widget _buildError() {
+    final user = AppStateScope.of(context).currentUser;
+    final salon = user?.tenantName ?? user?.tenantSlug;
+    return Center(child: Column(
     mainAxisSize: MainAxisSize.min, children: [
     Container(
       width: 60, height: 60,
@@ -776,6 +779,13 @@ class _CommissionPageState extends State<CommissionPage> {
           color: Color(0xFFDC2626), size: 26),
     ),
     const SizedBox(height: 14),
+    if (salon != null && salon.isNotEmpty) ...[
+      Text('Salon: $salon',
+        textAlign: TextAlign.center,
+        style: const TextStyle(color: _muted, fontSize: 12,
+            fontWeight: FontWeight.w600)),
+      const SizedBox(height: 6),
+    ],
     Text(_error!,
       textAlign: TextAlign.center,
       style: const TextStyle(color: _ink, fontSize: 14,
@@ -788,6 +798,7 @@ class _CommissionPageState extends State<CommissionPage> {
             fontWeight: FontWeight.w600)),
     ),
   ]));
+  }
 
   Widget _buildEmpty() => Center(child: Column(
     mainAxisSize: MainAxisSize.min, children: [

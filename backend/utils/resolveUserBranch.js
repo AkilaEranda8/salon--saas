@@ -83,21 +83,33 @@ async function resolveStaffRecordForRequest(req, { autoLink = true } = {}) {
   const emailKey = normalizeKey(user.email);
   if (!nameKeys.size && !emailKey) return null;
 
-  const where = {
-    ...scope,
-    user_id: { [Op.is]: null },
-    is_active: true,
-  };
-  if (user.branch_id) where.branch_id = user.branch_id;
+  const branchFilter = user.branch_id ? { branch_id: user.branch_id } : {};
 
   const pool = await Staff.findAll({
-    where,
+    where: { ...scope, is_active: true, ...branchFilter },
     attributes: ['id', 'name', 'branch_id', 'user_id', 'email'],
     include: staffInclude,
-    limit: 50,
+    limit: 100,
   });
 
+  const takenIds = new Set(
+    pool
+      .map((r) => r.user_id)
+      .filter((id) => id != null && Number(id) !== Number(userId)),
+  );
+  let blockedIds = new Set();
+  if (takenIds.size) {
+    const owners = await User.findAll({
+      where: { id: { [Op.in]: [...takenIds] } },
+      attributes: ['id'],
+    });
+    blockedIds = new Set(owners.map((o) => Number(o.id)));
+  }
+
   const matches = pool.filter((row) => {
+    const uid = row.user_id != null ? Number(row.user_id) : null;
+    if (uid != null && uid !== Number(userId) && blockedIds.has(uid)) return false;
+
     const staffName = normalizeKey(row.name);
     const staffEmail = normalizeKey(row.email);
     if (nameKeys.has(staffName)) return true;

@@ -8,7 +8,7 @@ import { Input, Select, FormGroup } from '../components/ui/FormElements';
 import PageWrapper from '../components/layout/PageWrapper';
 import { computePromoFromDiscount } from '../utils/promoDiscount';
 import {
-  DataTable, ActionBtn, StaffAvatar, PagBtn,
+  DataTable, ActionBtn, StaffAvatar, PagBtn, FilterBar,
   IconEye, IconEdit, IconTrash, IconClose, IconPlus, IconCalendar,
 } from '../components/ui/PageKit';
 
@@ -635,7 +635,7 @@ export default function AppointmentsPage() {
       </div>
 
       {/* Filter Bar */}
-      <div style={{ background:isDark?'#111827':'#fff', borderRadius:14, border:`1px solid ${isDark?'#334155':'#EAECF0'}`, padding:'14px 16px', display:'flex', gap:10, flexWrap:'wrap', alignItems:'center', boxShadow:isDark?'0 8px 20px rgba(2,6,23,0.35)':'0 1px 4px rgba(16,24,40,0.04)' }}>
+      <FilterBar>
         <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
           {[{val:'',label:'All'},...APPT_STATUSES.map(s=>({val:s,label:STATUS_META[s].label}))].map(({val,label}) => {
             const active=filterStatus===val, meta=val?STATUS_META[val]:null, cnt=val?counts[val]:appts.length;
@@ -648,19 +648,16 @@ export default function AppointmentsPage() {
         </div>
         <div style={{ display:'flex', alignItems:'center', gap:6, marginLeft:'auto' }}>
           <span style={{ color:isDark?'#94A3B8':'#98A2B3', display:'flex' }}><IconCalendar /></span>
-          <input type="date" value={filterDate} onChange={e=>{setFilterDate(e.target.value);setPage(1);}}
-            style={{ padding:'7px 10px', borderRadius:9, border:`1.5px solid ${isDark?'#334155':'#E4E7EC'}`, fontSize:13, fontFamily:"'Inter',sans-serif", outline:'none', color:isDark?'#E2E8F0':'#344054', background:isDark?'#0F172A':'#fff' }}
-            onFocus={e=>e.target.style.borderColor='#2563EB'} onBlur={e=>e.target.style.borderColor=isDark?'#334155':'#E4E7EC'} />
+          <input type="date" value={filterDate} onChange={e=>{setFilterDate(e.target.value);setPage(1);}} className="pk-filter-control" />
           {filterDate && <button onClick={()=>setFilterDate('')} style={{ background:'none', border:'none', cursor:'pointer', color:isDark?'#94A3B8':'#98A2B3', display:'flex', padding:2 }}><IconClose /></button>}
         </div>
         {isSuperAdmin && (
-          <select value={filterBranch} onChange={e=>{setFilterBranch(e.target.value);setPage(1);}}
-            style={{ padding:'7px 12px', borderRadius:9, border:`1.5px solid ${isDark?'#334155':'#E4E7EC'}`, fontSize:13, fontFamily:"'Inter',sans-serif", outline:'none', color:isDark?'#E2E8F0':'#344054', background:isDark?'#0F172A':'#fff' }}>
+          <select value={filterBranch} onChange={e=>{setFilterBranch(e.target.value);setPage(1);}} className="pk-filter-control">
             <option value="">All Branches</option>
             {branches.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}
           </select>
         )}
-      </div>
+      </FilterBar>
 
       <DataTable
         columns={apptColumns}

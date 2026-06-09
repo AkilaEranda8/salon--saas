@@ -414,7 +414,14 @@ export function PKModal({ open, onClose, title, children, footer, size = 'md', w
         <style>{'@keyframes pk-modal { from { opacity:0; transform:scale(0.96) translateY(8px); } to { opacity:1; transform:scale(1) translateY(0); } }'}</style>
         <div style={{ padding: '16px 24px', borderBottom: '1px solid #EAECF0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0, background: '#fff', borderRadius: '16px 16px 0 0' }}>
           <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#101828', fontFamily: "'Inter',sans-serif" }}>{title}</h3>
-          <button onClick={onClose} style={{ background: '#F2F4F7', border: '1px solid #E4E7EC', cursor: 'pointer', color: '#667085', display: 'flex', alignItems: 'center', borderRadius: 8, padding: 6 }}><IconClose /></button>
+          <button
+            type="button"
+            aria-label="Close dialog"
+            onClick={onClose}
+            style={{ background: '#F2F4F7', border: '1px solid #E4E7EC', cursor: 'pointer', color: '#667085', display: 'flex', alignItems: 'center', borderRadius: 8, padding: 6 }}
+          >
+            <IconClose />
+          </button>
         </div>
         <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>{children}</div>
         {footer && <div style={{ padding: '16px 24px', borderTop: '1px solid #EAECF0', display: 'flex', gap: 8, justifyContent: 'flex-end', flexShrink: 0, background: '#FAFBFC' }}>{footer}</div>}
@@ -424,24 +431,53 @@ export function PKModal({ open, onClose, title, children, footer, size = 'md', w
   );
 }
 
-/* ─── SearchBar ─────────────────────────────────────────────────────────── */
-export function SearchBar({ value, onChange, placeholder = 'Search...' }) {
+/** Shared class for page filter inputs, selects, and table toolbar controls */
+export const PK_FILTER_CONTROL = 'pk-filter-control';
+
+/* ─── Filter controls (match page + DataTable toolbar) ──────────────────── */
+export function FilterInput({ className, style, type = 'text', ...props }) {
   return (
-    <div style={{ position: 'relative', flex: 1, minWidth: 200 }}>
-      <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#98A2B3', pointerEvents: 'none', display: 'flex' }}><IconSearch /></span>
-      <input value={value} onChange={e => onChange(e.target.value)}
+    <input
+      type={type}
+      className={[PK_FILTER_CONTROL, className].filter(Boolean).join(' ')}
+      style={style}
+      {...props}
+    />
+  );
+}
+
+export function FilterSelect({ className, style, children, ...props }) {
+  return (
+    <select
+      className={[PK_FILTER_CONTROL, className].filter(Boolean).join(' ')}
+      style={style}
+      {...props}
+    >
+      {children}
+    </select>
+  );
+}
+
+/* ─── SearchBar ─────────────────────────────────────────────────────────── */
+export function SearchBar({ value, onChange, placeholder = 'Search...', style, className }) {
+  return (
+    <div className={['pk-search-field', className].filter(Boolean).join(' ')} style={style}>
+      <span className="pk-search-field__icon" aria-hidden><IconSearch /></span>
+      <input
+        type="search"
+        className={`${PK_FILTER_CONTROL} pk-search-field__input`}
+        value={value}
+        onChange={e => onChange(e.target.value)}
         placeholder={placeholder}
-        style={{ width: '100%', padding: '8px 12px 8px 34px', borderRadius: 9, border: '1.5px solid #E4E7EC', fontSize: 13, fontFamily: "'Inter',sans-serif", outline: 'none', boxSizing: 'border-box', color: '#101828', background: '#FAFAFA' }}
-        onFocus={e => e.target.style.borderColor = '#2563EB'}
-        onBlur={e => e.target.style.borderColor = '#E4E7EC'} />
+      />
     </div>
   );
 }
 
 /* ─── FilterBar wrapper ─────────────────────────────────────────────────── */
-export function FilterBar({ children }) {
+export function FilterBar({ children, className, style }) {
   return (
-    <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #EAECF0', padding: '14px 18px', display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', boxShadow: '0 2px 8px rgba(16,24,40,0.06)', backdropFilter: 'blur(4px)' }}>
+    <div className={['pk-filter-bar', className].filter(Boolean).join(' ')} style={style}>
       {children}
     </div>
   );
@@ -943,22 +979,7 @@ export function DataTable({
     return String(value);
   };
 
-  const inputStyle = useFullToolbar ? {
-    padding: '8px 12px', borderRadius: 8, border: tbar.inputBorder, fontSize: 13,
-    fontFamily: "'Inter',sans-serif", outline: 'none', color: tbar.inputColor, background: tbar.inputBg,
-    minWidth: 160, flex: '0 1 200px', maxWidth: 240,
-  } : {
-    padding: '7px 12px', borderRadius: 8, border: '1.5px solid #E4E7EC', fontSize: 13,
-    fontFamily: "'Inter',sans-serif", outline: 'none', color: '#344054', background: '#fff',
-    minWidth: 140, flex: '1 1 160px', maxWidth: 220,
-  };
-  const searchInputStyle = {
-    ...inputStyle,
-    width: '100%',
-    boxSizing: 'border-box',
-    paddingLeft: 36,
-    paddingRight: 12,
-  };
+  const toolbarBtnStyle = { flex: '0 0 auto', minWidth: 'auto' };
 
   const inner = (
     <>
@@ -967,14 +988,23 @@ export function DataTable({
           className={useFullToolbar ? 'pk-table-toolbar pk-table-toolbar--light' : undefined}
           style={{
             display: 'flex',
-            flexWrap: 'wrap',
-            alignItems: 'center',
+            flexDirection: 'column',
             gap: 10,
             padding: useFullToolbar ? '12px 16px' : '12px 14px',
             borderBottom: useFullToolbar ? tbar.toolbarBorder : '1px solid #F2F4F7',
             background: useFullToolbar ? tbar.toolbarBg : '#FAFBFC',
           }}
         >
+          <div
+            className="pk-table-toolbar-row"
+            style={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              alignItems: 'center',
+              gap: 10,
+              width: '100%',
+            }}
+          >
           {useFullToolbar && (
             <div style={{ display: 'flex', borderRadius: 8, border: tbar.segmentBorder, overflow: 'hidden', flexShrink: 0, background: tbar.segmentInactiveBg }}>
               {[
@@ -1002,37 +1032,35 @@ export function DataTable({
               ))}
             </div>
           )}
+          {useFullToolbar && (
+            <div style={{ width: 1, height: 28, background: '#E4E7EC', flexShrink: 0 }} aria-hidden />
+          )}
           <div style={{
             display: 'flex',
             flexWrap: 'wrap',
             gap: 8,
-            flex: 1,
+            flex: '1 1 240px',
             alignItems: 'center',
-            justifyContent: useFullToolbar ? 'center' : 'flex-start',
+            justifyContent: 'flex-start',
             minWidth: 0,
           }}>
             {searchableColumns?.map(sc => (
-              <div key={sc.id} style={{ position: 'relative', flex: '0 1 200px', minWidth: 160, maxWidth: 240 }}>
-                <span style={{
-                  position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)',
-                  color: useFullToolbar ? tbar.inputPlaceholder : '#98A2B3',
-                  display: 'flex', alignItems: 'center', pointerEvents: 'none', zIndex: 1,
-                }}>
-                  <IconSearch />
-                </span>
+              <div key={sc.id} className="pk-search-field">
+                <span className="pk-search-field__icon" aria-hidden><IconSearch /></span>
                 <input
-                  type="text"
+                  type="search"
+                  className={`${PK_FILTER_CONTROL} pk-search-field__input`}
                   value={String(columnFilters.find(f => f.id === sc.id)?.value ?? '')}
                   onChange={e => setColFilter(sc.id, e.target.value)}
                   placeholder={sc.placeholder || `Filter ${sc.title}…`}
-                  style={searchInputStyle}
                 />
               </div>
             ))}
             {filterableColumns?.map(fc => (
               <select key={fc.id} value={String(columnFilters.find(f => f.id === fc.id)?.value ?? '')}
                 onChange={e => setColFilter(fc.id, e.target.value)}
-                style={{ ...inputStyle, paddingLeft: 12, cursor: 'pointer' }}>
+                className={PK_FILTER_CONTROL}
+                style={{ cursor: 'pointer' }}>
                 <option value="">{fc.title}: All</option>
                 {fc.options.map(o => (
                   <option key={o.value} value={o.value}>{o.label}</option>
@@ -1054,28 +1082,25 @@ export function DataTable({
               </span>
             ))}
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, marginLeft: useFullToolbar ? 0 : 'auto' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, marginLeft: 'auto' }}>
             {activeFilters.length > 0 && (
               <button type="button" onClick={() => setColumnFilters([])}
-                style={{
-                  ...inputStyle, padding: '8px 12px', cursor: 'pointer', flex: '0 0 auto', minWidth: 'auto',
-                  color: tbar.inputColor,
-                }}>
+                className={PK_FILTER_CONTROL}
+                style={{ ...toolbarBtnStyle, cursor: 'pointer' }}>
                 Reset
               </button>
             )}
             {enableColumnVisibility && (
               <div style={{ position: 'relative', flexShrink: 0 }}>
                 <button type="button" onClick={() => setShowColMenu(o => !o)}
+                  className={PK_FILTER_CONTROL}
                   style={{
-                    ...inputStyle,
+                    ...toolbarBtnStyle,
                     padding: '8px 14px',
                     cursor: 'pointer',
                     display: 'flex',
                     alignItems: 'center',
                     gap: 6,
-                    minWidth: 'auto',
-                    flex: '0 0 auto',
                   }}>
                   {useFullToolbar && <IconColumns />}
                   Columns
@@ -1104,6 +1129,7 @@ export function DataTable({
                 )}
               </div>
             )}
+          </div>
           </div>
           {useFullToolbar && activeFilters.length > 0 && (
             <div style={{ width: '100%', display: 'flex', flexWrap: 'wrap', gap: 6, paddingTop: 2 }}>
@@ -1229,7 +1255,8 @@ export function DataTable({
             <label style={{ fontSize: 13, color: craft ? ts.footerText : '#475467', display: 'flex', alignItems: 'center', gap: 8 }}>
               Rows Per Page
               <select value={pageSize} onChange={e => table.setPageSize(Number(e.target.value))}
-                style={{ ...inputStyle, padding: '6px 28px 6px 10px', minWidth: 64, flex: '0 0 auto' }}>
+                className={PK_FILTER_CONTROL}
+                style={{ padding: '6px 28px 6px 10px', minWidth: 64, flex: '0 0 auto' }}>
                 {pageSizeOptions.map(n => <option key={n} value={n}>{n}</option>)}
               </select>
             </label>
@@ -1270,11 +1297,6 @@ export function DataTable({
       overflow: 'hidden',
       boxShadow: ts.shellShadow,
     }}>
-      {useFullToolbar && (
-        <style>{`
-          .pk-table-toolbar--light input::placeholder { color: #98A2B3; opacity: 1; }
-        `}</style>
-      )}
       {inner}
     </div>
   );

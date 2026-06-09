@@ -167,17 +167,13 @@ export default function AdvancesPage() {
       {/* Filters */}
       <FilterBar>
         <span style={{ color: '#98A2B3', display: 'flex' }}><IconCalendar /></span>
-        <input type="month" value={filterMonth} onChange={e => setFilterMonth(e.target.value)}
-          style={{ padding: '7px 10px', borderRadius: 9, border: '1.5px solid #E4E7EC', fontSize: 13, fontFamily: "'Inter',sans-serif", outline: 'none', color: '#344054' }}
-          onFocus={e => e.target.style.borderColor = '#2563EB'} onBlur={e => e.target.style.borderColor = '#E4E7EC'} />
-        <select value={filterStaff} onChange={e => setFilterStaff(e.target.value)}
-          style={{ padding: '7px 12px', borderRadius: 9, border: '1.5px solid #E4E7EC', fontSize: 13, fontFamily: "'Inter',sans-serif", outline: 'none', color: '#344054', background: '#fff' }}>
+        <input type="month" value={filterMonth} onChange={e => setFilterMonth(e.target.value)} className="pk-filter-control" />
+        <select value={filterStaff} onChange={e => setFilterStaff(e.target.value)} className="pk-filter-control">
           <option value="">All Staff</option>
           {staff.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
         </select>
         {['superadmin', 'admin'].includes(user?.role) && (
-          <select value={filterBranch} onChange={e => setFilterBranch(e.target.value)}
-            style={{ padding: '7px 12px', borderRadius: 9, border: '1.5px solid #E4E7EC', fontSize: 13, fontFamily: "'Inter',sans-serif", outline: 'none', color: '#344054', background: '#fff' }}>
+          <select value={filterBranch} onChange={e => setFilterBranch(e.target.value)} className="pk-filter-control">
             <option value="">All Branches</option>
             {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
           </select>

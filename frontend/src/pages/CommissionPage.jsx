@@ -310,17 +310,14 @@ export default function CommissionPage() {
 
       {/* Filter Bar */}
       <FilterBar>
-        <select value={month} onChange={e => setMonth(Number(e.target.value))}
-          style={{ padding: '7px 12px', borderRadius: 9, border: '1.5px solid #E4E7EC', fontSize: 13, fontFamily: "'Inter',sans-serif", outline: 'none', color: '#344054', background: '#fff' }}>
+        <select value={month} onChange={e => setMonth(Number(e.target.value))} className="pk-filter-control">
           {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
         </select>
-        <select value={year} onChange={e => setYear(Number(e.target.value))}
-          style={{ padding: '7px 12px', borderRadius: 9, border: '1.5px solid #E4E7EC', fontSize: 13, fontFamily: "'Inter',sans-serif", outline: 'none', color: '#344054', background: '#fff' }}>
+        <select value={year} onChange={e => setYear(Number(e.target.value))} className="pk-filter-control">
           {[now.getFullYear() - 1, now.getFullYear()].map(y => <option key={y} value={y}>{y}</option>)}
         </select>
         {isAdminRole && (
-          <select value={branchId} onChange={e => setBranchId(e.target.value)}
-            style={{ padding: '7px 12px', borderRadius: 9, border: '1.5px solid #E4E7EC', fontSize: 13, fontFamily: "'Inter',sans-serif", outline: 'none', color: '#344054', background: '#fff' }}>
+          <select value={branchId} onChange={e => setBranchId(e.target.value)} className="pk-filter-control">
             <option value="">All Branches</option>
             {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
           </select>

@@ -179,7 +179,7 @@ function CustomerTypeahead({ customers, value, onSelect, onNew, branchId }) {
     setAdding(false);
   };
 
-  const INP = { width:'100%', padding:'8px 12px', borderRadius:9, border:'1.5px solid #E4E7EC', fontSize:13, fontFamily:"'Inter',sans-serif", outline:'none', color:'#344054', background:'#fff', boxSizing:'border-box' };
+  const INP = { width:'100%', boxSizing:'border-box' };
   return (
     <div ref={ref} style={{ position:'relative' }}>
       {selected && !query ? (
@@ -191,7 +191,7 @@ function CustomerTypeahead({ customers, value, onSelect, onNew, branchId }) {
           <button onClick={clear} style={{ background:'none', border:'none', cursor:'pointer', color:'#60A5FA', fontSize:18, lineHeight:1, padding:0 }}>×</button>
         </div>
       ) : (
-        <input style={INP} placeholder="Search name or phone…" value={query}
+        <input className="pk-filter-control" style={INP} placeholder="Search name or phone…" value={query}
           onChange={e => { setQuery(e.target.value); setOpen(true); }}
           onFocus={() => setOpen(true)} />
       )}
@@ -662,11 +662,9 @@ export default function PaymentsPage() {
 
       {/* Filter Bar */}
       <FilterBar>
-        <input type="month" value={filterMonth} onChange={e => setFilterMonth(e.target.value)}
-          style={{ padding:'7px 12px', borderRadius:9, border:'1.5px solid #E4E7EC', fontSize:13, fontFamily:"'Inter',sans-serif", outline:'none', color:'#344054' }} />
+        <input type="month" value={filterMonth} onChange={e => setFilterMonth(e.target.value)} className="pk-filter-control" />
         {isAdmin && !hasFixedBranch && (
-          <select value={filterBranch} onChange={e => setFilterBranch(e.target.value)}
-            style={{ padding:'7px 12px', borderRadius:9, border:'1.5px solid #E4E7EC', fontSize:13, fontFamily:"'Inter',sans-serif", outline:'none', color:'#344054', background:'#fff' }}>
+          <select value={filterBranch} onChange={e => setFilterBranch(e.target.value)} className="pk-filter-control">
             <option value="">All Branches</option>
             {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
           </select>

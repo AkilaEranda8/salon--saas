@@ -774,7 +774,7 @@ export default function PackagesPage() {
             </div>
             {isAdmin && (
               <select value={filterBranch} onChange={e=>{ setFilterBranch(e.target.value); setSoldPage(1); }}
-                style={{ padding:'7px 12px', borderRadius:9, border:'1.5px solid #E4E7EC', fontSize:13, fontFamily:"'Inter',sans-serif", outline:'none', color:'#344054', background:'#fff' }}>
+                className="pk-filter-control">
                 <option value="">All Branches</option>
                 {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
               </select>
@@ -1005,7 +1005,7 @@ export default function PackagesPage() {
         {sellStep === 1 && (
           <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
             <div><Lbl>Search Customer</Lbl>
-              <input value={custSearch} onChange={e=>setCustSearch(e.target.value)} placeholder="Search by name or phone" style={inp} />
+              <input value={custSearch} onChange={e=>setCustSearch(e.target.value)} placeholder="Search by name or phone" className="pk-filter-control" style={{ width:'100%', boxSizing:'border-box' }} />
             </div>
             <div style={{ maxHeight:230, overflowY:'auto', border:'1px solid #E4E7EC', borderRadius:10, overflow:'hidden' }}>
               {filteredCustomers.slice(0,20).map(c => {

@@ -351,7 +351,7 @@ export default function AttendancePage() {
       <FilterBar>
         {isSuperAdmin && (
           <select value={filterBranch} onChange={e => setFilterBranch(e.target.value)}
-            style={{ padding:'7px 12px', borderRadius:9, border:'1.5px solid #E4E7EC', fontSize:13, fontFamily:"'Inter',sans-serif", outline:'none', color:'#344054', background:'#fff' }}>
+            className="pk-filter-control">
             <option value="">All Branches</option>
             {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
           </select>

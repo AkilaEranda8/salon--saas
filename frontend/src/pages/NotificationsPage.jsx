@@ -774,20 +774,17 @@ export default function NotificationsPage() {
         <div style={{ padding:'16px 24px', borderBottom:'1px solid #F2F4F7' }}>
           <div style={{ fontSize:15, fontWeight:700, color:'#101828', marginBottom:12 }}>Notification Log</div>
           <FilterBar>
-            <select value={filterEv} onChange={e=>{ setFilterEv(e.target.value); setLogPage(1); }}
-              style={{ padding:'6px 10px', borderRadius:9, border:'1.5px solid #E4E7EC', fontSize:13, fontFamily:"'Inter',sans-serif", outline:'none', color:'#344054', background:'#fff' }}>
+            <select value={filterEv} onChange={e=>{ setFilterEv(e.target.value); setLogPage(1); }} className="pk-filter-control">
               <option value="">All Events</option>
               {EVENTS.map(ev => <option key={ev} value={ev}>{EVENT_LABELS[ev]}</option>)}
             </select>
-            <select value={filterCh} onChange={e=>{ setFilterCh(e.target.value); setLogPage(1); }}
-              style={{ padding:'6px 10px', borderRadius:9, border:'1.5px solid #E4E7EC', fontSize:13, fontFamily:"'Inter',sans-serif", outline:'none', color:'#344054', background:'#fff' }}>
+            <select value={filterCh} onChange={e=>{ setFilterCh(e.target.value); setLogPage(1); }} className="pk-filter-control">
               <option value="">All Channels</option>
               <option value="email">Email</option>
               <option value="whatsapp">WhatsApp</option>
               <option value="sms">SMS</option>
             </select>
-            <select value={filterSt} onChange={e=>{ setFilterSt(e.target.value); setLogPage(1); }}
-              style={{ padding:'6px 10px', borderRadius:9, border:'1.5px solid #E4E7EC', fontSize:13, fontFamily:"'Inter',sans-serif", outline:'none', color:'#344054', background:'#fff' }}>
+            <select value={filterSt} onChange={e=>{ setFilterSt(e.target.value); setLogPage(1); }} className="pk-filter-control">
               <option value="">All Statuses</option>
               <option value="sent">Sent</option>
               <option value="failed">Failed</option>

@@ -23,7 +23,7 @@ const verifyToken = async (req, res, next) => {
   }
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
 
     // ── Check revocation list ─────────────────────────────────────────────────
     try {
@@ -59,7 +59,7 @@ const optionalVerifyToken = (req, res, next) => {
   }
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
     req.user = decoded;
     req.userTenantId = decoded.role === 'platform_admin' ? null : (decoded.tenantId ?? null);
     return next();

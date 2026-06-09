@@ -233,8 +233,13 @@ function PrintIcon() {
 }
 
 function printReceipt(payment) {
+  // Escape any stored value (customer/staff/branch/service names) before it is
+  // written into the receipt HTML, so a malicious name can't inject script (XSS).
+  const esc = (v) => String(v ?? '').replace(/[&<>"']/g, c => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+  ));
   const fmtDate = d => d ? new Date(d).toLocaleString('en-GB', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' }) : '';
-  const line = (label, value) => `<tr><td style="color:#555;padding:2px 0;font-size:12px;">${label}</td><td style="text-align:right;font-weight:600;font-size:12px;padding:2px 0;">${value||'—'}</td></tr>`;
+  const line = (label, value) => `<tr><td style="color:#555;padding:2px 0;font-size:12px;">${esc(label)}</td><td style="text-align:right;font-weight:600;font-size:12px;padding:2px 0;">${value ? esc(value) : '—'}</td></tr>`;
   const dash = () => `<tr><td colspan="2"><div style="border-top:1px dashed #bbb;margin:6px 0;"></div></td></tr>`;
 
   const splits = (payment.splits||[]).map(sp =>

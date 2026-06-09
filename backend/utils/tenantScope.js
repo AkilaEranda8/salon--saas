@@ -19,10 +19,23 @@ function tenantWhere(req) {
 }
 
 function resolveTenantId(req) {
-  // Subdomain / custom-domain (X-Tenant-Slug / X-Tenant-Host) is authoritative for tenant APIs.
-  if (req.tenant?.id) return req.tenant.id;
-  if (req.user?.role === 'platform_admin') return null;
-  return req.userTenantId ?? req.user?.tenantId ?? null;
+  // SECURITY: For an authenticated tenant user, the tenant is ALWAYS taken from
+  // their verified token — never from the client-supplied X-Tenant-Slug /
+  // X-Tenant-Host header. Otherwise a logged-in user of tenant A could read or
+  // write tenant B's data simply by changing the request header (cross-tenant IDOR).
+  if (req.user && req.user.role !== 'platform_admin') {
+    return req.userTenantId ?? req.user.tenantId ?? null;
+  }
+
+  // platform_admin: the header selects which tenant to act on (impersonation /
+  // support browsing). No header ⇒ null ⇒ access across all tenants.
+  if (req.user?.role === 'platform_admin') {
+    return req.tenant?.id ?? null;
+  }
+
+  // Unauthenticated, tenant-scoped flows (login / public endpoints) resolve the
+  // tenant from the subdomain/host header.
+  return req.tenant?.id ?? null;
 }
 
 function byIdWhere(req, id) {

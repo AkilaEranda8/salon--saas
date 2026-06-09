@@ -300,7 +300,7 @@ const verifyLogin2FA = async (req, res) => {
 
     let decoded;
     try {
-      decoded = jwt.verify(tempToken, process.env.JWT_SECRET);
+      decoded = jwt.verify(tempToken, process.env.JWT_SECRET, { algorithms: ['HS256'] });
     } catch {
       return res.status(401).json({ message: 'Invalid or expired session. Please log in again.' });
     }
@@ -514,15 +514,23 @@ const forgotPassword = async (req, res) => {
       const token   = crypto.randomBytes(32).toString('hex');
       const expires = new Date(Date.now() + 60 * 60 * 1000);
       await user.update({ password_reset_token: token, password_reset_expires: expires });
-      // Resolve origin: Origin header → Referer header → env → localhost
-      let origin = req.headers.origin;
-      if (!origin && req.headers.referer) {
-        try { origin = new URL(req.headers.referer).origin; } catch {}
-      }
+      // SECURITY: never build the reset link from an unvalidated Origin/Referer
+      // header — a forged host would send the reset token to an attacker
+      // (host-header injection → account takeover). Accept the request origin
+      // only if it is on the trusted allowlist; otherwise derive the URL
+      // server-side from the tenant slug / platform env.
+      const { isAllowedOrigin, requestOrigin } = require('../utils/allowedOrigin');
+      let origin = '';
+      const headerOrigin = requestOrigin(req);
+      if (isAllowedOrigin(headerOrigin)) origin = headerOrigin;
       if (!origin) {
-        origin = tenantId
-          ? (process.env.FRONTEND_URL || process.env.FRONTEND_BASE_URL || '')
-          : (process.env.PLATFORM_URL || process.env.FRONTEND_URL || '');
+        if (tenantId && req.tenant?.slug && process.env.FRONTEND_BASE_URL) {
+          origin = process.env.FRONTEND_BASE_URL.replace('{slug}', req.tenant.slug);
+        } else {
+          origin = tenantId
+            ? (process.env.FRONTEND_URL || process.env.FRONTEND_BASE_URL || '')
+            : (process.env.PLATFORM_URL || process.env.FRONTEND_URL || '');
+        }
       }
       if (!origin) origin = 'http://localhost';
       const resetUrl = `${origin}/reset-password/${token}`;
@@ -587,7 +595,7 @@ const impersonateSession = async (req, res) => {
 
     let decoded;
     try {
-      decoded = jwt.verify(impToken, process.env.JWT_SECRET);
+      decoded = jwt.verify(impToken, process.env.JWT_SECRET, { algorithms: ['HS256'] });
     } catch {
       return res.status(401).json({ message: 'Invalid or expired impersonation token.' });
     }

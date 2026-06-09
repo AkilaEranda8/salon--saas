@@ -38,13 +38,7 @@ const server = http.createServer(app);
 
 // ── CORS ──────────────────────────────────────────────────────────────────────
 // Allow any *.salon.hexalyte.com or *.hexalyte.com subdomain (covers all tenant subdomains dynamically)
-const isAllowedOrigin = (origin) => {
-  if (!origin) return true; // server-to-server or same-origin
-  if (/^http:\/\/localhost(:\d+)?$/.test(origin)) return true;
-  if (/^https?:\/\/([a-z0-9-]+\.)?salon\.hexalyte\.com$/.test(origin)) return true;
-  if (/^https?:\/\/([a-z0-9-]+\.)?hexalyte\.com$/.test(origin)) return true;
-  return false;
-};
+const { isAllowedOrigin } = require('./utils/allowedOrigin');
 
 const corsOptions = {
   origin: (origin, cb) => {

@@ -22,7 +22,7 @@ function initSocket(httpServer, corsOptions) {
 
     // Try legacy JWT first
     try {
-      socket.user = jwt.verify(token, process.env.JWT_SECRET);
+      socket.user = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
       return next();
     } catch { /* not a legacy token */ }
 

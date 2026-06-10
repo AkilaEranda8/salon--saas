@@ -102,11 +102,30 @@ export default function ServicesPage() {
   };
   const openView   = row => { setViewItem(row); setShowView(true); };
 
+  const buildPayload = () => {
+    const payload = {
+      name: form.name,
+      category: form.category,
+      duration_minutes: form.duration_minutes,
+      price: form.price,
+      description: form.description || '',
+      is_active: form.is_active !== false,
+    };
+    if (serviceWiseCommission) {
+      payload.commission_type = form.commission_type || 'percentage';
+      payload.commission_value = form.commission_value === '' || form.commission_value == null
+        ? null
+        : form.commission_value;
+    }
+    return payload;
+  };
+
   const handleSave = async () => {
     if (!form.name || !form.price) return setFormErr('Name and price are required');
     setSaving(true);
     try {
-      editItem ? await api.put(`/services/${editItem.id}`, form) : await api.post('/services', form);
+      const payload = buildPayload();
+      editItem ? await api.put(`/services/${editItem.id}`, payload) : await api.post('/services', payload);
       setShowForm(false); load();
     } catch (e) { setFormErr(e.response?.data?.message || 'Save failed'); }
     setSaving(false);

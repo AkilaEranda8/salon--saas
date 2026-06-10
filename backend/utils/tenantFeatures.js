@@ -63,6 +63,33 @@ function hasTenantFeature(tenant, feature) {
   return getEffectiveFeatures(tenant)[feature] === true;
 }
 
+/** Hide service catalogue commission in API payloads when the flag is off. */
+function sanitizeServiceRecord(service, tenant) {
+  const json = service && typeof service.toJSON === 'function' ? service.toJSON() : { ...(service || {}) };
+  if (!hasTenantFeature(tenant, 'service_wise_commission')) {
+    json.commission_type = null;
+    json.commission_value = null;
+  }
+  return json;
+}
+
+/** Hide per-service staff commission data when the flag is off. */
+function sanitizeStaffRecord(staff, tenant) {
+  const json = staff && typeof staff.toJSON === 'function' ? staff.toJSON() : { ...(staff || {}) };
+  if (!hasTenantFeature(tenant, 'service_wise_commission') && Array.isArray(json.specializations)) {
+    if (json.salary_type === 'salary_only') {
+      json.specializations = json.specializations.map((s) => ({
+        ...s,
+        commission_type: null,
+        commission_value: null,
+      }));
+    } else {
+      json.specializations = [];
+    }
+  }
+  return json;
+}
+
 /** Strip per-service commission overrides when the tenant flag is off. */
 function applyServiceWiseCommissionPolicy(items, tenant) {
   if (!Array.isArray(items)) return [];
@@ -121,6 +148,8 @@ module.exports = {
   getEffectiveFeatures,
   hasTenantFeature,
   applyServiceWiseCommissionPolicy,
+  sanitizeServiceRecord,
+  sanitizeStaffRecord,
   sanitizeFeaturesInput,
   defaultsFromPlan,
   enrichTenantPayload,

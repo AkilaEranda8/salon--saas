@@ -2,10 +2,21 @@ const { Op, fn, col, literal } = require('sequelize');
 const { Staff, Branch, StaffBranch, StaffSpecialization, Service, Appointment, Payment, User, StaffAdvance, CommissionPayout } = require('../models');
 const { tenantWhere, byIdWhere, resolveTenantId } = require('../utils/tenantScope');
 const { normalizeStaffSpecializations } = require('../utils/commissionCalculator');
-const { applyServiceWiseCommissionPolicy } = require('../utils/tenantFeatures');
+const {
+  applyServiceWiseCommissionPolicy,
+  hasTenantFeature,
+  sanitizeStaffRecord,
+} = require('../utils/tenantFeatures');
 
-function resolveSpecItems(req, rawItems) {
+function resolveSpecItems(req, rawItems, salaryType = 'commission_only') {
+  if (!hasTenantFeature(req.tenant, 'service_wise_commission') && salaryType !== 'salary_only') {
+    return [];
+  }
   return applyServiceWiseCommissionPolicy(rawItems, req.tenant);
+}
+
+function mapStaff(row, tenant) {
+  return row ? sanitizeStaffRecord(row, tenant) : row;
 }
 
 function buildSpecRows(staffId, rawSpecs, staffDefaults) {
@@ -143,7 +154,12 @@ const list = async (req, res) => {
       ],
     });
 
-    return res.json({ total: count, page, limit, data: rows });
+    return res.json({
+      total: count,
+      page,
+      limit,
+      data: rows.map((row) => mapStaff(row, req.tenant)),
+    });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ message: 'Server error.' });
@@ -173,7 +189,11 @@ const getOne = async (req, res) => {
     const apptCount = await Appointment.count({ where: { staff_id: staff.id, ...scope } });
     const commSum   = await Payment.sum('commission_amount', { where: { staff_id: staff.id, ...scope } });
 
-    return res.json({ ...staff.toJSON(), apptCount, totalCommission: commSum || 0 });
+    return res.json({
+      ...mapStaff(staff, req.tenant),
+      apptCount,
+      totalCommission: commSum || 0,
+    });
   } catch (err) {
     return res.status(500).json({ message: 'Server error.' });
   }
@@ -195,9 +215,10 @@ const create = async (req, res) => {
     const commission_type = parsed.commission_type || 'percentage';
     const commission_value = parsed.commission_value;
     const base_salary = parsed.base_salary ?? 0;
-    const specItems = resolveSpecItems(req, extractSpecializationItems(req.body));
+    const specItems = resolveSpecItems(req, extractSpecializationItems(req.body), salary_type);
 
-    if (salary_type !== 'salary_only' && specItems.length && (commission_value == null || commission_value <= 0)) {
+    if (hasTenantFeature(req.tenant, 'service_wise_commission')
+      && salary_type !== 'salary_only' && specItems.length && (commission_value == null || commission_value <= 0)) {
       return res.status(400).json({ message: 'Default commission rate is required when services are selected.' });
     }
 
@@ -239,7 +260,7 @@ const create = async (req, res) => {
       ],
     });
 
-    return res.status(201).json(created || staff);
+    return res.status(201).json(mapStaff(created || staff, req.tenant));
   } catch (err) {
     console.error('Staff create error:', err);
     return res.status(500).json({ message: err.message || 'Server error.' });
@@ -289,10 +310,13 @@ const update = async (req, res) => {
     const effectiveSalaryType = refreshedStaff.salary_type || 'commission_only';
     const hasServicePayload = Array.isArray(req.body.specializations) || Array.isArray(req.body.service_ids);
 
-    if (hasServicePayload) {
-      const specItems = resolveSpecItems(req, extractSpecializationItems(req.body));
+    if (!hasTenantFeature(req.tenant, 'service_wise_commission') && effectiveSalaryType !== 'salary_only') {
+      await StaffSpecialization.destroy({ where: { staff_id: staff.id } });
+    } else if (hasServicePayload) {
+      const specItems = resolveSpecItems(req, extractSpecializationItems(req.body), effectiveSalaryType);
       const effectiveCommission = refreshedStaff.commission_value;
-      if (effectiveSalaryType !== 'salary_only' && specItems.length && (effectiveCommission == null || parseFloat(effectiveCommission) <= 0)) {
+      if (hasTenantFeature(req.tenant, 'service_wise_commission')
+        && effectiveSalaryType !== 'salary_only' && specItems.length && (effectiveCommission == null || parseFloat(effectiveCommission) <= 0)) {
         return res.status(400).json({ message: 'Default commission rate is required when services are selected.' });
       }
       await syncStaffSpecializations(staff.id, specItems);
@@ -311,7 +335,7 @@ const update = async (req, res) => {
 
     await syncLinkedUserBranch(refreshedStaff || staff, resolveTenantId(req));
 
-    return res.json(refreshed || staff);
+    return res.json(mapStaff(refreshed || staff, req.tenant));
   } catch (err) {
     return res.status(500).json({ message: 'Server error.' });
   }
@@ -584,7 +608,7 @@ const setSpecializations = async (req, res) => {
     const specItems = resolveSpecItems(req, extractSpecializationItems({
       specializations: req.body.specializations,
       service_ids: serviceIds,
-    }));
+    }), staff.salary_type || 'commission_only');
     await replaceStaffSpecializations(staff.id, specItems);
 
     const updated = await StaffSpecialization.findAll({

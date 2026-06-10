@@ -1,6 +1,8 @@
 const { Service } = require('../models');
 const { tenantWhere } = require('../utils/tenantScope');
-const { hasTenantFeature } = require('../utils/tenantFeatures');
+const { hasTenantFeature, sanitizeServiceRecord } = require('../utils/tenantFeatures');
+
+const mapService = (row, tenant) => sanitizeServiceRecord(row, tenant);
 
 function parseServiceCommissionFields(body = {}, tenant) {
   if (!hasTenantFeature(tenant, 'service_wise_commission')) {
@@ -55,7 +57,7 @@ const list = async (req, res) => {
       order: [['category', 'ASC'], ['name', 'ASC']],
     });
 
-    return res.json({ total: count, page, limit, data: rows });
+    return res.json({ total: count, page, limit, data: rows.map((row) => mapService(row, req.tenant)) });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ message: 'Server error.' });
@@ -67,7 +69,7 @@ const getOne = async (req, res) => {
     const where = { ...tenantWhere(req), id: req.params.id };
     const svc = await Service.findOne({ where });
     if (!svc) return res.status(404).json({ message: 'Service not found.' });
-    return res.json(svc);
+    return res.json(mapService(svc, req.tenant));
   } catch (err) {
     return res.status(500).json({ message: 'Server error.' });
   }
@@ -85,7 +87,7 @@ const create = async (req, res) => {
       name,
       tenant_id: tenantId,
     });
-    return res.status(201).json(svc);
+    return res.status(201).json(mapService(svc, req.tenant));
   } catch (err) {
     return res.status(500).json({ message: 'Server error.' });
   }
@@ -99,7 +101,8 @@ const update = async (req, res) => {
 
     const payload = buildServicePayload(req.body, req.tenant);
     await svc.update(payload);
-    return res.json(svc);
+    await svc.reload();
+    return res.json(mapService(svc, req.tenant));
   } catch (err) {
     return res.status(500).json({ message: 'Server error.' });
   }

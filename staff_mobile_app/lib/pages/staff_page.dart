@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../models/staff_user.dart';
+import '../models/staff_member.dart';
 import '../state/app_state.dart';
+import 'add_staff_modal.dart';
 
 // ── Palette ───────────────────────────────────────────────────────────────────
 const Color _forest  = Color(0xFF1B3A2D);
@@ -83,16 +84,59 @@ class _StaffPageState extends State<StaffPage> {
     ),
   );
 
+  Future<void> _openStaffForm({StaffMember? edit}) async {
+    final app = AppStateScope.of(context);
+    if (!app.canManageSalonStaff) return;
+    final branchId = (app.currentUser?.branchId ?? '').trim();
+    if (branchId.isEmpty && edit == null) {
+      _toast('Branch is required to add staff.');
+      return;
+    }
+    try {
+      if (app.services.isEmpty) await app.loadServices();
+    } catch (_) {}
+    if (!mounted) return;
+    final payload = await AddStaffModal.show(
+      context,
+      branchId: edit?.branchId.isNotEmpty == true ? edit!.branchId : branchId,
+      services: app.services,
+      showServiceWiseCommission:
+          app.isTenantFeatureEnabled('service_wise_commission'),
+      initial: edit,
+    );
+    if (payload == null || !mounted) return;
+    final ok = await app.saveSalonStaff(
+      staffId: payload.staffId,
+      name: payload.name,
+      phone: payload.phone,
+      roleTitle: payload.roleTitle,
+      salaryType: payload.salaryType,
+      branchId: payload.branchId,
+      email: payload.email,
+      baseSalary: payload.baseSalary,
+      commissionType: payload.commissionType,
+      commissionValue: payload.commissionValue,
+      serviceCommissions: payload.serviceCommissions,
+      isActive: payload.isActive,
+    );
+    if (!mounted) return;
+    if (!ok) {
+      _toast(app.lastError ?? 'Failed to save staff');
+      return;
+    }
+    _refresh();
+  }
+
   @override
   Widget build(BuildContext context) {
     final appState = AppStateScope.of(context);
-    final all      = appState.staffUsers;
+    final all      = appState.salonStaff;
     final list     = _query.isEmpty
         ? all
         : all.where((s) =>
-            s.displayName.toLowerCase().contains(_query) ||
-            s.username.toLowerCase().contains(_query) ||
-            s.role.toLowerCase().contains(_query)).toList();
+            s.name.toLowerCase().contains(_query) ||
+            (s.roleTitle ?? '').toLowerCase().contains(_query) ||
+            (s.phone ?? '').toLowerCase().contains(_query)).toList();
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SystemUiOverlayStyle.dark,
@@ -100,14 +144,56 @@ class _StaffPageState extends State<StaffPage> {
         backgroundColor: _canvas,
         body: Column(children: [
           _buildHeader(all: all),
-          Expanded(child: _buildBody(list)),
+          Expanded(child: _buildBody(list, canManage: appState.canManageSalonStaff)),
         ]),
+        floatingActionButton: appState.canManageSalonStaff
+            ? Padding(
+                padding: const EdgeInsets.only(bottom: 16, right: 4),
+                child: GestureDetector(
+                  onTap: () => _openStaffForm(),
+                  child: Container(
+                    height: 52,
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [_forest, _emerald],
+                      ),
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: [
+                        BoxShadow(
+                          color: _forest.withValues(alpha: 0.35),
+                          blurRadius: 16,
+                          offset: const Offset(0, 6),
+                        ),
+                      ],
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.person_add_rounded,
+                            color: Colors.white, size: 20),
+                        SizedBox(width: 7),
+                        Text(
+                          'Add Staff',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              )
+            : null,
+        floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       ),
     );
   }
 
   // ── Header ─────────────────────────────────────────────────────────────────
-  Widget _buildHeader({required List<StaffUser> all}) {
+  Widget _buildHeader({required List<StaffMember> all}) {
     final active = all.where((s) => s.isActive).length;
     return Container(
       color: _canvas,
@@ -321,7 +407,7 @@ class _StaffPageState extends State<StaffPage> {
   }
 
   // ── Body ──────────────────────────────────────────────────────────────────
-  Widget _buildBody(List<StaffUser> list) {
+  Widget _buildBody(List<StaffMember> list, {required bool canManage}) {
     if (_loading) {
       return const Center(
         child: CircularProgressIndicator(color: _forest, strokeWidth: 2.5));
@@ -381,17 +467,15 @@ class _StaffPageState extends State<StaffPage> {
       child: ListView.builder(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
         itemCount: list.length,
-        itemBuilder: (ctx, i) => _StaffCard(user: list[i], index: i,
-          onToggle: AppStateScope.of(context).hasPermission(
-              StaffPermission.canManagePermissions)
-              ? () => _toggleActive(list[i])
-              : null),
+        itemBuilder: (ctx, i) => _StaffCard(
+          member: list[i],
+          index: i,
+          showServiceCommission: AppStateScope.of(context)
+              .isTenantFeatureEnabled('service_wise_commission'),
+          onTap: canManage ? () => _openStaffForm(edit: list[i]) : null,
+        ),
       ),
     );
-  }
-
-  Future<void> _toggleActive(StaffUser u) async {
-    _toast('${u.displayName} — ${u.isActive ? "deactivated" : "activated"}');
   }
 }
 
@@ -400,41 +484,49 @@ class _StaffPageState extends State<StaffPage> {
 // ═════════════════════════════════════════════════════════════════════════════
 class _StaffCard extends StatelessWidget {
   const _StaffCard({
-    required this.user,
+    required this.member,
     required this.index,
-    this.onToggle,
+    this.onTap,
+    this.showServiceCommission = false,
   });
-  final StaffUser user;
+  final StaffMember member;
   final int index;
-  final VoidCallback? onToggle;
+  final VoidCallback? onTap;
+  final bool showServiceCommission;
 
-  // Role styling
-  static _RoleMeta _role(String r) {
-    switch (r.toLowerCase()) {
-      case 'super_admin':
-      case 'superadmin':
-        return _RoleMeta('Super Admin',
-            const Color(0xFF7C3AED), const Color(0xFFF5F3FF));
-      case 'admin':
-        return _RoleMeta('Admin',
-            const Color(0xFF1E40AF), const Color(0xFFDBEAFE));
+  String _salaryLabel(String t) {
+    switch (t) {
+      case 'salary_only':
+        return 'Salary';
+      case 'salary_plus_commission':
+        return 'Salary+Comm';
       default:
-        return _RoleMeta('Staff',
-            const Color(0xFF065F46), const Color(0xFFDCFCE7));
+        return 'Commission';
     }
+  }
+
+  String? _commLabel() {
+    if (member.salaryType == 'salary_only') return null;
+    final v = member.commissionValue;
+    if (v == null) return null;
+    return member.commissionType == 'fixed'
+        ? 'Rs.${v.toStringAsFixed(0)}'
+        : '${v.toStringAsFixed(v.truncateToDouble() == v ? 0 : 1)}%';
   }
 
   @override
   Widget build(BuildContext context) {
     final grad = _gradients[index % _gradients.length];
-    final name = user.displayName.trim();
+    final name = member.name.trim();
     final initials = name.isNotEmpty
         ? name.split(' ').map((e) => e.isNotEmpty ? e[0].toUpperCase() : '')
               .take(2).join()
         : '?';
-    final rm = _role(user.role);
+    final comm = _commLabel();
 
-    return Container(
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
         color: _surface,
@@ -479,7 +571,7 @@ class _StaffCard extends StatelessWidget {
                 // Name + active badge
                 Row(children: [
                   Expanded(
-                    child: Text(name.isNotEmpty ? name : user.username,
+                    child: Text(name,
                       style: const TextStyle(
                         color: _ink, fontSize: 15,
                         fontWeight: FontWeight.w800, letterSpacing: -0.1)),
@@ -488,55 +580,69 @@ class _StaffCard extends StatelessWidget {
                     padding: const EdgeInsets.symmetric(
                         horizontal: 8, vertical: 3),
                     decoration: BoxDecoration(
-                      color: user.isActive
+                      color: member.isActive
                           ? const Color(0xFFDCFCE7)
                           : const Color(0xFFF3F4F6),
                       borderRadius: BorderRadius.circular(6)),
                     child: Text(
-                      user.isActive ? 'Active' : 'Inactive',
+                      member.isActive ? 'Active' : 'Inactive',
                       style: TextStyle(
-                        color: user.isActive
+                        color: member.isActive
                             ? const Color(0xFF14532D) : _muted,
                         fontSize: 10.5, fontWeight: FontWeight.w700)),
                   ),
                 ]),
                 const SizedBox(height: 4),
-                // Username
-                Row(children: [
-                  const Icon(Icons.alternate_email_rounded,
-                      size: 12, color: _muted),
-                  const SizedBox(width: 3),
-                  Text(user.username,
+                if (member.roleTitle != null &&
+                    member.roleTitle!.isNotEmpty)
+                  Text(member.roleTitle!,
                     style: const TextStyle(
                       color: _muted, fontSize: 12.5,
                       fontWeight: FontWeight.w500)),
-                ]),
                 const SizedBox(height: 5),
-                // Role + branch
-                Row(children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: rm.bg,
-                      borderRadius: BorderRadius.circular(6)),
-                    child: Text(rm.label,
-                      style: TextStyle(
-                        color: rm.fg, fontSize: 11,
-                        fontWeight: FontWeight.w700)),
-                  ),
-                  if (user.branchId != null &&
-                      user.branchId!.isNotEmpty) ...[
-                    const SizedBox(width: 6),
-                    const Icon(Icons.store_mall_directory_outlined,
-                        size: 11, color: _muted),
-                    const SizedBox(width: 3),
-                    Text('Branch ${user.branchId}',
-                      style: const TextStyle(
-                        color: _muted, fontSize: 11,
-                        fontWeight: FontWeight.w500)),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 4,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFEFF6FF),
+                        borderRadius: BorderRadius.circular(6)),
+                      child: Text(_salaryLabel(member.salaryType),
+                        style: const TextStyle(
+                          color: Color(0xFF1D4ED8), fontSize: 11,
+                          fontWeight: FontWeight.w700)),
+                    ),
+                    if (comm != null)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFFFBEB),
+                          borderRadius: BorderRadius.circular(6)),
+                        child: Text(comm,
+                          style: const TextStyle(
+                            color: Color(0xFFB45309), fontSize: 11,
+                            fontWeight: FontWeight.w700)),
+                      ),
+                    if (showServiceCommission &&
+                        member.specializations.isNotEmpty)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF5F3FF),
+                          borderRadius: BorderRadius.circular(6)),
+                        child: Text(
+                          '${member.specializations.length} svcs',
+                          style: const TextStyle(
+                            color: Color(0xFF6D28D9), fontSize: 11,
+                            fontWeight: FontWeight.w700)),
+                      ),
                   ],
-                ]),
+                ),
               ],
             ),
           ),
@@ -553,12 +659,7 @@ class _StaffCard extends StatelessWidget {
 
         ]),
       ),
+    ),
     );
   }
-}
-
-class _RoleMeta {
-  const _RoleMeta(this.label, this.fg, this.bg);
-  final String label;
-  final Color fg, bg;
 }

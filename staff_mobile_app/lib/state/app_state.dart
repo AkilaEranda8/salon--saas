@@ -71,6 +71,7 @@ class AppState extends ChangeNotifier {
   }
 
   final List<StaffUser> _staffUsers = [];
+  final List<StaffMember> _salonStaff = [];
   final List<AppItem> _items = [];
   final List<Customer> _customers = [];
   final List<Appointment> _appointments = [];
@@ -87,6 +88,7 @@ class AppState extends ChangeNotifier {
   String? _lastApptBranchId;
 
   List<StaffUser> get staffUsers => List.unmodifiable(_staffUsers);
+  List<StaffMember> get salonStaff => List.unmodifiable(_salonStaff);
   List<AppItem> get items => List.unmodifiable(_items);
   List<Customer> get customers => List.unmodifiable(_customers);
   List<Appointment> get appointments => List.unmodifiable(_appointments);
@@ -257,6 +259,11 @@ class AppState extends ChangeNotifier {
   /// Tenant-level module flags (e.g. service_wise_commission) from platform admin.
   bool isTenantFeatureEnabled(String featureKey) {
     return _currentUser?.tenantFeatures[featureKey] == true;
+  }
+
+  bool get canManageSalonStaff {
+    final role = (_currentUser?.role ?? '').toLowerCase();
+    return role == 'superadmin' || role == 'admin' || role == 'manager';
   }
 
   StaffUser _staffUserFromApi(
@@ -454,6 +461,9 @@ class AppState extends ChangeNotifier {
       token: token,
       branchId: branchId ?? _currentUser?.branchId,
     );
+    _salonStaff
+      ..clear()
+      ..addAll(loaded);
     _staffUsers
       ..clear()
       ..addAll(
@@ -463,7 +473,7 @@ class AppState extends ChangeNotifier {
             username: staff.name,
             password: '',
             displayName: staff.name,
-            isActive: true,
+            isActive: staff.isActive,
             role: 'staff',
             branchId: staff.branchId.isEmpty ? null : staff.branchId,
             permissions: _permissionsFromRole('staff'),
@@ -472,6 +482,121 @@ class AppState extends ChangeNotifier {
       );
     notifyListeners();
     return loaded;
+  }
+
+  Map<String, dynamic> _staffPayloadFromModal({
+    required String name,
+    required String phone,
+    required String roleTitle,
+    required String salaryType,
+    required String branchId,
+    String? email,
+    String? baseSalary,
+    String? commissionType,
+    String? commissionValue,
+    Map<String, String> serviceCommissions = const {},
+    bool isActive = true,
+    bool includeServiceWise = false,
+  }) {
+    final branchNum = int.tryParse(branchId.trim());
+    final payload = <String, dynamic>{
+      'name': name.trim(),
+      'phone': phone.trim(),
+      'email': email?.trim().isEmpty ?? true ? null : email!.trim(),
+      'role_title': roleTitle.trim(),
+      'salary_type': salaryType,
+      'is_active': isActive,
+      if (branchNum != null) 'branch_ids': [branchNum],
+    };
+    if (salaryType == 'salary_only' || salaryType == 'salary_plus_commission') {
+      final bs = baseSalary?.trim() ?? '';
+      if (bs.isNotEmpty) payload['base_salary'] = double.tryParse(bs) ?? 0;
+    }
+    if (salaryType != 'salary_only') {
+      payload['commission_type'] = commissionType ?? 'percentage';
+      final cv = commissionValue?.trim() ?? '';
+      if (cv.isNotEmpty) payload['commission_value'] = double.tryParse(cv);
+    }
+    if (includeServiceWise && salaryType != 'salary_only') {
+      final specs = <Map<String, dynamic>>[];
+      for (final entry in serviceCommissions.entries) {
+        final sid = int.tryParse(entry.key);
+        if (sid == null || sid <= 0) continue;
+        final raw = entry.value.trim();
+        specs.add({
+          'service_id': sid,
+          'commission_type': commissionType ?? 'percentage',
+          'commission_value':
+              raw.isEmpty ? null : double.tryParse(raw),
+        });
+      }
+      if (specs.isEmpty && _services.isNotEmpty) {
+        for (final svc in _services.where((s) => s.isActive)) {
+          final sid = int.tryParse(svc.id);
+          if (sid == null || sid <= 0) continue;
+          specs.add({
+            'service_id': sid,
+            'commission_type': commissionType ?? 'percentage',
+            'commission_value': svc.commissionValue,
+          });
+        }
+      }
+      payload['specializations'] = specs;
+    }
+    return payload;
+  }
+
+  Future<bool> saveSalonStaff({
+    String? staffId,
+    required String name,
+    required String phone,
+    required String roleTitle,
+    required String salaryType,
+    required String branchId,
+    String? email,
+    String? baseSalary,
+    String? commissionType,
+    String? commissionValue,
+    Map<String, String> serviceCommissions = const {},
+    bool isActive = true,
+  }) async {
+    final token = _currentUser?.authToken;
+    if (token == null || token.isEmpty) {
+      _lastError = 'Missing auth token (cannot save staff).';
+      return false;
+    }
+    try {
+      final includeServiceWise =
+          isTenantFeatureEnabled('service_wise_commission');
+      final payload = _staffPayloadFromModal(
+        name: name,
+        phone: phone,
+        roleTitle: roleTitle,
+        salaryType: salaryType,
+        branchId: branchId,
+        email: email,
+        baseSalary: baseSalary,
+        commissionType: commissionType,
+        commissionValue: commissionValue,
+        serviceCommissions: serviceCommissions,
+        isActive: isActive,
+        includeServiceWise: includeServiceWise,
+      );
+      if (staffId != null && staffId.isNotEmpty) {
+        await _api.updateSalonStaff(
+          token: token,
+          staffId: staffId,
+          payload: payload,
+        );
+      } else {
+        await _api.createSalonStaff(token: token, payload: payload);
+      }
+      await loadStaffList();
+      return true;
+    } catch (e) {
+      _lastError = e.toString().replaceFirst('Exception: ', '');
+      return false;
+    }
   }
 
   /// Staff for a branch without mutating global cached staff (e.g. walk-in branch picker).

@@ -267,6 +267,39 @@ class MobileApi {
     return list.whereType<Map>().map((e) => StaffMember.fromJson(Map<String, dynamic>.from(e))).toList();
   }
 
+  Future<StaffMember> createSalonStaff({
+    required String token,
+    required Map<String, dynamic> payload,
+  }) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/api/staff'),
+      headers: _authHeaders(token),
+      body: jsonEncode(payload),
+    );
+    final body = _decode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['message'] ?? 'Staff create failed');
+    }
+    return StaffMember.fromJson(Map<String, dynamic>.from(body));
+  }
+
+  Future<StaffMember> updateSalonStaff({
+    required String token,
+    required String staffId,
+    required Map<String, dynamic> payload,
+  }) async {
+    final response = await http.put(
+      Uri.parse('$baseUrl/api/staff/$staffId'),
+      headers: _authHeaders(token),
+      body: jsonEncode(payload),
+    );
+    final body = _decode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['message'] ?? 'Staff update failed');
+    }
+    return StaffMember.fromJson(Map<String, dynamic>.from(body));
+  }
+
   Future<void> createService({
     required String token,
     required String name,

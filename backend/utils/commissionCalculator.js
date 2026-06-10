@@ -1,8 +1,9 @@
 /**
  * Staff commission for a payment — priority when service_wise_commission is on:
- * 1) staff_specializations override
- * 2) services.commission_* on the catalogue row
- * 3) staff default commission_type / commission_value
+ * 1) staff_specializations custom rate (commission_value set on the link)
+ * 2) staff default — when the staff is linked to the service but has no custom rate
+ * 3) services.commission_* on the catalogue row — only when staff is not linked to that service
+ * 4) staff default — fallback when no link and no catalogue rate
  */
 
 const SOURCE_LABELS = {
@@ -20,12 +21,16 @@ function resolveLineCommission(lineId, {
 }) {
   if (allowServiceOverrides) {
     const spec = specByService.get(lineId);
-    if (spec?.commission_value != null && spec?.commission_value !== '') {
-      return {
-        type: spec.commission_type || defaultType,
-        val: parseFloat(spec.commission_value),
-        source: 'staff_override',
-      };
+    if (spec) {
+      if (spec.commission_value != null && spec.commission_value !== '') {
+        return {
+          type: spec.commission_type || defaultType,
+          val: parseFloat(spec.commission_value),
+          source: 'staff_override',
+        };
+      }
+      // Linked to this service with no custom rate → staff default only (skip catalogue).
+      return { type: defaultType, val: defaultVal, source: 'staff_default' };
     }
     const svc = serviceCommissions?.[lineId];
     if (svc?.commission_value != null && svc?.commission_value !== '') {

@@ -487,7 +487,7 @@ export default function CommissionPage() {
             </div>
             <p style={{ fontSize: 12, color: '#667085', margin: '0 0 12px', lineHeight: 1.5 }}>
               Each payment is split across services. The <strong>base</strong> is the service&apos;s share of the net paid amount (after loyalty/promo discounts).
-              Commission uses the first matching rate: staff custom → service catalogue → staff default.
+              Commission uses: staff custom rate (if set) → staff default when linked to the service → otherwise service catalogue → staff default.
             </p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxHeight: '60vh', overflowY: 'auto' }}>
               {breakData.data.map(p => {

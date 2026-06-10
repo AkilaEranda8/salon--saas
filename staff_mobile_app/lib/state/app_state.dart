@@ -537,7 +537,7 @@ class AppState extends ChangeNotifier {
           specs.add({
             'service_id': sid,
             'commission_type': commissionType ?? 'percentage',
-            'commission_value': svc.commissionValue,
+            'commission_value': null,
           });
         }
       }

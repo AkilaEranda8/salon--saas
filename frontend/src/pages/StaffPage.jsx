@@ -32,6 +32,7 @@ export default function StaffPage() {
   const { user }     = useAuth();
   const { allowed: serviceWiseCommission } = useFeatureGate('service_wise_commission');
   const canEdit      = ['superadmin','admin','manager'].includes(user?.role);
+  const isManager    = user?.role === 'manager';
   const isSuperAdmin = user?.role === 'superadmin';
   /** Superadmin + admin should load all branches by default; a home branch_id would hide staff in other branches. */
   const seesAllBranches = ['superadmin', 'admin'].includes(user?.role);
@@ -85,8 +86,13 @@ export default function StaffPage() {
   const activeServices = services.filter((sv) => sv.is_active !== false);
 
   const syncAllServiceCommissionSpecs = useCallback(() => {
-    const overrides = {};
     const ids = activeServices.map((sv) => sv.id);
+    if (isManager) {
+      setSpecs(ids);
+      setSpecOverrides({});
+      return;
+    }
+    const overrides = {};
     for (const sv of activeServices) {
       if (sv.commission_value != null && sv.commission_value !== '') {
         overrides[sv.id] = String(sv.commission_value);
@@ -96,7 +102,7 @@ export default function StaffPage() {
     }
     setSpecs(ids);
     setSpecOverrides(overrides);
-  }, [activeServices]);
+  }, [activeServices, isManager]);
 
   const prevSalaryTypeRef = useRef(EMPTY.salary_type);
   useEffect(() => {
@@ -145,8 +151,13 @@ export default function StaffPage() {
         overrides[s.service_id] = String(s.commission_value);
       }
     }
-    setSpecs(selected);
-    setSpecOverrides(overrides);
+    if (isManager && serviceWiseCommission && (row.salary_type || 'commission_only') !== 'salary_only') {
+      setSpecs(activeServices.map((sv) => sv.id));
+      setSpecOverrides({});
+    } else {
+      setSpecs(selected);
+      setSpecOverrides(overrides);
+    }
     setPhotoFile(null);
     setPhotoPreview(row.photo_url || '');
     setRemovePhoto(false);
@@ -211,7 +222,7 @@ export default function StaffPage() {
                   return { service_id: Number(id) };
                 }
                 const raw = specOverrides[id];
-                const hasOverride = raw !== '' && raw != null;
+                const hasOverride = !isManager && raw !== '' && raw != null;
                 return {
                   service_id: Number(id),
                   commission_type: form.commission_type || 'percentage',
@@ -476,7 +487,22 @@ export default function StaffPage() {
           )}
           <FormGroup label="Join Date"><Input type="date" value={form.join_date||''} onChange={e => setForm(f=>({...f, join_date:e.target.value}))} /></FormGroup>
           {form.salary_type !== 'salary_only' && activeServices.length > 0 && serviceWiseCommission && (
-            <FormGroup label="Service Commission Setup">
+            <FormGroup label={isManager ? 'Branch Services' : 'Service Commission Setup'}>
+              {isManager ? (
+                <div style={{ background:'#F0FDF4', border:'1px solid #BBF7D0', borderRadius:12, padding:'12px 14px' }}>
+                  <p style={{ fontSize:13, color:'#166534', margin:'0 0 10px', lineHeight:1.5 }}>
+                    All <strong>{activeServices.length}</strong> active services in your branch are linked automatically.
+                    Set only the <strong>default commission rate</strong> above — every service uses that rate. No per-service entry needed.
+                  </p>
+                  <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
+                    {activeServices.map((sv) => (
+                      <span key={sv.id} style={{ padding:'4px 10px', borderRadius:8, background:'#fff', border:'1px solid #BBF7D0', fontSize:12, color:'#14532D', fontWeight:600 }}>
+                        {sv.name}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ) : (<>
               <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:8, marginBottom:10, flexWrap:'wrap' }}>
                 <p style={{ fontSize:12, color:'#667085', margin:0, lineHeight:1.45, flex:1 }}>
                   All active services are linked for this branch. Set a <strong>custom rate</strong> per service or leave empty to use the default above.
@@ -526,6 +552,7 @@ export default function StaffPage() {
               {specs.length > 0 && (!form.commission_value && form.commission_value !== 0) && (
                 <p style={{ fontSize:12, color:'#D97706', marginTop:8 }}>Set a default commission rate — services without a custom rate will use it.</p>
               )}
+              </>)}
             </FormGroup>
           )}
           {form.salary_type === 'salary_only' && services.length > 0 && (

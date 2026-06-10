@@ -46,6 +46,7 @@ class AddStaffModal extends StatefulWidget {
     required this.branchId,
     required this.services,
     this.showServiceWiseCommission = false,
+    this.defaultCommissionOnly = false,
     this.initial,
     super.key,
   });
@@ -53,6 +54,8 @@ class AddStaffModal extends StatefulWidget {
   final String branchId;
   final List<SalonService> services;
   final bool showServiceWiseCommission;
+  /// Manager flow: one default rate for all branch services (no per-service fields).
+  final bool defaultCommissionOnly;
   final StaffMember? initial;
 
   static Future<AddStaffModalResult?> show(
@@ -60,6 +63,7 @@ class AddStaffModal extends StatefulWidget {
     required String branchId,
     required List<SalonService> services,
     bool showServiceWiseCommission = false,
+    bool defaultCommissionOnly = false,
     StaffMember? initial,
   }) {
     return showModalBottomSheet<AddStaffModalResult>(
@@ -71,6 +75,7 @@ class AddStaffModal extends StatefulWidget {
         branchId: branchId,
         services: services,
         showServiceWiseCommission: showServiceWiseCommission,
+        defaultCommissionOnly: defaultCommissionOnly,
         initial: initial,
       ),
     );
@@ -133,7 +138,7 @@ class _AddStaffModalState extends State<AddStaffModal> {
         }
       }
     } else if (widget.showServiceWiseCommission && _paysCommission) {
-      _linkAllServices(prefillCatalogue: true);
+      _linkAllServices(prefillCatalogue: !widget.defaultCommissionOnly);
     }
   }
 
@@ -177,7 +182,10 @@ class _AddStaffModalState extends State<AddStaffModal> {
       if (v == 'salary_only') {
         _selectedServices.clear();
       } else if (widget.showServiceWiseCommission) {
-        _linkAllServices(prefillCatalogue: _selectedServices.isEmpty);
+        _linkAllServices(
+          prefillCatalogue:
+              !widget.defaultCommissionOnly && _selectedServices.isEmpty,
+        );
       }
     });
   }
@@ -201,8 +209,14 @@ class _AddStaffModalState extends State<AddStaffModal> {
 
     final svcMap = <String, String>{};
     if (widget.showServiceWiseCommission && _paysCommission) {
-      for (final id in _selectedServices) {
-        svcMap[id] = _svcCommCtrls[id]?.text.trim() ?? '';
+      if (widget.defaultCommissionOnly) {
+        for (final id in _selectedServices) {
+          svcMap[id] = '';
+        }
+      } else {
+        for (final id in _selectedServices) {
+          svcMap[id] = _svcCommCtrls[id]?.text.trim() ?? '';
+        }
       }
     }
 
@@ -480,11 +494,66 @@ class _AddStaffModalState extends State<AddStaffModal> {
                   _paysCommission &&
                   _activeServices.isNotEmpty) ...[
                 const SizedBox(height: 16),
+                if (widget.defaultCommissionOnly) ...[
+                  _label('BRANCH SERVICES'),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF0FDF4),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFFBBF7D0)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'All ${_activeServices.length} active services are linked. '
+                          'Only the default commission above applies — no per-service rates needed.',
+                          style: const TextStyle(
+                            color: Color(0xFF166534),
+                            fontSize: 12,
+                            height: 1.45,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: 6,
+                          children: _activeServices
+                              .map(
+                                (svc) => Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 8, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(
+                                        color: const Color(0xFFBBF7D0)),
+                                  ),
+                                  child: Text(
+                                    svc.name,
+                                    style: const TextStyle(
+                                      color: Color(0xFF14532D),
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                              )
+                              .toList(),
+                        ),
+                      ],
+                    ),
+                  ),
+                ] else ...[
                 Row(
                   children: [
                     Expanded(child: _label('SERVICE COMMISSION')),
                     GestureDetector(
-                      onTap: () => _linkAllServices(prefillCatalogue: true),
+                      onTap: () => _linkAllServices(
+                          prefillCatalogue: !widget.defaultCommissionOnly),
                       child: Container(
                         padding: const EdgeInsets.symmetric(
                             horizontal: 10, vertical: 5),
@@ -595,6 +664,7 @@ class _AddStaffModalState extends State<AddStaffModal> {
                     ),
                   );
                 }),
+                ],
               ],
               const SizedBox(height: 20),
               GestureDetector(

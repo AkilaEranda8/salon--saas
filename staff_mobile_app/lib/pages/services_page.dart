@@ -76,8 +76,7 @@ class _ServicesPageState extends State<ServicesPage> {
     }
     if (cats.isEmpty) cats.add('Other');
 
-    final showCommission =
-        appState.isTenantFeatureEnabled('service_wise_commission');
+    final showCommission = appState.serviceWiseCommissionForUser;
     final payload = await AddServiceModal.show(
       context,
       categories: cats.toList()..sort(),
@@ -132,8 +131,7 @@ class _ServicesPageState extends State<ServicesPage> {
             return _buildBody(
               all,
               list,
-              showCommission: appState
-                  .isTenantFeatureEnabled('service_wise_commission'),
+              showCommission: appState.serviceWiseCommissionForUser,
             );
           },
         ),

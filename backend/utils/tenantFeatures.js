@@ -63,6 +63,12 @@ function hasTenantFeature(tenant, feature) {
   return getEffectiveFeatures(tenant)[feature] === true;
 }
 
+/** Service-wise commission is tenant-gated and not available to manager role. */
+function hasServiceWiseCommissionForUser(tenant, req) {
+  if ((req?.user?.role || '').toLowerCase() === 'manager') return false;
+  return hasTenantFeature(tenant, 'service_wise_commission');
+}
+
 /** Hide service catalogue commission in API payloads when the flag is off. */
 function sanitizeServiceRecord(service, tenant) {
   const json = service && typeof service.toJSON === 'function' ? service.toJSON() : { ...(service || {}) };
@@ -147,6 +153,7 @@ module.exports = {
   parseEnabledFeatures,
   getEffectiveFeatures,
   hasTenantFeature,
+  hasServiceWiseCommissionForUser,
   applyServiceWiseCommissionPolicy,
   sanitizeServiceRecord,
   sanitizeStaffRecord,

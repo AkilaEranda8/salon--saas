@@ -261,6 +261,12 @@ class AppState extends ChangeNotifier {
     return _currentUser?.tenantFeatures[featureKey] == true;
   }
 
+  /// Service-wise commission is off for manager role even when the tenant has it enabled.
+  bool get serviceWiseCommissionForUser {
+    if ((_currentUser?.role ?? '').toLowerCase() == 'manager') return false;
+    return isTenantFeatureEnabled('service_wise_commission');
+  }
+
   bool get canManageSalonStaff {
     final role = (_currentUser?.role ?? '').toLowerCase();
     return role == 'superadmin' || role == 'admin' || role == 'manager';
@@ -566,8 +572,7 @@ class AppState extends ChangeNotifier {
       return false;
     }
     try {
-      final includeServiceWise =
-          isTenantFeatureEnabled('service_wise_commission');
+      final includeServiceWise = serviceWiseCommissionForUser;
       final payload = _staffPayloadFromModal(
         name: name,
         phone: phone,
@@ -672,12 +677,8 @@ class AppState extends ChangeNotifier {
         durationMinutes: durationMinutes,
         price: price,
         description: description,
-        commissionType: isTenantFeatureEnabled('service_wise_commission')
-            ? commissionType
-            : null,
-        commissionValue: isTenantFeatureEnabled('service_wise_commission')
-            ? commissionValue
-            : null,
+        commissionType: serviceWiseCommissionForUser ? commissionType : null,
+        commissionValue: serviceWiseCommissionForUser ? commissionValue : null,
       );
       await loadServices();
       return true;

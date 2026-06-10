@@ -32,6 +32,9 @@ function resolveLineCommission(lineId, {
       // Linked to this service with no custom rate → staff default only (skip catalogue).
       return { type: defaultType, val: defaultVal, source: 'staff_default' };
     }
+    if (specByService.size === 0) {
+      return { type: defaultType, val: defaultVal, source: 'staff_default' };
+    }
     const svc = serviceCommissions?.[lineId];
     if (svc?.commission_value != null && svc?.commission_value !== '') {
       return {

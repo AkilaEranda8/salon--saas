@@ -5,12 +5,13 @@ const { normalizeStaffSpecializations } = require('../utils/commissionCalculator
 const {
   applyServiceWiseCommissionPolicy,
   hasTenantFeature,
+  hasServiceWiseCommissionForUser,
   sanitizeStaffRecord,
 } = require('../utils/tenantFeatures');
 const { breakdownForPayment } = require('../services/paymentCommissionBreakdown');
 
 function resolveSpecItems(req, rawItems, salaryType = 'commission_only') {
-  if (!hasTenantFeature(req.tenant, 'service_wise_commission') && salaryType !== 'salary_only') {
+  if (!hasServiceWiseCommissionForUser(req.tenant, req) && salaryType !== 'salary_only') {
     return [];
   }
   return applyServiceWiseCommissionPolicy(rawItems, req.tenant);
@@ -218,7 +219,7 @@ const create = async (req, res) => {
     const base_salary = parsed.base_salary ?? 0;
     const specItems = resolveSpecItems(req, extractSpecializationItems(req.body), salary_type);
 
-    if (hasTenantFeature(req.tenant, 'service_wise_commission')
+    if (hasServiceWiseCommissionForUser(req.tenant, req)
       && salary_type !== 'salary_only' && specItems.length && (commission_value == null || commission_value <= 0)) {
       return res.status(400).json({ message: 'Default commission rate is required when services are selected.' });
     }
@@ -311,12 +312,12 @@ const update = async (req, res) => {
     const effectiveSalaryType = refreshedStaff.salary_type || 'commission_only';
     const hasServicePayload = Array.isArray(req.body.specializations) || Array.isArray(req.body.service_ids);
 
-    if (!hasTenantFeature(req.tenant, 'service_wise_commission') && effectiveSalaryType !== 'salary_only') {
+    if (!hasServiceWiseCommissionForUser(req.tenant, req) && effectiveSalaryType !== 'salary_only') {
       await StaffSpecialization.destroy({ where: { staff_id: staff.id } });
     } else if (hasServicePayload) {
       const specItems = resolveSpecItems(req, extractSpecializationItems(req.body), effectiveSalaryType);
       const effectiveCommission = refreshedStaff.commission_value;
-      if (hasTenantFeature(req.tenant, 'service_wise_commission')
+      if (hasServiceWiseCommissionForUser(req.tenant, req)
         && effectiveSalaryType !== 'salary_only' && specItems.length && (effectiveCommission == null || parseFloat(effectiveCommission) <= 0)) {
         return res.status(400).json({ message: 'Default commission rate is required when services are selected.' });
       }

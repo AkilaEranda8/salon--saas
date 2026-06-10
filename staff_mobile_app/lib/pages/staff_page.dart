@@ -96,15 +96,11 @@ class _StaffPageState extends State<StaffPage> {
       if (app.services.isEmpty) await app.loadServices();
     } catch (_) {}
     if (!mounted) return;
-    final isManager =
-        (app.currentUser?.role ?? '').toLowerCase() == 'manager';
     final payload = await AddStaffModal.show(
       context,
       branchId: edit?.branchId.isNotEmpty == true ? edit!.branchId : branchId,
       services: app.services,
-      showServiceWiseCommission:
-          app.isTenantFeatureEnabled('service_wise_commission'),
-      defaultCommissionOnly: isManager,
+      showServiceWiseCommission: app.serviceWiseCommissionForUser,
       initial: edit,
     );
     if (payload == null || !mounted) return;
@@ -473,8 +469,8 @@ class _StaffPageState extends State<StaffPage> {
         itemBuilder: (ctx, i) => _StaffCard(
           member: list[i],
           index: i,
-          showServiceCommission: AppStateScope.of(context)
-              .isTenantFeatureEnabled('service_wise_commission'),
+          showServiceCommission:
+              AppStateScope.of(context).serviceWiseCommissionForUser,
           onTap: canManage ? () => _openStaffForm(edit: list[i]) : null,
         ),
       ),

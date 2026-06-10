@@ -31,8 +31,9 @@ function CommBadge({ type, value }) {
 export default function StaffPage() {
   const { user }     = useAuth();
   const { allowed: serviceWiseCommission } = useFeatureGate('service_wise_commission');
-  const canEdit      = ['superadmin','admin','manager'].includes(user?.role);
   const isManager    = user?.role === 'manager';
+  const serviceWiseForUser = serviceWiseCommission && !isManager;
+  const canEdit      = ['superadmin','admin','manager'].includes(user?.role);
   const isSuperAdmin = user?.role === 'superadmin';
   /** Superadmin + admin should load all branches by default; a home branch_id would hide staff in other branches. */
   const seesAllBranches = ['superadmin', 'admin'].includes(user?.role);
@@ -87,11 +88,6 @@ export default function StaffPage() {
 
   const syncAllServiceCommissionSpecs = useCallback(() => {
     const ids = activeServices.map((sv) => sv.id);
-    if (isManager) {
-      setSpecs(ids);
-      setSpecOverrides({});
-      return;
-    }
     const overrides = {};
     for (const sv of activeServices) {
       if (sv.commission_value != null && sv.commission_value !== '') {
@@ -102,7 +98,7 @@ export default function StaffPage() {
     }
     setSpecs(ids);
     setSpecOverrides(overrides);
-  }, [activeServices, isManager]);
+  }, [activeServices]);
 
   const prevSalaryTypeRef = useRef(EMPTY.salary_type);
   useEffect(() => {
@@ -112,7 +108,7 @@ export default function StaffPage() {
     }
     if ((form.salary_type || 'commission_only') === prevSalaryTypeRef.current) return;
     prevSalaryTypeRef.current = form.salary_type || 'commission_only';
-    if (!serviceWiseCommission || form.salary_type === 'salary_only') {
+    if (!serviceWiseForUser || form.salary_type === 'salary_only') {
       if (form.salary_type === 'salary_only') {
         setSpecs([]);
         setSpecOverrides({});
@@ -120,13 +116,13 @@ export default function StaffPage() {
       return;
     }
     syncAllServiceCommissionSpecs();
-  }, [showForm, form.salary_type, serviceWiseCommission, syncAllServiceCommissionSpecs]);
+  }, [showForm, form.salary_type, serviceWiseForUser, syncAllServiceCommissionSpecs]);
 
   const openAdd  = () => {
     setEditItem(null);
     const initial = { ...EMPTY, branch_ids: myBranchId != null ? [String(myBranchId)] : [], join_date: new Date().toISOString().slice(0,10) };
     setForm(initial);
-    if (serviceWiseCommission && initial.salary_type !== 'salary_only') {
+    if (serviceWiseForUser && initial.salary_type !== 'salary_only') {
       syncAllServiceCommissionSpecs();
     } else {
       setSpecs([]);
@@ -151,13 +147,8 @@ export default function StaffPage() {
         overrides[s.service_id] = String(s.commission_value);
       }
     }
-    if (isManager && serviceWiseCommission && (row.salary_type || 'commission_only') !== 'salary_only') {
-      setSpecs(activeServices.map((sv) => sv.id));
-      setSpecOverrides({});
-    } else {
-      setSpecs(selected);
-      setSpecOverrides(overrides);
-    }
+    setSpecs(selected);
+    setSpecOverrides(overrides);
     setPhotoFile(null);
     setPhotoPreview(row.photo_url || '');
     setRemovePhoto(false);
@@ -197,11 +188,10 @@ export default function StaffPage() {
     if (!form.name || !form.branch_ids?.length) return setFormErr('Name and at least one branch are required');
     const paysCommission = form.salary_type !== 'salary_only';
     let effectiveSpecs = specs;
-    if (serviceWiseCommission && paysCommission && !effectiveSpecs.length && activeServices.length) {
+    if (serviceWiseForUser && paysCommission && !effectiveSpecs.length && activeServices.length) {
       effectiveSpecs = activeServices.map((sv) => sv.id);
     }
-    if (serviceWiseCommission && paysCommission && effectiveSpecs.length > 0
-        && (form.commission_value === '' || form.commission_value == null)) {
+    if (paysCommission && (form.commission_value === '' || form.commission_value == null)) {
       return setFormErr('Set a default commission rate for this staff member.');
     }
     setSaving(true);
@@ -215,14 +205,14 @@ export default function StaffPage() {
         salary_type: form.salary_type || 'commission_only',
         join_date: form.join_date || null,
         is_active: form.is_active !== false,
-        ...(serviceWiseCommission || form.salary_type === 'salary_only'
+        ...(serviceWiseForUser || form.salary_type === 'salary_only'
           ? {
               specializations: effectiveSpecs.map((id) => {
-                if (!serviceWiseCommission) {
+                if (!serviceWiseForUser) {
                   return { service_id: Number(id) };
                 }
                 const raw = specOverrides[id];
-                const hasOverride = !isManager && raw !== '' && raw != null;
+                const hasOverride = raw !== '' && raw != null;
                 return {
                   service_id: Number(id),
                   commission_type: form.commission_type || 'percentage',
@@ -321,7 +311,7 @@ export default function StaffPage() {
       meta: { width: '14%' },
       cell: ({ row: { original: row } }) => <CommBadge type={row.commission_type} value={row.commission_value} />,
     },
-    ...(serviceWiseCommission ? [{
+    ...(serviceWiseForUser ? [{
       id: 'services',
       header: 'Services',
       accessorFn: row => (row.specializations||[]).length,
@@ -477,7 +467,7 @@ export default function StaffPage() {
               <FormGroup label="Commission Type">
                 <Select value={form.commission_type||'percentage'} onChange={e => setForm(f=>({...f, commission_type:e.target.value}))}>
                   <option value="percentage">Percentage %</option>
-                  {serviceWiseCommission && <option value="fixed">Fixed per Service</option>}
+                  {serviceWiseForUser && <option value="fixed">Fixed per Service</option>}
                 </Select>
               </FormGroup>
               <FormGroup label={form.commission_type==='percentage' ? 'Default Commission %' : 'Default Commission (Rs.)'}>
@@ -486,23 +476,8 @@ export default function StaffPage() {
             </div>
           )}
           <FormGroup label="Join Date"><Input type="date" value={form.join_date||''} onChange={e => setForm(f=>({...f, join_date:e.target.value}))} /></FormGroup>
-          {form.salary_type !== 'salary_only' && activeServices.length > 0 && serviceWiseCommission && (
-            <FormGroup label={isManager ? 'Branch Services' : 'Service Commission Setup'}>
-              {isManager ? (
-                <div style={{ background:'#F0FDF4', border:'1px solid #BBF7D0', borderRadius:12, padding:'12px 14px' }}>
-                  <p style={{ fontSize:13, color:'#166534', margin:'0 0 10px', lineHeight:1.5 }}>
-                    All <strong>{activeServices.length}</strong> active services in your branch are linked automatically.
-                    Set only the <strong>default commission rate</strong> above — every service uses that rate. No per-service entry needed.
-                  </p>
-                  <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
-                    {activeServices.map((sv) => (
-                      <span key={sv.id} style={{ padding:'4px 10px', borderRadius:8, background:'#fff', border:'1px solid #BBF7D0', fontSize:12, color:'#14532D', fontWeight:600 }}>
-                        {sv.name}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              ) : (<>
+          {form.salary_type !== 'salary_only' && activeServices.length > 0 && serviceWiseForUser && (
+            <FormGroup label="Service Commission Setup">
               <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:8, marginBottom:10, flexWrap:'wrap' }}>
                 <p style={{ fontSize:12, color:'#667085', margin:0, lineHeight:1.45, flex:1 }}>
                   All active services are linked for this branch. Set a <strong>custom rate</strong> per service or leave empty to use the default above.
@@ -552,7 +527,6 @@ export default function StaffPage() {
               {specs.length > 0 && (!form.commission_value && form.commission_value !== 0) && (
                 <p style={{ fontSize:12, color:'#D97706', marginTop:8 }}>Set a default commission rate — services without a custom rate will use it.</p>
               )}
-              </>)}
             </FormGroup>
           )}
           {form.salary_type === 'salary_only' && services.length > 0 && (
@@ -603,22 +577,22 @@ export default function StaffPage() {
                 </div>
               ))}
             </div>
-            {((serviceWiseCommission && p.salary_type !== 'salary_only') || p.salary_type === 'salary_only')
+            {((serviceWiseForUser && p.salary_type !== 'salary_only') || p.salary_type === 'salary_only')
               && (p.specializations||[]).length > 0 && (
               <div>
                 <h4 style={{ margin:'0 0 10px', fontSize:13, fontWeight:700, color:'#475467', textTransform:'uppercase' }}>
-                  {serviceWiseCommission && p.salary_type !== 'salary_only' ? 'Service Commission' : 'Specializations'}
+                  {serviceWiseForUser && p.salary_type !== 'salary_only' ? 'Service Commission' : 'Specializations'}
                 </h4>
                 <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
                   {p.specializations.map((s) => {
-                    const hasOverride = serviceWiseCommission && s.commission_value != null && s.commission_value !== '';
+                    const hasOverride = serviceWiseForUser && s.commission_value != null && s.commission_value !== '';
                     const type = s.commission_type || p.commission_type;
                     return (
                       <div key={s.id} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'8px 12px', background:'#F9FAFB', borderRadius:8, fontSize:13 }}>
                         <span style={{ fontWeight:600, color:'#344054' }}>{s.service?.name || s.service_id}</span>
                         {hasOverride ? (
                           <CommBadge type={type} value={s.commission_value} />
-                        ) : serviceWiseCommission ? (
+                        ) : serviceWiseForUser ? (
                           <span style={{ fontSize:12, color:'#667085' }}>
                             Default ({type === 'percentage' ? `${p.commission_value}%` : `Rs.${Number(p.commission_value||0).toLocaleString()}`})
                           </span>

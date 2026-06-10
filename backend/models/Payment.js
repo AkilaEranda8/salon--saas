@@ -51,6 +51,11 @@ const Payment = sequelize.define('Payment', {
     type: DataTypes.DECIMAL(10, 2),
     defaultValue: 0,
   },
+  commission_breakdown: {
+    type: DataTypes.JSON,
+    allowNull: true,
+    comment: 'Line-by-line commission calculation snapshot',
+  },
   date: {
     type: DataTypes.DATEONLY,
     allowNull: false,

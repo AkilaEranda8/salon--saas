@@ -7,6 +7,7 @@ const {
   hasTenantFeature,
   sanitizeStaffRecord,
 } = require('../utils/tenantFeatures');
+const { breakdownForPayment } = require('../services/paymentCommissionBreakdown');
 
 function resolveSpecItems(req, rawItems, salaryType = 'commission_only') {
   if (!hasTenantFeature(req.tenant, 'service_wise_commission') && salaryType !== 'salary_only') {
@@ -573,6 +574,13 @@ const commissionReport = async (req, res) => {
     }
 
     const netPayable = Math.max(0, grossPayable - totalAdvances);
+
+    const paymentRows = await Promise.all(payments.map(async (payment) => {
+      const json = payment.toJSON();
+      json.commission_breakdown = await breakdownForPayment(payment, req.tenant, req);
+      return json;
+    }));
+
     return res.json({
       total: totalCommission,
       totalCommission,
@@ -584,7 +592,7 @@ const commissionReport = async (req, res) => {
       totalPaid,
       balanceDue: Math.max(0, netPayable - totalPaid),
       staff: staffRecord ? { id: staffRecord.id, name: staffRecord.name } : null,
-      data: payments,
+      data: paymentRows,
     });
   } catch (err) {
     return res.status(500).json({ message: 'Server error.' });

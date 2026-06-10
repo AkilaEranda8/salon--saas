@@ -21,6 +21,7 @@ const { ensureInventorySupplierColumns } = require('./services/ensureInventorySu
 const ensureStaffSalaryColumns = require('./services/ensureStaffSalaryColumns');
 const ensureStaffSpecCommissionColumns = require('./services/ensureStaffSpecCommissionColumns');
 const ensureServiceCommissionColumns = require('./services/ensureServiceCommissionColumns');
+const ensurePaymentCommissionBreakdownColumn = require('./services/ensurePaymentCommissionBreakdownColumn');
 const ensureUserMobileFeaturesColumn = require('./services/ensureUserMobileFeaturesColumn');
 const ensureTenantMobileRoleDefaultsColumn = require('./services/ensureTenantMobileRoleDefaultsColumn');
 const { ensureTenantEnabledFeaturesColumn } = require('./services/ensureTenantEnabledFeaturesColumn');
@@ -334,6 +335,7 @@ connectWithRetry().then(async () => {
   await ensureStaffSalaryColumns();
   await ensureStaffSpecCommissionColumns();
   await ensureServiceCommissionColumns();
+  await ensurePaymentCommissionBreakdownColumn();
   await ensureUserMobileFeaturesColumn();
   await ensureTenantMobileRoleDefaultsColumn();
   await ensureTenantEnabledFeaturesColumn();

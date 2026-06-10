@@ -16,6 +16,59 @@ const today  = () => new Date().toISOString().slice(0, 10);
 
 const PAYOUT_EMPTY = { amount: '', date: today(), notes: '' };
 
+const SOURCE_COLORS = {
+  staff_override:  ['#EFF6FF', '#1D4ED8'],
+  service_catalog: ['#ECFDF5', '#047857'],
+  staff_default:   ['#FEF3C7', '#B45309'],
+};
+
+function BreakdownLines({ breakdown }) {
+  if (!breakdown) return null;
+  if (breakdown.note) {
+    return <div style={{ fontSize: 12, color: '#98A2B3', fontStyle: 'italic' }}>{breakdown.note}</div>;
+  }
+  if (!breakdown.lines?.length) {
+    return <div style={{ fontSize: 12, color: '#98A2B3' }}>No line items — commission Rs. {Number(breakdown.total || 0).toLocaleString()}</div>;
+  }
+  return (
+    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, marginTop: 8 }}>
+      <thead>
+        <tr style={{ background: '#F9FAFB', color: '#667085' }}>
+          <th style={{ textAlign: 'left', padding: '6px 8px', fontWeight: 700 }}>Service</th>
+          <th style={{ textAlign: 'right', padding: '6px 8px', fontWeight: 700 }}>Base</th>
+          <th style={{ textAlign: 'left', padding: '6px 8px', fontWeight: 700 }}>Rate</th>
+          <th style={{ textAlign: 'left', padding: '6px 8px', fontWeight: 700 }}>Source</th>
+          <th style={{ textAlign: 'right', padding: '6px 8px', fontWeight: 700 }}>Commission</th>
+        </tr>
+      </thead>
+      <tbody>
+        {breakdown.lines.map((line, i) => {
+          const [bg, fg] = SOURCE_COLORS[line.source] || ['#F2F4F7', '#475467'];
+          return (
+            <tr key={i} style={{ borderTop: '1px solid #EAECF0' }}>
+              <td style={{ padding: '7px 8px', color: '#101828', fontWeight: 600 }}>{line.serviceName}</td>
+              <td style={{ padding: '7px 8px', textAlign: 'right', color: '#475467' }}>{Rs(line.lineBase)}</td>
+              <td style={{ padding: '7px 8px', color: '#344054' }}>{line.rateLabel}</td>
+              <td style={{ padding: '7px 8px' }}>
+                <span style={{ padding: '2px 7px', borderRadius: 20, background: bg, color: fg, fontSize: 11, fontWeight: 700 }}>
+                  {line.sourceLabel || line.source}
+                </span>
+              </td>
+              <td style={{ padding: '7px 8px', textAlign: 'right', fontWeight: 700, color: '#D97706' }}>{Rs(line.commission)}</td>
+            </tr>
+          );
+        })}
+      </tbody>
+      <tfoot>
+        <tr style={{ borderTop: '2px solid #EAECF0', background: '#FFFBEB' }}>
+          <td colSpan={4} style={{ padding: '8px', fontWeight: 700, color: '#92400E', textAlign: 'right' }}>Payment commission</td>
+          <td style={{ padding: '8px', textAlign: 'right', fontWeight: 800, color: '#D97706' }}>{Rs(breakdown.total)}</td>
+        </tr>
+      </tfoot>
+    </table>
+  );
+}
+
 export default function CommissionPage() {
   const { user } = useAuth();
   const isAdminRole  = ['superadmin','admin','manager','staff'].includes(user?.role);
@@ -41,6 +94,12 @@ export default function CommissionPage() {
   const [histRow,     setHistRow]     = useState(null);
   const [histData,    setHistData]    = useState([]);
   const [histLoading, setHistLoading] = useState(false);
+
+  // Commission calculation breakdown modal
+  const [breakRow,     setBreakRow]     = useState(null);
+  const [breakData,    setBreakData]    = useState(null);
+  const [breakLoading, setBreakLoading] = useState(false);
+  const [breakOpenId,  setBreakOpenId]  = useState(null);
 
   // All payments section
   const [allPayouts,     setAllPayouts]     = useState([]);
@@ -105,6 +164,21 @@ export default function CommissionPage() {
       setHistData(Array.isArray(res.data?.data) ? res.data.data : []);
     } catch { setHistData([]); }
     setHistLoading(false);
+  };
+
+  const openBreakdown = async row => {
+    setBreakRow(row);
+    setBreakData(null);
+    setBreakOpenId(null);
+    setBreakLoading(true);
+    try {
+      const ym = `${year}-${String(month).padStart(2, '0')}`;
+      const res = await api.get(`/staff/${row.staffId}/commission`, { params: { month: ym } });
+      setBreakData(res.data || null);
+    } catch {
+      setBreakData(null);
+    }
+    setBreakLoading(false);
   };
 
   const deletePayout = async id => {
@@ -264,6 +338,11 @@ export default function CommissionPage() {
       id: 'actions', header: '', enableSorting: false, meta: { width: '11%', align: 'center' },
       cell: ({ row: { original: r } }) => (
         <div style={{ display: 'flex', gap: 6, justifyContent: 'center' }}>
+          {r.salaryType !== 'salary_only' && Number(r.appointmentCount || 0) > 0 && (
+            <ActionBtn onClick={() => openBreakdown(r)} title="Calculation breakdown" color="#7C3AED">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="6" x2="16" y2="6"/><line x1="8" y1="10" x2="16" y2="10"/><line x1="8" y1="14" x2="12" y2="14"/></svg>
+            </ActionBtn>
+          )}
           {canPay && Number(r.balanceDue || 0) > 0 && (
             <ActionBtn onClick={() => openPay(r)} title="Record Payment" color="#059669">
               <IconPlus />
@@ -387,6 +466,81 @@ export default function CommissionPage() {
           )
         )}
       </div>
+
+      {/* Commission calculation breakdown */}
+      <Modal
+        open={!!breakRow}
+        title={breakRow ? `Calculation Breakdown — ${breakRow.staffName}` : ''}
+        onClose={() => { setBreakRow(null); setBreakData(null); setBreakOpenId(null); }}
+        size="xl"
+      >
+        {breakLoading ? (
+          <div style={{ textAlign: 'center', padding: 32, color: '#98A2B3' }}>Loading breakdown…</div>
+        ) : !breakData?.data?.length ? (
+          <div style={{ textAlign: 'center', padding: 32, color: '#98A2B3' }}>No commission payments for this period.</div>
+        ) : (
+          <>
+            <div style={{ background: '#F5F3FF', color: '#5B21B6', padding: '10px 14px', borderRadius: 9, fontSize: 13, marginBottom: 14, display: 'flex', flexWrap: 'wrap', gap: 16 }}>
+              <span>Period: <strong>{MONTHS[month - 1]} {year}</strong></span>
+              <span>Total commission: <strong>{Rs(breakData.totalCommission)}</strong></span>
+              <span>{breakData.data.length} payment{breakData.data.length !== 1 ? 's' : ''}</span>
+            </div>
+            <p style={{ fontSize: 12, color: '#667085', margin: '0 0 12px', lineHeight: 1.5 }}>
+              Each payment is split across services. The <strong>base</strong> is the service&apos;s share of the net paid amount (after loyalty/promo discounts).
+              Commission uses the first matching rate: staff custom → service catalogue → staff default.
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxHeight: '60vh', overflowY: 'auto' }}>
+              {breakData.data.map(p => {
+                const open = breakOpenId === p.id;
+                const cust = p.customer_name || p.appointment?.customer_name || 'Walk-in';
+                const svcLabel = p.service?.name || (p.commission_breakdown?.lines?.length > 1 ? 'Multiple services' : '—');
+                return (
+                  <div key={p.id} style={{ border: '1.5px solid #E4E7EC', borderRadius: 10, overflow: 'hidden' }}>
+                    <button
+                      type="button"
+                      onClick={() => setBreakOpenId(open ? null : p.id)}
+                      style={{
+                        width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                        gap: 12, padding: '11px 14px', background: open ? '#F9FAFB' : '#fff',
+                        border: 'none', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
+                      }}
+                    >
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 700, color: '#101828', fontSize: 13 }}>
+                          {p.date ? new Date(p.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
+                          {' · '}{cust}
+                        </div>
+                        <div style={{ fontSize: 12, color: '#667085', marginTop: 2 }}>
+                          Paid {Rs(p.total_amount)} · {svcLabel}
+                          {(p.loyalty_discount > 0 || p.promo_discount > 0) && (
+                            <span> · Discounts: {Rs(Number(p.loyalty_discount || 0) + Number(p.promo_discount || 0))}</span>
+                          )}
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+                        <span style={{ fontWeight: 800, color: '#D97706', fontFamily: "'Outfit',sans-serif", fontSize: 14 }}>
+                          {Rs(p.commission_amount)}
+                        </span>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#98A2B3" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ transform: open ? 'rotate(180deg)' : 'none', transition: '0.2s' }}><polyline points="6 9 12 15 18 9"/></svg>
+                      </div>
+                    </button>
+                    {open && (
+                      <div style={{ padding: '0 14px 14px', borderTop: '1px solid #EAECF0' }}>
+                        {p.commission_breakdown?.netTotal != null && (
+                          <div style={{ fontSize: 12, color: '#667085', marginTop: 10, marginBottom: 4 }}>
+                            Net commissionable amount: <strong style={{ color: '#344054' }}>{Rs(p.commission_breakdown.netTotal)}</strong>
+                          </div>
+                        )}
+                        <BreakdownLines breakdown={p.commission_breakdown} />
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
+      </Modal>
 
       {/* Payment History Modal */}
       <Modal open={!!histRow} title={histRow ? `Payment History — ${histRow.staffName}` : ''} onClose={() => setHistRow(null)} size="md">

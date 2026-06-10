@@ -1,7 +1,7 @@
 const { Op, fn, col, literal } = require('sequelize');
 const { sequelize } = require('../config/database');
 const { Payment, PaymentSplit, Branch, Staff, StaffSpecialization, Customer, Service, Appointment, AppointmentService, CustomerPackage, Package: PkgModel, PackageRedemption, LoyaltyRule } = require('../models');
-const { calculatePaymentCommission } = require('../utils/commissionCalculator');
+const { computeCommissionDetails } = require('../utils/commissionCalculator');
 const { hasTenantFeature } = require('../utils/tenantFeatures');
 const { notifyPaymentReceipt, notifyLoyaltyPoints } = require('../services/notificationService');
 const { tenantWhere, byIdWhere, resolveTenantId } = require('../utils/tenantScope');
@@ -105,6 +105,7 @@ const create = async (req, res) => {
 
     // Staff commission — per selected service (staff_specializations) or staff default
     let commission_amount = 0;
+    let commission_breakdown = null;
     if (staff_id) {
       const staffMember = await Staff.findOne({
         where: byIdWhere(req, staff_id),
@@ -135,14 +136,16 @@ const create = async (req, res) => {
 
         const servicePrices = {};
         const serviceCommissions = {};
+        const serviceNames = {};
         if (ids.length) {
           const svcRows = await Service.findAll({
             where: { id: ids, ...tenantWhere(req) },
-            attributes: ['id', 'price', 'commission_type', 'commission_value'],
+            attributes: ['id', 'name', 'price', 'commission_type', 'commission_value'],
             transaction: t,
           });
           for (const svc of svcRows) {
             servicePrices[svc.id] = svc.price;
+            serviceNames[svc.id] = svc.name;
             if (svc.commission_value != null && svc.commission_value !== '') {
               serviceCommissions[svc.id] = {
                 commission_type: svc.commission_type,
@@ -151,18 +154,21 @@ const create = async (req, res) => {
             }
           }
         }
-        commission_amount = calculatePaymentCommission({
+        const computed = computeCommissionDetails({
           staff: staffMember,
           specializations: staffMember.specializations || [],
           serviceIds: ids,
           servicePrices,
           serviceCommissions,
+          serviceNames,
           total_amount,
           subtotal: bodySubtotal,
           loyalty_discount,
           promo_discount,
           allowServiceOverrides: hasTenantFeature(req.tenant, 'service_wise_commission'),
         });
+        commission_amount = computed.amount;
+        commission_breakdown = computed.breakdown;
       }
     }
 
@@ -175,7 +181,7 @@ const create = async (req, res) => {
       service_id:     service_id     || null,
       appointment_id: appointment_id || null,
       customer_name, total_amount, loyalty_discount, promo_discount, points_earned,
-      commission_amount, date: today, status: 'paid',
+      commission_amount, commission_breakdown, date: today, status: 'paid',
       tenant_id: resolveTenantId(req),
     }, { transaction: t });
 

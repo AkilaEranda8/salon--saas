@@ -1,12 +1,41 @@
 /**
- * Staff commission for a payment — per-service rates from staff_specializations,
- * falling back to staff.commission_type / commission_value.
+ * Staff commission for a payment — priority when service_wise_commission is on:
+ * 1) staff_specializations override
+ * 2) services.commission_* on the catalogue row
+ * 3) staff default commission_type / commission_value
  */
+function resolveLineCommission(lineId, {
+  allowServiceOverrides,
+  specByService,
+  serviceCommissions,
+  defaultType,
+  defaultVal,
+}) {
+  if (allowServiceOverrides) {
+    const spec = specByService.get(lineId);
+    if (spec?.commission_value != null && spec?.commission_value !== '') {
+      return {
+        type: spec.commission_type || defaultType,
+        val: parseFloat(spec.commission_value),
+      };
+    }
+    const svc = serviceCommissions?.[lineId];
+    if (svc?.commission_value != null && svc?.commission_value !== '') {
+      return {
+        type: svc.commission_type || defaultType,
+        val: parseFloat(svc.commission_value),
+      };
+    }
+  }
+  return { type: defaultType, val: defaultVal };
+}
+
 function calculatePaymentCommission({
   staff,
   specializations = [],
   serviceIds = [],
   servicePrices = {},
+  serviceCommissions = {},
   total_amount = 0,
   subtotal = 0,
   loyalty_discount = 0,
@@ -41,13 +70,13 @@ function calculatePaymentCommission({
 
   let commission = 0;
   for (const line of lines) {
-    const spec = allowServiceOverrides ? specByService.get(line.id) : null;
-    const type = spec?.commission_type || defaultType;
-    const val = allowServiceOverrides
-      && spec?.commission_value != null
-      && spec?.commission_value !== ''
-      ? parseFloat(spec.commission_value)
-      : defaultVal;
+    const { type, val } = resolveLineCommission(line.id, {
+      allowServiceOverrides,
+      specByService,
+      serviceCommissions,
+      defaultType,
+      defaultVal,
+    });
     const lineBase = grossSum > 0 ? (line.price / grossSum) * netTotal : netTotal / lines.length;
     commission += type === 'percentage' ? (lineBase * val) / 100 : val;
   }

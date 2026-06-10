@@ -23,6 +23,16 @@ const Service = sequelize.define('Service', {
     type: DataTypes.DECIMAL(10, 2),
     defaultValue: 0,
   },
+  commission_type: {
+    type: DataTypes.ENUM('percentage', 'fixed'),
+    allowNull: true,
+    comment: 'Per-service commission type when service_wise_commission is enabled',
+  },
+  commission_value: {
+    type: DataTypes.DECIMAL(10, 2),
+    allowNull: true,
+    comment: 'Per-service commission rate (percentage or fixed Rs.)',
+  },
   description: {
     type: DataTypes.TEXT,
     allowNull: true,

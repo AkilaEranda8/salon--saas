@@ -1,5 +1,42 @@
 const { Service } = require('../models');
 const { tenantWhere } = require('../utils/tenantScope');
+const { hasTenantFeature } = require('../utils/tenantFeatures');
+
+function parseServiceCommissionFields(body = {}, tenant) {
+  if (!hasTenantFeature(tenant, 'service_wise_commission')) {
+    return { commission_type: null, commission_value: null };
+  }
+  if (body.commission_value === '' || body.commission_value == null) {
+    return { commission_type: null, commission_value: null };
+  }
+  const val = parseFloat(body.commission_value);
+  if (Number.isNaN(val)) {
+    return { commission_type: null, commission_value: null };
+  }
+  return {
+    commission_type: ['percentage', 'fixed'].includes(body.commission_type)
+      ? body.commission_type
+      : 'percentage',
+    commission_value: val,
+  };
+}
+
+function buildServicePayload(body = {}, tenant) {
+  const payload = {};
+  if (body.name !== undefined) payload.name = body.name;
+  if (body.category !== undefined) payload.category = body.category;
+  if (body.duration_minutes !== undefined) payload.duration_minutes = body.duration_minutes;
+  if (body.price !== undefined) payload.price = body.price;
+  if (body.description !== undefined) payload.description = body.description;
+  if (body.is_active !== undefined) payload.is_active = body.is_active;
+
+  const commission = parseServiceCommissionFields(body, tenant);
+  if (body.commission_type !== undefined || body.commission_value !== undefined) {
+    payload.commission_type = commission.commission_type;
+    payload.commission_value = commission.commission_value;
+  }
+  return payload;
+}
 
 const list = async (req, res) => {
   try {
@@ -38,11 +75,16 @@ const getOne = async (req, res) => {
 
 const create = async (req, res) => {
   try {
-    const { name, category, duration_minutes, price, description } = req.body;
+    const { name } = req.body;
     if (!name) return res.status(400).json({ message: 'Service name is required.' });
 
     const tenantId = req.userTenantId ?? req.tenant?.id ?? null;
-    const svc = await Service.create({ name, category, duration_minutes, price, description, tenant_id: tenantId });
+    const payload = buildServicePayload(req.body, req.tenant);
+    const svc = await Service.create({
+      ...payload,
+      name,
+      tenant_id: tenantId,
+    });
     return res.status(201).json(svc);
   } catch (err) {
     return res.status(500).json({ message: 'Server error.' });
@@ -55,7 +97,8 @@ const update = async (req, res) => {
     const svc = await Service.findOne({ where });
     if (!svc) return res.status(404).json({ message: 'Service not found.' });
 
-    await svc.update(req.body);
+    const payload = buildServicePayload(req.body, req.tenant);
+    await svc.update(payload);
     return res.json(svc);
   } catch (err) {
     return res.status(500).json({ message: 'Server error.' });

@@ -134,19 +134,29 @@ const create = async (req, res) => {
         }
 
         const servicePrices = {};
+        const serviceCommissions = {};
         if (ids.length) {
           const svcRows = await Service.findAll({
             where: { id: ids, ...tenantWhere(req) },
-            attributes: ['id', 'price'],
+            attributes: ['id', 'price', 'commission_type', 'commission_value'],
             transaction: t,
           });
-          for (const svc of svcRows) servicePrices[svc.id] = svc.price;
+          for (const svc of svcRows) {
+            servicePrices[svc.id] = svc.price;
+            if (svc.commission_value != null && svc.commission_value !== '') {
+              serviceCommissions[svc.id] = {
+                commission_type: svc.commission_type,
+                commission_value: svc.commission_value,
+              };
+            }
+          }
         }
         commission_amount = calculatePaymentCommission({
           staff: staffMember,
           specializations: staffMember.specializations || [],
           serviceIds: ids,
           servicePrices,
+          serviceCommissions,
           total_amount,
           subtotal: bodySubtotal,
           loyalty_discount,

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { useFeatureGate } from '../hooks/useFeatureGate';
 import api from '../api/axios';
 import Button from '../components/ui/Button';
 import { Input, Select, FormGroup } from '../components/ui/FormElements';
@@ -13,10 +14,18 @@ import {
 
 const CAT_COLOR = { Hair: '#2563EB', Beard: '#7C3AED', Skin: '#EA580C', Nail: '#D97706', Massage: '#059669', Other: '#64748B' };
 const CAT_BG    = { Hair: '#EFF6FF', Beard: '#F5F3FF', Skin: '#FFF7ED', Nail: '#FFFBEB', Massage: '#ECFDF5', Other: '#F8FAFC' };
-const EMPTY = { name: '', category: '', duration_minutes: 30, price: '', description: '', is_active: true };
+const EMPTY = { name: '', category: '', duration_minutes: 30, price: '', description: '', is_active: true, commission_type: 'percentage', commission_value: '' };
+
+function formatCommission(type, value) {
+  if (value == null || value === '') return '—';
+  return type === 'fixed'
+    ? `Rs. ${Number(value).toLocaleString()}`
+    : `${value}%`;
+}
 
 export default function ServicesPage() {
   const { user }  = useAuth();
+  const { allowed: serviceWiseCommission } = useFeatureGate('service_wise_commission');
   const { toast } = useToast();
   const canEdit   = ['superadmin', 'admin'].includes(user?.role);
   const [services, setServices] = useState([]);
@@ -81,7 +90,16 @@ export default function ServicesPage() {
 
   const catCounts  = allSvcs.reduce((acc, s) => { acc[s.category] = (acc[s.category] || 0) + 1; return acc; }, {});
   const openAdd    = () => { setEditItem(null); setForm({ ...EMPTY, category: CATS[0] || 'Other' }); setFormErr(''); setShowForm(true); };
-  const openEdit   = row => { setEditItem(row); setForm({ ...row }); setFormErr(''); setShowForm(true); };
+  const openEdit   = row => {
+    setEditItem(row);
+    setForm({
+      ...row,
+      commission_type: row.commission_type || 'percentage',
+      commission_value: row.commission_value ?? '',
+    });
+    setFormErr('');
+    setShowForm(true);
+  };
   const openView   = row => { setViewItem(row); setShowView(true); };
 
   const handleSave = async () => {
@@ -128,11 +146,22 @@ export default function ServicesPage() {
       meta: { width: '14%', align: 'right' },
       cell: ({ row: { original: row } }) => <span style={{ fontWeight: 700, color: '#2563EB' }}>Rs. {Number(row.price).toLocaleString()}</span>,
     },
+    ...(serviceWiseCommission ? [{
+      id: 'commission',
+      header: 'Commission',
+      accessorFn: row => row.commission_value,
+      meta: { width: '12%', align: 'right' },
+      cell: ({ row: { original: row } }) => (
+        <span style={{ fontWeight: 600, color: '#059669', fontSize: 13 }}>
+          {formatCommission(row.commission_type, row.commission_value)}
+        </span>
+      ),
+    }] : []),
     {
       id: 'description',
       header: 'Description',
       accessorFn: row => row.description,
-      meta: { width: '26%' },
+      meta: { width: serviceWiseCommission ? '20%' : '26%' },
       cell: ({ row: { original: row } }) => <span style={{ color: '#475467', fontSize: 13 }}>{String(row.description || '').slice(0, 60)}</span>,
     },
     {
@@ -212,6 +241,31 @@ export default function ServicesPage() {
             </FormGroup>
           </div>
           <FormGroup label="Price (Rs.)" required><Input type="number" value={form.price} placeholder="1500" onChange={e => setForm(f => ({ ...f, price: e.target.value }))} /></FormGroup>
+          {serviceWiseCommission && (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+              <FormGroup label="Commission Type">
+                <Select value={form.commission_type || 'percentage'} onChange={e => setForm(f => ({ ...f, commission_type: e.target.value }))}>
+                  <option value="percentage">Percentage %</option>
+                  <option value="fixed">Fixed (Rs.)</option>
+                </Select>
+              </FormGroup>
+              <FormGroup label={form.commission_type === 'fixed' ? 'Commission (Rs.)' : 'Commission %'}>
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={form.commission_value ?? ''}
+                  placeholder={form.commission_type === 'fixed' ? 'e.g. 500' : 'e.g. 10'}
+                  onChange={e => setForm(f => ({ ...f, commission_value: e.target.value }))}
+                />
+              </FormGroup>
+            </div>
+          )}
+          {serviceWiseCommission && (
+            <p style={{ fontSize: 12, color: '#667085', margin: 0, lineHeight: 1.45 }}>
+              Optional default commission for this service. Staff-specific overrides still apply when set.
+            </p>
+          )}
           <FormGroup label="Description"><Input value={form.description || ''} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} placeholder="Brief description" /></FormGroup>
         </div>
       </Modal>
@@ -221,15 +275,21 @@ export default function ServicesPage() {
         {viewItem && (
           <div style={{ textAlign: 'center' }}>
             <span style={{ display: 'inline-block', padding: '4px 14px', borderRadius: 20, fontSize: 13, fontWeight: 700, background: CAT_BG[viewItem.category] || '#F2F4F7', color: CAT_COLOR[viewItem.category] || '#475467', marginBottom: 16 }}>{viewItem.category}</span>
-            <div style={{ display: 'flex', gap: 12, margin: '20px 0', justifyContent: 'center' }}>
-              <div style={{ flex: 1, background: '#EFF6FF', borderRadius: 12, padding: '14px 8px', textAlign: 'center' }}>
+            <div style={{ display: 'flex', gap: 12, margin: '20px 0', justifyContent: 'center', flexWrap: 'wrap' }}>
+              <div style={{ flex: 1, minWidth: 120, background: '#EFF6FF', borderRadius: 12, padding: '14px 8px', textAlign: 'center' }}>
                 <div style={{ fontSize: 20, fontWeight: 800, color: '#2563EB' }}>Rs. {Number(viewItem.price).toLocaleString()}</div>
                 <div style={{ fontSize: 12, color: '#475467', marginTop: 2 }}>Price</div>
               </div>
-              <div style={{ flex: 1, background: '#F0FDFA', borderRadius: 12, padding: '14px 8px', textAlign: 'center' }}>
+              <div style={{ flex: 1, minWidth: 120, background: '#F0FDFA', borderRadius: 12, padding: '14px 8px', textAlign: 'center' }}>
                 <div style={{ fontSize: 20, fontWeight: 800, color: '#0891B2' }}>{viewItem.duration_minutes} min</div>
                 <div style={{ fontSize: 12, color: '#475467', marginTop: 2 }}>Duration</div>
               </div>
+              {serviceWiseCommission && (
+                <div style={{ flex: 1, minWidth: 120, background: '#ECFDF5', borderRadius: 12, padding: '14px 8px', textAlign: 'center' }}>
+                  <div style={{ fontSize: 20, fontWeight: 800, color: '#059669' }}>{formatCommission(viewItem.commission_type, viewItem.commission_value)}</div>
+                  <div style={{ fontSize: 12, color: '#475467', marginTop: 2 }}>Commission</div>
+                </div>
+              )}
             </div>
             {viewItem.description && <p style={{ color: '#475467', fontSize: 14, lineHeight: 1.6, margin: 0 }}>{viewItem.description}</p>}
             {canEdit && <div style={{ marginTop: 16 }}><Button variant="primary" onClick={() => { setShowView(false); openEdit(viewItem); }}>Edit Service</Button></div>}

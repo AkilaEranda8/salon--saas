@@ -76,14 +76,24 @@ class _ServicesPageState extends State<ServicesPage> {
     }
     if (cats.isEmpty) cats.add('Other');
 
+    final showCommission =
+        appState.isTenantFeatureEnabled('service_wise_commission');
     final payload = await AddServiceModal.show(
-      context, categories: cats.toList()..sort());
+      context,
+      categories: cats.toList()..sort(),
+      showServiceWiseCommission: showCommission,
+    );
     if (payload == null || !mounted) return;
 
     final ok = await appState.addService(
-      name: payload.name, category: payload.category,
+      name: payload.name,
+      category: payload.category,
       durationMinutes: payload.durationMinutes,
-      price: payload.price, description: payload.description);
+      price: payload.price,
+      description: payload.description,
+      commissionType: payload.commissionType,
+      commissionValue: payload.commissionValue,
+    );
     if (!mounted) return;
     if (!ok) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -119,7 +129,12 @@ class _ServicesPageState extends State<ServicesPage> {
                 : all.where((s) =>
                     s.name.toLowerCase().contains(_query) ||
                     s.category.toLowerCase().contains(_query)).toList();
-            return _buildBody(all, list);
+            return _buildBody(
+              all,
+              list,
+              showCommission: appState
+                  .isTenantFeatureEnabled('service_wise_commission'),
+            );
           },
         ),
         floatingActionButton: Padding(
@@ -205,7 +220,11 @@ class _ServicesPageState extends State<ServicesPage> {
   ]);
 
   // ── Body ──────────────────────────────────────────────────────────────────
-  Widget _buildBody(List<SalonService> all, List<SalonService> list) {
+  Widget _buildBody(
+    List<SalonService> all,
+    List<SalonService> list, {
+    required bool showCommission,
+  }) {
     final active = all.where((s) => s.isActive).length;
     return Column(children: [
       _Header(
@@ -228,8 +247,10 @@ class _ServicesPageState extends State<ServicesPage> {
                 child: ListView.builder(
                   padding: const EdgeInsets.fromLTRB(16, 8, 16, 88),
                   itemCount: list.length,
-                  itemBuilder: (ctx, i) =>
-                      _ServiceCard(service: list[i]),
+                  itemBuilder: (ctx, i) => _ServiceCard(
+                    service: list[i],
+                    showCommission: showCommission,
+                  ),
                 ),
               ),
       ),
@@ -506,8 +527,22 @@ class _IconBtn extends StatelessWidget {
 // SERVICE CARD
 // ═════════════════════════════════════════════════════════════════════════════
 class _ServiceCard extends StatelessWidget {
-  const _ServiceCard({required this.service});
+  const _ServiceCard({
+    required this.service,
+    this.showCommission = false,
+  });
   final SalonService service;
+  final bool showCommission;
+
+  String? _commissionLabel() {
+    if (!showCommission) return null;
+    final v = service.commissionValue;
+    if (v == null) return null;
+    if (service.commissionType == 'fixed') {
+      return 'Comm Rs.${v.toStringAsFixed(0)}';
+    }
+    return 'Comm ${v.toStringAsFixed(v.truncateToDouble() == v ? 0 : 1)}%';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -601,6 +636,27 @@ class _ServiceCard extends StatelessWidget {
                     style: const TextStyle(
                         color: _muted, fontSize: 12,
                         fontWeight: FontWeight.w500)),
+                  if (_commissionLabel() != null) ...[
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 7, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFFBEB),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(
+                            color: const Color(0xFFFDE68A)),
+                      ),
+                      child: Text(
+                        _commissionLabel()!,
+                        style: const TextStyle(
+                          color: Color(0xFFB45309),
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ],
                 ]),
               ],
             ),

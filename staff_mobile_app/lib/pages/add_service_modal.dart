@@ -18,6 +18,8 @@ class AddServiceModalResult {
     required this.durationMinutes,
     required this.price,
     required this.description,
+    this.commissionType,
+    this.commissionValue,
   });
 
   final String name;
@@ -25,23 +27,34 @@ class AddServiceModalResult {
   final String durationMinutes;
   final String price;
   final String description;
+  final String? commissionType;
+  final String? commissionValue;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 class AddServiceModal extends StatefulWidget {
-  const AddServiceModal({required this.categories, super.key});
+  const AddServiceModal({
+    required this.categories,
+    this.showServiceWiseCommission = false,
+    super.key,
+  });
 
   final List<String> categories;
+  final bool showServiceWiseCommission;
 
   static Future<AddServiceModalResult?> show(
     BuildContext context, {
     required List<String> categories,
+    bool showServiceWiseCommission = false,
   }) {
     return showModalBottomSheet<AddServiceModalResult>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => AddServiceModal(categories: categories),
+      builder: (_) => AddServiceModal(
+        categories: categories,
+        showServiceWiseCommission: showServiceWiseCommission,
+      ),
     );
   }
 
@@ -56,8 +69,10 @@ class _AddServiceModalState extends State<AddServiceModal> {
   final _priceCtrl    = TextEditingController();
   final _descCtrl     = TextEditingController();
   final _newCatCtrl   = TextEditingController();
+  final _commCtrl     = TextEditingController();
 
   late String _category;
+  String _commissionType = 'percentage';
   bool _addingNewCat = false;
 
   @override
@@ -74,6 +89,7 @@ class _AddServiceModalState extends State<AddServiceModal> {
     _priceCtrl.dispose();
     _descCtrl.dispose();
     _newCatCtrl.dispose();
+    _commCtrl.dispose();
     super.dispose();
   }
 
@@ -88,6 +104,8 @@ class _AddServiceModalState extends State<AddServiceModal> {
       durationMinutes: _durationCtrl.text.trim(),
       price:           _priceCtrl.text.trim(),
       description:     _descCtrl.text.trim(),
+      commissionType:  widget.showServiceWiseCommission ? _commissionType : null,
+      commissionValue: widget.showServiceWiseCommission ? _commCtrl.text.trim() : null,
     ));
   }
 
@@ -324,6 +342,73 @@ class _AddServiceModalState extends State<AddServiceModal> {
               ]),
 
               const SizedBox(height: 14),
+
+              if (widget.showServiceWiseCommission) ...[
+                _label('COMMISSION'),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFFBEB),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFFFDE68A)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Optional per-service commission rate',
+                        style: TextStyle(
+                          color: Color(0xFF92400E),
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Row(children: [
+                        Expanded(
+                          child: DropdownButtonFormField<String>(
+                            initialValue: _commissionType,
+                            isExpanded: true,
+                            decoration: _deco('Type', Icons.percent_rounded),
+                            items: const [
+                              DropdownMenuItem(
+                                value: 'percentage',
+                                child: Text('Percentage %'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'fixed',
+                                child: Text('Fixed Rs.'),
+                              ),
+                            ],
+                            onChanged: (v) {
+                              if (v != null) setState(() => _commissionType = v);
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: TextFormField(
+                            controller: _commCtrl,
+                            keyboardType: TextInputType.number,
+                            decoration: _deco(
+                              _commissionType == 'fixed' ? 'e.g. 500' : 'e.g. 10',
+                              Icons.payments_outlined,
+                            ),
+                            validator: (v) {
+                              final raw = v?.trim() ?? '';
+                              if (raw.isEmpty) return null;
+                              final n = double.tryParse(raw);
+                              if (n == null || n < 0) return 'Invalid';
+                              return null;
+                            },
+                          ),
+                        ),
+                      ]),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 14),
+              ],
 
               // ── Description ──────────────────────────────────────────
               _label('DESCRIPTION'),

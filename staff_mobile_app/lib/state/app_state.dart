@@ -254,6 +254,11 @@ class AppState extends ChangeNotifier {
     return user.mobileFeatures[featureKey] == true;
   }
 
+  /// Tenant-level module flags (e.g. service_wise_commission) from platform admin.
+  bool isTenantFeatureEnabled(String featureKey) {
+    return _currentUser?.tenantFeatures[featureKey] == true;
+  }
+
   StaffUser _staffUserFromApi(
     Map<String, dynamic> user, {
     required String token,
@@ -283,6 +288,15 @@ class AppState extends ChangeNotifier {
         : const <String, dynamic>{};
     final tenantSlug = '${tenantMap['slug'] ?? prev?.tenantSlug ?? ''}'.trim();
     final tenantName = '${tenantMap['name'] ?? tenantMap['brand_name'] ?? prev?.tenantName ?? ''}'.trim();
+    final effectiveFeatures = tenantMap['effective_features'];
+    final tenantFeatures = <String, bool>{};
+    if (effectiveFeatures is Map) {
+      for (final entry in effectiveFeatures.entries) {
+        tenantFeatures['${entry.key}'] = entry.value == true;
+      }
+    } else if (prev != null) {
+      tenantFeatures.addAll(prev.tenantFeatures);
+    }
     return StaffUser(
       id: '${user['id'] ?? prev?.id ?? ''}',
       username: '${user['username'] ?? prev?.username ?? ''}',
@@ -299,6 +313,7 @@ class AppState extends ChangeNotifier {
       authToken: token,
       permissions: _permissionsFromRole(role),
       mobileFeatures: MobileFeatures.parseMap(user['mobile_features']),
+      tenantFeatures: tenantFeatures,
     );
   }
 
@@ -516,6 +531,8 @@ class AppState extends ChangeNotifier {
     required String durationMinutes,
     required String price,
     required String description,
+    String? commissionType,
+    String? commissionValue,
   }) async {
     final token = _currentUser?.authToken;
     if (token == null || token.isEmpty) {
@@ -530,6 +547,12 @@ class AppState extends ChangeNotifier {
         durationMinutes: durationMinutes,
         price: price,
         description: description,
+        commissionType: isTenantFeatureEnabled('service_wise_commission')
+            ? commissionType
+            : null,
+        commissionValue: isTenantFeatureEnabled('service_wise_commission')
+            ? commissionValue
+            : null,
       );
       await loadServices();
       return true;

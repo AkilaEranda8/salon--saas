@@ -274,17 +274,25 @@ class MobileApi {
     required String durationMinutes,
     required String price,
     required String description,
+    String? commissionType,
+    String? commissionValue,
   }) async {
+    final payload = <String, dynamic>{
+      'name': name.trim(),
+      'category': category.trim().isEmpty ? 'Other' : category.trim(),
+      'duration_minutes': int.tryParse(durationMinutes.trim()) ?? 30,
+      'price': double.tryParse(price.trim()) ?? 0,
+      'description': description.trim().isEmpty ? null : description.trim(),
+    };
+    if (commissionType != null) {
+      payload['commission_type'] = commissionType;
+      final raw = commissionValue?.trim() ?? '';
+      payload['commission_value'] = raw.isEmpty ? null : raw;
+    }
     final response = await http.post(
       Uri.parse('$baseUrl/api/services'),
       headers: _authHeaders(token),
-      body: jsonEncode({
-        'name': name.trim(),
-        'category': category.trim().isEmpty ? 'Other' : category.trim(),
-        'duration_minutes': int.tryParse(durationMinutes.trim()) ?? 30,
-        'price': double.tryParse(price.trim()) ?? 0,
-        'description': description.trim().isEmpty ? null : description.trim(),
-      }),
+      body: jsonEncode(payload),
     );
     final body = _decode(response.body);
     if (response.statusCode >= 400) {

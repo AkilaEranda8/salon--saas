@@ -16,6 +16,7 @@ class StaffUser {
     required this.isActive,
     required Set<StaffPermission> permissions,
     Map<String, bool>? mobileFeatures,
+    Map<String, bool>? tenantFeatures,
     this.role = 'staff',
     this.branchId,
     this.linkedStaffId,
@@ -23,7 +24,8 @@ class StaffUser {
     this.tenantName,
     this.authToken,
   })  : permissions = Set<StaffPermission>.from(permissions),
-        mobileFeatures = Map<String, bool>.from(mobileFeatures ?? const {});
+        mobileFeatures = Map<String, bool>.from(mobileFeatures ?? const {}),
+        tenantFeatures = Map<String, bool>.from(tenantFeatures ?? const {});
 
   final String id;
   final String username;
@@ -32,6 +34,8 @@ class StaffUser {
   final bool isActive;
   final Set<StaffPermission> permissions;
   final Map<String, bool> mobileFeatures;
+  /// Platform-admin tenant feature flags from auth `tenant.effective_features`.
+  final Map<String, bool> tenantFeatures;
   final String role;
   final String? branchId;
   /// Staff table id from GET /api/auth/me → staffProfile (for commission, etc.).

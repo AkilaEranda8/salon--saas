@@ -88,7 +88,7 @@ api.interceptors.response.use(
     }
 
     // 403 with plan limit or feature gate → dispatch event for UpgradePlanModal
-    if (status === 403 && (code?.startsWith('PLAN_LIMIT_') || code === 'FEATURE_GATED')) {
+    if (status === 403 && (code?.startsWith('PLAN_LIMIT_') || code === 'FEATURE_GATED' || code === 'FEATURE_DISABLED')) {
       window.dispatchEvent(new CustomEvent('plan-upgrade-needed', {
         detail: error.response.data,
       }));

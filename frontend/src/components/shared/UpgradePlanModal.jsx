@@ -60,18 +60,23 @@ export default function UpgradePlanModal() {
 
   const isLimitHit  = code?.startsWith('PLAN_LIMIT_');
   const isFeatureGated = code === 'FEATURE_GATED';
+  const isFeatureDisabled = code === 'FEATURE_DISABLED';
 
   const title = isLimitHit
     ? 'Plan Limit Reached'
-    : isFeatureGated
-      ? 'Feature Not Available'
-      : 'Upgrade Your Plan';
+    : isFeatureDisabled
+      ? 'Feature Not Enabled'
+      : isFeatureGated
+        ? 'Feature Not Available'
+        : 'Upgrade Your Plan';
 
   const subtitle = isLimitHit
     ? (message || `You've reached the maximum for your ${currentPlan} plan.`)
-    : isFeatureGated
-      ? (message || `This feature requires the ${PLAN_DISPLAY[minPlan]?.label || 'Pro'} plan.`)
-      : 'Unlock more features by upgrading your subscription.';
+    : isFeatureDisabled
+      ? (message || 'This module is not enabled for your salon. Contact your platform administrator.')
+      : isFeatureGated
+        ? (message || `This feature requires the ${PLAN_DISPLAY[minPlan]?.label || 'Pro'} plan.`)
+        : 'Unlock more features by upgrading your subscription.';
 
   // Plans to show (only those above current plan)
   const planOrder = ['basic', 'pro', 'enterprise'];
@@ -114,9 +119,11 @@ export default function UpgradePlanModal() {
             <div style={{
               background: isLimitHit
                 ? 'linear-gradient(135deg, #DC2626 0%, #EF4444 100%)'
-                : isFeatureGated
-                  ? 'linear-gradient(135deg, #7C3AED 0%, #8B5CF6 100%)'
-                  : 'linear-gradient(135deg, #4F46E5 0%, #6366F1 100%)',
+                : isFeatureDisabled
+                  ? 'linear-gradient(135deg, #B45309 0%, #D97706 100%)'
+                  : isFeatureGated
+                    ? 'linear-gradient(135deg, #7C3AED 0%, #8B5CF6 100%)'
+                    : 'linear-gradient(135deg, #4F46E5 0%, #6366F1 100%)',
               padding: '28px 32px',
               position: 'relative',
               overflow: 'hidden',
@@ -179,7 +186,17 @@ export default function UpgradePlanModal() {
 
             {/* Plan cards */}
             <div style={{ padding: '24px 28px 28px', display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-              {upgradePlans.map(planKey => {
+              {isFeatureDisabled ? (
+                <div style={{ width: '100%', textAlign: 'center', padding: '8px 0 4px' }}>
+                  <button onClick={close} style={{
+                    padding: '10px 28px', border: 'none', borderRadius: 10,
+                    background: 'linear-gradient(135deg, #B45309 0%, #D97706 100%)',
+                    color: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer',
+                  }}>
+                    OK
+                  </button>
+                </div>
+              ) : upgradePlans.map(planKey => {
                 const p = PLAN_DISPLAY[planKey];
                 const features = PLAN_FEATURES_SHORT[planKey] || [];
                 const isRecommended = planKey === (minPlan || 'pro');
@@ -250,7 +267,7 @@ export default function UpgradePlanModal() {
                 );
               })}
 
-              {upgradePlans.length === 0 && (
+              {!isFeatureDisabled && upgradePlans.length === 0 && (
                 <div style={{ textAlign: 'center', width: '100%', padding: '20px 0', color: '#475467', fontSize: 14, fontFamily: "'Inter',sans-serif" }}>
                   You're on the highest plan. Contact support for custom limits.
                 </div>

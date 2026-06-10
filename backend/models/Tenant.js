@@ -132,6 +132,11 @@ const Tenant = sequelize.define('Tenant', {
     allowNull: true,
     comment: 'Per-role default mobile app feature access for this tenant',
   },
+  enabled_features: {
+    type: DataTypes.JSON,
+    allowNull: true,
+    comment: 'Platform-admin per-tenant module toggles (only true keys are active)',
+  },
 }, {
   tableName: 'tenants',
   timestamps: true,

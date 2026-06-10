@@ -13,6 +13,8 @@ router.get('/tenants/:id',                  ctrl.getTenant);
 router.patch('/tenants/:id',                ctrl.updateTenant);
 router.delete('/tenants/:id',               ctrl.deleteTenant);
 router.get('/tenants/:id/stats',            ctrl.tenantStats);
+router.get('/tenants/:id/features',         ctrl.getTenantFeatures);
+router.patch('/tenants/:id/features',       ctrl.updateTenantFeatures);
 router.post('/tenants/:id/impersonate',     ctrl.impersonateTenant);
 router.patch('/tenants/:id/quick-status',   ctrl.quickStatusTenant);
 router.get('/stats',            ctrl.platformStats);

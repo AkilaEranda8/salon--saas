@@ -12,6 +12,13 @@ const { slToday } = require('../utils/dateUtils');
 const { generateInvoicePdfBuffer, sendInvoiceEmail } = require('../services/invoiceDocumentService');
 const { FORBIDDEN_SLUGS, SLUG_RE, findUniqueSlug, buildTenantAppUrl } = require('../utils/tenantDomain');
 const kc = require('../utils/keycloakAdmin');
+const {
+  FEATURE_CATALOG,
+  getEffectiveFeatures,
+  sanitizeFeaturesInput,
+  defaultsFromPlan,
+  enrichTenantPayload,
+} = require('../utils/tenantFeatures');
 
 const TENANT_ACTIVE_SUB_STATUSES = new Set(['active', 'trialing']);
 
@@ -48,6 +55,7 @@ const TENANT_SAFE_ATTRIBUTES = [
   'helapay_app_id',
   'helapay_business_id',
   'helapay_notify_url',
+  'enabled_features',
   'createdAt',
   'updatedAt',
 ];
@@ -220,6 +228,7 @@ const createTenant = async (req, res) => {
       trial_ends_at: trialEnds,
       max_branches: caps.max_branches,
       max_staff: caps.max_staff,
+      enabled_features: defaultsFromPlan(plan),
     }, { transaction: t });
 
     const branch = await Branch.create({
@@ -476,6 +485,53 @@ const tenantStats = async (req, res) => {
     return res.json({ branches: branchCount, staff: staffCount, users: userCount, customers: customerCount });
   } catch (err) {
     console.error('platform.tenantStats error:', err);
+    return res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+// ── GET /api/platform/tenants/:id/features ───────────────────────────────────
+const getTenantFeatures = async (req, res) => {
+  try {
+    const tenant = await Tenant.findByPk(req.params.id);
+    if (!tenant) return res.status(404).json({ message: 'Tenant not found.' });
+
+    return res.json({
+      catalog: FEATURE_CATALOG,
+      enabled_features: tenant.enabled_features,
+      effective: getEffectiveFeatures(tenant),
+      plan: tenant.plan,
+      adminControlled: tenant.enabled_features != null,
+    });
+  } catch (err) {
+    console.error('platform.getTenantFeatures error:', err);
+    return res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+// ── PATCH /api/platform/tenants/:id/features ───────────────────────────────
+const updateTenantFeatures = async (req, res) => {
+  try {
+    const tenant = await Tenant.findByPk(req.params.id);
+    if (!tenant) return res.status(404).json({ message: 'Tenant not found.' });
+
+    let sanitized;
+    try {
+      sanitized = sanitizeFeaturesInput(req.body?.features);
+    } catch (e) {
+      return res.status(400).json({ message: e.message });
+    }
+
+    await tenant.update({ enabled_features: sanitized });
+    invalidateTenantCache(tenant.slug);
+
+    return res.json({
+      message: 'Tenant features updated.',
+      tenant: enrichTenantPayload(tenant),
+      enabled_features: tenant.enabled_features,
+      effective: getEffectiveFeatures(tenant),
+    });
+  } catch (err) {
+    console.error('platform.updateTenantFeatures error:', err);
     return res.status(500).json({ message: 'Server error.' });
   }
 };
@@ -1775,6 +1831,8 @@ module.exports = {
   updateTenant,
   deleteTenant,
   tenantStats,
+  getTenantFeatures,
+  updateTenantFeatures,
   impersonateTenant,
   quickStatusTenant,
   platformStats,

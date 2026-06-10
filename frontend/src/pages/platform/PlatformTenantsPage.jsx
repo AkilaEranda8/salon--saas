@@ -45,7 +45,7 @@ function Badge({ children, colors }) {
   );
 }
 
-function Modal({ title, onClose, children, isDark }) {
+function Modal({ title, onClose, children, isDark, width = 460 }) {
   return (
     <div style={{
       position: 'fixed', inset: 0, background: 'rgba(10,15,30,0.55)',
@@ -56,7 +56,7 @@ function Modal({ title, onClose, children, isDark }) {
         background: isDark ? '#1E293B' : '#fff',
         border: `1px solid ${isDark ? '#334155' : '#E5E7EB'}`,
         borderRadius: 18, padding: '26px 28px 22px',
-        width: 460, maxWidth: '92vw',
+        width, maxWidth: '92vw',
         boxShadow: isDark ? '0 24px 64px rgba(0,0,0,0.5)' : '0 24px 64px rgba(15,23,42,0.18)',
         maxHeight: '90vh', overflowY: 'auto',
       }}>
@@ -126,6 +126,13 @@ export default function PlatformTenantsPage() {
   const [detailTenant, setDetailTenant] = useState(null); // tenant for drawer
   const [detailStats, setDetailStats] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [featuresTenant, setFeaturesTenant] = useState(null);
+  const [featuresCatalog, setFeaturesCatalog] = useState([]);
+  const [featuresDraft, setFeaturesDraft] = useState({});
+  const [featuresLoading, setFeaturesLoading] = useState(false);
+  const [featuresSaving, setFeaturesSaving] = useState(false);
+  const [featuresError, setFeaturesError] = useState('');
+  const [featuresAdminControlled, setFeaturesAdminControlled] = useState(false);
 
   const normalizeTenantsPayload = (payload) => {
     if (Array.isArray(payload)) {
@@ -212,6 +219,40 @@ export default function PlatformTenantsPage() {
       fetchTenants();
     } catch (err) {
       alert(err.response?.data?.message || 'Status change failed.');
+    }
+  };
+
+  const openFeatures = async (tenant) => {
+    setFeaturesTenant(tenant);
+    setFeaturesError('');
+    setFeaturesLoading(true);
+    try {
+      const res = await api.get(`/platform/tenants/${tenant.id}/features`);
+      const { catalog, effective, adminControlled } = res.data;
+      setFeaturesCatalog(catalog || []);
+      setFeaturesDraft(effective || {});
+      setFeaturesAdminControlled(!!adminControlled);
+    } catch (err) {
+      setFeaturesError(err.response?.data?.message || 'Failed to load features.');
+      setFeaturesCatalog([]);
+      setFeaturesDraft({});
+    } finally {
+      setFeaturesLoading(false);
+    }
+  };
+
+  const handleSaveFeatures = async () => {
+    if (!featuresTenant) return;
+    setFeaturesSaving(true);
+    setFeaturesError('');
+    try {
+      await api.patch(`/platform/tenants/${featuresTenant.id}/features`, { features: featuresDraft });
+      setFeaturesAdminControlled(true);
+      fetchTenants();
+    } catch (err) {
+      setFeaturesError(err.response?.data?.message || 'Save failed.');
+    } finally {
+      setFeaturesSaving(false);
     }
   };
 
@@ -439,6 +480,7 @@ export default function PlatformTenantsPage() {
           {t.status === 'suspended' && (
             <IBtn onClick={() => handleQuickStatus(t, 'activate')} title="Activate" bg="#F0FDF4" border="#D1FAE5"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="5 3 19 12 5 21 5 3"/></svg></IBtn>
           )}
+          <IBtn onClick={() => openFeatures(t)} title="Manage features" bg={isDark ? 'rgba(16,185,129,0.12)' : '#ECFDF5'} border={isDark ? 'rgba(16,185,129,0.3)' : '#A7F3D0'}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 3v3m0 12v3M3 12h3m12 0h3M5.6 5.6l2.1 2.1m8.6 8.6 2.1 2.1M5.6 18.4l2.1-2.1m8.6-8.6 2.1-2.1"/></svg></IBtn>
           <IBtn onClick={() => setEditTenant({ ...t })} title="Edit plan / status"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></IBtn>
           <IBtn onClick={() => handleDelete(t)} title="Delete tenant" border="#FEE2E2"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg></IBtn>
         </div>
@@ -640,6 +682,12 @@ export default function PlatformTenantsPage() {
               <div style={{ fontSize: 10.5, fontWeight: 700, color: isDark ? '#475569' : '#9CA3AF', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 2 }}>Actions</div>
               {[
                 {
+                  label: 'Manage Features', color: '#059669',
+                  bg: isDark ? 'rgba(5,150,105,0.1)' : '#F0FDF4', border: isDark ? 'rgba(5,150,105,0.25)' : '#D1FAE5',
+                  onClick: () => { const t = detailTenant; setDetailTenant(null); openFeatures(t); },
+                  disabled: false,
+                },
+                {
                   label: 'Edit Plan / Status', color: isDark ? '#818CF8' : '#4338CA',
                   bg: isDark ? '#1E293B' : '#fff', border: isDark ? '#334155' : '#E5E7EB',
                   onClick: () => { setDetailTenant(null); setEditTenant({ ...detailTenant }); },
@@ -689,6 +737,81 @@ export default function PlatformTenantsPage() {
         </div>
         );
       })()}
+
+      {/* Features Modal */}
+      {featuresTenant && (
+        <Modal
+          title={`Features — ${featuresTenant.name}`}
+          onClose={() => setFeaturesTenant(null)}
+          isDark={isDark}
+          width={620}
+        >
+          {featuresLoading ? (
+            <div style={{ fontSize: 13, color: isDark ? '#94A3B8' : '#6B7280', padding: '12px 0' }}>Loading features…</div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <p style={{ fontSize: 12, color: isDark ? '#94A3B8' : '#6B7280', margin: 0, lineHeight: 1.5 }}>
+                Enable or disable modules for this salon only. Tenant users will not see disabled features.
+                {!featuresAdminControlled && ' Saving will take control from the plan defaults.'}
+              </p>
+              {Object.entries(
+                featuresCatalog.reduce((acc, item) => {
+                  const cat = item.category || 'Other';
+                  if (!acc[cat]) acc[cat] = [];
+                  acc[cat].push(item);
+                  return acc;
+                }, {})
+              ).map(([category, items]) => (
+                <div key={category}>
+                  <div style={{ fontSize: 10.5, fontWeight: 700, color: isDark ? '#64748B' : '#9CA3AF', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 8 }}>
+                    {category}
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                    {items.map(({ key, label }) => (
+                      <label key={key} style={{
+                        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+                        padding: '10px 12px', borderRadius: 10,
+                        border: `1px solid ${isDark ? '#334155' : '#E5E7EB'}`,
+                        background: isDark ? '#0F172A' : '#F9FAFB',
+                        cursor: 'pointer', fontSize: 13, fontWeight: 500,
+                        color: isDark ? '#E2E8F0' : '#111827',
+                      }}>
+                        <span>{label}</span>
+                        <input
+                          type="checkbox"
+                          checked={!!featuresDraft[key]}
+                          onChange={e => setFeaturesDraft(d => ({ ...d, [key]: e.target.checked }))}
+                          style={{ width: 16, height: 16, accentColor: '#059669', cursor: 'pointer' }}
+                        />
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              ))}
+              {featuresError && (
+                <div style={{ color: '#EF4444', fontSize: 12, background: isDark ? 'rgba(239,68,68,0.1)' : '#FEF2F2', padding: '8px 12px', borderRadius: 8, border: `1px solid ${isDark ? 'rgba(239,68,68,0.25)' : '#FECACA'}` }}>
+                  {featuresError}
+                </div>
+              )}
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 4 }}>
+                <button onClick={() => setFeaturesTenant(null)}
+                  style={{ padding: '9px 20px', border: `1px solid ${isDark ? '#334155' : '#E5E7EB'}`, borderRadius: 9, background: isDark ? '#1E293B' : '#fff', cursor: 'pointer', fontSize: 13, color: isDark ? '#94A3B8' : '#374151' }}>
+                  Cancel
+                </button>
+                <button onClick={handleSaveFeatures} disabled={featuresSaving || featuresCatalog.length === 0}
+                  style={{
+                    padding: '9px 22px', border: 'none', borderRadius: 9,
+                    background: '#059669', color: '#fff', cursor: 'pointer',
+                    fontSize: 13, fontWeight: 700, opacity: featuresSaving ? 0.7 : 1,
+                    boxShadow: '0 4px 12px rgba(5,150,105,0.3)',
+                  }}>
+                  {featuresSaving ? 'Saving…' : 'Save Features'}
+                </button>
+              </div>
+            </div>
+          )}
+        </Modal>
+      )}
 
       {/* Edit Modal */}
       {editTenant && (

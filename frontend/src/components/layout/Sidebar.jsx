@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { hasFeature } from '../../hooks/useFeatureGate';
 import { useTheme } from '../../context/ThemeContext';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { resolveBrandLogo, resolveBrandName } from '../../utils/branding';
@@ -24,24 +25,24 @@ const NAV_GROUPS = [
     { path:'/dashboard',     label:'Dashboard',     roles:ALL, icon:'M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z' },
     { path:'/calendar',      label:'Calendar',      roles:ALL, icon:'M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z' },
     { path:'/walk-in',       label:'Walk-in',       roles:ALL, icon:'M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1' },
-    { path:'/ai-chat',       label:'AI Chat',       roles:ALL, icon:'M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z' },
+    { path:'/ai-chat',       label:'AI Chat',       roles:ALL, feature:'ai_chat', icon:'M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z' },
   ]},
   { label:'OPERATIONS', items:[
     { path:'/appointments',  label:'Appointments',  roles:ALL, icon:'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01' },
     { path:'/waitlist',      label:'Waitlist',      roles:ALL, icon:'M8 7h8M8 11h8M8 15h5M5 3h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2z' },
     { path:'/payments',      label:'Payments',      roles:ALL, icon:'M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z' },
     { path:'/customers',     label:'Customers',     roles:ALL, icon:'M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z' },
-    { path:'/loyalty',       label:'Loyalty',       roles:ALL, icon:'M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8V7m0 1v8m0 0v1m0-1a5.978 5.978 0 01-3.75-1.318M21 12a9 9 0 11-18 0 9 9 0 0118 0z' },
-    { path:'/membership-plans', label:'Membership', roles:MGR, icon:'M17 20h5v-2a4 4 0 00-5-3.87M9 20H4v-2a4 4 0 015-3.87m8-4a4 4 0 11-8 0 4 4 0 018 0zM7 10h.01' },
-    { path:'/packages',      label:'Packages',      roles:MGR, icon:'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4' },
-    { path:'/discounts',     label:'Discounts',     roles:MGR, icon:'M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z' },
-    { path:'/recurring',     label:'Recurring',     roles:MGR, icon:'M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15' },
+    { path:'/loyalty',       label:'Loyalty',       roles:ALL, feature:'loyalty', icon:'M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8V7m0 1v8m0 0v1m0-1a5.978 5.978 0 01-3.75-1.318M21 12a9 9 0 11-18 0 9 9 0 0118 0z' },
+    { path:'/membership-plans', label:'Membership', roles:MGR, feature:'membership', icon:'M17 20h5v-2a4 4 0 00-5-3.87M9 20H4v-2a4 4 0 015-3.87m8-4a4 4 0 11-8 0 4 4 0 018 0zM7 10h.01' },
+    { path:'/packages',      label:'Packages',      roles:MGR, feature:'packages', icon:'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4' },
+    { path:'/discounts',     label:'Discounts',     roles:MGR, feature:'discounts', icon:'M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z' },
+    { path:'/recurring',     label:'Recurring',     roles:MGR, feature:'recurring', icon:'M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15' },
   ]},
   { label:'CATALOGUE', items:[
     { path:'/services',      label:'Services',      roles:ALL, icon:'M14.121 14.121L19 19m-7-7l7-7m-7 7l-2.879 2.879M12 12L9.121 9.121m0 5.758a3 3 0 10-4.243 4.243 3 3 0 004.243-4.243zm0-5.758a3 3 0 10-4.243-4.243 3 3 0 004.243 4.243z' },
     { path:'/categories',    label:'Categories',    roles:ADM, icon:'M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z' },
-    { path:'/inventory',     label:'Inventory',     roles:MGR, icon:'M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4' },
-    { path:'/inventory-reorder', label:'Reorders', roles:MGR, icon:'M20 12H4m0 0l4-4m-4 4l4 4m12-4l-4-4m4 4l-4 4' },
+    { path:'/inventory',     label:'Inventory',     roles:MGR, feature:'inventory', icon:'M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4' },
+    { path:'/inventory-reorder', label:'Reorders', roles:MGR, feature:'inventory', icon:'M20 12H4m0 0l4-4m-4 4l4 4m12-4l-4-4m4 4l-4 4' },
   ]},
   { label:'TEAM', items:[
     { path:'/staff',         label:'Staff',         roles:ALL, icon:'M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z' },
@@ -50,26 +51,26 @@ const NAV_GROUPS = [
     { path:'/attendance',    label:'Attendance',    roles:MGR, icon:'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z' },
   ]},
   { label:'ANALYTICS', items:[
-    { path:'/reports',       label:'Reports',       roles:MGR, icon:'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z' },
-    { path:'/kpi-dashboard', label:'KPI Dashboard', roles:MGR, icon:'M5 3v18M19 21V8M12 21v-6M7 14h2m8-2h2m-8 6h2' },
-    { path:'/expenses',      label:'Expenses',      roles:MGR, icon:'M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16l3.5-2 3.5 2 3.5-2 3.5 2z' },
+    { path:'/reports',       label:'Reports',       roles:MGR, feature:'advanced_reports', icon:'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z' },
+    { path:'/kpi-dashboard', label:'KPI Dashboard', roles:MGR, feature:'kpi_dashboard', icon:'M5 3v18M19 21V8M12 21v-6M7 14h2m8-2h2m-8 6h2' },
+    { path:'/expenses',      label:'Expenses',      roles:MGR, feature:'expenses', icon:'M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16l3.5-2 3.5 2 3.5-2 3.5 2z' },
   ]},
   { label:'ENGAGE', items:[
-    { path:'/offer-sms',     label:'Offer SMS',     roles:MGR, icon:'M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2v10zm-4-6H7m10 4H7' },
+    { path:'/offer-sms',     label:'Offer SMS',     roles:MGR, feature:'offer_sms', icon:'M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2v10zm-4-6H7m10 4H7' },
     { path:'/reminders',     label:'Reminders',     roles:ALL, icon:'M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9' },
     { path:'/notifications', label:'Notifications', roles:ADM, icon:'M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9' },
   ]},
   { label:'CONFIG', items:[
     { path:'/branding',          label:'Branding',         roles:ADM, icon:'M20 7a2 2 0 00-2-2H6a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V7zM8 7v10m8-10v10M6 10h12' },
     { path:'/payment-settings',  label:'Payment Settings', roles:ADM, icon:'M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z' },
-    { path:'/domain-settings',   label:'Custom Domain',    roles:ADM, icon:'M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1' },
-    { path:'/branches',          label:'Branches',         roles:ADM, icon:'M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4' },
+    { path:'/domain-settings',   label:'Custom Domain',    roles:ADM, feature:'custom_domain', icon:'M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1' },
+    { path:'/branches',          label:'Branches',         roles:ADM, feature:'multi_branch', icon:'M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4' },
     { path:'/billing',           label:'Billing',          roles:ADM, icon:'M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16l3.5-2 3.5 2 3.5-2 3.5 2z' },
     { path:'/users',             label:'Users',            roles:SA,  icon:'M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z' },
   ]},
   { label:'ACCOUNT', items:[
     { path:'/themes',        label:'Themes',         roles:ALL, icon:'M12 3v2m0 14v2m9-9h-2M5 12H3m14.364 6.364-1.414-1.414M8.05 8.05 6.636 6.636m10.728 0L15.95 8.05M8.05 15.95l-1.414 1.414M12 16a4 4 0 100-8 4 4 0 000 8z' },
-    { path:'/consent-forms', label:'Consent Forms',  roles:ALL, icon:'M9 12h6m-6 4h6M8 4h8a2 2 0 012 2v12a2 2 0 01-2 2H8a2 2 0 01-2-2V6a2 2 0 012-2z' },
+    { path:'/consent-forms', label:'Consent Forms',  roles:ALL, feature:'consent_forms', icon:'M9 12h6m-6 4h6M8 4h8a2 2 0 012 2v12a2 2 0 01-2 2H8a2 2 0 01-2-2V6a2 2 0 012-2z' },
     { path:'/support',       label:'Support',        roles:ALL, icon:'M18 10c0 3.866-3.582 7-8 7a8.841 8.841 0 01-4-.933L2 17l1.058-3.173A6.797 6.797 0 012 10c0-3.866 3.582-7 8-7s8 3.134 8 7zM8 10h.01M12 10h.01M16 10h.01' },
     { path:'/security',      label:'Security (2FA)', roles:ALL, icon:'M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z' },
   ]},
@@ -204,7 +205,7 @@ function NavItem({ item, collapsed, isActive, onClick, C }) {
 export default function Sidebar({ collapsed, onToggle, currentUser, mobileOpen, onMobileClose }) {
   const location = useLocation();
   const navigate = useNavigate();
-  const { logout } = useAuth();
+  const { logout, tenant } = useAuth();
   const { isDark, sidebarStyle, sidebarAppearance, primaryColor } = useTheme();
   const { isMobile } = useBreakpoint();
   const [signOutHov, setSignOutHov] = useState(false);
@@ -220,8 +221,16 @@ export default function Sidebar({ collapsed, onToggle, currentUser, mobileOpen, 
   const isGlass    = STYLE === 'glass';
   const isDarkSb   = isDark || sidebarAppearance === 'dark' || ['gradient', 'hexa'].includes(STYLE);
 
+  const plan = (tenant?.plan || tenantBranding?.plan || 'trial').toLowerCase();
+  const effectiveFeatures = tenant?.effective_features ?? tenantBranding?.effective_features;
+
   const visibleGroups = NAV_GROUPS.map(g => ({
-    ...g, items: g.items.filter(i => i.roles.includes(role)),
+    ...g,
+    items: g.items.filter(i => {
+      if (!i.roles.includes(role)) return false;
+      if (!i.feature) return true;
+      return hasFeature(plan, i.feature, effectiveFeatures);
+    }),
   })).filter(g => g.items.length > 0);
 
   const isActive     = p => location.pathname === p || location.pathname === (ROUTE_ALIASES[p] ?? null);

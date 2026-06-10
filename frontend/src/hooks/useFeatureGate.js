@@ -79,7 +79,10 @@ function getMinPlan(feature) {
   return 'enterprise';
 }
 
-export function hasFeature(plan, feature) {
+export function hasFeature(plan, feature, effectiveFeatures) {
+  if (effectiveFeatures && typeof effectiveFeatures === 'object') {
+    return effectiveFeatures[feature] === true;
+  }
   const p = (plan || 'trial').toLowerCase();
   return PLAN_FEATURES[p]?.[feature] === true;
 }
@@ -87,9 +90,10 @@ export function hasFeature(plan, feature) {
 export function useFeatureGate(feature) {
   const { tenant } = useAuth();
   const plan = (tenant?.plan || 'trial').toLowerCase();
+  const effectiveFeatures = tenant?.effective_features;
 
   return useMemo(() => {
-    const allowed = PLAN_FEATURES[plan]?.[feature] === true;
+    const allowed = hasFeature(plan, feature, effectiveFeatures);
     const minPlan = getMinPlan(feature);
     return {
       allowed,
@@ -97,8 +101,9 @@ export function useFeatureGate(feature) {
       minPlan,
       minPlanLabel: PLAN_LABELS[minPlan] || minPlan,
       featureLabel: FEATURE_LABELS[feature] || feature,
+      adminControlled: tenant?.enabled_features != null,
     };
-  }, [plan, feature]);
+  }, [plan, feature, effectiveFeatures, tenant?.enabled_features]);
 }
 
 export { PLAN_FEATURES, PLAN_ORDER, PLAN_LABELS, FEATURE_LABELS };

@@ -22,6 +22,7 @@ const ensureStaffSalaryColumns = require('./services/ensureStaffSalaryColumns');
 const ensureStaffSpecCommissionColumns = require('./services/ensureStaffSpecCommissionColumns');
 const ensureUserMobileFeaturesColumn = require('./services/ensureUserMobileFeaturesColumn');
 const ensureTenantMobileRoleDefaultsColumn = require('./services/ensureTenantMobileRoleDefaultsColumn');
+const { ensureTenantEnabledFeaturesColumn } = require('./services/ensureTenantEnabledFeaturesColumn');
 const { ensureStaffPhotoColumn } = require('./services/ensureStaffPhotoColumn');
 const platformGuard = require('./middleware/platformGuard');
 const logger        = require('./utils/logger');
@@ -333,6 +334,7 @@ connectWithRetry().then(async () => {
   await ensureStaffSpecCommissionColumns();
   await ensureUserMobileFeaturesColumn();
   await ensureTenantMobileRoleDefaultsColumn();
+  await ensureTenantEnabledFeaturesColumn();
   await ensureStaffPhotoColumn();
 
   server.listen(PORT, () =>

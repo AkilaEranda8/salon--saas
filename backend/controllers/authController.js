@@ -7,6 +7,13 @@ const speakeasy = require('speakeasy');
 const qrcode    = require('qrcode');
 const { User, Branch, Tenant, RevokedToken, Staff } = require('../models');
 const { getMaintenanceMode } = require('../services/systemSettings');
+const { TENANT_AUTH_ATTRIBUTES, enrichTenantPayload } = require('../utils/tenantFeatures');
+
+const tenantInclude = {
+  model: Tenant,
+  as: 'tenant',
+  attributes: TENANT_AUTH_ATTRIBUTES,
+};
 
 const isLocalRequest = (req) => {
   const host = String(req.get('host') || '').toLowerCase();
@@ -128,7 +135,7 @@ const login = async (req, res) => {
       where:   whereClause,
       include: [
         { model: Branch, as: 'branch', attributes: ['id', 'name', 'color'] },
-        { model: Tenant, as: 'tenant', attributes: ['id', 'slug', 'name', 'brand_name', 'logo_sidebar_url', 'logo_header_url', 'logo_login_url', 'logo_public_url', 'primary_color', 'sidebar_style', 'font_family', 'plan', 'status', 'trial_ends_at'] },
+        tenantInclude,
       ],
     });
 
@@ -176,7 +183,7 @@ const login = async (req, res) => {
         avatar:   user.avatar,
         color:    user.color,
         branch:               user.branch,
-        tenant:               user.tenant,
+        tenant:               enrichTenantPayload(user.tenant),
         tenantId:             user.tenant_id,
         must_change_password: !!user.must_change_password,
       },
@@ -223,7 +230,7 @@ const getMe = async (req, res) => {
   try {
     const include = [
       { model: Branch, as: 'branch', attributes: ['id', 'name', 'color'] },
-      { model: Tenant, as: 'tenant', attributes: ['id', 'slug', 'name', 'brand_name', 'logo_sidebar_url', 'logo_header_url', 'logo_login_url', 'logo_public_url', 'primary_color', 'sidebar_style', 'font_family', 'plan', 'status', 'trial_ends_at'] },
+      tenantInclude,
       {
         model: Staff,
         as: 'staffProfile',
@@ -280,6 +287,7 @@ const getMe = async (req, res) => {
       if (payload.staffProfile.branch) payload.branch = payload.staffProfile.branch;
     }
     payload.branchId = payload.branch_id ?? payload.branchId ?? null;
+    if (payload.tenant) payload.tenant = enrichTenantPayload(payload.tenant);
     return res.json({ user: payload });
   } catch (err) {
     console.error('getMe error:', err);
@@ -313,7 +321,7 @@ const verifyLogin2FA = async (req, res) => {
       where: { id: decoded.userId, is_active: true },
       include: [
         { model: Branch, as: 'branch', attributes: ['id', 'name', 'color'] },
-        { model: Tenant, as: 'tenant', attributes: ['id', 'slug', 'name', 'brand_name', 'logo_sidebar_url', 'logo_header_url', 'logo_login_url', 'logo_public_url', 'primary_color', 'sidebar_style', 'font_family', 'plan', 'status', 'trial_ends_at'] },
+        tenantInclude,
       ],
     });
 
@@ -355,7 +363,7 @@ const verifyLogin2FA = async (req, res) => {
         avatar:   user.avatar,
         color:    user.color,
         branch:               user.branch,
-        tenant:               user.tenant,
+        tenant:               enrichTenantPayload(user.tenant),
         tenantId:             user.tenant_id,
         must_change_password: !!user.must_change_password,
       },
@@ -608,7 +616,7 @@ const impersonateSession = async (req, res) => {
       attributes: { exclude: ['password'] },
       include: [
         { model: Branch, as: 'branch', attributes: ['id', 'name', 'color'] },
-        { model: Tenant, as: 'tenant', attributes: ['id', 'slug', 'name', 'brand_name', 'logo_sidebar_url', 'logo_header_url', 'logo_login_url', 'logo_public_url', 'primary_color', 'sidebar_style', 'font_family', 'plan', 'status', 'trial_ends_at'] },
+        tenantInclude,
       ],
     });
 
@@ -617,7 +625,9 @@ const impersonateSession = async (req, res) => {
     // Re-issue the impersonation token as the session cookie (same expiry: 2h)
     res.cookie('token', impToken, getCookieOptions(req));
 
-    return res.json({ user });
+    const userJson = user.toJSON();
+    if (userJson.tenant) userJson.tenant = enrichTenantPayload(user.tenant);
+    return res.json({ user: userJson });
   } catch (err) {
     console.error('impersonateSession error:', err);
     return res.status(500).json({ message: 'Server error.' });

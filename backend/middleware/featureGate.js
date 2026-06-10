@@ -25,6 +25,7 @@ const FEATURE_LABELS = {
   custom_domain: 'Custom Domain',
   offer_sms: 'Offer SMS',
   multi_branch: 'Multi-Branch',
+  service_wise_commission: 'Service-Wise Commission',
 };
 
 const featureGate = (feature) => (req, res, next) => {

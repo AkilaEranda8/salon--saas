@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { useFeatureGate } from '../hooks/useFeatureGate';
 import api from '../api/axios';
 import Button from '../components/ui/Button';
 import { Input, Select, FormGroup } from '../components/ui/FormElements';
@@ -22,6 +23,7 @@ function CommBadge({ type, value }) {
 
 export default function StaffPage() {
   const { user }     = useAuth();
+  const { allowed: serviceWiseCommission } = useFeatureGate('service_wise_commission');
   const canEdit      = ['superadmin','admin','manager'].includes(user?.role);
   const isSuperAdmin = user?.role === 'superadmin';
   /** Superadmin + admin should load all branches by default; a home branch_id would hide staff in other branches. */
@@ -152,6 +154,9 @@ export default function StaffPage() {
         join_date: form.join_date || null,
         is_active: form.is_active !== false,
         specializations: specs.map((id) => {
+          if (!serviceWiseCommission) {
+            return { service_id: Number(id) };
+          }
           const raw = specOverrides[id];
           const hasOverride = raw !== '' && raw != null;
           return {
@@ -415,7 +420,7 @@ export default function StaffPage() {
             </div>
           )}
           <FormGroup label="Join Date"><Input type="date" value={form.join_date||''} onChange={e => setForm(f=>({...f, join_date:e.target.value}))} /></FormGroup>
-          {form.salary_type !== 'salary_only' && services.length > 0 && (
+          {form.salary_type !== 'salary_only' && services.length > 0 && serviceWiseCommission && (
             <FormGroup label="Service Commission Setup">
               <p style={{ fontSize:12, color:'#667085', margin:'0 0 10px', lineHeight:1.45 }}>
                 Select services and optionally set a <strong>custom commission</strong> per service. Leave custom rate empty to use the default commission above.
@@ -456,6 +461,21 @@ export default function StaffPage() {
               {specs.length > 0 && (!form.commission_value && form.commission_value !== 0) && (
                 <p style={{ fontSize:12, color:'#D97706', marginTop:8 }}>Set a default commission rate — services without a custom rate will use it.</p>
               )}
+            </FormGroup>
+          )}
+          {form.salary_type !== 'salary_only' && services.length > 0 && !serviceWiseCommission && (
+            <FormGroup label="Specializations">
+              <p style={{ fontSize:12, color:'#667085', margin:'0 0 10px', lineHeight:1.45 }}>
+                Select which services this staff member can perform. Commission uses the default rate above.
+              </p>
+              <div style={{ display:'flex', flexWrap:'wrap', gap:8 }}>
+                {services.filter((sv) => sv.is_active !== false).map(sv => (
+                  <label key={sv.id} style={{ display:'flex', alignItems:'center', gap:6, cursor:'pointer', fontSize:13, color:'#344054', background:specs.includes(sv.id)?'#EFF6FF':'#F9FAFB', border:specs.includes(sv.id)?'1.5px solid #2563EB':'1.5px solid #E4E7EC', borderRadius:8, padding:'4px 10px' }}>
+                    <input type="checkbox" checked={specs.includes(sv.id)} onChange={()=>toggleSpec(sv.id)} style={{ display:'none' }} />
+                    {sv.name}
+                  </label>
+                ))}
+              </div>
             </FormGroup>
           )}
           {form.salary_type === 'salary_only' && services.length > 0 && (
@@ -508,21 +528,23 @@ export default function StaffPage() {
             </div>
             {(p.specializations||[]).length > 0 && (
               <div>
-                <h4 style={{ margin:'0 0 10px', fontSize:13, fontWeight:700, color:'#475467', textTransform:'uppercase' }}>Service Commission</h4>
+                <h4 style={{ margin:'0 0 10px', fontSize:13, fontWeight:700, color:'#475467', textTransform:'uppercase' }}>
+                  {serviceWiseCommission ? 'Service Commission' : 'Specializations'}
+                </h4>
                 <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
                   {p.specializations.map((s) => {
-                    const hasOverride = s.commission_value != null && s.commission_value !== '';
+                    const hasOverride = serviceWiseCommission && s.commission_value != null && s.commission_value !== '';
                     const type = s.commission_type || p.commission_type;
                     return (
                       <div key={s.id} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'8px 12px', background:'#F9FAFB', borderRadius:8, fontSize:13 }}>
                         <span style={{ fontWeight:600, color:'#344054' }}>{s.service?.name || s.service_id}</span>
                         {hasOverride ? (
                           <CommBadge type={type} value={s.commission_value} />
-                        ) : (
+                        ) : serviceWiseCommission ? (
                           <span style={{ fontSize:12, color:'#667085' }}>
                             Default ({type === 'percentage' ? `${p.commission_value}%` : `Rs.${Number(p.commission_value||0).toLocaleString()}`})
                           </span>
-                        )}
+                        ) : null}
                       </div>
                     );
                   })}

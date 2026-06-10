@@ -2,6 +2,7 @@ const { Op, fn, col, literal } = require('sequelize');
 const { sequelize } = require('../config/database');
 const { Payment, PaymentSplit, Branch, Staff, StaffSpecialization, Customer, Service, Appointment, AppointmentService, CustomerPackage, Package: PkgModel, PackageRedemption, LoyaltyRule } = require('../models');
 const { calculatePaymentCommission } = require('../utils/commissionCalculator');
+const { hasTenantFeature } = require('../utils/tenantFeatures');
 const { notifyPaymentReceipt, notifyLoyaltyPoints } = require('../services/notificationService');
 const { tenantWhere, byIdWhere, resolveTenantId } = require('../utils/tenantScope');
 const { slToday } = require('../utils/dateUtils');
@@ -150,6 +151,7 @@ const create = async (req, res) => {
           subtotal: bodySubtotal,
           loyalty_discount,
           promo_discount,
+          allowServiceOverrides: hasTenantFeature(req.tenant, 'service_wise_commission'),
         });
       }
     }

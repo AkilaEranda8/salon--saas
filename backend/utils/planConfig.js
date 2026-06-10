@@ -27,6 +27,7 @@ const PLAN_FEATURES = {
     multi_branch: false,
     reviews: true,
     expenses: true,
+    service_wise_commission: false,
   },
   basic: {
     ai_chat: false,
@@ -45,6 +46,7 @@ const PLAN_FEATURES = {
     multi_branch: false,
     reviews: true,
     expenses: true,
+    service_wise_commission: false,
   },
   pro: {
     ai_chat: true,
@@ -63,6 +65,7 @@ const PLAN_FEATURES = {
     multi_branch: true,
     reviews: true,
     expenses: true,
+    service_wise_commission: false,
   },
   enterprise: {
     ai_chat: true,
@@ -81,6 +84,7 @@ const PLAN_FEATURES = {
     multi_branch: true,
     reviews: true,
     expenses: true,
+    service_wise_commission: false,
   },
 };
 

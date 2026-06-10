@@ -22,6 +22,7 @@ const FEATURE_CATALOG = [
   { key: 'custom_domain', label: 'Custom Domain', category: 'Config' },
   { key: 'multi_branch', label: 'Multi-Branch', category: 'Config' },
   { key: 'reviews', label: 'Reviews', category: 'Engage' },
+  { key: 'service_wise_commission', label: 'Service-Wise Commission', category: 'Team' },
 ];
 
 const FEATURE_KEYS = new Set(FEATURE_CATALOG.map((f) => f.key));
@@ -60,6 +61,17 @@ function getEffectiveFeatures(tenant) {
 function hasTenantFeature(tenant, feature) {
   if (!tenant) return true;
   return getEffectiveFeatures(tenant)[feature] === true;
+}
+
+/** Strip per-service commission overrides when the tenant flag is off. */
+function applyServiceWiseCommissionPolicy(items, tenant) {
+  if (!Array.isArray(items)) return [];
+  if (hasTenantFeature(tenant, 'service_wise_commission')) return items;
+  return items.map((item) => ({
+    service_id: item.service_id,
+    commission_type: null,
+    commission_value: null,
+  }));
 }
 
 function sanitizeFeaturesInput(input) {
@@ -108,6 +120,7 @@ module.exports = {
   parseEnabledFeatures,
   getEffectiveFeatures,
   hasTenantFeature,
+  applyServiceWiseCommissionPolicy,
   sanitizeFeaturesInput,
   defaultsFromPlan,
   enrichTenantPayload,

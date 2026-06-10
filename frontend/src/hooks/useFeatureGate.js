@@ -19,28 +19,28 @@ const PLAN_FEATURES = {
     kpi_dashboard: false, marketing_auto: false, advanced_reports: false,
     inventory: true, discounts: false, recurring: false, custom_domain: false,
     consent_forms: true, offer_sms: false, multi_branch: false,
-    reviews: true, expenses: true,
+    reviews: true, expenses: true, service_wise_commission: false,
   },
   basic: {
     ai_chat: false, loyalty: false, membership: false, packages: true,
     kpi_dashboard: false, marketing_auto: false, advanced_reports: false,
     inventory: true, discounts: true, recurring: true, custom_domain: false,
     consent_forms: true, offer_sms: true, multi_branch: false,
-    reviews: true, expenses: true,
+    reviews: true, expenses: true, service_wise_commission: false,
   },
   pro: {
     ai_chat: true, loyalty: true, membership: true, packages: true,
     kpi_dashboard: true, marketing_auto: true, advanced_reports: true,
     inventory: true, discounts: true, recurring: true, custom_domain: false,
     consent_forms: true, offer_sms: true, multi_branch: true,
-    reviews: true, expenses: true,
+    reviews: true, expenses: true, service_wise_commission: false,
   },
   enterprise: {
     ai_chat: true, loyalty: true, membership: true, packages: true,
     kpi_dashboard: true, marketing_auto: true, advanced_reports: true,
     inventory: true, discounts: true, recurring: true, custom_domain: true,
     consent_forms: true, offer_sms: true, multi_branch: true,
-    reviews: true, expenses: true,
+    reviews: true, expenses: true, service_wise_commission: false,
   },
 };
 
@@ -70,6 +70,7 @@ const FEATURE_LABELS = {
   multi_branch: 'Multi-Branch',
   reviews: 'Reviews',
   expenses: 'Expense Tracking',
+  service_wise_commission: 'Service-Wise Commission',
 };
 
 function getMinPlan(feature) {

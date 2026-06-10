@@ -11,6 +11,7 @@ function calculatePaymentCommission({
   subtotal = 0,
   loyalty_discount = 0,
   promo_discount = 0,
+  allowServiceOverrides = true,
 }) {
   if (!staff || staff.salary_type === 'salary_only') return 0;
 
@@ -40,9 +41,11 @@ function calculatePaymentCommission({
 
   let commission = 0;
   for (const line of lines) {
-    const spec = specByService.get(line.id);
+    const spec = allowServiceOverrides ? specByService.get(line.id) : null;
     const type = spec?.commission_type || defaultType;
-    const val = spec?.commission_value != null && spec?.commission_value !== ''
+    const val = allowServiceOverrides
+      && spec?.commission_value != null
+      && spec?.commission_value !== ''
       ? parseFloat(spec.commission_value)
       : defaultVal;
     const lineBase = grossSum > 0 ? (line.price / grossSum) * netTotal : netTotal / lines.length;

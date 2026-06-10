@@ -2,6 +2,11 @@ const { Op, fn, col, literal } = require('sequelize');
 const { Staff, Branch, StaffBranch, StaffSpecialization, Service, Appointment, Payment, User, StaffAdvance, CommissionPayout } = require('../models');
 const { tenantWhere, byIdWhere, resolveTenantId } = require('../utils/tenantScope');
 const { normalizeStaffSpecializations } = require('../utils/commissionCalculator');
+const { applyServiceWiseCommissionPolicy } = require('../utils/tenantFeatures');
+
+function resolveSpecItems(req, rawItems) {
+  return applyServiceWiseCommissionPolicy(rawItems, req.tenant);
+}
 
 function buildSpecRows(staffId, rawSpecs, staffDefaults) {
   return normalizeStaffSpecializations(rawSpecs, staffDefaults).map((s) => ({
@@ -190,7 +195,7 @@ const create = async (req, res) => {
     const commission_type = parsed.commission_type || 'percentage';
     const commission_value = parsed.commission_value;
     const base_salary = parsed.base_salary ?? 0;
-    const specItems = extractSpecializationItems(req.body);
+    const specItems = resolveSpecItems(req, extractSpecializationItems(req.body));
 
     if (salary_type !== 'salary_only' && specItems.length && (commission_value == null || commission_value <= 0)) {
       return res.status(400).json({ message: 'Default commission rate is required when services are selected.' });
@@ -285,7 +290,7 @@ const update = async (req, res) => {
     const hasServicePayload = Array.isArray(req.body.specializations) || Array.isArray(req.body.service_ids);
 
     if (hasServicePayload) {
-      const specItems = extractSpecializationItems(req.body);
+      const specItems = resolveSpecItems(req, extractSpecializationItems(req.body));
       const effectiveCommission = refreshedStaff.commission_value;
       if (effectiveSalaryType !== 'salary_only' && specItems.length && (effectiveCommission == null || parseFloat(effectiveCommission) <= 0)) {
         return res.status(400).json({ message: 'Default commission rate is required when services are selected.' });
@@ -576,10 +581,10 @@ const setSpecializations = async (req, res) => {
     // Replace all existing specializations
     await StaffSpecialization.destroy({ where: { staff_id: staff.id } });
 
-    const specItems = extractSpecializationItems({
+    const specItems = resolveSpecItems(req, extractSpecializationItems({
       specializations: req.body.specializations,
       service_ids: serviceIds,
-    });
+    }));
     await replaceStaffSpecializations(staff.id, specItems);
 
     const updated = await StaffSpecialization.findAll({

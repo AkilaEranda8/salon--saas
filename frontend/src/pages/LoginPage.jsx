@@ -266,7 +266,7 @@ export default function LoginPage({ platformMode = false }) {
           }}>
             <img
               src="/kogo.png?v=3"
-              alt="Hexa Salon"
+              alt="Hexaone"
               style={{ width: 200, height: 200, objectFit: 'contain', display: 'block' }}
             />
           </div>

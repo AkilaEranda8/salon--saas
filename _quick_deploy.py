@@ -1,5 +1,5 @@
 """
-Quick Deploy — Hexa Salon
+Quick Deploy — Hexaone
 Run:  python _quick_deploy.py
 """
 import io, sys, subprocess, threading

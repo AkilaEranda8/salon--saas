@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { useBranch } from '../../context/BranchContext';
 import { useTheme } from '../../context/ThemeContext';
 import api from '../../api/axios';
 import { resolveBrandLogo, resolveBrandName } from '../../utils/branding';
@@ -118,6 +119,10 @@ export default function Topbar({ onMenuClick }) {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
   const { isDark } = useTheme();
+  const {
+    branches, selectedBranchId, setSelectedBranchId,
+    canSelectBranch,
+  } = useBranch();
   const [notifCount, setNotifCount] = useState(0);
   const [dropOpen, setDropOpen] = useState(false);
   const dropRef = useRef(null);
@@ -227,8 +232,44 @@ export default function Topbar({ onMenuClick }) {
           </div>
         </div>
 
-        {/* ── Right: Bell + Date + User ── */}
-        <div style={{ display:'flex', alignItems:'center', gap:16, flexShrink:0 }}>
+        {/* ── Right: Branch (admin only) + Bell + Date + User ── */}
+        <div style={{ display:'flex', alignItems:'center', gap:16, flexShrink:0, marginLeft:'auto' }}>
+          {canSelectBranch && (
+            <label
+              style={{
+                display:'flex',
+                alignItems:'center',
+                gap:8,
+                fontSize:13,
+                color:isDark ? '#94A3B8' : '#475467',
+                fontWeight:600,
+              }}
+              title="Filter all pages by branch"
+            >
+              <span style={{ whiteSpace:'nowrap' }}>Branch</span>
+              <select
+                value={selectedBranchId}
+                onChange={(e) => setSelectedBranchId(e.target.value)}
+                style={{
+                  padding:'7px 12px',
+                  borderRadius:10,
+                  border:`1.5px solid ${isDark ? '#334155' : '#D0D5DD'}`,
+                  background: isDark ? '#0F172A' : '#fff',
+                  color: isDark ? '#E2E8F0' : '#101828',
+                  fontSize:13,
+                  fontWeight:600,
+                  minWidth:140,
+                  maxWidth:220,
+                  cursor:'pointer',
+                }}
+              >
+                <option value="">All Branches</option>
+                {branches.map((b) => (
+                  <option key={b.id} value={b.id}>{b.name}</option>
+                ))}
+              </select>
+            </label>
+          )}
           {/* Notification bell */}
           <button
             onClick={() => navigate('/reminders')}

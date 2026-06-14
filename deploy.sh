@@ -2,7 +2,7 @@
 set -e
 
 echo "════════════════════════════════════════════"
-echo "  Hexa Salon - VPS Deployment Script"
+echo "  Hexaone - VPS Deployment Script"
 echo "════════════════════════════════════════════"
 
 # ── 1. Install Docker ──────────────────────────────────────────────────────────

@@ -262,7 +262,7 @@ function printReceipt(payment) {
       body { padding:6px; }
     }
   </style></head><body>
-  <h1>HEXA SALON</h1>
+  <h1>HEXAONE</h1>
   <div class="subtitle">Payment Receipt</div>
   <div style="border-top:2px solid #111;border-bottom:1px dashed #bbb;padding:4px 0;margin-bottom:6px;font-size:10px;color:#555;text-align:center;">
     ${fmtDate(payment.date)} &nbsp;|&nbsp; #${payment.id||''}
@@ -286,7 +286,7 @@ function printReceipt(payment) {
     ${splits}
     ${dash()}
   </table>
-  <div class="footer">Thank you for visiting!<br>*** HEXA SALON ***</div>
+  <div class="footer">Thank you for visiting!<br>*** HEXAONE ***</div>
   <script>window.onload=function(){window.print();setTimeout(function(){window.close();},800);}<\/script>
   </body></html>`;
 
@@ -308,7 +308,7 @@ function InvoiceModal({ open, onClose, payment }) {
           <div style={{ width:40, height:40, borderRadius:12, background:'rgba(255,255,255,0.12)', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 10px', color:'#fff' }}>
             <IconReceipt />
           </div>
-          <div style={{ color:'#fff', fontWeight:900, fontSize:18, letterSpacing:3, fontFamily:"'Courier New',monospace" }}>HEXA SALON</div>
+          <div style={{ color:'#fff', fontWeight:900, fontSize:18, letterSpacing:3, fontFamily:"'Courier New',monospace" }}>HEXAONE</div>
           <div style={{ color:'#98A2B3', fontSize:11, marginTop:2, letterSpacing:1 }}>PAYMENT RECEIPT</div>
           <div style={{ color:'#667085', fontSize:10, marginTop:6 }}>
             {payment.date ? new Date(payment.date).toLocaleString('en-GB', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' }) : ''}

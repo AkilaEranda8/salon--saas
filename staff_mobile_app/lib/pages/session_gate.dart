@@ -50,7 +50,7 @@ class _SessionGateState extends State<SessionGate> {
         return;
       }
       final didAuth = await _auth.authenticate(
-        localizedReason: 'Verify your identity to access Hexa Salon',
+        localizedReason: 'Verify your identity to access Hexaone',
         options: const AuthenticationOptions(
           biometricOnly: false,
           stickyAuth: true,
@@ -86,7 +86,7 @@ class _SessionGateState extends State<SessionGate> {
               const Icon(Icons.fingerprint, size: 72, color: Color(0xFFC9956C)),
               const SizedBox(height: 20),
               const Text(
-                'Hexa Salon',
+                'Hexaone',
                 style: TextStyle(color: Color(0xFFF5EEE8), fontSize: 24, fontWeight: FontWeight.w700, letterSpacing: 3),
               ),
               const SizedBox(height: 8),

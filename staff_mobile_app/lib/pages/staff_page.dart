@@ -101,6 +101,7 @@ class _StaffPageState extends State<StaffPage> {
       branchId: edit?.branchId.isNotEmpty == true ? edit!.branchId : branchId,
       services: app.services,
       showServiceWiseCommission: app.serviceWiseCommissionForUser,
+      defaultCommissionOnly: true,
       initial: edit,
     );
     if (payload == null || !mounted) return;

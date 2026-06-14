@@ -24,7 +24,7 @@ class StaffOnlyApp extends StatelessWidget {
     return AppStateScope(
       notifier: AppState(),
       child: MaterialApp(
-        title: 'Hexa Salon',
+        title: 'Hexaone',
         debugShowCheckedModeBanner: false,
         theme: ThemeData(
           useMaterial3: true,

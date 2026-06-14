@@ -23,6 +23,7 @@ const FEATURE_CATALOG = [
   { key: 'multi_branch', label: 'Multi-Branch', category: 'Config' },
   { key: 'reviews', label: 'Reviews', category: 'Engage' },
   { key: 'service_wise_commission', label: 'Service-Wise Commission', category: 'Team' },
+  { key: 'franchise_commission', label: 'Franchise Commission', category: 'Team' },
 ];
 
 const FEATURE_KEYS = new Set(FEATURE_CATALOG.map((f) => f.key));
@@ -63,16 +64,27 @@ function hasTenantFeature(tenant, feature) {
   return getEffectiveFeatures(tenant)[feature] === true;
 }
 
+/** Franchise mode: per-staff commission + branch manager override on paid services. */
+function hasFranchiseCommission(tenant) {
+  return hasTenantFeature(tenant, 'franchise_commission');
+}
+
 /** Service-wise commission is tenant-gated and not available to manager role. */
 function hasServiceWiseCommissionForUser(tenant, req) {
   if ((req?.user?.role || '').toLowerCase() === 'manager') return false;
-  return hasTenantFeature(tenant, 'service_wise_commission');
+  return hasTenantFeature(tenant, 'service_wise_commission')
+    || hasFranchiseCommission(tenant);
+}
+
+function allowsServiceWiseOverrides(tenant) {
+  return hasTenantFeature(tenant, 'service_wise_commission')
+    || hasFranchiseCommission(tenant);
 }
 
 /** Hide service catalogue commission in API payloads when the flag is off. */
 function sanitizeServiceRecord(service, tenant) {
   const json = service && typeof service.toJSON === 'function' ? service.toJSON() : { ...(service || {}) };
-  if (!hasTenantFeature(tenant, 'service_wise_commission')) {
+  if (!hasTenantFeature(tenant, 'service_wise_commission') && !hasFranchiseCommission(tenant)) {
     json.commission_type = null;
     json.commission_value = null;
   }
@@ -82,7 +94,7 @@ function sanitizeServiceRecord(service, tenant) {
 /** Hide per-service staff commission data when the flag is off. */
 function sanitizeStaffRecord(staff, tenant) {
   const json = staff && typeof staff.toJSON === 'function' ? staff.toJSON() : { ...(staff || {}) };
-  if (!hasTenantFeature(tenant, 'service_wise_commission') && Array.isArray(json.specializations)) {
+  if (!hasTenantFeature(tenant, 'service_wise_commission') && !hasFranchiseCommission(tenant) && Array.isArray(json.specializations)) {
     if (json.salary_type === 'salary_only') {
       json.specializations = json.specializations.map((s) => ({
         ...s,
@@ -99,7 +111,7 @@ function sanitizeStaffRecord(staff, tenant) {
 /** Strip per-service commission overrides when the tenant flag is off. */
 function applyServiceWiseCommissionPolicy(items, tenant) {
   if (!Array.isArray(items)) return [];
-  if (hasTenantFeature(tenant, 'service_wise_commission')) return items;
+  if (hasTenantFeature(tenant, 'service_wise_commission') || hasFranchiseCommission(tenant)) return items;
   return items.map((item) => ({
     service_id: item.service_id,
     commission_type: null,
@@ -153,6 +165,8 @@ module.exports = {
   parseEnabledFeatures,
   getEffectiveFeatures,
   hasTenantFeature,
+  hasFranchiseCommission,
+  allowsServiceWiseOverrides,
   hasServiceWiseCommissionForUser,
   applyServiceWiseCommissionPolicy,
   sanitizeServiceRecord,

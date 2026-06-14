@@ -1,4 +1,4 @@
-# HEXA SALON AI Bot
+# HEXAONE AI Bot
 
 Custom-built AI chatbot — no OpenAI, no external LLM. Pure Python.
 

@@ -175,6 +175,8 @@ exports.updateStatus = async (req, res) => {
     entry.status = status;
     if (status === 'serving') {
       entry.serve_start_time = new Date().toTimeString().slice(0, 8);
+      entry.reminder_15_sent_at = null;
+      entry.reminder_at_end_sent_at = null;
     }
     await entry.save();
 
@@ -204,6 +206,8 @@ exports.assign = async (req, res) => {
     entry.staff_id = staffId;
     entry.status = 'serving';
     entry.serve_start_time = new Date().toTimeString().slice(0, 8);
+    entry.reminder_15_sent_at = null;
+    entry.reminder_at_end_sent_at = null;
     await entry.save();
 
     const full = await WalkIn.findByPk(id, { include: defaultInclude });

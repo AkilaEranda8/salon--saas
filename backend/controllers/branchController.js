@@ -40,7 +40,7 @@ const getOne = async (req, res) => {
 
 const create = async (req, res) => {
   try {
-    const { name, address, phone, manager_name, color } = req.body;
+    const { name, address, phone, manager_name, color, manager_commission_percent } = req.body;
     if (!name) return res.status(400).json({ message: 'Branch name is required.' });
 
     const branch = await Branch.create({
@@ -49,6 +49,9 @@ const create = async (req, res) => {
       phone,
       manager_name,
       color,
+      manager_commission_percent: manager_commission_percent != null && manager_commission_percent !== ''
+        ? parseFloat(manager_commission_percent)
+        : null,
       tenant_id: resolveTenantId(req),
     });
     return res.status(201).json(branch);
@@ -62,7 +65,7 @@ const update = async (req, res) => {
     const branch = await Branch.findOne({ where: byIdWhere(req, req.params.id) });
     if (!branch) return res.status(404).json({ message: 'Branch not found.' });
 
-    const allowed = ['name', 'address', 'phone', 'email', 'color', 'open_time', 'close_time'];
+    const allowed = ['name', 'address', 'phone', 'email', 'color', 'open_time', 'close_time', 'manager_name', 'manager_commission_percent'];
     const updates = {};
     for (const field of allowed) {
       if (req.body[field] !== undefined) updates[field] = req.body[field];

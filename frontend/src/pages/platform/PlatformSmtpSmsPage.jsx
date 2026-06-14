@@ -524,7 +524,7 @@ export default function PlatformSmtpSmsPage() {
                 </div>
 
                 <Divider label="Display" dark={dark} />
-                <Field label="From Address (sender display name)" value={form.smtp_from} onChange={set('smtp_from')} placeholder='HEXA SALON <no-reply@yourdomain.com>' dark={dark} hint="Shown as sender name in email clients" />
+                <Field label="From Address (sender display name)" value={form.smtp_from} onChange={set('smtp_from')} placeholder='HEXAONE <no-reply@yourdomain.com>' dark={dark} hint="Shown as sender name in email clients" />
 
                 {/* Test Panel */}
                 <div style={{

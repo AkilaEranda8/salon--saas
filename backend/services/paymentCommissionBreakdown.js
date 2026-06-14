@@ -7,7 +7,7 @@ const {
   StaffSpecialization,
 } = require('../models');
 const { computeCommissionDetails } = require('../utils/commissionCalculator');
-const { hasTenantFeature } = require('../utils/tenantFeatures');
+const { allowsServiceWiseOverrides } = require('../utils/tenantFeatures');
 const { tenantWhere, byIdWhere } = require('../utils/tenantScope');
 
 function parseStoredBreakdown(raw) {
@@ -99,7 +99,7 @@ async function breakdownForPayment(payment, tenant, reqLike = {}) {
     subtotal: payment.total_amount,
     loyalty_discount: payment.loyalty_discount,
     promo_discount: payment.promo_discount,
-    allowServiceOverrides: hasTenantFeature(tenant, 'service_wise_commission'),
+    allowServiceOverrides: allowsServiceWiseOverrides(tenant),
   });
 
   return breakdown;

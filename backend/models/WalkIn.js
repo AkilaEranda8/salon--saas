@@ -35,9 +35,28 @@ const WalkIn = sequelize.define('WalkIn', {
     type: DataTypes.ENUM('waiting', 'serving', 'completed', 'cancelled'),
     defaultValue: 'waiting',
   },
+  reminder_before_start_sent_at: {
+    type: DataTypes.DATE,
+    allowNull: true,
+  },
+  reminder_15_sent_at: {
+    type: DataTypes.DATE,
+    allowNull: true,
+    comment: 'Push sent 15 min before walk-in service end',
+  },
+  reminder_at_end_sent_at: {
+    type: DataTypes.DATE,
+    allowNull: true,
+    comment: 'Push sent when walk-in service end time is reached',
+  },
   check_in_time: {
     type: DataTypes.TIME,
     allowNull: true,
+  },
+  serve_start_time: {
+    type: DataTypes.TIME,
+    allowNull: true,
+    comment: 'When status changed to serving / staff assigned',
   },
   check_in_date: {
     type: DataTypes.DATEONLY,

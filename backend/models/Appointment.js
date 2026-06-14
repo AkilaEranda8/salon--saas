@@ -47,6 +47,21 @@ const Appointment = sequelize.define('Appointment', {
     type: DataTypes.ENUM('pending', 'confirmed', 'in_service', 'completed', 'cancelled'),
     defaultValue: 'pending',
   },
+  reminder_15_sent_at: {
+    type: DataTypes.DATE,
+    allowNull: true,
+    comment: 'Push sent 15 min before scheduled service end',
+  },
+  reminder_before_start_sent_at: {
+    type: DataTypes.DATE,
+    allowNull: true,
+    comment: 'Push sent 15 min before appointment start',
+  },
+  reminder_at_end_sent_at: {
+    type: DataTypes.DATE,
+    allowNull: true,
+    comment: 'Push sent when scheduled service end time is reached',
+  },
   commission_paid: {
     type: DataTypes.DECIMAL(10, 2),
     defaultValue: 0,

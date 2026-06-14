@@ -1,4 +1,4 @@
-# TableCraft in Hexa Salon (salon_v1)
+# TableCraft in Hexaone (salon_v1)
 
 **`react-table-craft`** is installed. Tailwind utilities: `src/styles/tablecraft.css`.  
 **Live demo:** `/tablecraft-demo` (admin / superadmin).

@@ -22,10 +22,15 @@ const ensureStaffSalaryColumns = require('./services/ensureStaffSalaryColumns');
 const ensureStaffSpecCommissionColumns = require('./services/ensureStaffSpecCommissionColumns');
 const ensureServiceCommissionColumns = require('./services/ensureServiceCommissionColumns');
 const ensurePaymentCommissionBreakdownColumn = require('./services/ensurePaymentCommissionBreakdownColumn');
+const ensurePaymentManagerCommissionColumns = require('./services/ensurePaymentManagerCommissionColumns');
+const ensureFranchiseCommissionSchema = require('./services/ensureFranchiseCommissionSchema');
 const ensureUserMobileFeaturesColumn = require('./services/ensureUserMobileFeaturesColumn');
 const ensureTenantMobileRoleDefaultsColumn = require('./services/ensureTenantMobileRoleDefaultsColumn');
 const { ensureTenantEnabledFeaturesColumn } = require('./services/ensureTenantEnabledFeaturesColumn');
 const { ensureStaffPhotoColumn } = require('./services/ensureStaffPhotoColumn');
+const ensureAppointmentReminderColumn = require('./services/ensureAppointmentReminderColumn');
+const ensureWalkInReminderColumns = require('./services/ensureWalkInReminderColumns');
+const { ensureServiceDurationDefaults } = require('./services/ensureServiceDurationDefaults');
 const platformGuard = require('./middleware/platformGuard');
 const logger        = require('./utils/logger');
 
@@ -325,6 +330,11 @@ connectWithRetry().then(async () => {
     } catch (e) { logger.warn('revoked_token_cleanup_failed', { message: e.message }); }
   });
 
+  await ensureStaffPhotoColumn();
+  await ensureAppointmentReminderColumn();
+  await ensureWalkInReminderColumns();
+  await ensureServiceDurationDefaults();
+
   startAppointmentReminderCron();
   startReminderDueCron();
   startMarketingAutomationCron();
@@ -336,10 +346,11 @@ connectWithRetry().then(async () => {
   await ensureStaffSpecCommissionColumns();
   await ensureServiceCommissionColumns();
   await ensurePaymentCommissionBreakdownColumn();
+  await ensurePaymentManagerCommissionColumns();
+  await ensureFranchiseCommissionSchema();
   await ensureUserMobileFeaturesColumn();
   await ensureTenantMobileRoleDefaultsColumn();
   await ensureTenantEnabledFeaturesColumn();
-  await ensureStaffPhotoColumn();
 
   server.listen(PORT, () =>
     logger.info('server_started', { port: PORT })

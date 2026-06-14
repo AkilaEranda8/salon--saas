@@ -348,6 +348,16 @@ const update = async (req, res) => {
     }
 
     const prevStaffId = appt.staff_id;
+    if (
+      updates.date !== undefined
+      || updates.time !== undefined
+      || updates.service_id !== undefined
+      || nextServiceIds
+    ) {
+      updates.reminder_15_sent_at = null;
+      updates.reminder_before_start_sent_at = null;
+      updates.reminder_at_end_sent_at = null;
+    }
     await appt.update(updates);
 
     if (nextServiceIds) {

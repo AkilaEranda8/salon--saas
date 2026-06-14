@@ -10,6 +10,9 @@ import {
   StaffAvatar, ActionBtn, StatCard, Drawer, PKModal as Modal,
   FilterBar, DataTable,
 } from '../components/ui/PageKit';
+import {
+  STAFF_ROLE_TITLES, STAFF_ROLE_OTHER, staffRoleSelectValue, MANAGEMENT_STAFF_ROLES,
+} from '../constants/staffRoleTitles';
 
 const EMPTY = { name:'', phone:'', email:'', role_title:'', branch_ids:[], commission_type:'percentage', commission_value:'', salary_type:'commission_only', base_salary:'', join_date:'', is_active:true };
 
@@ -31,8 +34,9 @@ function CommBadge({ type, value }) {
 export default function StaffPage() {
   const { user }     = useAuth();
   const { allowed: serviceWiseCommission } = useFeatureGate('service_wise_commission');
+  const { allowed: franchiseCommission } = useFeatureGate('franchise_commission');
   const isManager    = user?.role === 'manager';
-  const serviceWiseForUser = serviceWiseCommission && !isManager;
+  const serviceWiseForUser = (serviceWiseCommission || franchiseCommission) && !isManager;
   const canEdit      = ['superadmin','admin','manager'].includes(user?.role);
   const isSuperAdmin = user?.role === 'superadmin';
   /** Superadmin + admin should load all branches by default; a home branch_id would hide staff in other branches. */
@@ -41,16 +45,12 @@ export default function StaffPage() {
   const [branches, setBranches]         = useState([]);
   const [services, setServices]         = useState([]);
   const [loading, setLoading]           = useState(true);
-  const [filterBranch, setFilterBranch] = useState(
-    seesAllBranches ? '' : (user?.branch_id ?? user?.branchId ?? ''),
-  );
   const [showForm, setShowForm]         = useState(false);
   const [showProfile, setShowProfile]   = useState(false);
   const [editItem, setEditItem]         = useState(null);
   const [profileItem, setProfileItem]   = useState(null);
   const [form, setForm]                 = useState(EMPTY);
   const [specs, setSpecs]               = useState([]);
-  const [specOverrides, setSpecOverrides] = useState({});
   const [saving, setSaving]             = useState(false);
   const [formErr, setFormErr]           = useState('');
   const [loadErr, setLoadErr]         = useState('');
@@ -63,7 +63,7 @@ export default function StaffPage() {
     setLoadErr('');
     try {
       const [stR, brR, svR] = await Promise.all([
-        api.get('/staff',    { params: { limit:200, ...(filterBranch ? { branchId: filterBranch } : {}) } }),
+        api.get('/staff',    { params: { limit:200 } }),
         api.get('/branches', { params: { limit:100 } }),
         api.get('/services', { params: { limit:200 } }),
       ]);
@@ -76,7 +76,7 @@ export default function StaffPage() {
       setStaff([]);
     }
     setLoading(false);
-  }, [filterBranch]);
+  }, []);
   useEffect(() => { load(); }, [load]);
 
   const myBranchId = user?.branch_id ?? user?.branchId;
@@ -86,18 +86,8 @@ export default function StaffPage() {
 
   const activeServices = services.filter((sv) => sv.is_active !== false);
 
-  const syncAllServiceCommissionSpecs = useCallback(() => {
-    const ids = activeServices.map((sv) => sv.id);
-    const overrides = {};
-    for (const sv of activeServices) {
-      if (sv.commission_value != null && sv.commission_value !== '') {
-        overrides[sv.id] = String(sv.commission_value);
-      } else {
-        overrides[sv.id] = '';
-      }
-    }
-    setSpecs(ids);
-    setSpecOverrides(overrides);
+  const linkAllSpecs = useCallback(() => {
+    setSpecs(activeServices.map((sv) => sv.id));
   }, [activeServices]);
 
   const prevSalaryTypeRef = useRef(EMPTY.salary_type);
@@ -109,24 +99,20 @@ export default function StaffPage() {
     if ((form.salary_type || 'commission_only') === prevSalaryTypeRef.current) return;
     prevSalaryTypeRef.current = form.salary_type || 'commission_only';
     if (!serviceWiseForUser || form.salary_type === 'salary_only') {
-      if (form.salary_type === 'salary_only') {
-        setSpecs([]);
-        setSpecOverrides({});
-      }
+      if (form.salary_type === 'salary_only') setSpecs([]);
       return;
     }
-    syncAllServiceCommissionSpecs();
-  }, [showForm, form.salary_type, serviceWiseForUser, syncAllServiceCommissionSpecs]);
+    linkAllSpecs();
+  }, [showForm, form.salary_type, serviceWiseForUser, linkAllSpecs]);
 
   const openAdd  = () => {
     setEditItem(null);
     const initial = { ...EMPTY, branch_ids: myBranchId != null ? [String(myBranchId)] : [], join_date: new Date().toISOString().slice(0,10) };
     setForm(initial);
     if (serviceWiseForUser && initial.salary_type !== 'salary_only') {
-      syncAllServiceCommissionSpecs();
+      linkAllSpecs();
     } else {
       setSpecs([]);
-      setSpecOverrides({});
     }
     setPhotoFile(null);
     setPhotoPreview('');
@@ -140,15 +126,7 @@ export default function StaffPage() {
       : (row.branch_id != null || row.branch?.id != null ? [String(row.branch_id ?? row.branch?.id)] : []);
     setEditItem(row);
     setForm({ ...row, branch_ids: fromM2m, join_date: row.join_date?.slice(0,10)||'' });
-    const selected = (row.specializations || []).map((s) => s.service_id);
-    const overrides = {};
-    for (const s of row.specializations || []) {
-      if (s.commission_value != null && s.commission_value !== '') {
-        overrides[s.service_id] = String(s.commission_value);
-      }
-    }
-    setSpecs(selected);
-    setSpecOverrides(overrides);
+    setSpecs((row.specializations || []).map((s) => s.service_id));
     setPhotoFile(null);
     setPhotoPreview(row.photo_url || '');
     setRemovePhoto(false);
@@ -157,20 +135,7 @@ export default function StaffPage() {
   };
   const openProfile = row => { setProfileItem(row); setShowProfile(true); };
   const toggleSpec = (id) => {
-    if (specs.includes(id)) {
-      setSpecs((sp) => sp.filter((x) => x !== id));
-      setSpecOverrides((o) => {
-        const next = { ...o };
-        delete next[id];
-        return next;
-      });
-    } else {
-      setSpecs((sp) => [...sp, id]);
-      setSpecOverrides((o) => ({ ...o, [id]: o[id] ?? '' }));
-    }
-  };
-  const setSpecOverride = (id, value) => {
-    setSpecOverrides((o) => ({ ...o, [id]: value }));
+    setSpecs((sp) => (sp.includes(id) ? sp.filter((x) => x !== id) : [...sp, id]));
   };
   const toggleBranch = (id) => {
     const s = String(id);
@@ -186,6 +151,7 @@ export default function StaffPage() {
 
   const handleSave = async () => {
     if (!form.name || !form.branch_ids?.length) return setFormErr('Name and at least one branch are required');
+    if (!String(form.role_title || '').trim()) return setFormErr('Select a role for this staff member.');
     const paysCommission = form.salary_type !== 'salary_only';
     let effectiveSpecs = specs;
     if (serviceWiseForUser && paysCommission && !effectiveSpecs.length && activeServices.length) {
@@ -206,20 +172,7 @@ export default function StaffPage() {
         join_date: form.join_date || null,
         is_active: form.is_active !== false,
         ...(serviceWiseForUser || form.salary_type === 'salary_only'
-          ? {
-              specializations: effectiveSpecs.map((id) => {
-                if (!serviceWiseForUser) {
-                  return { service_id: Number(id) };
-                }
-                const raw = specOverrides[id];
-                const hasOverride = raw !== '' && raw != null;
-                return {
-                  service_id: Number(id),
-                  commission_type: form.commission_type || 'percentage',
-                  commission_value: hasOverride ? parseFloat(raw) : null,
-                };
-              }),
-            }
+          ? { specializations: effectiveSpecs.map((id) => ({ service_id: Number(id) })) }
           : { specializations: [] }),
       };
       if (form.salary_type !== 'salary_only') {
@@ -253,6 +206,9 @@ export default function StaffPage() {
 
   const activeCount = staff.filter(s => s.is_active !== false).length;
   const p = profileItem;
+  const roleSelectValue = staffRoleSelectValue(form.role_title);
+  const isManagementRole = MANAGEMENT_STAFF_ROLES.includes(form.role_title);
+  const serviceRoles = STAFF_ROLE_TITLES.filter((r) => !MANAGEMENT_STAFF_ROLES.includes(r));
 
   const columns = [
     {
@@ -366,14 +322,6 @@ export default function StaffPage() {
       )}
 
       {/* Filter Bar */}
-      <FilterBar>
-        {seesAllBranches && (
-          <select value={filterBranch} onChange={e => setFilterBranch(e.target.value)} className="pk-filter-control">
-            <option value="">All Branches</option>
-            {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-          </select>
-        )}
-      </FilterBar>
 
       {/* Table */}
       <DataTable
@@ -430,7 +378,85 @@ export default function StaffPage() {
           </div>
           <FormGroup label="Email"><Input type="email" value={form.email||''} onChange={e => setForm(f=>({...f, email:e.target.value}))} placeholder="name@example.com" /></FormGroup>
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
-            <FormGroup label="Role / Title"><Input value={form.role_title||''} onChange={e => setForm(f=>({...f, role_title:e.target.value}))} placeholder="e.g. Senior Stylist" /></FormGroup>
+            <FormGroup label="Role" required>
+              {franchiseCommission ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: '#B45309', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    Branch management (override commission)
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                    {MANAGEMENT_STAFF_ROLES.map((role) => {
+                      const active = form.role_title === role;
+                      return (
+                        <button
+                          key={role}
+                          type="button"
+                          onClick={() => setForm((f) => ({ ...f, role_title: role }))}
+                          style={{
+                            padding: '10px 12px',
+                            borderRadius: 10,
+                            cursor: 'pointer',
+                            fontSize: 13,
+                            fontWeight: 700,
+                            border: active ? '2px solid #D97706' : '1.5px solid #E4E7EC',
+                            background: active ? '#FFFBEB' : '#fff',
+                            color: active ? '#B45309' : '#344054',
+                          }}
+                        >
+                          {role}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: '#667085', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    Service staff
+                  </div>
+                  <Select
+                    value={isManagementRole ? '' : roleSelectValue}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      if (!v) return;
+                      if (v === STAFF_ROLE_OTHER) setForm((f) => ({ ...f, role_title: '' }));
+                      else setForm((f) => ({ ...f, role_title: v }));
+                    }}
+                  >
+                    <option value="">Select service role...</option>
+                    {serviceRoles.map((r) => <option key={r} value={r}>{r}</option>)}
+                    <option value={STAFF_ROLE_OTHER}>Other</option>
+                  </Select>
+                  {roleSelectValue === STAFF_ROLE_OTHER && (
+                    <Input
+                      value={form.role_title || ''}
+                      onChange={(e) => setForm((f) => ({ ...f, role_title: e.target.value }))}
+                      placeholder="Enter custom role"
+                    />
+                  )}
+                </div>
+              ) : (
+                <>
+                  <Select
+                    value={roleSelectValue}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      if (v === STAFF_ROLE_OTHER) setForm((f) => ({ ...f, role_title: '' }));
+                      else setForm((f) => ({ ...f, role_title: v }));
+                    }}
+                  >
+                    <option value="">Select role...</option>
+                    {STAFF_ROLE_TITLES.map((r) => <option key={r} value={r}>{r}</option>)}
+                    <option value={STAFF_ROLE_OTHER}>Other</option>
+                  </Select>
+                  {roleSelectValue === STAFF_ROLE_OTHER && (
+                    <Input
+                      value={form.role_title || ''}
+                      onChange={(e) => setForm((f) => ({ ...f, role_title: e.target.value }))}
+                      placeholder="Enter custom role"
+                      style={{ marginTop: 8 }}
+                    />
+                  )}
+                </>
+              )}
+            </FormGroup>
             <FormGroup label="Branches" required>
               <div style={{ display:'flex', flexDirection:'column', gap:8, marginTop:4 }}>
                 {branchChoices.map(b => (
@@ -470,65 +496,38 @@ export default function StaffPage() {
                   {serviceWiseForUser && <option value="fixed">Fixed per Service</option>}
                 </Select>
               </FormGroup>
-              <FormGroup label={form.commission_type==='percentage' ? 'Default Commission %' : 'Default Commission (Rs.)'}>
-                <Input type="number" min="0" step="0.01" value={form.commission_value||''} onChange={e => setForm(f=>({...f, commission_value:e.target.value}))} placeholder="e.g. 10" />
+              <FormGroup label={
+                franchiseCommission && isManagementRole && form.commission_type === 'percentage'
+                  ? 'Manager Override Commission %'
+                  : (form.commission_type === 'percentage' ? 'Default Commission %' : 'Default Commission (Rs.)')
+              }>
+                <Input
+                  type="number" min="0" step="0.01" max={franchiseCommission && isManagementRole ? '100' : undefined}
+                  value={form.commission_value||''}
+                  onChange={e => setForm(f=>({...f, commission_value:e.target.value}))}
+                  placeholder={franchiseCommission && isManagementRole ? 'e.g. 5' : 'e.g. 10'}
+                />
               </FormGroup>
             </div>
           )}
-          <FormGroup label="Join Date"><Input type="date" value={form.join_date||''} onChange={e => setForm(f=>({...f, join_date:e.target.value}))} /></FormGroup>
-          {form.salary_type !== 'salary_only' && activeServices.length > 0 && serviceWiseForUser && (
-            <FormGroup label="Service Commission Setup">
-              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:8, marginBottom:10, flexWrap:'wrap' }}>
-                <p style={{ fontSize:12, color:'#667085', margin:0, lineHeight:1.45, flex:1 }}>
-                  All active services are linked for this branch. Set a <strong>custom rate</strong> per service or leave empty to use the default above.
-                </p>
-                <Button variant="secondary" type="button" onClick={syncAllServiceCommissionSpecs} style={{ fontSize:12, padding:'6px 10px' }}>
-                  Link all services
-                </Button>
-              </div>
-              <div style={{ border:'1px solid #E4E7EC', borderRadius:12, overflow:'hidden' }}>
-                <div style={{ display:'grid', gridTemplateColumns:'40px 1fr 100px 140px', gap:8, padding:'8px 12px', background:'#F9FAFB', fontSize:11, fontWeight:700, color:'#667085', textTransform:'uppercase' }}>
-                  <span></span>
-                  <span>Service</span>
-                  <span>Catalogue</span>
-                  <span>Custom {form.commission_type==='percentage' ? '%' : 'Rs.'}</span>
-                </div>
-                {activeServices.map((sv) => {
-                  const selected = specs.includes(sv.id);
-                  const overrideVal = specOverrides[sv.id] ?? '';
-                  const defaultLabel = form.commission_value !== '' && form.commission_value != null
-                    ? (form.commission_type === 'percentage' ? `Default ${form.commission_value}%` : `Default Rs.${form.commission_value}`)
-                    : 'Default';
-                  const catalogueLabel = sv.commission_value != null && sv.commission_value !== ''
-                    ? formatCommission(sv.commission_type, sv.commission_value)
-                    : '—';
-                  return (
-                    <div key={sv.id} style={{ display:'grid', gridTemplateColumns:'40px 1fr 100px 140px', gap:8, alignItems:'center', padding:'8px 12px', borderTop:'1px solid #F2F4F7', background:selected?'#FAFBFF':'#fff' }}>
-                      <input type="checkbox" checked={selected} onChange={() => toggleSpec(sv.id)} />
-                      <span style={{ fontSize:13, color:'#344054', fontWeight:selected?600:400 }}>{sv.name}</span>
-                      <span style={{ fontSize:12, color:'#667085' }}>{catalogueLabel}</span>
-                      {selected ? (
-                        <Input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={overrideVal}
-                          onChange={(e) => setSpecOverride(sv.id, e.target.value)}
-                          placeholder={defaultLabel}
-                          style={{ fontSize:13 }}
-                        />
-                      ) : (
-                        <span style={{ fontSize:12, color:'#D0D5DD' }}>—</span>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-              {specs.length > 0 && (!form.commission_value && form.commission_value !== 0) && (
-                <p style={{ fontSize:12, color:'#D97706', marginTop:8 }}>Set a default commission rate — services without a custom rate will use it.</p>
+          {form.salary_type !== 'salary_only' && (
+            <div style={{ padding:'12px 14px', background: serviceWiseForUser ? '#F0F9FF' : '#F0FDF4', border: serviceWiseForUser ? '1px solid #BAE6FD' : '1px solid #BBF7D0', borderRadius:12, fontSize:13, color: serviceWiseForUser ? '#0C4A6E' : '#166534', lineHeight:1.5 }}>
+              {franchiseCommission && isManagementRole ? (
+                <>
+                  <strong>Branch Manager / Salon Manager:</strong> set the <strong>override commission %</strong> above (e.g. 5%). This is calculated from the <strong>total service amount</strong> when other staff in this branch complete paid work — not from their commission.
+                </>
+              ) : serviceWiseForUser ? (
+                <>
+                  Per-service commission rates are set on the <strong>Services</strong> page. All active services are linked automatically. Use <strong>Default Commission %</strong> above only as a fallback when a service has no catalogue rate.
+                </>
+              ) : (
+                <>
+                  Set only the <strong>default commission rate</strong> above. It applies automatically to <strong>all services</strong> when this staff member completes work.
+                </>
               )}
-            </FormGroup>
+            </div>
           )}
+          <FormGroup label="Join Date"><Input type="date" value={form.join_date||''} onChange={e => setForm(f=>({...f, join_date:e.target.value}))} /></FormGroup>
           {form.salary_type === 'salary_only' && services.length > 0 && (
             <FormGroup label="Specializations">
               <div style={{ display:'flex', flexWrap:'wrap', gap:8 }}>
@@ -581,22 +580,22 @@ export default function StaffPage() {
               && (p.specializations||[]).length > 0 && (
               <div>
                 <h4 style={{ margin:'0 0 10px', fontSize:13, fontWeight:700, color:'#475467', textTransform:'uppercase' }}>
-                  {serviceWiseForUser && p.salary_type !== 'salary_only' ? 'Service Commission' : 'Specializations'}
+                  {serviceWiseForUser && p.salary_type !== 'salary_only' ? 'Linked Services' : 'Specializations'}
                 </h4>
                 <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
                   {p.specializations.map((s) => {
-                    const hasOverride = serviceWiseForUser && s.commission_value != null && s.commission_value !== '';
-                    const type = s.commission_type || p.commission_type;
+                    const svc = services.find((sv) => sv.id === s.service_id || sv.id === s.service?.id);
+                    const catalogue = svc?.commission_value != null && svc.commission_value !== ''
+                      ? formatCommission(svc.commission_type, svc.commission_value)
+                      : null;
                     return (
                       <div key={s.id} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'8px 12px', background:'#F9FAFB', borderRadius:8, fontSize:13 }}>
-                        <span style={{ fontWeight:600, color:'#344054' }}>{s.service?.name || s.service_id}</span>
-                        {hasOverride ? (
-                          <CommBadge type={type} value={s.commission_value} />
-                        ) : serviceWiseForUser ? (
+                        <span style={{ fontWeight:600, color:'#344054' }}>{s.service?.name || svc?.name || s.service_id}</span>
+                        {serviceWiseForUser && p.salary_type !== 'salary_only' && (
                           <span style={{ fontSize:12, color:'#667085' }}>
-                            Default ({type === 'percentage' ? `${p.commission_value}%` : `Rs.${Number(p.commission_value||0).toLocaleString()}`})
+                            {catalogue ? `Catalogue ${catalogue}` : `Default ${p.commission_type === 'percentage' ? `${p.commission_value}%` : `Rs.${Number(p.commission_value||0).toLocaleString()}`}`}
                           </span>
-                        ) : null}
+                        )}
                       </div>
                     );
                   })}

@@ -1,6 +1,8 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { useFeatureGate } from '../hooks/useFeatureGate';
 import api from '../api/axios';
+import FranchiseCommissionReports from '../components/reports/FranchiseCommissionReports';
 import PageWrapper from '../components/layout/PageWrapper';
 import { useToast } from '../components/ui/Toast';
 import AiInsightsPanel from '../components/ui/AiInsightsPanel';
@@ -16,7 +18,7 @@ import {
 /* ── Constants ─────────────────────────────────────────────── */
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const PIE_COLORS = ['#2563EB','#10b981','#F59E0B','#EF4444','#7C3AED','#0284C7','#D97706','#059669'];
-const TABS = [
+const BASE_TABS = [
   { key:'overview',  label:'Overview' },
   { key:'revenue',   label:'Revenue' },
   { key:'services',  label:'Services' },
@@ -71,17 +73,21 @@ const IconChart = () => (
 export default function ReportsPage() {
   const { user }  = useAuth();
   const toast     = useToast();
-  const isAdmin   = ['superadmin','admin'].includes(user?.role);
+  const { allowed: franchiseCommission } = useFeatureGate('franchise_commission');
+  const TABS = useMemo(
+    () => franchiseCommission
+      ? [...BASE_TABS, { key: 'franchise', label: 'Franchise Commission' }]
+      : BASE_TABS,
+    [franchiseCommission],
+  );
 
   const today    = new Date().toISOString().slice(0,10);
   const curMonth = today.slice(0,7);
   const monthStart = curMonth + '-01';
-  const monthEnd   = curMonth + '-31';
+  const monthEnd   = today;
 
   /* ── State ── */
   const [tab, setTab]             = useState('overview');
-  const [branchId, setBranchId]   = useState('');
-  const [branches, setBranches]   = useState([]);
   const [dateFrom, setDateFrom]   = useState(monthStart);
   const [dateTo, setDateTo]       = useState(monthEnd);
   const [loading, setLoading]     = useState(false);
@@ -96,16 +102,11 @@ export default function ReportsPage() {
   const [customers, setCustomers] = useState([]);
   const [expenses, setExpenses]   = useState([]);
 
-  /* ── Load branches ── */
-  useEffect(() => {
-    if (isAdmin) api.get('/branches').then(r => setBranches(r.data.data || r.data || [])).catch(() => {});
-  }, [isAdmin]);
-
   /* ── Load data ── */
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const bq = branchId ? { branchId } : {};
+      const bq = {};
       const month = dateFrom.slice(0,7);
       const year = dateFrom.slice(0,4);
 
@@ -163,7 +164,7 @@ export default function ReportsPage() {
     } finally {
       setLoading(false);
     }
-  }, [branchId, dateFrom, dateTo]);
+  }, [dateFrom, dateTo]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -172,12 +173,11 @@ export default function ReportsPage() {
     setDown(true);
     try {
       const params = { from: dateFrom, to: dateTo };
-      if (branchId) params.branchId = branchId;
       const res = await api.get('/reports/export', { params, responseType: 'blob' });
       const url = window.URL.createObjectURL(new Blob([res.data]));
       const a = document.createElement('a');
       a.href = url;
-      a.download = `HexaSalon_Report_${dateFrom}_${dateTo}.xlsx`;
+      a.download = `Hexaone_Report_${dateFrom}_${dateTo}.xlsx`;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -256,6 +256,8 @@ export default function ReportsPage() {
       case 'staff': return renderStaff();
       case 'customers': return renderCustomers();
       case 'expenses': return renderExpenses();
+      case 'franchise':
+        return <FranchiseCommissionReports dateFrom={dateFrom} dateTo={dateTo} />;
       default: return null;
     }
   };
@@ -708,13 +710,6 @@ export default function ReportsPage() {
       subtitle="Comprehensive business analytics & data export"
       actions={
         <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' }}>
-          {isAdmin && (
-            <select value={branchId} onChange={e => setBranchId(e.target.value)}
-              style={{ padding:'8px 12px', borderRadius:10, border:'1.5px solid #D0D5DD', fontSize:13, color:'#101828', ...S, background:'#fff' }}>
-              <option value="">All Branches</option>
-              {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-            </select>
-          )}
           <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
             style={{ padding:'8px 12px', borderRadius:10, border:'1.5px solid #D0D5DD', fontSize:13, color:'#101828', ...S }}/>
           <span style={{ color:'#98A2B3', fontSize:13, ...S }}>to</span>
@@ -748,7 +743,7 @@ export default function ReportsPage() {
         ))}
       </div>
 
-      {loading ? (
+      {loading && tab !== 'franchise' ? (
         <div style={{ textAlign:'center', padding:60, color:'#64748B', fontSize:14, ...S }}>Loading reports...</div>
       ) : renderTab()}
     </PageWrapper>

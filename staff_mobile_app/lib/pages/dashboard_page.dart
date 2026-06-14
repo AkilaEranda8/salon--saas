@@ -392,7 +392,7 @@ class _Header extends StatelessWidget {
               Row(mainAxisSize: MainAxisSize.min, children: [
                 const Icon(Icons.content_cut_rounded, color: _g900, size: 16),
                 const SizedBox(width: 7),
-                const Text('HEXA SALON',
+                const Text('HEXAONE',
                     style: TextStyle(
                         color: _g900, fontSize: 16,
                         fontWeight: FontWeight.w800, letterSpacing: 0.2)),

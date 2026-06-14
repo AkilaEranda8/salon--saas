@@ -2,7 +2,15 @@ const { Op, fn, col, literal } = require('sequelize');
 const { sequelize } = require('../config/database');
 const { Payment, PaymentSplit, Branch, Staff, StaffSpecialization, Customer, Service, Appointment, AppointmentService, CustomerPackage, Package: PkgModel, PackageRedemption, LoyaltyRule } = require('../models');
 const { computeCommissionDetails } = require('../utils/commissionCalculator');
-const { hasTenantFeature } = require('../utils/tenantFeatures');
+const {
+  resolveBranchManagerStaff,
+  resolveManagerOverridePercent,
+  managerEligibleForOversight,
+  shouldApplyManagerOverride,
+  staffBelongsToBranch,
+} = require('../utils/branchManagerCommission');
+const { allowsServiceWiseOverrides, hasFranchiseCommission } = require('../utils/tenantFeatures');
+const { recordCommissionTransactions } = require('../services/recordCommissionTransactions');
 const { notifyPaymentReceipt, notifyLoyaltyPoints } = require('../services/notificationService');
 const { tenantWhere, byIdWhere, resolveTenantId } = require('../utils/tenantScope');
 const { slToday } = require('../utils/dateUtils');
@@ -103,7 +111,61 @@ const create = async (req, res) => {
     const redeemValue   = parseFloat(loyaltyRule?.redeem_value) || 50;
     const points_earned = Math.floor(total_amount / earnPerAmount) * earnPoints;
 
-    // Staff commission — per selected service (staff_specializations) or staff default
+    // Resolve services for commission (worker + manager oversight share the same payment lines)
+    let serviceIdList = Array.isArray(service_ids) && service_ids.length
+      ? service_ids.map(Number).filter(Boolean)
+      : (service_id ? [Number(service_id)].filter(Boolean) : []);
+
+    if (!serviceIdList.length && appointment_id) {
+      const links = await AppointmentService.findAll({
+        where: { appointment_id: Number(appointment_id) },
+        attributes: ['service_id'],
+        transaction: t,
+      });
+      serviceIdList = links.map((l) => Number(l.service_id)).filter(Boolean);
+      if (!serviceIdList.length) {
+        const appt = await Appointment.findOne({
+          where: byIdWhere(req, appointment_id),
+          attributes: ['service_id'],
+          transaction: t,
+        });
+        if (appt?.service_id) serviceIdList = [Number(appt.service_id)];
+      }
+    }
+
+    const servicePrices = {};
+    const serviceCommissions = {};
+    const serviceNames = {};
+    if (serviceIdList.length) {
+      const svcRows = await Service.findAll({
+        where: { id: serviceIdList, ...tenantWhere(req) },
+        attributes: ['id', 'name', 'price', 'commission_type', 'commission_value'],
+        transaction: t,
+      });
+      for (const svc of svcRows) {
+        servicePrices[svc.id] = svc.price;
+        serviceNames[svc.id] = svc.name;
+        if (svc.commission_value != null && svc.commission_value !== '') {
+          serviceCommissions[svc.id] = {
+            commission_type: svc.commission_type,
+            commission_value: svc.commission_value,
+          };
+        }
+      }
+    }
+
+    const commissionInputBase = {
+      serviceIds: serviceIdList,
+      servicePrices,
+      serviceCommissions,
+      serviceNames,
+      total_amount,
+      subtotal: bodySubtotal,
+      loyalty_discount,
+      promo_discount,
+    };
+
+    // Worker staff commission
     let commission_amount = 0;
     let commission_breakdown = null;
     if (staff_id) {
@@ -113,62 +175,51 @@ const create = async (req, res) => {
         transaction: t,
       });
       if (staffMember) {
-        let ids = Array.isArray(service_ids) && service_ids.length
-          ? service_ids.map(Number).filter(Boolean)
-          : (service_id ? [Number(service_id)].filter(Boolean) : []);
-
-        if (!ids.length && appointment_id) {
-          const links = await AppointmentService.findAll({
-            where: { appointment_id: Number(appointment_id) },
-            attributes: ['service_id'],
-            transaction: t,
-          });
-          ids = links.map((l) => Number(l.service_id)).filter(Boolean);
-          if (!ids.length) {
-            const appt = await Appointment.findOne({
-              where: byIdWhere(req, appointment_id),
-              attributes: ['service_id'],
-              transaction: t,
-            });
-            if (appt?.service_id) ids = [Number(appt.service_id)];
-          }
-        }
-
-        const servicePrices = {};
-        const serviceCommissions = {};
-        const serviceNames = {};
-        if (ids.length) {
-          const svcRows = await Service.findAll({
-            where: { id: ids, ...tenantWhere(req) },
-            attributes: ['id', 'name', 'price', 'commission_type', 'commission_value'],
-            transaction: t,
-          });
-          for (const svc of svcRows) {
-            servicePrices[svc.id] = svc.price;
-            serviceNames[svc.id] = svc.name;
-            if (svc.commission_value != null && svc.commission_value !== '') {
-              serviceCommissions[svc.id] = {
-                commission_type: svc.commission_type,
-                commission_value: svc.commission_value,
-              };
-            }
-          }
-        }
         const computed = computeCommissionDetails({
           staff: staffMember,
           specializations: staffMember.specializations || [],
-          serviceIds: ids,
-          servicePrices,
-          serviceCommissions,
-          serviceNames,
-          total_amount,
-          subtotal: bodySubtotal,
-          loyalty_discount,
-          promo_discount,
-          allowServiceOverrides: hasTenantFeature(req.tenant, 'service_wise_commission'),
+          allowServiceOverrides: allowsServiceWiseOverrides(req.tenant),
+          ...commissionInputBase,
         });
         commission_amount = computed.amount;
         commission_breakdown = computed.breakdown;
+      }
+    }
+
+    // Branch manager override — % of total service amount (franchise mode)
+    let manager_staff_id = null;
+    let manager_commission_amount = 0;
+    let manager_commission_breakdown = null;
+    let manager_override_percent = null;
+    if (hasFranchiseCommission(req.tenant) && staff_id && branch_id) {
+      const workerInBranch = await staffBelongsToBranch(staff_id, branch_id);
+      if (workerInBranch) {
+        const branch = await Branch.findOne({ where: byIdWhere(req, branch_id), transaction: t });
+        const managerStaff = await resolveBranchManagerStaff(req, branch_id, { transaction: t });
+        const overridePct = resolveManagerOverridePercent(branch, req.tenant, managerStaff);
+        if (shouldApplyManagerOverride(req.tenant)
+          && managerStaff
+          && managerEligibleForOversight(managerStaff, overridePct)
+          && Number(managerStaff.id) !== Number(staff_id)) {
+          const managerComputed = computeCommissionDetails({
+            staff: {
+              salary_type: 'commission_only',
+              commission_type: 'percentage',
+              commission_value: overridePct,
+            },
+            specializations: [],
+            allowServiceOverrides: false,
+            ...commissionInputBase,
+          });
+          manager_staff_id = managerStaff.id;
+          manager_override_percent = overridePct;
+          manager_commission_amount = managerComputed.amount;
+          manager_commission_breakdown = {
+            ...managerComputed.breakdown,
+            overridePercent: overridePct,
+            note: `Manager override ${overridePct}% of service amount`,
+          };
+        }
       }
     }
 
@@ -181,9 +232,28 @@ const create = async (req, res) => {
       service_id:     service_id     || null,
       appointment_id: appointment_id || null,
       customer_name, total_amount, loyalty_discount, promo_discount, points_earned,
-      commission_amount, commission_breakdown, date: today, status: 'paid',
+      commission_amount, commission_breakdown,
+      manager_staff_id, manager_commission_amount, manager_commission_breakdown,
+      date: today, status: 'paid',
       tenant_id: resolveTenantId(req),
     }, { transaction: t });
+
+    if (hasFranchiseCommission(req.tenant)) {
+      await recordCommissionTransactions({
+        paymentId: payment.id,
+        tenantId: resolveTenantId(req),
+        branchId: branch_id,
+        date: today,
+        serviceAmount: total_amount,
+        workerStaffId: staff_id || null,
+        workerAmount: commission_amount,
+        workerBreakdown: commission_breakdown,
+        managerStaffId: manager_staff_id,
+        managerAmount: manager_commission_amount,
+        managerPercent: manager_override_percent,
+        managerBreakdown: manager_commission_breakdown,
+      }, { transaction: t });
+    }
 
     // Save splits
     const splitRows = splits.map((s) => ({

@@ -85,7 +85,7 @@ async function suggestReply(ticket, replies) {
   const messages = [
     {
       role: 'system',
-      content: `You are a professional support agent for Hexa Salon, a cloud-based salon management SaaS.
+      content: `You are a professional support agent for Hexaone, a cloud-based salon management SaaS.
 Write a helpful, concise reply to the support ticket below.
 - Be polite and solution-focused
 - Keep it under 120 words
@@ -111,7 +111,7 @@ async function classifyTicket(subject, description) {
   const messages = [
     {
       role: 'system',
-      content: `You are a support ticket classifier for Hexa Salon SaaS.
+      content: `You are a support ticket classifier for Hexaone SaaS.
 Given a ticket subject and description, return ONLY valid JSON (no markdown, no extra text):
 {
   "priority": "<low|medium|high|urgent>",

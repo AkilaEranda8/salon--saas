@@ -9,12 +9,68 @@ const {
   sanitizeStaffRecord,
 } = require('../utils/tenantFeatures');
 const { breakdownForPayment } = require('../services/paymentCommissionBreakdown');
+const { hasFranchiseCommission } = require('../utils/tenantFeatures');
+
+function parseJsonField(raw) {
+  if (!raw) return null;
+  if (typeof raw === 'string') {
+    try { return JSON.parse(raw); } catch { return null; }
+  }
+  return raw;
+}
+
+function managerOversightBreakdown(payment, stored) {
+  const parsed = parseJsonField(stored);
+  if (parsed && (parsed.lines?.length || parsed.note || parsed.total != null)) {
+    return parsed;
+  }
+  const amt = parseFloat(payment.manager_commission_amount || 0);
+  const total = parseFloat(payment.total_amount || 0);
+  const pct = parsed?.overridePercent ?? null;
+  const rateLabel = pct != null ? `${pct}%` : 'Override %';
+  return {
+    netTotal: total,
+    paidAmount: total,
+    loyaltyDiscount: parseFloat(payment.loyalty_discount || 0),
+    promoDiscount: parseFloat(payment.promo_discount || 0),
+    lines: [{
+      serviceName: payment.service?.name || 'Branch services',
+      lineBase: total,
+      rateLabel,
+      source: 'manager_override',
+      sourceLabel: 'Manager override',
+      commission: amt,
+    }],
+    total: amt,
+    note: pct != null
+      ? `Manager override ${pct}% of service amount`
+      : 'Manager override % of service amount',
+  };
+}
+const { staffWhereForBranch } = require('../utils/staffBranchFilter');
 
 function resolveSpecItems(req, rawItems, salaryType = 'commission_only') {
   if (!hasServiceWiseCommissionForUser(req.tenant, req) && salaryType !== 'salary_only') {
     return [];
   }
   return applyServiceWiseCommissionPolicy(rawItems, req.tenant);
+}
+
+function staffRequiresCommission(salaryType) {
+  return salaryType === 'commission_only' || salaryType === 'salary_plus_commission';
+}
+
+/** Manager / default-only staff: link all active services with null override (uses staff default). */
+async function managerDefaultServiceSpecs(req) {
+  const services = await Service.findAll({
+    where: { ...tenantWhere(req), is_active: true },
+    attributes: ['id'],
+  });
+  return services.map((s) => ({
+    service_id: s.id,
+    commission_type: null,
+    commission_value: null,
+  }));
 }
 
 function mapStaff(row, tenant) {
@@ -119,15 +175,19 @@ async function syncStaffSpecializations(staffId, items) {
   }
 }
 
+/** Staff on a branch: primary branch_id OR staff_branches link. */
+async function buildStaffBranchWhere(req, branchId = null) {
+  const scope = tenantWhere(req);
+  const bid = branchId != null && branchId !== '' ? Number(branchId) : null;
+  if (!bid) return scope;
+  const branchClause = await staffWhereForBranch(bid);
+  return { ...scope, ...branchClause };
+}
+
 // Helper: resolve branch filter from role
-const getBranchWhere = (req) => {
-  const where = tenantWhere(req);
-  if (req.userBranchId) {
-    where.branch_id = req.userBranchId;
-  } else if (req.query.branchId) {
-    where.branch_id = req.query.branchId;
-  }
-  return where;
+const getBranchWhere = async (req) => {
+  const branchId = req.userBranchId ?? req.query.branchId ?? null;
+  return buildStaffBranchWhere(req, branchId);
 };
 
 const list = async (req, res) => {
@@ -136,7 +196,7 @@ const list = async (req, res) => {
     const limit  = Math.min(parseInt(req.query.limit) || 20, 500);
     const offset = (page - 1) * limit;
 
-    const where = getBranchWhere(req);
+    const where = await getBranchWhere(req);
     if (req.query.active !== undefined) where.is_active = req.query.active !== 'false';
 
     const { count, rows } = await Staff.findAndCountAll({
@@ -211,15 +271,24 @@ const create = async (req, res) => {
     if (!name || !branch_id) {
       return res.status(400).json({ message: 'Name and branch are required.' });
     }
+    if (!role_title || !String(role_title).trim()) {
+      return res.status(400).json({ message: 'Staff role is required.' });
+    }
 
     const parsed = parseStaffCommission(req.body, { forCreate: true });
     const salary_type = parsed.salary_type || 'commission_only';
     const commission_type = parsed.commission_type || 'percentage';
     const commission_value = parsed.commission_value;
     const base_salary = parsed.base_salary ?? 0;
-    const specItems = resolveSpecItems(req, extractSpecializationItems(req.body), salary_type);
+    let specItems = resolveSpecItems(req, extractSpecializationItems(req.body), salary_type);
 
-    if (hasServiceWiseCommissionForUser(req.tenant, req)
+    if (staffRequiresCommission(salary_type) && (commission_value == null || commission_value <= 0)) {
+      return res.status(400).json({ message: 'Default commission rate is required for commission-based staff.' });
+    }
+
+    if (!hasServiceWiseCommissionForUser(req.tenant, req) && staffRequiresCommission(salary_type)) {
+      specItems = await managerDefaultServiceSpecs(req);
+    } else if (hasServiceWiseCommissionForUser(req.tenant, req)
       && salary_type !== 'salary_only' && specItems.length && (commission_value == null || commission_value <= 0)) {
       return res.status(400).json({ message: 'Default commission rate is required when services are selected.' });
     }
@@ -299,6 +368,11 @@ const update = async (req, res) => {
 
     await staff.update(updates);
 
+    const refreshedForRole = await Staff.findOne({ where: { id: staff.id } });
+    if (!refreshedForRole?.role_title || !String(refreshedForRole.role_title).trim()) {
+      return res.status(400).json({ message: 'Staff role is required.' });
+    }
+
     // Replace branch associations if branch_ids provided
     if (branchIds.length) {
       await StaffBranch.destroy({ where: { staff_id: staff.id } });
@@ -311,9 +385,18 @@ const update = async (req, res) => {
     const refreshedStaff = await Staff.findOne({ where: { id: staff.id } });
     const effectiveSalaryType = refreshedStaff.salary_type || 'commission_only';
     const hasServicePayload = Array.isArray(req.body.specializations) || Array.isArray(req.body.service_ids);
+    const commissionTouched = updates.commission_value !== undefined || updates.salary_type !== undefined;
 
-    if (!hasServiceWiseCommissionForUser(req.tenant, req) && effectiveSalaryType !== 'salary_only') {
-      await StaffSpecialization.destroy({ where: { staff_id: staff.id } });
+    if (commissionTouched && staffRequiresCommission(effectiveSalaryType)) {
+      const effectiveCommission = refreshedStaff.commission_value;
+      if (effectiveCommission == null || parseFloat(effectiveCommission) <= 0) {
+        return res.status(400).json({ message: 'Default commission rate is required for commission-based staff.' });
+      }
+    }
+
+    if (!hasServiceWiseCommissionForUser(req.tenant, req) && staffRequiresCommission(effectiveSalaryType)) {
+      const defaultSpecs = await managerDefaultServiceSpecs(req);
+      await replaceStaffSpecializations(staff.id, defaultSpecs);
     } else if (hasServicePayload) {
       const specItems = resolveSpecItems(req, extractSpecializationItems(req.body), effectiveSalaryType);
       const effectiveCommission = refreshedStaff.commission_value;
@@ -399,9 +482,8 @@ const commissionSummary = async (req, res) => {
       return res.status(403).json({ message: 'Not authorized to view all staff commission.' });
     }
     const { month, year, branchId } = req.query;
-    const staffWhere = tenantWhere(req);
-    if (req.userBranchId) staffWhere.branch_id = req.userBranchId;
-    else if (branchId) staffWhere.branch_id = branchId;
+    const effectiveBranchId = req.userBranchId ?? branchId ?? null;
+    const staffWhere = await buildStaffBranchWhere(req, effectiveBranchId);
 
     const paymentWhere = tenantWhere(req);
     if (month && year) {
@@ -412,33 +494,67 @@ const commissionSummary = async (req, res) => {
       paymentWhere.date = { [Op.between]: [start, end] };
     }
 
-    // Fetch all staff first
+    // All staff for branch (including zero commission this period)
     const staffRows = await Staff.findAll({
       where: staffWhere,
-      include: [{ model: Branch, as: 'branch', attributes: ['id', 'name'] }],
+      include: [
+        { model: Branch, as: 'branch', attributes: ['id', 'name'] },
+        { model: Branch, as: 'branches', attributes: ['id', 'name'], through: { attributes: [] } },
+      ],
+      order: [['name', 'ASC']],
     });
 
     if (!staffRows.length) return res.json([]);
 
-    // Single aggregated query for payment totals (avoids N+1)
     const staffIds = staffRows.map((s) => s.id);
-    const paymentsAgg = await Payment.findAll({
+    const workerAgg = await Payment.findAll({
       where: { ...paymentWhere, staff_id: { [Op.in]: staffIds } },
       attributes: [
         'staff_id',
-        [fn('SUM', col('total_amount')),     'totalRevenue'],
+        [fn('SUM', col('total_amount')), 'totalRevenue'],
         [fn('SUM', col('commission_amount')), 'totalCommission'],
-        [fn('COUNT', col('id')),             'appointmentCount'],
+        [fn('COUNT', col('id')), 'appointmentCount'],
       ],
       group: ['staff_id'],
       raw: true,
     });
 
-    // Build lookup map
-    const aggMap = {};
-    for (const row of paymentsAgg) {
-      aggMap[row.staff_id] = row;
+    let managerAgg = [];
+    if (hasFranchiseCommission(req.tenant)) {
+      try {
+        managerAgg = await Payment.findAll({
+          where: { ...paymentWhere, manager_staff_id: { [Op.in]: staffIds } },
+          attributes: [
+            'manager_staff_id',
+            [fn('SUM', col('total_amount')), 'totalRevenue'],
+            [fn('SUM', col('manager_commission_amount')), 'totalCommission'],
+            [fn('COUNT', col('id')), 'appointmentCount'],
+          ],
+          group: ['manager_staff_id'],
+          raw: true,
+        });
+      } catch (mgrErr) {
+        console.warn('commissionSummary manager_agg skipped:', mgrErr.message);
+      }
     }
+
+    const aggMap = {};
+    const mergeAgg = (row, idKey) => {
+      const id = row[idKey];
+      if (!id) return;
+      const prev = aggMap[id] || {
+        totalRevenue: 0,
+        totalCommission: 0,
+        appointmentCount: 0,
+      };
+      aggMap[id] = {
+        totalRevenue: (parseFloat(prev.totalRevenue) || 0) + (parseFloat(row.totalRevenue) || 0),
+        totalCommission: (parseFloat(prev.totalCommission) || 0) + (parseFloat(row.totalCommission) || 0),
+        appointmentCount: (parseInt(prev.appointmentCount, 10) || 0) + (parseInt(row.appointmentCount, 10) || 0),
+      };
+    };
+    for (const row of workerAgg) mergeAgg(row, 'staff_id');
+    for (const row of managerAgg) mergeAgg(row, 'manager_staff_id');
 
     // Fetch pending advance totals + paid payout totals for the same month
     const advMap  = {};
@@ -489,7 +605,7 @@ const commissionSummary = async (req, res) => {
         staffId:          staff.id,
         staffName:        staff.name,
         role:             staff.role_title,
-        branchName:       staff.branch?.name || '',
+        branchName:       staff.branch?.name || staff.branches?.[0]?.name || '',
         branchId:         staff.branch_id,
         commissionType:   staff.commission_type,
         commissionValue:  staff.commission_value,
@@ -522,25 +638,52 @@ const commissionReport = async (req, res) => {
         return res.status(403).json({ message: 'You can only view your own commission.' });
       }
     }
-    const where = { staff_id: req.params.id, ...tenantWhere(req) };
+    const staffId = req.params.id;
+    const dateFilter = {};
     if (req.query.month) {
       const [year, month] = req.query.month.split('-');
       const start = `${year}-${month}-01`;
       const last  = new Date(year, month, 0).getDate();
       const end   = `${year}-${month}-${last}`;
-      where.date  = { [Op.between]: [start, end] };
+      dateFilter.date = { [Op.between]: [start, end] };
     }
 
-    const payments = await Payment.findAll({
-      where,
-      include: [
-        { model: Service,     as: 'service',     attributes: ['id', 'name'] },
-        { model: Appointment, as: 'appointment', attributes: ['id', 'date', 'time', 'customer_name'] },
-      ],
-      order: [['date', 'DESC']],
-    });
+    const paymentInclude = [
+      { model: Service,     as: 'service',     attributes: ['id', 'name'] },
+      { model: Appointment, as: 'appointment', attributes: ['id', 'date', 'time', 'customer_name'] },
+      { model: Staff,       as: 'staff',       attributes: ['id', 'name'] },
+    ];
 
-    const totalCommission = payments.reduce((acc, p) => acc + parseFloat(p.commission_amount || 0), 0);
+    const [workerPayments, oversightPayments] = await Promise.all([
+      Payment.findAll({
+        where: { staff_id: staffId, ...tenantWhere(req), ...dateFilter },
+        include: paymentInclude,
+        order: [['date', 'DESC']],
+      }),
+      hasFranchiseCommission(req.tenant)
+        ? Payment.findAll({
+          where: { manager_staff_id: staffId, ...tenantWhere(req), ...dateFilter },
+          include: paymentInclude,
+          order: [['date', 'DESC']],
+        })
+        : Promise.resolve([]),
+    ]);
+
+    const seenPaymentIds = new Set();
+    const payments = [...workerPayments, ...oversightPayments]
+      .filter((p) => {
+        if (seenPaymentIds.has(p.id)) return false;
+        seenPaymentIds.add(p.id);
+        return true;
+      })
+      .sort((a, b) => new Date(b.date) - new Date(a.date) || (b.id - a.id));
+
+    const totalCommission = payments.reduce((acc, p) => {
+      if (Number(p.manager_staff_id) === Number(staffId)) {
+        return acc + parseFloat(p.manager_commission_amount || 0);
+      }
+      return acc + parseFloat(p.commission_amount || 0);
+    }, 0);
 
     // Fetch staff salary info for correct gross calculation
     const staffRecord = await Staff.findOne({ where: { id: req.params.id, ...tenantWhere(req) } });
@@ -578,7 +721,25 @@ const commissionReport = async (req, res) => {
 
     const paymentRows = await Promise.all(payments.map(async (payment) => {
       const json = payment.toJSON();
-      json.commission_breakdown = await breakdownForPayment(payment, req.tenant, req);
+      const isOversight = Number(payment.manager_staff_id) === Number(staffId);
+      json.commission_role = isOversight ? 'manager_oversight' : 'worker';
+      json.display_commission_amount = isOversight
+        ? parseFloat(payment.manager_commission_amount || 0)
+        : parseFloat(payment.commission_amount || 0);
+      if (isOversight) {
+        json.commission_breakdown = managerOversightBreakdown(
+          payment,
+          payment.manager_commission_breakdown,
+        );
+      } else {
+        json.commission_breakdown = parseJsonField(payment.commission_breakdown)
+          || await breakdownForPayment(payment, req.tenant, req);
+      }
+      if (isOversight) {
+        json.oversight_performer = payment.staff
+          ? { id: payment.staff.id, name: payment.staff.name }
+          : null;
+      }
       return json;
     }));
 

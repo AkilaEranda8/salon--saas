@@ -1,9 +1,8 @@
 /**
  * Staff commission for a payment — priority when service_wise_commission is on:
  * 1) staff_specializations custom rate (commission_value set on the link)
- * 2) staff default — when the staff is linked to the service but has no custom rate
- * 3) services.commission_* on the catalogue row — only when staff is not linked to that service
- * 4) staff default — fallback when no link and no catalogue rate
+ * 2) services.commission_* on the catalogue row
+ * 3) staff default rate
  */
 
 const SOURCE_LABELS = {
@@ -12,6 +11,21 @@ const SOURCE_LABELS = {
   staff_default: 'Staff default rate',
 };
 
+function catalogueRate(lineId, serviceCommissions, defaultType) {
+  const svc = serviceCommissions?.[lineId];
+  const catalogueVal = svc?.commission_value != null && svc?.commission_value !== ''
+    ? parseFloat(svc.commission_value)
+    : null;
+  if (catalogueVal != null && catalogueVal > 0) {
+    return {
+      type: svc.commission_type || defaultType,
+      val: catalogueVal,
+      source: 'service_catalog',
+    };
+  }
+  return null;
+}
+
 function resolveLineCommission(lineId, {
   allowServiceOverrides,
   specByService,
@@ -19,31 +33,22 @@ function resolveLineCommission(lineId, {
   defaultType,
   defaultVal,
 }) {
-  if (allowServiceOverrides) {
-    const spec = specByService.get(lineId);
-    if (spec) {
-      if (spec.commission_value != null && spec.commission_value !== '') {
-        return {
-          type: spec.commission_type || defaultType,
-          val: parseFloat(spec.commission_value),
-          source: 'staff_override',
-        };
-      }
-      // Linked to this service with no custom rate → staff default only (skip catalogue).
-      return { type: defaultType, val: defaultVal, source: 'staff_default' };
-    }
-    if (specByService.size === 0) {
-      return { type: defaultType, val: defaultVal, source: 'staff_default' };
-    }
-    const svc = serviceCommissions?.[lineId];
-    if (svc?.commission_value != null && svc?.commission_value !== '') {
-      return {
-        type: svc.commission_type || defaultType,
-        val: parseFloat(svc.commission_value),
-        source: 'service_catalog',
-      };
-    }
+  if (!allowServiceOverrides) {
+    return { type: defaultType, val: defaultVal, source: 'staff_default' };
   }
+
+  const spec = specByService.get(lineId);
+  if (spec?.commission_value != null && spec.commission_value !== '') {
+    return {
+      type: spec.commission_type || defaultType,
+      val: parseFloat(spec.commission_value),
+      source: 'staff_override',
+    };
+  }
+
+  const fromCatalogue = catalogueRate(lineId, serviceCommissions, defaultType);
+  if (fromCatalogue) return fromCatalogue;
+
   return { type: defaultType, val: defaultVal, source: 'staff_default' };
 }
 

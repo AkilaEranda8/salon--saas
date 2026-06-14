@@ -68,7 +68,7 @@ export default function ResetPasswordPage() {
         <div style={{ textAlign: 'center', marginBottom: 32 }}>
           <div style={{ fontSize: 48, marginBottom: 12 }}>🔐</div>
           <h1 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: 36, fontWeight: 700, color: P.text, margin: 0, letterSpacing: 2 }}>
-            HEXA SALON
+            HEXAONE
           </h1>
           <p style={{ color: P.muted, margin: '8px 0 0', fontSize: 13, letterSpacing: 4, textTransform: 'uppercase' }}>
             Reset Password

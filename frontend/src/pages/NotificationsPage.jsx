@@ -353,7 +353,7 @@ export default function NotificationsPage() {
                       <label style={{ display:'block', fontSize:12, fontWeight:600, color:'#344054', marginBottom:5 }}>Sender ID <span style={{ fontWeight:400, color:'#94A3B8' }}>(approved Sender ID from Sender IDs tab)</span></label>
                       <input type="text" value={settings.sms_sender_id || ''}
                         onChange={e => setSettings(s => ({ ...s, sms_sender_id: e.target.value.trim() }))}
-                        placeholder="e.g. NotifyDEMO / HexaSalon" style={inputStyle} />
+                        placeholder="e.g. NotifyDEMO / Hexaone" style={inputStyle} />
                     </div>
 
                     {/* Test */}
@@ -461,7 +461,7 @@ export default function NotificationsPage() {
                       <label style={{ display:'block', fontSize:12, fontWeight:600, color:'#344054', marginBottom:5 }}>From Name / Address <span style={{ fontWeight:400, color:'#94A3B8' }}>(optional)</span></label>
                       <input type="text" value={settings.smtp_from || ''}
                         onChange={e => setSettings(s => ({ ...s, smtp_from: e.target.value }))}
-                        placeholder={`HEXA SALON <youremail@gmail.com>`} style={inputStyle} />
+                        placeholder={`HEXAONE <youremail@gmail.com>`} style={inputStyle} />
                     </div>
 
                     {/* Test */}

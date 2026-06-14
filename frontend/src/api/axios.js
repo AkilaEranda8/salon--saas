@@ -6,11 +6,14 @@ import {
   refreshKcToken,
   clearKcTokens,
 } from '../utils/kcTokenStore';
+import { getBranchFilterId } from '../utils/branchFilterStore';
 
 const USE_KEYCLOAK = import.meta.env.VITE_USE_KEYCLOAK === 'true';
 
 // Paths that must NOT get an Authorization header (avoid refresh loop)
 const KC_PUBLIC_PATHS = ['/auth/kc-login', '/auth/kc-refresh', '/auth/kc-logout'];
+
+const BRANCH_FILTER_SKIP = ['/auth/', '/branches', '/public/', '/platform/'];
 
 const api = axios.create({
   baseURL: '/api',
@@ -53,6 +56,13 @@ api.interceptors.request.use(async (config) => {
         // Let the request proceed; backend will return 401
       }
     }
+  }
+
+  const branchId = getBranchFilterId();
+  const url = config.url || '';
+  const skipBranch = BRANCH_FILTER_SKIP.some((p) => url.includes(p));
+  if (branchId && !skipBranch) {
+    config.params = { ...(config.params || {}), branchId };
   }
 
   return config;

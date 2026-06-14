@@ -10,20 +10,27 @@ import '../models/walkin_entry.dart';
 class WalkInQueueCache {
   WalkInQueueCache._();
 
-  static const _prefix = 'walkin_queue_cache_v1_';
+  static const _prefix = 'walkin_queue_cache_v2_';
 
-  static Future<void> save(String branchId, List<WalkInEntry> entries) async {
-    if (branchId.isEmpty) return;
+  static String _key(String branchId, String date) =>
+      '$_prefix${branchId}_$date';
+
+  static Future<void> save(
+    String branchId,
+    String date,
+    List<WalkInEntry> entries,
+  ) async {
+    if (branchId.isEmpty || date.isEmpty) return;
     final prefs = await SharedPreferences.getInstance();
     final raw = jsonEncode(entries.map((e) => e.toJson()).toList());
-    await prefs.setString('$_prefix$branchId', raw);
+    await prefs.setString(_key(branchId, date), raw);
   }
 
-  /// Returns `null` if nothing was ever saved for this branch.
-  static Future<List<WalkInEntry>?> load(String branchId) async {
-    if (branchId.isEmpty) return null;
+  /// Returns `null` if nothing was ever saved for this branch + date.
+  static Future<List<WalkInEntry>?> load(String branchId, String date) async {
+    if (branchId.isEmpty || date.isEmpty) return null;
     final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString('$_prefix$branchId');
+    final raw = prefs.getString(_key(branchId, date));
     if (raw == null || raw.isEmpty) return null;
     final decoded = jsonDecode(raw);
     if (decoded is! List) return null;

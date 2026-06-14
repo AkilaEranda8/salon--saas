@@ -1,5 +1,5 @@
 """
-Zane Salon AI Bot — FastAPI server
+Hexaone AI Bot — FastAPI server
 Run: uvicorn main:app --reload --port 8000
 """
 from fastapi import FastAPI, Request
@@ -31,7 +31,7 @@ def extract_tenant_id(token: str | None) -> int | None:
     except Exception:
         return None
 
-app = FastAPI(title="Zane Salon AI Bot", version="1.0.0")
+app = FastAPI(title="Hexaone AI Bot", version="1.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -136,4 +136,4 @@ async def insights(data: dict):
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "bot": "Zane Salon AI"}
+    return {"status": "ok", "bot": "Hexaone AI"}

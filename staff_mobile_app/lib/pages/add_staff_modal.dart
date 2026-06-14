@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../constants/staff_role_titles.dart';
 import '../models/salon_service.dart';
 import '../models/staff_member.dart';
 
@@ -90,7 +91,8 @@ class _AddStaffModalState extends State<AddStaffModal> {
   late final TextEditingController _nameCtrl;
   late final TextEditingController _phoneCtrl;
   late final TextEditingController _emailCtrl;
-  late final TextEditingController _roleCtrl;
+  late String _rolePick;
+  late final TextEditingController _roleCustomCtrl;
   late final TextEditingController _baseSalaryCtrl;
   late final TextEditingController _commCtrl;
 
@@ -107,6 +109,14 @@ class _AddStaffModalState extends State<AddStaffModal> {
   List<SalonService> get _activeServices =>
       widget.services.where((s) => s.isActive).toList();
 
+  String get _resolvedRoleTitle => _rolePick == staffRoleOther
+      ? _roleCustomCtrl.text.trim()
+      : _rolePick;
+
+  bool get _isManagementRole =>
+      managementStaffRoles.contains(_rolePick) ||
+      managementStaffRoles.contains(_roleCustomCtrl.text.trim());
+
   @override
   void initState() {
     super.initState();
@@ -114,9 +124,19 @@ class _AddStaffModalState extends State<AddStaffModal> {
     _nameCtrl = TextEditingController(text: i?.name ?? '');
     _phoneCtrl = TextEditingController(text: i?.phone ?? '');
     _emailCtrl = TextEditingController(text: i?.email ?? '');
-    _roleCtrl = TextEditingController(text: i?.roleTitle ?? '');
+    final roleTitle = (i?.roleTitle ?? '').trim();
+    if (roleTitle.isEmpty) {
+      _rolePick = '';
+      _roleCustomCtrl = TextEditingController();
+    } else if (staffRoleTitles.contains(roleTitle)) {
+      _rolePick = roleTitle;
+      _roleCustomCtrl = TextEditingController();
+    } else {
+      _rolePick = staffRoleOther;
+      _roleCustomCtrl = TextEditingController(text: roleTitle);
+    }
     _baseSalaryCtrl = TextEditingController(
-      text: i?.baseSalary != null ? '${i!.baseSalary!.toStringAsFixed(0)}' : '',
+      text: i?.baseSalary != null ? i!.baseSalary!.toStringAsFixed(0) : '',
     );
     _commCtrl = TextEditingController(
       text: i?.commissionValue != null ? '${i!.commissionValue!}' : '',
@@ -147,7 +167,7 @@ class _AddStaffModalState extends State<AddStaffModal> {
     _nameCtrl.dispose();
     _phoneCtrl.dispose();
     _emailCtrl.dispose();
-    _roleCtrl.dispose();
+    _roleCustomCtrl.dispose();
     _baseSalaryCtrl.dispose();
     _commCtrl.dispose();
     for (final c in _svcCommCtrls.values) {
@@ -192,15 +212,19 @@ class _AddStaffModalState extends State<AddStaffModal> {
 
   void _submit() {
     if (!_formKey.currentState!.validate()) return;
+    if (_resolvedRoleTitle.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Select a role for this staff member.')),
+      );
+      return;
+    }
     if (widget.showServiceWiseCommission &&
         _paysCommission &&
         _selectedServices.isEmpty &&
         _activeServices.isNotEmpty) {
       _linkAllServices();
     }
-    if (widget.showServiceWiseCommission &&
-        _paysCommission &&
-        _commCtrl.text.trim().isEmpty) {
+    if (_paysCommission && _commCtrl.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Set a default commission rate.')),
       );
@@ -225,7 +249,7 @@ class _AddStaffModalState extends State<AddStaffModal> {
       name: _nameCtrl.text.trim(),
       phone: _phoneCtrl.text.trim(),
       email: _emailCtrl.text.trim().isEmpty ? null : _emailCtrl.text.trim(),
-      roleTitle: _roleCtrl.text.trim(),
+      roleTitle: _resolvedRoleTitle,
       salaryType: _salaryType,
       branchId: widget.branchId,
       baseSalary: _baseSalaryCtrl.text.trim().isEmpty
@@ -328,9 +352,11 @@ class _AddStaffModalState extends State<AddStaffModal> {
                             fontWeight: FontWeight.w800,
                           ),
                         ),
-                        const Text(
-                          'Salary, commission & service rates',
-                          style: TextStyle(
+                        Text(
+                          widget.showServiceWiseCommission
+                              ? 'Salary & commission (rates on Services page)'
+                              : 'Salary & default commission',
+                          style: const TextStyle(
                             color: Color(0xFFADB5BD),
                             fontSize: 12,
                             fontWeight: FontWeight.w500,
@@ -365,37 +391,126 @@ class _AddStaffModalState extends State<AddStaffModal> {
                     (v == null || v.trim().isEmpty) ? 'Required' : null,
               ),
               const SizedBox(height: 12),
+              _label('PHONE'),
+              TextFormField(
+                controller: _phoneCtrl,
+                keyboardType: TextInputType.phone,
+                decoration: _deco('07XXXXXXXX', Icons.phone_rounded),
+              ),
+              const SizedBox(height: 12),
+              _label('ROLE'),
+              Text(
+                'Branch management (override commission)',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.orange.shade800,
+                  letterSpacing: 0.3,
+                ),
+              ),
+              const SizedBox(height: 8),
               Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _label('PHONE'),
-                        TextFormField(
-                          controller: _phoneCtrl,
-                          keyboardType: TextInputType.phone,
-                          decoration: _deco('07XXXXXXXX', Icons.phone_rounded),
+                children: managementStaffRoles.map((role) {
+                  final active = _rolePick == role;
+                  return Expanded(
+                    child: Padding(
+                      padding: EdgeInsets.only(
+                        right: role == managementStaffRoles.first ? 6 : 0,
+                        left: role == managementStaffRoles.last ? 6 : 0,
+                      ),
+                      child: OutlinedButton(
+                        onPressed: () => setState(() {
+                          _rolePick = role;
+                          _roleCustomCtrl.clear();
+                        }),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor:
+                              active ? Colors.orange.shade900 : _cInk,
+                          backgroundColor:
+                              active ? const Color(0xFFFFFBEB) : Colors.white,
+                          side: BorderSide(
+                            color: active
+                                ? const Color(0xFFD97706)
+                                : _cBorder,
+                            width: active ? 2 : 1,
+                          ),
+                          padding: const EdgeInsets.symmetric(vertical: 12),
                         ),
-                      ],
+                        child: Text(
+                          role,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
                     ),
+                  );
+                }).toList(),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Service staff',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: _cMuted,
+                  letterSpacing: 0.3,
+                ),
+              ),
+              const SizedBox(height: 8),
+              DropdownButtonFormField<String>(
+                key: ValueKey(
+                  'svc_role_${managementStaffRoles.contains(_rolePick) ? 'mgmt' : _rolePick}',
+                ),
+                initialValue: managementStaffRoles.contains(_rolePick)
+                    ? null
+                    : (_rolePick.isEmpty ? null : _rolePick),
+                isExpanded: true,
+                decoration: _deco('Select service role', Icons.work_outline_rounded,
+                    required: true),
+                items: [
+                  ...staffRoleTitles
+                      .where((r) => !managementStaffRoles.contains(r))
+                      .map(
+                    (r) => DropdownMenuItem(value: r, child: Text(r)),
                   ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _label('ROLE TITLE'),
-                        TextFormField(
-                          controller: _roleCtrl,
-                          decoration: _deco('Stylist', Icons.work_outline_rounded),
-                        ),
-                      ],
-                    ),
+                  const DropdownMenuItem(
+                    value: staffRoleOther,
+                    child: Text('Other'),
                   ),
                 ],
+                onChanged: (v) {
+                  if (v == null) return;
+                  setState(() {
+                    _rolePick = v;
+                    if (v != staffRoleOther) _roleCustomCtrl.clear();
+                  });
+                },
+                validator: (v) {
+                  if (managementStaffRoles.contains(_rolePick)) return null;
+                  if (v == null || v.isEmpty) return 'Select a role';
+                  if (v == staffRoleOther &&
+                      _roleCustomCtrl.text.trim().isEmpty) {
+                    return 'Enter custom role';
+                  }
+                  return null;
+                },
               ),
+              if (_rolePick == staffRoleOther) ...[
+                const SizedBox(height: 12),
+                _label('CUSTOM ROLE'),
+                TextFormField(
+                  controller: _roleCustomCtrl,
+                  textCapitalization: TextCapitalization.words,
+                  decoration: _deco('Enter role title', Icons.edit_rounded,
+                      required: true),
+                  onChanged: (_) => setState(() {}),
+                  validator: (v) =>
+                      (v == null || v.trim().isEmpty) ? 'Required' : null,
+                ),
+              ],
               const SizedBox(height: 12),
               _label('PAY TYPE'),
               DropdownButtonFormField<String>(
@@ -465,18 +580,19 @@ class _AddStaffModalState extends State<AddStaffModal> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          _label('DEFAULT COMM.'),
+                          _label(_isManagementRole ? 'MGR OVERRIDE %' : 'DEFAULT COMM.'),
                           TextFormField(
                             controller: _commCtrl,
                             keyboardType: TextInputType.number,
                             decoration: _deco(
-                              _commissionType == 'fixed' ? '500' : '10',
+                              _isManagementRole
+                                  ? '5'
+                                  : (_commissionType == 'fixed' ? '500' : '10'),
                               Icons.trending_up_rounded,
-                              required: widget.showServiceWiseCommission,
+                              required: _paysCommission,
                             ),
-                            validator: widget.showServiceWiseCommission
+                            validator: _paysCommission
                                 ? (v) {
-                                    if (!_paysCommission) return null;
                                     if (v == null || v.trim().isEmpty) {
                                       return 'Required';
                                     }
@@ -489,6 +605,31 @@ class _AddStaffModalState extends State<AddStaffModal> {
                     ),
                   ],
                 ),
+                if (!widget.showServiceWiseCommission) ...[
+                  const SizedBox(height: 12),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF0FDF4),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFFBBF7D0)),
+                    ),
+                    child: Text(
+                      _isManagementRole
+                          ? 'Branch Manager override % is calculated from the total service amount when other staff in this branch complete paid work.'
+                          : (_activeServices.isEmpty
+                              ? 'Default commission applies to all services when this staff completes work.'
+                              : 'Default commission applies to all ${_activeServices.length} active services — no per-service setup needed.'),
+                      style: const TextStyle(
+                        color: Color(0xFF166534),
+                        fontSize: 12,
+                        height: 1.45,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
               ],
               if (widget.showServiceWiseCommission &&
                   _paysCommission &&
@@ -509,7 +650,7 @@ class _AddStaffModalState extends State<AddStaffModal> {
                       children: [
                         Text(
                           'All ${_activeServices.length} active services are linked. '
-                          'Only the default commission above applies — no per-service rates needed.',
+                          'Set per-service rates on the Services page. Default commission above is only a fallback.',
                           style: const TextStyle(
                             color: Color(0xFF166534),
                             fontSize: 12,

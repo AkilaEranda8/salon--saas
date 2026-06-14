@@ -11,7 +11,7 @@ TRAINING_DATA = {
         "hai", "hii", "heyyy", "yo", "sup", "whats up", "what's up",
         "oba kohomada", "machan", "bro", "hola", "greetings",
         "howdy", "what's good", "hey there", "good day", "morning",
-        "evening", "afternoon", "hi bot", "hello zane", "hi zane",
+        "evening", "afternoon", "hi bot", "hello hexaone", "hi hexaone",
         "start", "begin", "hey ai", "hi ai",
     ],
 
@@ -94,7 +94,7 @@ TRAINING_DATA = {
         "how many branches", "branch list", "where to find",
         "directions", "how to get there", "map",
         "nearest branch", "closest location", "near me",
-        "where is zane salon", "zane salon koheda",
+        "where is hexaone", "hexaone koheda",
         "branches thiyanawa", "locations", "outlets",
         "salon address", "where to go", "how to visit",
         "salon innawa koheda", "branch eka koheda",

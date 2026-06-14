@@ -22,15 +22,51 @@ const SOURCE_COLORS = {
   staff_default:   ['#FEF3C7', '#B45309'],
 };
 
-function BreakdownLines({ breakdown }) {
-  if (!breakdown) return null;
-  if (breakdown.note) {
-    return <div style={{ fontSize: 12, color: '#98A2B3', fontStyle: 'italic' }}>{breakdown.note}</div>;
+function parseBreakdown(raw) {
+  if (!raw) return null;
+  if (typeof raw === 'string') {
+    try { return JSON.parse(raw); } catch { return null; }
   }
-  if (!breakdown.lines?.length) {
-    return <div style={{ fontSize: 12, color: '#98A2B3' }}>No line items — commission Rs. {Number(breakdown.total || 0).toLocaleString()}</div>;
+  return raw;
+}
+
+function breakdownPreview(breakdown) {
+  const b = parseBreakdown(breakdown);
+  if (!b?.lines?.length) return null;
+  const first = b.lines[0];
+  const extra = b.lines.length > 1 ? ` +${b.lines.length - 1} more` : '';
+  return `${first.serviceName || 'Service'} · ${first.rateLabel || ''}${extra}`;
+}
+
+function paymentRowKey(p) {
+  return `${p.commission_role || 'worker'}-${p.id}`;
+}
+
+function formatPaymentDate(date) {
+  if (!date) return '—';
+  return new Date(`${String(date).slice(0, 10)}T12:00:00`).toLocaleDateString('en-GB', {
+    day: '2-digit', month: 'short', year: 'numeric',
+  });
+}
+
+function BreakdownLines({ breakdown }) {
+  const b = parseBreakdown(breakdown);
+  if (!b) return <div style={{ fontSize: 12, color: '#98A2B3' }}>No breakdown saved for this payment.</div>;
+  if (!b.lines?.length) {
+    return (
+      <div style={{ fontSize: 12, color: '#667085', marginTop: 8 }}>
+        {b.note && <div style={{ marginBottom: 6, fontStyle: 'italic' }}>{b.note}</div>}
+        Commission total: <strong style={{ color: '#D97706' }}>{Rs(b.total)}</strong>
+      </div>
+    );
   }
   return (
+    <>
+      {b.note && (
+        <div style={{ fontSize: 12, color: '#667085', marginTop: 10, marginBottom: 4, fontStyle: 'italic' }}>
+          {b.note}
+        </div>
+      )}
     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, marginTop: 8 }}>
       <thead>
         <tr style={{ background: '#F9FAFB', color: '#667085' }}>
@@ -42,7 +78,7 @@ function BreakdownLines({ breakdown }) {
         </tr>
       </thead>
       <tbody>
-        {breakdown.lines.map((line, i) => {
+        {b.lines.map((line, i) => {
           const [bg, fg] = SOURCE_COLORS[line.source] || ['#F2F4F7', '#475467'];
           return (
             <tr key={i} style={{ borderTop: '1px solid #EAECF0' }}>
@@ -62,10 +98,11 @@ function BreakdownLines({ breakdown }) {
       <tfoot>
         <tr style={{ borderTop: '2px solid #EAECF0', background: '#FFFBEB' }}>
           <td colSpan={4} style={{ padding: '8px', fontWeight: 700, color: '#92400E', textAlign: 'right' }}>Payment commission</td>
-          <td style={{ padding: '8px', textAlign: 'right', fontWeight: 800, color: '#D97706' }}>{Rs(breakdown.total)}</td>
+          <td style={{ padding: '8px', textAlign: 'right', fontWeight: 800, color: '#D97706' }}>{Rs(b.total)}</td>
         </tr>
       </tfoot>
     </table>
+    </>
   );
 }
 
@@ -77,8 +114,6 @@ export default function CommissionPage() {
   const now = new Date();
   const [month,    setMonth]    = useState(now.getMonth() + 1);
   const [year,     setYear]     = useState(now.getFullYear());
-  const [branchId, setBranchId] = useState('');
-  const [branches, setBranches] = useState([]);
   const [data,     setData]     = useState([]);
   const [loading,  setLoading]  = useState(true);
   const [emailBusy, setEmailBusy] = useState(false);
@@ -106,35 +141,52 @@ export default function CommissionPage() {
   const [allPayLoading,  setAllPayLoading]  = useState(false);
   const [showAllPay,     setShowAllPay]     = useState(true);
 
-  useEffect(() => {
-    if (isAdminRole) {
-      api.get('/branches').then(r => setBranches(Array.isArray(r.data) ? r.data : (r.data?.data ?? []))).catch(() => {});
-    }
-  }, [isAdminRole]);
-
   const loadAllPayouts = useCallback(async () => {
     setAllPayLoading(true);
     try {
       const ym = `${year}-${String(month).padStart(2, '0')}`;
       const params = { month: ym };
-      if (branchId) params.branchId = branchId;
       const res = await api.get('/commission-payouts', { params });
       setAllPayouts(Array.isArray(res.data?.data) ? res.data.data : []);
     } catch { setAllPayouts([]); }
     setAllPayLoading(false);
-  }, [month, year, branchId]);
+  }, [month, year]);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const params = { month, year };
-      if (branchId) params.branchId = branchId;
-      const res = await api.get('/staff/commission', { params });
-      setData(Array.isArray(res.data) ? res.data : []);
+      if (user?.role === 'staff') {
+        const ym = `${year}-${String(month).padStart(2, '0')}`;
+        const res = await api.get('/staff/me/commission', { params: { month: ym } });
+        const d = res.data || {};
+        const st = d.staff;
+        setData(st ? [{
+          staffId: st.id,
+          staffName: st.name,
+          role: '',
+          branchName: '',
+          salaryType: d.salaryType || 'commission_only',
+          baseSalary: d.baseSalary || 0,
+          commissionType: 'percentage',
+          commissionValue: 0,
+          appointmentCount: (d.data || []).length,
+          totalRevenue: (d.data || []).reduce((s, p) => s + Number(p.total_amount || 0), 0),
+          totalCommission: d.totalCommission || 0,
+          grossPayable: d.grossPayable || 0,
+          totalAdvances: d.totalAdvances || 0,
+          netCommission: d.netCommission || 0,
+          totalPaid: d.totalPaid || 0,
+          balanceDue: d.balanceDue || 0,
+        }] : []);
+      } else {
+        const res = await api.get('/staff/commission', { params });
+        setData(Array.isArray(res.data) ? res.data : []);
+      }
     } catch { setData([]); }
     setLoading(false);
     loadAllPayouts();
-  }, [month, year, branchId, loadAllPayouts]);
+  }, [month, year, loadAllPayouts, user?.role]);
   useEffect(() => { load(); }, [load]);
   useEffect(() => { loadAllPayouts(); }, [loadAllPayouts]);
 
@@ -174,7 +226,14 @@ export default function CommissionPage() {
     try {
       const ym = `${year}-${String(month).padStart(2, '0')}`;
       const res = await api.get(`/staff/${row.staffId}/commission`, { params: { month: ym } });
-      setBreakData(res.data || null);
+      const payload = res.data || null;
+      if (payload?.data?.length) {
+        payload.data = payload.data.map((p) => ({
+          ...p,
+          commission_breakdown: parseBreakdown(p.commission_breakdown),
+        }));
+      }
+      setBreakData(payload);
     } catch {
       setBreakData(null);
     }
@@ -395,12 +454,6 @@ export default function CommissionPage() {
         <select value={year} onChange={e => setYear(Number(e.target.value))} className="pk-filter-control">
           {[now.getFullYear() - 1, now.getFullYear()].map(y => <option key={y} value={y}>{y}</option>)}
         </select>
-        {isAdminRole && (
-          <select value={branchId} onChange={e => setBranchId(e.target.value)} className="pk-filter-control">
-            <option value="">All Branches</option>
-            {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-          </select>
-        )}
       </FilterBar>
 
       {/* Table */}
@@ -408,8 +461,8 @@ export default function CommissionPage() {
         columns={columns}
         data={data}
         loading={loading}
-        emptyMessage="No commission data for this period"
-        emptySub="Try selecting a different month or branch"
+        emptyMessage="No staff on this commission list"
+        emptySub="Add staff from the Staff page first, then record payments with a staff member selected"
         footerRows={data.length > 0 ? (
           <tr style={{ background: '#F9FAFB', borderTop: '2px solid #EAECF0' }}>
             <td style={{ padding: '13px 16px' }} colSpan={5}><span style={{ fontWeight: 700, color: '#101828', fontSize: 13, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Totals</span></td>
@@ -487,51 +540,93 @@ export default function CommissionPage() {
             </div>
             <p style={{ fontSize: 12, color: '#667085', margin: '0 0 12px', lineHeight: 1.5 }}>
               Each payment is split across services. The <strong>base</strong> is the service&apos;s share of the net paid amount (after loyalty/promo discounts).
-              Commission uses: staff custom rate (if set) → staff default when linked to the service → otherwise service catalogue → staff default.
+              Worker commission: staff custom rate → service catalogue rate → staff default.
+              Manager rows use branch override % of the total service amount.
             </p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxHeight: '60vh', overflowY: 'auto' }}>
-              {breakData.data.map(p => {
-                const open = breakOpenId === p.id;
+            <div className="commission-breakdown-list" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {breakData.data.map((p) => {
+                const rowKey = paymentRowKey(p);
+                const open = breakOpenId === rowKey;
+                const bd = parseBreakdown(p.commission_breakdown);
                 const cust = p.customer_name || p.appointment?.customer_name || 'Walk-in';
-                const svcLabel = p.service?.name || (p.commission_breakdown?.lines?.length > 1 ? 'Multiple services' : '—');
+                const svcLabel = p.service?.name
+                  || (bd?.lines?.length > 1 ? `${bd.lines.length} services` : bd?.lines?.[0]?.serviceName)
+                  || '—';
+                const preview = breakdownPreview(bd);
+                const fmtDate = formatPaymentDate(p.date);
+                const commAmt = Rs(p.display_commission_amount ?? p.commission_amount);
                 return (
-                  <div key={p.id} style={{ border: '1.5px solid #E4E7EC', borderRadius: 10, overflow: 'hidden' }}>
-                    <button
-                      type="button"
-                      onClick={() => setBreakOpenId(open ? null : p.id)}
+                  <div
+                    key={rowKey}
+                    className="commission-breakdown-row"
+                    style={{
+                      border: '1.5px solid #E4E7EC',
+                      borderRadius: 10,
+                      background: '#fff',
+                      position: 'relative',
+                      isolation: 'isolate',
+                    }}
+                  >
+                    <div
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => setBreakOpenId(open ? null : rowKey)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          setBreakOpenId(open ? null : rowKey);
+                        }
+                      }}
                       style={{
-                        width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                        gap: 12, padding: '11px 14px', background: open ? '#F9FAFB' : '#fff',
-                        border: 'none', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
+                        width: '100%',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: 12,
+                        padding: '11px 14px',
+                        background: open ? '#F9FAFB' : '#fff',
+                        cursor: 'pointer',
+                        textAlign: 'left',
+                        fontFamily: "'Inter', sans-serif",
+                        minHeight: 52,
                       }}
                     >
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontWeight: 700, color: '#101828', fontSize: 13 }}>
-                          {p.date ? new Date(p.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
-                          {' · '}{cust}
+                        <div style={{ fontWeight: 700, color: '#101828', fontSize: 13, lineHeight: 1.4 }}>
+                          {fmtDate} · {cust}
                         </div>
-                        <div style={{ fontSize: 12, color: '#667085', marginTop: 2 }}>
-                          Paid {Rs(p.total_amount)} · {svcLabel}
-                          {(p.loyalty_discount > 0 || p.promo_discount > 0) && (
+                        <div style={{ fontSize: 12, color: '#475467', marginTop: 3, lineHeight: 1.45 }}>
+                          Paid <strong style={{ color: '#059669' }}>{Rs(p.total_amount)}</strong>
+                          {' · '}{svcLabel}
+                          {p.commission_role === 'manager_oversight' && p.oversight_performer?.name && (
+                            <span> · Work by <strong style={{ color: '#344054' }}>{p.oversight_performer.name}</strong></span>
+                          )}
+                          {(Number(p.loyalty_discount) > 0 || Number(p.promo_discount) > 0) && (
                             <span> · Discounts: {Rs(Number(p.loyalty_discount || 0) + Number(p.promo_discount || 0))}</span>
                           )}
                         </div>
+                        {!open && preview && (
+                          <div style={{ fontSize: 11, color: '#7C3AED', marginTop: 4 }}>{preview}</div>
+                        )}
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+                        {p.commission_role === 'manager_oversight' && (
+                          <span style={{ fontSize: 10, fontWeight: 700, color: '#059669', background: '#ECFDF5', padding: '2px 7px', borderRadius: 6 }}>Manager</span>
+                        )}
                         <span style={{ fontWeight: 800, color: '#D97706', fontFamily: "'Outfit',sans-serif", fontSize: 14 }}>
-                          {Rs(p.commission_amount)}
+                          {commAmt}
                         </span>
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#98A2B3" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ transform: open ? 'rotate(180deg)' : 'none', transition: '0.2s' }}><polyline points="6 9 12 15 18 9"/></svg>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#98A2B3" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ transform: open ? 'rotate(180deg)' : 'none', transition: '0.2s', flexShrink: 0 }}><polyline points="6 9 12 15 18 9"/></svg>
                       </div>
-                    </button>
+                    </div>
                     {open && (
-                      <div style={{ padding: '0 14px 14px', borderTop: '1px solid #EAECF0' }}>
-                        {p.commission_breakdown?.netTotal != null && (
+                      <div style={{ padding: '0 14px 14px', borderTop: '1px solid #EAECF0', background: '#FAFAFA' }}>
+                        {bd?.netTotal != null && (
                           <div style={{ fontSize: 12, color: '#667085', marginTop: 10, marginBottom: 4 }}>
-                            Net commissionable amount: <strong style={{ color: '#344054' }}>{Rs(p.commission_breakdown.netTotal)}</strong>
+                            Net commissionable amount: <strong style={{ color: '#344054' }}>{Rs(bd.netTotal)}</strong>
                           </div>
                         )}
-                        <BreakdownLines breakdown={p.commission_breakdown} />
+                        <BreakdownLines breakdown={bd} />
                       </div>
                     )}
                   </div>

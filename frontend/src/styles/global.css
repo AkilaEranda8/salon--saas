@@ -186,6 +186,15 @@ h1, h2 {
 }
 button:focus:not(:focus-visible) { outline: none; }
 
+/* Commission breakdown modal — keep row text visible (avoids scroll/compositing glitches) */
+.commission-breakdown-list .commission-breakdown-row {
+  contain: layout style;
+}
+.commission-breakdown-list .commission-breakdown-row [role="button"] {
+  -webkit-transform: translateZ(0);
+  transform: translateZ(0);
+}
+
 .app-surface {
   background: var(--app-bg);
   color: var(--app-text);

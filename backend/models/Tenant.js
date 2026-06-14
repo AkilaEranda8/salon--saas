@@ -137,6 +137,11 @@ const Tenant = sequelize.define('Tenant', {
     allowNull: true,
     comment: 'Platform-admin per-tenant module toggles (only true keys are active)',
   },
+  default_manager_commission_percent: {
+    type: DataTypes.DECIMAL(5, 2),
+    allowNull: true,
+    comment: 'Default manager override % when branch-level % is not set',
+  },
 }, {
   tableName: 'tenants',
   timestamps: true,

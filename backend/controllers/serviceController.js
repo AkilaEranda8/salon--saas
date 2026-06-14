@@ -27,7 +27,10 @@ function buildServicePayload(body = {}, tenant) {
   const payload = {};
   if (body.name !== undefined) payload.name = body.name;
   if (body.category !== undefined) payload.category = body.category;
-  if (body.duration_minutes !== undefined) payload.duration_minutes = body.duration_minutes;
+  if (body.duration_minutes !== undefined) {
+    const mins = parseInt(body.duration_minutes, 10);
+    payload.duration_minutes = Number.isFinite(mins) && mins > 0 ? mins : 30;
+  }
   if (body.price !== undefined) payload.price = body.price;
   if (body.description !== undefined) payload.description = body.description;
   if (body.is_active !== undefined) payload.is_active = body.is_active;
@@ -82,6 +85,10 @@ const create = async (req, res) => {
 
     const tenantId = req.userTenantId ?? req.tenant?.id ?? null;
     const payload = buildServicePayload(req.body, req.tenant);
+    if (payload.duration_minutes == null) {
+      const mins = parseInt(req.body.duration_minutes, 10);
+      payload.duration_minutes = Number.isFinite(mins) && mins > 0 ? mins : 30;
+    }
     const svc = await Service.create({
       ...payload,
       name,

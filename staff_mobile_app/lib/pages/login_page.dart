@@ -282,7 +282,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                             ),
                             const SizedBox(width: 10),
                             Text(
-                              '© ${DateTime.now().year} Hexa Salon',
+                              '© ${DateTime.now().year} Hexaone',
                               style: const TextStyle(
                                 color: Color(0x55F5EEE8),
                                 fontSize: 11,
@@ -356,7 +356,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
 
         // Salon name
         const Text(
-          'HEXA SALON',
+          'HEXAONE',
           style: TextStyle(
             color: Color(0xFFF5EEE8),
             fontSize: 30,

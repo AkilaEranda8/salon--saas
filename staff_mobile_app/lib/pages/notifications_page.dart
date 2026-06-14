@@ -238,8 +238,14 @@ class _NotifCard extends StatelessWidget {
       case 'appointment_cancelled':
         return Icons.event_busy_rounded;
       case 'appointment_reminder':
+      case 'appointment_reminder_start':
+      case 'appointment_reminder_before_end':
+      case 'appointment_reminder_end':
         return Icons.alarm_rounded;
       case 'new_walkin':
+      case 'walkin_reminder_start':
+      case 'walkin_reminder_before_end':
+      case 'walkin_reminder_end':
         return Icons.directions_walk_rounded;
       default:
         return Icons.notifications_rounded;
@@ -254,8 +260,14 @@ class _NotifCard extends StatelessWidget {
       case 'appointment_cancelled':
         return const Color(0xFFFEE2E2);
       case 'appointment_reminder':
+      case 'appointment_reminder_start':
+      case 'appointment_reminder_before_end':
+      case 'appointment_reminder_end':
         return const Color(0xFFFEF3C7);
       case 'new_walkin':
+      case 'walkin_reminder_start':
+      case 'walkin_reminder_before_end':
+      case 'walkin_reminder_end':
         return const Color(0xFFDBEAFE);
       default:
         return const Color(0xFFF3F4F6);
@@ -270,8 +282,14 @@ class _NotifCard extends StatelessWidget {
       case 'appointment_cancelled':
         return const Color(0xFFDC2626);
       case 'appointment_reminder':
+      case 'appointment_reminder_start':
+      case 'appointment_reminder_before_end':
+      case 'appointment_reminder_end':
         return const Color(0xFFD97706);
       case 'new_walkin':
+      case 'walkin_reminder_start':
+      case 'walkin_reminder_before_end':
+      case 'walkin_reminder_end':
         return const Color(0xFF2563EB);
       default:
         return const Color(0xFF6B7280);

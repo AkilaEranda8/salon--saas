@@ -11,6 +11,7 @@ router.get('/tenants',                      ctrl.listTenants);
 router.post('/tenants',                     ctrl.createTenant);
 router.get('/tenants/:id',                  ctrl.getTenant);
 router.patch('/tenants/:id',                ctrl.updateTenant);
+router.post('/tenants/:id/clear-data',     ctrl.clearTenantData);
 router.delete('/tenants/:id',               ctrl.deleteTenant);
 router.get('/tenants/:id/stats',            ctrl.tenantStats);
 router.get('/tenants/:id/features',         ctrl.getTenantFeatures);

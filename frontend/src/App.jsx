@@ -11,6 +11,7 @@ import UpgradePlanModal from './components/shared/UpgradePlanModal';
 import { useBreakpoint } from './hooks/useBreakpoint';
 import { isPlatformContext } from './utils/tenant';
 import { useTheme } from './context/ThemeContext';
+import { BranchProvider, useBranch } from './context/BranchContext';
 
 // Platform pages
 import PlatformDashboardPage     from './pages/platform/PlatformDashboardPage';
@@ -285,45 +286,17 @@ function ForcePasswordChangeModal() {
 
 // ── App shell (authenticated layout) ──────────────────────────────────
 
-function AppShell() {
-  const { isMobile } = useBreakpoint();
-  const [sbCollapsed,  setSbCollapsed]  = useState(false);
-  const [sbMobileOpen, setSbMobileOpen] = useState(false);
-  const { user } = useAuth();
+function AppShellRoutes() {
+  const { branchFilterKey } = useBranch();
   const { isDark } = useTheme();
 
-  const handleMenuClick = () => {
-    if (isMobile) setSbMobileOpen(o => !o);
-    else setSbCollapsed(c => !c);
-  };
-
   return (
-    <div className="app-shell" style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
-      <BrandingSeeder />
-      <div className="app-shell-orb app-shell-orb-one" />
-      <div className="app-shell-orb app-shell-orb-two" />
-      <div className="shell-sidebar-surface">
-        <Sidebar
-          collapsed={sbCollapsed}
-          onToggle={() => setSbCollapsed(c => !c)}
-          currentUser={user}
-          mobileOpen={sbMobileOpen}
-          onMobileClose={() => setSbMobileOpen(false)}
-        />
-      </div>
-
-      <div className="app-surface shell-main" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        <div className="shell-topbar-wrap">
-          <Topbar onMenuClick={handleMenuClick} />
-        </div>
-
-        {/* Subscription warning banner — renders only when needed */}
-        <SubscriptionBanner />
-        <UpgradePlanModal />
-
-        <ForcePasswordChangeModal />
-        <div className="app-surface shell-scroll" style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', background: isDark ? '#0F172A' : '#F7F8FA' }}>
-          <Routes>
+    <div
+      key={branchFilterKey}
+      className="app-surface shell-scroll"
+      style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', background: isDark ? '#0F172A' : '#F7F8FA' }}
+    >
+      <Routes>
             {/* ── MAIN ────────────────────────────────────── */}
             <Route path="/dashboard"    element={<DashboardPage />} />
             <Route path="/calendar"     element={<CalendarPage />} />
@@ -463,10 +436,50 @@ function AppShell() {
             <Route path="/security" element={<TwoFactorPage />} />
 
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
-          </Routes>
+      </Routes>
+    </div>
+  );
+}
+
+function AppShell() {
+  const { isMobile } = useBreakpoint();
+  const [sbCollapsed,  setSbCollapsed]  = useState(false);
+  const [sbMobileOpen, setSbMobileOpen] = useState(false);
+  const { user } = useAuth();
+
+  const handleMenuClick = () => {
+    if (isMobile) setSbMobileOpen(o => !o);
+    else setSbCollapsed(c => !c);
+  };
+
+  return (
+    <BranchProvider>
+      <div className="app-shell" style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
+        <BrandingSeeder />
+        <div className="app-shell-orb app-shell-orb-one" />
+        <div className="app-shell-orb app-shell-orb-two" />
+        <div className="shell-sidebar-surface">
+          <Sidebar
+            collapsed={sbCollapsed}
+            onToggle={() => setSbCollapsed(c => !c)}
+            currentUser={user}
+            mobileOpen={sbMobileOpen}
+            onMobileClose={() => setSbMobileOpen(false)}
+          />
+        </div>
+
+        <div className="app-surface shell-main" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          <div className="shell-topbar-wrap">
+            <Topbar onMenuClick={handleMenuClick} />
+          </div>
+
+          <SubscriptionBanner />
+          <UpgradePlanModal />
+          <ForcePasswordChangeModal />
+          <AppShellRoutes />
         </div>
       </div>
-    </div>
+    </BranchProvider>
   );
 }
 

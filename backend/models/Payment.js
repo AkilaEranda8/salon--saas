@@ -56,6 +56,21 @@ const Payment = sequelize.define('Payment', {
     allowNull: true,
     comment: 'Line-by-line commission calculation snapshot',
   },
+  manager_staff_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    comment: 'Branch manager staff who earns oversight commission on this payment',
+  },
+  manager_commission_amount: {
+    type: DataTypes.DECIMAL(10, 2),
+    defaultValue: 0,
+    comment: 'Manager oversight commission from other staff work',
+  },
+  manager_commission_breakdown: {
+    type: DataTypes.JSON,
+    allowNull: true,
+    comment: 'Manager oversight commission calculation snapshot',
+  },
   date: {
     type: DataTypes.DATEONLY,
     allowNull: false,

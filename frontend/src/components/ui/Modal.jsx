@@ -1,4 +1,4 @@
-﻿import { useEffect, useCallback, useRef, useId } from 'react';
+import { useEffect, useCallback, useRef, useId } from 'react';
 import { createPortal } from 'react-dom';
 
 const SIZE_MAP = {
@@ -82,9 +82,7 @@ export default function Modal({
         display:             'flex',
         alignItems:          isMobile ? 'flex-end' : 'center',
         justifyContent:      'center',
-        background:          'rgba(16,24,40,0.5)',
-        backdropFilter:      'blur(4px)',
-        WebkitBackdropFilter:'blur(4px)',
+        background:          'rgba(16,24,40,0.62)',
         padding:             isMobile ? 0 : 16,
         animation:           'modal-bg-in 0.18s ease',
       }}

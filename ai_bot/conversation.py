@@ -419,7 +419,7 @@ async def handle_message(
     # ── Always-available commands ─────────────────────────────────────────────
     if intent == "goodbye":
         reset_session(session_id)
-        reply = "Thank you for visiting Zane Salon! See you soon 😊"
+        reply = "Thank you for visiting Hexaone! See you soon 😊"
         return reply
 
     if intent == "help":
@@ -455,7 +455,7 @@ async def handle_message(
             reply = "Welcome back! 👋 What else can I help you with?"
         else:
             reply = (
-                "Hello! Welcome to **Zane Salon** 💇\n\n"
+                "Hello! Welcome to **Hexaone** 💇\n\n"
                 "I can help you:\n"
                 "• 📅 Book an appointment\n"
                 "• 💅 Check our services & prices\n"

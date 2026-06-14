@@ -1,7 +1,7 @@
-# Zane Salon AI Bot - Start Script
+# Hexaone AI Bot - Start Script
 # Run this in PowerShell from the ai_bot folder
 
-Write-Host "🤖 Starting Zane Salon AI Bot..." -ForegroundColor Cyan
+Write-Host "🤖 Starting Hexaone AI Bot..." -ForegroundColor Cyan
 
 # Check if venv exists
 if (-not (Test-Path "venv")) {

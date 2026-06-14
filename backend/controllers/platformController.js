@@ -19,6 +19,7 @@ const {
   defaultsFromPlan,
   enrichTenantPayload,
 } = require('../utils/tenantFeatures');
+const { purgeTenantOperationalData } = require('../services/purgeTenantData');
 
 const TENANT_ACTIVE_SUB_STATUSES = new Set(['active', 'trialing']);
 
@@ -299,7 +300,7 @@ const createTenant = async (req, res) => {
 
     sendEmail({
       to:      ownerEmail,
-      subject: `Welcome to HEXA SALON — Your account is ready 🎉`,
+      subject: `Welcome to HEXAONE — Your account is ready 🎉`,
       html: `
 <!DOCTYPE html>
 <html lang="en">
@@ -328,7 +329,7 @@ const createTenant = async (req, res) => {
 <body>
 <div class="wrap">
   <div class="header">
-    <h1>🎉 Welcome to HEXA SALON</h1>
+    <h1>🎉 Welcome to HEXAONE</h1>
     <p>Your salon management account is ready</p>
   </div>
   <div class="body">
@@ -355,7 +356,7 @@ const createTenant = async (req, res) => {
 
     <div class="notice">⚠️ For security, please change your password after your first login under <strong>Settings → Profile</strong>.</div>
   </div>
-  <div class="footer">HEXA SALON Platform · This email was sent to ${ownerEmail}</div>
+  <div class="footer">HEXAONE Platform · This email was sent to ${ownerEmail}</div>
 </div>
 </body></html>`,
       meta: { event_type: 'tenant_welcome', channel: 'email' },
@@ -444,12 +445,41 @@ const updateTenant = async (req, res) => {
       }
     }
 
+    if (req.body.clear_trial_data === true) {
+      await purgeTenantOperationalData(tenant.id);
+    }
+
     await tenant.update(updates);
     invalidateTenantCache(tenant.slug);
     return res.json(tenant);
   } catch (err) {
     console.error('platform.updateTenant error:', err);
-    return res.status(500).json({ message: 'Server error.' });
+    return res.status(500).json({ message: err.message || 'Server error.' });
+  }
+};
+
+// ── POST /api/platform/tenants/:id/clear-data ────────────────────────────────
+const clearTenantData = async (req, res) => {
+  try {
+    const tenant = await Tenant.findByPk(req.params.id);
+    if (!tenant) return res.status(404).json({ message: 'Tenant not found.' });
+
+    const confirm = String(req.body.confirm || '').trim();
+    if (confirm !== tenant.slug) {
+      return res.status(400).json({
+        message: `Confirmation required. Enter the tenant slug "${tenant.slug}" exactly.`,
+      });
+    }
+
+    const result = await purgeTenantOperationalData(tenant.id);
+    invalidateTenantCache(tenant.slug);
+    return res.json({
+      message: `Trial data cleared for ${tenant.slug}. Login accounts and branches were kept.`,
+      ...result,
+    });
+  } catch (err) {
+    console.error('platform.clearTenantData error:', err);
+    return res.status(500).json({ message: err.message || 'Server error.' });
   }
 };
 
@@ -475,14 +505,26 @@ const tenantStats = async (req, res) => {
     const tenant = await Tenant.findByPk(req.params.id);
     if (!tenant) return res.status(404).json({ message: 'Tenant not found.' });
 
-    const [branchCount, staffCount, userCount, customerCount] = await Promise.all([
+    const { Service, Payment: PaymentModel } = require('../models');
+    const [branchCount, staffCount, userCount, customerCount, appointmentCount, serviceCount, paymentCount] = await Promise.all([
       Branch.count({ where: { tenant_id: tenant.id } }),
       Staff.count({  where: { tenant_id: tenant.id, is_active: true } }),
       User.count({   where: { tenant_id: tenant.id, is_active: true } }),
       Customer.count({ where: { tenant_id: tenant.id } }),
+      hasAppointmentModel ? Appointment.count({ where: { tenant_id: tenant.id } }) : 0,
+      Service.count({ where: { tenant_id: tenant.id } }),
+      PaymentModel.count({ where: { tenant_id: tenant.id } }),
     ]);
 
-    return res.json({ branches: branchCount, staff: staffCount, users: userCount, customers: customerCount });
+    return res.json({
+      branches: branchCount,
+      staff: staffCount,
+      users: userCount,
+      customers: customerCount,
+      appointments: appointmentCount,
+      services: serviceCount,
+      payments: paymentCount,
+    });
   } catch (err) {
     console.error('platform.tenantStats error:', err);
     return res.status(500).json({ message: 'Server error.' });
@@ -1829,6 +1871,7 @@ module.exports = {
   createTenant,
   getTenant,
   updateTenant,
+  clearTenantData,
   deleteTenant,
   tenantStats,
   getTenantFeatures,

@@ -11,8 +11,8 @@ const logger      = require('../utils/logger');
 const router = Router();
 
 const DEFAULT_BRANDING = {
-  name: 'HEXA SALON',
-  brand_name: 'HEXA SALON',
+  name: 'HEXAONE',
+  brand_name: 'HEXAONE',
   logo_sidebar_url: null,
   logo_header_url: null,
   logo_login_url: null,

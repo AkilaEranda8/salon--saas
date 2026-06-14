@@ -27,12 +27,13 @@ class SalonService {
           ? rawComm.toDouble()
           : double.tryParse('$rawComm');
     }
+    final rawDuration = int.tryParse('${json['duration_minutes'] ?? 0}') ?? 0;
     return SalonService(
       id: '${json['id']}',
       name: '${json['name'] ?? ''}',
       category: '${json['category'] ?? 'Other'}',
       price: double.tryParse('${json['price'] ?? 0}') ?? 0,
-      durationMinutes: int.tryParse('${json['duration_minutes'] ?? 0}') ?? 0,
+      durationMinutes: rawDuration > 0 ? rawDuration : 30,
       isActive: json['is_active'] != false,
       commissionType: json['commission_type']?.toString(),
       commissionValue: commVal,

@@ -2,7 +2,7 @@
 
 const PDFDocument = require('pdfkit');
 
-const COMPANY = process.env.COMPANY_NAME || 'HEXA SALON';
+const COMPANY = process.env.COMPANY_NAME || 'HEXAONE';
 
 /**
  * Build a PDF buffer for one staff member's payment rows for a calendar month.

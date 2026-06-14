@@ -37,6 +37,24 @@ _SM _sm(String s) {
   }
 }
 
+String _todayYmd([DateTime? d]) {
+  final n = d ?? DateTime.now();
+  return '${n.year}-${n.month.toString().padLeft(2, '0')}-${n.day.toString().padLeft(2, '0')}';
+}
+
+bool _isTodayYmd(String ymd) => ymd == _todayYmd();
+
+String _formatWalkInDateLabel(String ymd) {
+  if (_isTodayYmd(ymd)) return 'Today';
+  final p = DateTime.tryParse(ymd);
+  if (p == null) return ymd;
+  const months = [
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+  ];
+  return '${months[p.month - 1]} ${p.day}, ${p.year}';
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 class WalkInPage extends StatefulWidget {
   const WalkInPage({super.key});
@@ -59,6 +77,16 @@ class _WalkInPageState extends State<WalkInPage> {
   List<StaffMember>         _staffList = const [];
   WalkInQueueSocket? _queueSocket;
   String? _activeBranchId;
+  String _selectedDate = _todayYmd();
+
+  bool get _viewingToday => _isTodayYmd(_selectedDate);
+
+  bool get _canGoNextDay {
+    final base = DateTime.tryParse(_selectedDate) ?? DateTime.now();
+    final today = DateTime.now();
+    final todayOnly = DateTime(today.year, today.month, today.day);
+    return base.isBefore(todayOnly);
+  }
 
   @override
   void dispose() {
@@ -106,10 +134,13 @@ class _WalkInPageState extends State<WalkInPage> {
     List<WalkInEntry> queue;
     var fromCache = false;
     try {
-      queue = await app.loadWalkIns(branchId: branchId);
-      await WalkInQueueCache.save(branchId, queue);
+      queue = await app.loadWalkIns(
+        branchId: branchId,
+        date: _selectedDate,
+      );
+      await WalkInQueueCache.save(branchId, _selectedDate, queue);
     } catch (_) {
-      final cached = await WalkInQueueCache.load(branchId);
+      final cached = await WalkInQueueCache.load(branchId, _selectedDate);
       if (cached == null) rethrow;
       queue = cached;
       fromCache = true;
@@ -122,10 +153,15 @@ class _WalkInPageState extends State<WalkInPage> {
       _walkIns = _sortedWalkIns(queue);
       _fromCache = fromCache;
     });
-    _bindQueueSocket(branchId);
+    if (_viewingToday) {
+      _bindQueueSocket(branchId);
+    } else {
+      _queueSocket?.disconnect();
+    }
   }
 
   void _bindQueueSocket(String branchId) {
+    if (!_viewingToday) return;
     final app = AppStateScope.of(context);
     final token = app.currentUser?.authToken;
     if (token == null || token.isEmpty || branchId.isEmpty) return;
@@ -143,11 +179,14 @@ class _WalkInPageState extends State<WalkInPage> {
 
   Future<void> _silentReloadQueue() async {
     final bid = _activeBranchId;
-    if (bid == null || bid.isEmpty || !mounted) return;
+    if (bid == null || bid.isEmpty || !mounted || !_viewingToday) return;
     final app = AppStateScope.of(context);
     try {
-      final queue = await app.loadWalkIns(branchId: bid);
-      await WalkInQueueCache.save(bid, queue);
+      final queue = await app.loadWalkIns(
+        branchId: bid,
+        date: _selectedDate,
+      );
+      await WalkInQueueCache.save(bid, _selectedDate, queue);
       if (!mounted) return;
       setState(() {
         _walkIns = _sortedWalkIns(queue);
@@ -162,6 +201,47 @@ class _WalkInPageState extends State<WalkInPage> {
     setState(() {
       _future = _load();
     });
+  }
+
+  void _setSelectedDate(String ymd) {
+    if (ymd == _selectedDate) return;
+    setState(() {
+      _selectedDate = ymd;
+      _future = _load();
+    });
+  }
+
+  void _shiftDate(int days) {
+    final base = DateTime.tryParse(_selectedDate) ?? DateTime.now();
+    final next = base.add(Duration(days: days));
+    final today = DateTime.now();
+    final todayOnly = DateTime(today.year, today.month, today.day);
+    if (next.isAfter(todayOnly)) return;
+    _setSelectedDate(_todayYmd(next));
+  }
+
+  Future<void> _pickDate() async {
+    final now = DateTime.now();
+    final initial = DateTime.tryParse(_selectedDate) ?? now;
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: initial,
+      firstDate: DateTime(2020),
+      lastDate: now,
+      builder: (ctx, child) => Theme(
+        data: Theme.of(ctx).copyWith(
+          colorScheme: const ColorScheme.light(
+            primary: _forest,
+            onPrimary: Colors.white,
+            surface: _surface,
+            onSurface: _ink,
+          ),
+        ),
+        child: child!,
+      ),
+    );
+    if (picked == null || !mounted) return;
+    _setSelectedDate(_todayYmd(picked));
   }
 
   Future<void> _openAdd() async {
@@ -220,7 +300,7 @@ class _WalkInPageState extends State<WalkInPage> {
         ..._walkIns.where((w) => w.id != created.id),
       ]);
     });
-    await WalkInQueueCache.save(payload.branchId, _walkIns);
+    await WalkInQueueCache.save(payload.branchId, _selectedDate, _walkIns);
     _refresh();
   }
 
@@ -260,7 +340,7 @@ class _WalkInPageState extends State<WalkInPage> {
           if (w.id == updated.id) updated else w,
       ]);
     });
-    await WalkInQueueCache.save(e.branchId, _walkIns);
+    await WalkInQueueCache.save(e.branchId, _selectedDate, _walkIns);
     _toast('Walk-in updated');
   }
 
@@ -461,33 +541,35 @@ class _WalkInPageState extends State<WalkInPage> {
             return _buildBody();
           },
         ),
-        floatingActionButton: Padding(
-          padding: const EdgeInsets.only(bottom: 16, right: 4),
-          child: GestureDetector(
-            onTap: _openAdd,
-            child: Container(
-              height: 52,
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [_forest, _emerald],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight),
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [BoxShadow(
-                  color: _forest.withValues(alpha: 0.35),
-                  blurRadius: 16, offset: const Offset(0, 6))],
-              ),
-              child: const Row(mainAxisSize: MainAxisSize.min, children: [
-                Icon(Icons.person_add_rounded, color: Colors.white, size: 18),
-                SizedBox(width: 8),
-                Text('Add Walk-in',
-                  style: TextStyle(color: Colors.white, fontSize: 14,
-                      fontWeight: FontWeight.w800, letterSpacing: 0.1)),
-              ]),
-            ),
-          ),
-        ),
+        floatingActionButton: _viewingToday
+            ? Padding(
+                padding: const EdgeInsets.only(bottom: 16, right: 4),
+                child: GestureDetector(
+                  onTap: _openAdd,
+                  child: Container(
+                    height: 52,
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [_forest, _emerald],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight),
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: [BoxShadow(
+                        color: _forest.withValues(alpha: 0.35),
+                        blurRadius: 16, offset: const Offset(0, 6))],
+                    ),
+                    child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                      Icon(Icons.person_add_rounded, color: Colors.white, size: 18),
+                      SizedBox(width: 8),
+                      Text('Add Walk-in',
+                        style: TextStyle(color: Colors.white, fontSize: 14,
+                            fontWeight: FontWeight.w800, letterSpacing: 0.1)),
+                    ]),
+                  ),
+                ),
+              )
+            : null,
         floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       ),
     );
@@ -584,8 +666,10 @@ class _WalkInPageState extends State<WalkInPage> {
         const SizedBox(height: 6),
         Text(
           _fromCache
-              ? 'Saved copy — connect to refresh. Tap + when online to add.'
-              : 'Tap + to add a walk-in customer',
+              ? 'Saved copy — connect to refresh. Pull down to update.'
+              : _viewingToday
+                  ? 'Tap + to add a walk-in customer'
+                  : 'No walk-ins on ${_formatWalkInDateLabel(_selectedDate)}',
           textAlign: TextAlign.center,
           style: const TextStyle(color: _muted, fontSize: 13)),
       ],
@@ -644,6 +728,91 @@ class _WalkInPageState extends State<WalkInPage> {
                       color: _forest, size: 17),
                 ),
               ),
+            ]),
+          ),
+
+          // Day filter
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+            child: Row(children: [
+              _DateNavBtn(
+                icon: Icons.chevron_left_rounded,
+                onTap: () => _shiftDate(-1),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: GestureDetector(
+                  onTap: loading ? null : _pickDate,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 11),
+                    decoration: BoxDecoration(
+                      color: _viewingToday ? _forest : _surface,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: _viewingToday ? _forest : _border),
+                      boxShadow: _viewingToday
+                          ? [BoxShadow(
+                              color: _forest.withValues(alpha: 0.22),
+                              blurRadius: 10,
+                              offset: const Offset(0, 4))]
+                          : [],
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.calendar_today_rounded,
+                            size: 16,
+                            color: _viewingToday
+                                ? Colors.white70
+                                : _forest),
+                        const SizedBox(width: 8),
+                        Text(
+                          _formatWalkInDateLabel(_selectedDate),
+                          style: TextStyle(
+                            color: _viewingToday ? Colors.white : _ink,
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        Icon(Icons.arrow_drop_down_rounded,
+                            color: _viewingToday
+                                ? Colors.white70
+                                : _muted,
+                            size: 22),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              _DateNavBtn(
+                icon: Icons.chevron_right_rounded,
+                onTap: _canGoNextDay ? () => _shiftDate(1) : null,
+                enabled: _canGoNextDay,
+              ),
+              if (!_viewingToday) ...[
+                const SizedBox(width: 8),
+                GestureDetector(
+                  onTap: loading ? null : () => _setSelectedDate(_todayYmd()),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 11),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFECFDF5),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: _emerald.withValues(alpha: 0.35)),
+                    ),
+                    child: const Text('Today',
+                        style: TextStyle(
+                          color: _emerald,
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w800,
+                        )),
+                  ),
+                ),
+              ],
             ]),
           ),
 
@@ -712,8 +881,12 @@ class _WalkInPageState extends State<WalkInPage> {
                                 color: Colors.white, fontSize: 28,
                                 fontWeight: FontWeight.w900, letterSpacing: -0.5)),
                       const SizedBox(height: 2),
-                      const Text('customers today',
-                        style: TextStyle(color: Colors.white54, fontSize: 11.5)),
+                      Text(
+                        _viewingToday
+                            ? 'customers today'
+                            : 'on ${_formatWalkInDateLabel(_selectedDate)}',
+                        style: const TextStyle(
+                            color: Colors.white54, fontSize: 11.5)),
                     ],
                   ),
                 ),
@@ -733,6 +906,36 @@ class _WalkInPageState extends State<WalkInPage> {
       ),
     );
   }
+}
+
+// ── Date nav button ───────────────────────────────────────────────────────────
+class _DateNavBtn extends StatelessWidget {
+  const _DateNavBtn({
+    required this.icon,
+    required this.onTap,
+    this.enabled = true,
+  });
+
+  final IconData icon;
+  final VoidCallback? onTap;
+  final bool enabled;
+
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+        onTap: enabled ? onTap : null,
+        child: Container(
+          width: 42,
+          height: 42,
+          decoration: BoxDecoration(
+            color: _surface,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: _border),
+          ),
+          child: Icon(icon,
+              size: 22,
+              color: enabled ? _forest : const Color(0xFFD1D5DB)),
+        ),
+      );
 }
 
 // ── Stat pill ─────────────────────────────────────────────────────────────────

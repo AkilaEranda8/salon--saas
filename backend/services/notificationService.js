@@ -329,7 +329,7 @@ function escapeHtml(str) {
 }
 
 // ── Email HTML builder ────────────────────────────────────────────────────────
-function buildEmailWrapper(title, bodyHtml, branchName = 'HEXA SALON', branchPhone = '') {
+function buildEmailWrapper(title, bodyHtml, branchName = 'HEXAONE', branchPhone = '') {
   const safeBranchName  = escapeHtml(branchName);
   const safeBranchPhone = escapeHtml(branchPhone);
   const safeTitle       = escapeHtml(title);
@@ -347,7 +347,7 @@ function buildEmailWrapper(title, bodyHtml, branchName = 'HEXA SALON', branchPho
         <tr>
           <td style="background:linear-gradient(135deg,#1a0a2e 0%,#4a1a6e 50%,#c9a96e 100%);padding:32px 40px;text-align:center;">
             <div style="font-size:32px;margin-bottom:8px;">✂️</div>
-            <h1 style="margin:0;font-size:28px;font-weight:800;color:#c9a96e;letter-spacing:2px;">HEXA SALON</h1>
+            <h1 style="margin:0;font-size:28px;font-weight:800;color:#c9a96e;letter-spacing:2px;">HEXAONE</h1>
             <p style="margin:6px 0 0;font-size:13px;color:#e8d5b0;letter-spacing:1px;">Smart Salon Management System</p>
           </td>
         </tr>
@@ -409,7 +409,7 @@ async function notifyAppointmentConfirmed(appointment, branch, service, tenantId
 
   if (email && flags.appt_confirmed_email) {
     const tpl = await getTemplate('appointment_confirmed', 'email', tenantId);
-    const subject = tpl ? interpolate(tpl.subject || 'Appointment Confirmed — HEXA SALON', vars) : 'Appointment Confirmed — HEXA SALON';
+    const subject = tpl ? interpolate(tpl.subject || 'Appointment Confirmed — HEXAONE', vars) : 'Appointment Confirmed — HEXAONE';
     const bodyHtml = tpl ? interpolate(tpl.body, vars) : `
       <h2 style="margin:0 0 8px;font-size:22px;color:#7c3aed;">Appointment Confirmed! 🎉</h2>
       <p style="margin:0 0 24px;font-size:15px;color:#475569;">
@@ -426,7 +426,7 @@ async function notifyAppointmentConfirmed(appointment, branch, service, tenantId
       <div style="margin:28px 0;padding:16px 20px;background:#f5f0ff;border-left:4px solid #7c3aed;border-radius:4px;">
         <p style="margin:0;font-size:14px;color:#5b21b6;">📌 Please arrive 5 minutes early. Contact us if you need to reschedule.</p>
       </div>
-      <p style="margin:0;font-size:15px;color:#475569;">Thank you for choosing <strong>HEXA SALON</strong>! See you soon. ✨</p>`;
+      <p style="margin:0;font-size:15px;color:#475569;">Thank you for choosing <strong>HEXAONE</strong>! See you soon. ✨</p>`;
     await sendEmail({
       to:      email,
       subject,
@@ -440,7 +440,7 @@ async function notifyAppointmentConfirmed(appointment, branch, service, tenantId
     const tpl = await getTemplate('appointment_confirmed', 'whatsapp', tenantId);
     const msg = tpl
       ? interpolate(tpl.body, vars)
-      : `✂️ *HEXA SALON — Appointment Confirmed!*\n\n` +
+      : `✂️ *HEXAONE — Appointment Confirmed!*\n\n` +
         `Hi ${appointment.customer_name}, your booking is confirmed:\n\n` +
         `📅 Date: ${date}\n⏰ Time: ${time}\n💇 Service: ${svcName}\n🏠 Branch: ${brName}\n💰 Amount: ${amount}\n\n` +
         `Please arrive 5 mins early. See you soon! 😊`;
@@ -451,7 +451,7 @@ async function notifyAppointmentConfirmed(appointment, branch, service, tenantId
     const tpl = await getTemplate('appointment_confirmed', 'sms', tenantId);
     const smsMsg = tpl
       ? interpolate(tpl.body, vars)
-      : `HEXA SALON\n` +
+      : `HEXAONE\n` +
         `Hi ${appointment.customer_name}! Appointment booked.\n` +
         `Service: ${svcName}\n` +
         `Date: ${date} | ${time}\n` +
@@ -481,7 +481,7 @@ async function notifyAppointmentCompleted(appointment, branch, service, tenantId
   const tpl = await getTemplate('appointment_completed', 'sms', tenantId);
   const smsMsg = tpl
     ? interpolate(tpl.body, vars)
-    : `HEXA SALON\nHi ${appointment.customer_name}! Your ${svcName} is done.\n${date} ${time} | ${brName}\nThank you for visiting!`;
+    : `HEXAONE\nHi ${appointment.customer_name}! Your ${svcName} is done.\n${date} ${time} | ${brName}\nThank you for visiting!`;
   await sendSMS({ to: phone, message: smsMsg, meta });
 }
 
@@ -515,10 +515,10 @@ async function notifyPaymentReceipt(payment, branch, service, customer, tenantId
     const tpl = await getTemplate('payment_receipt', 'email', tenantId);
     let subject, bodyHtml;
     if (tpl) {
-      subject  = interpolate(tpl.subject || 'Payment Receipt — HEXA SALON', { customer_name: customerName, branch_name: brName, date, service_name: svcName, amount: total });
+      subject  = interpolate(tpl.subject || 'Payment Receipt — HEXAONE', { customer_name: customerName, branch_name: brName, date, service_name: svcName, amount: total });
       bodyHtml = interpolate(tpl.body, { customer_name: customerName, branch_name: brName, date, service_name: svcName, amount: total });
     } else {
-      subject  = 'Payment Receipt — HEXA SALON';
+      subject  = 'Payment Receipt — HEXAONE';
       bodyHtml = `
       <h2 style="margin:0 0 8px;font-size:22px;color:#7c3aed;">Payment Receipt 🧾</h2>
       <p style="margin:0 0 24px;font-size:15px;color:#475569;">
@@ -540,7 +540,7 @@ async function notifyPaymentReceipt(payment, branch, service, customer, tenantId
       <div style="margin:24px 0;padding:16px 20px;background:#f0fdf4;border-left:4px solid #22c55e;border-radius:4px;">
         <p style="margin:0;font-size:14px;color:#166534;">🌟 You earned <strong>${pointsEarned} loyalty points</strong> on this visit!</p>
       </div>` : ''}
-      <p style="margin:0;font-size:15px;color:#475569;">Thank you for visiting <strong>HEXA SALON</strong>! 💜</p>`;
+      <p style="margin:0;font-size:15px;color:#475569;">Thank you for visiting <strong>HEXAONE</strong>! 💜</p>`;
     }
     await sendEmail({
       to:      email,
@@ -558,12 +558,12 @@ async function notifyPaymentReceipt(payment, branch, service, customer, tenantId
       msg = interpolate(tpl.body, { customer_name: customerName, branch_name: brName, date, service_name: svcName, amount: total });
     } else {
       msg =
-        `🧾 *HEXA SALON — Payment Receipt*\n\n` +
+        `🧾 *HEXAONE — Payment Receipt*\n\n` +
         `Hi ${customerName}! Payment confirmed:\n\n` +
         `💇 Service: ${svcName}\n🏠 Branch: ${brName}\n📅 Date: ${date}\n💰 Total Paid: ${total}\n`;
       if (discount > 0)     msg += `🎁 Loyalty Discount: Rs. ${discount.toFixed(2)}\n`;
       if (pointsEarned > 0) msg += `\n🌟 You earned *${pointsEarned} loyalty points*!`;
-      msg += `\n\nThank you for choosing HEXA SALON! 💜`;
+      msg += `\n\nThank you for choosing HEXAONE! 💜`;
     }
     await sendWhatsApp({ to: phone, message: msg, meta });
   }
@@ -581,7 +581,7 @@ async function notifyPaymentReceipt(payment, branch, service, customer, tenantId
       const totalPts    = customer?.loyalty_points || 0;
       const ticketLine  = payment.walkin_token ? `Ticket: ${payment.walkin_token}\n` : '';
       smsMsg =
-        `HEXA SALON - Receipt\n` +
+        `HEXAONE - Receipt\n` +
         `${ticketLine}` +
         `Hi ${customerName}!\n` +
         `Paid: Rs. ${paid.toFixed(2)}\n` +
@@ -615,7 +615,7 @@ async function notifyLoyaltyPoints(customer, pointsEarned, totalPoints, branch, 
   if (!phone) return;
 
   const name   = customer.name || 'Valued Customer';
-  const brName = branch?.name  || 'HEXA SALON';
+  const brName = branch?.name  || 'HEXAONE';
   const tier   = loyaltyTier(totalPoints);
   const meta   = {
     customer_name: name,
@@ -628,10 +628,10 @@ async function notifyLoyaltyPoints(customer, pointsEarned, totalPoints, branch, 
     const tpl = await getTemplate('loyalty_points', 'whatsapp', tenantId);
     const msg = tpl
       ? interpolate(tpl.body, vars)
-      : `${tier.emoji} *HEXA SALON — Loyalty Points Update*\n\n` +
+      : `${tier.emoji} *HEXAONE — Loyalty Points Update*\n\n` +
         `Hey ${name}! 🎉\n\nYou just earned *+${pointsEarned} points* at *${brName}*!\n\n` +
         `📊 Your Points Balance:\n  • Earned this visit: +${pointsEarned}\n  • Total balance: *${totalPoints} pts*\n  • Tier status: ${tier.name}\n\n` +
-        `💡 Tip: Every 10 pts = Rs. 1 discount on your next visit!\n\nKeep visiting HEXA SALON to unlock more rewards. 🛍️`;
+        `💡 Tip: Every 10 pts = Rs. 1 discount on your next visit!\n\nKeep visiting HEXAONE to unlock more rewards. 🛍️`;
     await sendWhatsApp({ to: phone, message: msg, meta });
   }
 
@@ -639,7 +639,7 @@ async function notifyLoyaltyPoints(customer, pointsEarned, totalPoints, branch, 
     const tpl = await getTemplate('loyalty_points', 'sms', tenantId);
     const smsMsg = tpl
       ? interpolate(tpl.body, vars)
-      : `HEXA SALON\nHi ${name}! You earned +${pointsEarned} loyalty points.\nTotal: ${totalPoints} pts. Every 10 pts = Rs. 1 discount!`;
+      : `HEXAONE\nHi ${name}! You earned +${pointsEarned} loyalty points.\nTotal: ${totalPoints} pts. Every 10 pts = Rs. 1 discount!`;
     await sendSMS({ to: phone, message: smsMsg, meta });
   }
 }

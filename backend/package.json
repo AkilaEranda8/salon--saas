@@ -1,7 +1,7 @@
 {
   "name": "hexasalon-backend",
   "version": "1.0.0",
-  "description": "Hexa Salon Backend API — by Hexalyte Innovation",
+  "description": "Hexaone Backend API — by Hexalyte Innovation",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

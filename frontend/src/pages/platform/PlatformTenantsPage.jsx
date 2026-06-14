@@ -133,6 +133,15 @@ export default function PlatformTenantsPage() {
   const [featuresSaving, setFeaturesSaving] = useState(false);
   const [featuresError, setFeaturesError] = useState('');
   const [featuresAdminControlled, setFeaturesAdminControlled] = useState(false);
+  const [clearDataTenant, setClearDataTenant] = useState(null);
+  const [clearConfirmSlug, setClearConfirmSlug] = useState('');
+  const [clearingData, setClearingData] = useState(false);
+  const [clearDataError, setClearDataError] = useState('');
+
+  const openEditTenant = (tenant) => {
+    setEditTenant({ ...tenant, _originalPlan: tenant.plan, clearTrialData: false });
+    setError('');
+  };
 
   const normalizeTenantsPayload = (payload) => {
     if (Array.isArray(payload)) {
@@ -165,6 +174,7 @@ export default function PlatformTenantsPage() {
     setSaving(true);
     setError('');
     try {
+      const upgradingFromTrial = editTenant._originalPlan === 'trial' && editTenant.plan !== 'trial';
       await api.patch(`/platform/tenants/${editTenant.id}`, {
         plan: editTenant.plan,
         status: editTenant.status,
@@ -175,6 +185,7 @@ export default function PlatformTenantsPage() {
         helapay_app_secret:   editTenant.helapay_app_secret   || null,
         helapay_business_id:  editTenant.helapay_business_id  || null,
         helapay_notify_url:   editTenant.helapay_notify_url   || null,
+        ...(upgradingFromTrial && editTenant.clearTrialData ? { clear_trial_data: true } : {}),
       });
       setEditTenant(null);
       fetchTenants();
@@ -182,6 +193,29 @@ export default function PlatformTenantsPage() {
       setError(err.response?.data?.message || 'Save failed.');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleClearTrialData = async () => {
+    if (!clearDataTenant) return;
+    const target = clearDataTenant;
+    setClearingData(true);
+    setClearDataError('');
+    try {
+      await api.post(`/platform/tenants/${target.id}/clear-data`, {
+        confirm: clearConfirmSlug.trim(),
+      });
+      setClearDataTenant(null);
+      setClearConfirmSlug('');
+      if (detailTenant?.id === target.id) {
+        setDetailStats(null);
+        openDetail(target);
+      }
+      fetchTenants();
+    } catch (err) {
+      setClearDataError(err.response?.data?.message || 'Failed to clear trial data.');
+    } finally {
+      setClearingData(false);
     }
   };
 
@@ -481,7 +515,7 @@ export default function PlatformTenantsPage() {
             <IBtn onClick={() => handleQuickStatus(t, 'activate')} title="Activate" bg="#F0FDF4" border="#D1FAE5"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="5 3 19 12 5 21 5 3"/></svg></IBtn>
           )}
           <IBtn onClick={() => openFeatures(t)} title="Manage features" bg={isDark ? 'rgba(16,185,129,0.12)' : '#ECFDF5'} border={isDark ? 'rgba(16,185,129,0.3)' : '#A7F3D0'}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 3v3m0 12v3M3 12h3m12 0h3M5.6 5.6l2.1 2.1m8.6 8.6 2.1 2.1M5.6 18.4l2.1-2.1m8.6-8.6 2.1-2.1"/></svg></IBtn>
-          <IBtn onClick={() => setEditTenant({ ...t })} title="Edit plan / status"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></IBtn>
+          <IBtn onClick={() => openEditTenant(t)} title="Edit plan / status"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></IBtn>
           <IBtn onClick={() => handleDelete(t)} title="Delete tenant" border="#FEE2E2"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg></IBtn>
         </div>
       ),
@@ -647,6 +681,8 @@ export default function PlatformTenantsPage() {
                     { label: 'Staff',         value: detailStats.staff        ?? '—' },
                     { label: 'Customers',     value: detailStats.customers    ?? '—' },
                     { label: 'Appointments',  value: detailStats.appointments ?? '—' },
+                    { label: 'Services',      value: detailStats.services     ?? '—' },
+                    { label: 'Payments',      value: detailStats.payments     ?? '—' },
                   ].map(({ label, value }) => (
                     <div key={label} style={{ background: isDark ? '#1E293B' : '#F8F7FF', borderRadius: 10, padding: '11px 14px', border: `1px solid ${isDark ? '#334155' : '#EEF2FF'}` }}>
                       <div style={{ fontSize: 22, fontWeight: 800, color: isDark ? '#818CF8' : '#4338CA' }}>{value}</div>
@@ -690,7 +726,7 @@ export default function PlatformTenantsPage() {
                 {
                   label: 'Edit Plan / Status', color: isDark ? '#818CF8' : '#4338CA',
                   bg: isDark ? '#1E293B' : '#fff', border: isDark ? '#334155' : '#E5E7EB',
-                  onClick: () => { setDetailTenant(null); setEditTenant({ ...detailTenant }); },
+                  onClick: () => { setDetailTenant(null); openEditTenant(detailTenant); },
                   disabled: false,
                 },
                 {
@@ -711,6 +747,16 @@ export default function PlatformTenantsPage() {
                   onClick: () => { setDetailTenant(null); handleQuickStatus(detailTenant, 'activate'); },
                   disabled: false,
                 }] : []),
+                {
+                  label: 'Clear Trial Data…', color: '#B45309',
+                  bg: isDark ? 'rgba(245,158,11,0.1)' : '#FFFBEB', border: isDark ? 'rgba(245,158,11,0.3)' : '#FDE68A',
+                  onClick: () => {
+                    setClearDataError('');
+                    setClearConfirmSlug('');
+                    setClearDataTenant(detailTenant);
+                  },
+                  disabled: false,
+                },
               ].map(({ label, color, bg, border, onClick, disabled }) => (
                 <button key={label} onClick={onClick} disabled={disabled}
                   style={{
@@ -860,6 +906,26 @@ export default function PlatformTenantsPage() {
               </div>
             </div>
 
+            {editTenant._originalPlan === 'trial' && editTenant.plan !== 'trial' && (
+              <label style={{
+                display: 'flex', alignItems: 'flex-start', gap: 10, padding: '12px 14px',
+                background: isDark ? 'rgba(245,158,11,0.1)' : '#FFFBEB',
+                border: `1px solid ${isDark ? 'rgba(245,158,11,0.3)' : '#FDE68A'}`,
+                borderRadius: 10, cursor: 'pointer', fontSize: 12, lineHeight: 1.5,
+                color: isDark ? '#FCD34D' : '#92400E',
+              }}>
+                <input
+                  type="checkbox"
+                  checked={!!editTenant.clearTrialData}
+                  onChange={e => setEditTenant(t => ({ ...t, clearTrialData: e.target.checked }))}
+                  style={{ marginTop: 2 }}
+                />
+                <span>
+                  <strong>Clear trial data</strong> when upgrading to a paid plan — removes customers, appointments, payments, staff, services, and other demo records. Login users and branches are kept.
+                </span>
+              </label>
+            )}
+
             {error && <div style={{ color: '#EF4444', fontSize: 12, background: isDark ? 'rgba(239,68,68,0.1)' : '#FEF2F2', padding: '8px 12px', borderRadius: 8, border: `1px solid ${isDark ? 'rgba(239,68,68,0.25)' : '#FECACA'}` }}>{error}</div>}
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 4 }}>
@@ -875,6 +941,64 @@ export default function PlatformTenantsPage() {
                   boxShadow: '0 4px 12px rgba(79,70,229,0.3)',
                 }}>
                 {saving ? 'Saving…' : 'Save Changes'}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Clear trial data confirmation */}
+      {clearDataTenant && (
+        <Modal
+          title={`Clear Trial Data — ${clearDataTenant.name}`}
+          onClose={() => { if (!clearingData) { setClearDataTenant(null); setClearConfirmSlug(''); setClearDataError(''); } }}
+          isDark={isDark}
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <p style={{ fontSize: 13, color: isDark ? '#CBD5E1' : '#475467', lineHeight: 1.55, margin: 0 }}>
+              This permanently deletes operational data for <strong>{clearDataTenant.slug}</strong>:
+              customers, staff, services, appointments, payments, expenses, inventory, and related records.
+              <br /><br />
+              <strong>Kept:</strong> tenant account, login users, branches, subscriptions, and platform invoices.
+            </p>
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 600, color: isDark ? '#94A3B8' : '#374151', display: 'block', marginBottom: 5 }}>
+                Type <code style={{ fontFamily: 'monospace' }}>{clearDataTenant.slug}</code> to confirm
+              </label>
+              <input
+                value={clearConfirmSlug}
+                onChange={e => setClearConfirmSlug(e.target.value)}
+                placeholder={clearDataTenant.slug}
+                style={{
+                  width: '100%', padding: '9px 12px', border: `1px solid ${isDark ? '#334155' : '#E5E7EB'}`,
+                  borderRadius: 9, fontSize: 13, outline: 'none', boxSizing: 'border-box',
+                  background: isDark ? '#0F172A' : '#fff', color: isDark ? '#E2E8F0' : '#111827',
+                }}
+              />
+            </div>
+            {clearDataError && (
+              <div style={{ color: '#EF4444', fontSize: 12, background: isDark ? 'rgba(239,68,68,0.1)' : '#FEF2F2', padding: '8px 12px', borderRadius: 8 }}>
+                {clearDataError}
+              </div>
+            )}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+              <button
+                onClick={() => { setClearDataTenant(null); setClearConfirmSlug(''); setClearDataError(''); }}
+                disabled={clearingData}
+                style={{ padding: '9px 20px', border: `1px solid ${isDark ? '#334155' : '#E5E7EB'}`, borderRadius: 9, background: isDark ? '#1E293B' : '#fff', cursor: 'pointer', fontSize: 13, color: isDark ? '#94A3B8' : '#374151' }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleClearTrialData}
+                disabled={clearingData || clearConfirmSlug.trim() !== clearDataTenant.slug}
+                style={{
+                  padding: '9px 22px', border: 'none', borderRadius: 9,
+                  background: '#D97706', color: '#fff', cursor: 'pointer',
+                  fontSize: 13, fontWeight: 700, opacity: (clearingData || clearConfirmSlug.trim() !== clearDataTenant.slug) ? 0.6 : 1,
+                }}
+              >
+                {clearingData ? 'Clearing…' : 'Clear Trial Data'}
               </button>
             </div>
           </div>

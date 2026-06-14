@@ -26,6 +26,8 @@ function formatCommission(type, value) {
 export default function ServicesPage() {
   const { user }  = useAuth();
   const { allowed: serviceWiseCommission } = useFeatureGate('service_wise_commission');
+  const { allowed: franchiseCommission } = useFeatureGate('franchise_commission');
+  const showServiceCommission = serviceWiseCommission || franchiseCommission;
   const { toast } = useToast();
   const canEdit   = ['superadmin', 'admin'].includes(user?.role);
   const [services, setServices] = useState([]);
@@ -111,7 +113,7 @@ export default function ServicesPage() {
       description: form.description || '',
       is_active: form.is_active !== false,
     };
-    if (serviceWiseCommission) {
+    if (showServiceCommission) {
       payload.commission_type = form.commission_type || 'percentage';
       payload.commission_value = form.commission_value === '' || form.commission_value == null
         ? null
@@ -165,7 +167,7 @@ export default function ServicesPage() {
       meta: { width: '14%', align: 'right' },
       cell: ({ row: { original: row } }) => <span style={{ fontWeight: 700, color: '#2563EB' }}>Rs. {Number(row.price).toLocaleString()}</span>,
     },
-    ...(serviceWiseCommission ? [{
+    ...(showServiceCommission ? [{
       id: 'commission',
       header: 'Commission',
       accessorFn: row => row.commission_value,
@@ -180,7 +182,7 @@ export default function ServicesPage() {
       id: 'description',
       header: 'Description',
       accessorFn: row => row.description,
-      meta: { width: serviceWiseCommission ? '20%' : '26%' },
+      meta: { width: showServiceCommission ? '20%' : '26%' },
       cell: ({ row: { original: row } }) => <span style={{ color: '#475467', fontSize: 13 }}>{String(row.description || '').slice(0, 60)}</span>,
     },
     {
@@ -260,7 +262,7 @@ export default function ServicesPage() {
             </FormGroup>
           </div>
           <FormGroup label="Price (Rs.)" required><Input type="number" value={form.price} placeholder="1500" onChange={e => setForm(f => ({ ...f, price: e.target.value }))} /></FormGroup>
-          {serviceWiseCommission && (
+          {showServiceCommission && (
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
               <FormGroup label="Commission Type">
                 <Select value={form.commission_type || 'percentage'} onChange={e => setForm(f => ({ ...f, commission_type: e.target.value }))}>
@@ -280,7 +282,7 @@ export default function ServicesPage() {
               </FormGroup>
             </div>
           )}
-          {serviceWiseCommission && (
+          {showServiceCommission && (
             <p style={{ fontSize: 12, color: '#667085', margin: 0, lineHeight: 1.45 }}>
               Optional default commission for this service. Staff-specific overrides still apply when set.
             </p>
@@ -303,7 +305,7 @@ export default function ServicesPage() {
                 <div style={{ fontSize: 20, fontWeight: 800, color: '#0891B2' }}>{viewItem.duration_minutes} min</div>
                 <div style={{ fontSize: 12, color: '#475467', marginTop: 2 }}>Duration</div>
               </div>
-              {serviceWiseCommission && (
+              {showServiceCommission && (
                 <div style={{ flex: 1, minWidth: 120, background: '#ECFDF5', borderRadius: 12, padding: '14px 8px', textAlign: 'center' }}>
                   <div style={{ fontSize: 20, fontWeight: 800, color: '#059669' }}>{formatCommission(viewItem.commission_type, viewItem.commission_value)}</div>
                   <div style={{ fontSize: 12, color: '#475467', marginTop: 2 }}>Commission</div>

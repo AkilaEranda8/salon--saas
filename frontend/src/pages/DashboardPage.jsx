@@ -240,8 +240,6 @@ export default function DashboardPage() {
   const [appts,       setAppts]       = useState([]);
   const [reminders,   setReminders]   = useState([]);
   const [services,    setServices]    = useState([]);
-  const [branches,    setBranches]    = useState([]);
-  const [branchId,    setBranchId]    = useState('');
   const [month,       setMonth]       = useState(thisMonth());
   const [revenueData, setRevenueData] = useState([]);
   const [apptStatus,  setApptStatus]  = useState([]);
@@ -257,14 +255,9 @@ export default function DashboardPage() {
     if (!silent) setLoading(true);
     try {
       const reportParams = new URLSearchParams();
-      if (branchId) reportParams.set('branchId', branchId);
       if (month) reportParams.set('month', month);
       const reportQ = reportParams.toString() ? `?${reportParams.toString()}` : '';
-
-      const extraParams = new URLSearchParams();
-      if (branchId) extraParams.set('branchId', branchId);
-      const extraQ = extraParams.toString();
-      const extraQPrefix = extraQ ? `&${extraQ}` : '';
+      const extraQPrefix = '';
 
       const [dashRes, apptRes, remRes, svcRes, revRes, statusRes, staffRes] = await Promise.all([
         api.get(`/reports/dashboard${reportQ}`),
@@ -331,13 +324,9 @@ export default function DashboardPage() {
     } finally {
       setLoading(false);
     }
-  }, [branchId, month]);
+  }, [month]);
 
   useEffect(() => { load(); }, [load]);
-
-  useEffect(() => {
-    if (isAdmin) api.get('/branches').then(r => setBranches(r.data.data||r.data||[])).catch(()=>{});
-  }, [isAdmin]);
 
   useEffect(() => {
     if (['superadmin','admin'].includes(user?.role)) {
@@ -427,12 +416,6 @@ export default function DashboardPage() {
       subtitle={`${new Date().toLocaleDateString('en-US',{weekday:'long',year:'numeric',month:'long',day:'numeric'})} — auto-refreshes every 3 min`}
       actions={
         <div style={{ display:'flex', gap:10, alignItems:'center' }}>
-          {isAdmin && branches.length > 0 && (
-            <Select value={branchId} onChange={e => setBranchId(e.target.value)} style={{ width:160, borderRadius:10 }}>
-              <option value="">All Branches</option>
-              {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-            </Select>
-          )}
           <input
             type="month"
             value={month}

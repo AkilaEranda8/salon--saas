@@ -23,6 +23,11 @@ const Branch = sequelize.define('Branch', {
     type: DataTypes.STRING(150),
     allowNull: true,
   },
+  manager_commission_percent: {
+    type: DataTypes.DECIMAL(5, 2),
+    allowNull: true,
+    comment: 'Branch manager override % of total service amount',
+  },
   status: {
     type: DataTypes.ENUM('active', 'inactive'),
     defaultValue: 'active',

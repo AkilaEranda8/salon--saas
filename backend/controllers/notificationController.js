@@ -602,28 +602,31 @@ const DEFAULT_TEMPLATES = {
     },
   },
   appointment_completed: {
+    whatsapp: {
+      body: `✅ *{branch_name} — Service Complete*\n\nHi {customer_name}! Your {service_name} is done.\n📅 {date} {time}\n🏠 {branch_name}\n\nThank you for visiting! 🙏`,
+    },
     sms: {
       body: `{branch_name}\nHi {customer_name}! Your {service_name} is done.\n{date} {time} | {branch_name}\nThank you for visiting!`,
     },
   },
   payment_receipt: {
     email: {
-      subject: 'Payment Receipt — HEXAONE',
+      subject: 'Payment Receipt — {branch_name}',
       body: `<h2 style="margin:0 0 8px;font-size:22px;color:#1e3a8a;">Payment Receipt 🧾</h2>
-<p style="margin:0 0 24px;font-size:15px;color:#475569;">Hi <strong>{customer_name}</strong>, thank you for your payment. Here's your receipt:</p>
+<p style="margin:0 0 24px;font-size:15px;color:#475569;">Hi <strong>{customer_name}</strong>, here's your receipt:</p>
 <table width="100%" cellpadding="0" cellspacing="0">
   <tr><td style="padding:10px 0;border-bottom:1px solid #f1f5f9;font-size:14px;color:#6b7280;width:40%;">📅 Date</td><td style="padding:10px 0;border-bottom:1px solid #f1f5f9;font-size:14px;color:#1e293b;font-weight:600;">{date}</td></tr>
   <tr><td style="padding:10px 0;border-bottom:1px solid #f1f5f9;font-size:14px;color:#6b7280;">💇 Service</td><td style="padding:10px 0;border-bottom:1px solid #f1f5f9;font-size:14px;color:#1e293b;font-weight:600;">{service_name}</td></tr>
   <tr><td style="padding:10px 0;border-bottom:1px solid #f1f5f9;font-size:14px;color:#6b7280;">🏠 Branch</td><td style="padding:10px 0;border-bottom:1px solid #f1f5f9;font-size:14px;color:#1e293b;font-weight:600;">{branch_name}</td></tr>
   <tr><td style="padding:10px 0;font-size:14px;color:#6b7280;">💰 Total Paid</td><td style="padding:10px 0;font-size:14px;color:#1e293b;font-weight:700;">{amount}</td></tr>
 </table>
-<p style="margin:28px 0 0;font-size:15px;color:#475569;">Thank you for visiting <strong>{branch_name}</strong>! 💜</p>`,
+<p style="margin:16px 0 0;font-size:14px;color:#475569;white-space:pre-line;">{loyalty_section}</p>`,
     },
     whatsapp: {
-      body: `🧾 *{branch_name} — Payment Receipt*\n\nHi {customer_name}! Payment confirmed:\n\n💇 Service: {service_name}\n🏠 Branch: {branch_name}\n📅 Date: {date}\n💰 Total Paid: {amount}\n\nThank you for choosing {branch_name}! 💜`,
+      body: `🧾 *{branch_name} — Payment Receipt*\n\nHi {customer_name}!\n\n💇 Service: {service_name}\n🏠 Branch: {branch_name}\n📅 Date: {date}\n💰 Paid: {amount}{loyalty_section}`,
     },
     sms: {
-      body: `{branch_name} - Receipt\nHi {customer_name}!\nPaid: {amount}\nService: {service_name} | {date}\nThank you!`,
+      body: `{branch_name} - Receipt\n{ticket_line}Hi {customer_name}!\nPaid: {amount}\nService: {service_name} | {date}{loyalty_section}`,
     },
   },
   loyalty_points: {
@@ -632,6 +635,21 @@ const DEFAULT_TEMPLATES = {
     },
     sms: {
       body: `{branch_name}\nHi {customer_name}! You earned +{points_earned} loyalty points.\nTotal: {points_total} pts. Every 10 pts = Rs. 1 discount!`,
+    },
+  },
+  walk_in_checkin: {
+    whatsapp: {
+      body: `🚶 *{branch_name} — Walk-In Check-In*\n\nHi {customer_name}! You're checked in.\n\n🎫 Token: *{token}*\n💇 Service: {service_name}\n🏠 Branch: {branch_name}\n⏳ Est. wait: {wait_mins} mins\n\nPlease wait — we'll call your token soon.`,
+    },
+  },
+  walk_in_serving: {
+    whatsapp: {
+      body: `🚶 *{branch_name} — Your Turn!*\n\nHi {customer_name}, token *{token}* is now being served.\n💇 {service_name}\n🏠 {branch_name}\n\nPlease proceed to the service area.`,
+    },
+  },
+  walk_in_completed: {
+    whatsapp: {
+      body: `✅ *{branch_name} — Service Complete*\n\nHi {customer_name}! Your walk-in service is complete.\n💇 {service_name}\n\nThank you for visiting {branch_name}! 🙏`,
     },
   },
   review_request: {

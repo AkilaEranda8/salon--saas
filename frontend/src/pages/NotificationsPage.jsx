@@ -23,6 +23,64 @@ const EVENT_LABELS = {
   staff_earnings_pdf_test: 'Staff Earnings PDF (test)',
   staff_monthly_earnings: 'Staff Monthly Earnings',
 };
+const TEMPLATE_EVENT_ORDER = [
+  'appointment_confirmed',
+  'appointment_completed',
+  'payment_receipt',
+  'loyalty_points',
+  'walk_in_checkin',
+  'walk_in_serving',
+  'walk_in_completed',
+  'review_request',
+  'customer_registered',
+];
+const TEMPLATE_VARIABLES = {
+  _common: [
+    ['customer_name', 'Customer Name'],
+    ['branch_name', 'Branch Name'],
+    ['service_name', 'Service'],
+  ],
+  appointment_confirmed: [
+    ['date', 'Date'],
+    ['time', 'Time'],
+    ['amount', 'Amount'],
+  ],
+  appointment_completed: [
+    ['date', 'Date'],
+    ['time', 'Time'],
+  ],
+  payment_receipt: [
+    ['date', 'Date'],
+    ['amount', 'Amount Paid'],
+    ['points_earned', 'Points Earned'],
+    ['points_total', 'Total Points Balance'],
+    ['loyalty_section', 'Loyalty block (auto)'],
+    ['ticket_line', 'Walk-in ticket line'],
+    ['payment_methods', 'Payment methods'],
+  ],
+  loyalty_points: [
+    ['points_earned', 'Points Earned'],
+    ['points_total', 'Points Total'],
+  ],
+  walk_in_checkin: [
+    ['token', 'Queue Token'],
+    ['wait_mins', 'Est. Wait (mins)'],
+  ],
+  walk_in_serving: [
+    ['token', 'Queue Token'],
+  ],
+  walk_in_completed: [],
+  review_request: [
+    ['review_url', 'Review URL'],
+  ],
+  customer_registered: [],
+};
+function templateVariablesFor(eventType) {
+  return [
+    ...TEMPLATE_VARIABLES._common,
+    ...(TEMPLATE_VARIABLES[eventType] || []),
+  ];
+}
 const EVENT_CHANNELS = {
   customer_registered:['email','sms'],
   appointment_confirmed:['email','whatsapp','sms'],
@@ -814,7 +872,7 @@ export default function NotificationsPage() {
             <div>
               <div style={{ fontSize:15, fontWeight:700, color:'#101828' }}>Message Templates</div>
               <div style={{ fontSize:12, color:'#64748B', marginTop:2 }}>
-                Customize the SMS, WhatsApp, and Email messages sent to customers. Use <code style={{ background:'#F1F5F9', padding:'1px 5px', borderRadius:4 }}>{'{variable}'}</code> placeholders.
+                Customize all SMS, WhatsApp, and Email messages sent when connected — appointments, payments, walk-in queue, and more. Use <code style={{ background:'#F1F5F9', padding:'1px 5px', borderRadius:4 }}>{'{variable}'}</code> placeholders.
               </div>
             </div>
             {tplLoading && <span style={{ fontSize:12, color:'#94A3B8' }}>Loading…</span>}
@@ -823,26 +881,22 @@ export default function NotificationsPage() {
           {/* Template cards grouped by event */}
           <div style={{ padding:'16px 24px', display:'flex', flexDirection:'column', gap:12 }}>
             {(() => {
-              const EVENT_LABEL = {
-                appointment_confirmed:  'Appointment Confirmed',
-                appointment_completed:  'Appointment Completed',
-                payment_receipt:        'Payment Receipt',
-                loyalty_points:         'Loyalty Points',
-                walk_in_checkin:        'Walk-In — Check-In',
-                walk_in_serving:        'Walk-In — Now Serving',
-                walk_in_completed:      'Walk-In — Completed',
-                review_request:         'Review Request',
-                customer_registered:    'Customer Registered',
-              };
               const groups = {};
               templates.forEach(t => {
                 if (!groups[t.event_type]) groups[t.event_type] = [];
                 groups[t.event_type].push(t);
               });
-              return Object.entries(groups).map(([evt, list]) => (
+              const orderedEvents = [
+                ...TEMPLATE_EVENT_ORDER.filter(evt => groups[evt]),
+                ...Object.keys(groups).filter(evt => !TEMPLATE_EVENT_ORDER.includes(evt)).sort(),
+              ];
+              return orderedEvents.map((evt) => {
+                const CH_ORDER = { email: 0, whatsapp: 1, sms: 2 };
+                const list = [...groups[evt]].sort((a, b) => (CH_ORDER[a.channel] ?? 9) - (CH_ORDER[b.channel] ?? 9));
+                return (
                 <div key={evt} style={{ border:'1px solid #EAECF0', borderRadius:12, overflow:'hidden' }}>
                   <div style={{ padding:'10px 16px', background:'#F8FAFC', borderBottom:'1px solid #EAECF0', fontSize:13, fontWeight:700, color:'#344054' }}>
-                    {EVENT_LABEL[evt] || evt}
+                    {EVENT_LABELS[evt] || evt}
                   </div>
                   <div style={{ display:'flex', flexDirection:'column', gap:0 }}>
                     {list.map((tpl, idx) => {
@@ -876,7 +930,8 @@ export default function NotificationsPage() {
                     })}
                   </div>
                 </div>
-              ));
+              );
+              });
             })()}
           </div>
         </div>
@@ -891,7 +946,7 @@ export default function NotificationsPage() {
             <div style={{ padding:'20px 24px', borderBottom:'1px solid #EAECF0', display:'flex', alignItems:'center', justifyContent:'space-between', flexShrink:0 }}>
               <div>
                 <div style={{ fontSize:15, fontWeight:700, color:'#101828' }}>
-                  Edit Template — {(()=>{const labels={appointment_confirmed:'Appointment Confirmed',appointment_completed:'Appointment Completed',payment_receipt:'Payment Receipt',loyalty_points:'Loyalty Points',walk_in_checkin:'Walk-In — Check-In',walk_in_serving:'Walk-In — Now Serving',walk_in_completed:'Walk-In — Completed',review_request:'Review Request',customer_registered:'Customer Registered'};return labels[editTpl.event_type]||editTpl.event_type;})()}
+                  Edit Template — {EVENT_LABELS[editTpl.event_type] || editTpl.event_type}
                 </div>
                 <div style={{ display:'flex', alignItems:'center', gap:8, marginTop:4 }}>
                   {(() => { const CH={email:{bg:'#EFF6FF',color:'#1D4ED8',label:'Email'},whatsapp:{bg:'#DCFCE7',color:'#166534',label:'WhatsApp'},sms:{bg:'#FEF3C7',color:'#B45309',label:'SMS'}}; const ch=CH[editTpl.channel]||{bg:'#F2F4F7',color:'#64748B',label:editTpl.channel}; return <span style={{padding:'2px 10px',borderRadius:8,fontSize:11,fontWeight:700,background:ch.bg,color:ch.color}}>{ch.label}</span>; })()}
@@ -932,17 +987,7 @@ export default function NotificationsPage() {
               <div>
                 <div style={{ fontSize:11, fontWeight:600, color:'#64748B', marginBottom:6 }}>Click to insert variable:</div>
                 <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
-                  {[
-                    ['customer_name','Customer Name'],
-                    ['branch_name','Branch Name'],
-                    ['service_name','Service'],
-                    ['date','Date'],
-                    ['time','Time'],
-                    ['amount','Amount'],
-                    ['points_earned','Points Earned'],
-                    ['points_total','Points Total'],
-                    ...(editTpl.event_type === 'review_request' ? [['review_url','Review URL']] : []),
-                  ].map(([key, label]) => (
+                  {templateVariablesFor(editTpl.event_type).map(([key, label]) => (
                     <button key={key} type="button" onClick={() => insertVar(key)}
                       style={{ padding:'4px 10px', borderRadius:6, border:'1.5px solid #C7D2FE', background:'#EEF2FF', fontSize:11, fontWeight:600, color:'#4338CA', cursor:'pointer', fontFamily:"'Inter',sans-serif" }}>
                       {'{' + key + '}'} <span style={{ fontWeight:400, color:'#6366F1', fontSize:10 }}>{label}</span>

@@ -11,7 +11,7 @@ const {
 } = require('../utils/branchManagerCommission');
 const { allowsServiceWiseOverrides, hasFranchiseCommission } = require('../utils/tenantFeatures');
 const { recordCommissionTransactions } = require('../services/recordCommissionTransactions');
-const { notifyPaymentReceipt, notifyLoyaltyPoints } = require('../services/notificationService');
+const { notifyPaymentReceipt } = require('../services/notificationService');
 const { tenantWhere, byIdWhere, resolveTenantId } = require('../utils/tenantScope');
 const { slToday } = require('../utils/dateUtils');
 
@@ -343,14 +343,10 @@ const create = async (req, res) => {
         })(),
       ]);
       if (customer) {
-        const updatedPoints = (customer.loyalty_points || 0);
         notifyPaymentReceipt(
           { ...payment.toJSON(), splits: await PaymentSplit.findAll({ where: { payment_id: payment.id } }) },
           branch, service, customer, resolveTenantId(req)
         );
-        if (points_earned > 0) {
-          notifyLoyaltyPoints(customer, points_earned, updatedPoints, branch, resolveTenantId(req));
-        }
       }
     }
 

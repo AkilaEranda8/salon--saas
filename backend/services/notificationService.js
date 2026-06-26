@@ -136,20 +136,12 @@ async function getChannelFlags(tenantId = null) {
   }
 }
 
-// ── SMS credentials loader ──────────────────────────────────────────────────
-
 // ── Template helpers ──────────────────────────────────────────────────────────
-/**
- * Fetch a custom DB template for the given event + channel + tenantId.
- * Returns { subject, body } or null if no custom template is saved.
- */
-async function getTemplate(event_type, channel, tenantId) {
+function getDefaultTemplate(event_type, channel) {
   try {
-    const { MessageTemplate } = getModels();
-    const row = await MessageTemplate.findOne({
-      where: { event_type, channel, tenant_id: tenantId || null, is_active: true },
-    });
-    return row ? { subject: row.subject, body: row.body } : null;
+    const { DEFAULT_TEMPLATES } = require('../controllers/notificationController');
+    const def = DEFAULT_TEMPLATES[event_type]?.[channel];
+    return def ? { subject: def.subject || null, body: def.body } : null;
   } catch {
     return null;
   }
@@ -158,6 +150,23 @@ async function getTemplate(event_type, channel, tenantId) {
 /** Replace {variable} placeholders in a template string. */
 function interpolate(tpl, vars) {
   return tpl.replace(/\{(\w+)\}/g, (_, k) => (vars[k] != null ? vars[k] : `{${k}}`));
+}
+
+/**
+ * Fetch template for event + channel + tenantId.
+ * Custom DB row wins; otherwise returns default from Message Templates.
+ */
+async function getTemplate(event_type, channel, tenantId) {
+  try {
+    const { MessageTemplate } = getModels();
+    const row = await MessageTemplate.findOne({
+      where: { event_type, channel, tenant_id: tenantId || null, is_active: true },
+    });
+    if (row) return { subject: row.subject, body: row.body };
+    return getDefaultTemplate(event_type, channel);
+  } catch {
+    return getDefaultTemplate(event_type, channel);
+  }
 }
 
 // ── SMS credentials loader ──────────────────────────────────────────────────
@@ -545,6 +554,58 @@ async function notifyAppointmentCompleted(appointment, branch, service, tenantId
 }
 
 // ── 3. Payment Receipt ────────────────────────────────────────────────────────
+function buildPaymentReceiptVars(payment, branch, service, customer) {
+  const customerName = customer?.name || payment.customer_name || 'Valued Customer';
+  const brName       = branch?.name   || '—';
+  const svcName      = service?.name  || '—';
+  const paid         = parseFloat(payment.total_amount || 0);
+  const amount       = `Rs. ${paid.toFixed(2)}`;
+  const discount     = parseFloat(payment.loyalty_discount || 0);
+  const promoDisc    = parseFloat(payment.promo_discount || 0);
+  const pointsEarned = payment.points_earned || 0;
+  const pointsTotal  = customer?.loyalty_points ?? 0;
+  const date         = payment.date || new Date().toISOString().slice(0, 10);
+  const splits       = payment.splits || [];
+  const walkinToken  = payment.walkin_token || '';
+
+  const paymentMethods = splits.length
+    ? splits.map((s) => `${s.method}: Rs. ${parseFloat(s.amount).toFixed(2)}`).join('\n')
+    : '';
+
+  const loyaltyLines = [];
+  if (walkinToken) loyaltyLines.push(`🎫 Ticket: ${walkinToken}`);
+  if (promoDisc > 0) {
+    const pStr = promoDisc % 1 === 0 ? promoDisc.toFixed(0) : promoDisc.toFixed(2);
+    loyaltyLines.push(`🏷️ Promo discount: Rs. ${pStr}`);
+  }
+  if (discount > 0) {
+    const ptsUsed = Math.floor(discount);
+    const dStr = discount % 1 === 0 ? discount.toFixed(0) : discount.toFixed(2);
+    loyaltyLines.push(`🎁 Loyalty discount: Rs. ${dStr}${ptsUsed > 0 ? ` (-${ptsUsed} pts)` : ''}`);
+  }
+  if (pointsEarned > 0) loyaltyLines.push(`🌟 Points earned: +${pointsEarned}`);
+  if (pointsTotal > 0) loyaltyLines.push(`📊 Total points: ${pointsTotal} pts`);
+
+  const loyalty_section = loyaltyLines.length ? `\n${loyaltyLines.join('\n')}` : '';
+  const ticket_line = walkinToken ? `Ticket: ${walkinToken}\n` : '';
+
+  return {
+    customer_name: customerName,
+    branch_name: brName,
+    service_name: svcName,
+    date,
+    amount,
+    points_earned: String(pointsEarned),
+    points_total: String(pointsTotal),
+    loyalty_discount: discount > 0 ? `Rs. ${discount.toFixed(2)}` : '',
+    promo_discount: promoDisc > 0 ? `Rs. ${promoDisc.toFixed(2)}` : '',
+    walkin_token: walkinToken,
+    payment_methods: paymentMethods,
+    loyalty_section,
+    ticket_line,
+  };
+}
+
 async function notifyPaymentReceipt(payment, branch, service, customer, tenantId) {
   const tid = resolveNotifyTenantId(tenantId, payment, branch, customer);
   const flags = await getChannelFlags(tid);
@@ -552,17 +613,14 @@ async function notifyPaymentReceipt(payment, branch, service, customer, tenantId
   const email = customer?.email || null;
   if (!phone && !email) return;
 
-  const customerName = customer?.name || payment.customer_name || 'Valued Customer';
-  const brName       = branch?.name   || '—';
-  const brPhone      = branch?.phone  || '';
-  const svcName      = service?.name  || '—';
-  const total        = `Rs. ${parseFloat(payment.total_amount || 0).toFixed(2)}`;
-  const discount     = parseFloat(payment.loyalty_discount || 0);
+  const vars = buildPaymentReceiptVars(payment, branch, service, customer);
+  const brPhone = branch?.phone || '';
+  const discount = parseFloat(payment.loyalty_discount || 0);
   const pointsEarned = payment.points_earned || 0;
-  const date         = payment.date || new Date().toISOString().slice(0, 10);
-  const splits       = payment.splits || [];
-  const meta         = {
-    customer_name: customerName,
+  const splits = payment.splits || [];
+  const total = vars.amount;
+  const meta = {
+    customer_name: vars.customer_name,
     event_type:    'payment_receipt',
     branch_id:     branch?.id || payment.branch_id,
     tenant_id:     tid,
@@ -576,37 +634,36 @@ async function notifyPaymentReceipt(payment, branch, service, customer, tenantId
     const tpl = await getTemplate('payment_receipt', 'email', tid);
     let subject, bodyHtml;
     if (tpl) {
-      subject  = interpolate(tpl.subject || 'Payment Receipt — HEXAONE', { customer_name: customerName, branch_name: brName, date, service_name: svcName, amount: total });
-      bodyHtml = interpolate(tpl.body, { customer_name: customerName, branch_name: brName, date, service_name: svcName, amount: total });
+      subject  = interpolate(tpl.subject || 'Payment Receipt — HEXAONE', vars);
+      bodyHtml = interpolate(tpl.body, vars);
     } else {
       subject  = 'Payment Receipt — HEXAONE';
       bodyHtml = `
       <h2 style="margin:0 0 8px;font-size:22px;color:#7c3aed;">Payment Receipt 🧾</h2>
       <p style="margin:0 0 24px;font-size:15px;color:#475569;">
-        Hi <strong>${customerName}</strong>, thank you for your payment. Here's your receipt:
+        Hi <strong>${vars.customer_name}</strong>, here's your receipt:
       </p>
       <table width="100%" cellpadding="0" cellspacing="0">
-        ${detailRow('📅 Date',    date)}
-        ${detailRow('💇 Service', svcName)}
-        ${detailRow('🏠 Branch',  brName)}
+        ${detailRow('📅 Date',    vars.date)}
+        ${detailRow('💇 Service', vars.service_name)}
+        ${detailRow('🏠 Branch',  vars.branch_name)}
         ${splitRows}
-        ${discount > 0 ? detailRow('🎁 Loyalty Discount', `- Rs. ${discount.toFixed(2)}`) : ''}
+        ${discount > 0 ? detailRow('🎁 Loyalty Discount', `- ${vars.loyalty_discount}`) : ''}
         <tr>
           <td style="padding:14px 0 4px;font-size:16px;color:#1e293b;font-weight:700;border-top:2px solid #e2e8f0;" colspan="2">
-            Total Paid: <span style="float:right;color:#7c3aed;">Rs. ${parseFloat(payment.total_amount || 0).toFixed(2)}</span>
+            Total Paid: <span style="float:right;color:#7c3aed;">${total}</span>
           </td>
         </tr>
       </table>
       ${pointsEarned > 0 ? `
       <div style="margin:24px 0;padding:16px 20px;background:#f0fdf4;border-left:4px solid #22c55e;border-radius:4px;">
-        <p style="margin:0;font-size:14px;color:#166534;">🌟 You earned <strong>${pointsEarned} loyalty points</strong> on this visit!</p>
-      </div>` : ''}
-      <p style="margin:0;font-size:15px;color:#475569;">Thank you for visiting <strong>HEXAONE</strong>! 💜</p>`;
+        <p style="margin:0;font-size:14px;color:#166534;">🌟 You earned <strong>${pointsEarned} loyalty points</strong> — balance: <strong>${vars.points_total} pts</strong></p>
+      </div>` : ''}`;
     }
     await sendEmail({
       to:      email,
       subject,
-      html:    buildEmailWrapper(subject, bodyHtml, brName, brPhone),
+      html:    buildEmailWrapper(subject, bodyHtml, vars.branch_name, brPhone),
       meta,
       tenantId: tid,
     });
@@ -614,57 +671,17 @@ async function notifyPaymentReceipt(payment, branch, service, customer, tenantId
 
   if (phone && flags.payment_receipt_whatsapp) {
     const tpl = await getTemplate('payment_receipt', 'whatsapp', tid);
-    let msg;
-    if (tpl) {
-      msg = interpolate(tpl.body, { customer_name: customerName, branch_name: brName, date, service_name: svcName, amount: total });
-    } else {
-      msg =
-        `🧾 *HEXAONE — Payment Receipt*\n\n` +
-        `Hi ${customerName}! Payment confirmed:\n\n` +
-        `💇 Service: ${svcName}\n🏠 Branch: ${brName}\n📅 Date: ${date}\n💰 Total Paid: ${total}\n`;
-      if (discount > 0)     msg += `🎁 Loyalty Discount: Rs. ${discount.toFixed(2)}\n`;
-      if (pointsEarned > 0) msg += `\n🌟 You earned *${pointsEarned} loyalty points*!`;
-      msg += `\n\nThank you for choosing HEXAONE! 💜`;
-    }
+    const msg = tpl
+      ? interpolate(tpl.body, vars)
+      : `🧾 *${vars.branch_name} — Payment Receipt*\n\nHi ${vars.customer_name}!\n\n💇 Service: ${vars.service_name}\n🏠 Branch: ${vars.branch_name}\n📅 Date: ${vars.date}\n💰 Paid: ${vars.amount}${vars.payment_methods ? `\n💳 ${vars.payment_methods.replace(/\n/g, '\n💳 ')}` : ''}${vars.loyalty_section}`;
     await sendWhatsApp({ to: phone, message: msg, meta, tenantId: tid });
   }
 
   if (phone && flags.payment_receipt_sms) {
     const tpl = await getTemplate('payment_receipt', 'sms', tid);
-    let smsMsg;
-    if (tpl) {
-      smsMsg = interpolate(tpl.body, { customer_name: customerName, branch_name: brName, date, service_name: svcName, amount: total });
-    } else {
-      const paid        = parseFloat(payment.total_amount || 0);
-      const promoDisc   = parseFloat(payment.promo_discount || 0);
-      const totalDisc   = discount + promoDisc;
-      const grossBill   = paid + totalDisc;
-      const totalPts    = customer?.loyalty_points || 0;
-      const ticketLine  = payment.walkin_token ? `Ticket: ${payment.walkin_token}\n` : '';
-      smsMsg =
-        `HEXAONE - Receipt\n` +
-        `${ticketLine}` +
-        `Hi ${customerName}!\n` +
-        `Paid: Rs. ${paid.toFixed(2)}\n` +
-        `Service: ${svcName} | ${date}`;
-      if (totalDisc > 0) {
-        smsMsg += `\nBill: Rs. ${grossBill.toFixed(2)}`;
-        if (promoDisc > 0) {
-          const pStr = promoDisc % 1 === 0 ? promoDisc.toFixed(0) : promoDisc.toFixed(2);
-          smsMsg += `\nPromo -Rs.${pStr}`;
-        }
-        if (discount > 0) {
-          const ptsUsed = Math.floor(discount);
-          const dStr    = discount % 1 === 0 ? discount.toFixed(0) : discount.toFixed(2);
-          smsMsg += `\nLoyalty -Rs.${dStr} (-${ptsUsed} pts)`;
-        }
-      }
-      if (totalPts > 0) {
-        const earnedSuffix = pointsEarned > 0 ? ` (+${pointsEarned})` : '';
-        smsMsg += `\nTotal Points: ${totalPts} pts${earnedSuffix}`;
-      }
-      smsMsg += `\nThank you!`;
-    }
+    const smsMsg = tpl
+      ? interpolate(tpl.body, vars)
+      : `${vars.branch_name} - Receipt\n${vars.ticket_line}Hi ${vars.customer_name}!\nPaid: ${vars.amount}\nService: ${vars.service_name} | ${vars.date}${vars.loyalty_section}`;
     await sendSMS({ to: phone, message: smsMsg, meta });
   }
 }

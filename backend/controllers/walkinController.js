@@ -1,13 +1,16 @@
 const { Op } = require('sequelize');
 const { sequelize } = require('../config/database');
-const { WalkIn, Service, Staff } = require('../models');
+const { WalkIn, Service, Staff, Branch } = require('../models');
 const { emitQueueUpdate } = require('../socket');
 const { notifyBranch } = require('../services/fcmService');
+const { notifyWalkInCheckIn, notifyWalkInServing, notifyWalkInCompleted } = require('../services/notificationService');
 const { tenantWhere, resolveTenantId } = require('../utils/tenantScope');
 const { slToday } = require('../utils/dateUtils');
 
+const { parseQueryBranchId } = require('../utils/branchScope');
+
 function resolveBranchIdFromRequest(req, rawBranchId) {
-  const requested = rawBranchId != null ? Number(rawBranchId) : null;
+  const requested = parseQueryBranchId(rawBranchId);
   const userBranchId = req.userBranchId != null ? Number(req.userBranchId) : null;
 
   if (userBranchId) {
@@ -147,6 +150,11 @@ exports.checkin = async (req, res) => {
       branch_id: String(effectiveBranchId),
     });
 
+    if (full.phone) {
+      const branch = await Branch.findByPk(effectiveBranchId, { attributes: ['id', 'name', 'phone', 'tenant_id'] });
+      notifyWalkInCheckIn(full, branch, full.service, resolveTenantId(req));
+    }
+
     res.status(201).json(full);
   } catch (err) {
     if (err.status === 404) return res.status(404).json({ message: err.message });
@@ -182,6 +190,14 @@ exports.updateStatus = async (req, res) => {
 
     const full = await WalkIn.findByPk(id, { include: defaultInclude });
     emitQueueUpdate(entry.branch_id, { action: 'statusChange', entry: full });
+
+    if (full.phone && (status === 'serving' || status === 'completed')) {
+      const branch = await Branch.findByPk(entry.branch_id, { attributes: ['id', 'name', 'phone', 'tenant_id'] });
+      const tid = resolveTenantId(req) ?? entry.tenant_id;
+      if (status === 'serving') notifyWalkInServing(full, branch, full.service, tid);
+      else notifyWalkInCompleted(full, branch, full.service, tid);
+    }
+
     res.json(full);
   } catch (err) {
     console.error('walkin.updateStatus error:', err);
@@ -212,6 +228,12 @@ exports.assign = async (req, res) => {
 
     const full = await WalkIn.findByPk(id, { include: defaultInclude });
     emitQueueUpdate(entry.branch_id, { action: 'assign', entry: full });
+
+    if (full.phone) {
+      const branch = await Branch.findByPk(entry.branch_id, { attributes: ['id', 'name', 'phone', 'tenant_id'] });
+      notifyWalkInServing(full, branch, full.service, resolveTenantId(req) ?? entry.tenant_id);
+    }
+
     res.json(full);
   } catch (err) {
     console.error('walkin.assign error:', err);

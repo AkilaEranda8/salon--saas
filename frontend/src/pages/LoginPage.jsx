@@ -265,9 +265,9 @@ export default function LoginPage({ platformMode = false }) {
             transition: 'filter .35s',
           }}>
             <img
-              src="/kogo.png?v=3"
+              src="/kogo.png?v=6"
               alt="Hexaone"
-              style={{ width: 200, height: 200, objectFit: 'contain', display: 'block' }}
+              style={{ width: 240, height: 240, objectFit: 'contain', display: 'block' }}
             />
           </div>
           <p style={{

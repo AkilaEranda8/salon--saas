@@ -1,18 +1,69 @@
 const PDFDocument = require('pdfkit');
 const nodemailer = require('nodemailer');
+const fs = require('fs');
+const path = require('path');
+const { resolvePlanForInvoice } = require('../utils/planPricing');
 
-function formatMoney(amount, currency = 'USD') {
-  const num = Number(amount || 0);
-  return `${currency} ${num.toFixed(2)}`;
+const M = 40;
+const LOGO_W = 150;
+const LOGO_H = 100;
+
+function resolveInvoiceLogoPath() {
+  const candidates = [
+    process.env.INVOICE_LOGO_PATH,
+    path.join(__dirname, '../assets/hexaone-logo.png'),
+    path.join(__dirname, '../assets/invoice-logo.png'),
+    path.join(__dirname, '../../frontend/public/kogo.png'),
+  ].filter(Boolean);
+  return candidates.find((p) => fs.existsSync(p)) || null;
 }
 
-function formatDate(dateValue) {
-  if (!dateValue) return '-';
-  return new Date(dateValue).toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  });
+function drawCompanyLogo(doc, x, y, w = LOGO_W, h = LOGO_H) {
+  const logoPath = resolveInvoiceLogoPath();
+  if (!logoPath) {
+    doc.roundedRect(x, y, w, h, 6).lineWidth(1).strokeColor('#1E40AF').stroke();
+    doc.fillColor('#1E40AF').font('Helvetica-Bold').fontSize(10).text('HEXAONE', x + 12, y + h * 0.42);
+    return;
+  }
+  doc.image(logoPath, x, y, { fit: [w, h], align: 'left', valign: 'center' });
+}
+
+function fullWidthHr(doc, y, pageW, color = '#E5E7EB', weight = 0.75) {
+  doc.save().lineWidth(weight).strokeColor(color).moveTo(0, y).lineTo(pageW, y).stroke().restore();
+}
+
+function hr(doc, x, y, w, color = '#E5E7EB') {
+  doc.save().lineWidth(0.75).strokeColor(color).moveTo(x, y).lineTo(x + w, y).stroke().restore();
+}
+
+function getCompanyProfile() {
+  return {
+    name: process.env.INVOICE_COMPANY_NAME || process.env.COMPANY_NAME || 'Hexalyte Innovation (PVT) LTD',
+    tagline: process.env.INVOICE_COMPANY_TAGLINE || 'Salon Management Platform',
+    address: process.env.INVOICE_COMPANY_ADDRESS || 'Colombo, Sri Lanka',
+    phone: process.env.INVOICE_COMPANY_PHONE || '0703130100',
+    email: process.env.INVOICE_COMPANY_EMAIL || process.env.INVOICE_SUPPORT_EMAIL || process.env.EMAIL_USER || 'billing@hexalyte.com',
+    website: process.env.INVOICE_COMPANY_WEBSITE || 'www.hexalyte.com',
+    regNo: process.env.INVOICE_COMPANY_REG || '',
+  };
+}
+
+function formatLkr(amount) {
+  return `LKR ${Number(amount || 0).toLocaleString('en-LK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function formatAmt(amount) {
+  return Number(amount || 0).toLocaleString('en-LK', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function formatDate(d) {
+  if (!d) return '—';
+  return new Date(d).toLocaleDateString('en-LK', { year: 'numeric', month: 'long', day: 'numeric' });
+}
+
+function formatPeriod(start, end) {
+  if (!start && !end) return '—';
+  return `${start ? formatDate(start) : '—'} to ${end ? formatDate(end) : '—'}`;
 }
 
 function getEmailTransporter() {
@@ -21,184 +72,274 @@ function getEmailTransporter() {
     host: process.env.EMAIL_HOST || 'smtp.gmail.com',
     port: parseInt(process.env.EMAIL_PORT, 10) || 587,
     secure: false,
-    auth: {
-      user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASS,
-    },
+    auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
   });
 }
 
-async function generateInvoicePdfBuffer({ invoice, tenant }) {
-  return new Promise((resolve, reject) => {
-    const doc = new PDFDocument({ size: 'A4', margin: 40 });
-    const chunks = [];
+function statusStyle(status) {
+  const s = String(status || 'issued').toLowerCase();
+  if (s === 'paid') return { fill: '#ECFDF5', stroke: '#A7F3D0', text: '#047857' };
+  if (s === 'overdue') return { fill: '#FEF2F2', stroke: '#FECACA', text: '#B91C1C' };
+  if (s === 'draft') return { fill: '#F9FAFB', stroke: '#E5E7EB', text: '#6B7280' };
+  return { fill: '#EFF6FF', stroke: '#BFDBFE', text: '#1D4ED8' };
+}
 
-    doc.on('data', (chunk) => chunks.push(chunk));
+function sectionLabel(doc, text, x, y) {
+  doc.fillColor('#374151').font('Helvetica-Bold').fontSize(8).text(text, x, y, { characterSpacing: 0.6 });
+}
+
+function kvRow(doc, label, value, x, y, labelW, valueW, opts = {}) {
+  doc.fillColor(opts.labelColor || '#374151').font('Helvetica-Bold').fontSize(9).text(label, x, y, { width: labelW });
+  doc.fillColor(opts.valueColor || '#111827').font(opts.bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(9)
+    .text(value, x + labelW, y, { width: valueW, align: 'right' });
+}
+
+async function generateInvoicePdfBuffer({ invoice, tenant }) {
+  const company = getCompanyProfile();
+  const planDetails = invoice.plan ? await resolvePlanForInvoice(invoice.plan) : null;
+  const planLabel = planDetails?.label || invoice.plan || 'Subscription';
+
+  return new Promise((resolve, reject) => {
+    const doc = new PDFDocument({ size: 'A4', margin: 0, autoFirstPage: true });
+    const chunks = [];
+    const pageW = doc.page.width;
+    const W = pageW - M * 2;
+    const R = M + W;
+
+    doc.on('data', (c) => chunks.push(c));
     doc.on('end', () => resolve(Buffer.concat(chunks)));
     doc.on('error', reject);
 
-    const navy = '#0F274B';
-    const teal = '#64C9C6';
-    const gray = '#4B5563';
-    const lightGray = '#E5E7EB';
+    const ink = '#111827';
+    const sub = '#374151';
+    const label = '#374151';
+    const accent = '#1E40AF';
+    const accentSoft = '#EFF6FF';
 
-    const tenantName = tenant?.name || 'Salon';
     const invoiceNo = invoice.invoice_number || `INV-${invoice.id}`;
-    const amount = Number(invoice.amount || 0);
-    const tax = Number(invoice.additional_charges || 0);
+    const base = Number(invoice.base_price ?? invoice.amount ?? 0);
+    const extra = Number(invoice.additional_charges || 0);
     const discount = Number(invoice.discount || 0);
-    const subtotal = amount + discount - tax;
+    const total = Number(invoice.amount ?? (base + extra - discount));
+    const tenantName = tenant?.brand_name || tenant?.name || 'Customer';
+    const status = String(invoice.status || 'issued');
+    const st = statusStyle(status);
 
-    doc.rect(0, 0, doc.page.width, 28).fill(navy);
-    doc.polygon([0, 28], [22, 28], [0, 50]).fill(teal);
+    const colQty = R - 178;
+    const colUnit = R - 108;
+    const colTotal = R - M;
 
-    doc.fillColor('#111827').font('Helvetica-Bold').fontSize(38).text('INVOICE', 40, 58);
+    const LOGO_GAP = 16;
+    const textX = M + LOGO_W + LOGO_GAP;
+    const contactLines = [company.address, `Tel: ${company.phone}`, company.email, company.website];
+    const textBlockH = 18 + 13 + contactLines.length * 12;
+    const headerH = Math.max(LOGO_H + 16, textBlockH + 8);
+    const logoY = M + (headerH - LOGO_H) / 2;
+    const textY = M + (headerH - textBlockH) / 2;
 
-    doc.roundedRect(350, 55, 36, 36, 8).fill('#F4C542');
-    doc.fillColor('#FFFFFF').font('Helvetica-Bold').fontSize(20).text('z', 363, 63);
-    doc.fillColor(teal).font('Helvetica-Bold').fontSize(20).text('Hexa', 395, 61);
-    doc.fillColor(navy).font('Helvetica-Bold').fontSize(20).text('Salon', 395, 83);
+    // ═══ LETTERHEAD ═══════════════════════════════════════════════════════
+    drawCompanyLogo(doc, M, logoY, LOGO_W, LOGO_H);
 
-    doc.fillColor('#111827').font('Helvetica-Bold').fontSize(13).text('Bill To:', 40, 130);
-    doc.font('Helvetica').fontSize(11).fillColor(gray)
-      .text(`Client Name: ${tenantName}`, 40, 155)
-      .text(`Company Name: ${tenantName}`, 40, 173)
-      .text(`Billing Address: ${tenant?.slug || '-'} / HEXAONE`, 40, 191)
-      .text(`Phone: ${tenant?.phone || '-'}`, 40, 209)
-      .text(`Email: ${tenant?.email || '-'}`, 40, 227);
+    doc.fillColor(ink).font('Helvetica-Bold').fontSize(15).text(company.name, textX, textY, { width: W * 0.48 });
+    doc.fillColor(sub).font('Helvetica').fontSize(8.5).text(company.tagline, textX, textY + 18);
 
-    doc.fillColor('#111827').font('Helvetica-Bold').fontSize(11)
-      .text('Invoice Number:', 350, 165)
-      .text('Invoice Date:', 350, 183)
-      .text('Due Date:', 350, 201)
-      .text('Plan:', 350, 219);
-
-    doc.fillColor(gray).font('Helvetica').fontSize(11)
-      .text(invoiceNo, 455, 165)
-      .text(formatDate(invoice.issued_at || invoice.created_at || new Date()), 455, 183)
-      .text(formatDate(invoice.due_at), 455, 201)
-      .text(invoice.plan || '-', 455, 219);
-
-    doc.fillColor('#111827').font('Helvetica-Bold').fontSize(16).text('Service Details:', 40, 270);
-
-    const tableTop = 298;
-    const colX = [40, 80, 330, 420, 500];
-    doc.rect(40, tableTop, 515, 22).fill('#E9B949');
-    doc.fillColor('#111827').font('Helvetica-Bold').fontSize(10)
-      .text('No', colX[0] + 8, tableTop + 7)
-      .text('Description of Service', colX[1], tableTop + 7)
-      .text('Quantity', colX[2], tableTop + 7)
-      .text('Rate', colX[3], tableTop + 7)
-      .text('Total', colX[4], tableTop + 7);
-
-    const rows = [
-      {
-        no: '1',
-        desc: `Subscription - ${invoice.plan || 'Salon Plan'}`,
-        qty: '1',
-        rate: formatMoney(invoice.base_price || invoice.amount, invoice.currency || 'USD'),
-        total: formatMoney(invoice.amount, invoice.currency || 'USD'),
-      },
-    ];
-
-    rows.forEach((r, idx) => {
-      const y = tableTop + 22 + idx * 22;
-      doc.rect(40, y, 515, 22).fill(idx % 2 === 0 ? '#F9FAFB' : '#F3F4F6');
-      doc.fillColor('#111827').font('Helvetica').fontSize(10)
-        .text(r.no, colX[0] + 8, y + 7)
-        .text(r.desc, colX[1], y + 7)
-        .text(r.qty, colX[2], y + 7)
-        .text(r.rate, colX[3], y + 7)
-        .text(r.total, colX[4], y + 7);
+    let coY = textY + 32;
+    doc.font('Helvetica').fontSize(8.5).fillColor(sub);
+    contactLines.forEach((t) => {
+      doc.text(t, textX, coY, { width: W * 0.44 });
+      coY += 12;
     });
 
-    doc.fillColor('#111827').font('Helvetica-Bold').fontSize(12).text('Terms and Conditions:', 40, 395);
-    doc.fillColor(gray).font('Helvetica').fontSize(10)
-      .text('• Payment is due on receipt of this invoice.', 40, 417)
-      .text('• Late payments may incur additional charges.', 40, 433)
-      .text('• For support, contact HEXAONE billing support.', 40, 449);
+    doc.fillColor(ink).font('Helvetica-Bold').fontSize(28).text('Invoice', R - 180, M, { width: 180, align: 'right' });
 
-    doc.fillColor(gray).font('Helvetica').fontSize(11)
-      .text('Subtotal', 330, 408)
-      .text('Additional Charges', 330, 427)
-      .text('Discount', 330, 446);
+    const pillText = status.charAt(0).toUpperCase() + status.slice(1);
+    const pillW = doc.widthOfString(pillText, { font: 'Helvetica-Bold', fontSize: 8 }) + 20;
+    const pillY = M + 36;
+    doc.roundedRect(R - pillW, pillY, pillW, 18, 9).fill(st.fill).stroke(st.stroke);
+    doc.fillColor(st.text).font('Helvetica-Bold').fontSize(8)
+      .text(pillText, R - pillW, pillY + 5, { width: pillW, align: 'center' });
 
-    doc.fillColor('#111827').font('Helvetica-Bold').fontSize(11)
-      .text(formatMoney(subtotal, invoice.currency || 'USD'), 470, 408)
-      .text(formatMoney(tax, invoice.currency || 'USD'), 470, 427)
-      .text(`- ${formatMoney(discount, invoice.currency || 'USD')}`, 470, 446);
+    doc.fillColor(label).font('Helvetica-Bold').fontSize(9).text(`# ${invoiceNo}`, R - 180, pillY + 24, { width: 180, align: 'right' });
 
-    doc.moveTo(330, 468).lineTo(555, 468).lineWidth(1).stroke('#6B7280');
-    doc.fillColor('#111827').font('Helvetica-Bold').fontSize(12)
-      .text('Total Amount Due', 330, 476)
-      .text(formatMoney(amount, invoice.currency || 'USD'), 470, 476);
+    let y = M + headerH + 14;
+    fullWidthHr(doc, y, pageW, accent, 2.5);
+    y += 22;
 
-    doc.rect(0, 560, doc.page.width, 36).fill(navy);
-    doc.fillColor('#FFFFFF').font('Helvetica-Bold').fontSize(16)
-      .text('Payment Information:', 40, 571);
+    // ═══ BILLED TO + INVOICE DETAILS ══════════════════════════════════════
+    const colW = (W - 24) / 2;
 
-    doc.fillColor('#111827').font('Helvetica-Bold').fontSize(11)
-      .text('Payment Method: ', 40, 614)
-      .text('Due Date: ', 40, 632)
-      .text('Bank Account: ', 40, 650);
+    sectionLabel(doc, 'BILLED TO', M, y);
+    sectionLabel(doc, 'INVOICE DETAILS', M + colW + 24, y);
 
-    doc.fillColor(gray).font('Helvetica').fontSize(11)
-      .text('Bank Transfer', 130, 614)
-      .text(formatDate(invoice.due_at), 100, 632)
-      .text('1234-5678-9012-3456', 120, 650)
-      .text(`Date: ${formatDate(invoice.issued_at || invoice.created_at || new Date())}`, 430, 650);
+    y += 14;
+    doc.fillColor(ink).font('Helvetica-Bold').fontSize(11).text(tenantName, M, y, { width: colW });
+    doc.font('Helvetica').fontSize(9).fillColor(sub)
+      .text(tenant?.name || tenantName, M, y + 16, { width: colW })
+      .text(tenant?.email || '—', M, y + 30, { width: colW });
 
-    doc.fillColor('#111827').font('Helvetica-Bold').fontSize(14).text('Questions', 40, 684);
-    doc.fillColor('#111827').font('Helvetica-Bold').fontSize(10)
-      .text('Email US:', 40, 706)
-      .text('Call US:', 40, 724);
-    doc.fillColor(gray).font('Helvetica').fontSize(10)
-      .text(process.env.EMAIL_USER || 'billing@hexalyte.com', 92, 706)
-      .text('+94 11 000 0000', 84, 724);
+    const ix = M + colW + 24;
+    const iLabelW = 96;
+    const iValW = colW - iLabelW;
+    let iy = y;
+    [
+      ['Invoice number', invoiceNo],
+      ['Issue date', formatDate(invoice.issued_at || invoice.created_at || new Date())],
+      ['Due date', formatDate(invoice.due_at)],
+      ['Billing period', formatPeriod(invoice.billing_period_start, invoice.billing_period_end)],
+      ['Currency', 'LKR — Sri Lankan Rupee'],
+    ].forEach(([lbl, val]) => {
+      kvRow(doc, lbl, val, ix, iy, iLabelW, iValW, { bold: lbl === 'Invoice number', labelColor: label });
+      iy += 15;
+    });
 
-    doc.moveTo(430, 720).lineTo(535, 720).lineWidth(1).stroke('#6B7280');
-    doc.fillColor('#111827').font('Helvetica').fontSize(10).text('Authorized Signatory', 435, 728);
+    y += 78;
+    hr(doc, M, y, W);
+    y += 20;
 
-    doc.polygon([doc.page.width, doc.page.height - 24], [doc.page.width - 24, doc.page.height], [doc.page.width, doc.page.height]).fill(teal);
+    // ═══ LINE ITEMS ═══════════════════════════════════════════════════════
+    sectionLabel(doc, 'ITEMS', M, y);
+    y += 14;
+
+    doc.rect(M, y, W, 22).fill('#F9FAFB');
+    hr(doc, M, y, W);
+    hr(doc, M, y + 22, W);
+    doc.fillColor(label).font('Helvetica-Bold').fontSize(8)
+      .text('DESCRIPTION', M + 10, y + 7, { width: colQty - M - 16 })
+      .text('QTY', colQty, y + 7, { width: 32, align: 'center' })
+      .text('UNIT PRICE', colUnit, y + 7, { width: 62, align: 'right' })
+      .text('AMOUNT', colTotal, y + 7, { width: 62, align: 'right' });
+
+    y += 22;
+    const itemTitle = `${planLabel} Plan — Monthly Subscription`;
+    const itemSub = planDetails?.tagline || 'HexaSalon cloud platform access';
+    const rowH = 52;
+
+    doc.rect(M, y, W, rowH).fill('#FFFFFF');
+    hr(doc, M, y + rowH, W);
+    doc.fillColor(ink).font('Helvetica-Bold').fontSize(10).text(itemTitle, M + 10, y + 12, { width: colQty - M - 20 });
+    doc.fillColor(sub).font('Helvetica').fontSize(8.5).text(itemSub, M + 10, y + 28, { width: colQty - M - 20 });
+
+    const rMid = y + rowH / 2 - 4;
+    doc.fillColor(ink).font('Helvetica').fontSize(9)
+      .text('1', colQty, rMid, { width: 32, align: 'center' })
+      .text(formatAmt(base), colUnit, rMid, { width: 62, align: 'right' })
+      .text(formatAmt(base), colTotal, rMid, { width: 62, align: 'right' });
+
+    y += rowH + 18;
+
+    // ═══ TOTALS ═══════════════════════════════════════════════════════════
+    const sumW = 240;
+    const sumX = R - sumW;
+    const sumRows = [
+      ['Subtotal', formatLkr(base)],
+      ['Additional charges', formatLkr(extra)],
+      ['Discount', discount > 0 ? `− ${formatLkr(discount)}` : formatLkr(0)],
+    ];
+
+    sumRows.forEach(([lbl, val], i) => {
+      kvRow(doc, lbl, val, sumX, y + i * 17, 130, sumW - 130, { labelColor: label });
+    });
+
+    y += sumRows.length * 16 + 8;
+    hr(doc, sumX, y, sumW);
+    y += 10;
+
+    doc.fillColor(ink).font('Helvetica-Bold').fontSize(10).text('Amount due', sumX, y);
+    doc.fillColor(accent).font('Helvetica-Bold').fontSize(14)
+      .text(formatLkr(total), sumX, y - 2, { width: sumW, align: 'right' });
+
+    y += 28;
+
+    // ═══ PAYMENT INFORMATION ══════════════════════════════════════════════
+    sectionLabel(doc, 'PAYMENT INFORMATION', M, y);
+    y += 14;
+
+    const bankName = process.env.INVOICE_BANK_NAME || 'Commercial Bank';
+    const bankAccount = process.env.INVOICE_BANK_ACCOUNT || '2000124779';
+    const accountName = process.env.INVOICE_ACCOUNT_NAME || 'Akila Eranda Gankewela';
+    const swiftCode = process.env.INVOICE_BANK_SWIFT || 'CCEYLKLX';
+
+    doc.roundedRect(M, y, W, 88, 6).fill(accentSoft).stroke('#BFDBFE');
+    doc.fillColor('#1E3A8A').font('Helvetica-Bold').fontSize(9)
+      .text('Bank transfer — please use the invoice number as your payment reference.', M + 16, y + 12, { width: W - 32 });
+
+    const payCol = (W - 32) / 2;
+    const payY = y + 30;
+    const payFields = [
+      ['Account name', accountName],
+      ['Bank', bankName],
+      ['Account number', bankAccount],
+      ['SWIFT / BIC', swiftCode],
+    ];
+    payFields.forEach(([lbl, val], i) => {
+      const px = M + 16 + (i % 2) * payCol;
+      const py = payY + Math.floor(i / 2) * 26;
+      doc.fillColor(label).font('Helvetica-Bold').fontSize(8).text(lbl.toUpperCase(), px, py);
+      doc.fillColor(ink).font('Helvetica-Bold').fontSize(9.5).text(val, px, py + 11, { width: payCol - 12 });
+    });
+
+    y += 102;
+
+    // ═══ FOOTER ═══════════════════════════════════════════════════════════
+    fullWidthHr(doc, y, pageW);
+    y += 14;
+    doc.fillColor(sub).font('Helvetica').fontSize(8.5)
+      .text(
+        'Thank you for choosing HexaSalon. If you have any questions about this invoice, please contact us.',
+        M,
+        y,
+        { width: W, align: 'center', lineGap: 2 },
+      );
+    doc.fillColor(label).font('Helvetica-Bold').fontSize(8)
+      .text(`${company.name}  ·  ${company.email}  ·  ${company.website}`, M, y + 22, { width: W, align: 'center' });
 
     doc.end();
   });
 }
 
 async function sendInvoiceEmail({ to, invoice, tenant, pdfBuffer }) {
+  const company = getCompanyProfile();
   const transporter = getEmailTransporter();
-  if (!transporter) {
-    throw new Error('Email configuration is missing (EMAIL_USER / EMAIL_PASS).');
-  }
+  if (!transporter) throw new Error('Email configuration is missing (EMAIL_USER / EMAIL_PASS).');
 
-  const subject = `Invoice ${invoice.invoice_number || `INV-${invoice.id}`} - ${tenant?.name || 'HEXAONE'}`;
+  const subject = `Invoice ${invoice.invoice_number || `INV-${invoice.id}`} — ${formatLkr(invoice.amount)}`;
   const html = `
-    <div style="font-family:Arial,sans-serif;color:#111827;line-height:1.6">
-      <h2 style="margin:0 0 8px;color:#0F274B">Invoice ${invoice.invoice_number || `INV-${invoice.id}`}</h2>
-      <p>Hello,</p>
-      <p>Please find your invoice attached as a PDF.</p>
-      <p><strong>Amount:</strong> ${formatMoney(invoice.amount, invoice.currency || 'USD')}</p>
-      <p><strong>Due Date:</strong> ${formatDate(invoice.due_at)}</p>
-      <p>Thank you,<br/>HEXAONE Billing</p>
-    </div>
-  `;
+    <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;max-width:520px;margin:0 auto;color:#111827">
+      <div style="padding:28px 32px 24px;border-bottom:3px solid #1E40AF">
+        <div style="font-size:11px;font-weight:600;color:#1E40AF;letter-spacing:0.06em;text-transform:uppercase">Hexalyte Innovation</div>
+        <h1 style="margin:8px 0 0;font-size:22px;font-weight:700">${company.name}</h1>
+      </div>
+      <div style="padding:28px 32px">
+        <p style="margin:0 0 16px;font-size:15px">Hello ${tenant?.name || 'there'},</p>
+        <p style="margin:0 0 20px;font-size:14px;color:#6B7280;line-height:1.6">Your subscription invoice is attached. Summary below:</p>
+        <table style="width:100%;border-collapse:collapse;font-size:14px;margin-bottom:24px">
+          <tr><td style="padding:8px 0;color:#9CA3AF;border-bottom:1px solid #F3F4F6">Invoice</td>
+              <td style="padding:8px 0;text-align:right;font-weight:600;border-bottom:1px solid #F3F4F6">${invoice.invoice_number || `INV-${invoice.id}`}</td></tr>
+          <tr><td style="padding:8px 0;color:#9CA3AF;border-bottom:1px solid #F3F4F6">Amount due</td>
+              <td style="padding:8px 0;text-align:right;font-weight:700;color:#1E40AF;border-bottom:1px solid #F3F4F6">${formatLkr(invoice.amount)}</td></tr>
+          <tr><td style="padding:8px 0;color:#9CA3AF">Due date</td>
+              <td style="padding:8px 0;text-align:right;font-weight:600">${formatDate(invoice.due_at)}</td></tr>
+        </table>
+        <p style="margin:0;font-size:14px;color:#6B7280">Best regards,<br><strong style="color:#111827">${company.name}</strong></p>
+      </div>
+    </div>`;
 
   await transporter.sendMail({
-    from: process.env.EMAIL_FROM || `HEXAONE <${process.env.EMAIL_USER}>`,
+    from: process.env.EMAIL_FROM || `${company.name} <${process.env.EMAIL_USER}>`,
     to,
     subject,
     html,
-    attachments: [
-      {
-        filename: `${invoice.invoice_number || `invoice-${invoice.id}`}.pdf`,
-        content: pdfBuffer,
-        contentType: 'application/pdf',
-      },
-    ],
+    attachments: [{
+      filename: `${invoice.invoice_number || `invoice-${invoice.id}`}.pdf`,
+      content: pdfBuffer,
+      contentType: 'application/pdf',
+    }],
   });
 }
 
 module.exports = {
   generateInvoicePdfBuffer,
   sendInvoiceEmail,
+  formatLkr,
+  getCompanyProfile,
 };

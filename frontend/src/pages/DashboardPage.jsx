@@ -5,6 +5,7 @@ import {
   PieChart, Pie, Cell,
 } from 'recharts';
 import { useAuth }       from '../context/AuthContext';
+import { useBranch }     from '../context/BranchContext';
 import api               from '../api/axios';
 import PageWrapper       from '../components/layout/PageWrapper';
 import { useBreakpoint } from '../hooks/useBreakpoint';
@@ -34,6 +35,11 @@ const STATUS_COLOR = {
 
 const PIE_COLORS   = ['#2563EB', '#F59E0B', '#10B981', '#EF4444'];
 const MONTHS_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+const apptCustomerName = (a) => a?.customer?.name || a?.customer_name || 'Customer';
+
+const sortApptsByTimeAsc = (rows) =>
+  [...rows].sort((a, b) => String(a.time || '').localeCompare(String(b.time || '')));
 
 /*─── sub-components ────────────────────────────────────────────*/
 
@@ -195,7 +201,7 @@ function LowStockCard({ items, loading, onClick }) {
         transform: hov && count > 0 ? 'translateY(-2px)' : 'translateY(0)',
         transition: 'all 0.2s ease',
         cursor: count > 0 ? 'pointer' : 'default',
-        background: count > 0 ? (hov ? '#FFF7F7' : '#FFF9F9') : '#fff',
+        ...(count > 0 ? { background: hov ? '#FFF7F7' : '#FFF9F9' } : {}),
       }}>
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start' }}>
         <span style={{ fontSize:11, fontWeight:700, color:'#98A2B3', textTransform:'uppercase', letterSpacing:'0.06em' }}>Low Stock</span>
@@ -229,6 +235,7 @@ function LowStockCard({ items, loading, onClick }) {
 /*  main component  */
 export default function DashboardPage() {
   const { user }        = useAuth();
+  const { branchFilterKey } = useBranch();
   const navigate        = useNavigate();
   const { toast }       = useToast();
   const { isMobile }    = useBreakpoint();
@@ -270,7 +277,8 @@ export default function DashboardPage() {
       ]);
 
       setStats(dashRes.data);
-      setAppts(apptRes.data.data || apptRes.data || []);
+      const apptRows = apptRes.data.data || apptRes.data || [];
+      setAppts(sortApptsByTimeAsc(Array.isArray(apptRows) ? apptRows : []));
       setReminders(Array.isArray(remRes.data) ? remRes.data.slice(0,6) : (remRes.data?.data||[]).slice(0,6));
       setServices((svcRes.data||[]).slice(0,8));
 
@@ -324,7 +332,7 @@ export default function DashboardPage() {
     } finally {
       setLoading(false);
     }
-  }, [month]);
+  }, [month, branchFilterKey]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -370,8 +378,8 @@ export default function DashboardPage() {
     {
       id: 'customer',
       header: 'Customer',
-      accessorFn: row => row.customer?.name,
-      cell: ({ row: { original: a } }) => <span style={{ fontWeight: 600 }}>{a.customer?.name || ''}</span>,
+      accessorFn: row => apptCustomerName(row),
+      cell: ({ row: { original: a } }) => <span style={{ fontWeight: 600 }}>{apptCustomerName(a)}</span>,
     },
     { id: 'service', header: 'Service', accessorFn: row => row.service?.name, cell: ({ row: { original: a } }) => a.service?.name || '' },
     { id: 'staff', header: 'Staff', accessorFn: row => row.staff?.name, cell: ({ row: { original: a } }) => a.staff?.name || '' },
@@ -547,10 +555,10 @@ export default function DashboardPage() {
             return (
               <div key={a.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 0', borderBottom:'1px solid #F9FAFB' }}>
                 <div style={{ width:36, height:36, borderRadius:10, background:'#EFF6FF', display:'flex', alignItems:'center', justifyContent:'center', fontWeight:700, fontSize:13, color:'#2563EB', flexShrink:0 }}>
-                  {a.customer?.name?.[0]?.toUpperCase() || '?'}
+                  {(apptCustomerName(a)[0] || '?').toUpperCase()}
                 </div>
                 <div style={{ flex:1, minWidth:0 }}>
-                  <div style={{ fontSize:13, fontWeight:600, color:'#111827', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{a.customer?.name || 'Customer'}</div>
+                  <div style={{ fontSize:13, fontWeight:600, color:'#111827', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{apptCustomerName(a)}</div>
                   <div style={{ fontSize:11, color:'#9CA3AF' }}>{a.service?.name || ''} · {a.time || ''}</div>
                 </div>
                 <span style={{ fontSize:10, padding:'3px 8px', borderRadius:20, background:sc.bg, color:sc.text, fontWeight:700, flexShrink:0, textTransform:'capitalize' }}>

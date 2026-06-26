@@ -34,6 +34,10 @@ function getAdmin() {
  * @param {string} body   - Notification body
  * @param {object} data   - Optional key-value data payload (string values only)
  */
+function isPushConfigured() {
+  return Boolean(getAdmin());
+}
+
 async function sendToToken(token, title, body, data = {}) {
   const admin = getAdmin();
   if (!admin) return;
@@ -53,6 +57,7 @@ async function sendToToken(token, title, body, data = {}) {
         notification: {
           channelId: 'appointment_reminders',
           sound: 'default',
+          icon: 'ic_notification',
         },
       },
       apns: {
@@ -147,4 +152,58 @@ async function notifyBranch(branchId, title, body, data = {}) {
   }
 }
 
-module.exports = { sendToToken, sendToTokens, notifyBranch, notifyStaffUser };
+/**
+ * Send a test push and return per-token results (for admin test endpoint).
+ */
+async function sendTestPush(tokens, title, body, data = {}) {
+  const admin = getAdmin();
+  if (!admin) {
+    return { configured: false, sent: 0, failed: 0, results: [] };
+  }
+  if (!tokens?.length) {
+    return { configured: true, sent: 0, failed: 0, results: [] };
+  }
+
+  const stringData = {};
+  for (const [k, v] of Object.entries(data)) {
+    stringData[k] = String(v);
+  }
+
+  const results = await Promise.all(tokens.map(async (token) => {
+    try {
+      await admin.messaging().send({
+        token,
+        notification: { title, body },
+        data: stringData,
+        android: {
+          priority: 'high',
+          notification: { channelId: 'appointment_reminders', sound: 'default', icon: 'ic_notification' },
+        },
+        apns: { payload: { aps: { sound: 'default', badge: 1 } } },
+      });
+      console.log(`[FCM] Test sent to token: ${token.slice(0, 20)}...`);
+      return { ok: true };
+    } catch (err) {
+      console.error('[FCM] Test send failed:', err.message);
+      if (
+        err.code === 'messaging/invalid-registration-token' ||
+        err.code === 'messaging/registration-token-not-registered'
+      ) {
+        await removeStaleToken(token);
+      }
+      return { ok: false, error: err.message };
+    }
+  }));
+
+  const sent = results.filter((r) => r.ok).length;
+  return { configured: true, sent, failed: results.length - sent, results };
+}
+
+module.exports = {
+  sendToToken,
+  sendToTokens,
+  notifyBranch,
+  notifyStaffUser,
+  isPushConfigured,
+  sendTestPush,
+};

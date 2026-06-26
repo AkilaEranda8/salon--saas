@@ -22,46 +22,8 @@
 
 const cron        = require('node-cron');
 const { Op }      = require('sequelize');
-const { Subscription, PlatformInvoice, Tenant, PlanConfig } = require('../models');
-
-// ── Price resolution helpers ──────────────────────────────────────────────────
-
-const PLAN_PRICE_DEFAULTS = {
-  basic:      5000,
-  pro:       10000,
-  enterprise: 20000,
-};
-
-/**
- * Try to extract a numeric price from a PlanConfig row.
- * `price_display` is typically something like "LKR 2,999" or "$49.99/mo".
- */
-function parsePriceDisplay(str) {
-  if (!str) return null;
-  // Strip currency symbols / letters, keep digits and decimal point
-  const clean = str.replace(/[^0-9.]/g, '');
-  const v = parseFloat(clean);
-  return isNaN(v) || v <= 0 ? null : v;
-}
-
-async function getPlanPrice(planKey) {
-  // 1. Env override
-  const envKey = `PLAN_PRICE_${(planKey || '').toUpperCase()}`;
-  if (process.env[envKey]) {
-    const v = parseFloat(process.env[envKey]);
-    if (!isNaN(v) && v > 0) return v;
-  }
-  // 2. PlanConfig table
-  try {
-    const cfg = await PlanConfig.findOne({ where: { key: planKey } });
-    if (cfg) {
-      const v = parsePriceDisplay(cfg.price_display);
-      if (v) return v;
-    }
-  } catch (_) { /* ignore */ }
-  // 3. Hardcoded fallback
-  return PLAN_PRICE_DEFAULTS[planKey] || 0;
-}
+const { Subscription, PlatformInvoice, Tenant } = require('../models');
+const { getPlanPrice } = require('../utils/planPricing');
 
 // ── Core logic ────────────────────────────────────────────────────────────────
 

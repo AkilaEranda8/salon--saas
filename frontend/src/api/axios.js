@@ -61,8 +61,11 @@ api.interceptors.request.use(async (config) => {
   const branchId = getBranchFilterId();
   const url = config.url || '';
   const skipBranch = BRANCH_FILTER_SKIP.some((p) => url.includes(p));
-  if (branchId && !skipBranch) {
-    config.params = { ...(config.params || {}), branchId };
+  const params = config.params || {};
+  const hasBranchParam = params.branchId != null;
+  const hasBranchInUrl = /[?&]branchId=/.test(url);
+  if (branchId && !skipBranch && !hasBranchParam && !hasBranchInUrl) {
+    config.params = { ...params, branchId };
   }
 
   return config;

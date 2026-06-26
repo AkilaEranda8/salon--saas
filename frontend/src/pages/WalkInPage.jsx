@@ -186,7 +186,7 @@ export default function WalkInPage() {
 
   useEffect(() => {
     if (!selectedBranch) return;
-    api.get(`/staff?branchId=${selectedBranch}&limit=500`).then((r) => setStaffList(r.data.data || r.data || [])).catch(() => {});
+    api.get('/staff', { params: { branchId: selectedBranch, limit: 500 } }).then((r) => setStaffList(r.data.data || r.data || [])).catch(() => {});
   }, [selectedBranch]);
 
   /*  Fetch queue + stats  */
@@ -195,8 +195,8 @@ export default function WalkInPage() {
     setLoading(true); setError('');
     try {
       const [qRes, sRes] = await Promise.all([
-        api.get(`/walkin?branchId=${selectedBranch}`),
-        api.get(`/walkin/stats?branchId=${selectedBranch}`),
+        api.get('/walkin', { params: { branchId: selectedBranch } }),
+        api.get('/walkin/stats', { params: { branchId: selectedBranch } }),
       ]);
       setQueue(qRes.data || []);
       setStats(sRes.data || { waiting: 0, serving: 0, completed: 0, cancelled: 0, total: 0 });

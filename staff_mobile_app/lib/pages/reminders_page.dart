@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../state/app_state.dart';
+
 // ── Palette ───────────────────────────────────────────────────────────────────
 const Color _forest  = Color(0xFF1B3A2D);
 const Color _emerald = Color(0xFF2D6A4F);
@@ -43,13 +45,42 @@ class RemindersPage extends StatefulWidget {
 }
 
 class _RemindersPageState extends State<RemindersPage> {
-  final List<_Reminder> _items = [
-    _Reminder(text: 'Call Ayesha about tomorrow booking',
-        priority: _Priority.high, addedAt: DateTime.now()),
-    _Reminder(text: 'Check payment pending list',
-        priority: _Priority.medium, addedAt: DateTime.now()),
-  ];
+  final List<_Reminder> _items = [];
   _Filter _filter = _Filter.all;
+  bool _loading = true;
+  String _error = '';
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+  }
+
+  Future<void> _load({bool silent = false}) async {
+    if (!mounted) return;
+    if (!silent) setState(() { _loading = true; _error = ''; });
+    try {
+      final app = AppStateScope.of(context);
+      final rows = await app.loadReminders();
+      if (mounted) {
+        setState(() {
+          _items
+            ..clear()
+            ..addAll(rows.map(_Reminder.fromJson));
+        });
+      }
+    } catch (e) {
+      if (mounted && !silent) {
+        setState(() => _error = e.toString().replaceFirst('Exception: ', ''));
+      }
+    }
+    if (mounted) setState(() => _loading = false);
+  }
+
+  bool get _canDelete {
+    final r = AppStateScope.of(context).currentUser?.role ?? '';
+    return ['superadmin', 'admin', 'manager'].contains(r);
+  }
 
   List<_Reminder> get _filtered {
     switch (_filter) {
@@ -62,24 +93,73 @@ class _RemindersPageState extends State<RemindersPage> {
   int get _pendingCount => _items.where((r) => !r.done).length;
   int get _doneCount    => _items.where((r) => r.done).length;
 
-  void _toggle(int id) =>
-      setState(() => _items.firstWhere((r) => r.id == id).done =
-          !_items.firstWhere((r) => r.id == id).done);
+  Future<void> _toggle(int id) async {
+    final app = AppStateScope.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    final ok = await app.toggleReminder(id);
+    if (!mounted) return;
+    if (ok) {
+      await _load(silent: true);
+    } else {
+      messenger.showSnackBar(
+        SnackBar(content: Text(app.lastError ?? 'Failed to update reminder')),
+      );
+    }
+  }
 
-  void _delete(int id) =>
-      setState(() => _items.removeWhere((r) => r.id == id));
+  Future<void> _delete(int id) async {
+    if (!_canDelete) return;
+    final app = AppStateScope.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    final ok = await app.deleteReminder(id);
+    if (!mounted) return;
+    if (ok) {
+      await _load(silent: true);
+    } else {
+      messenger.showSnackBar(
+        SnackBar(content: Text(app.lastError ?? 'Failed to delete reminder')),
+      );
+    }
+  }
 
-  void _clearDone() =>
-      setState(() => _items.removeWhere((r) => r.done));
+  Future<void> _clearDone() async {
+    if (!_canDelete || !mounted) return;
+    final doneIds = _items.where((r) => r.done).map((r) => r.id).toList();
+    final app = AppStateScope.of(context);
+    for (final id in doneIds) {
+      await app.deleteReminder(id);
+      if (!mounted) return;
+    }
+    await _load(silent: true);
+  }
 
   Future<void> _openAdd() async {
-    final result = await showModalBottomSheet<_Reminder>(
+    final result = await showModalBottomSheet<_NewReminderPayload>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (_) => const _AddReminderSheet(),
     );
-    if (result != null) setState(() => _items.insert(0, result));
+    if (result == null || !mounted) return;
+    final app = AppStateScope.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    final ok = await app.createReminder(
+      title: result.title,
+      priority: _Reminder.priorityToApi(result.priority),
+      dueDate: result.dueDate,
+    );
+    if (!mounted) return;
+    if (ok) {
+      await _load(silent: true);
+      if (!mounted) return;
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Reminder saved — staff notified')),
+      );
+    } else {
+      messenger.showSnackBar(
+        SnackBar(content: Text(app.lastError ?? 'Failed to save reminder')),
+      );
+    }
   }
 
   @override
@@ -93,7 +173,17 @@ class _RemindersPageState extends State<RemindersPage> {
           _buildHeader(),
           _buildFilterTabs(),
           Expanded(
-            child: list.isEmpty ? _buildEmpty() : _buildList(list),
+            child: _loading
+                ? const Center(child: CircularProgressIndicator(color: _forest))
+                : _error.isNotEmpty && _items.isEmpty
+                    ? _buildError()
+                    : list.isEmpty
+                        ? _buildEmpty()
+                        : RefreshIndicator(
+                            color: _forest,
+                            onRefresh: _load,
+                            child: _buildList(list),
+                          ),
           ),
         ]),
         floatingActionButton: Padding(
@@ -163,7 +253,7 @@ class _RemindersPageState extends State<RemindersPage> {
                     fontWeight: FontWeight.w800, letterSpacing: -0.3)),
               ]),
             ),
-            if (_doneCount > 0)
+            if (_canDelete && _doneCount > 0)
               GestureDetector(
                 onTap: _clearDone,
                 child: Container(
@@ -296,7 +386,19 @@ class _RemindersPageState extends State<RemindersPage> {
     itemBuilder: (ctx, i) => _ReminderCard(
       reminder: list[i],
       onToggle: () => _toggle(list[i].id),
-      onDelete: () => _delete(list[i].id),
+      onDelete: _canDelete ? () => _delete(list[i].id) : null,
+    ),
+  );
+
+  Widget _buildError() => Center(
+    child: Padding(
+      padding: const EdgeInsets.all(24),
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        Text(_error, textAlign: TextAlign.center,
+          style: const TextStyle(color: _muted, fontSize: 14)),
+        const SizedBox(height: 12),
+        TextButton(onPressed: _load, child: const Text('Retry')),
+      ]),
     ),
   );
 
@@ -339,10 +441,11 @@ class _ReminderCard extends StatelessWidget {
   const _ReminderCard({
     required this.reminder,
     required this.onToggle,
-    required this.onDelete,
+    this.onDelete,
   });
   final _Reminder reminder;
-  final VoidCallback onToggle, onDelete;
+  final VoidCallback onToggle;
+  final VoidCallback? onDelete;
 
   String _timeAgo(DateTime dt) {
     final diff = DateTime.now().difference(dt);
@@ -438,23 +541,32 @@ class _ReminderCard extends StatelessWidget {
                     style: const TextStyle(
                       color: _muted, fontSize: 11,
                       fontWeight: FontWeight.w500)),
+                  if (r.dueDate != null && r.dueDate!.isNotEmpty) ...[
+                    const SizedBox(width: 8),
+                    Icon(Icons.event_rounded, size: 11, color: _muted),
+                    const SizedBox(width: 3),
+                    Text(r.dueDate!,
+                      style: const TextStyle(
+                        color: _muted, fontSize: 11,
+                        fontWeight: FontWeight.w500)),
+                  ],
                 ]),
               ],
             ),
           ),
 
-          // Delete
-          GestureDetector(
-            onTap: onDelete,
-            child: Container(
-              width: 32, height: 32,
-              decoration: BoxDecoration(
-                color: const Color(0xFFFEF2F2),
-                borderRadius: BorderRadius.circular(8)),
-              child: const Icon(Icons.delete_outline_rounded,
-                  size: 15, color: Color(0xFFEF4444)),
+          if (onDelete != null)
+            GestureDetector(
+              onTap: onDelete,
+              child: Container(
+                width: 32, height: 32,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFEF2F2),
+                  borderRadius: BorderRadius.circular(8)),
+                child: const Icon(Icons.delete_outline_rounded,
+                    size: 15, color: Color(0xFFEF4444)),
+              ),
             ),
-          ),
 
         ]),
       ),
@@ -474,6 +586,7 @@ class _AddReminderSheet extends StatefulWidget {
 class _AddReminderSheetState extends State<_AddReminderSheet> {
   final _ctrl = TextEditingController();
   _Priority _priority = _Priority.medium;
+  String? _dueDate;
 
   @override
   void dispose() { _ctrl.dispose(); super.dispose(); }
@@ -481,10 +594,10 @@ class _AddReminderSheetState extends State<_AddReminderSheet> {
   void _submit() {
     final text = _ctrl.text.trim();
     if (text.isEmpty) return;
-    Navigator.of(context).pop(_Reminder(
-      text: text,
+    Navigator.of(context).pop(_NewReminderPayload(
+      title: text,
       priority: _priority,
-      addedAt: DateTime.now(),
+      dueDate: _dueDate,
     ));
   }
 
@@ -589,6 +702,53 @@ class _AddReminderSheetState extends State<_AddReminderSheet> {
 
           const SizedBox(height: 16),
 
+          const _FieldLabel('DUE DATE (OPTIONAL)'),
+          GestureDetector(
+            onTap: () async {
+              final picked = await showDatePicker(
+                context: context,
+                initialDate: DateTime.now(),
+                firstDate: DateTime.now().subtract(const Duration(days: 1)),
+                lastDate: DateTime.now().add(const Duration(days: 365 * 3)),
+              );
+              if (picked != null) {
+                setState(() {
+                  _dueDate =
+                      '${picked.year}-${picked.month.toString().padLeft(2, '0')}-${picked.day.toString().padLeft(2, '0')}';
+                });
+              }
+            },
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF9FAFB),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: _border),
+              ),
+              child: Row(children: [
+                const Icon(Icons.calendar_today_rounded, color: _forest, size: 16),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    _dueDate ?? 'Tap to pick a due date',
+                    style: TextStyle(
+                      color: _dueDate == null ? const Color(0xFFB0B8B0) : _ink,
+                      fontSize: 14,
+                    ),
+                  ),
+                ),
+                if (_dueDate != null)
+                  GestureDetector(
+                    onTap: () => setState(() => _dueDate = null),
+                    child: const Icon(Icons.close_rounded, size: 16, color: _muted),
+                  ),
+              ]),
+            ),
+          ),
+
+          const SizedBox(height: 16),
+
           // Priority selector
           const _FieldLabel('PRIORITY'),
           Row(children: _Priority.values.map((p) {
@@ -678,17 +838,45 @@ class _FieldLabel extends StatelessWidget {
 }
 
 // ── Model ─────────────────────────────────────────────────────────────────────
-class _Reminder {
-  static int _nextId = 1;
-  _Reminder({
-    required this.text,
+class _NewReminderPayload {
+  const _NewReminderPayload({
+    required this.title,
     required this.priority,
-    required this.addedAt,
-  }) : id = _nextId++;
+    this.dueDate,
+  });
+
+  final String title;
+  final _Priority priority;
+  final String? dueDate;
+}
+
+class _Reminder {
+  _Reminder.fromJson(Map<String, dynamic> json)
+      : id = json['id'] is int ? json['id'] as int : int.tryParse('${json['id']}') ?? 0,
+        text = json['title']?.toString() ?? '',
+        priority = priorityFromApi(json['priority']?.toString()),
+        dueDate = json['due_date']?.toString(),
+        done = json['is_done'] == true,
+        addedAt = DateTime.tryParse(json['createdAt']?.toString() ?? '') ?? DateTime.now();
 
   final int id;
   final String text;
   final _Priority priority;
+  final String? dueDate;
+  bool done;
   final DateTime addedAt;
-  bool done = false;
+
+  static _Priority priorityFromApi(String? value) {
+    switch (value?.toLowerCase()) {
+      case 'high':
+        return _Priority.high;
+      case 'low':
+        return _Priority.low;
+      default:
+        return _Priority.medium;
+    }
+  }
+
+  static String priorityToApi(_Priority priority) =>
+      const ['low', 'medium', 'high'][priority.index];
 }

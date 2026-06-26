@@ -23,6 +23,8 @@ const NAV = [
   { label: 'SYSTEM', items: [
     { path: '/platform/monitoring', label: 'Monitoring',
       icon: 'M3 12h4l3-9 4 18 3-9h4' },
+    { path: '/platform/activity-logs', label: 'Activity Logs',
+      icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01' },
     { path: '/platform/features', label: 'Feature Studio',
       icon: 'M12 3l2.9 5.9L21 10l-4.5 4.4L17.6 21 12 17.9 6.4 21l1.1-6.6L3 10l6.1-1.1L12 3z' },
     { path: '/platform/system', label: 'System Control',

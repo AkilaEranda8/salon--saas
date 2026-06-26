@@ -98,8 +98,8 @@ export default function TokenDisplayScreen() {
     if (!branchId) return;
     try {
       const [qRes, sRes] = await Promise.all([
-        api.get(`/walkin?branchId=${branchId}`),
-        api.get(`/walkin/stats?branchId=${branchId}`),
+        api.get('/walkin', { params: { branchId } }),
+        api.get('/walkin/stats', { params: { branchId } }),
       ]);
       setQueue(qRes.data || []);
       setStats(sRes.data || { waiting: 0, serving: 0, completed: 0, cancelled: 0, total: 0 });

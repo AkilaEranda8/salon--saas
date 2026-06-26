@@ -3,6 +3,7 @@ const { Op } = require('sequelize');
 const { NotificationLog, NotificationSettings, Customer, Branch } = require('../models');
 const { tenantWhere, resolveTenantId } = require('../utils/tenantScope');
 const { sendEmail, sendWhatsApp, sendSMS } = require('../services/notificationService');
+const { isPushConfigured, sendTestPush } = require('../services/fcmService');
 const { runStaffMonthlyEarningsEmails } = require('../services/sendStaffMonthlyEarningsEmails');
 const { buildStaffEarningsPdfBuffer } = require('../services/staffEarningsPdf');
 
@@ -17,6 +18,11 @@ const DEFAULT_SETTINGS = {
   loyalty_points_sms:         false,
   customer_registered_sms:    false,
   customer_registered_email:  false,
+  appt_completed_sms:         true,
+  appt_completed_whatsapp:    true,
+  walkin_checkin_whatsapp:    true,
+  walkin_serving_whatsapp:    true,
+  walkin_completed_whatsapp:  true,
 };
 
 const SETTINGS_FIELDS = Object.keys(DEFAULT_SETTINGS);
@@ -340,7 +346,8 @@ const testProvider = async (req, res) => {
       await sendWhatsApp({
         to,
         message: `✅ *HEXAONE* — WhatsApp test successful!\n\nSent at: ${date}`,
-        meta: { customer_name: 'Test', event_type: 'test', branch_id: null },
+        meta: { customer_name: 'Test', event_type: 'test', branch_id: null, tenant_id: tenantId },
+        tenantId,
       });
       return res.json({ message: `Test WhatsApp sent to ${to}` });
     }
@@ -349,6 +356,64 @@ const testProvider = async (req, res) => {
   } catch (err) {
     console.error('[testProvider]', err);
     return res.status(500).json({ message: err.message || 'Send failed.' });
+  }
+};
+
+// ── POST /api/notifications/test-push ─────────────────────────────────────────
+// Sends a test FCM push to staff devices (branch-scoped when branch filter is active).
+const testPush = async (req, res) => {
+  try {
+    if (!isPushConfigured()) {
+      return res.status(503).json({
+        message: 'Push notifications are not configured. Set FIREBASE_SERVICE_ACCOUNT_JSON on the server and restart the backend.',
+      });
+    }
+
+    const { StaffFcmToken } = require('../models');
+    const branchId = req.body.branchId || req.userBranchId || req.user?.branchId || null;
+    const where = {};
+    if (branchId) where.branch_id = branchId;
+
+    const rows = await StaffFcmToken.findAll({
+      where,
+      attributes: ['fcm_token'],
+    });
+    const tokens = [...new Set(rows.map((r) => r.fcm_token).filter(Boolean))];
+    if (tokens.length === 0) {
+      return res.status(404).json({
+        message: branchId
+          ? 'No staff devices registered for this branch. Open the staff mobile app, allow notifications, and sign in.'
+          : 'No staff devices registered. Open the staff mobile app, allow notifications, and sign in.',
+      });
+    }
+
+    const when = new Date().toLocaleString('en-GB', {
+      timeZone: 'Asia/Colombo',
+      dateStyle: 'short',
+      timeStyle: 'short',
+    });
+    const title = 'Hexaone — Test Notification';
+    const body = `[TEST] Push reminder test at ${when}. If you see this, FCM is working.`;
+    const result = await sendTestPush(tokens, title, body, { type: 'test', branch_id: String(branchId || '') });
+
+    if (result.sent === 0) {
+      return res.status(502).json({
+        message: 'FCM is configured but all sends failed. Tokens may be stale — re-open the staff app and sign in again.',
+        tokenCount: tokens.length,
+        failed: result.failed,
+      });
+    }
+
+    return res.json({
+      message: `Test push sent to ${result.sent} of ${tokens.length} device(s).`,
+      tokenCount: tokens.length,
+      sent: result.sent,
+      failed: result.failed,
+      branchId,
+    });
+  } catch (err) {
+    console.error('[testPush]', err);
+    return res.status(500).json({ message: err.message || 'Push test failed.' });
   }
 };
 
@@ -689,6 +754,7 @@ module.exports = {
   updateSettings,
   sendTest,
   testProvider,
+  testPush,
   sendOfferSms,
   sendStaffMonthlyEarnings,
   testStaffEarningsPdf,

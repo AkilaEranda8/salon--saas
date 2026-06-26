@@ -71,11 +71,15 @@ class _DashboardPageState extends State<DashboardPage>
 
   Future<void> _load() async {
     final s = AppStateScope.of(context);
+    final today = _todayIso();
     try {
       await Future.wait([
-        if (s.isFeatureEnabled(MobileFeatures.appointments) && s.hasPermission(StaffPermission.canViewAppointments)) s.loadAppointments(),
-        if (s.isFeatureEnabled(MobileFeatures.customers) && s.hasPermission(StaffPermission.canViewCustomers))    s.loadCustomers(),
-        if (s.isFeatureEnabled(MobileFeatures.services)) s.loadServices(),
+        if (s.isFeatureEnabled(MobileFeatures.appointments) && s.hasPermission(StaffPermission.canViewAppointments))
+          s.loadAppointments(date: today, limit: 100),
+        if (s.isFeatureEnabled(MobileFeatures.customers) && s.hasPermission(StaffPermission.canViewCustomers))
+          s.loadCustomers(),
+        if (s.isFeatureEnabled(MobileFeatures.services))
+          s.loadServices(),
       ]);
     } catch (_) {
       if (mounted) setState(() => _error = 'Could not load data — check your connection.');
@@ -84,8 +88,11 @@ class _DashboardPageState extends State<DashboardPage>
 
   Future<void> _refreshDashboard() async {
     if (!mounted) return;
-    setState(() => _error = null);
-    await _load();
+    setState(() {
+      _error = null;
+      _loadFuture = _load();
+    });
+    await _loadFuture;
   }
 
   void _logout() {
@@ -109,6 +116,11 @@ class _DashboardPageState extends State<DashboardPage>
     const wd = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
     const mo = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
     return '${wd[n.weekday-1]}, ${mo[n.month-1]} ${n.day}';
+  }
+
+  static String _todayIso() {
+    final n = DateTime.now();
+    return '${n.year}-${n.month.toString().padLeft(2, '0')}-${n.day.toString().padLeft(2, '0')}';
   }
 
   @override
@@ -193,7 +205,7 @@ class _DashboardPageState extends State<DashboardPage>
     final stats = <_StatData>[
       if (s.isFeatureEnabled(MobileFeatures.appointments)
           && s.hasPermission(StaffPermission.canViewAppointments))
-        _StatData('Appointments', '${s.appointments.length}',
+        _StatData('Today', '${s.appointmentTotal}',
             Icons.event_rounded, _g900, _g100,
             onTap: () => _go(const AppointmentsPage())),
       if (s.isFeatureEnabled(MobileFeatures.customers)
@@ -337,11 +349,8 @@ class _DashboardPageState extends State<DashboardPage>
 
   Widget _apptList(AppState s) {
     final list = s.appointments.toList()
-      ..sort((a, b) {
-        final d = a.date.compareTo(b.date);
-        return d != 0 ? d : a.time.compareTo(b.time);
-      });
-    final top = list.reversed.take(4).toList();
+      ..sort((a, b) => a.time.compareTo(b.time));
+    final top = list.take(4).toList();
     if (top.isEmpty) {
       return _HintCard(icon: Icons.event_busy_rounded,
           text: 'No appointments yet — tap Appointments to add one.');

@@ -1,5 +1,6 @@
 const { Server } = require('socket.io');
 const jwt = require('jsonwebtoken');
+const { resolveSocketWhatsAppTenant } = require('./utils/whatsappTenantAccess');
 
 let io;
 
@@ -23,6 +24,9 @@ function initSocket(httpServer, corsOptions) {
     // Try legacy JWT first
     try {
       socket.user = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
+      if (socket.user.tenantId == null && socket.user.tenant_id != null) {
+        socket.user.tenantId = socket.user.tenant_id;
+      }
       return next();
     } catch { /* not a legacy token */ }
 
@@ -53,6 +57,13 @@ function initSocket(httpServer, corsOptions) {
       if (allowedRoles.includes(role) || String(userBranchId) === String(branchId)) {
         socket.join('branch_' + branchId);
       }
+    });
+
+    socket.on('whatsapp:join', (payload = {}) => {
+      const tenantId = resolveSocketWhatsAppTenant(socket, payload);
+      if (!tenantId) return;
+      socket.whatsappTenantId = tenantId;
+      socket.join(`whatsapp_tenant_${tenantId}`);
     });
   });
 

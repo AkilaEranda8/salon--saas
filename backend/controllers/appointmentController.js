@@ -142,7 +142,9 @@ const list = async (req, res) => {
       where,
       limit,
       offset,
-      order: [['date', 'DESC'], ['time', 'DESC']],
+      order: req.query.date && req.query.sort === 'time'
+        ? [['time', String(req.query.order || 'asc').toLowerCase() === 'desc' ? 'DESC' : 'ASC']]
+        : [['date', 'DESC'], ['time', 'DESC']],
       include: [
         { model: Branch,   as: 'branch',   attributes: ['id', 'name', 'color'] },
         { model: Customer, as: 'customer', attributes: ['id', 'name', 'phone'] },
@@ -271,7 +273,7 @@ const create = async (req, res) => {
         Branch.findOne({ where: byIdWhere(req, branch_id), attributes: ['id', 'name', 'phone'] }),
         Service.findOne({ where: byIdWhere(req, primaryServiceId), attributes: ['id', 'name'] }),
       ]);
-      notifyAppointmentConfirmed({ ...appt.toJSON(), phone: notifyPhone }, branch, service);
+      notifyAppointmentConfirmed({ ...appt.toJSON(), phone: notifyPhone }, branch, service, resolveTenantId(req));
     }
 
     const timeLabel = appt.time ? appt.time.slice(0, 5) : '';
@@ -407,16 +409,16 @@ const changeStatus = async (req, res) => {
         Branch.findOne({ where: byIdWhere(req, appt.branch_id), attributes: ['id', 'name', 'phone'] }),
         Service.findOne({ where: byIdWhere(req, appt.service_id), attributes: ['id', 'name'] }),
       ]);
-      notifyAppointmentConfirmed(appt, branch, service);
+      notifyAppointmentConfirmed(appt, branch, service, resolveTenantId(req));
     }
 
-    // Send SMS when appointment is completed
+    // Send notification when appointment is completed
     if (status === 'completed' && appt.phone) {
       const [branch, service] = await Promise.all([
         Branch.findOne({ where: byIdWhere(req, appt.branch_id), attributes: ['id', 'name', 'phone'] }),
         Service.findOne({ where: byIdWhere(req, appt.service_id), attributes: ['id', 'name'] }),
       ]);
-      notifyAppointmentCompleted(appt, branch, service);
+      notifyAppointmentCompleted(appt, branch, service, resolveTenantId(req));
     }
 
     // Push notification for cancellation

@@ -7,9 +7,16 @@ const { getApiMonitoringSnapshot } = require('../services/apiMonitoring');
 const { sendSMS, sendEmail } = require('../services/notificationService');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const { addTrialDays, getTenantCaps } = require('../utils/planConfig');
+const { addTrialDays, addTrialDaysFromConfig, getTenantCaps, invalidateTrialDaysCache } = require('../utils/planConfig');
 const { slToday } = require('../utils/dateUtils');
 const { generateInvoicePdfBuffer, sendInvoiceEmail } = require('../services/invoiceDocumentService');
+const {
+  resolvePlanForInvoice,
+  getPlanPrice,
+  currentMonthBillingPeriod,
+  computeInvoiceTotal,
+} = require('../utils/planPricing');
+const { fetchActivityLogs } = require('../services/platformActivityLogs');
 const { FORBIDDEN_SLUGS, SLUG_RE, findUniqueSlug, buildTenantAppUrl } = require('../utils/tenantDomain');
 const kc = require('../utils/keycloakAdmin');
 const {
@@ -217,7 +224,7 @@ const createTenant = async (req, res) => {
     }
 
     const caps = getTenantCaps(plan);
-    const trialEnds = plan === 'trial' ? addTrialDays() : null;
+    const trialEnds = plan === 'trial' ? await addTrialDaysFromConfig() : null;
 
     const tenant = await Tenant.create({
       name: businessName,
@@ -438,7 +445,7 @@ const updateTenant = async (req, res) => {
 
       if (updates.plan === 'trial') {
         if (updates.trial_ends_at === undefined) {
-          updates.trial_ends_at = addTrialDays();
+          updates.trial_ends_at = await addTrialDaysFromConfig();
         }
       } else if (updates.trial_ends_at === undefined) {
         updates.trial_ends_at = null;
@@ -455,6 +462,50 @@ const updateTenant = async (req, res) => {
   } catch (err) {
     console.error('platform.updateTenant error:', err);
     return res.status(500).json({ message: err.message || 'Server error.' });
+  }
+};
+
+// ── POST /api/platform/tenants/:id/trial/adjust ───────────────────────────────
+const adjustTenantTrial = async (req, res) => {
+  try {
+    const tenant = await Tenant.findByPk(req.params.id);
+    if (!tenant) return res.status(404).json({ message: 'Tenant not found.' });
+    if (tenant.plan !== 'trial') {
+      return res.status(400).json({ message: 'Trial period can only be adjusted for tenants on the trial plan.' });
+    }
+
+    const { adjust_days, trial_ends_at, reset } = req.body || {};
+    let newEnd;
+
+    if (reset === true) {
+      newEnd = await addTrialDaysFromConfig();
+    } else if (trial_ends_at) {
+      newEnd = new Date(trial_ends_at);
+      if (Number.isNaN(newEnd.getTime())) {
+        return res.status(400).json({ message: 'Invalid trial end date.' });
+      }
+    } else if (adjust_days !== undefined && adjust_days !== null) {
+      const delta = Number(adjust_days);
+      if (!Number.isFinite(delta)) {
+        return res.status(400).json({ message: 'adjust_days must be a number.' });
+      }
+      const base = tenant.trial_ends_at ? new Date(tenant.trial_ends_at) : new Date();
+      newEnd = addTrialDays(base, delta);
+    } else {
+      return res.status(400).json({ message: 'Provide adjust_days, trial_ends_at, or reset: true.' });
+    }
+
+    await tenant.update({ trial_ends_at: newEnd });
+    invalidateTenantCache(tenant.slug);
+
+    const daysLeft = Math.ceil((newEnd.getTime() - Date.now()) / 86400000);
+    return res.json({
+      ...tenant.toJSON(),
+      trial_days_left: daysLeft,
+    });
+  } catch (err) {
+    console.error('platform.adjustTenantTrial error:', err);
+    return res.status(500).json({ message: 'Server error.' });
   }
 };
 
@@ -694,7 +745,7 @@ const createSubscription = async (req, res) => {
       stripe_customer_id: stripe_customer_id || tenant.stripe_customer_id,
       max_branches: caps.max_branches,
       max_staff: caps.max_staff,
-      trial_ends_at: plan === 'trial' ? (tenant.trial_ends_at || addTrialDays()) : null,
+      trial_ends_at: plan === 'trial' ? (tenant.trial_ends_at || await addTrialDaysFromConfig()) : null,
     });
     invalidateTenantCache(tenant.slug);
 
@@ -742,7 +793,7 @@ const updateSubscription = async (req, res) => {
         stripe_subscription_id: sub.stripe_subscription_id,
         max_branches: caps.max_branches,
         max_staff: caps.max_staff,
-        trial_ends_at: sub.plan === 'trial' ? (tenant.trial_ends_at || addTrialDays()) : null,
+        trial_ends_at: sub.plan === 'trial' ? (tenant.trial_ends_at || await addTrialDaysFromConfig()) : null,
       });
       invalidateTenantCache(tenant.slug);
     }
@@ -1350,22 +1401,13 @@ const autoGenerateInvoice = async (tenantId, plan, basePrice = null) => {
     if (!tenant) return null;
 
     const now = new Date();
-    const currentMonth = now.getMonth();
-    const currentYear = now.getFullYear();
+    const { billing_period_start, billing_period_end } = currentMonthBillingPeriod();
+    const periodStart = new Date(billing_period_start);
+    const periodEnd = new Date(`${billing_period_end}T23:59:59`);
 
-    // Billing period: start of current month to end of current month
-    const periodStart = new Date(currentYear, currentMonth, 1);
-    const periodEnd = new Date(currentYear, currentMonth + 1, 0);
-
-    // Default pricing if not provided
-    const pricing = {
-      trial: 0,
-      basic: 99.00,
-      pro: 299.00,
-      enterprise: 999.00,
-    };
-
-    const amount = basePrice ?? pricing[plan] ?? 99.00;
+    const planKey = plan || tenant.plan || 'basic';
+    const resolved = await resolvePlanForInvoice(planKey);
+    const price = basePrice ?? resolved?.price ?? await getPlanPrice(planKey);
     const invoiceNumber = `INV-${tenantId}-${now.getTime()}`;
 
     const invoice = await PlatformInvoice.create({
@@ -1373,16 +1415,16 @@ const autoGenerateInvoice = async (tenantId, plan, basePrice = null) => {
       invoice_number: invoiceNumber,
       billing_period_start: periodStart,
       billing_period_end: periodEnd,
-      amount,
-      currency: 'USD',
-      status: plan === 'trial' ? 'draft' : 'issued',
-      issued_at: plan === 'trial' ? null : now,
-      due_at: plan === 'trial' ? null : new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000), // 30 days
-      plan,
-      base_price: amount,
+      amount: computeInvoiceTotal(price, 0, 0),
+      currency: 'LKR',
+      status: planKey === 'trial' || price === 0 ? 'draft' : 'issued',
+      issued_at: planKey === 'trial' || price === 0 ? null : now,
+      due_at: planKey === 'trial' || price === 0 ? null : new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000),
+      plan: planKey,
+      base_price: price,
       additional_charges: 0,
       discount: 0,
-      notes: `Auto-generated invoice for ${plan} plan`,
+      notes: `Auto-generated invoice for ${resolved?.label || planKey} plan`,
     });
 
     return invoice;
@@ -1445,16 +1487,18 @@ const createInvoice = async (req, res) => {
       billing_period_start,
       billing_period_end,
       amount,
-      currency = 'USD',
+      currency = 'LKR',
       plan,
+      plan_key,
       base_price,
       additional_charges = 0,
       discount = 0,
       notes,
     } = req.body || {};
 
-    if (!tenant_id || !billing_period_start || !billing_period_end || !amount) {
-      return res.status(400).json({ message: 'tenant_id, billing_period_start, billing_period_end, and amount are required.' });
+    const planKey = String(plan_key || plan || '').toLowerCase().trim();
+    if (!tenant_id || !planKey) {
+      return res.status(400).json({ message: 'tenant_id and plan (package) are required.' });
     }
 
     const tenant = await Tenant.findByPk(tenant_id);
@@ -1462,26 +1506,44 @@ const createInvoice = async (req, res) => {
       return res.status(404).json({ message: 'Tenant not found.' });
     }
 
+    const resolved = await resolvePlanForInvoice(planKey);
+    if (!resolved) {
+      return res.status(400).json({ message: 'Invalid plan / package selected.' });
+    }
+
+    const periodDefaults = currentMonthBillingPeriod();
+    const periodStart = billing_period_start || periodDefaults.billing_period_start;
+    const periodEnd = billing_period_end || periodDefaults.billing_period_end;
+
+    const basePrice = base_price != null && base_price !== ''
+      ? parseFloat(base_price)
+      : resolved.price;
+    const extra = parseFloat(additional_charges) || 0;
+    const off = parseFloat(discount) || 0;
+    const totalAmount = amount != null && amount !== ''
+      ? parseFloat(amount)
+      : computeInvoiceTotal(basePrice, extra, off);
+
     const invoiceNumber = `INV-${Date.now()}`;
 
     const invoice = await PlatformInvoice.create({
       tenant_id,
       invoice_number: invoiceNumber,
-      billing_period_start,
-      billing_period_end,
-      amount,
-      currency,
-      status: 'issued',
-      issued_at: new Date(),
-      due_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
-      plan,
-      base_price,
-      additional_charges,
-      discount,
-      notes,
+      billing_period_start: periodStart,
+      billing_period_end: periodEnd,
+      amount: totalAmount,
+      currency: currency || 'LKR',
+      status: totalAmount === 0 ? 'draft' : 'issued',
+      issued_at: totalAmount === 0 ? null : new Date(),
+      due_at: totalAmount === 0 ? null : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      plan: planKey,
+      base_price: basePrice,
+      additional_charges: extra,
+      discount: off,
+      notes: notes || `${resolved.label} subscription invoice`,
     });
 
-    return res.status(201).json({ invoice });
+    return res.status(201).json({ invoice, plan: resolved });
   } catch (err) {
     console.error('platform.createInvoice error:', err);
     return res.status(500).json({ message: 'Server error.' });
@@ -1691,6 +1753,9 @@ const updatePlan = async (req, res) => {
       }
     }
     await plan.update(updates);
+    if (plan.key === 'trial' && updates.trial_days !== undefined) {
+      invalidateTrialDaysCache();
+    }
     // Log update if anything actually changed
     if (changedFields.length > 0) {
       await PlanChangeLog.create({
@@ -1732,6 +1797,25 @@ const deletePlan = async (req, res) => {
     return res.json({ message: 'Plan deleted.' });
   } catch (err) {
     console.error('platform.deletePlan error:', err);
+    return res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+// ── GET /api/platform/activity-logs ───────────────────────────────────────────
+const listActivityLogs = async (req, res) => {
+  try {
+    const result = await fetchActivityLogs({
+      source: req.query.source || 'all',
+      tenant_id: req.query.tenant_id || req.query.tenant,
+      from: req.query.from,
+      to: req.query.to,
+      search: req.query.search || req.query.q,
+      page: req.query.page,
+      limit: req.query.limit,
+    });
+    return res.json(result);
+  } catch (err) {
+    console.error('platform.listActivityLogs error:', err);
     return res.status(500).json({ message: 'Server error.' });
   }
 };
@@ -1871,6 +1955,7 @@ module.exports = {
   createTenant,
   getTenant,
   updateTenant,
+  adjustTenantTrial,
   clearTenantData,
   deleteTenant,
   tenantStats,
@@ -1904,6 +1989,7 @@ module.exports = {
   updatePlan,
   deletePlan,
   listPlanChangeLogs,
+  listActivityLogs,
   getPlatformSmtpSms,
   updatePlatformSmtpSms,
   testPlatformSmtp,

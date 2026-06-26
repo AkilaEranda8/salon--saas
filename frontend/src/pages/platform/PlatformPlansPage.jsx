@@ -192,9 +192,13 @@ function PlanModal({ plan, onClose, onSaved }) {
           {/* Row 5: trial days + sort order */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <div style={fieldStyle}>
-              <label style={labelStyle}>Trial Days</label>
-              <input style={inputStyle} type="number" value={form.trial_days} onChange={set('trial_days')} placeholder="0" />
-              <span style={{ fontSize: 11, color: '#94A3B8' }}>0 = no trial</span>
+              <label style={labelStyle}>
+                {form.key === 'trial' ? 'Default trial period (days)' : 'Trial Days'}
+              </label>
+              <input style={inputStyle} type="number" min="0" value={form.trial_days} onChange={set('trial_days')} placeholder="0" />
+              <span style={{ fontSize: 11, color: '#94A3B8' }}>
+                {form.key === 'trial' ? 'New signups get this many trial days' : '0 = no trial'}
+              </span>
             </div>
             <div style={fieldStyle}>
               <label style={labelStyle}>Sort Order</label>

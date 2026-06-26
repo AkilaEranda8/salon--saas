@@ -330,7 +330,7 @@ const create = async (req, res) => {
       const walkinCustomer = { name: customer_name || 'Guest', phone, email: null, loyalty_points: 0 };
       notifyPaymentReceipt(
         { ...payment.toJSON(), walkin_token, splits: await PaymentSplit.findAll({ where: { payment_id: payment.id } }) },
-        branch, service, walkinCustomer
+        branch, service, walkinCustomer, resolveTenantId(req)
       );
     }
     if (customer_id) {
@@ -346,10 +346,10 @@ const create = async (req, res) => {
         const updatedPoints = (customer.loyalty_points || 0);
         notifyPaymentReceipt(
           { ...payment.toJSON(), splits: await PaymentSplit.findAll({ where: { payment_id: payment.id } }) },
-          branch, service, customer
+          branch, service, customer, resolveTenantId(req)
         );
         if (points_earned > 0) {
-          notifyLoyaltyPoints(customer, points_earned, updatedPoints, branch);
+          notifyLoyaltyPoints(customer, points_earned, updatedPoints, branch, resolveTenantId(req));
         }
       }
     }

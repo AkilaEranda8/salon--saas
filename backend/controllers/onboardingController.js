@@ -2,7 +2,7 @@ const bcrypt         = require('bcryptjs');
 const jwt            = require('jsonwebtoken');
 const { Tenant, Branch, User, NotificationSettings } = require('../models');
 const { sequelize }  = require('../config/database');
-const { addTrialDays, getTenantCaps } = require('../utils/planConfig');
+const { addTrialDaysFromConfig, getTenantCaps } = require('../utils/planConfig');
 const { FORBIDDEN_SLUGS, SLUG_RE, findUniqueSlug, buildTenantAppUrl } = require('../utils/tenantDomain');
 const kc             = require('../utils/keycloakAdmin');
 
@@ -57,7 +57,7 @@ const register = async (req, res) => {
     }
 
     // ── Create Tenant ─────────────────────────────────────────────────────
-    const trialEnds = addTrialDays();
+    const trialEnds = await addTrialDaysFromConfig();
     const caps = getTenantCaps('trial');
 
     const tenant = await Tenant.create({

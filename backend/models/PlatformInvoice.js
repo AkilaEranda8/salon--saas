@@ -35,7 +35,7 @@ const PlatformInvoice = sequelize.define('PlatformInvoice', {
   currency: {
     type: DataTypes.STRING(3),
     allowNull: false,
-    defaultValue: 'USD',
+    defaultValue: 'LKR',
   },
   status: {
     type: DataTypes.ENUM('draft', 'issued', 'paid', 'overdue', 'cancelled'),

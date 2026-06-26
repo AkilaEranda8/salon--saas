@@ -1,4 +1,4 @@
-FROM node:18-alpine
+FROM node:20-alpine
 
 # IANA timezones for node-cron (Asia/Colombo, etc.)
 RUN apk add --no-cache tzdata

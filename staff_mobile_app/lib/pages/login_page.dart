@@ -326,8 +326,8 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
       children: [
         // Logo image
         Container(
-          width: 110,
-          height: 110,
+          width: 130,
+          height: 130,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(30),
             boxShadow: const [

@@ -84,7 +84,7 @@ async function createNextRecurring(appointment) {
         Branch.findByPk(appointment.branch_id,  { attributes: ['id', 'name', 'phone'] }),
         Service.findByPk(appointment.service_id, { attributes: ['id', 'name'] }),
       ]);
-      notifyAppointmentConfirmed(nextAppt, branch, service);
+      notifyAppointmentConfirmed(nextAppt, branch, service, appointment.tenant_id);
     }
 
     return nextAppt;

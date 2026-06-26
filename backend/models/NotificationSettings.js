@@ -116,6 +116,31 @@ const NotificationSettings = sequelize.define('NotificationSettings', {
     type: DataTypes.INTEGER,
     allowNull: true,
   },
+  appt_completed_sms: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: true,
+    allowNull: false,
+  },
+  appt_completed_whatsapp: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: true,
+    allowNull: false,
+  },
+  walkin_checkin_whatsapp: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: true,
+    allowNull: false,
+  },
+  walkin_serving_whatsapp: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: true,
+    allowNull: false,
+  },
+  walkin_completed_whatsapp: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: true,
+    allowNull: false,
+  },
 }, {
   tableName: 'notification_settings',
   timestamps: true,

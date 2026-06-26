@@ -45,6 +45,8 @@ const RevokedToken     = require('./RevokedToken');
 const StaffAdvance      = require('./StaffAdvance');
 const CommissionPayout  = require('./CommissionPayout');
 const CommissionTransaction = require('./CommissionTransaction');
+const WhatsAppMessage = require('./WhatsAppMessage');
+const WhatsAppConnection = require('./WhatsAppConnection');
 
 // Tenant
 Tenant.hasMany(Subscription, { foreignKey: 'tenant_id', as: 'subscriptions' });
@@ -58,6 +60,10 @@ Tenant.hasMany(User, { foreignKey: 'tenant_id', as: 'users' });
 Tenant.hasMany(Staff, { foreignKey: 'tenant_id', as: 'staffMembers' });
 Tenant.hasMany(Customer, { foreignKey: 'tenant_id', as: 'customers' });
 Tenant.hasMany(Service, { foreignKey: 'tenant_id', as: 'services' });
+Tenant.hasOne(WhatsAppConnection, { foreignKey: 'tenant_id', as: 'whatsappConnection' });
+WhatsAppConnection.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
+Tenant.hasMany(WhatsAppMessage, { foreignKey: 'tenant_id', as: 'whatsappMessages' });
+WhatsAppMessage.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
 Branch.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
 User.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
 Staff.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
@@ -292,4 +298,6 @@ module.exports = {
   StaffAdvance,
   CommissionPayout,
   CommissionTransaction,
+  WhatsAppMessage,
+  WhatsAppConnection,
 };

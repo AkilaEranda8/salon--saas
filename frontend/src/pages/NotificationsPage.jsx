@@ -1,28 +1,47 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
+import { io } from 'socket.io-client';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
+import { getKcAccessToken } from '../utils/kcTokenStore';
 import PageWrapper from '../components/layout/PageWrapper';
 import Button from '../components/ui/Button';
 import { useToast } from '../components/ui/Toast';
 import { FilterBar, DataTable, IconBell } from '../components/ui/PageKit';
 
-const EVENTS = ['customer_registered','appointment_confirmed','payment_receipt','loyalty_points','test','review_request','staff_earnings_pdf_test','staff_monthly_earnings'];
+const EVENTS = ['customer_registered','appointment_confirmed','appointment_completed','payment_receipt','loyalty_points','walk_in_checkin','walk_in_serving','walk_in_completed','test','review_request','staff_earnings_pdf_test','staff_monthly_earnings'];
 const EVENT_LABELS = {
   customer_registered: 'Customer Registered',
   appointment_confirmed: 'Appointment Confirmed',
+  appointment_completed: 'Appointment Completed',
   payment_receipt: 'Payment Receipt',
   loyalty_points: 'Loyalty Points',
+  walk_in_checkin: 'Walk-In — Check-In',
+  walk_in_serving: 'Walk-In — Now Serving',
+  walk_in_completed: 'Walk-In — Completed',
   test: 'Test / Offer SMS',
   review_request: 'Review Request',
   staff_earnings_pdf_test: 'Staff Earnings PDF (test)',
   staff_monthly_earnings: 'Staff Monthly Earnings',
 };
-const EVENT_CHANNELS = { customer_registered:['email','sms'], appointment_confirmed:['email','whatsapp','sms'], payment_receipt:['email','whatsapp','sms'], loyalty_points:['whatsapp','sms'] };
+const EVENT_CHANNELS = {
+  customer_registered:['email','sms'],
+  appointment_confirmed:['email','whatsapp','sms'],
+  appointment_completed:['whatsapp','sms'],
+  payment_receipt:['email','whatsapp','sms'],
+  loyalty_points:['whatsapp','sms'],
+  walk_in_checkin:['whatsapp'],
+  walk_in_serving:['whatsapp'],
+  walk_in_completed:['whatsapp'],
+};
 const SETTINGS_KEY = {
   customer_registered_email:'customer_registered_email', customer_registered_sms:'customer_registered_sms',
   appointment_confirmed_email:'appt_confirmed_email', appointment_confirmed_whatsapp:'appt_confirmed_whatsapp', appointment_confirmed_sms:'appt_confirmed_sms',
+  appointment_completed_whatsapp:'appt_completed_whatsapp', appointment_completed_sms:'appt_completed_sms',
   payment_receipt_email:'payment_receipt_email', payment_receipt_whatsapp:'payment_receipt_whatsapp', payment_receipt_sms:'payment_receipt_sms',
   loyalty_points_whatsapp:'loyalty_points_whatsapp', loyalty_points_sms:'loyalty_points_sms',
+  walk_in_checkin_whatsapp:'walkin_checkin_whatsapp',
+  walk_in_serving_whatsapp:'walkin_serving_whatsapp',
+  walk_in_completed_whatsapp:'walkin_completed_whatsapp',
 };
 const CH_COLOR = {
   email:    { bg:'#EFF6FF', color:'#1D4ED8', label:'Email' },
@@ -42,9 +61,11 @@ function Toggle({ checked, onChange }) {
 }
 
 export default function NotificationsPage() {
-  const { user }  = useAuth();
+  const { user, tenant }  = useAuth();
+  const waTenantId = tenant?.id ?? user?.tenant_id ?? user?.tenantId ?? null;
   const { toast } = useToast();
   const isAdmin   = ['superadmin','admin'].includes(user?.role);
+  const canTestPush = ['superadmin','admin','manager'].includes(user?.role);
   const [settings, setSettings]           = useState({});
   const [settingsBusy, setSettingsBusy]   = useState(false);
   const [settingsOpen, setSettingsOpen]   = useState(true);
@@ -61,7 +82,7 @@ export default function NotificationsPage() {
   const [newSmtpPass, setNewSmtpPass]         = useState('');
   const [showSmtpPass, setShowSmtpPass]       = useState(false);
   const [testTo, setTestTo]               = useState({ smtp:'', sms:'', whatsapp:'' });
-  const [testBusy, setTestBusy]           = useState({ smtp:false, sms:false, whatsapp:false, earningsPdf:false });
+  const [testBusy, setTestBusy]           = useState({ smtp:false, sms:false, whatsapp:false, earningsPdf:false, push:false });
   const [logs, setLogs]                   = useState([]);
   const [logTotal, setLogTotal]           = useState(0);
   const [logPage, setLogPage]             = useState(1);
@@ -78,6 +99,14 @@ export default function NotificationsPage() {
   const [editSubject, setEditSubject]     = useState('');
   const [editBody, setEditBody]           = useState('');
   const [tplBusy, setTplBusy]             = useState(false);
+
+  const [waOpen, setWaOpen]               = useState(true);
+  const [waStatus, setWaStatus]           = useState({ status: 'disconnected' });
+  const [waQrImage, setWaQrImage]         = useState(null);
+  const [waBusy, setWaBusy]               = useState(false);
+  const [waMessages, setWaMessages]       = useState([]);
+  const [waMsgLoading, setWaMsgLoading]     = useState(false);
+  const waSocketRef = useRef(null);
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -111,6 +140,74 @@ export default function NotificationsPage() {
     finally { setTplLoading(false); }
   }, [isAdmin]);
   useEffect(() => { loadTemplates(); }, [loadTemplates]);
+
+  const loadWaStatus = useCallback(async () => {
+    try {
+      const { data } = await api.get('/notifications/whatsapp/status');
+      setWaStatus(data || { status: 'disconnected' });
+      if (data?.qrImage) setWaQrImage(data.qrImage);
+    } catch { /* silent */ }
+  }, []);
+
+  const loadWaMessages = useCallback(async () => {
+    setWaMsgLoading(true);
+    try {
+      const { data } = await api.get('/notifications/whatsapp/messages?limit=30');
+      setWaMessages(data?.data || []);
+    } catch { toast('Failed to load WhatsApp messages.', 'error'); }
+    finally { setWaMsgLoading(false); }
+  }, [toast]);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    loadWaStatus();
+    loadWaMessages();
+
+    const token = getKcAccessToken() || document.cookie.split(';').map(c => c.trim()).find(c => c.startsWith('token='))?.split('=')[1];
+    const socket = io({ auth: { token } });
+    waSocketRef.current = socket;
+    socket.on('connect', () => {
+      if (waTenantId) socket.emit('whatsapp:join', { tenantId: waTenantId });
+    });
+    socket.on('whatsapp:qr', ({ qrImage }) => { if (qrImage) setWaQrImage(qrImage); });
+    socket.on('whatsapp:status', (payload) => {
+      setWaStatus(prev => ({ ...prev, ...payload }));
+      if (payload.status === 'connected') {
+        setWaQrImage(null);
+        loadWaMessages();
+        toast('WhatsApp connected!', 'success');
+      }
+      if (payload.status === 'disconnected') setWaQrImage(null);
+    });
+    socket.on('whatsapp:message', () => loadWaMessages());
+
+    return () => { socket.disconnect(); waSocketRef.current = null; };
+  }, [isAdmin, waTenantId, loadWaStatus, loadWaMessages, toast]);
+
+  const handleWaConnect = async () => {
+    setWaBusy(true);
+    try {
+      const { data } = await api.post('/notifications/whatsapp/connect');
+      setWaStatus(data);
+      if (data.qrImage) setWaQrImage(data.qrImage);
+      toast(data.message || 'Scan QR with WhatsApp', 'info');
+    } catch (err) {
+      toast(err.response?.data?.message || 'Failed to connect WhatsApp.', 'error');
+    } finally { setWaBusy(false); }
+  };
+
+  const handleWaDisconnect = async () => {
+    if (!window.confirm('Disconnect WhatsApp? You will need to scan QR again.')) return;
+    setWaBusy(true);
+    try {
+      await api.post('/notifications/whatsapp/disconnect');
+      setWaStatus({ status: 'disconnected' });
+      setWaQrImage(null);
+      toast('WhatsApp disconnected.', 'success');
+    } catch (err) {
+      toast(err.response?.data?.message || 'Failed to disconnect.', 'error');
+    } finally { setWaBusy(false); }
+  };
 
   const openEditTpl = (tpl) => {
     setEditTpl(tpl);
@@ -200,6 +297,18 @@ export default function NotificationsPage() {
       toast(err?.response?.data?.message || 'Test failed.', 'error');
     } finally {
       setTestBusy(b => ({ ...b, earningsPdf: false }));
+    }
+  };
+
+  const sendTestPush = async () => {
+    setTestBusy(b => ({ ...b, push: true }));
+    try {
+      const res = await api.post('/notifications/test-push', {});
+      toast(res.data.message || 'Test push sent!', 'success');
+    } catch (err) {
+      toast(err?.response?.data?.message || 'Push test failed.', 'error');
+    } finally {
+      setTestBusy(b => ({ ...b, push: false }));
     }
   };
 
@@ -488,6 +597,95 @@ export default function NotificationsPage() {
                 )}
               </div>
 
+              {/* WhatsApp QR Connect */}
+              <div style={{ marginTop:12, border:'1px solid #EAECF0', borderRadius:12, overflow:'hidden' }}>
+                <button type="button" onClick={() => setWaOpen(o => !o)}
+                  style={{ width:'100%', display:'flex', alignItems:'center', justifyContent:'space-between', padding:'14px 18px', background:'#F0FDF4', border:'none', cursor:'pointer', fontFamily:"'Inter',sans-serif" }}>
+                  <span style={{ display:'flex', alignItems:'center', gap:8, fontSize:13, fontWeight:700, color:'#166534' }}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#16A34A" strokeWidth="2"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+                    WhatsApp — QR Connect
+                    {waStatus.status === 'connected'
+                      ? <span style={{ fontSize:10, fontWeight:700, background:'#DCFCE7', color:'#166534', padding:'2px 8px', borderRadius:6 }}>Connected</span>
+                      : waStatus.status === 'connecting'
+                        ? <span style={{ fontSize:10, fontWeight:700, background:'#FEF3C7', color:'#92400E', padding:'2px 8px', borderRadius:6 }}>Scan QR</span>
+                        : <span style={{ fontSize:10, fontWeight:700, background:'#F3F4F6', color:'#6B7280', padding:'2px 8px', borderRadius:6 }}>Not connected</span>}
+                  </span>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#64748B" strokeWidth="2.5" strokeLinecap="round" style={{ transform:waOpen?'rotate(180deg)':'none', transition:'transform 0.2s' }}>
+                    <polyline points="6 9 12 15 18 9"/>
+                  </svg>
+                </button>
+                {waOpen && (
+                  <div style={{ padding:'16px 18px', borderTop:'1px solid #EAECF0', display:'flex', flexDirection:'column', gap:16 }}>
+                    <div style={{ padding:'12px 14px', background:'#EFF6FF', border:'1px solid #BFDBFE', borderRadius:10, fontSize:12, color:'#1E40AF', lineHeight:1.6 }}>
+                      <strong>Per-salon isolation:</strong> Each tenant connects its own WhatsApp number.
+                      Sessions, messages, and outgoing notifications are scoped to this salon only — other salons cannot access or use your connection.
+                      Only Admin / Super Admin can connect or disconnect.
+                    </div>
+                    <p style={{ margin:0, fontSize:12, color:'#64748B', lineHeight:1.6 }}>
+                      Connect your salon WhatsApp by scanning a QR code. Once connected, system messages
+                      (appointments, payments, walk-in queue) are sent from your number. Twilio is fallback only.
+                    </p>
+
+                    {waStatus.status === 'connected' ? (
+                      <div style={{ padding:'12px 14px', background:'#F0FDF4', border:'1px solid #BBF7D0', borderRadius:10, fontSize:13, color:'#166534' }}>
+                        <strong>Connected:</strong> +{waStatus.phone || '—'}
+                        {waStatus.push_name ? ` (${waStatus.push_name})` : ''}
+                        {waStatus.connected_at && (
+                          <div style={{ fontSize:11, color:'#4ADE80', marginTop:4 }}>
+                            Since {new Date(waStatus.connected_at).toLocaleString()}
+                          </div>
+                        )}
+                      </div>
+                    ) : waQrImage ? (
+                      <div style={{ textAlign:'center' }}>
+                        <p style={{ fontSize:12, fontWeight:600, color:'#374151', margin:'0 0 10px' }}>
+                          Open WhatsApp → Linked Devices → Link a Device → Scan this QR
+                        </p>
+                        <img src={waQrImage} alt="WhatsApp QR" style={{ width:280, height:280, borderRadius:12, border:'1px solid #E5E7EB' }} />
+                      </div>
+                    ) : null}
+
+                    <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
+                      {waStatus.status !== 'connected' && (
+                        <button type="button" disabled={waBusy} onClick={handleWaConnect}
+                          style={{ padding:'9px 18px', borderRadius:9, border:'none', background: waBusy ? '#86EFAC' : '#16A34A', color:'#fff', fontWeight:700, fontSize:13, cursor: waBusy ? 'not-allowed' : 'pointer' }}>
+                          {waBusy ? 'Starting…' : waQrImage ? 'Refresh QR' : 'Connect WhatsApp'}
+                        </button>
+                      )}
+                      {(waStatus.status === 'connected' || waStatus.status === 'connecting') && (
+                        <button type="button" disabled={waBusy} onClick={handleWaDisconnect}
+                          style={{ padding:'9px 18px', borderRadius:9, border:'1px solid #FECACA', background:'#FEF2F2', color:'#DC2626', fontWeight:600, fontSize:13, cursor: waBusy ? 'not-allowed' : 'pointer' }}>
+                          Disconnect
+                        </button>
+                      )}
+                      <button type="button" onClick={loadWaMessages} disabled={waMsgLoading}
+                        style={{ padding:'9px 18px', borderRadius:9, border:'1px solid #E5E7EB', background:'#fff', color:'#374151', fontWeight:600, fontSize:13, cursor:'pointer' }}>
+                        {waMsgLoading ? 'Loading…' : 'Refresh Inbox'}
+                      </button>
+                    </div>
+
+                    {waMessages.length > 0 && (
+                      <div>
+                        <p style={{ fontSize:11, fontWeight:700, color:'#6B7280', letterSpacing:'0.06em', textTransform:'uppercase', margin:'0 0 8px' }}>Recent Messages</p>
+                        <div style={{ maxHeight:240, overflowY:'auto', border:'1px solid #F3F4F6', borderRadius:10 }}>
+                          {waMessages.map(m => (
+                            <div key={m.id} style={{ padding:'10px 12px', borderBottom:'1px solid #F3F4F6', fontSize:12 }}>
+                              <div style={{ display:'flex', justifyContent:'space-between', marginBottom:4 }}>
+                                <span style={{ fontWeight:700, color: m.direction === 'in' ? '#1D4ED8' : '#059669' }}>
+                                  {m.direction === 'in' ? '← In' : '→ Out'} {m.phone ? `+${m.phone}` : ''}
+                                </span>
+                                <span style={{ color:'#9CA3AF', fontSize:11 }}>{new Date(m.createdAt).toLocaleString()}</span>
+                              </div>
+                              <div style={{ color:'#374151', whiteSpace:'pre-wrap' }}>{m.body}</div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
               {/* Twilio API Keys */}
               <div style={{ marginTop:12, border:'1px solid #EAECF0', borderRadius:12, overflow:'hidden' }}>
                 <button type="button" onClick={() => setApiOpen(o => !o)}
@@ -591,6 +789,23 @@ export default function NotificationsPage() {
         </div>
       )}
 
+      {canTestPush && (
+        <div style={{ background:'#fff', borderRadius:16, border:'1px solid #EAECF0', overflow:'hidden', boxShadow:'0 1px 4px rgba(16,24,40,0.07)', marginTop:16 }}>
+          <div style={{ padding:'16px 24px', display:'flex', alignItems:'center', justifyContent:'space-between', gap:16, flexWrap:'wrap' }}>
+            <div>
+              <div style={{ fontSize:15, fontWeight:700, color:'#101828' }}>Mobile Push (Staff App)</div>
+              <div style={{ fontSize:12, color:'#64748B', marginTop:4 }}>
+                Sends a test FCM notification to staff devices registered for the current branch. Staff must be signed in on the mobile app with notifications allowed.
+              </div>
+            </div>
+            <button type="button" disabled={testBusy.push} onClick={sendTestPush}
+              style={{ padding:'10px 18px', borderRadius:8, border:'none', background: testBusy.push ? '#BFDBFE' : '#2563EB', color:'#fff', fontWeight:700, fontSize:13, cursor: testBusy.push ? 'not-allowed' : 'pointer', whiteSpace:'nowrap', fontFamily:"'Inter',sans-serif" }}>
+              {testBusy.push ? 'Sending…' : '▶ Send Test Push'}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* ── Message Templates ────────────────────────────────────────────── */}
       {isAdmin && (
         <div style={{ background:'#fff', borderRadius:16, border:'1px solid #EAECF0', boxShadow:'0 1px 4px rgba(16,24,40,0.07)' }}>
@@ -613,6 +828,9 @@ export default function NotificationsPage() {
                 appointment_completed:  'Appointment Completed',
                 payment_receipt:        'Payment Receipt',
                 loyalty_points:         'Loyalty Points',
+                walk_in_checkin:        'Walk-In — Check-In',
+                walk_in_serving:        'Walk-In — Now Serving',
+                walk_in_completed:      'Walk-In — Completed',
                 review_request:         'Review Request',
                 customer_registered:    'Customer Registered',
               };
@@ -673,7 +891,7 @@ export default function NotificationsPage() {
             <div style={{ padding:'20px 24px', borderBottom:'1px solid #EAECF0', display:'flex', alignItems:'center', justifyContent:'space-between', flexShrink:0 }}>
               <div>
                 <div style={{ fontSize:15, fontWeight:700, color:'#101828' }}>
-                  Edit Template — {(()=>{const labels={appointment_confirmed:'Appointment Confirmed',appointment_completed:'Appointment Completed',payment_receipt:'Payment Receipt',loyalty_points:'Loyalty Points',review_request:'Review Request',customer_registered:'Customer Registered'};return labels[editTpl.event_type]||editTpl.event_type;})()}
+                  Edit Template — {(()=>{const labels={appointment_confirmed:'Appointment Confirmed',appointment_completed:'Appointment Completed',payment_receipt:'Payment Receipt',loyalty_points:'Loyalty Points',walk_in_checkin:'Walk-In — Check-In',walk_in_serving:'Walk-In — Now Serving',walk_in_completed:'Walk-In — Completed',review_request:'Review Request',customer_registered:'Customer Registered'};return labels[editTpl.event_type]||editTpl.event_type;})()}
                 </div>
                 <div style={{ display:'flex', alignItems:'center', gap:8, marginTop:4 }}>
                   {(() => { const CH={email:{bg:'#EFF6FF',color:'#1D4ED8',label:'Email'},whatsapp:{bg:'#DCFCE7',color:'#166534',label:'WhatsApp'},sms:{bg:'#FEF3C7',color:'#B45309',label:'SMS'}}; const ch=CH[editTpl.channel]||{bg:'#F2F4F7',color:'#64748B',label:editTpl.channel}; return <span style={{padding:'2px 10px',borderRadius:8,fontSize:11,fontWeight:700,background:ch.bg,color:ch.color}}>{ch.label}</span>; })()}

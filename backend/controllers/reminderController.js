@@ -39,15 +39,7 @@ const create = async (req, res) => {
 
     const reminder = await Reminder.create({ branch_id, title, type, priority, due_date, tenant_id: resolveTenantId(req) });
 
-    // Push to all branch staff
-    const dueLine = due_date ? ` — Due ${due_date}` : '';
-    const typeEmoji = { general: '📝', inventory: '📦', staff: '👤', customer: '👥' };
-    const emoji = typeEmoji[type] || '📝';
-    notifyBranch(branch_id, `${emoji} New Reminder`, `${title}${dueLine}`, {
-      type: 'new_reminder',
-      reminder_id: String(reminder.id),
-      branch_id:   String(branch_id),
-    });
+    pushReminderNotification(reminder);
 
     return res.status(201).json(reminder);
   } catch (err) {
@@ -91,4 +83,29 @@ const remove = async (req, res) => {
   }
 };
 
-module.exports = { list, create, update, toggle, remove };
+function pushReminderNotification(reminder) {
+  const dueLine = reminder.due_date ? ` — Due ${reminder.due_date}` : '';
+  const typeEmoji = { general: '📝', inventory: '📦', staff: '👤', customer: '👥' };
+  const emoji = typeEmoji[reminder.type] || '📝';
+  notifyBranch(reminder.branch_id, `${emoji} Reminder`, `${reminder.title}${dueLine}`, {
+    type: 'new_reminder',
+    reminder_id: String(reminder.id),
+    branch_id: String(reminder.branch_id),
+  });
+}
+
+const notifyStaff = async (req, res) => {
+  try {
+    const reminder = await Reminder.findOne({ where: byIdWhere(req, req.params.id) });
+    if (!reminder) return res.status(404).json({ message: 'Reminder not found.' });
+    if (reminder.is_done) return res.status(400).json({ message: 'Reminder is already done.' });
+
+    pushReminderNotification(reminder);
+    return res.json({ message: 'Push notification sent to branch staff.' });
+  } catch (err) {
+    console.error('[reminder notify]', err);
+    return res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+module.exports = { list, create, update, toggle, remove, notifyStaff };

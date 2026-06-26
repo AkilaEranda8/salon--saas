@@ -107,15 +107,29 @@ const DEFAULT_FLAGS = {
   customer_registered_sms:   false,
   customer_registered_email: false,
   appt_completed_sms:        true,
+  appt_completed_whatsapp:   true,
+  walkin_checkin_whatsapp:   true,
+  walkin_serving_whatsapp:   true,
+  walkin_completed_whatsapp: true,
 };
 
-async function getChannelFlags() {
+function resolveNotifyTenantId(explicit, ...sources) {
+  if (explicit != null) return explicit;
+  for (const src of sources) {
+    if (src?.tenant_id != null) return src.tenant_id;
+  }
+  return null;
+}
+
+async function getChannelFlags(tenantId = null) {
   try {
     const { NotificationSettings } = getModels();
-    const row = await NotificationSettings.findOne({ where: { branch_id: null } });
+    const row = await NotificationSettings.findOne({
+      where: { branch_id: null, tenant_id: tenantId || null },
+    });
     if (!row) return DEFAULT_FLAGS;
     const out = {};
-    for (const k of Object.keys(DEFAULT_FLAGS)) out[k] = row[k];
+    for (const k of Object.keys(DEFAULT_FLAGS)) out[k] = row[k] ?? DEFAULT_FLAGS[k];
     return out;
   } catch {
     return DEFAULT_FLAGS;
@@ -285,14 +299,45 @@ async function sendSMS({ to, message, meta = {} }) {
 }
 
 /**
- * Send a WhatsApp message via Twilio. Logs result. Never throws.
- * @param {{ to, message, meta? }} opts
+ * Send a WhatsApp message — QR session first, then Twilio fallback.
+ * @param {{ to, message, meta?, tenantId? }} opts
  */
-async function sendWhatsApp({ to, message, meta = {} }) {
+async function sendWhatsApp({ to, message, meta = {}, tenantId = null }) {
   if (!to) return;
+  const tid = tenantId || meta.tenant_id;
+
+  if (tid) {
+    try {
+      const whatsappWeb = require('./whatsappWebService');
+      if (whatsappWeb.isConnected(tid)) {
+        let status = 'sent';
+        let errorMsg = null;
+        try {
+          await whatsappWeb.sendViaQr(tid, to, message, meta);
+          console.log(`[Notifications] WhatsApp (QR) sent → ${to}`);
+        } catch (err) {
+          status = 'failed';
+          errorMsg = err.message;
+          console.error(`[Notifications] WhatsApp (QR) failed → ${to}:`, err.message);
+        }
+        await writeLog({
+          ...meta,
+          channel: 'whatsapp',
+          phone: to,
+          message_preview: message.slice(0, 255),
+          status,
+          error_message: errorMsg,
+        });
+        if (status === 'sent') return;
+      }
+    } catch (err) {
+      console.warn('[Notifications] WhatsApp QR path error:', err.message);
+    }
+  }
+
   const client = getTwilio();
   if (!client) {
-    console.warn('[Notifications] WhatsApp skipped — Twilio credentials not configured.');
+    console.warn('[Notifications] WhatsApp skipped — not connected via QR and Twilio not configured.');
     return;
   }
   const from        = process.env.TWILIO_WHATSAPP_FROM || 'whatsapp:+14155238886';
@@ -301,11 +346,11 @@ async function sendWhatsApp({ to, message, meta = {} }) {
   let status = 'sent', errorMsg = null;
   try {
     await client.messages.create({ from, to: toFormatted, body: message });
-    console.log(`[Notifications] WhatsApp sent → ${toFormatted}`);
+    console.log(`[Notifications] WhatsApp (Twilio) sent → ${toFormatted}`);
   } catch (err) {
     status   = 'failed';
     errorMsg = err.message;
-    console.error(`[Notifications] WhatsApp failed → ${toFormatted}:`, err.message);
+    console.error(`[Notifications] WhatsApp (Twilio) failed → ${toFormatted}:`, err.message);
   }
   await writeLog({
     ...meta,
@@ -382,7 +427,8 @@ function detailRow(label, value) {
 
 // ── 1. Appointment Confirmed ──────────────────────────────────────────────────
 async function notifyAppointmentConfirmed(appointment, branch, service, tenantId) {
-  const flags = await getChannelFlags();
+  const tid = resolveNotifyTenantId(tenantId, appointment, branch);
+  const flags = await getChannelFlags(tid);
   const phone = appointment.phone        || null;
   const email = appointment.email        || null;
   if (!phone && !email) return;
@@ -397,6 +443,7 @@ async function notifyAppointmentConfirmed(appointment, branch, service, tenantId
     customer_name: appointment.customer_name,
     event_type:    'appointment_confirmed',
     branch_id:     branch?.id || appointment.branch_id,
+    tenant_id:     tid,
   };
   const vars = {
     customer_name: appointment.customer_name,
@@ -408,7 +455,7 @@ async function notifyAppointmentConfirmed(appointment, branch, service, tenantId
   };
 
   if (email && flags.appt_confirmed_email) {
-    const tpl = await getTemplate('appointment_confirmed', 'email', tenantId);
+    const tpl = await getTemplate('appointment_confirmed', 'email', tid);
     const subject = tpl ? interpolate(tpl.subject || 'Appointment Confirmed — HEXAONE', vars) : 'Appointment Confirmed — HEXAONE';
     const bodyHtml = tpl ? interpolate(tpl.body, vars) : `
       <h2 style="margin:0 0 8px;font-size:22px;color:#7c3aed;">Appointment Confirmed! 🎉</h2>
@@ -432,23 +479,23 @@ async function notifyAppointmentConfirmed(appointment, branch, service, tenantId
       subject,
       html:    buildEmailWrapper(subject, bodyHtml, brName, brPhone),
       meta,
-      tenantId,
+      tenantId: tid,
     });
   }
 
   if (phone && flags.appt_confirmed_whatsapp) {
-    const tpl = await getTemplate('appointment_confirmed', 'whatsapp', tenantId);
+    const tpl = await getTemplate('appointment_confirmed', 'whatsapp', tid);
     const msg = tpl
       ? interpolate(tpl.body, vars)
       : `✂️ *HEXAONE — Appointment Confirmed!*\n\n` +
         `Hi ${appointment.customer_name}, your booking is confirmed:\n\n` +
         `📅 Date: ${date}\n⏰ Time: ${time}\n💇 Service: ${svcName}\n🏠 Branch: ${brName}\n💰 Amount: ${amount}\n\n` +
         `Please arrive 5 mins early. See you soon! 😊`;
-    await sendWhatsApp({ to: phone, message: msg, meta });
+    await sendWhatsApp({ to: phone, message: msg, meta, tenantId: tid });
   }
 
   if (phone && flags.appt_confirmed_sms) {
-    const tpl = await getTemplate('appointment_confirmed', 'sms', tenantId);
+    const tpl = await getTemplate('appointment_confirmed', 'sms', tid);
     const smsMsg = tpl
       ? interpolate(tpl.body, vars)
       : `HEXAONE\n` +
@@ -463,9 +510,10 @@ async function notifyAppointmentConfirmed(appointment, branch, service, tenantId
 
 // ── 2. Appointment Completed ────────────────────────────────────────────────
 async function notifyAppointmentCompleted(appointment, branch, service, tenantId) {
-  const flags = await getChannelFlags();
+  const tid = resolveNotifyTenantId(tenantId, appointment, branch);
+  const flags = await getChannelFlags(tid);
   const phone = appointment.phone || null;
-  if (!phone || !flags.appt_completed_sms) return;
+  if (!phone) return;
 
   const date    = appointment.date || '—';
   const time    = appointment.time ? appointment.time.slice(0, 5) : '—';
@@ -475,19 +523,31 @@ async function notifyAppointmentCompleted(appointment, branch, service, tenantId
     customer_name: appointment.customer_name,
     event_type:    'appointment_completed',
     branch_id:     branch?.id || appointment.branch_id,
+    tenant_id:     tid,
   };
   const vars = { customer_name: appointment.customer_name, date, time, service_name: svcName, branch_name: brName };
 
-  const tpl = await getTemplate('appointment_completed', 'sms', tenantId);
-  const smsMsg = tpl
-    ? interpolate(tpl.body, vars)
-    : `HEXAONE\nHi ${appointment.customer_name}! Your ${svcName} is done.\n${date} ${time} | ${brName}\nThank you for visiting!`;
-  await sendSMS({ to: phone, message: smsMsg, meta });
+  if (flags.appt_completed_whatsapp) {
+    const tpl = await getTemplate('appointment_completed', 'whatsapp', tid);
+    const msg = tpl
+      ? interpolate(tpl.body, vars)
+      : `✅ *HEXAONE — Service Complete*\n\nHi ${appointment.customer_name}! Your ${svcName} is done.\n📅 ${date} ${time}\n🏠 ${brName}\n\nThank you for visiting! 🙏`;
+    await sendWhatsApp({ to: phone, message: msg, meta, tenantId: tid });
+  }
+
+  if (flags.appt_completed_sms) {
+    const tpl = await getTemplate('appointment_completed', 'sms', tid);
+    const smsMsg = tpl
+      ? interpolate(tpl.body, vars)
+      : `HEXAONE\nHi ${appointment.customer_name}! Your ${svcName} is done.\n${date} ${time} | ${brName}\nThank you for visiting!`;
+    await sendSMS({ to: phone, message: smsMsg, meta });
+  }
 }
 
 // ── 3. Payment Receipt ────────────────────────────────────────────────────────
 async function notifyPaymentReceipt(payment, branch, service, customer, tenantId) {
-  const flags = await getChannelFlags();
+  const tid = resolveNotifyTenantId(tenantId, payment, branch, customer);
+  const flags = await getChannelFlags(tid);
   const phone = customer?.phone || null;
   const email = customer?.email || null;
   if (!phone && !email) return;
@@ -505,6 +565,7 @@ async function notifyPaymentReceipt(payment, branch, service, customer, tenantId
     customer_name: customerName,
     event_type:    'payment_receipt',
     branch_id:     branch?.id || payment.branch_id,
+    tenant_id:     tid,
   };
 
   const splitRows = splits.length
@@ -512,7 +573,7 @@ async function notifyPaymentReceipt(payment, branch, service, customer, tenantId
     : detailRow('💳 Payment', total);
 
   if (email && flags.payment_receipt_email) {
-    const tpl = await getTemplate('payment_receipt', 'email', tenantId);
+    const tpl = await getTemplate('payment_receipt', 'email', tid);
     let subject, bodyHtml;
     if (tpl) {
       subject  = interpolate(tpl.subject || 'Payment Receipt — HEXAONE', { customer_name: customerName, branch_name: brName, date, service_name: svcName, amount: total });
@@ -547,12 +608,12 @@ async function notifyPaymentReceipt(payment, branch, service, customer, tenantId
       subject,
       html:    buildEmailWrapper(subject, bodyHtml, brName, brPhone),
       meta,
-      tenantId,
+      tenantId: tid,
     });
   }
 
   if (phone && flags.payment_receipt_whatsapp) {
-    const tpl = await getTemplate('payment_receipt', 'whatsapp', tenantId);
+    const tpl = await getTemplate('payment_receipt', 'whatsapp', tid);
     let msg;
     if (tpl) {
       msg = interpolate(tpl.body, { customer_name: customerName, branch_name: brName, date, service_name: svcName, amount: total });
@@ -565,11 +626,11 @@ async function notifyPaymentReceipt(payment, branch, service, customer, tenantId
       if (pointsEarned > 0) msg += `\n🌟 You earned *${pointsEarned} loyalty points*!`;
       msg += `\n\nThank you for choosing HEXAONE! 💜`;
     }
-    await sendWhatsApp({ to: phone, message: msg, meta });
+    await sendWhatsApp({ to: phone, message: msg, meta, tenantId: tid });
   }
 
   if (phone && flags.payment_receipt_sms) {
-    const tpl = await getTemplate('payment_receipt', 'sms', tenantId);
+    const tpl = await getTemplate('payment_receipt', 'sms', tid);
     let smsMsg;
     if (tpl) {
       smsMsg = interpolate(tpl.body, { customer_name: customerName, branch_name: brName, date, service_name: svcName, amount: total });
@@ -610,7 +671,8 @@ async function notifyPaymentReceipt(payment, branch, service, customer, tenantId
 
 // ── 3. Loyalty Points Update ──────────────────────────────────────────────────
 async function notifyLoyaltyPoints(customer, pointsEarned, totalPoints, branch, tenantId) {
-  const flags = await getChannelFlags();
+  const tid = resolveNotifyTenantId(tenantId, customer, branch);
+  const flags = await getChannelFlags(tid);
   const phone = customer?.phone;
   if (!phone) return;
 
@@ -621,22 +683,23 @@ async function notifyLoyaltyPoints(customer, pointsEarned, totalPoints, branch, 
     customer_name: name,
     event_type:    'loyalty_points',
     branch_id:     branch?.id,
+    tenant_id:     tid,
   };
   const vars = { customer_name: name, branch_name: brName, points_earned: pointsEarned, points_total: totalPoints };
 
   if (flags.loyalty_points_whatsapp) {
-    const tpl = await getTemplate('loyalty_points', 'whatsapp', tenantId);
+    const tpl = await getTemplate('loyalty_points', 'whatsapp', tid);
     const msg = tpl
       ? interpolate(tpl.body, vars)
       : `${tier.emoji} *HEXAONE — Loyalty Points Update*\n\n` +
         `Hey ${name}! 🎉\n\nYou just earned *+${pointsEarned} points* at *${brName}*!\n\n` +
         `📊 Your Points Balance:\n  • Earned this visit: +${pointsEarned}\n  • Total balance: *${totalPoints} pts*\n  • Tier status: ${tier.name}\n\n` +
         `💡 Tip: Every 10 pts = Rs. 1 discount on your next visit!\n\nKeep visiting HEXAONE to unlock more rewards. 🛍️`;
-    await sendWhatsApp({ to: phone, message: msg, meta });
+    await sendWhatsApp({ to: phone, message: msg, meta, tenantId: tid });
   }
 
   if (flags.loyalty_points_sms) {
-    const tpl = await getTemplate('loyalty_points', 'sms', tenantId);
+    const tpl = await getTemplate('loyalty_points', 'sms', tid);
     const smsMsg = tpl
       ? interpolate(tpl.body, vars)
       : `HEXAONE\nHi ${name}! You earned +${pointsEarned} loyalty points.\nTotal: ${totalPoints} pts. Every 10 pts = Rs. 1 discount!`;
@@ -644,7 +707,79 @@ async function notifyLoyaltyPoints(customer, pointsEarned, totalPoints, branch, 
   }
 }
 
-// ── 5. Waitlist Slot Available ────────────────────────────────────────────────
+// ── 5. Walk-In Queue ──────────────────────────────────────────────────────────
+async function notifyWalkInCheckIn(walkin, branch, service, tenantId) {
+  const tid = resolveNotifyTenantId(tenantId, walkin, branch);
+  const flags = await getChannelFlags(tid);
+  const phone = walkin?.phone || null;
+  if (!phone || !flags.walkin_checkin_whatsapp) return;
+
+  const name    = walkin.customer_name || 'Guest';
+  const token   = walkin.token || '—';
+  const svcName = service?.name || '—';
+  const brName  = branch?.name  || '—';
+  const wait    = walkin.estimated_wait ?? '—';
+  const meta    = {
+    customer_name: name,
+    event_type:    'walk_in_checkin',
+    branch_id:     branch?.id || walkin.branch_id,
+    tenant_id:     tid,
+  };
+  const vars = { customer_name: name, token, service_name: svcName, branch_name: brName, wait_mins: wait };
+  const tpl = await getTemplate('walk_in_checkin', 'whatsapp', tid);
+  const msg = tpl
+    ? interpolate(tpl.body, vars)
+    : `🚶 *HEXAONE — Walk-In Check-In*\n\nHi ${name}! You're checked in.\n\n🎫 Token: *${token}*\n💇 Service: ${svcName}\n🏠 Branch: ${brName}\n⏳ Est. wait: ${wait} mins\n\nPlease wait — we'll call your token soon.`;
+  await sendWhatsApp({ to: phone, message: msg, meta, tenantId: tid });
+}
+
+async function notifyWalkInServing(walkin, branch, service, tenantId) {
+  const tid = resolveNotifyTenantId(tenantId, walkin, branch);
+  const flags = await getChannelFlags(tid);
+  const phone = walkin?.phone || null;
+  if (!phone || !flags.walkin_serving_whatsapp) return;
+
+  const name    = walkin.customer_name || 'Guest';
+  const token   = walkin.token || '—';
+  const svcName = service?.name || '—';
+  const brName  = branch?.name  || '—';
+  const meta    = {
+    customer_name: name,
+    event_type:    'walk_in_serving',
+    branch_id:     branch?.id || walkin.branch_id,
+    tenant_id:     tid,
+  };
+  const vars = { customer_name: name, token, service_name: svcName, branch_name: brName };
+  const tpl = await getTemplate('walk_in_serving', 'whatsapp', tid);
+  const msg = tpl
+    ? interpolate(tpl.body, vars)
+    : `🚶 *HEXAONE — Your Turn!*\n\nHi ${name}, token *${token}* is now being served.\n💇 ${svcName}\n🏠 ${brName}\n\nPlease proceed to the service area.`;
+  await sendWhatsApp({ to: phone, message: msg, meta, tenantId: tid });
+}
+
+async function notifyWalkInCompleted(walkin, branch, service, tenantId) {
+  const tid = resolveNotifyTenantId(tenantId, walkin, branch);
+  const flags = await getChannelFlags(tid);
+  const phone = walkin?.phone || null;
+  if (!phone || !flags.walkin_completed_whatsapp) return;
+
+  const name   = walkin.customer_name || 'Guest';
+  const brName = branch?.name || 'HEXAONE';
+  const meta   = {
+    customer_name: name,
+    event_type:    'walk_in_completed',
+    branch_id:     branch?.id || walkin.branch_id,
+    tenant_id:     tid,
+  };
+  const vars = { customer_name: name, branch_name: brName, service_name: service?.name || '—' };
+  const tpl = await getTemplate('walk_in_completed', 'whatsapp', tid);
+  const msg = tpl
+    ? interpolate(tpl.body, vars)
+    : `✅ *HEXAONE — Service Complete*\n\nHi ${name}! Your walk-in service is complete.\n\nThank you for visiting ${brName}! 🙏`;
+  await sendWhatsApp({ to: phone, message: msg, meta, tenantId: tid });
+}
+
+// ── 6. Waitlist Slot Available ────────────────────────────────────────────────
 async function notifyWaitlistSlotAvailable(waitlistEntry, branch, service) {
   const phone = waitlistEntry?.phone || null;
   if (!phone) return;
@@ -669,6 +804,9 @@ module.exports = {
   notifyAppointmentCompleted,
   notifyPaymentReceipt,
   notifyLoyaltyPoints,
+  notifyWalkInCheckIn,
+  notifyWalkInServing,
+  notifyWalkInCompleted,
   notifyWaitlistSlotAvailable,
   getTemplate,
   interpolate,

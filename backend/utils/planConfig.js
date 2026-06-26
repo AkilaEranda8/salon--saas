@@ -123,6 +123,34 @@ function getTenantCaps(plan = 'trial') {
   };
 }
 
+const { PlanConfig } = require('../models');
+
+let trialDaysCache = { value: 14, at: 0 };
+const TRIAL_DAYS_CACHE_MS = 60_000;
+
+async function getTrialDays() {
+  const now = Date.now();
+  if (now - trialDaysCache.at < TRIAL_DAYS_CACHE_MS) return trialDaysCache.value;
+  try {
+    const cfg = await PlanConfig.findOne({ where: { key: 'trial' }, attributes: ['trial_days'] });
+    const days = Number(cfg?.trial_days);
+    const resolved = Number.isFinite(days) && days > 0 ? days : 14;
+    trialDaysCache = { value: resolved, at: now };
+    return resolved;
+  } catch {
+    return trialDaysCache.value || 14;
+  }
+}
+
+function invalidateTrialDaysCache() {
+  trialDaysCache.at = 0;
+}
+
+async function addTrialDaysFromConfig(startDate = new Date()) {
+  const days = await getTrialDays();
+  return addTrialDays(startDate, days);
+}
+
 function addTrialDays(startDate = new Date(), days = 14) {
   const date = new Date(startDate);
   date.setDate(date.getDate() + Number(days || 14));
@@ -152,4 +180,7 @@ module.exports = {
   getMinPlanForFeature,
   getTenantCaps,
   addTrialDays,
+  addTrialDaysFromConfig,
+  getTrialDays,
+  invalidateTrialDaysCache,
 };

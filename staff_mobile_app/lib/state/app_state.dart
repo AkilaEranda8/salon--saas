@@ -1506,6 +1506,74 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  Future<List<Map<String, dynamic>>> loadReminders() async {
+    final token = _currentUser?.authToken;
+    if (token == null || token.isEmpty) {
+      throw Exception('Missing auth token (cannot load reminders).');
+    }
+    return _api.fetchReminders(
+      token: token,
+      branchId: _currentUser?.branchId,
+    );
+  }
+
+  Future<bool> createReminder({
+    required String title,
+    String priority = 'medium',
+    String type = 'general',
+    String? dueDate,
+  }) async {
+    final token = _currentUser?.authToken;
+    if (token == null || token.isEmpty) {
+      _lastError = 'Missing auth token (cannot create reminder).';
+      return false;
+    }
+    try {
+      await _api.createReminder(
+        token: token,
+        title: title,
+        branchId: _currentUser?.branchId,
+        priority: priority,
+        type: type,
+        dueDate: dueDate,
+      );
+      return true;
+    } catch (e) {
+      _lastError = e.toString().replaceFirst('Exception: ', '');
+      return false;
+    }
+  }
+
+  Future<bool> toggleReminder(int reminderId) async {
+    final token = _currentUser?.authToken;
+    if (token == null || token.isEmpty) {
+      _lastError = 'Missing auth token (cannot update reminder).';
+      return false;
+    }
+    try {
+      await _api.toggleReminder(token: token, reminderId: reminderId);
+      return true;
+    } catch (e) {
+      _lastError = e.toString().replaceFirst('Exception: ', '');
+      return false;
+    }
+  }
+
+  Future<bool> deleteReminder(int reminderId) async {
+    final token = _currentUser?.authToken;
+    if (token == null || token.isEmpty) {
+      _lastError = 'Missing auth token (cannot delete reminder).';
+      return false;
+    }
+    try {
+      await _api.deleteReminder(token: token, reminderId: reminderId);
+      return true;
+    } catch (e) {
+      _lastError = e.toString().replaceFirst('Exception: ', '');
+      return false;
+    }
+  }
+
   Set<StaffPermission> _permissionsFromRole(String role) {
     switch (role.trim().toLowerCase()) {
       case 'superadmin':

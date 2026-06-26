@@ -30,6 +30,9 @@ const { ensureTenantEnabledFeaturesColumn } = require('./services/ensureTenantEn
 const { ensureStaffPhotoColumn } = require('./services/ensureStaffPhotoColumn');
 const ensureAppointmentReminderColumn = require('./services/ensureAppointmentReminderColumn');
 const ensureWalkInReminderColumns = require('./services/ensureWalkInReminderColumns');
+const ensureWalkInNotificationColumns = require('./services/ensureWalkInNotificationColumns');
+const ensureWhatsAppSchema = require('./services/ensureWhatsAppSchema');
+const { restoreSessionsOnBoot } = require('./services/whatsappWebService');
 const { ensureServiceDurationDefaults } = require('./services/ensureServiceDurationDefaults');
 const platformGuard = require('./middleware/platformGuard');
 const logger        = require('./utils/logger');
@@ -351,6 +354,9 @@ connectWithRetry().then(async () => {
   await ensureUserMobileFeaturesColumn();
   await ensureTenantMobileRoleDefaultsColumn();
   await ensureTenantEnabledFeaturesColumn();
+  await ensureWalkInNotificationColumns();
+  await ensureWhatsAppSchema();
+  restoreSessionsOnBoot().catch((e) => logger.warn('whatsapp_restore_failed', { message: e.message }));
 
   server.listen(PORT, () =>
     logger.info('server_started', { port: PORT })

@@ -137,6 +137,8 @@ export default function PlatformTenantsPage() {
   const [clearConfirmSlug, setClearConfirmSlug] = useState('');
   const [clearingData, setClearingData] = useState(false);
   const [clearDataError, setClearDataError] = useState('');
+  const [defaultTrialDays, setDefaultTrialDays] = useState(14);
+  const [trialAdjusting, setTrialAdjusting] = useState(false);
 
   const openEditTenant = (tenant) => {
     setEditTenant({ ...tenant, _originalPlan: tenant.plan, clearTrialData: false });
@@ -169,6 +171,54 @@ export default function PlatformTenantsPage() {
   }, []);
 
   useEffect(() => { fetchTenants(); }, [fetchTenants]);
+
+  useEffect(() => {
+    api.get('/platform/plans')
+      .then(r => {
+        const plans = Array.isArray(r.data) ? r.data : r.data?.plans || [];
+        const trialPlan = plans.find(p => p.key === 'trial');
+        if (trialPlan?.trial_days) setDefaultTrialDays(Number(trialPlan.trial_days));
+      })
+      .catch(() => {});
+  }, []);
+
+  const trialDaysLeft = (endsAt) => {
+    if (!endsAt) return null;
+    return Math.ceil((new Date(endsAt) - new Date()) / 86400000);
+  };
+
+  const handleTrialAdjust = async (adjustDays, reset = false) => {
+    if (!editTenant) return;
+    setTrialAdjusting(true);
+    setError('');
+    try {
+      const payload = reset ? { reset: true } : { adjust_days: adjustDays };
+      const r = await api.post(`/platform/tenants/${editTenant.id}/trial/adjust`, payload);
+      setEditTenant(t => ({ ...t, trial_ends_at: r.data.trial_ends_at }));
+      fetchTenants();
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to adjust trial period.');
+    } finally {
+      setTrialAdjusting(false);
+    }
+  };
+
+  const handleTrialEndDate = async (dateStr) => {
+    if (!editTenant || !dateStr) return;
+    setTrialAdjusting(true);
+    setError('');
+    try {
+      const r = await api.post(`/platform/tenants/${editTenant.id}/trial/adjust`, {
+        trial_ends_at: new Date(`${dateStr}T23:59:59`).toISOString(),
+      });
+      setEditTenant(t => ({ ...t, trial_ends_at: r.data.trial_ends_at }));
+      fetchTenants();
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to set trial end date.');
+    } finally {
+      setTrialAdjusting(false);
+    }
+  };
 
   const handleSave = async () => {
     setSaving(true);
@@ -905,6 +955,92 @@ export default function PlatformTenantsPage() {
                 <p style={{ fontSize: 11, color: isDark ? '#64748B' : '#6B7280', marginTop: 2 }}>Email to <a href="mailto:support@helapay.lk" style={{ color: '#818CF8' }}>support@helapay.lk</a> to register credentials.</p>
               </div>
             </div>
+
+            {editTenant.plan === 'trial' && (
+              <div style={{
+                border: `1px solid ${isDark ? '#334155' : '#E5E7EB'}`,
+                borderRadius: 12,
+                padding: '14px 16px',
+                background: isDark ? 'rgba(245,158,11,0.08)' : '#FFFBEB',
+              }}>
+                <p style={{ fontSize: 11, fontWeight: 700, color: isDark ? '#FCD34D' : '#92400E', letterSpacing: '0.08em', textTransform: 'uppercase', margin: '0 0 10px' }}>
+                  Trial Period
+                </p>
+                <div style={{ fontSize: 12, color: isDark ? '#CBD5E1' : '#475467', marginBottom: 12, lineHeight: 1.6 }}>
+                  <div>
+                    <strong>Ends:</strong>{' '}
+                    {editTenant.trial_ends_at
+                      ? new Date(editTenant.trial_ends_at).toLocaleDateString()
+                      : 'Not set'}
+                  </div>
+                  {editTenant.trial_ends_at && (
+                    <div>
+                      <strong>Days left:</strong>{' '}
+                      {(() => {
+                        const left = trialDaysLeft(editTenant.trial_ends_at);
+                        if (left < 0) return <span style={{ color: '#EF4444' }}>Expired ({Math.abs(left)} days ago)</span>;
+                        return `${left} day${left !== 1 ? 's' : ''}`;
+                      })()}
+                    </div>
+                  )}
+                  <div style={{ fontSize: 11, color: isDark ? '#94A3B8' : '#6B7280', marginTop: 4 }}>
+                    Default for new tenants: {defaultTrialDays} days (change in Plans)
+                  </div>
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+                  {[
+                    { label: '−7 days', value: -7 },
+                    { label: '−1 day', value: -1 },
+                    { label: '+1 day', value: 1 },
+                    { label: '+7 days', value: 7 },
+                    { label: '+14 days', value: 14 },
+                  ].map(({ label, value }) => (
+                    <button
+                      key={value}
+                      type="button"
+                      disabled={trialAdjusting}
+                      onClick={() => handleTrialAdjust(value)}
+                      style={{
+                        padding: '6px 12px', borderRadius: 8, border: `1px solid ${isDark ? '#475569' : '#D1D5DB'}`,
+                        background: isDark ? '#0F172A' : '#fff', cursor: trialAdjusting ? 'not-allowed' : 'pointer',
+                        fontSize: 12, fontWeight: 600, color: value < 0 ? '#DC2626' : '#059669',
+                        opacity: trialAdjusting ? 0.6 : 1,
+                      }}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    disabled={trialAdjusting}
+                    onClick={() => handleTrialAdjust(null, true)}
+                    style={{
+                      padding: '6px 12px', borderRadius: 8, border: '1px solid #818CF8',
+                      background: isDark ? '#312E81' : '#EEF2FF', cursor: trialAdjusting ? 'not-allowed' : 'pointer',
+                      fontSize: 12, fontWeight: 600, color: '#4F46E5', opacity: trialAdjusting ? 0.6 : 1,
+                    }}
+                  >
+                    Reset ({defaultTrialDays}d)
+                  </button>
+                </div>
+                <div>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: isDark ? '#94A3B8' : '#374151', display: 'block', marginBottom: 5 }}>
+                    Set trial end date
+                  </label>
+                  <input
+                    type="date"
+                    disabled={trialAdjusting}
+                    defaultValue={editTenant.trial_ends_at ? new Date(editTenant.trial_ends_at).toISOString().slice(0, 10) : ''}
+                    onChange={e => { if (e.target.value) handleTrialEndDate(e.target.value); }}
+                    style={{
+                      width: '100%', padding: '8px 12px', border: `1px solid ${isDark ? '#334155' : '#E5E7EB'}`,
+                      borderRadius: 8, fontSize: 13, outline: 'none', boxSizing: 'border-box',
+                      background: isDark ? '#0F172A' : '#fff', color: isDark ? '#E2E8F0' : '#111827',
+                    }}
+                  />
+                </div>
+              </div>
+            )}
 
             {editTenant._originalPlan === 'trial' && editTenant.plan !== 'trial' && (
               <label style={{

@@ -9,4 +9,12 @@ function jwtBranchIds(user) {
   return Number.isFinite(n) ? [n] : [];
 }
 
-module.exports = { jwtBranchIds };
+/** Coerce branchId from query (handles duplicate keys → array). */
+function parseQueryBranchId(raw) {
+  if (raw == null || raw === '') return null;
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+module.exports = { jwtBranchIds, parseQueryBranchId };

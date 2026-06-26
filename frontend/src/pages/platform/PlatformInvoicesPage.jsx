@@ -4,6 +4,35 @@ import toast from 'react-hot-toast';
 import { getUploadUrl } from '../../utils/tenant';
 import { DataTable } from '../../components/ui/PageKit';
 
+function formatLkr(amount) {
+  return `LKR ${Number(amount || 0).toLocaleString('en-LK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function parsePlanPrice(plan) {
+  if (!plan) return 0;
+  const raw = plan.offer_active && plan.offer_price_display
+    ? plan.offer_price_display
+    : plan.price_display;
+  if (!raw || String(raw).toLowerCase() === 'free') return 0;
+  const clean = String(raw).replace(/[^0-9.]/g, '');
+  const v = parseFloat(clean);
+  return Number.isNaN(v) ? 0 : v;
+}
+
+function currentMonthPeriod() {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth(), 1);
+  const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  return {
+    billing_period_start: start.toISOString().slice(0, 10),
+    billing_period_end: end.toISOString().slice(0, 10),
+  };
+}
+
+function computeTotal(base, extra = 0, discount = 0) {
+  return Math.max(0, Number(base || 0) + Number(extra || 0) - Number(discount || 0));
+}
+
 const STATUS_COLORS = {
   draft:    { bg: '#F3F4F6', text: '#374151', dot: '#9CA3AF' },
   issued:   { bg: '#EEF2FF', text: '#4338CA', dot: '#6366F1' },
@@ -25,7 +54,7 @@ function Badge({ children, colors }) {
   );
 }
 
-function Modal({ title, onClose, children }) {
+function Modal({ title, onClose, children, wide }) {
   return (
     <div style={{
       position: 'fixed', inset: 0, background: 'rgba(30,27,75,0.4)',
@@ -34,7 +63,8 @@ function Modal({ title, onClose, children }) {
     }} onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
       <div style={{
         background: '#fff', borderRadius: 14, padding: '28px 28px 24px',
-        width: 480, maxWidth: '90vw', boxShadow: '0 20px 60px rgba(0,0,0,0.2)',
+        width: wide ? 560 : 480, maxWidth: '92vw', maxHeight: '90vh', overflowY: 'auto',
+        boxShadow: '0 20px 60px rgba(0,0,0,0.2)',
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
           <div style={{ fontSize: 16, fontWeight: 700, color: '#1E1B4B' }}>{title}</div>
@@ -56,15 +86,15 @@ export default function PlatformInvoicesPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [createForm, setCreateForm] = useState({
     tenant_id: '',
+    plan_key: '',
     billing_period_start: '',
     billing_period_end: '',
-    amount: '',
-    plan: '',
     base_price: '',
     additional_charges: '0',
     discount: '0',
     notes: '',
   });
+  const [plans, setPlans] = useState([]);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState('');
   const [editInvoice, setEditInvoice] = useState(null);
@@ -112,30 +142,57 @@ export default function PlatformInvoicesPage() {
         setTenants(data);
       })
       .catch(console.error);
+    api.get('/platform/plans')
+      .then(r => {
+        const data = Array.isArray(r.data) ? r.data : [];
+        setPlans(data.filter(p => p.is_active !== false));
+      })
+      .catch(console.error);
   }, []);
+
+  const selectedPlan = useMemo(
+    () => plans.find(p => p.key === createForm.plan_key) || null,
+    [plans, createForm.plan_key],
+  );
+
+  const previewTotal = useMemo(
+    () => computeTotal(createForm.base_price, createForm.additional_charges, createForm.discount),
+    [createForm.base_price, createForm.additional_charges, createForm.discount],
+  );
+
+  const applyPlanToForm = (planKey) => {
+    const plan = plans.find(p => p.key === planKey);
+    const price = parsePlanPrice(plan);
+    setCreateForm(f => ({
+      ...f,
+      plan_key: planKey,
+      base_price: String(price),
+    }));
+  };
 
   const handleCreate = async () => {
     setCreateError('');
-    if (!createForm.tenant_id || !createForm.billing_period_start || !createForm.billing_period_end || !createForm.amount) {
-      setCreateError('Tenant, start date, end date, and amount are required.');
+    if (!createForm.tenant_id || !createForm.plan_key) {
+      setCreateError('Tenant and package are required.');
       return;
     }
 
     setCreating(true);
     try {
       await api.post('/platform/invoices', {
-        tenant_id: parseInt(createForm.tenant_id),
+        tenant_id: parseInt(createForm.tenant_id, 10),
+        plan_key: createForm.plan_key,
         billing_period_start: createForm.billing_period_start,
         billing_period_end: createForm.billing_period_end,
-        amount: parseFloat(createForm.amount),
-        currency: 'USD',
-        plan: createForm.plan || null,
-        base_price: createForm.base_price ? parseFloat(createForm.base_price) : null,
+        amount: previewTotal,
+        currency: 'LKR',
+        base_price: parseFloat(createForm.base_price) || 0,
         additional_charges: parseFloat(createForm.additional_charges) || 0,
         discount: parseFloat(createForm.discount) || 0,
         notes: createForm.notes || null,
       });
       setCreateOpen(false);
+      toast.success('Invoice created');
       fetchInvoices();
     } catch (err) {
       setCreateError(err.response?.data?.message || 'Create failed.');
@@ -261,9 +318,22 @@ export default function PlatformInvoicesPage() {
     {
       accessorKey: 'amount',
       header: 'Amount',
+      meta: { width: '12%' },
+      cell: ({ row }) => {
+        const inv = row.original;
+        return (
+          <span style={{ fontWeight: 700, color: '#374151', fontSize: 13 }}>
+            {formatLkr(inv.amount)}
+          </span>
+        );
+      },
+    },
+    {
+      accessorKey: 'plan',
+      header: 'Package',
       meta: { width: '10%' },
       cell: ({ getValue }) => (
-        <span style={{ fontWeight: 700, color: '#374151', fontSize: 13 }}>${parseFloat(getValue()).toFixed(2)}</span>
+        <span style={{ fontSize: 12, fontWeight: 600, color: '#4338CA', textTransform: 'capitalize' }}>{getValue() || '—'}</span>
       ),
     },
     {
@@ -388,12 +458,12 @@ export default function PlatformInvoicesPage() {
           </p>
         </div>
         <button onClick={() => {
+          const period = currentMonthPeriod();
           setCreateForm({
             tenant_id: '',
-            billing_period_start: '',
-            billing_period_end: '',
-            amount: '',
-            plan: '',
+            plan_key: '',
+            billing_period_start: period.billing_period_start,
+            billing_period_end: period.billing_period_end,
             base_price: '',
             additional_charges: '0',
             discount: '0',
@@ -483,7 +553,7 @@ export default function PlatformInvoicesPage() {
 
       {/* ── Create Invoice Modal ───────────────────────────────────────── */}
       {createOpen && (
-        <Modal title="Create Invoice" onClose={() => setCreateOpen(false)}>
+        <Modal title="Create Invoice" onClose={() => setCreateOpen(false)} wide>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <div>
               <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>Tenant</label>
@@ -495,16 +565,47 @@ export default function PlatformInvoicesPage() {
               </select>
             </div>
 
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>Package / Plan</label>
+              <select value={createForm.plan_key}
+                onChange={e => applyPlanToForm(e.target.value)}
+                style={{ width: '100%', padding: '9px 12px', border: '1px solid #E5E7EB', borderRadius: 8, fontSize: 13, outline: 'none' }}>
+                <option value="">Select package…</option>
+                {plans.map(p => (
+                  <option key={p.key} value={p.key}>
+                    {p.label} — {p.offer_active && p.offer_price_display ? p.offer_price_display : p.price_display}{p.price_period || ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {selectedPlan && (
+              <div style={{
+                padding: '14px 16px', borderRadius: 10, background: '#F8FAFC',
+                border: '1px solid #E2E8F0', fontSize: 12, color: '#475569', lineHeight: 1.5,
+              }}>
+                <div style={{ fontWeight: 700, color: '#1E1B4B', fontSize: 13, marginBottom: 4 }}>{selectedPlan.label}</div>
+                {selectedPlan.tagline && <div style={{ marginBottom: 6 }}>{selectedPlan.tagline}</div>}
+                <div style={{ fontWeight: 700, color: '#4338CA', fontSize: 14 }}>
+                  {formatLkr(parsePlanPrice(selectedPlan))}
+                  {selectedPlan.price_period || '/mo'}
+                </div>
+                {selectedPlan.offer_active && selectedPlan.offer_badge && (
+                  <div style={{ marginTop: 6, color: '#059669', fontWeight: 600 }}>{selectedPlan.offer_badge}</div>
+                )}
+              </div>
+            )}
+
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
               <div>
-                <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>Start Date</label>
+                <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>Billing Start</label>
                 <input type="date" value={createForm.billing_period_start}
                   onChange={e => setCreateForm(f => ({ ...f, billing_period_start: e.target.value }))}
                   style={{ width: '100%', padding: '9px 12px', border: '1px solid #E5E7EB', borderRadius: 8, fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
                 />
               </div>
               <div>
-                <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>End Date</label>
+                <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>Billing End</label>
                 <input type="date" value={createForm.billing_period_end}
                   onChange={e => setCreateForm(f => ({ ...f, billing_period_end: e.target.value }))}
                   style={{ width: '100%', padding: '9px 12px', border: '1px solid #E5E7EB', borderRadius: 8, fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
@@ -512,52 +613,43 @@ export default function PlatformInvoicesPage() {
               </div>
             </div>
 
-            <div>
-              <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>Amount (USD)</label>
-              <input type="number" step="0.01" value={createForm.amount}
-                onChange={e => setCreateForm(f => ({ ...f, amount: e.target.value }))}
-                style={{ width: '100%', padding: '9px 12px', border: '1px solid #E5E7EB', borderRadius: 8, fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
-              />
-            </div>
-
-            <div>
-              <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>Plan (optional)</label>
-              <input type="text" placeholder="e.g., trial, basic, pro, enterprise" value={createForm.plan}
-                onChange={e => setCreateForm(f => ({ ...f, plan: e.target.value }))}
-                style={{ width: '100%', padding: '9px 12px', border: '1px solid #E5E7EB', borderRadius: 8, fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
-              />
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
               <div>
-                <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>Base Price</label>
+                <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>Package Price (LKR)</label>
                 <input type="number" step="0.01" value={createForm.base_price}
                   onChange={e => setCreateForm(f => ({ ...f, base_price: e.target.value }))}
                   style={{ width: '100%', padding: '9px 12px', border: '1px solid #E5E7EB', borderRadius: 8, fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
                 />
               </div>
               <div>
-                <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>Additional Charges</label>
+                <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>Extra Charges</label>
                 <input type="number" step="0.01" value={createForm.additional_charges}
                   onChange={e => setCreateForm(f => ({ ...f, additional_charges: e.target.value }))}
                   style={{ width: '100%', padding: '9px 12px', border: '1px solid #E5E7EB', borderRadius: 8, fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
                 />
               </div>
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>Discount</label>
+                <input type="number" step="0.01" value={createForm.discount}
+                  onChange={e => setCreateForm(f => ({ ...f, discount: e.target.value }))}
+                  style={{ width: '100%', padding: '9px 12px', border: '1px solid #E5E7EB', borderRadius: 8, fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
+                />
+              </div>
             </div>
 
-            <div>
-              <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>Discount</label>
-              <input type="number" step="0.01" value={createForm.discount}
-                onChange={e => setCreateForm(f => ({ ...f, discount: e.target.value }))}
-                style={{ width: '100%', padding: '9px 12px', border: '1px solid #E5E7EB', borderRadius: 8, fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
-              />
+            <div style={{
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              padding: '14px 16px', borderRadius: 10, background: '#EEF2FF', border: '1px solid #C7D2FE',
+            }}>
+              <span style={{ fontSize: 13, fontWeight: 600, color: '#4338CA' }}>Total Due (LKR)</span>
+              <span style={{ fontSize: 20, fontWeight: 800, color: '#1E1B4B' }}>{formatLkr(previewTotal)}</span>
             </div>
 
             <div>
               <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>Notes (optional)</label>
               <textarea value={createForm.notes}
                 onChange={e => setCreateForm(f => ({ ...f, notes: e.target.value }))}
-                style={{ width: '100%', padding: '9px 12px', border: '1px solid #E5E7EB', borderRadius: 8, fontSize: 13, outline: 'none', boxSizing: 'border-box', minHeight: 80 }}
+                style={{ width: '100%', padding: '9px 12px', border: '1px solid #E5E7EB', borderRadius: 8, fontSize: 13, outline: 'none', boxSizing: 'border-box', minHeight: 70 }}
               />
             </div>
 

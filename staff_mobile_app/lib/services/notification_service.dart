@@ -40,7 +40,7 @@ class NotificationService {
         ?.createNotificationChannel(_channel);
 
     // Initialise flutter_local_notifications
-    const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const androidInit = AndroidInitializationSettings('@drawable/ic_notification');
     const darwinInit = DarwinInitializationSettings();
     const initSettings =
         InitializationSettings(android: androidInit, iOS: darwinInit);
@@ -93,7 +93,7 @@ class NotificationService {
           _channel.id,
           _channel.name,
           channelDescription: _channel.description,
-          icon: '@mipmap/ic_launcher',
+          icon: '@drawable/ic_notification',
           importance: Importance.max,
           priority: Priority.high,
           playSound: true,

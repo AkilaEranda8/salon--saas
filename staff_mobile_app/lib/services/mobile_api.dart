@@ -1298,6 +1298,85 @@ class MobileApi {
     return body;
   }
 
+  /// GET /api/reminders — branch reminders from the web Reminders page.
+  Future<List<Map<String, dynamic>>> fetchReminders({
+    required String token,
+    String? branchId,
+    bool? done,
+  }) async {
+    final qp = <String, String>{};
+    if (branchId != null && branchId.isNotEmpty) qp['branchId'] = branchId;
+    if (done != null) qp['done'] = done.toString();
+    final uri = Uri.parse('$baseUrl/api/reminders').replace(queryParameters: qp);
+    final response = await http.get(uri, headers: _authHeaders(token));
+    if (response.statusCode >= 400) {
+      final body = _decode(response.body);
+      throw Exception(body['message'] ?? 'Reminders load failed');
+    }
+    return _decodeList(response.body)
+        .whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
+  }
+
+  /// POST /api/reminders — creates reminder and pushes to branch staff devices.
+  Future<Map<String, dynamic>> createReminder({
+    required String token,
+    required String title,
+    String? branchId,
+    String priority = 'medium',
+    String type = 'general',
+    String? dueDate,
+  }) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/api/reminders'),
+      headers: _authHeaders(token),
+      body: jsonEncode({
+        'title': title,
+        if (branchId != null && branchId.isNotEmpty) 'branch_id': branchId,
+        'priority': priority,
+        'type': type,
+        if (dueDate != null && dueDate.isNotEmpty) 'due_date': dueDate,
+      }),
+    );
+    final body = _decode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['message'] ?? 'Reminder create failed');
+    }
+    return body;
+  }
+
+  /// PATCH /api/reminders/:id/toggle
+  Future<Map<String, dynamic>> toggleReminder({
+    required String token,
+    required int reminderId,
+  }) async {
+    final response = await http.patch(
+      Uri.parse('$baseUrl/api/reminders/$reminderId/toggle'),
+      headers: _authHeaders(token),
+    );
+    final body = _decode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['message'] ?? 'Reminder update failed');
+    }
+    return body;
+  }
+
+  /// DELETE /api/reminders/:id
+  Future<void> deleteReminder({
+    required String token,
+    required int reminderId,
+  }) async {
+    final response = await http.delete(
+      Uri.parse('$baseUrl/api/reminders/$reminderId'),
+      headers: _authHeaders(token),
+    );
+    if (response.statusCode >= 400) {
+      final body = _decode(response.body);
+      throw Exception(body['message'] ?? 'Reminder delete failed');
+    }
+  }
+
   Map<String, String> _baseHeaders() => {
     'Content-Type': 'application/json',
     if (slug != null && slug!.isNotEmpty) 'X-Tenant-Slug': slug!,

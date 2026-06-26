@@ -26,6 +26,7 @@ export default function RemindersPage() {
   const [form, setForm]             = useState(BLANK);
   const [busy, setBusy]             = useState(false);
   const [branches, setBranches]     = useState([]);
+  const [notifyBusy, setNotifyBusy] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -78,6 +79,18 @@ export default function RemindersPage() {
   const toggle = async r => {
     try { await api.patch(`/reminders/${r.id}/toggle`); await load(); }
     catch { toast('Failed to update.', 'error'); }
+  };
+
+  const notifyStaff = async r => {
+    setNotifyBusy(r.id);
+    try {
+      const res = await api.post(`/reminders/${r.id}/notify`);
+      toast(res.data.message || 'Notification sent to staff phones.', 'success');
+    } catch (err) {
+      toast(err?.response?.data?.message || 'Failed to send notification.', 'error');
+    } finally {
+      setNotifyBusy(null);
+    }
   };
 
   const columns = useMemo(() => [
@@ -138,15 +151,18 @@ export default function RemindersPage() {
       id: 'actions',
       header: '',
       enableSorting: false,
-      meta: { width: '90px', align: 'center' },
+      meta: { width: '130px', align: 'center' },
       cell: ({ row: { original: r } }) => !r.is_done && (
         <div style={{ display: 'flex', gap: 4, justifyContent: 'center' }}>
+          <ActionBtn onClick={() => notifyBusy === r.id ? null : notifyStaff(r)} title="Notify staff mobile" color="#2563EB">
+            <IconBell />
+          </ActionBtn>
           <ActionBtn onClick={() => openEdit(r)} title="Edit" color="#D97706"><IconEdit /></ActionBtn>
           <ActionBtn onClick={() => remove(r.id)} title="Delete" color="#DC2626"><IconTrash /></ActionBtn>
         </div>
       ),
     },
-  ], []);
+  ], [notifyBusy]);
 
   const fld = (k, v) => setForm(f => ({ ...f, [k]: v }));
 

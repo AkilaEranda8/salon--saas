@@ -25,6 +25,7 @@ import PlatformInvoicesPage      from './pages/platform/PlatformInvoicesPage';
 import PlatformBankSlipApprovalsPage from './pages/platform/PlatformBankSlipApprovalsPage';
 import PlatformPlansPage       from './pages/platform/PlatformPlansPage';
 import PlatformSmtpSmsPage    from './pages/platform/PlatformSmtpSmsPage';
+import PlatformActivityLogsPage from './pages/platform/PlatformActivityLogsPage';
 
 // Pages
 import LoginPage       from './pages/LoginPage';
@@ -205,6 +206,7 @@ function PlatformShell() {
           <Route path="platform/features"       element={<PlatformFeatureStudioPage />} />
           <Route path="platform/support"        element={<SupportTicketsPage platformMode />} />
           <Route path="platform/system"         element={<PlatformSystemControlPage />} />
+          <Route path="platform/activity-logs"   element={<PlatformActivityLogsPage />} />
           <Route path="platform/smtp-sms"       element={<PlatformSmtpSmsPage />} />
           <Route path="*"                        element={<Navigate to="/platform/dashboard" replace />} />
         </Routes>

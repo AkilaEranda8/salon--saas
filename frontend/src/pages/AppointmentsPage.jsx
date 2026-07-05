@@ -8,7 +8,6 @@ import { Input, Select, FormGroup, Textarea } from '../components/ui/FormElement
 import PageWrapper from '../components/layout/PageWrapper';
 import { computePromoFromDiscount } from '../utils/promoDiscount';
 import {
-  PACKAGE_NOTE_PREFIX,
   stripPackageLine,
   parsePackageSelection,
   buildPackageNoteLine,
@@ -16,7 +15,11 @@ import {
   formatCustomerPackageLabel,
   packageCoversAllServices,
   fetchActiveCustomerPackages,
-  filterDiscountedPackageTemplates,
+  fetchDiscountedPackageTemplates,
+  ensureCustomerPackageForTemplate,
+  findCustomerPackageForTemplate,
+  resolveTemplateServiceIds,
+  applyPackageSelection,
   formatPackageTemplateLabel,
 } from '../utils/packageHelpers';
 import {
@@ -31,7 +34,6 @@ const IconMoney    = () => <svg width="15" height="15" viewBox="0 0 24 24" fill=
 
 const APPT_STATUSES = ['pending','confirmed','in_service','completed','cancelled','no_show'];
 const APPT_EXTRA_SERVICES_PREFIX = 'Additional services:';
-const APPT_PACKAGE_PREFIX = PACKAGE_NOTE_PREFIX;
 const stripAdditionalServicesLine = (notes = '') =>
   String(notes)
     .split('\n')
@@ -355,38 +357,15 @@ export default function AppointmentsPage() {
   const [customerSearch, setCustomerSearch] = useState('');
   const [customerLoading, setCustomerLoading] = useState(false);
   const [showCustomerDrop, setShowCustomerDrop] = useState(false);
-  const [customerPackages, setCustomerPackages] = useState([]);
-  const [loadingCustomerPackages, setLoadingCustomerPackages] = useState(false);
-  const [selectedCustomerPackageId, setSelectedCustomerPackageId] = useState('');
+  const [bookingCustPackages, setBookingCustPackages] = useState([]);
+  const [bookingCustPackageId, setBookingCustPackageId] = useState('');
+  const [bookingPackageTemplateId, setBookingPackageTemplateId] = useState('');
+  const [loadingBookingPkgs, setLoadingBookingPkgs] = useState(false);
+  const [packageSelectSaving, setPackageSelectSaving] = useState(false);
+  const [packageTemplates, setPackageTemplates] = useState([]);
   const [paymentCustPackages, setPaymentCustPackages] = useState([]);
   const [paymentCustPackageId, setPaymentCustPackageId] = useState('');
   const [loadingPaymentPkgs, setLoadingPaymentPkgs] = useState(false);
-  const [packageTemplates, setPackageTemplates] = useState([]);
-  const [assignTemplateId, setAssignTemplateId] = useState('');
-  const [assignPackageSaving, setAssignPackageSaving] = useState(false);
-
-  const loadCustomerPackagesFor = async (customerId) => {
-    if (!customerId) {
-      setCustomerPackages([]);
-      return;
-    }
-    setLoadingCustomerPackages(true);
-    try {
-      const pkgs = await fetchActiveCustomerPackages(api, customerId);
-      setCustomerPackages(pkgs);
-    } catch {
-      setCustomerPackages([]);
-    } finally {
-      setLoadingCustomerPackages(false);
-    }
-  };
-
-  useEffect(() => {
-    if (!showForm) return;
-    api.get('/packages?activeOnly=true')
-      .then((r) => setPackageTemplates(filterDiscountedPackageTemplates(Array.isArray(r.data) ? r.data : [])))
-      .catch(() => setPackageTemplates([]));
-  }, [showForm]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -419,6 +398,14 @@ export default function AppointmentsPage() {
       .finally(() => setCustomerLoading(false));
   }, [showForm, form.branch_id]);
 
+  useEffect(() => {
+    if (!showForm) return;
+    const branchId = form.branch_id || user?.branch_id;
+    fetchDiscountedPackageTemplates(api, branchId)
+      .then(setPackageTemplates)
+      .catch(() => setPackageTemplates([]));
+  }, [showForm, form.branch_id, user?.branch_id]);
+
   const calcServiceTotal = (ids) => ids.reduce((sum, sid) => { const s = services.find(x => Number(x.id) === Number(sid)); return sum + Number(s?.price || 0); }, 0);
   const openPayment = async (row) => {
     setPaymentAppt(row);
@@ -440,17 +427,19 @@ export default function AppointmentsPage() {
     if (custId) {
       setLoadingPaymentPkgs(true);
       const pkgSel = parsePackageSelection(sourceRow.notes || '');
-      api.get(`/packages/customer/${custId}/active`)
-        .then((r2) => {
-          const pkgs = Array.isArray(r2.data) ? r2.data : [];
+      fetchActiveCustomerPackages(api, custId)
+        .then((pkgs) => {
           setPaymentCustPackages(pkgs);
           if (pkgSel.id && pkgs.find((p) => String(p.id) === String(pkgSel.id))) {
-            const cp = pkgs.find((p) => String(p.id) === String(pkgSel.id));
-            const ids = resolvePackageServiceIds(cp, services);
-            if (ids.length) setPaymentServices(ids);
-            setPaymentCustPackageId(String(pkgSel.id));
-            setPaymentMethod('Package');
-            setPaymentAmt('0');
+            applyPackageSelection({
+              customerPackageId: String(pkgSel.id),
+              customerPackages: pkgs,
+              allServices: services,
+              onServices: setPaymentServices,
+              onPackageId: setPaymentCustPackageId,
+              onMethod: setPaymentMethod,
+              onAmount: setPaymentAmt,
+            });
           }
         })
         .catch(() => {})
@@ -548,7 +537,18 @@ export default function AppointmentsPage() {
     setPaymentSaving(false);
   };
 
-  const openAdd    = () => { setEditItem(null); setForm({...EMPTY, branch_id:user?.branch_id||'', date:today}); setApptServiceIds([]); setCustomerSearch(''); setShowCustomerDrop(false); setFormErr(''); setCustomerPackages([]); setSelectedCustomerPackageId(''); setShowForm(true); };
+  const openAdd    = () => {
+    setEditItem(null);
+    setForm({ ...EMPTY, branch_id: user?.branch_id || '', date: today });
+    setApptServiceIds([]);
+    setCustomerSearch('');
+    setShowCustomerDrop(false);
+    setFormErr('');
+    setBookingCustPackages([]);
+    setBookingCustPackageId('');
+    setBookingPackageTemplateId('');
+    setShowForm(true);
+  };
   const openEdit   = row => {
     const sid = Number(row.service?.id || row.service_id || 0);
     const extraNames = parseAdditionalServiceNames(row.notes || '');
@@ -561,6 +561,7 @@ export default function AppointmentsPage() {
       const s = services.find(x => Number(x.id) === Number(id));
       return sum + Number(s?.price || 0);
     }, 0);
+    const pkgSel = parsePackageSelection(row.notes || '');
     setEditItem(row);
     setForm({
       ...row,
@@ -569,17 +570,30 @@ export default function AppointmentsPage() {
       staff_id: row.staff?.id || row.staff_id,
       date: row.date?.slice(0,10) || '',
       amount: totalAmount || row.amount || '',
-      notes: stripAdditionalServicesLine(row.notes || ''),
+      notes: stripPackageLine(stripAdditionalServicesLine(row.notes || '')),
       is_recurring: Boolean(row.is_recurring),
       recurrence_frequency: row.recurrence_frequency || 'weekly',
     });
     setApptServiceIds(selectedIds);
     setCustomerSearch(row.customer_name || '');
-    const pkgSel = parsePackageSelection(row.notes || '');
-    setSelectedCustomerPackageId(pkgSel.id ? String(pkgSel.id) : '');
-    setCustomerPackages([]);
-    if (row.customer?.id || row.customer_id) {
-      loadCustomerPackagesFor(row.customer?.id || row.customer_id);
+    setBookingCustPackageId(pkgSel.id ? String(pkgSel.id) : '');
+    setBookingPackageTemplateId('');
+    setBookingCustPackages([]);
+    const custId = row.customer?.id || row.customer_id;
+    if (custId) {
+      setLoadingBookingPkgs(true);
+      fetchActiveCustomerPackages(api, custId)
+        .then((pkgs) => {
+          setBookingCustPackages(pkgs);
+          if (pkgSel.id) {
+            const cp = pkgs.find((p) => String(p.id) === String(pkgSel.id));
+            if (cp) {
+              setBookingPackageTemplateId(String(cp.package_id || cp.package?.id || ''));
+            }
+          }
+        })
+        .catch(() => setBookingCustPackages([]))
+        .finally(() => setLoadingBookingPkgs(false));
     }
     setShowCustomerDrop(false);
     setFormErr('');
@@ -594,22 +608,20 @@ export default function AppointmentsPage() {
       const selectedSvcs = services.filter(s => apptServiceIds.includes(Number(s.id)));
       const [primary, ...extras] = selectedSvcs;
       const extraNote = extras.length ? `${APPT_EXTRA_SERVICES_PREFIX} ${extras.map(s => s.name).join(', ')}` : '';
+      const pkgLine = bookingCustPackageId
+        ? buildPackageNoteLine(
+          bookingCustPackageId,
+          bookingCustPackages.find((cp) => String(cp.id) === String(bookingCustPackageId))?.package?.name,
+        )
+        : '';
       const payload = {
         ...form,
         service_id: primary?.id || form.service_id,
         service_ids: apptServiceIds,
-        amount: (() => {
-          if (selectedCustomerPackageId) {
-            const cp = customerPackages.find((p) => String(p.id) === String(selectedCustomerPackageId));
-            if (cp?.package?.package_price) return Number(cp.package.package_price);
-          }
-          return selectedSvcs.reduce((sum, s) => sum + Number(s.price || 0), 0) || form.amount;
-        })(),
+        amount: selectedSvcs.reduce((sum, s) => sum + Number(s.price || 0), 0) || form.amount,
         notes: [
           stripPackageLine(stripAdditionalServicesLine(form.notes || '')),
-          selectedCustomerPackageId
-            ? buildPackageNoteLine(selectedCustomerPackageId, customerPackages.find((cp) => String(cp.id) === String(selectedCustomerPackageId))?.package?.name)
-            : '',
+          pkgLine,
           extraNote,
         ].filter(Boolean).join('\n'),
       };
@@ -649,52 +661,76 @@ export default function AppointmentsPage() {
     setForm(f => ({ ...f, customer_id: c.id, customer_name: c.name || '', phone: c.phone || f.phone }));
     setCustomerSearch(c.name || '');
     setShowCustomerDrop(false);
-    setSelectedCustomerPackageId('');
-    setAssignTemplateId('');
-    loadCustomerPackagesFor(c.id);
-  };
-  const assignPackageToCustomer = async () => {
-    if (!form.customer_id || !assignTemplateId) return;
-    setAssignPackageSaving(true);
-    setFormErr('');
-    try {
-      await api.post('/packages/purchase', {
-        customer_id: Number(form.customer_id),
-        package_id: Number(assignTemplateId),
-        branch_id: form.branch_id || user?.branch_id || undefined,
-        payment_method: 'Cash',
-      });
-      setAssignTemplateId('');
-      await loadCustomerPackagesFor(form.customer_id);
-    } catch (e) {
-      setFormErr(e.response?.data?.message || 'Failed to assign package to customer.');
-    } finally {
-      setAssignPackageSaving(false);
+    setBookingCustPackageId('');
+    setBookingPackageTemplateId('');
+    setBookingCustPackages([]);
+    if (c.id) {
+      setLoadingBookingPkgs(true);
+      fetchActiveCustomerPackages(api, c.id)
+        .then(setBookingCustPackages)
+        .catch(() => setBookingCustPackages([]))
+        .finally(() => setLoadingBookingPkgs(false));
     }
   };
-  const applySelectedPackage = (customerPackageId) => {
-    setSelectedCustomerPackageId(customerPackageId);
-    if (!customerPackageId) return;
-    const cp = customerPackages.find((p) => String(p.id) === String(customerPackageId));
-    if (!cp) return;
-    const nextIds = resolvePackageServiceIds(cp, services);
-    if (!nextIds.length) return;
-    setApptServiceIds(nextIds);
-    setForm((f) => ({ ...f, service_id: nextIds[0] || '', amount: '0' }));
+  const applyBookingPackageTemplate = async (templateId) => {
+    setBookingPackageTemplateId(templateId);
+    if (!templateId) {
+      setBookingCustPackageId('');
+      return;
+    }
+    const tpl = packageTemplates.find((p) => String(p.id) === String(templateId));
+    if (!tpl) return;
+    const nextIds = resolveTemplateServiceIds(tpl, services);
+    if (nextIds.length) {
+      setApptServiceIds(nextIds);
+      setForm((f) => ({
+        ...f,
+        service_id: nextIds[0] || '',
+        amount: calcServiceTotal(nextIds) || '',
+      }));
+    }
+    if (!form.customer_id) return;
+    const existing = findCustomerPackageForTemplate(bookingCustPackages, templateId);
+    if (existing?.id) {
+      setBookingCustPackageId(String(existing.id));
+      return;
+    }
+    setPackageSelectSaving(true);
+    setFormErr('');
+    try {
+      const cp = await ensureCustomerPackageForTemplate(api, {
+        customerId: form.customer_id,
+        templateId,
+        branchId: form.branch_id || user?.branch_id,
+      });
+      if (cp?.id) {
+        setBookingCustPackageId(String(cp.id));
+        const pkgs = await fetchActiveCustomerPackages(api, form.customer_id);
+        setBookingCustPackages(pkgs);
+      }
+    } catch (e) {
+      setFormErr(e.response?.data?.message || 'Failed to link package to customer.');
+      setBookingPackageTemplateId('');
+      setBookingCustPackageId('');
+    } finally {
+      setPackageSelectSaving(false);
+    }
   };
   const applyPaymentPackage = (customerPackageId) => {
-    setPaymentCustPackageId(customerPackageId);
     if (!customerPackageId) {
+      setPaymentCustPackageId('');
       setPaymentMethod('Cash');
       return;
     }
-    const cp = paymentCustPackages.find((p) => String(p.id) === String(customerPackageId));
-    if (!cp) return;
-    const nextIds = resolvePackageServiceIds(cp, services);
-    if (!nextIds.length) return;
-    setPaymentServices(nextIds);
-    setPaymentMethod('Package');
-    setPaymentAmt('0');
+    applyPackageSelection({
+      customerPackageId,
+      customerPackages: paymentCustPackages,
+      allServices: services,
+      onServices: setPaymentServices,
+      onPackageId: setPaymentCustPackageId,
+      onMethod: setPaymentMethod,
+      onAmount: setPaymentAmt,
+    });
     setPaymentDiscountId('');
   };
 
@@ -1000,9 +1036,10 @@ export default function AppointmentsPage() {
                     onClick={() => {
                       setForm((f) => ({ ...f, customer_id: '', customer_name: '', phone: '' }));
                       setCustomerSearch('');
+                      setBookingCustPackages([]);
+                      setBookingCustPackageId('');
+                      setBookingPackageTemplateId('');
                       setShowCustomerDrop(true);
-                      setCustomerPackages([]);
-                      setSelectedCustomerPackageId('');
                     }}
                   >
                     Change
@@ -1016,8 +1053,9 @@ export default function AppointmentsPage() {
                       const v = e.target.value;
                       setCustomerSearch(v);
                       setForm((f) => ({ ...f, customer_id: '', customer_name: v }));
-                      setCustomerPackages([]);
-                      setSelectedCustomerPackageId('');
+                      setBookingCustPackages([]);
+                      setBookingCustPackageId('');
+                      setBookingPackageTemplateId('');
                       setShowCustomerDrop(true);
                     }}
                     onFocus={() => setShowCustomerDrop(true)}
@@ -1071,57 +1109,45 @@ export default function AppointmentsPage() {
                   )}
                 </div>
               )}
+              {!form.customer_id && (
+                <div style={{ fontSize: 11, color: isDark ? '#94A3B8' : '#64748B', marginTop: 6 }}>
+                  Select customer from list to use their package bundle
+                </div>
+              )}
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <FormGroup label="Phone">
-                  <Input value={form.phone || ''} onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))} placeholder="07X XXX XXXX" />
-                </FormGroup>
-                <FormGroup label="Customer Package">
-                  {loadingCustomerPackages ? (
-                    <div style={{ fontSize: 12, color: isDark ? '#94A3B8' : '#64748B', padding: '4px 0' }}>Loading packages…</div>
+              <FormGroup label="Phone">
+                <Input value={form.phone || ''} onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))} placeholder="07X XXX XXXX" />
+              </FormGroup>
+
+              {form.customer_id && (
+                <FormGroup label="Package">
+                  {(loadingBookingPkgs || packageSelectSaving) && !packageTemplates.length ? (
+                    <div style={{ fontSize: 12, color: isDark ? '#94A3B8' : '#64748B', padding: '4px 0' }}>
+                      {packageSelectSaving ? 'Linking package…' : 'Loading packages…'}
+                    </div>
+                  ) : packageTemplates.length > 0 ? (
+                    <Select
+                      value={bookingPackageTemplateId}
+                      onChange={(e) => applyBookingPackageTemplate(e.target.value)}
+                      disabled={packageSelectSaving}
+                    >
+                      <option value="">No package — pay normally</option>
+                      {packageTemplates.map((p) => (
+                        <option key={p.id} value={p.id}>{formatPackageTemplateLabel(p)}</option>
+                      ))}
+                    </Select>
                   ) : (
-                    <>
-                      <Select value={selectedCustomerPackageId} onChange={(e) => applySelectedPackage(e.target.value)} disabled={!form.customer_id}>
-                        <option value="">{customerPackages.length ? 'No package — pay normally' : 'No active package'}</option>
-                        {customerPackages.map((cp) => (
-                          <option key={cp.id} value={cp.id}>
-                            {formatCustomerPackageLabel(cp)}
-                          </option>
-                        ))}
-                      </Select>
-                      {customerPackages.length === 0 && packageTemplates.length > 0 && (
-                        <div style={{ marginTop: 10, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-                          <Select
-                            value={assignTemplateId}
-                            onChange={(e) => setAssignTemplateId(e.target.value)}
-                            style={{ flex: '1 1 180px', minWidth: 0 }}
-                          >
-                            <option value="">Assign package template…</option>
-                            {packageTemplates.map((p) => (
-                              <option key={p.id} value={p.id}>
-                                {formatPackageTemplateLabel(p)}
-                              </option>
-                            ))}
-                          </Select>
-                          <Button
-                            size="sm"
-                            onClick={assignPackageToCustomer}
-                            loading={assignPackageSaving}
-                            disabled={!assignTemplateId || assignPackageSaving}
-                          >
-                            Assign
-                          </Button>
-                        </div>
-                      )}
-                    </>
+                    <div style={{ fontSize: 12, color: isDark ? '#94A3B8' : '#64748B', padding: '4px 0' }}>
+                      No discounted packages — create a package with a bundle discount first.
+                    </div>
                   )}
-                  {selectedCustomerPackageId && (
+                  {bookingPackageTemplateId && !packageSelectSaving && (
                     <div style={{ fontSize: 12, color: isDark ? '#6EE7B7' : '#047857', marginTop: 6, fontWeight: 600 }}>
-                      Package discount applied — services auto-selected · Collect Rs. 0 at payment
+                      Package discount applied — collect Rs. 0 when service is done
                     </div>
                   )}
                 </FormGroup>
-              </div>
+              )}
             </ApptSection>
 
             <ApptSection title="Services" desc="Select one or more — first service is primary" dark={isDark}>
@@ -1361,7 +1387,7 @@ export default function AppointmentsPage() {
                     </Select>
                   ) : (
                     <div style={{ fontSize: 12, color: isDark ? '#94A3B8' : '#64748B', padding: '4px 0' }}>
-                      No discounted package for this customer — use promo discount above or assign a package when booking.
+                      No discounted package — use promo discount or assign package when booking.
                     </div>
                   )}
                   {paymentCustPackageId && (

@@ -112,6 +112,47 @@ export async function resolveCustomerId(api, { customerId, phone, branchId } = {
   }
 }
 
+export async function fetchDiscountedPackageTemplates(api, branchId) {
+  if (!api) return [];
+  try {
+    const params = { activeOnly: true };
+    if (branchId) params.branchId = branchId;
+    const r = await api.get('/packages', { params });
+    const list = Array.isArray(r.data) ? r.data : [];
+    return filterDiscountedPackageTemplates(list);
+  } catch {
+    return [];
+  }
+}
+
+export function findCustomerPackageForTemplate(customerPackages = [], templateId) {
+  if (!templateId) return null;
+  return customerPackages.find(
+    (cp) => Number(cp.package_id || cp.package?.id) === Number(templateId),
+  ) || null;
+}
+
+/** Reuse an active customer package or purchase the template for this customer. */
+export async function ensureCustomerPackageForTemplate(api, { customerId, templateId, branchId } = {}) {
+  if (!api || !customerId || !templateId) return null;
+  const active = await fetchActiveCustomerPackages(api, customerId);
+  const existing = findCustomerPackageForTemplate(active, templateId);
+  if (existing) return existing;
+  const r = await api.post('/packages/purchase', {
+    customer_id: Number(customerId),
+    package_id: Number(templateId),
+    branch_id: branchId || undefined,
+    payment_method: 'Cash',
+  });
+  return r.data || null;
+}
+
+/** Resolve service IDs from a package template or customer package row. */
+export function resolveTemplateServiceIds(pkgOrCustomerPackage, allServices = []) {
+  const pkg = pkgOrCustomerPackage?.package || pkgOrCustomerPackage;
+  return resolvePackageServiceIds({ package: pkg }, allServices);
+}
+
 export async function fetchActiveCustomerPackages(api, customerId) {
   if (!customerId || !api) return [];
   try {

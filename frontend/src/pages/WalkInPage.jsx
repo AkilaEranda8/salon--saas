@@ -19,8 +19,11 @@ import {
   packageCoversAllServices,
   resolveCustomerId,
   fetchActiveCustomerPackages,
+  fetchDiscountedPackageTemplates,
+  ensureCustomerPackageForTemplate,
+  findCustomerPackageForTemplate,
+  resolveTemplateServiceIds,
   applyPackageSelection,
-  filterDiscountedPackageTemplates,
   formatPackageTemplateLabel,
 } from '../utils/packageHelpers';
 import { getKcAccessToken } from '../utils/kcTokenStore';
@@ -409,15 +412,17 @@ export default function WalkInPage() {
   const [loadingPaymentPkgs, setLoadingPaymentPkgs] = useState(false);
   const [checkinCustPackages, setCheckinCustPackages] = useState([]);
   const [checkinCustPackageId, setCheckinCustPackageId] = useState('');
+  const [checkinPackageTemplateId, setCheckinPackageTemplateId] = useState('');
   const [loadingCheckinPkgs, setLoadingCheckinPkgs] = useState(false);
+  const [packageSelectSaving, setPackageSelectSaving] = useState(false);
   const [packageTemplates, setPackageTemplates] = useState([]);
-  const [assignTemplateId, setAssignTemplateId] = useState('');
-  const [assignPackageSaving, setAssignPackageSaving] = useState(false);
   const [editEntry,      setEditEntry]      = useState(null);
   const [editForm,       setEditForm]       = useState({ customerName: '', phone: '', serviceId: '', note: '' });
   const [editExtraServiceIds, setEditExtraServiceIds] = useState([]);
   const [editCustPackages, setEditCustPackages] = useState([]);
   const [editCustPackageId, setEditCustPackageId] = useState('');
+  const [editPackageTemplateId, setEditPackageTemplateId] = useState('');
+  const [editPackageSelectSaving, setEditPackageSelectSaving] = useState(false);
   const [loadingEditPkgs, setLoadingEditPkgs] = useState(false);
   const [editSaving,     setEditSaving]     = useState(false);
   const [editError,      setEditError]      = useState('');
@@ -616,25 +621,86 @@ export default function WalkInPage() {
     });
     setPaymentDiscountId('');
   };
-  const applyCheckinPackage = (customerPackageId) => {
-    setCheckinCustPackageId(customerPackageId);
-    if (!customerPackageId) return;
-    const cp = checkinCustPackages.find((p) => String(p.id) === String(customerPackageId));
-    if (!cp) return;
-    const nextIds = resolvePackageServiceIds(cp, services);
-    if (!nextIds.length) return;
-    setForm((f) => ({ ...f, serviceId: String(nextIds[0]) }));
-    setCheckinExtraServiceIds(nextIds.slice(1));
+  const applyCheckinPackageTemplate = async (templateId) => {
+    setCheckinPackageTemplateId(templateId);
+    if (!templateId) {
+      setCheckinCustPackageId('');
+      return;
+    }
+    const tpl = packageTemplates.find((p) => String(p.id) === String(templateId));
+    if (!tpl) return;
+    const nextIds = resolveTemplateServiceIds(tpl, services);
+    if (nextIds.length) {
+      setForm((f) => ({ ...f, serviceId: String(nextIds[0]) }));
+      setCheckinExtraServiceIds(nextIds.slice(1));
+    }
+    if (!selectedCustomer?.id) return;
+    const existing = findCustomerPackageForTemplate(checkinCustPackages, templateId);
+    if (existing?.id) {
+      setCheckinCustPackageId(String(existing.id));
+      return;
+    }
+    setPackageSelectSaving(true);
+    setFormError('');
+    try {
+      const cp = await ensureCustomerPackageForTemplate(api, {
+        customerId: selectedCustomer.id,
+        templateId,
+        branchId: form.branchId || selectedBranch,
+      });
+      if (cp?.id) {
+        setCheckinCustPackageId(String(cp.id));
+        const pkgs = await fetchActiveCustomerPackages(api, selectedCustomer.id);
+        setCheckinCustPackages(pkgs);
+      }
+    } catch (err) {
+      setFormError(err.response?.data?.message || 'Failed to link package to customer.');
+      setCheckinPackageTemplateId('');
+      setCheckinCustPackageId('');
+    } finally {
+      setPackageSelectSaving(false);
+    }
   };
-  const applyEditPackage = (customerPackageId) => {
-    setEditCustPackageId(customerPackageId);
-    if (!customerPackageId) return;
-    const cp = editCustPackages.find((p) => String(p.id) === String(customerPackageId));
-    if (!cp) return;
-    const nextIds = resolvePackageServiceIds(cp, services);
-    if (!nextIds.length) return;
-    setEditForm((f) => ({ ...f, serviceId: String(nextIds[0]) }));
-    setEditExtraServiceIds(nextIds.slice(1));
+  const applyEditPackageTemplate = async (templateId) => {
+    setEditPackageTemplateId(templateId);
+    if (!templateId) {
+      setEditCustPackageId('');
+      return;
+    }
+    const tpl = packageTemplates.find((p) => String(p.id) === String(templateId));
+    if (!tpl) return;
+    const nextIds = resolveTemplateServiceIds(tpl, services);
+    if (nextIds.length) {
+      setEditForm((f) => ({ ...f, serviceId: String(nextIds[0]) }));
+      setEditExtraServiceIds(nextIds.slice(1));
+    }
+    const customerId = editEntry?.customer_id || editEntry?.customer?.id;
+    if (!customerId) return;
+    const existing = findCustomerPackageForTemplate(editCustPackages, templateId);
+    if (existing?.id) {
+      setEditCustPackageId(String(existing.id));
+      return;
+    }
+    setEditPackageSelectSaving(true);
+    setEditError('');
+    try {
+      const cp = await ensureCustomerPackageForTemplate(api, {
+        customerId,
+        templateId,
+        branchId: editEntry?.branch_id || selectedBranch,
+      });
+      if (cp?.id) {
+        setEditCustPackageId(String(cp.id));
+        const pkgs = await fetchActiveCustomerPackages(api, customerId);
+        setEditCustPackages(pkgs);
+      }
+    } catch (err) {
+      setEditError(err.response?.data?.message || 'Failed to link package to customer.');
+      setEditPackageTemplateId('');
+      setEditCustPackageId('');
+    } finally {
+      setEditPackageSelectSaving(false);
+    }
   };
   const handleCollectPayment = async () => {
     if (!paymentEntry) return;
@@ -714,6 +780,7 @@ export default function WalkInPage() {
     });
     setEditExtraServiceIds(extraIds.map(Number));
     setEditCustPackageId(pkgSel.id ? String(pkgSel.id) : '');
+    setEditPackageTemplateId('');
     setEditCustPackages([]);
     setEditError('');
 
@@ -725,7 +792,15 @@ export default function WalkInPage() {
     if (custId) {
       setLoadingEditPkgs(true);
       fetchActiveCustomerPackages(api, custId)
-        .then(setEditCustPackages)
+        .then((pkgs) => {
+          setEditCustPackages(pkgs);
+          if (pkgSel.id) {
+            const cp = pkgs.find((p) => String(p.id) === String(pkgSel.id));
+            if (cp) {
+              setEditPackageTemplateId(String(cp.package_id || cp.package?.id || ''));
+            }
+          }
+        })
         .catch(() => setEditCustPackages([]))
         .finally(() => setLoadingEditPkgs(false));
     }
@@ -876,6 +951,7 @@ export default function WalkInPage() {
       setCheckinExtraServiceIds([]);
       setCheckinCustPackages([]);
       setCheckinCustPackageId('');
+      setCheckinPackageTemplateId('');
       setSelectedCustomer(null);
       setCustSearch('');
       setShowToken(res.data);
@@ -896,11 +972,12 @@ export default function WalkInPage() {
   }, [showCheckin, form.branchId, selectedBranch]);
 
   useEffect(() => {
-    if (!showCheckin) return;
-    api.get('/packages?activeOnly=true')
-      .then((r) => setPackageTemplates(filterDiscountedPackageTemplates(Array.isArray(r.data) ? r.data : [])))
+    if (!showCheckin && !editEntry) return;
+    const branchId = form.branchId || editEntry?.branch_id || selectedBranch;
+    fetchDiscountedPackageTemplates(api, branchId)
+      .then(setPackageTemplates)
       .catch(() => setPackageTemplates([]));
-  }, [showCheckin]);
+  }, [showCheckin, editEntry, form.branchId, selectedBranch]);
 
   /*  Filter customers as user types  */
   useEffect(() => {
@@ -922,7 +999,7 @@ export default function WalkInPage() {
     setSelectedCustomer(c);
     setShowCustDrop(false);
     setCheckinCustPackageId('');
-    setAssignTemplateId('');
+    setCheckinPackageTemplateId('');
     setCheckinCustPackages([]);
     if (c.id) {
       setLoadingCheckinPkgs(true);
@@ -933,28 +1010,6 @@ export default function WalkInPage() {
     }
   };
 
-  const assignPackageToCustomer = async () => {
-    if (!selectedCustomer?.id || !assignTemplateId) return;
-    setAssignPackageSaving(true);
-    setFormError('');
-    try {
-      await api.post('/packages/purchase', {
-        customer_id: Number(selectedCustomer.id),
-        package_id: Number(assignTemplateId),
-        branch_id: form.branchId || selectedBranch || user?.branchId || undefined,
-        payment_method: 'Cash',
-      });
-      setAssignTemplateId('');
-      setLoadingCheckinPkgs(true);
-      const pkgs = await fetchActiveCustomerPackages(api, selectedCustomer.id);
-      setCheckinCustPackages(pkgs);
-    } catch (err) {
-      setFormError(err.response?.data?.message || 'Failed to assign package.');
-    } finally {
-      setAssignPackageSaving(false);
-      setLoadingCheckinPkgs(false);
-    }
-  };
 
   const closeCheckin = () => {
     setShowCheckin(false);
@@ -1095,6 +1150,7 @@ export default function WalkInPage() {
     setCheckinExtraServiceIds([]);
     setCheckinCustPackages([]);
     setCheckinCustPackageId('');
+    setCheckinPackageTemplateId('');
     setSelectedCustomer(null);
     setCustSearch('');
     setCustResults([]);
@@ -1383,6 +1439,7 @@ export default function WalkInPage() {
                       setForm((f) => ({ ...f, customerName: '', phone: '' }));
                       setCheckinCustPackages([]);
                       setCheckinCustPackageId('');
+                      setCheckinPackageTemplateId('');
                       setShowCustDrop(true);
                     }}
                   >
@@ -1418,43 +1475,28 @@ export default function WalkInPage() {
 
             {selectedCustomer && (
               <div>
-                <Label>Customer Package</Label>
-                {loadingCheckinPkgs ? (
-                  <div style={{ fontSize: 12, color: C.muted, padding: '4px 0' }}>Loading packages…</div>
-                ) : checkinCustPackages.length > 0 ? (
-                  <Select value={checkinCustPackageId} onChange={(e) => applyCheckinPackage(e.target.value)}>
+                <Label>Package</Label>
+                {(loadingCheckinPkgs || packageSelectSaving) && !packageTemplates.length ? (
+                  <div style={{ fontSize: 12, color: C.muted, padding: '4px 0' }}>
+                    {packageSelectSaving ? 'Linking package…' : 'Loading packages…'}
+                  </div>
+                ) : packageTemplates.length > 0 ? (
+                  <Select
+                    value={checkinPackageTemplateId}
+                    onChange={(e) => applyCheckinPackageTemplate(e.target.value)}
+                    disabled={packageSelectSaving}
+                  >
                     <option value="">No package — pay normally</option>
-                    {checkinCustPackages.map((cp) => (
-                      <option key={cp.id} value={cp.id}>{formatCustomerPackageLabel(cp)}</option>
+                    {packageTemplates.map((p) => (
+                      <option key={p.id} value={p.id}>{formatPackageTemplateLabel(p)}</option>
                     ))}
                   </Select>
-                ) : packageTemplates.length > 0 ? (
-                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-                    <Select
-                      value={assignTemplateId}
-                      onChange={(e) => setAssignTemplateId(e.target.value)}
-                      style={{ flex: '1 1 180px', minWidth: 0 }}
-                    >
-                      <option value="">Assign discounted package…</option>
-                      {packageTemplates.map((p) => (
-                        <option key={p.id} value={p.id}>{formatPackageTemplateLabel(p)}</option>
-                      ))}
-                    </Select>
-                    <Button
-                      size="sm"
-                      onClick={assignPackageToCustomer}
-                      loading={assignPackageSaving}
-                      disabled={!assignTemplateId || assignPackageSaving}
-                    >
-                      Assign
-                    </Button>
-                  </div>
                 ) : (
                   <div style={{ fontSize: 12, color: C.muted, padding: '4px 0' }}>
                     No discounted packages — create a package with a bundle discount first.
                   </div>
                 )}
-                {checkinCustPackageId && (
+                {checkinPackageTemplateId && !packageSelectSaving && (
                   <div style={{ fontSize: 12, color: isDark ? '#6EE7B7' : '#047857', marginTop: 6, fontWeight: 600 }}>
                     Package discount applied — collect Rs. 0 when service is done
                   </div>
@@ -1807,18 +1849,28 @@ export default function WalkInPage() {
               placeholder="Optional"
             />
           </div>
-          {(loadingEditPkgs || editCustPackages.length > 0) && (
+          {(editEntry?.customer_id || editEntry?.customer?.id) && (
             <div>
-              <Label>Customer Package</Label>
-              {loadingEditPkgs ? (
-                <div style={{ fontSize: 12, color: C.muted, padding: '4px 0' }}>Loading packages…</div>
-              ) : (
-                <Select value={editCustPackageId} onChange={(e) => applyEditPackage(e.target.value)}>
-                  <option value="">No package</option>
-                  {editCustPackages.map((cp) => (
-                    <option key={cp.id} value={cp.id}>{formatCustomerPackageLabel(cp)}</option>
+              <Label>Package</Label>
+              {(loadingEditPkgs || editPackageSelectSaving) && !packageTemplates.length ? (
+                <div style={{ fontSize: 12, color: C.muted, padding: '4px 0' }}>
+                  {editPackageSelectSaving ? 'Linking package…' : 'Loading packages…'}
+                </div>
+              ) : packageTemplates.length > 0 ? (
+                <Select
+                  value={editPackageTemplateId}
+                  onChange={(e) => applyEditPackageTemplate(e.target.value)}
+                  disabled={editPackageSelectSaving}
+                >
+                  <option value="">No package — pay normally</option>
+                  {packageTemplates.map((p) => (
+                    <option key={p.id} value={p.id}>{formatPackageTemplateLabel(p)}</option>
                   ))}
                 </Select>
+              ) : (
+                <div style={{ fontSize: 12, color: C.muted, padding: '4px 0' }}>
+                  No discounted packages — create a package with a bundle discount first.
+                </div>
               )}
             </div>
           )}

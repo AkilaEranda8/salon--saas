@@ -6,6 +6,7 @@ const { notifyAppointmentConfirmed, notifyAppointmentCompleted, notifyWaitlistSl
 const { createNextRecurring } = require('../services/recurringService');
 const { notifyBranch, notifyStaffUser } = require('../services/fcmService');
 const { tenantWhere, byIdWhere, resolveTenantId } = require('../utils/tenantScope');
+const { notesUsesPackage, usesPackageBooking, parsePackageIdFromNotes, resolvePackageBundlePrice } = require('../utils/packageNotes');
 
 let appointmentServicesTableReadyPromise = null;
 
@@ -240,15 +241,29 @@ const create = async (req, res) => {
       return res.status(400).json({ message: 'branch_id, service_id, customer_name, date and time are required.' });
     }
 
-    // Auto-fetch service price if amount not provided
+    const usesPackage = usesPackageBooking({
+      notes,
+      customer_package_id: req.body.customer_package_id,
+    });
+
+    // Package bookings use bundle price as final amount; otherwise auto-fetch list price when omitted
     let finalAmount = amount;
-    if (!finalAmount) {
+    if (usesPackage) {
+      const pkgId = req.body.customer_package_id || parsePackageIdFromNotes(notes);
+      if (amount !== undefined && amount !== null && amount !== '') {
+        finalAmount = Number(amount);
+      } else {
+        finalAmount = pkgId ? await resolvePackageBundlePrice(req, pkgId) : 0;
+      }
+    } else if (finalAmount === undefined || finalAmount === null || finalAmount === '') {
       const services = await Service.findAll({
         where: { id: validServiceIds, ...tenantWhere(req) },
         attributes: ['price'],
         raw: true,
       });
       finalAmount = services.reduce((sum, svc) => sum + Number(svc.price || 0), 0);
+    } else {
+      finalAmount = Number(finalAmount);
     }
 
     const appt = await Appointment.create({
@@ -332,19 +347,28 @@ const update = async (req, res) => {
       }
       updates.service_id = nextServiceIds[0];
 
+      const nextNotes = req.body.notes !== undefined ? req.body.notes : appt.notes;
+      const packageBooking = usesPackageBooking({
+        notes: nextNotes,
+        customer_package_id: req.body.customer_package_id,
+      });
+
       // Recalculate amount from selected services when amount is not explicitly supplied
-      if (req.body.amount === undefined) {
+      if (req.body.amount === undefined && !packageBooking) {
         const selected = await Service.findAll({
           where: { id: nextServiceIds, ...tenantWhere(req) },
           attributes: ['price'],
           raw: true,
         });
         updates.amount = selected.reduce((sum, svc) => sum + Number(svc.price || 0), 0);
+      } else if (packageBooking && req.body.amount === undefined) {
+        const pkgId = req.body.customer_package_id || parsePackageIdFromNotes(nextNotes);
+        updates.amount = pkgId ? await resolvePackageBundlePrice(req, pkgId) : 0;
       }
     }
 
     // Auto-update amount from service price when service changes
-    if (updates.service_id && req.body.amount === undefined && !nextServiceIds) {
+    if (updates.service_id && req.body.amount === undefined && !nextServiceIds && !notesUsesPackage(req.body.notes ?? appt.notes)) {
       const svc = await Service.findOne({ where: byIdWhere(req, updates.service_id), attributes: ['price'] });
       if (svc) updates.amount = svc.price;
     }

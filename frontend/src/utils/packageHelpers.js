@@ -112,13 +112,13 @@ export function getPackageBundlePrice(pkgOrCustomerPackage) {
   return Number(pkg?.package_price || 0);
 }
 
-/** User-facing copy when a package covers the visit (shows bundle price, not "Collect Rs. 0"). */
+/** User-facing copy when a package covers the visit. */
 export function formatPackageAppliedMessage(bundlePrice) {
   const price = Number(bundlePrice || 0);
   if (price > 0) {
-    return `Package applied — Bundle Rs. ${price.toLocaleString()} (no extra charge today)`;
+    return `Package applied — final amount Rs. ${price.toLocaleString()} (bundle price)`;
   }
-  return 'Package applied — no extra charge today';
+  return 'Package applied — bundle price';
 }
 
 /** Primary bill line when package is selected — bundle price, not service list total. */
@@ -135,6 +135,121 @@ export const servicesCoveredByPackage = (serviceIds = [], customerPackage) => {
 };
 
 export const packageCoversAllServices = servicesCoveredByPackage;
+
+/** Service ids on an appointment row (API may attach service_ids). */
+export function appointmentServiceIds(appointment) {
+  if (Array.isArray(appointment?.service_ids) && appointment.service_ids.length) {
+    return appointment.service_ids.map(Number).filter(Boolean);
+  }
+  const primary = Number(appointment?.service_id || appointment?.service?.id || 0);
+  return primary ? [primary] : [];
+}
+
+/** Resolve final bill amount: bundle when package, else list total or stored value. */
+export function resolvePackageBillSummary({
+  usesPackage = false,
+  bundlePrice = 0,
+  listTotal = 0,
+  storedAmount = null,
+} = {}) {
+  const bundle = Number(bundlePrice || 0);
+  const list = Number(listTotal || 0);
+  if (usesPackage) {
+    const hasStored = storedAmount !== null && storedAmount !== undefined && storedAmount !== '';
+    const finalAmount = hasStored ? Number(storedAmount) : bundle;
+    return {
+      isPackage: true,
+      finalAmount,
+      primary: formatPackageBillAmount(finalAmount),
+      listTotal: list > 0 && list !== finalAmount ? list : null,
+    };
+  }
+  const hasStored = storedAmount !== null && storedAmount !== undefined && storedAmount !== '';
+  const finalAmount = hasStored ? Number(storedAmount) : list;
+  return {
+    isPackage: false,
+    finalAmount,
+    primary: `Rs. ${finalAmount.toLocaleString()}`,
+    listTotal: null,
+  };
+}
+
+/** Service ids on a walk-in queue row. */
+export function walkInServiceIds(entry) {
+  const wiq = entry?.queueServices || entry?.walkInServices;
+  if (Array.isArray(wiq) && wiq.length) {
+    return [...wiq]
+      .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+      .map((r) => Number(r.service_id))
+      .filter(Boolean);
+  }
+  const primary = Number(entry?.service_id || entry?.service?.id || 0);
+  return primary ? [primary] : [];
+}
+
+/** Amount display for walk-in queue cards and token modal. */
+export function resolveWalkInAmountDisplay(entry, { services = [], customerPackages = [] } = {}) {
+  const pkgSel = parsePackageSelection(entry?.note || '');
+  const serviceIds = walkInServiceIds(entry);
+  const listTotal = calcServiceListTotal(serviceIds, services);
+  if (pkgSel.id) {
+    const cp = customerPackages.find((p) => String(p.id) === String(pkgSel.id));
+    return {
+      ...resolvePackageBillSummary({
+        usesPackage: true,
+        bundlePrice: getPackageBundlePrice(cp),
+        listTotal,
+        storedAmount: entry?.total_amount,
+      }),
+      label: cp?.package?.name || pkgSel.label || 'Package',
+    };
+  }
+  return {
+    ...resolvePackageBillSummary({
+      usesPackage: false,
+      listTotal,
+      storedAmount: entry?.total_amount,
+    }),
+    label: null,
+  };
+}
+
+/** Amount column / detail for appointments — bundle price when package, not list fallback on 0. */
+export function resolveAppointmentAmountDisplay(appointment, { services = [], customerPackages = [] } = {}) {
+  const pkgSel = parsePackageSelection(appointment?.notes || '');
+  const serviceIds = appointmentServiceIds(appointment);
+  const listTotal = calcServiceListTotal(serviceIds, services);
+
+  if (pkgSel.id) {
+    const cp = customerPackages.find((p) => String(p.id) === String(pkgSel.id));
+    const bill = resolvePackageBillSummary({
+      usesPackage: true,
+      bundlePrice: getPackageBundlePrice(cp),
+      listTotal,
+      storedAmount: appointment?.amount,
+    });
+    return {
+      isPackage: true,
+      primary: bill.primary,
+      listTotal: bill.listTotal,
+      dueToday: bill.finalAmount,
+      label: cp?.package?.name || pkgSel.label || 'Package',
+    };
+  }
+
+  const bill = resolvePackageBillSummary({
+    usesPackage: false,
+    listTotal,
+    storedAmount: appointment?.amount ?? appointment?.service?.price,
+  });
+  return {
+    isPackage: false,
+    primary: bill.primary,
+    listTotal: null,
+    dueToday: bill.finalAmount,
+    label: null,
+  };
+}
 
 const normalizePhone = (p) => String(p || '').replace(/\D/g, '');
 
@@ -237,5 +352,6 @@ export function applyPackageSelection({
   onServices?.(nextIds);
   onPackageId?.(String(customerPackageId));
   onMethod?.('Package');
-  onAmount?.('0');
+  const bundle = getPackageBundlePrice(cp);
+  onAmount?.(bundle > 0 ? String(bundle) : '0');
 }

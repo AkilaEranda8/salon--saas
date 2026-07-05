@@ -6,6 +6,7 @@ const { notifyBranch } = require('../services/fcmService');
 const { notifyWalkInCheckIn, notifyWalkInServing, notifyWalkInCompleted } = require('../services/notificationService');
 const { tenantWhere, resolveTenantId } = require('../utils/tenantScope');
 const { slToday } = require('../utils/dateUtils');
+const { parsePackageIdFromNotes, resolvePackageBundlePrice, notesUsesPackage } = require('../utils/packageNotes');
 
 const { parseQueryBranchId } = require('../utils/branchScope');
 
@@ -140,6 +141,11 @@ exports.checkin = async (req, res) => {
       const durationSum = svcRows.reduce((sum, s) => sum + Number(s.duration_minutes || 30), 0);
       const totalAmount = svcRows.reduce((sum, s) => sum + Number(s.price || 0), 0);
       const usesPackage = !!(customerPackageId || /^\s*package\s*[:\-]?\s*#\d+/im.test(String(note || '')));
+      let finalTotal = totalAmount || null;
+      if (usesPackage) {
+        const pkgId = customerPackageId || parsePackageIdFromNotes(note);
+        finalTotal = pkgId ? await resolvePackageBundlePrice(req, pkgId, t) : 0;
+      }
 
       const waitingCount = await WalkIn.count({
         where: { branch_id: effectiveBranchId, check_in_date: dateStr, status: 'waiting' },
@@ -173,7 +179,7 @@ exports.checkin = async (req, res) => {
         check_in_time: new Date().toTimeString().slice(0, 8),
         check_in_date: dateStr,
         estimated_wait: estimatedWait,
-        total_amount: usesPackage ? 0 : (totalAmount || null),
+        total_amount: finalTotal,
         note: note || null,
         tenant_id: resolveTenantId(req),
       }, { transaction: t });
@@ -227,7 +233,10 @@ exports.update = async (req, res) => {
       serviceIds,
       note,
       customerId,
+      customerPackageId,
+      customer_package_id: customerPackageIdSnake,
     } = req.body;
+    const resolvedCustomerPackageId = customerPackageId || customerPackageIdSnake;
 
     const entry = await WalkIn.findByPk(id);
     if (!entry) return res.status(404).json({ message: 'Walk-in entry not found.' });
@@ -239,6 +248,10 @@ exports.update = async (req, res) => {
       if (customerName != null) entry.customer_name = String(customerName).trim() || entry.customer_name;
       if (phone !== undefined) entry.phone = phone || null;
       if (note !== undefined) entry.note = note || null;
+
+      const effectiveNote = note !== undefined ? note : entry.note;
+      const pkgId = resolvedCustomerPackageId || parsePackageIdFromNotes(effectiveNote);
+      const usesPackage = !!(pkgId || notesUsesPackage(effectiveNote));
 
       let resolvedCustomerId = customerId || req.body.customer_id || entry.customer_id;
       if (!resolvedCustomerId && (phone || entry.phone)) {
@@ -269,7 +282,11 @@ exports.update = async (req, res) => {
           throw Object.assign(new Error('Service not found.'), { status: 404 });
         }
         entry.service_id = orderedServiceIds[0];
-        entry.total_amount = svcRows.reduce((sum, s) => sum + Number(s.price || 0), 0);
+        if (usesPackage && pkgId) {
+          entry.total_amount = await resolvePackageBundlePrice(req, pkgId, t);
+        } else {
+          entry.total_amount = svcRows.reduce((sum, s) => sum + Number(s.price || 0), 0);
+        }
 
         await WalkInQueueService.destroy({ where: { walk_in_id: entry.id }, transaction: t });
         const priceById = Object.fromEntries(svcRows.map((s) => [Number(s.id), Number(s.price || 0)]));
@@ -282,6 +299,26 @@ exports.update = async (req, res) => {
           })),
           { transaction: t },
         );
+      } else if (note !== undefined || resolvedCustomerPackageId !== undefined) {
+        let svcIds = [];
+        const links = await WalkInQueueService.findAll({
+          where: { walk_in_id: entry.id },
+          attributes: ['service_id'],
+          transaction: t,
+        });
+        if (links.length) svcIds = links.map((l) => Number(l.service_id)).filter(Boolean);
+        else if (entry.service_id) svcIds = [Number(entry.service_id)];
+
+        if (usesPackage && pkgId) {
+          entry.total_amount = await resolvePackageBundlePrice(req, pkgId, t);
+        } else if (svcIds.length) {
+          const rows = await Service.findAll({
+            where: { id: svcIds },
+            attributes: ['price'],
+            transaction: t,
+          });
+          entry.total_amount = rows.reduce((sum, s) => sum + Number(s.price || 0), 0);
+        }
       }
 
       await entry.save({ transaction: t });

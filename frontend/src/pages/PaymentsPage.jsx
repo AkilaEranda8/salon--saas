@@ -710,13 +710,14 @@ export default function PaymentsPage() {
     if (!cp) return;
     const ids = resolvePackageServiceIds(cp, services);
     if (!ids.length) return;
+    const bundle = getPackageBundlePrice(cp);
     setForm((f) => ({
       ...f,
       service_ids: ids,
-      total_amount: '0',
+      total_amount: bundle > 0 ? String(bundle) : '0',
       loyalty_discount: 0,
       discount_id: '',
-      splits: [{ method: 'Package', amount: '0', customer_package_id: packageId }],
+      splits: [{ method: 'Package', amount: bundle > 0 ? String(bundle) : '0', customer_package_id: packageId }],
     }));
   };
 
@@ -757,12 +758,36 @@ export default function PaymentsPage() {
     }
   };
   const setSplit = (idx, field, val) => {
+    if (field === 'customer_package_id' && val) setFormPackageId(String(val));
+    if (field === 'method' && val !== 'Package') setFormPackageId('');
     setForm(f => {
       const s = [...f.splits];
       s[idx] = { ...s[idx], [field]: val };
-      // Clear customer_package_id when method changes away from Package
       if (field === 'method' && val !== 'Package') delete s[idx].customer_package_id;
-      return { ...f, splits: s };
+      if (field === 'method' && val === 'Package') {
+        const cpId = s[idx].customer_package_id || formPackageId;
+        if (cpId) {
+          s[idx].customer_package_id = cpId;
+          const cp = custPackages.find((p) => String(p.id) === String(cpId));
+          const bundle = getPackageBundlePrice(cp);
+          s[idx].amount = bundle > 0 ? String(bundle) : '0';
+        }
+      }
+      if (field === 'customer_package_id' && val) {
+        const cp = custPackages.find((p) => String(p.id) === String(val));
+        const bundle = getPackageBundlePrice(cp);
+        s[idx].amount = bundle > 0 ? String(bundle) : '0';
+      }
+      const cpId = field === 'customer_package_id' ? val : (s[idx].customer_package_id || formPackageId);
+      const usingPkg = s[idx].method === 'Package' && cpId;
+      const bundle = usingPkg
+        ? getPackageBundlePrice(custPackages.find((p) => String(p.id) === String(cpId)))
+        : 0;
+      return {
+        ...f,
+        splits: s,
+        ...(usingPkg && bundle > 0 ? { total_amount: String(bundle), loyalty_discount: 0, discount_id: '' } : {}),
+      };
     });
   };
   const addSplit    = () => setForm(f => ({ ...f, splits: [...f.splits, { method:'Cash', amount:'' }] }));
@@ -773,11 +798,14 @@ export default function PaymentsPage() {
     if (!String(form.staff_id || '').trim()) return setFormErr('Select staff before recording payment.');
     if (!form.service_ids.length) return setFormErr('At least one service is required');
     const usingPackage = form.splits.some((sp) => sp.method === 'Package');
+    const pkgSplit = usingPackage ? form.splits.find((sp) => sp.method === 'Package') : null;
+    const pkgCp = pkgSplit?.customer_package_id
+      ? custPackages.find((p) => String(p.id) === String(pkgSplit.customer_package_id))
+      : null;
+    const packageBundle = pkgCp ? getPackageBundlePrice(pkgCp) : packageBundlePrice;
     if (usingPackage) {
-      const pkgSplit = form.splits.find((sp) => sp.method === 'Package');
       if (!pkgSplit?.customer_package_id) return setFormErr('Select a customer package for Package payment.');
-      const cp = custPackages.find((p) => String(p.id) === String(pkgSplit.customer_package_id));
-      if (cp && !packageCoversAllServices(form.service_ids, cp)) {
+      if (pkgCp && !packageCoversAllServices(form.service_ids, pkgCp)) {
         return setFormErr('All selected services must be included in the package.');
       }
     }
@@ -785,10 +813,7 @@ export default function PaymentsPage() {
       return setFormErr('Total amount and at least one service are required');
     }
     const subtotal = usingPackage
-      ? form.service_ids.reduce((sum, sid) => {
-        const s = services.find((x) => Number(x.id) === Number(sid));
-        return sum + Number(s?.price || 0);
-      }, 0)
+      ? packageBundle
       : Number(form.total_amount);
     const loyalty = Number(form.loyalty_discount || 0);
     const selDisc = form.discount_id ? discounts.find(d => String(d.id) === String(form.discount_id)) : null;
@@ -797,8 +822,8 @@ export default function PaymentsPage() {
     const splitTotal = form.splits.reduce((s, sp) => s + Number(sp.amount||0), 0);
     if (!usingPackage && Math.abs(splitTotal - net) > 0.02)
       return setFormErr(`Split total (Rs. ${splitTotal.toLocaleString()}) must equal net after discounts (Rs. ${net.toLocaleString()})`);
-    if (usingPackage && splitTotal > 0.02)
-      return setFormErr('Package payment should be Rs. 0 — customer already paid for the package.');
+    if (usingPackage && Math.abs(splitTotal - packageBundle) > 0.02)
+      return setFormErr(`Package split must equal bundle price (Rs. ${packageBundle.toLocaleString()})`);
     setSaving(true);
     try {
       const { service_ids, ...rest } = form;
@@ -824,14 +849,24 @@ export default function PaymentsPage() {
     setSaving(false);
   };
 
+  const selectedPackage = formPackageId
+    ? custPackages.find((p) => String(p.id) === String(formPackageId))
+    : null;
+  const serviceListTotal = useMemo(
+    () => calcServiceListTotal(form.service_ids, services),
+    [form.service_ids, services],
+  );
+  const packageBundlePrice = getPackageBundlePrice(selectedPackage);
+
   const promoPreview = useMemo(() => {
-    const sub = Number(form.total_amount || 0);
+    const sub = formPackageId ? packageBundlePrice : Number(form.total_amount || 0);
     const d = form.discount_id ? discounts.find(x => String(x.id) === String(form.discount_id)) : null;
     return d ? computePromoFromDiscount(d, sub) : 0;
-  }, [form.total_amount, form.discount_id, discounts]);
+  }, [form.total_amount, form.discount_id, discounts, formPackageId, packageBundlePrice]);
 
   useEffect(() => {
     if (!showForm || form.splits.length !== 1) return;
+    if (formPackageId || form.splits[0]?.method === 'Package') return;
     const sub = Number(form.total_amount || 0);
     if (!sub) return;
     const loyalty = Number(form.loyalty_discount || 0);
@@ -844,16 +879,7 @@ export default function PaymentsPage() {
       if (f.splits.length !== 1) return f;
       return { ...f, splits: [{ ...f.splits[0], amount: String(net) }] };
     });
-  }, [showForm, form.total_amount, form.loyalty_discount, form.discount_id, discounts, form.splits.length]);
-
-  const selectedPackage = formPackageId
-    ? custPackages.find((p) => String(p.id) === String(formPackageId))
-    : null;
-  const serviceListTotal = useMemo(
-    () => calcServiceListTotal(form.service_ids, services),
-    [form.service_ids, services],
-  );
-  const packageBundlePrice = getPackageBundlePrice(selectedPackage);
+  }, [showForm, form.total_amount, form.loyalty_discount, form.discount_id, discounts, form.splits.length, formPackageId, form.splits]);
 
   return (
     <PageWrapper title="Payments" subtitle="Revenue tracking and payment recording"
@@ -913,14 +939,20 @@ export default function PaymentsPage() {
               <div style={{ display:'flex', gap:4, flexWrap:'wrap' }}>
                 {(row.original.splits||[]).map((sp, i) => (
                   <span key={i} style={{ padding:'2px 7px', borderRadius:5, background:'#F9FAFB', border:'1px solid #E4E7EC', fontSize:11, color:'#475467' }}>
-                    {METHOD_LABEL[sp.method]||sp.method} Rs.{Number(sp.amount||0).toLocaleString()}
+                    {sp.method === 'Package'
+                      ? `Package Rs.${Number(sp.amount||0).toLocaleString()}`
+                      : `${METHOD_LABEL[sp.method]||sp.method} Rs.${Number(sp.amount||0).toLocaleString()}`}
                   </span>
                 ))}
               </div>
             )
           },
           { accessorKey:'total_amount', header:'Total', meta:{ width:'12%', align:'right' },
-            cell: ({ getValue }) => <span style={{ fontWeight:800, color:'#059669', fontFamily:"'Outfit',sans-serif", fontSize:15 }}>Rs. {Number(getValue()||0).toLocaleString()}</span>
+            cell: ({ row }) => (
+              <span style={{ fontWeight:800, color:'#059669', fontFamily:"'Outfit',sans-serif", fontSize:15 }}>
+                Rs. {Number(row.original.total_amount||0).toLocaleString()}
+              </span>
+            )
           },
           { accessorKey:'commission_amount', header:'Commission', meta:{ width:'12%', align:'right' },
             cell: ({ getValue }) => <span style={{ fontWeight:800, color:'#D97706', fontFamily:"'Outfit',sans-serif", fontSize:15 }}>Rs. {Number(getValue()||0).toLocaleString()}</span>
@@ -1338,9 +1370,11 @@ export default function PaymentsPage() {
                   </div>
                 ))}
               </div>
-              {form.splits.length > 0 && form.total_amount && (() => {
+              {form.splits.length > 0 && (formPackageId || (form.total_amount !== '' && form.total_amount != null)) && (() => {
                 const splitTotal = form.splits.reduce((s, sp) => s + Number(sp.amount || 0), 0);
-                const net = Number(form.total_amount || 0) - Number(form.loyalty_discount || 0) - promoPreview;
+                const net = formPackageId
+                  ? packageBundlePrice
+                  : Number(form.total_amount || 0) - Number(form.loyalty_discount || 0) - promoPreview;
                 const diff = net - splitTotal;
                 const ok = Math.abs(diff) < 0.01;
                 return (
@@ -1351,7 +1385,9 @@ export default function PaymentsPage() {
                     borderRadius: 10, padding: '8px 12px', fontSize: 12,
                   }}>
                     <span style={{ color: ok ? (isDark ? '#6EE7B7' : '#166534') : '#92400E', fontWeight: 600 }}>
-                      {ok ? '✓ Splits match net amount' : `Remaining: Rs. ${Math.abs(diff).toLocaleString()}`}
+                      {ok
+                        ? (formPackageId ? '✓ Package split matches bundle price' : '✓ Splits match net amount')
+                        : `Remaining: Rs. ${Math.abs(diff).toLocaleString()}`}
                     </span>
                     <span style={{ color: isDark ? '#94A3B8' : '#667085' }}>
                       Rs. {splitTotal.toLocaleString()} / Rs. {net.toLocaleString()}

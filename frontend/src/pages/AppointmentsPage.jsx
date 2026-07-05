@@ -23,6 +23,8 @@ import {
   getPackageBundlePrice,
   formatPackageAppliedMessage,
   formatPackageBillAmount,
+  resolveAppointmentAmountDisplay,
+  appointmentServiceIds,
 } from '../utils/packageHelpers';
 import {
   DataTable, ActionBtn, StaffAvatar, PagBtn,
@@ -246,6 +248,7 @@ export default function AppointmentsPage() {
   const [paymentCustPackages, setPaymentCustPackages] = useState([]);
   const [paymentCustPackageId, setPaymentCustPackageId] = useState('');
   const [loadingPaymentPkgs, setLoadingPaymentPkgs] = useState(false);
+  const [apptPackageCache, setApptPackageCache] = useState({});
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -258,8 +261,26 @@ export default function AppointmentsPage() {
         api.get('/customers',    { params:{ limit:500, ...(filterBranch?{branchId:filterBranch}:{}) } }),
       ]);
       const d = apR.data?.data ?? apR.data ?? [];
-      setAppts(Array.isArray(d) ? d : []);
+      const rows = Array.isArray(d) ? d : [];
+      setAppts(rows);
       setTotal(apR.data?.total || 0);
+      const pkgCustomerIds = [...new Set(
+        rows
+          .filter((r) => parsePackageSelection(r.notes || '').id && r.customer_id)
+          .map((r) => r.customer_id),
+      )];
+      if (pkgCustomerIds.length) {
+        Promise.all(
+          pkgCustomerIds.map(async (cid) => {
+            const pkgs = await fetchActiveCustomerPackages(api, cid);
+            return [cid, pkgs];
+          }),
+        )
+          .then((entries) => setApptPackageCache(Object.fromEntries(entries)))
+          .catch(() => setApptPackageCache({}));
+      } else {
+        setApptPackageCache({});
+      }
       setBranches(Array.isArray(brR.data) ? brR.data : (brR.data?.data??[]));
       setServices(Array.isArray(svR.data) ? svR.data : (svR.data?.data??[]));
       setStaffList(Array.isArray(stR.data) ? stR.data : (stR.data?.data??[]));
@@ -287,8 +308,20 @@ export default function AppointmentsPage() {
   }, [showForm, form.branch_id, user?.branch_id]);
 
   const calcServiceTotal = (ids) => ids.reduce((sum, sid) => { const s = services.find(x => Number(x.id) === Number(sid)); return sum + Number(s?.price || 0); }, 0);
+  const getBookingBundlePrice = () => {
+    if (bookingCustPackageId) {
+      return getPackageBundlePrice(bookingCustPackages.find((cp) => String(cp.id) === String(bookingCustPackageId)));
+    }
+    if (bookingPackageTemplateId) {
+      return getPackageBundlePrice(packageTemplates.find((p) => String(p.id) === String(bookingPackageTemplateId)));
+    }
+    return 0;
+  };
   const resolveBookingAmount = (serviceIds, packageTemplateId = bookingPackageTemplateId) => {
-    if (packageTemplateId) return '0';
+    if (packageTemplateId || bookingCustPackageId) {
+      const bundle = getBookingBundlePrice();
+      return bundle > 0 ? String(bundle) : '0';
+    }
     const total = calcServiceTotal(serviceIds);
     return total > 0 ? String(total) : '';
   };
@@ -354,7 +387,9 @@ export default function AppointmentsPage() {
   useEffect(() => {
     if (!showPayment || !paymentAppt) return;
     if (paymentMethod === 'Package' && paymentCustPackageId) {
-      setPaymentAmt('0');
+      const cp = paymentCustPackages.find((p) => String(p.id) === String(paymentCustPackageId));
+      const bundle = getPackageBundlePrice(cp);
+      setPaymentAmt(bundle > 0 ? String(bundle) : '0');
       return;
     }
     const gross = calcServiceTotal(paymentServices);
@@ -382,7 +417,9 @@ export default function AppointmentsPage() {
     if (!paymentServices.length) return setPaymentErr('At least one service is required');
     setPaymentSaving(true);
     try {
-      const subtotal = calcServiceTotal(paymentServices);
+      const subtotal = paymentMethod === 'Package' && paymentCustPackageId
+        ? getPackageBundlePrice(paymentCustPackages.find((p) => String(p.id) === String(paymentCustPackageId)))
+        : calcServiceTotal(paymentServices);
       await api.post('/payments', {
         branch_id: paymentAppt.branch_id || paymentAppt.branch?.id || user?.branch_id,
         staff_id: paymentAppt.staff_id || paymentAppt.staff?.id || null,
@@ -410,7 +447,12 @@ export default function AppointmentsPage() {
         await api.put(`/appointments/${paymentAppt.id}`, {
           service_id: primaryId || paymentAppt.service_id,
           service_ids: paymentServices,
-          amount: Number(paymentAmt),
+          amount: paymentMethod === 'Package' && paymentCustPackageId
+            ? getPackageBundlePrice(paymentCustPackages.find((p) => String(p.id) === String(paymentCustPackageId)))
+            : Number(paymentAmt),
+          customer_package_id: paymentMethod === 'Package' && paymentCustPackageId
+            ? Number(paymentCustPackageId)
+            : undefined,
           notes: updatedNotes,
         });
         await api.patch(`/appointments/${paymentAppt.id}/status`, { status: 'completed' });
@@ -454,7 +496,7 @@ export default function AppointmentsPage() {
       service_id: row.service?.id || row.service_id,
       staff_id: row.staff?.id || row.staff_id,
       date: row.date?.slice(0,10) || '',
-      amount: pkgSel.id ? '0' : (totalAmount || row.amount || ''),
+      amount: pkgSel.id ? String(row.amount ?? '') : (totalAmount || row.amount || ''),
       notes: stripPackageLine(stripAdditionalServicesLine(row.notes || '')),
       is_recurring: Boolean(row.is_recurring),
       recurrence_frequency: row.recurrence_frequency || 'weekly',
@@ -474,6 +516,7 @@ export default function AppointmentsPage() {
             const cp = pkgs.find((p) => String(p.id) === String(pkgSel.id));
             if (cp) {
               setBookingPackageTemplateId(String(cp.package_id || cp.package?.id || ''));
+              setForm((f) => ({ ...f, amount: String(getPackageBundlePrice(cp) || f.amount || '0') }));
             }
           }
         })
@@ -493,6 +536,7 @@ export default function AppointmentsPage() {
       const selectedSvcs = services.filter(s => apptServiceIds.includes(Number(s.id)));
       const [primary, ...extras] = selectedSvcs;
       const extraNote = extras.length ? `${APPT_EXTRA_SERVICES_PREFIX} ${extras.map(s => s.name).join(', ')}` : '';
+      const usesPackage = !!(bookingPackageTemplateId || bookingCustPackageId);
       const pkgLine = bookingCustPackageId
         ? buildPackageNoteLine(
           bookingCustPackageId,
@@ -503,7 +547,8 @@ export default function AppointmentsPage() {
         ...form,
         service_id: primary?.id || form.service_id,
         service_ids: apptServiceIds,
-        amount: Number(bookingPackageTemplateId ? 0 : (selectedSvcs.reduce((sum, s) => sum + Number(s.price || 0), 0) || form.amount || 0)),
+        customer_package_id: usesPackage ? Number(bookingCustPackageId) || undefined : undefined,
+        amount: Number(usesPackage ? getBookingBundlePrice() : (selectedSvcs.reduce((sum, s) => sum + Number(s.price || 0), 0) || form.amount || 0)),
         notes: [
           stripPackageLine(stripAdditionalServicesLine(form.notes || '')),
           pkgLine,
@@ -571,10 +616,10 @@ export default function AppointmentsPage() {
       setForm((f) => ({
         ...f,
         service_id: nextIds[0] || '',
-        amount: '0',
+        amount: String(getPackageBundlePrice(tpl) || '0'),
       }));
     } else {
-      setForm((f) => ({ ...f, amount: '0' }));
+      setForm((f) => ({ ...f, amount: String(getPackageBundlePrice(tpl) || '0') }));
     }
     if (!form.customer_id) return;
     const existing = findCustomerPackageForTemplate(bookingCustPackages, templateId);
@@ -624,6 +669,15 @@ export default function AppointmentsPage() {
   const filteredStaff = form.branch_id ? staffList.filter(s => s.branch_id==form.branch_id) : staffList;
   const counts = APPT_STATUSES.reduce((acc,s) => { acc[s]=appts.filter(a=>a.status===s).length; return acc; }, {});
   const totalPages = Math.ceil(total / LIMIT);
+
+  const bookingUsesPackage = !!(bookingPackageTemplateId || bookingCustPackageId);
+  const bookingBundlePrice = getBookingBundlePrice();
+  const paymentListTotal = calcServiceTotal(paymentServices);
+  const paymentSelectedCp = paymentCustPackageId
+    ? paymentCustPackages.find((p) => String(p.id) === String(paymentCustPackageId))
+    : null;
+  const paymentBundlePrice = getPackageBundlePrice(paymentSelectedCp);
+  const paymentUsesPackage = paymentMethod === 'Package' && !!paymentCustPackageId;
 
   const apptColumns = useMemo(() => [
     {
@@ -688,11 +742,25 @@ export default function AppointmentsPage() {
       accessorKey: 'amount',
       header: 'Amount',
       meta: { width: '11%', align: 'right' },
-      cell: ({ row }) => (
-        <span style={{ fontWeight: 700, color: '#059669', fontSize: 14 }}>
-          Rs. {Number(row.original.amount || row.original.service?.price || 0).toLocaleString()}
-        </span>
-      ),
+      cell: ({ row }) => {
+        const pkgs = apptPackageCache[row.original.customer_id] || [];
+        const bill = resolveAppointmentAmountDisplay(row.original, { services, customerPackages: pkgs });
+        return (
+          <div style={{ textAlign: 'right' }}>
+            {bill.listTotal != null && bill.isPackage && (
+              <div style={{ fontSize: 11, color: '#94A3B8', textDecoration: 'line-through' }}>
+                List Rs. {bill.listTotal.toLocaleString()}
+              </div>
+            )}
+            <span style={{ fontWeight: 700, color: '#059669', fontSize: 14 }}>
+              {bill.primary}
+            </span>
+            {bill.isPackage && (
+              <div style={{ fontSize: 10, fontWeight: 700, color: '#047857', marginTop: 2 }}>Package</div>
+            )}
+          </div>
+        );
+      },
     },
     {
       accessorKey: 'status',
@@ -735,7 +803,7 @@ export default function AppointmentsPage() {
         );
       },
     },
-  ], [canEdit, isDark, C]);
+  ], [canEdit, isDark, C, services, apptPackageCache]);
 
   const tomorrow = useMemo(() => {
     const d = new Date();
@@ -880,13 +948,13 @@ export default function AppointmentsPage() {
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: 12, flexWrap: 'wrap' }}>
             <div style={{ fontSize: 13, color: isDark ? '#94A3B8' : '#64748B' }}>
               {apptServiceIds.length > 0 ? (
-                <span style={{ fontWeight: 800, color: bookingPackageTemplateId ? '#047857' : '#059669' }}>
-                  {bookingPackageTemplateId
-                    ? formatPackageBillAmount(getPackageBundlePrice(packageTemplates.find((p) => String(p.id) === String(bookingPackageTemplateId))))
+                <span style={{ fontWeight: 800, color: bookingUsesPackage ? '#047857' : '#059669' }}>
+                  {bookingUsesPackage
+                    ? formatPackageBillAmount(bookingBundlePrice)
                     : `Rs. ${Number(form.amount || 0).toLocaleString()}`}
                   <span style={{ fontWeight: 500, color: isDark ? '#94A3B8' : '#64748B', marginLeft: 8 }}>
                     · {apptServiceIds.length} service{apptServiceIds.length !== 1 ? 's' : ''}
-                    {bookingPackageTemplateId ? ' · Package' : ''}
+                    {bookingUsesPackage ? ' · Package' : ''}
                     {form.date && form.time ? ` · ${form.date} ${form.time}` : ''}
                   </span>
                 </span>
@@ -1048,9 +1116,9 @@ export default function AppointmentsPage() {
                       No packages available — create a package with a bundle price first.
                     </div>
                   )}
-                  {bookingPackageTemplateId && !packageSelectSaving && (
+                  {bookingUsesPackage && !packageSelectSaving && (
                     <div style={{ fontSize: 12, color: isDark ? '#6EE7B7' : '#047857', marginTop: 6, fontWeight: 600 }}>
-                      {formatPackageAppliedMessage(getPackageBundlePrice(packageTemplates.find((p) => String(p.id) === String(bookingPackageTemplateId))))}
+                      {formatPackageAppliedMessage(bookingBundlePrice)}
                     </div>
                   )}
                 </FormGroup>
@@ -1133,15 +1201,13 @@ export default function AppointmentsPage() {
                     {APPT_STATUSES.filter((s) => s !== 'completed').map((s) => <option key={s} value={s}>{STATUS_META[s].label}</option>)}
                   </Select>
                 </FormGroup>
-                <FormGroup label={bookingPackageTemplateId ? 'Bundle price (Rs.)' : 'Amount (Rs.)'}>
+                <FormGroup label={bookingUsesPackage ? 'Bundle price (Rs.)' : 'Amount (Rs.)'}>
                   <Input
                     type="number"
-                    value={bookingPackageTemplateId
-                      ? String(getPackageBundlePrice(packageTemplates.find((p) => String(p.id) === String(bookingPackageTemplateId))) || '0')
-                      : (form.amount || '')}
+                    value={bookingUsesPackage ? String(bookingBundlePrice || form.amount || '0') : (form.amount || '')}
                     onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))}
-                    placeholder={bookingPackageTemplateId ? 'Package bundle' : 'Auto from services'}
-                    disabled={!!bookingPackageTemplateId}
+                    placeholder={bookingUsesPackage ? 'Package bundle' : 'Auto from services'}
+                    disabled={!!bookingUsesPackage}
                   />
                 </FormGroup>
               </div>
@@ -1197,17 +1263,17 @@ export default function AppointmentsPage() {
                 <div style={{ height: 1, background: isDark ? 'rgba(255,255,255,0.15)' : 'rgba(5,150,105,0.2)', margin: '4px 0' }} />
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ fontSize: 14, fontWeight: 700, color: isDark ? '#BBF7D0' : '#064E3B' }}>
-                    {bookingPackageTemplateId ? 'Bundle price' : 'Estimated Total'}
+                    {bookingUsesPackage ? 'Bundle price (final)' : 'Estimated Total'}
                   </span>
                   <div style={{ textAlign: 'right' }}>
-                    {bookingPackageTemplateId && apptServiceIds.length > 0 && (
+                    {bookingUsesPackage && apptServiceIds.length > 0 && (
                       <div style={{ fontSize: 11, color: isDark ? '#94A3B8' : '#64748B', fontWeight: 600, marginBottom: 2, textDecoration: 'line-through' }}>
                         List Rs. {calcServiceTotal(apptServiceIds).toLocaleString()}
                       </div>
                     )}
                     <span style={{ fontSize: 22, fontWeight: 800, color: isDark ? '#fff' : '#047857', letterSpacing: '-0.02em' }}>
-                      {bookingPackageTemplateId
-                        ? formatPackageBillAmount(getPackageBundlePrice(packageTemplates.find((p) => String(p.id) === String(bookingPackageTemplateId))))
+                      {bookingUsesPackage
+                        ? formatPackageBillAmount(bookingBundlePrice)
                         : `Rs. ${Number(form.amount || 0).toLocaleString()}`}
                     </span>
                   </div>
@@ -1272,9 +1338,16 @@ export default function AppointmentsPage() {
                 {paymentServices.length===0 && <div style={{ fontSize:12, color:'#DC2626', marginTop:4 }}>Select at least one service</div>}
               </FormGroup>
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14, alignItems:'start' }}>
-                <FormGroup label="Subtotal (Rs.)">
-                  <div style={{ padding:'10px 12px', background:isDark?'#1E293B':'#F9FAFB', borderRadius:10, border:`1px solid ${isDark?'#334155':'#E5E7EB'}`, fontWeight:800, color:'#059669' }}>
-                    Rs. {calcServiceTotal(paymentServices).toLocaleString()}
+                <FormGroup label={paymentUsesPackage ? 'Bundle price (Rs.)' : 'Subtotal (Rs.)'}>
+                  <div style={{ padding:'10px 12px', background:isDark?'#1E293B':'#F9FAFB', borderRadius:10, border:`1px solid ${isDark?'#334155':'#E5E7EB'}` }}>
+                    {paymentUsesPackage && paymentListTotal > 0 && (
+                      <div style={{ fontSize: 11, color: isDark ? '#94A3B8' : '#64748B', textDecoration: 'line-through', marginBottom: 4 }}>
+                        List Rs. {paymentListTotal.toLocaleString()}
+                      </div>
+                    )}
+                    <div style={{ fontWeight:800, color:'#059669' }}>
+                      Rs. {(paymentUsesPackage ? paymentBundlePrice : paymentListTotal).toLocaleString()}
+                    </div>
                   </div>
                 </FormGroup>
                 {paymentDiscounts.length > 0 && paymentMethod !== 'Package' && !paymentCustPackageId && (
@@ -1324,8 +1397,12 @@ export default function AppointmentsPage() {
                 </FormGroup>
               )}
               <div style={{ background:isDark?'#064E3B':'#F0FDF4', borderRadius:10, padding:'12px 16px', display:'flex', alignItems:'center', justifyContent:'space-between', border:`1px solid ${isDark?'#065F46':'#BBF7D0'}` }}>
-                <span style={{ fontSize:13, fontWeight:600, color:isDark?'#A7F3D0':'#166534' }}>Collected</span>
-                <span style={{ fontSize:18, fontWeight:800, color:'#059669' }}>Rs. {Number(paymentAmt||0).toLocaleString()}</span>
+                <span style={{ fontSize:13, fontWeight:600, color:isDark?'#A7F3D0':'#166534' }}>
+                  {paymentUsesPackage ? 'Final amount (bundle)' : 'Collected'}
+                </span>
+                <span style={{ fontSize:18, fontWeight:800, color:'#059669' }}>
+                  Rs. {(paymentUsesPackage ? paymentBundlePrice : Number(paymentAmt || 0)).toLocaleString()}
+                </span>
               </div>
             </div>
           )
@@ -1361,13 +1438,24 @@ export default function AppointmentsPage() {
             {(() => {
               const extraServiceNames = parseAdditionalServiceNames(detailItem.notes || '');
               const allServiceNames = Array.from(new Set([detailItem.service?.name, ...extraServiceNames].filter(Boolean)));
+              const bill = resolveAppointmentAmountDisplay(detailItem, {
+                services,
+                customerPackages: apptPackageCache[detailItem.customer_id] || [],
+              });
               const rows = [
                 { icon:'✂️', label:'Services', value: allServiceNames.join(', ') || '—' },
                 { icon:'👤', label:'Staff', value: detailItem.staff?.name || '—' },
                 { icon:'📅', label:'Date', value: detailItem.date ? new Date(detailItem.date).toLocaleDateString('en-US',{weekday:'long',year:'numeric',month:'long',day:'numeric'}) : '—' },
                 { icon:'🕐', label:'Time', value: detailItem.time || '—' },
                 { icon:'🏢', label:'Branch', value: detailItem.branch?.name || '—' },
-                { icon:'💰', label:'Amount', value: `Rs. ${Number(detailItem.amount||detailItem.service?.price||0).toLocaleString()}`, highlight: true },
+                {
+                  icon:'💰',
+                  label: bill.isPackage ? 'Bundle price' : 'Amount',
+                  value: bill.listTotal != null
+                    ? `List Rs. ${bill.listTotal.toLocaleString()} → ${bill.primary}`
+                    : bill.primary,
+                  highlight: true,
+                },
               ];
               return (
                 <div style={{ display:'flex', flexDirection:'column', gap: 8 }}>

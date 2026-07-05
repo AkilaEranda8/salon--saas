@@ -29,6 +29,7 @@ import {
   getPackageBundlePrice,
   formatPackageAppliedMessage,
   formatPackageBillAmount,
+  resolveWalkInAmountDisplay,
 } from '../utils/packageHelpers';
 import { getKcAccessToken } from '../utils/kcTokenStore';
 import {
@@ -275,7 +276,7 @@ function QueueStatusBadge({ status, dark = false }) {
 }
 
 function QueueEntryCard({
-  entry, C, isDark, staffList, busyStaffIds,
+  entry, C, isDark, staffList, busyStaffIds, services, packageCache,
   onAssignStaff, onChangeStatus, onEdit, onPayment, onShowToken,
 }) {
   const svc = entry.service || {};
@@ -283,6 +284,10 @@ function QueueEntryCard({
   const servicesLine = getWalkInServicesTitle(entry);
   const noteOnly = removeAdditionalServicesLine(entry.note || '');
   const meta = STATUS_META[entry.status] || STATUS_META.waiting;
+  const bill = resolveWalkInAmountDisplay(entry, {
+    services,
+    customerPackages: packageCache[entry.customer_id] || [],
+  });
 
   return (
     <div style={{
@@ -322,9 +327,17 @@ function QueueEntryCard({
                 {svc.duration_minutes} min
               </span>
             )}
-            {Number(entry.total_amount) > 0 && (
+            {bill.finalAmount > 0 && (
               <span style={{ fontSize: 12, fontWeight: 800, color: '#059669' }}>
-                Rs. {Number(entry.total_amount).toLocaleString()}
+                {bill.primary}
+                {bill.isPackage && (
+                  <span style={{ fontSize: 10, fontWeight: 700, color: '#047857', marginLeft: 4 }}>Package</span>
+                )}
+              </span>
+            )}
+            {bill.listTotal != null && (
+              <span style={{ fontSize: 11, color: C.muted, textDecoration: 'line-through', fontWeight: 600 }}>
+                List Rs. {bill.listTotal.toLocaleString()}
               </span>
             )}
           </div>
@@ -388,6 +401,7 @@ export default function WalkInPage() {
   /*  State  */
   const [queue,          setQueue]          = useState([]);
   const [stats,          setStats]          = useState({ waiting: 0, serving: 0, completed: 0, cancelled: 0, total: 0 });
+  const [walkInPackageCache, setWalkInPackageCache] = useState({});
   const [selectedBranch, setSelectedBranch] = useState(defaultBranch);
   const [filterStatus,   setFilterStatus]   = useState('all');
   const [queueSearch,    setQueueSearch]    = useState('');
@@ -472,8 +486,26 @@ export default function WalkInPage() {
         api.get('/walkin', { params: { branchId: selectedBranch } }),
         api.get('/walkin/stats', { params: { branchId: selectedBranch } }),
       ]);
-      setQueue(qRes.data || []);
+      const rows = qRes.data || [];
+      setQueue(rows);
       setStats(sRes.data || { waiting: 0, serving: 0, completed: 0, cancelled: 0, total: 0 });
+      const pkgCustomerIds = [...new Set(
+        rows
+          .filter((r) => parsePackageSelection(r.note || '').id && r.customer_id)
+          .map((r) => r.customer_id),
+      )];
+      if (pkgCustomerIds.length) {
+        Promise.all(
+          pkgCustomerIds.map(async (cid) => {
+            const pkgs = await fetchActiveCustomerPackages(api, cid);
+            return [cid, pkgs];
+          }),
+        )
+          .then((entries) => setWalkInPackageCache(Object.fromEntries(entries)))
+          .catch(() => setWalkInPackageCache({}));
+      } else {
+        setWalkInPackageCache({});
+      }
     } catch (e) {
       setError('Failed to load queue.');
     } finally {
@@ -597,7 +629,9 @@ export default function WalkInPage() {
   useEffect(() => {
     if (!paymentEntry) return;
     if (paymentMethod === 'Package' && paymentCustPackageId) {
-      setPaymentAmount('0');
+      const cp = paymentCustPackages.find((p) => String(p.id) === String(paymentCustPackageId));
+      const bundle = getPackageBundlePrice(cp);
+      setPaymentAmount(bundle > 0 ? String(bundle) : '0');
       return;
     }
     const gross = calcServiceTotal(paymentServices);
@@ -733,7 +767,10 @@ export default function WalkInPage() {
     setPaymentSaving(true);
     setPaymentError('');
     try {
-      const subtotal = calcServiceTotal(paymentServices);
+      const cp = paymentMethod === 'Package' && paymentCustPackageId
+        ? paymentCustPackages.find((p) => String(p.id) === String(paymentCustPackageId))
+        : null;
+      const subtotal = cp ? getPackageBundlePrice(cp) : calcServiceTotal(paymentServices);
       await api.post('/payments', {
         branch_id: paymentEntry.branch_id || selectedBranch,
         staff_id: paymentEntry.staff_id || paymentEntry.staff?.id || null,
@@ -893,6 +930,7 @@ export default function WalkInPage() {
         customerId: custId || undefined,
         serviceId: primarySid,
         serviceIds: editServiceIds,
+        customerPackageId: editCustPackageId || undefined,
         note: fullNote,
       });
       toast('Walk-in entry updated.', 'success');
@@ -1124,13 +1162,21 @@ export default function WalkInPage() {
     if (svc) checkinDurationSum += Number(svc.duration_minutes || 30);
   }
   const checkinUsingPackage = !!(checkinPackageTemplateId || checkinCustPackageId);
-  const checkinCollectTotal = checkinUsingPackage ? 0 : checkinListTotal;
   const checkinBundlePrice = checkinPackageTemplateId
     ? getPackageBundlePrice(packageTemplates.find((p) => String(p.id) === String(checkinPackageTemplateId)))
     : getPackageBundlePrice(checkinCustPackages.find((cp) => String(cp.id) === String(checkinCustPackageId)));
+  const checkinFinalAmount = checkinUsingPackage ? checkinBundlePrice : checkinListTotal;
   const waitPreview = checkinSelectedIds.length ? stats.waiting * checkinDurationSum : null;
 
   const branchName = branches.find((b) => String(b.id) === String(selectedBranch))?.name || '';
+
+  const paymentListTotal = calcServiceTotal(paymentServices);
+  const paymentSelectedCp = paymentCustPackageId
+    ? paymentCustPackages.find((p) => String(p.id) === String(paymentCustPackageId))
+    : null;
+  const paymentBundlePrice = getPackageBundlePrice(paymentSelectedCp);
+  const paymentUsesPackage = paymentMethod === 'Package' && !!paymentCustPackageId;
+  const paymentFinalAmount = paymentUsesPackage ? paymentBundlePrice : Number(paymentAmount || 0);
 
   const searchedQueue = useMemo(() => {
     const base = filterStatus === 'all' ? queue : queue.filter((e) => e.status === filterStatus);
@@ -1337,6 +1383,8 @@ export default function WalkInPage() {
                         isDark={isDark}
                         staffList={staffList}
                         busyStaffIds={busyStaffIds}
+                        services={services}
+                        packageCache={walkInPackageCache}
                         onAssignStaff={assignStaff}
                         onChangeStatus={changeStatus}
                         onEdit={openEdit}
@@ -1369,7 +1417,7 @@ export default function WalkInPage() {
                   <span style={{ fontWeight: 800, color: checkinUsingPackage ? '#047857' : '#059669', marginLeft: 8 }}>
                     · {checkinUsingPackage
                       ? (checkinBundlePrice > 0 ? `Bundle ${formatPackageBillAmount(checkinBundlePrice)}` : 'Package')
-                      : `Rs. ${checkinCollectTotal.toLocaleString()}`}
+                      : `Rs. ${checkinFinalAmount.toLocaleString()}`}
                   </span>
                   {checkinUsingPackage && checkinListTotal > 0 && (
                     <span style={{ fontWeight: 500, color: C.muted, marginLeft: 8, textDecoration: 'line-through' }}>
@@ -1596,7 +1644,7 @@ export default function WalkInPage() {
                       </span>
                     </div>
                   ) : (
-                    <span style={{ fontSize: 16, color: '#059669', fontWeight: 800 }}>Rs. {checkinCollectTotal.toLocaleString()}</span>
+                    <span style={{ fontSize: 16, color: '#059669', fontWeight: 800 }}>Rs. {checkinFinalAmount.toLocaleString()}</span>
                   )}
                 </div>
               </div>
@@ -1627,11 +1675,21 @@ export default function WalkInPage() {
                 {getWalkInServicesTitle(showToken)}
               </div>
             )}
-            {Number(showToken.total_amount) > 0 && (
-              <div style={{ fontSize: 14, fontWeight: 800, color: '#059669', marginBottom: 4 }}>
-                Rs. {Number(showToken.total_amount).toLocaleString()}
-              </div>
-            )}
+            {(() => {
+              const tokenBill = resolveWalkInAmountDisplay(showToken, {
+                services,
+                customerPackages: walkInPackageCache[showToken.customer_id] || [],
+              });
+              if (!(tokenBill.finalAmount > 0)) return null;
+              return (
+                <div style={{ fontSize: 14, fontWeight: 800, color: '#059669', marginBottom: 4 }}>
+                  {tokenBill.primary}
+                  {tokenBill.isPackage && (
+                    <span style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#047857' }}>Package</span>
+                  )}
+                </div>
+              );
+            })()}
             <div style={{ fontSize: 12, color: '#94A3B8' }}>{fmtTime(showToken.check_in_time)}</div>
           </div>
           <div style={{ display: 'flex', gap: 10, justifyContent: 'center', marginTop: 16 }}>
@@ -1658,8 +1716,8 @@ export default function WalkInPage() {
               || !paymentServices.length
               || (paymentMethod === 'Package' ? !paymentCustPackageId : (!paymentAmount || Number(paymentAmount) <= 0))
             }>
-              {paymentSaving ? 'Collecting...' : paymentMethod === 'Package'
-                ? `Complete · ${formatPackageBillAmount(getPackageBundlePrice(paymentCustPackages.find((p) => String(p.id) === String(paymentCustPackageId))))}`
+              {paymentSaving ? 'Collecting...' : paymentUsesPackage
+                ? `Complete · ${formatPackageBillAmount(paymentBundlePrice)}`
                 : `Collect Rs ${Number(paymentAmount || 0).toLocaleString()}`}
             </Button>
           </>
@@ -1704,20 +1762,23 @@ export default function WalkInPage() {
                     </div>
                   ))}
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: isDark ? '#1E293B' : '#F8FAFC', borderTop: `1px solid ${isDark ? '#334155' : '#EEF2F6'}` }}>
-                    <span style={{ fontWeight: 700, color: C.title }}>List value</span>
-                    <span style={{ fontSize: 16, fontWeight: 800, color: C.title }}>Rs. {calcServiceTotal(paymentServices).toLocaleString()}</span>
+                    <span style={{ fontWeight: 700, color: C.title }}>{paymentUsesPackage ? 'List value' : 'Subtotal'}</span>
+                    <span style={{
+                      fontSize: 16,
+                      fontWeight: 800,
+                      color: paymentUsesPackage ? C.muted : C.title,
+                      textDecoration: paymentUsesPackage ? 'line-through' : 'none',
+                    }}>
+                      Rs. {paymentListTotal.toLocaleString()}
+                    </span>
                   </div>
-                  {paymentMethod === 'Package' && paymentCustPackageId && (() => {
-                    const cp = paymentCustPackages.find((p) => String(p.id) === String(paymentCustPackageId));
-                    const bundle = getPackageBundlePrice(cp);
-                    return bundle > 0 ? (
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 12px', background: isDark ? '#172554' : '#EFF6FF', borderTop: `1px solid ${isDark ? '#334155' : '#EEF2F6'}` }}>
-                        <span style={{ fontWeight: 600, color: isDark ? '#93C5FD' : '#1D4ED8', fontSize: 13 }}>Package bundle</span>
-                        <span style={{ fontWeight: 800, color: isDark ? '#BFDBFE' : '#2563EB', fontSize: 14 }}>Rs. {bundle.toLocaleString()}</span>
-                      </div>
-                    ) : null;
-                  })()}
-                  {(() => {
+                  {paymentUsesPackage && paymentBundlePrice > 0 && (
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 12px', background: isDark ? '#172554' : '#EFF6FF', borderTop: `1px solid ${isDark ? '#334155' : '#EEF2F6'}` }}>
+                      <span style={{ fontWeight: 600, color: isDark ? '#93C5FD' : '#1D4ED8', fontSize: 13 }}>Bundle price (final)</span>
+                      <span style={{ fontWeight: 800, color: isDark ? '#BFDBFE' : '#2563EB', fontSize: 14 }}>Rs. {paymentBundlePrice.toLocaleString()}</span>
+                    </div>
+                  )}
+                  {!paymentUsesPackage && (() => {
                     const g = calcServiceTotal(paymentServices);
                     const sd = paymentDiscountId ? paymentDiscounts.find((d) => String(d.id) === String(paymentDiscountId)) : null;
                     const pr = sd ? computePromoFromDiscount(sd, g) : 0;
@@ -1730,11 +1791,11 @@ export default function WalkInPage() {
                   })()}
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', background: isDark ? '#064E3B' : '#ECFDF5', borderTop: `1px solid ${isDark ? '#065F46' : '#BBF7D0'}` }}>
                     <span style={{ fontWeight: 700, color: isDark ? '#A7F3D0' : '#065F46' }}>
-                      {paymentMethod === 'Package' && paymentCustPackageId ? 'Bundle price' : 'Collect'}
+                      {paymentUsesPackage ? 'Final amount (bundle)' : 'Collect'}
                     </span>
                     <span style={{ fontSize: 28, fontWeight: 900, color: '#059669', lineHeight: 1 }}>
-                      {paymentMethod === 'Package' && paymentCustPackageId
-                        ? formatPackageBillAmount(getPackageBundlePrice(paymentCustPackages.find((p) => String(p.id) === String(paymentCustPackageId))))
+                      {paymentUsesPackage
+                        ? formatPackageBillAmount(paymentBundlePrice)
                         : `Rs. ${Number(paymentAmount || 0).toLocaleString()}`}
                     </span>
                   </div>

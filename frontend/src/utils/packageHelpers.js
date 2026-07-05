@@ -32,7 +32,7 @@ export const resolvePackageServiceIds = (customerPackage, allServices = []) => {
   return pkgServiceIds.filter((id) => activeIds.has(id));
 };
 
-/** True when bundle price is below list price (discount packages only). */
+/** True when bundle price is below list price. */
 export function packageHasDiscount(pkg) {
   if (!pkg) return false;
   const original = Number(pkg.original_price || 0);
@@ -40,6 +40,15 @@ export function packageHasDiscount(pkg) {
   const discPct = Number(pkg.discount_percent || 0);
   if (discPct > 0) return true;
   return original > 0 && price < original;
+}
+
+/** Active package template with a bundle price and at least one service. */
+export function packageIsBookable(pkg) {
+  if (!pkg || pkg.is_active === false) return false;
+  const price = Number(pkg.package_price || 0);
+  if (!(price > 0)) return false;
+  const svc = pkg.services || [];
+  return Array.isArray(svc) && svc.length > 0;
 }
 
 export function packageDiscountLabel(pkg) {
@@ -53,12 +62,15 @@ export function packageDiscountLabel(pkg) {
 }
 
 export function filterRedeemableCustomerPackages(list = []) {
-  return list.filter((cp) => packageHasDiscount(cp?.package));
+  return list.filter((cp) => packageIsBookable(cp?.package));
 }
 
-export function filterDiscountedPackageTemplates(list = []) {
-  return list.filter((p) => packageHasDiscount(p));
+export function filterBookablePackageTemplates(list = []) {
+  return list.filter((p) => packageIsBookable(p));
 }
+
+/** @deprecated use filterBookablePackageTemplates */
+export const filterDiscountedPackageTemplates = filterBookablePackageTemplates;
 
 export function formatPackageTemplateLabel(pkg) {
   if (!pkg) return 'Package';
@@ -112,18 +124,21 @@ export async function resolveCustomerId(api, { customerId, phone, branchId } = {
   }
 }
 
-export async function fetchDiscountedPackageTemplates(api, branchId) {
+export async function fetchBookablePackageTemplates(api, branchId) {
   if (!api) return [];
   try {
     const params = { activeOnly: true };
     if (branchId) params.branchId = branchId;
     const r = await api.get('/packages', { params });
     const list = Array.isArray(r.data) ? r.data : [];
-    return filterDiscountedPackageTemplates(list);
+    return filterBookablePackageTemplates(list);
   } catch {
     return [];
   }
 }
+
+/** @deprecated use fetchBookablePackageTemplates */
+export const fetchDiscountedPackageTemplates = fetchBookablePackageTemplates;
 
 export function findCustomerPackageForTemplate(customerPackages = [], templateId) {
   if (!templateId) return null;

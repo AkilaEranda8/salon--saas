@@ -1035,7 +1035,7 @@ export default function PaymentsPage() {
                     </Select>
                   ) : (
                     <div style={{ fontSize: 12, color: isDark ? '#64748B' : '#64748B' }}>
-                      No discounted package for this customer.
+                      No package for this customer.
                     </div>
                   )}
                   {formPackageId && (

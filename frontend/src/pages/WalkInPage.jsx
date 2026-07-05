@@ -1493,7 +1493,7 @@ export default function WalkInPage() {
                   </Select>
                 ) : (
                   <div style={{ fontSize: 12, color: C.muted, padding: '4px 0' }}>
-                    No discounted packages — create a package with a bundle discount first.
+                    No packages available — create a package with a bundle price first.
                   </div>
                 )}
                 {checkinPackageTemplateId && !packageSelectSaving && (
@@ -1701,7 +1701,7 @@ export default function WalkInPage() {
                     </Select>
                   ) : (
                     <div style={{ fontSize: 12, color: C.muted, padding: '4px 0' }}>
-                      No discounted package — use promo discount or assign package at check-in.
+                      No package — use promo discount or select a package at check-in.
                     </div>
                   )}
                   {paymentCustPackageId && (
@@ -1869,7 +1869,7 @@ export default function WalkInPage() {
                 </Select>
               ) : (
                 <div style={{ fontSize: 12, color: C.muted, padding: '4px 0' }}>
-                  No discounted packages — create a package with a bundle discount first.
+                  No packages available — create a package with a bundle price first.
                 </div>
               )}
             </div>

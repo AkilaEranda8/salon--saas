@@ -284,6 +284,11 @@ export default function AppointmentsPage() {
   }, [showForm, form.branch_id, user?.branch_id]);
 
   const calcServiceTotal = (ids) => ids.reduce((sum, sid) => { const s = services.find(x => Number(x.id) === Number(sid)); return sum + Number(s?.price || 0); }, 0);
+  const resolveBookingAmount = (serviceIds, packageTemplateId = bookingPackageTemplateId) => {
+    if (packageTemplateId) return '0';
+    const total = calcServiceTotal(serviceIds);
+    return total > 0 ? String(total) : '';
+  };
   const openPayment = async (row) => {
     setPaymentAppt(row);
     let sourceRow = row;
@@ -446,7 +451,7 @@ export default function AppointmentsPage() {
       service_id: row.service?.id || row.service_id,
       staff_id: row.staff?.id || row.staff_id,
       date: row.date?.slice(0,10) || '',
-      amount: totalAmount || row.amount || '',
+      amount: pkgSel.id ? '0' : (totalAmount || row.amount || ''),
       notes: stripPackageLine(stripAdditionalServicesLine(row.notes || '')),
       is_recurring: Boolean(row.is_recurring),
       recurrence_frequency: row.recurrence_frequency || 'weekly',
@@ -495,7 +500,7 @@ export default function AppointmentsPage() {
         ...form,
         service_id: primary?.id || form.service_id,
         service_ids: apptServiceIds,
-        amount: selectedSvcs.reduce((sum, s) => sum + Number(s.price || 0), 0) || form.amount,
+        amount: Number(bookingPackageTemplateId ? 0 : (selectedSvcs.reduce((sum, s) => sum + Number(s.price || 0), 0) || form.amount || 0)),
         notes: [
           stripPackageLine(stripAdditionalServicesLine(form.notes || '')),
           pkgLine,
@@ -520,11 +525,10 @@ export default function AppointmentsPage() {
     const nid = Number(id);
     setApptServiceIds(prev => {
       const next = prev.includes(nid) ? prev.filter(x => x !== nid) : [...prev, nid];
-      const total = calcServiceTotal(next);
       setForm(f => ({
         ...f,
         service_id: next[0] || '',
-        amount: total || '',
+        amount: resolveBookingAmount(next),
       }));
       return next;
     });
@@ -553,6 +557,7 @@ export default function AppointmentsPage() {
     setBookingPackageTemplateId(templateId);
     if (!templateId) {
       setBookingCustPackageId('');
+      setForm((f) => ({ ...f, amount: resolveBookingAmount(apptServiceIds, '') }));
       return;
     }
     const tpl = packageTemplates.find((p) => String(p.id) === String(templateId));
@@ -563,8 +568,10 @@ export default function AppointmentsPage() {
       setForm((f) => ({
         ...f,
         service_id: nextIds[0] || '',
-        amount: calcServiceTotal(nextIds) || '',
+        amount: '0',
       }));
+    } else {
+      setForm((f) => ({ ...f, amount: '0' }));
     }
     if (!form.customer_id) return;
     const existing = findCustomerPackageForTemplate(bookingCustPackages, templateId);
@@ -870,10 +877,11 @@ export default function AppointmentsPage() {
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: 12, flexWrap: 'wrap' }}>
             <div style={{ fontSize: 13, color: isDark ? '#94A3B8' : '#64748B' }}>
               {apptServiceIds.length > 0 ? (
-                <span style={{ fontWeight: 800, color: '#059669' }}>
-                  Rs. {Number(form.amount || 0).toLocaleString()}
+                <span style={{ fontWeight: 800, color: bookingPackageTemplateId ? '#047857' : '#059669' }}>
+                  {bookingPackageTemplateId ? 'Rs. 0' : `Rs. ${Number(form.amount || 0).toLocaleString()}`}
                   <span style={{ fontWeight: 500, color: isDark ? '#94A3B8' : '#64748B', marginLeft: 8 }}>
                     · {apptServiceIds.length} service{apptServiceIds.length !== 1 ? 's' : ''}
+                    {bookingPackageTemplateId ? ' · Package' : ''}
                     {form.date && form.time ? ` · ${form.date} ${form.time}` : ''}
                   </span>
                 </span>
@@ -1032,7 +1040,7 @@ export default function AppointmentsPage() {
                     </Select>
                   ) : (
                     <div style={{ fontSize: 12, color: isDark ? '#94A3B8' : '#64748B', padding: '4px 0' }}>
-                      No discounted packages — create a package with a bundle discount first.
+                      No packages available — create a package with a bundle price first.
                     </div>
                   )}
                   {bookingPackageTemplateId && !packageSelectSaving && (
@@ -1121,7 +1129,13 @@ export default function AppointmentsPage() {
                   </Select>
                 </FormGroup>
                 <FormGroup label="Amount (Rs.)">
-                  <Input type="number" value={form.amount || ''} onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))} placeholder="Auto from services" />
+                  <Input
+                    type="number"
+                    value={form.amount || ''}
+                    onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))}
+                    placeholder={bookingPackageTemplateId ? 'Package — collect Rs. 0' : 'Auto from services'}
+                    disabled={!!bookingPackageTemplateId}
+                  />
                 </FormGroup>
               </div>
             </ApptSection>
@@ -1175,9 +1189,11 @@ export default function AppointmentsPage() {
                 </div>
                 <div style={{ height: 1, background: isDark ? 'rgba(255,255,255,0.15)' : 'rgba(5,150,105,0.2)', margin: '4px 0' }} />
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: 14, fontWeight: 700, color: isDark ? '#BBF7D0' : '#064E3B' }}>Estimated Total</span>
+                  <span style={{ fontSize: 14, fontWeight: 700, color: isDark ? '#BBF7D0' : '#064E3B' }}>
+                    {bookingPackageTemplateId ? 'Collect at service' : 'Estimated Total'}
+                  </span>
                   <span style={{ fontSize: 22, fontWeight: 800, color: isDark ? '#fff' : '#047857', letterSpacing: '-0.02em' }}>
-                    Rs. {Number(form.amount || 0).toLocaleString()}
+                    Rs. {bookingPackageTemplateId ? '0' : Number(form.amount || 0).toLocaleString()}
                   </span>
                 </div>
               </div>
@@ -1281,7 +1297,7 @@ export default function AppointmentsPage() {
                     </Select>
                   ) : (
                     <div style={{ fontSize: 12, color: isDark ? '#94A3B8' : '#64748B', padding: '4px 0' }}>
-                      No discounted package — use promo discount or assign package when booking.
+                      No package for this customer — use promo discount or select a package when booking.
                     </div>
                   )}
                   {paymentCustPackageId && (

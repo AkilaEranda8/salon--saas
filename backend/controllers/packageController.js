@@ -14,6 +14,27 @@ function packageHasDiscount(pkg) {
   return original > 0 && price < original;
 }
 
+function packageIsBookable(pkg) {
+  if (!pkg || pkg.is_active === false) return false;
+  const price = Number(pkg.package_price || 0);
+  if (!(price > 0)) return false;
+  const svc = pkg.services || [];
+  return Array.isArray(svc) && svc.length > 0;
+}
+
+async function resolveOriginalPriceFromServices(req, serviceIds, fallbackPrice, transaction) {
+  const { Service } = require('../models');
+  const ids = (serviceIds || []).map(Number).filter(Boolean);
+  if (!ids.length) return Number(fallbackPrice || 0);
+  const rows = await Service.findAll({
+    where: { id: ids, ...tenantWhere(req) },
+    attributes: ['id', 'price'],
+    ...(transaction ? { transaction } : {}),
+  });
+  const sum = rows.reduce((total, row) => total + Number(row.price || 0), 0);
+  return sum > 0 ? sum : Number(fallbackPrice || 0);
+}
+
 // ── PACKAGE TEMPLATES ─────────────────────────────────────────────────────────
 
 const list = async (req, res) => {
@@ -82,19 +103,28 @@ const create = async (req, res) => {
       validity_days, original_price, package_price, branch_id,
     } = req.body;
 
-    if (!name || !type || !services?.length || !validity_days || !original_price || !package_price) {
-      return res.status(400).json({ message: 'name, type, services, validity_days, original_price, and package_price are required.' });
+    if (!name || !type || !services?.length || !validity_days || package_price == null || package_price === '') {
+      return res.status(400).json({ message: 'name, type, services, validity_days, and package_price are required.' });
     }
 
-    const discount_percent = original_price > 0
-      ? (((original_price - package_price) / original_price) * 100).toFixed(2)
+    const packagePrice = Number(package_price);
+    if (!Number.isFinite(packagePrice) || packagePrice < 0) {
+      return res.status(400).json({ message: 'package_price must be a valid number.' });
+    }
+
+    const origPrice = Number(original_price) > 0
+      ? Number(original_price)
+      : await resolveOriginalPriceFromServices(req, services, packagePrice);
+
+    const discount_percent = origPrice > 0
+      ? (((origPrice - packagePrice) / origPrice) * 100).toFixed(2)
       : 0;
 
     const pkg = await Package.create({
       name, description, type, services,
       sessions_count: sessions_count || null,
       validity_days,
-      original_price, package_price, discount_percent,
+      original_price: origPrice, package_price: packagePrice, discount_percent,
       branch_id: branch_id || null,
       is_active: true,
       tenant_id: resolveTenantId(req),
@@ -118,8 +148,10 @@ const update = async (req, res) => {
       validity_days, original_price, package_price, branch_id, is_active,
     } = req.body;
 
-    const origPrice = original_price ?? pkg.original_price;
-    const pkgPrice  = package_price  ?? pkg.package_price;
+    const pkgPrice = package_price != null ? Number(package_price) : Number(pkg.package_price);
+    const origPrice = original_price != null && Number(original_price) > 0
+      ? Number(original_price)
+      : await resolveOriginalPriceFromServices(req, services ?? pkg.services, pkgPrice);
     const discount_percent = origPrice > 0
       ? (((origPrice - pkgPrice) / origPrice) * 100).toFixed(2)
       : pkg.discount_percent;
@@ -215,7 +247,7 @@ const activePackages = async (req, res) => {
     const active = rows
       .filter((cp) => hasSessionsLeft(cp))
       .map((cp) => withSessionsRemaining(cp))
-      .filter((cp) => packageHasDiscount(cp.package));
+      .filter((cp) => packageIsBookable(cp.package));
     return res.json(active);
   } catch (err) {
     console.error(err);

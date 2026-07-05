@@ -96,8 +96,8 @@ const CSS = `
   justify-content: center;
   width: 100%;
   min-height: 0;
-  padding: clamp(24px, 4vh, 48px) 0;
-  gap: clamp(20px, 3vh, 36px);
+  padding: clamp(16px, 3vh, 32px) 0;
+  gap: clamp(14px, 2vh, 24px);
 }
 .lp-hero-glow {
   position: absolute;
@@ -111,32 +111,22 @@ const CSS = `
 .lp-hero h1, .lp-hero h2, .lp-hero h3 { color: #fff !important; font-family: 'Inter', sans-serif !important; }
 
 .lp-brand-row {
-  display: flex;
-  align-items: center;
-  gap: 16px;
   flex-shrink: 0;
 }
 .lp-brand-row img {
-  width: clamp(52px, 5vw, 64px);
-  height: clamp(52px, 5vw, 64px);
+  width: clamp(72px, 7vw, 96px);
+  height: clamp(72px, 7vw, 96px);
   object-fit: contain;
-  border-radius: 12px;
-}
-.lp-brand-name {
-  font-weight: 700;
-  font-size: clamp(20px, 2vw, 26px);
-  letter-spacing: .08em;
-  text-transform: uppercase;
-  color: #e8eaf0;
+  border-radius: 14px;
 }
 .lp-hero-copy {
   width: 100%;
 }
 .lp-title {
   margin: 0;
-  font-size: clamp(36px, 4.2vw, 56px);
+  font-size: clamp(28px, 3.2vw, 42px);
   font-weight: 700;
-  line-height: 1.1;
+  line-height: 1.12;
   letter-spacing: -.03em;
   max-width: 100%;
   color: #fff !important;
@@ -149,25 +139,25 @@ const CSS = `
   background-clip: text;
 }
 .lp-sub {
-  margin: 20px 0 0;
-  font-size: clamp(15px, 1.4vw, 18px);
-  line-height: 1.65;
+  margin: 12px 0 0;
+  font-size: clamp(13px, 1.1vw, 15px);
+  line-height: 1.6;
   color: #7a8299 !important;
   max-width: 100%;
 }
 .lp-features {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: clamp(12px, 1.5vw, 18px);
+  gap: clamp(8px, 1vw, 12px);
   margin-top: 0;
   width: 100%;
 }
 .lp-feat {
   display: flex;
   align-items: flex-start;
-  gap: 16px;
-  padding: clamp(16px, 1.8vw, 22px) clamp(18px, 2vw, 24px);
-  border-radius: 14px;
+  gap: 12px;
+  padding: clamp(12px, 1.2vw, 16px) clamp(14px, 1.4vw, 18px);
+  border-radius: 11px;
   background: rgba(255,255,255,.03);
   border: 1px solid rgba(255,255,255,.06);
   transition: background .2s, border-color .2s;
@@ -178,9 +168,9 @@ const CSS = `
 }
 .lp-feat-icon {
   flex-shrink: 0;
-  width: clamp(40px, 3.5vw, 48px);
-  height: clamp(40px, 3.5vw, 48px);
-  border-radius: 10px;
+  width: clamp(32px, 2.8vw, 38px);
+  height: clamp(32px, 2.8vw, 38px);
+  border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -190,20 +180,20 @@ const CSS = `
 }
 .lp-feat strong {
   display: block;
-  font-size: clamp(14px, 1.2vw, 16px);
+  font-size: clamp(12px, 1vw, 14px);
   font-weight: 600;
-  margin-bottom: 4px;
+  margin-bottom: 2px;
   color: #f0f1f5 !important;
 }
 .lp-feat span {
-  font-size: clamp(12px, 1vw, 13px);
+  font-size: clamp(11px, 0.85vw, 12px);
   color: #6b7289 !important;
-  line-height: 1.45;
+  line-height: 1.4;
 }
 .lp-hero-foot {
   flex-shrink: 0;
   padding-top: 0;
-  font-size: 13px;
+  font-size: 11px;
   color: #4b5268;
   letter-spacing: .01em;
 }
@@ -213,7 +203,7 @@ const CSS = `
   flex-direction: column;
   justify-content: center;
   align-items: stretch;
-  padding: clamp(32px, 4vw, 64px) clamp(40px, 6vw, 96px);
+  padding: clamp(28px, 3.5vw, 48px) clamp(36px, 5vw, 72px);
   background: #08080f;
   border-left: 1px solid rgba(255,255,255,.04);
   min-height: 100vh;
@@ -223,7 +213,7 @@ const CSS = `
 }
 .lp-auth-inner {
   width: 100%;
-  max-width: 460px;
+  max-width: 380px;
   margin: 0 auto;
   flex: 1;
   display: flex;
@@ -232,18 +222,18 @@ const CSS = `
 }
 .lp-h1 {
   margin: 0;
-  font-size: clamp(28px, 2.5vw, 34px);
+  font-size: clamp(24px, 2.2vw, 28px);
   font-weight: 700;
   letter-spacing: -.02em;
   color: #fff;
 }
 .lp-h2 {
-  margin: 8px 0 32px;
-  font-size: 14px;
+  margin: 6px 0 24px;
+  font-size: 13px;
   color: #6b7289;
   line-height: 1.5;
 }
-.lp-field { margin-bottom: 20px; }
+.lp-field { margin-bottom: 16px; }
 .lp-label-row {
   display: flex;
   align-items: center;
@@ -252,7 +242,7 @@ const CSS = `
 }
 .lp-label {
   display: block;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 500;
   color: #9ca3b8;
 }
@@ -269,9 +259,9 @@ const CSS = `
 .lp-input-wrap { position: relative; }
 .lp-input {
   width: 100%;
-  padding: 13px 16px;
-  border-radius: 10px;
-  font-size: 14px;
+  padding: 11px 14px;
+  border-radius: 9px;
+  font-size: 13px;
   color: #e8eaf0;
   background: rgba(255,255,255,.04);
   border: 1px solid rgba(255,255,255,.08);
@@ -297,18 +287,18 @@ const CSS = `
 }
 .lp-btn {
   width: 100%;
-  padding: 14px 16px;
-  border-radius: 10px;
+  padding: 12px 14px;
+  border-radius: 9px;
   border: none;
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 600;
   font-family: inherit;
   cursor: pointer;
   transition: transform .15s, box-shadow .15s, opacity .15s;
   background: linear-gradient(90deg, #9333ea, #6366f1, #3b82f6);
   color: #fff;
-  box-shadow: 0 4px 24px rgba(99,102,241,.35);
-  margin-top: 4px;
+  box-shadow: 0 4px 20px rgba(99,102,241,.3);
+  margin-top: 2px;
 }
 .lp-btn:hover:not(:disabled) {
   transform: translateY(-1px);
@@ -344,9 +334,9 @@ const CSS = `
 .lp-alert-err { background: rgba(239,68,68,.08); border-color: rgba(239,68,68,.2); color: #fca5a5; }
 .lp-alert-ok  { background: rgba(16,185,129,.08); border-color: rgba(16,185,129,.2); color: #6ee7b7; }
 .lp-auth-foot {
-  margin-top: 48px;
+  margin-top: 36px;
   text-align: center;
-  font-size: 12px;
+  font-size: 11px;
   color: #4b5268;
   line-height: 1.7;
 }
@@ -372,17 +362,9 @@ const CSS = `
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 10px;
     margin-bottom: 32px;
   }
-  .lp-mobile-brand img { width: 48px; height: 48px; object-fit: contain; }
-  .lp-mobile-brand span {
-    font-weight: 700;
-    font-size: 20px;
-    letter-spacing: .06em;
-    text-transform: uppercase;
-    color: #c4c9d8;
-  }
+  .lp-mobile-brand img { width: 72px; height: 72px; object-fit: contain; }
 }
 `;
 
@@ -612,7 +594,6 @@ export default function LoginPage({ platformMode = false }) {
         <div className="lp-hero-glow" />
         <div className="lp-brand-row">
           <img src={logoSrc} alt={brandName} onError={(e) => { e.currentTarget.src = '/kogo.png?v=6'; }} />
-          <span className="lp-brand-name">{brandName}</span>
         </div>
         <div className="lp-hero-main">
           <div className="lp-hero-copy">
@@ -649,7 +630,6 @@ export default function LoginPage({ platformMode = false }) {
       <section className="lp-auth">
         <div className="lp-mobile-brand">
           <img src={logoSrc} alt={brandName} onError={(e) => { e.currentTarget.src = '/kogo.png?v=6'; }} />
-          <span>{brandName}</span>
         </div>
         <div className="lp-auth-inner">
           {renderForm()}

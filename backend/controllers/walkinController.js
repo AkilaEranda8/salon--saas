@@ -147,12 +147,24 @@ exports.checkin = async (req, res) => {
       const estimatedWait = waitingCount * durationSum;
 
       const linkedCustomerId = customerId || req.body.customer_id || null;
+      let resolvedCustomerId = linkedCustomerId;
+      if (!resolvedCustomerId && phone) {
+        const phoneQ = String(phone).trim();
+        const match = await Customer.findOne({
+          where: {
+            ...tenantWhere(req),
+            phone: { [Op.like]: `%${phoneQ}%` },
+          },
+          transaction: t,
+        });
+        if (match) resolvedCustomerId = match.id;
+      }
 
       const entry = await WalkIn.create({
         token,
         customer_name: customerName,
         phone: phone || null,
-        customer_id: linkedCustomerId || null,
+        customer_id: resolvedCustomerId || null,
         branch_id: effectiveBranchId,
         service_id: primaryServiceId,
         staff_id: null,
@@ -200,6 +212,87 @@ exports.checkin = async (req, res) => {
     if (err.status === 404) return res.status(404).json({ message: err.message });
     console.error('walkin.checkin error:', err);
     res.status(500).json({ message: 'Failed to check in walk-in customer.' });
+  }
+};
+
+// ── PATCH /api/walkin/:id ─────────────────────────────────────────────────────
+exports.update = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const {
+      customerName,
+      phone,
+      serviceId,
+      serviceIds,
+      note,
+      customerId,
+    } = req.body;
+
+    const entry = await WalkIn.findByPk(id);
+    if (!entry) return res.status(404).json({ message: 'Walk-in entry not found.' });
+    if (req.userBranchId && Number(entry.branch_id) !== Number(req.userBranchId)) {
+      return res.status(403).json({ message: 'Access denied for this branch.' });
+    }
+
+    const result = await sequelize.transaction(async (t) => {
+      if (customerName != null) entry.customer_name = String(customerName).trim() || entry.customer_name;
+      if (phone !== undefined) entry.phone = phone || null;
+      if (note !== undefined) entry.note = note || null;
+
+      let resolvedCustomerId = customerId || req.body.customer_id || entry.customer_id;
+      if (!resolvedCustomerId && (phone || entry.phone)) {
+        const phoneQ = String(phone ?? entry.phone).trim();
+        const match = await Customer.findOne({
+          where: { ...tenantWhere(req), phone: { [Op.like]: `%${phoneQ}%` } },
+          transaction: t,
+        });
+        if (match) resolvedCustomerId = match.id;
+      }
+      if (customerId !== undefined || req.body.customer_id !== undefined || resolvedCustomerId) {
+        entry.customer_id = resolvedCustomerId || null;
+      }
+
+      const orderedServiceIds = Array.isArray(serviceIds) && serviceIds.length
+        ? [...new Set(serviceIds.map(Number).filter(Boolean))]
+        : serviceId
+          ? [Number(serviceId)].filter(Boolean)
+          : null;
+
+      if (orderedServiceIds?.length) {
+        const svcRows = await Service.findAll({
+          where: { id: orderedServiceIds },
+          attributes: ['id', 'price', 'duration_minutes'],
+          transaction: t,
+        });
+        if (!svcRows.length) {
+          throw Object.assign(new Error('Service not found.'), { status: 404 });
+        }
+        entry.service_id = orderedServiceIds[0];
+        entry.total_amount = svcRows.reduce((sum, s) => sum + Number(s.price || 0), 0);
+
+        await WalkInQueueService.destroy({ where: { walk_in_id: entry.id }, transaction: t });
+        const priceById = Object.fromEntries(svcRows.map((s) => [Number(s.id), Number(s.price || 0)]));
+        await WalkInQueueService.bulkCreate(
+          orderedServiceIds.map((sid, idx) => ({
+            walk_in_id: entry.id,
+            service_id: sid,
+            sort_order: idx,
+            line_price: priceById[sid] ?? null,
+          })),
+          { transaction: t },
+        );
+      }
+
+      await entry.save({ transaction: t });
+      return WalkIn.findByPk(entry.id, { include: defaultInclude, transaction: t });
+    });
+
+    emitQueueUpdate(result.branch_id, { action: 'update', entry: result });
+    res.json(result);
+  } catch (err) {
+    if (err.status === 404) return res.status(404).json({ message: err.message });
+    console.error('walkin.update error:', err);
+    res.status(500).json({ message: 'Failed to update walk-in entry.' });
   }
 };
 

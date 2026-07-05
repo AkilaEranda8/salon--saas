@@ -53,3 +53,62 @@ export const servicesCoveredByPackage = (serviceIds = [], customerPackage) => {
 };
 
 export const packageCoversAllServices = servicesCoveredByPackage;
+
+const normalizePhone = (p) => String(p || '').replace(/\D/g, '');
+
+/** Resolve customer id from explicit id or phone search (appointments / walk-in / payment). */
+export async function resolveCustomerId(api, { customerId, phone, branchId } = {}) {
+  if (customerId) return Number(customerId);
+  const q = String(phone || '').trim();
+  if (!q || !api) return null;
+  try {
+    const params = { limit: 20, search: q };
+    if (branchId) params.branchId = branchId;
+    const r = await api.get('/customers', { params });
+    const list = Array.isArray(r.data) ? r.data : (r.data?.data ?? []);
+    const needle = normalizePhone(q);
+    if (!needle) return null;
+    const match = list.find((c) => {
+      const ph = normalizePhone(c.phone || c.phone_number || c.mobile || c.mobile_number);
+      return ph && (ph === needle || ph.endsWith(needle) || needle.endsWith(ph));
+    });
+    return match?.id ? Number(match.id) : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function fetchActiveCustomerPackages(api, customerId) {
+  if (!customerId || !api) return [];
+  try {
+    const r = await api.get(`/packages/customer/${customerId}/active`);
+    return Array.isArray(r.data) ? r.data : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Apply package selection to service ids and payment fields (shared by walk-in / appointments). */
+export function applyPackageSelection({
+  customerPackageId,
+  customerPackages,
+  allServices,
+  onServices,
+  onPackageId,
+  onMethod,
+  onAmount,
+}) {
+  if (!customerPackageId) {
+    onPackageId?.('');
+    onMethod?.('Cash');
+    return;
+  }
+  const cp = customerPackages.find((p) => String(p.id) === String(customerPackageId));
+  if (!cp) return;
+  const nextIds = resolvePackageServiceIds(cp, allServices);
+  if (!nextIds.length) return;
+  onServices?.(nextIds);
+  onPackageId?.(String(customerPackageId));
+  onMethod?.('Package');
+  onAmount?.('0');
+}

@@ -6,7 +6,7 @@ import Button from '../components/ui/Button';
 import { useToast } from '../components/ui/Toast';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
-import { DataTable, FilterBar } from '../components/ui/PageKit';
+import { DataTable, FilterBar, StatCard } from '../components/ui/PageKit';
 
 /* â”€â”€ Icons â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 const IconPlus    = () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>;
@@ -35,21 +35,6 @@ function StatusBadge({ status }) {
       <span style={{ width:6, height:6, borderRadius:'50%', background:m.color, flexShrink:0 }} />
       {m.label}
     </span>
-  );
-}
-
-function StatCard({ label, value, color, icon, dark = false }) {
-  const [hov, setHov] = useState(false);
-  return (
-    <div
-      onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
-      style={{ background:dark?'#111827':'#fff', borderRadius:16, padding:'18px 20px', border:`1px solid ${dark?'#334155':'#EAECF0'}`, flex:1, minWidth:130, display:'flex', alignItems:'center', gap:14, boxShadow:hov?(dark?'0 8px 20px rgba(2,6,23,0.50)':'0 8px 24px rgba(16,24,40,0.10)'):(dark?'0 8px 20px rgba(2,6,23,0.35)':'0 1px 4px rgba(16,24,40,0.04)'), transform:hov?'translateY(-2px)':'translateY(0)', transition:'all 0.2s ease', cursor:'default' }}>
-      <div style={{ width:46, height:46, borderRadius:12, background:`linear-gradient(135deg, ${color}22 0%, ${color}10 100%)`, display:'flex', alignItems:'center', justifyContent:'center', color, flexShrink:0, border:`1.5px solid ${color}20` }}>{icon}</div>
-      <div>
-        <div style={{ fontSize:26, fontWeight:800, color:dark?'#E2E8F0':'#101828', lineHeight:1.1, letterSpacing:'-0.5px' }}>{value}</div>
-        <div style={{ fontSize:11, color:dark?'#94A3B8':'#98A2B3', marginTop:3, fontWeight:600, textTransform:'uppercase', letterSpacing:'0.06em' }}>{label}</div>
-      </div>
-    </div>
   );
 }
 
@@ -310,13 +295,13 @@ export default function WaitlistPage() {
 
       {/* â”€â”€ Stat Cards â”€â”€ */}
       <div style={{ display:'flex', gap:12, flexWrap:'wrap' }}>
-        <StatCard label="Waiting"  value={counts.waiting||0}  color="#D97706" dark={isDark}
+        <StatCard label="Waiting"  value={counts.waiting||0}  color="#D97706"
           icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>} />
-        <StatCard label="Notified" value={counts.notified||0} color="#2563EB" dark={isDark}
+        <StatCard label="Notified" value={counts.notified||0} color="#2563EB"
           icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>} />
-        <StatCard label="Booked"   value={counts.booked||0}   color="#059669" dark={isDark}
+        <StatCard label="Booked"   value={counts.booked||0}   color="#059669"
           icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>} />
-        <StatCard label="Cancelled" value={counts.cancelled||0} color="#DC2626" dark={isDark}
+        <StatCard label="Cancelled" value={counts.cancelled||0} color="#DC2626"
           icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>} />
       </div>
 

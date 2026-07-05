@@ -2,6 +2,17 @@ import { useMemo } from 'react';
 import { useTheme } from '../context/ThemeContext';
 import { getSurface } from '../components/shared/appThemeTokens';
 
+/** Consistent stat-card accent colors across dashboard pages */
+export const PAGE_STAT_COLORS = {
+  primary: '#2563EB',
+  success: '#059669',
+  warning: '#D97706',
+  danger: '#DC2626',
+  purple: '#7C3AED',
+  muted: '#64748B',
+  cyan: '#0891B2',
+};
+
 /** Shared page-level color tokens for inline-styled pages */
 export function pageColors(isDark) {
   const s = getSurface(isDark);

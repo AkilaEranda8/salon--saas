@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { io } from 'socket.io-client';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
-import usePageTheme from '../hooks/usePageTheme';
+import usePageTheme, { PAGE_STAT_COLORS as SC } from '../hooks/usePageTheme';
 import api from '../api/axios';
 import PageWrapper from '../components/layout/PageWrapper';
 import Button from '../components/ui/Button';
@@ -17,6 +17,9 @@ import {
   resolvePackageServiceIds,
   formatCustomerPackageLabel,
   packageCoversAllServices,
+  resolveCustomerId,
+  fetchActiveCustomerPackages,
+  applyPackageSelection,
 } from '../utils/packageHelpers';
 import { getKcAccessToken } from '../utils/kcTokenStore';
 import {
@@ -32,10 +35,10 @@ import {
 
 /*  Constants  */
 const STATUS_META = {
-  waiting:   { color: '#D97706', bg: '#FFFBEB', label: 'Waiting',   border: '#F59E0B' },
-  serving:   { color: '#059669', bg: '#ECFDF5', label: 'In Service', border: '#10B981' },
-  completed: { color: '#64748B', bg: '#F8FAFC', label: 'Completed', border: '#94A3B8' },
-  cancelled: { color: '#DC2626', bg: '#FEF2F2', label: 'Cancelled', border: '#EF4444' },
+  waiting:   { color: SC.warning, bg: '#FFFBEB', label: 'Waiting',   border: '#F59E0B' },
+  serving:   { color: SC.purple,  bg: '#F5F3FF', label: 'In Service', border: '#A78BFA' },
+  completed: { color: SC.success, bg: '#ECFDF5', label: 'Completed', border: '#34D399' },
+  cancelled: { color: SC.danger,  bg: '#FEF2F2', label: 'Cancelled', border: '#EF4444' },
 };
 const QUEUE_SECTION_ORDER = ['waiting', 'serving', 'completed', 'cancelled'];
 const FILTER_PILLS  = ['all', 'waiting', 'serving', 'completed', 'cancelled'];
@@ -235,31 +238,6 @@ function WalkInModal({ open, onClose, title, subtitle, children, footer, size = 
   );
 }
 
-function FeaturedQueueStat({ waiting, serving, total, dark }) {
-  return (
-    <div style={{
-      background: dark
-        ? 'linear-gradient(135deg, #78350f 0%, #1e3a8a 100%)'
-        : 'linear-gradient(135deg, #D97706 0%, #F59E0B 50%, #FBBF24 100%)',
-      borderRadius: 18, padding: '22px 24px', color: '#fff', position: 'relative', overflow: 'hidden',
-      minWidth: 260, flex: '1.5 1 300px',
-      boxShadow: dark ? '0 8px 24px rgba(120,53,15,0.45)' : '0 8px 24px rgba(217,119,6,0.28)',
-    }}>
-      <div style={{ position: 'absolute', top: -30, right: -30, width: 120, height: 120, borderRadius: '50%', background: 'rgba(255,255,255,0.1)' }} />
-      <div style={{ position: 'relative', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
-        <div>
-          <div style={{ fontSize: 11, fontWeight: 700, opacity: 0.9, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Live Queue</div>
-          <div style={{ fontSize: 36, fontWeight: 900, letterSpacing: '-1px', lineHeight: 1.1, marginTop: 6 }}>{waiting}</div>
-          <div style={{ fontSize: 12, opacity: 0.85, marginTop: 8 }}>waiting now · {serving} in service · {total} today</div>
-        </div>
-        <div style={{ width: 48, height: 48, borderRadius: 14, background: 'rgba(255,255,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-          <IconClock />
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function QueueShell({ title, subtitle, children, action }) {
   const { C } = usePageTheme();
   return (
@@ -425,6 +403,7 @@ export default function WalkInPage() {
   const [paymentDiscounts, setPaymentDiscounts] = useState([]);
   const [paymentCustPackages, setPaymentCustPackages] = useState([]);
   const [paymentCustPackageId, setPaymentCustPackageId] = useState('');
+  const [paymentCustomerId, setPaymentCustomerId] = useState(null);
   const [loadingPaymentPkgs, setLoadingPaymentPkgs] = useState(false);
   const [checkinCustPackages, setCheckinCustPackages] = useState([]);
   const [checkinCustPackageId, setCheckinCustPackageId] = useState('');
@@ -432,6 +411,9 @@ export default function WalkInPage() {
   const [editEntry,      setEditEntry]      = useState(null);
   const [editForm,       setEditForm]       = useState({ customerName: '', phone: '', serviceId: '', note: '' });
   const [editExtraServiceIds, setEditExtraServiceIds] = useState([]);
+  const [editCustPackages, setEditCustPackages] = useState([]);
+  const [editCustPackageId, setEditCustPackageId] = useState('');
+  const [loadingEditPkgs, setLoadingEditPkgs] = useState(false);
   const [editSaving,     setEditSaving]     = useState(false);
   const [editError,      setEditError]      = useState('');
 
@@ -548,20 +530,31 @@ export default function WalkInPage() {
     setPaymentServices(ids);
     setPaymentCustPackages([]);
     setPaymentCustPackageId('');
-    if (entry.customer_id) {
+    setPaymentCustomerId(null);
+
+    const custId = await resolveCustomerId(api, {
+      customerId: entry.customer_id || entry.customer?.id,
+      phone: entry.phone,
+      branchId: entry.branch_id || selectedBranch,
+    });
+    setPaymentCustomerId(custId);
+
+    if (custId) {
       setLoadingPaymentPkgs(true);
       const pkgSel = parsePackageSelection(entry.note || entry.notes || '');
-      api.get(`/packages/customer/${entry.customer_id}/active`)
-        .then((r) => {
-          const pkgs = Array.isArray(r.data) ? r.data : [];
+      fetchActiveCustomerPackages(api, custId)
+        .then((pkgs) => {
           setPaymentCustPackages(pkgs);
           if (pkgSel.id && pkgs.find((p) => String(p.id) === String(pkgSel.id))) {
-            const cp = pkgs.find((p) => String(p.id) === String(pkgSel.id));
-            const ids = resolvePackageServiceIds(cp, services);
-            if (ids.length) setPaymentServices(ids);
-            setPaymentCustPackageId(String(pkgSel.id));
-            setPaymentMethod('Package');
-            setPaymentAmount('0');
+            applyPackageSelection({
+              customerPackageId: String(pkgSel.id),
+              customerPackages: pkgs,
+              allServices: services,
+              onServices: setPaymentServices,
+              onPackageId: setPaymentCustPackageId,
+              onMethod: setPaymentMethod,
+              onAmount: setPaymentAmount,
+            });
           }
         })
         .catch(() => {})
@@ -602,18 +595,20 @@ export default function WalkInPage() {
     setPaymentAmount(net > 0 ? String(net) : '');
   }, [paymentEntry, paymentServices, paymentDiscountId, paymentDiscounts, services, paymentMethod, paymentCustPackageId]);
   const applyPaymentPackage = (customerPackageId) => {
-    setPaymentCustPackageId(customerPackageId);
     if (!customerPackageId) {
+      setPaymentCustPackageId('');
       setPaymentMethod('Cash');
       return;
     }
-    const cp = paymentCustPackages.find((p) => String(p.id) === String(customerPackageId));
-    if (!cp) return;
-    const nextIds = resolvePackageServiceIds(cp, services);
-    if (!nextIds.length) return;
-    setPaymentServices(nextIds);
-    setPaymentMethod('Package');
-    setPaymentAmount('0');
+    applyPackageSelection({
+      customerPackageId,
+      customerPackages: paymentCustPackages,
+      allServices: services,
+      onServices: setPaymentServices,
+      onPackageId: setPaymentCustPackageId,
+      onMethod: setPaymentMethod,
+      onAmount: setPaymentAmount,
+    });
     setPaymentDiscountId('');
   };
   const applyCheckinPackage = (customerPackageId) => {
@@ -625,6 +620,16 @@ export default function WalkInPage() {
     if (!nextIds.length) return;
     setForm((f) => ({ ...f, serviceId: String(nextIds[0]) }));
     setCheckinExtraServiceIds(nextIds.slice(1));
+  };
+  const applyEditPackage = (customerPackageId) => {
+    setEditCustPackageId(customerPackageId);
+    if (!customerPackageId) return;
+    const cp = editCustPackages.find((p) => String(p.id) === String(customerPackageId));
+    if (!cp) return;
+    const nextIds = resolvePackageServiceIds(cp, services);
+    if (!nextIds.length) return;
+    setEditForm((f) => ({ ...f, serviceId: String(nextIds[0]) }));
+    setEditExtraServiceIds(nextIds.slice(1));
   };
   const handleCollectPayment = async () => {
     if (!paymentEntry) return;
@@ -657,7 +662,7 @@ export default function WalkInPage() {
       await api.post('/payments', {
         branch_id: paymentEntry.branch_id || selectedBranch,
         staff_id: paymentEntry.staff_id || paymentEntry.staff?.id || null,
-        customer_id: paymentEntry.customer_id || null,
+        customer_id: paymentCustomerId || paymentEntry.customer_id || paymentEntry.customer?.id || null,
         service_id: paymentServices[0] || paymentEntry.service_id || paymentEntry.service?.id || null,
         service_ids: paymentServices,
         customer_name: paymentEntry.customer_name || 'Walk-in',
@@ -683,8 +688,8 @@ export default function WalkInPage() {
       setPaymentSaving(false);
     }
   };
-  const openEdit = (entry) => {
-    const wiq = entry?.walkInServices;
+  const openEdit = async (entry) => {
+    const wiq = entry?.queueServices || entry?.walkInServices;
     let primarySid = entry.service_id || entry.service?.id || '';
     let extraIds = [];
     if (Array.isArray(wiq) && wiq.length > 0) {
@@ -694,15 +699,31 @@ export default function WalkInPage() {
     } else {
       extraIds = parseAdditionalServiceIds(entry.note);
     }
+    const pkgSel = parsePackageSelection(entry.note || '');
     setEditEntry(entry);
     setEditForm({
       customerName: entry.customer_name || '',
-      phone: entry.phone || '',
+      phone: entry.phone || entry.customer?.phone || '',
       serviceId: primarySid,
-      note: removeAdditionalServicesLine(entry.note || ''),
+      note: stripPackageLine(removeAdditionalServicesLine(entry.note || '')),
     });
     setEditExtraServiceIds(extraIds.map(Number));
+    setEditCustPackageId(pkgSel.id ? String(pkgSel.id) : '');
+    setEditCustPackages([]);
     setEditError('');
+
+    const custId = await resolveCustomerId(api, {
+      customerId: entry.customer_id || entry.customer?.id,
+      phone: entry.phone,
+      branchId: entry.branch_id || selectedBranch,
+    });
+    if (custId) {
+      setLoadingEditPkgs(true);
+      fetchActiveCustomerPackages(api, custId)
+        .then(setEditCustPackages)
+        .catch(() => setEditCustPackages([]))
+        .finally(() => setLoadingEditPkgs(false));
+    }
   };
   const toggleEditExtraService = (id) => {
     const nid = Number(id);
@@ -760,19 +781,32 @@ export default function WalkInPage() {
     setEditSaving(true);
     setEditError('');
     try {
-      const baseNote = removeAdditionalServicesLine(editForm.note || '');
+      const baseNote = stripPackageLine(removeAdditionalServicesLine(editForm.note || ''));
       const extraServiceNames = services
         .filter((s) => editExtraServiceIds.includes(Number(s.id)))
         .map((s) => s.name);
+      const pkgLine = editCustPackageId
+        ? buildPackageNoteLine(
+          editCustPackageId,
+          editCustPackages.find((cp) => String(cp.id) === String(editCustPackageId))?.package?.name,
+        )
+        : '';
       const fullNote = [
         baseNote,
+        pkgLine,
         extraServiceNames.length ? `${ADDITIONAL_SERVICES_PREFIX} ${extraServiceNames.join(', ')}` : '',
       ].filter(Boolean).join('\n');
       const primarySid = Number(editForm.serviceId);
       const editServiceIds = [primarySid, ...editExtraServiceIds.filter((x) => Number(x) !== primarySid)];
+      const custId = await resolveCustomerId(api, {
+        customerId: editEntry.customer_id || editEntry.customer?.id,
+        phone: editForm.phone,
+        branchId: editEntry.branch_id || selectedBranch,
+      });
       await api.patch(`/walkin/${editEntry.id}`, {
         customerName: editForm.customerName.trim(),
         phone: editForm.phone || '',
+        customerId: custId || undefined,
         serviceId: primarySid,
         serviceIds: editServiceIds,
         note: fullNote,
@@ -879,8 +913,8 @@ export default function WalkInPage() {
     setCheckinCustPackages([]);
     if (c.id) {
       setLoadingCheckinPkgs(true);
-      api.get(`/packages/customer/${c.id}/active`)
-        .then((r) => setCheckinCustPackages(Array.isArray(r.data) ? r.data : []))
+      fetchActiveCustomerPackages(api, c.id)
+        .then(setCheckinCustPackages)
         .catch(() => setCheckinCustPackages([]))
         .finally(() => setLoadingCheckinPkgs(false));
     }
@@ -1073,10 +1107,12 @@ export default function WalkInPage() {
 
       {/* Stats */}
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-        <FeaturedQueueStat waiting={stats.waiting} serving={stats.serving} total={stats.total} dark={isDark} />
-        <StatCard label="Waiting" value={stats.waiting} color="#F59E0B" icon={<IconClock />} />
-        <StatCard label="In Service" value={stats.serving} color="#10B981" icon={<IconUsers />} />
-        <StatCard label="Completed" value={stats.completed} color="#64748B" icon={<IconCheck />} />
+        <StatCard label="Waiting" value={stats.waiting} color={SC.warning} icon={<IconClock />} />
+        <StatCard label="In Service" value={stats.serving} color={SC.purple} icon={<IconUsers />} />
+        <StatCard label="Completed" value={stats.completed} color={SC.success} icon={<IconCheck />} />
+        <StatCard label="Total Today" value={stats.total} color={SC.primary} icon={
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        } />
       </div>
 
       {/* Toolbar: branch + filters + search */}
@@ -1109,7 +1145,11 @@ export default function WalkInPage() {
                     padding: '6px 14px', borderRadius: 20, fontSize: 12, cursor: 'pointer', fontFamily: "'Inter',sans-serif",
                     border: '1.5px solid',
                     borderColor: active ? (meta?.color ?? '#2563EB') : (isDark ? '#334155' : C.border),
-                    background: active ? (meta?.bg ?? (isDark ? 'rgba(37,99,235,0.2)' : '#EFF6FF')) : (isDark ? '#0F172A' : C.cardBg),
+                    background: active
+                      ? (isDark
+                        ? (meta ? `${meta.color}22` : 'rgba(37,99,235,0.2)')
+                        : (meta?.bg ?? '#EFF6FF'))
+                      : (isDark ? '#0F172A' : C.cardBg),
                     color: active ? (meta?.color ?? '#2563EB') : C.muted,
                     fontWeight: active ? 700 : 500, whiteSpace: 'nowrap',
                   }}
@@ -1328,6 +1368,11 @@ export default function WalkInPage() {
                   onBlur={() => setTimeout(() => setShowCustDrop(false), 200)}
                 />
               )}
+              {!selectedCustomer && (
+                <div style={{ fontSize: 11, color: C.muted, marginTop: 6 }}>
+                  Select customer from list to use their package bundle
+                </div>
+              )}
             </div>
 
             <div>
@@ -1337,12 +1382,12 @@ export default function WalkInPage() {
 
             {selectedCustomer && (loadingCheckinPkgs || checkinCustPackages.length > 0) && (
               <div>
-                <Label>Redeem Package (optional)</Label>
+                <Label>Customer Package</Label>
                 {loadingCheckinPkgs ? (
                   <div style={{ fontSize: 12, color: C.muted, padding: '4px 0' }}>Loading packages…</div>
                 ) : (
                   <Select value={checkinCustPackageId} onChange={(e) => applyCheckinPackage(e.target.value)}>
-                    <option value="">No package</option>
+                    <option value="">No package — pay normally</option>
                     {checkinCustPackages.map((cp) => (
                       <option key={cp.id} value={cp.id}>{formatCustomerPackageLabel(cp)}</option>
                     ))}
@@ -1350,7 +1395,7 @@ export default function WalkInPage() {
                 )}
                 {checkinCustPackageId && (
                   <div style={{ fontSize: 12, color: isDark ? '#6EE7B7' : '#047857', marginTop: 6, fontWeight: 600 }}>
-                    Package services auto-selected for this visit
+                    Package services selected — collect Rs. 0 when service is done
                   </div>
                 )}
               </div>
@@ -1539,9 +1584,9 @@ export default function WalkInPage() {
                   </div>
                 </div>
               </div>
-              {paymentEntry?.customer_id && (loadingPaymentPkgs || paymentCustPackages.length > 0) && (
+              {paymentEntry?.customer_id || paymentCustomerId ? (loadingPaymentPkgs || paymentCustPackages.length > 0) && (
                 <div>
-                  <Label>Redeem Package (optional)</Label>
+                  <Label>Customer Package</Label>
                   {loadingPaymentPkgs ? (
                     <div style={{ fontSize: 12, color: C.muted, padding: '4px 0' }}>Loading packages…</div>
                   ) : (
@@ -1558,7 +1603,7 @@ export default function WalkInPage() {
                     </div>
                   )}
                 </div>
-              )}
+              ) : null}
               {paymentDiscounts.length > 0 && paymentMethod !== 'Package' && (
                 <div>
                   <Label>Promo discount</Label>
@@ -1579,7 +1624,7 @@ export default function WalkInPage() {
               <div>
                 <Label>Payment Method</Label>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
-                  {['Cash', 'Card', 'Online Transfer', 'LankaQR', ...(paymentEntry?.customer_id || paymentEntry?.customer?.id ? ['Package'] : [])].map((m) => {
+                  {['Cash', 'Card', 'Online Transfer', 'LankaQR', ...(paymentEntry?.customer_id || paymentEntry?.customer?.id || paymentCustomerId ? ['Package'] : [])].map((m) => {
                     const active = paymentMethod === m;
                     return (
                       <button
@@ -1697,6 +1742,21 @@ export default function WalkInPage() {
               placeholder="Optional"
             />
           </div>
+          {(loadingEditPkgs || editCustPackages.length > 0) && (
+            <div>
+              <Label>Customer Package</Label>
+              {loadingEditPkgs ? (
+                <div style={{ fontSize: 12, color: C.muted, padding: '4px 0' }}>Loading packages…</div>
+              ) : (
+                <Select value={editCustPackageId} onChange={(e) => applyEditPackage(e.target.value)}>
+                  <option value="">No package</option>
+                  {editCustPackages.map((cp) => (
+                    <option key={cp.id} value={cp.id}>{formatCustomerPackageLabel(cp)}</option>
+                  ))}
+                </Select>
+              )}
+            </div>
+          )}
           <div>
             <Label>Service *</Label>
             <Select value={editForm.serviceId} onChange={(e) => setEditForm((f) => ({ ...f, serviceId: e.target.value }))}>

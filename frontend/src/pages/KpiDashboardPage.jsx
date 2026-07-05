@@ -4,7 +4,7 @@ import api from '../api/axios';
 import PageWrapper from '../components/layout/PageWrapper';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
-import { FilterBar, DataTable, ActionBtn, IconEye } from '../components/ui/PageKit';
+import { FilterBar, DataTable, ActionBtn, IconEye, StatCard } from '../components/ui/PageKit';
 
 const Rs = (n) => `Rs. ${Number(n || 0).toLocaleString()}`;
 
@@ -23,21 +23,6 @@ const IconTrend   = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="
 const IconCal     = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>;
 const IconBranch  = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>;
 const IconUser    = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>;
-
-/* ── StatCard ── */
-function StatCard({ label, value, color, icon, dark }) {
-  const [hov, setHov] = useState(false);
-  return (
-    <div onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
-      style={{ background:dark?'#111827':'#fff', borderRadius:16, padding:'18px 20px', border:`1px solid ${dark?'#334155':'#EAECF0'}`, flex:1, minWidth:130, display:'flex', alignItems:'center', gap:14, boxShadow:hov?(dark?'0 8px 20px rgba(2,6,23,0.50)':'0 8px 24px rgba(16,24,40,0.10)'):(dark?'0 8px 20px rgba(2,6,23,0.35)':'0 1px 4px rgba(16,24,40,0.04)'), transform:hov?'translateY(-2px)':'translateY(0)', transition:'all 0.2s ease', cursor:'default' }}>
-      <div style={{ width:46, height:46, borderRadius:12, background:`linear-gradient(135deg,${color}22 0%,${color}10 100%)`, display:'flex', alignItems:'center', justifyContent:'center', color, flexShrink:0, border:`1.5px solid ${color}20` }}>{icon}</div>
-      <div>
-        <div style={{ fontSize:24, fontWeight:800, color:dark?'#E2E8F0':'#101828', lineHeight:1.1, letterSpacing:'-0.5px' }}>{value}</div>
-        <div style={{ fontSize:11, color:dark?'#94A3B8':'#98A2B3', marginTop:3, fontWeight:600, textTransform:'uppercase', letterSpacing:'0.06em' }}>{label}</div>
-      </div>
-    </div>
-  );
-}
 
 /* ── Drawer ── */
 function Drawer({ open, onClose, title, children, dark }) {
@@ -277,11 +262,11 @@ export default function KpiDashboardPage() {
 
       {/* ── Stat Cards ── */}
       <div style={{ display:'flex', gap:12, flexWrap:'wrap' }}>
-        <StatCard label="Revenue" value={Rs(totalRevenue)} color="#2563EB" dark={isDark} icon={<IconTrend />} />
-        <StatCard label="Appointments" value={totalAppts} color="#059669" dark={isDark} icon={<IconCal />} />
-        <StatCard label="Walk-ins" value={totalWalkins} color="#D97706" dark={isDark} icon={<IconUser />} />
-        <StatCard label="Customers" value={totalCustomers.toLocaleString()} color="#7C3AED" dark={isDark} icon={<IconUser />} />
-        <StatCard label="Branches" value={filtered.length} color="#0891B2" dark={isDark} icon={<IconBranch />} />
+        <StatCard label="Revenue" value={Rs(totalRevenue)} color="#2563EB" icon={<IconTrend />} />
+        <StatCard label="Appointments" value={totalAppts} color="#059669" icon={<IconCal />} />
+        <StatCard label="Walk-ins" value={totalWalkins} color="#D97706" icon={<IconUser />} />
+        <StatCard label="Customers" value={totalCustomers.toLocaleString()} color="#7C3AED" icon={<IconUser />} />
+        <StatCard label="Branches" value={filtered.length} color="#0891B2" icon={<IconBranch />} />
       </div>
 
       {/* ── Hero Banner ── */}

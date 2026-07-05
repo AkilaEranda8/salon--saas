@@ -6,7 +6,7 @@ import Button from '../components/ui/Button';
 import { useToast } from '../components/ui/Toast';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
-import { DataTable, FilterBar } from '../components/ui/PageKit';
+import { DataTable, FilterBar, StatCard } from '../components/ui/PageKit';
 
 /* ── Icons ──────────────────────────────────────────────────────────────── */
 const IconPlus   = () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>;
@@ -34,20 +34,6 @@ function StatusBadge({ status }) {
       <span style={{ width:6, height:6, borderRadius:'50%', background:m.color, flexShrink:0 }} />
       {m.label}
     </span>
-  );
-}
-
-function StatCard({ label, value, color, icon, dark = false }) {
-  const [hov, setHov] = useState(false);
-  return (
-    <div onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
-      style={{ background:dark?'#111827':'#fff', borderRadius:16, padding:'18px 20px', border:`1px solid ${dark?'#334155':'#EAECF0'}`, flex:1, minWidth:130, display:'flex', alignItems:'center', gap:14, boxShadow:hov?(dark?'0 8px 20px rgba(2,6,23,0.50)':'0 8px 24px rgba(16,24,40,0.10)'):(dark?'0 8px 20px rgba(2,6,23,0.35)':'0 1px 4px rgba(16,24,40,0.04)'), transform:hov?'translateY(-2px)':'translateY(0)', transition:'all 0.2s ease', cursor:'default' }}>
-      <div style={{ width:46, height:46, borderRadius:12, background:`linear-gradient(135deg,${color}22 0%,${color}10 100%)`, display:'flex', alignItems:'center', justifyContent:'center', color, flexShrink:0, border:`1.5px solid ${color}20` }}>{icon}</div>
-      <div>
-        <div style={{ fontSize:26, fontWeight:800, color:dark?'#E2E8F0':'#101828', lineHeight:1.1, letterSpacing:'-0.5px' }}>{value}</div>
-        <div style={{ fontSize:11, color:dark?'#94A3B8':'#98A2B3', marginTop:3, fontWeight:600, textTransform:'uppercase', letterSpacing:'0.06em' }}>{label}</div>
-      </div>
-    </div>
   );
 }
 
@@ -296,13 +282,13 @@ export default function InventoryReorderPage() {
 
       {/* ── Stat Cards ── */}
       <div style={{ display:'flex', gap:12, flexWrap:'wrap' }}>
-        <StatCard label="Low Stock" value={lowStock.length} color="#DC2626" dark={isDark}
+        <StatCard label="Low Stock" value={lowStock.length} color="#DC2626"
           icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>} />
-        <StatCard label="Draft" value={counts.draft||0} color="#6B7280" dark={isDark}
+        <StatCard label="Draft" value={counts.draft||0} color="#6B7280"
           icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>} />
-        <StatCard label="Ordered" value={counts.ordered||0} color="#2563EB" dark={isDark}
+        <StatCard label="Ordered" value={counts.ordered||0} color="#2563EB"
           icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 01-8 0"/></svg>} />
-        <StatCard label="Received" value={counts.received||0} color="#059669" dark={isDark}
+        <StatCard label="Received" value={counts.received||0} color="#059669"
           icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>} />
       </div>
 

@@ -1035,9 +1035,9 @@ export default function AppointmentsPage() {
                 <FormGroup label="Phone">
                   <Input value={form.phone || ''} onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))} placeholder="07X XXX XXXX" />
                 </FormGroup>
-                <FormGroup label="Package (optional)">
+                <FormGroup label="Customer Package">
                   <Select value={selectedCustomerPackageId} onChange={(e) => applySelectedPackage(e.target.value)} disabled={!form.customer_id || loadingCustomerPackages}>
-                    <option value="">{!form.customer_id ? 'Select customer first' : loadingCustomerPackages ? 'Loading…' : 'No package'}</option>
+                    <option value="">{!form.customer_id ? 'Select customer first' : loadingCustomerPackages ? 'Loading…' : 'No package — pay normally'}</option>
                     {customerPackages.map((cp) => (
                       <option key={cp.id} value={cp.id}>
                         {formatCustomerPackageLabel(cp)}
@@ -1278,7 +1278,7 @@ export default function AppointmentsPage() {
                 </FormGroup>
               </div>
               {paymentAppt.customer_id && (loadingPaymentPkgs || paymentCustPackages.length > 0) && (
-                <FormGroup label="Redeem Package (optional)">
+                <FormGroup label="Customer Package">
                   {loadingPaymentPkgs ? (
                     <div style={{ fontSize:12, color:isDark?'#94A3B8':'#94A3B8', padding:'4px 0' }}>Loading packages...</div>
                   ) : (

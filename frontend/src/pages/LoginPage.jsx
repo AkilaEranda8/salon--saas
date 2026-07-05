@@ -114,10 +114,12 @@ const CSS = `
   flex-shrink: 0;
 }
 .lp-brand-row img {
-  width: clamp(72px, 7vw, 96px);
-  height: clamp(72px, 7vw, 96px);
+  width: clamp(160px, 18vw, 240px);
+  height: auto;
+  max-height: clamp(80px, 9vw, 110px);
   object-fit: contain;
-  border-radius: 14px;
+  object-position: left center;
+  display: block;
 }
 .lp-hero-copy {
   width: 100%;
@@ -364,7 +366,7 @@ const CSS = `
     justify-content: center;
     margin-bottom: 32px;
   }
-  .lp-mobile-brand img { width: 72px; height: 72px; object-fit: contain; }
+  .lp-mobile-brand img { width: min(200px, 70vw); height: auto; object-fit: contain; }
 }
 `;
 

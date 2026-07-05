@@ -88,6 +88,8 @@ export function formatPackageTemplateLabel(pkg) {
 export const formatCustomerPackageLabel = (cp) => {
   if (!cp) return 'Package';
   const name = cp.package?.name || 'Package';
+  const bundlePrice = Number(cp.package?.package_price || 0);
+  const pricePart = bundlePrice > 0 ? `Rs. ${bundlePrice.toLocaleString()} · ` : '';
   const total = cp.sessions_total;
   const used = cp.sessions_used || 0;
   const remaining = cp.sessions_remaining != null
@@ -95,8 +97,20 @@ export const formatCustomerPackageLabel = (cp) => {
     : (!total || Number(total) === 0 ? null : Math.max(0, Number(total) - Number(used)));
   const sessions = remaining == null ? 'Unlimited' : `${remaining} left`;
   const disc = packageDiscountLabel(cp.package);
-  return `${name} — ${sessions}${disc}`;
+  return `${name} — ${pricePart}${sessions}${disc}`;
 };
+
+export function calcServiceListTotal(serviceIds = [], allServices = []) {
+  return serviceIds.map(Number).filter(Boolean).reduce((sum, sid) => {
+    const s = allServices.find((x) => Number(x.id) === Number(sid));
+    return sum + Number(s?.price || 0);
+  }, 0);
+}
+
+export function getPackageBundlePrice(pkgOrCustomerPackage) {
+  const pkg = pkgOrCustomerPackage?.package || pkgOrCustomerPackage;
+  return Number(pkg?.package_price || 0);
+}
 
 export const servicesCoveredByPackage = (serviceIds = [], customerPackage) => {
   const allowed = new Set((customerPackage?.package?.services || []).map(Number));

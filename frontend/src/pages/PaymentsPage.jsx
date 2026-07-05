@@ -18,6 +18,8 @@ import {
   formatCustomerPackageLabel,
   packageCoversAllServices,
   fetchActiveCustomerPackages,
+  calcServiceListTotal,
+  getPackageBundlePrice,
 } from '../utils/packageHelpers';
 
 const METHODS = ['Cash','Card','Online Transfer','Loyalty Points','Package','LankaQR'];
@@ -842,6 +844,15 @@ export default function PaymentsPage() {
     });
   }, [showForm, form.total_amount, form.loyalty_discount, form.discount_id, discounts, form.splits.length]);
 
+  const selectedPackage = formPackageId
+    ? custPackages.find((p) => String(p.id) === String(formPackageId))
+    : null;
+  const serviceListTotal = useMemo(
+    () => calcServiceListTotal(form.service_ids, services),
+    [form.service_ids, services],
+  );
+  const packageBundlePrice = getPackageBundlePrice(selectedPackage);
+
   return (
     <PageWrapper title="Payments" subtitle="Revenue tracking and payment recording"
       actions={canEdit && <Button variant="primary" onClick={openAdd} style={{ display:'flex', alignItems:'center', gap:6 }}><IconPlus /> Record Payment</Button>}>
@@ -1083,9 +1094,23 @@ export default function PaymentsPage() {
                 }}>
                   <span style={{ fontSize: 12, color: isDark ? '#6EE7B7' : '#047857', fontWeight: 600 }}>
                     {form.service_ids.length} service{form.service_ids.length !== 1 ? 's' : ''} selected
+                    {formPackageId && packageBundlePrice > 0 && (
+                      <span style={{ marginLeft: 8, color: isDark ? '#94A3B8' : '#64748B' }}>
+                        · Bundle Rs. {packageBundlePrice.toLocaleString()}
+                      </span>
+                    )}
                   </span>
-                  <span style={{ fontSize: 14, fontWeight: 800, color: '#059669', fontFamily: "'Outfit',sans-serif" }}>
-                    Rs. {services.filter(s => form.service_ids.includes(Number(s.id))).reduce((sum, s) => sum + Number(s.price || 0), 0).toLocaleString()}
+                  <span style={{ fontSize: 14, fontWeight: 800, color: formPackageId ? '#047857' : '#059669', fontFamily: "'Outfit',sans-serif" }}>
+                    {formPackageId ? (
+                      <>
+                        <span style={{ fontSize: 11, fontWeight: 600, textDecoration: 'line-through', color: isDark ? '#94A3B8' : '#64748B', marginRight: 8 }}>
+                          Rs. {serviceListTotal.toLocaleString()}
+                        </span>
+                        Collect Rs. 0
+                      </>
+                    ) : (
+                      <>Rs. {serviceListTotal.toLocaleString()}</>
+                    )}
                   </span>
                 </div>
               )}
@@ -1097,7 +1122,12 @@ export default function PaymentsPage() {
             <PaySection title="Amount & Discounts" desc="Bill total, loyalty points, and promo codes" dark={isDark}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 <FormGroup label="Total Amount (Rs.)" required>
-                  <Input type="number" value={form.total_amount || ''} onChange={e => setForm(f => ({ ...f, total_amount: e.target.value }))} />
+                  <Input
+                    type="number"
+                    value={form.total_amount || ''}
+                    onChange={e => setForm(f => ({ ...f, total_amount: e.target.value }))}
+                    disabled={!!formPackageId}
+                  />
                 </FormGroup>
                 <FormGroup label="Loyalty Discount (Rs.)">
                   <Input type="number" value={form.loyalty_discount || 0} onChange={e => setForm(f => ({ ...f, loyalty_discount: Number(e.target.value) }))} disabled={!!formPackageId} />
@@ -1126,7 +1156,12 @@ export default function PaymentsPage() {
                 )}
               </FormGroup>
               )}
-              {form.total_amount && (
+              {formPackageId && (
+                <div style={{ fontSize: 12, color: isDark ? '#6EE7B7' : '#047857', marginTop: -4, marginBottom: 8, fontWeight: 600 }}>
+                  Package bundle{packageBundlePrice > 0 ? ` Rs. ${packageBundlePrice.toLocaleString()}` : ''} applied · Collect Rs. 0
+                </div>
+              )}
+              {form.total_amount !== '' && form.total_amount != null && (
                 <div style={{
                   borderRadius: 12, padding: '12px 14px',
                   background: isDark ? 'linear-gradient(135deg,#172554,#1e293b)' : 'linear-gradient(135deg,#EFF6FF,#ECFDF5)',

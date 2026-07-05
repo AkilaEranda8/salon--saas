@@ -105,7 +105,7 @@ exports.stats = async (req, res) => {
 // ── POST /api/walkin/checkin ──────────────────────────────────────────────────
 exports.checkin = async (req, res) => {
   try {
-    const { customerName, phone, branchId, serviceId, serviceIds, customerId, note } = req.body;
+    const { customerName, phone, branchId, serviceId, serviceIds, customerId, note, customerPackageId } = req.body;
     const branchResolution = resolveBranchIdFromRequest(req, branchId);
     if (branchResolution.error) return res.status(branchResolution.error.includes('Access denied') ? 403 : 400).json({ message: branchResolution.error });
     const effectiveBranchId = branchResolution.branchId;
@@ -139,6 +139,7 @@ exports.checkin = async (req, res) => {
         : [service];
       const durationSum = svcRows.reduce((sum, s) => sum + Number(s.duration_minutes || 30), 0);
       const totalAmount = svcRows.reduce((sum, s) => sum + Number(s.price || 0), 0);
+      const usesPackage = !!(customerPackageId || /^\s*package\s*[:\-]?\s*#\d+/im.test(String(note || '')));
 
       const waitingCount = await WalkIn.count({
         where: { branch_id: effectiveBranchId, check_in_date: dateStr, status: 'waiting' },
@@ -172,7 +173,7 @@ exports.checkin = async (req, res) => {
         check_in_time: new Date().toTimeString().slice(0, 8),
         check_in_date: dateStr,
         estimated_wait: estimatedWait,
-        total_amount: totalAmount || null,
+        total_amount: usesPackage ? 0 : (totalAmount || null),
         note: note || null,
         tenant_id: resolveTenantId(req),
       }, { transaction: t });

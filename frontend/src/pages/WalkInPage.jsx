@@ -25,6 +25,8 @@ import {
   resolveTemplateServiceIds,
   applyPackageSelection,
   formatPackageTemplateLabel,
+  calcServiceListTotal,
+  getPackageBundlePrice,
 } from '../utils/packageHelpers';
 import { getKcAccessToken } from '../utils/kcTokenStore';
 import {
@@ -943,6 +945,7 @@ export default function WalkInPage() {
         branchId:     form.branchId   || selectedBranch,
         serviceId:    Number(selectedServiceIds[0]),
         serviceIds:   selectedServiceIds.map(Number),
+        customerPackageId: checkinCustPackageId || undefined,
         note:         fullNote        || undefined,
       });
       await fetchData();
@@ -1113,14 +1116,16 @@ export default function WalkInPage() {
   /*  Check-in: wait + bill preview (all selected services)  */
   const checkinSelectedIds = getCheckinSelectedServiceIds();
   let checkinDurationSum = 0;
-  let checkinTotalPreview = 0;
+  const checkinListTotal = calcServiceListTotal(checkinSelectedIds, services);
   for (const sid of checkinSelectedIds) {
     const svc = services.find((x) => Number(x.id) === Number(sid));
-    if (svc) {
-      checkinDurationSum += Number(svc.duration_minutes || 30);
-      checkinTotalPreview += Number(svc.price || 0);
-    }
+    if (svc) checkinDurationSum += Number(svc.duration_minutes || 30);
   }
+  const checkinUsingPackage = !!(checkinPackageTemplateId || checkinCustPackageId);
+  const checkinCollectTotal = checkinUsingPackage ? 0 : checkinListTotal;
+  const checkinBundlePrice = checkinPackageTemplateId
+    ? getPackageBundlePrice(packageTemplates.find((p) => String(p.id) === String(checkinPackageTemplateId)))
+    : getPackageBundlePrice(checkinCustPackages.find((cp) => String(cp.id) === String(checkinCustPackageId)));
   const waitPreview = checkinSelectedIds.length ? stats.waiting * checkinDurationSum : null;
 
   const branchName = branches.find((b) => String(b.id) === String(selectedBranch))?.name || '';
@@ -1359,7 +1364,14 @@ export default function WalkInPage() {
               {checkinSelectedIds.length > 0 ? (
                 <span style={{ fontWeight: 700, color: C.title }}>
                   {checkinSelectedIds.length} service{checkinSelectedIds.length !== 1 ? 's' : ''}
-                  <span style={{ fontWeight: 800, color: '#059669', marginLeft: 8 }}>· Rs. {checkinTotalPreview.toLocaleString()}</span>
+                  <span style={{ fontWeight: 800, color: checkinUsingPackage ? '#047857' : '#059669', marginLeft: 8 }}>
+                    · {checkinUsingPackage ? 'Collect Rs. 0' : `Rs. ${checkinCollectTotal.toLocaleString()}`}
+                  </span>
+                  {checkinUsingPackage && checkinBundlePrice > 0 && (
+                    <span style={{ fontWeight: 500, color: C.muted, marginLeft: 8 }}>
+                      · Bundle Rs. {checkinBundlePrice.toLocaleString()}
+                    </span>
+                  )}
                   {waitPreview != null && (
                     <span style={{ fontWeight: 500, color: C.muted, marginLeft: 8 }}>· ~{waitPreview} min wait</span>
                   )}
@@ -1565,8 +1577,24 @@ export default function WalkInPage() {
                   display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                   paddingTop: 8, borderTop: `1px solid ${isDark ? '#334155' : '#E2E8F0'}`,
                 }}>
-                  <span style={{ fontSize: 13, color: C.muted }}>Estimated bill</span>
-                  <span style={{ fontSize: 16, color: '#059669', fontWeight: 800 }}>Rs. {checkinTotalPreview.toLocaleString()}</span>
+                  <span style={{ fontSize: 13, color: C.muted }}>
+                    {checkinUsingPackage ? 'Collect at service' : 'Estimated bill'}
+                  </span>
+                  {checkinUsingPackage ? (
+                    <div style={{ textAlign: 'right' }}>
+                      {checkinBundlePrice > 0 && (
+                        <div style={{ fontSize: 11, color: C.muted, fontWeight: 600 }}>
+                          Bundle Rs. {checkinBundlePrice.toLocaleString()}
+                          <span style={{ marginLeft: 6, textDecoration: 'line-through' }}>
+                            List Rs. {checkinListTotal.toLocaleString()}
+                          </span>
+                        </div>
+                      )}
+                      <span style={{ fontSize: 16, color: '#047857', fontWeight: 800 }}>Rs. 0</span>
+                    </div>
+                  ) : (
+                    <span style={{ fontSize: 16, color: '#059669', fontWeight: 800 }}>Rs. {checkinCollectTotal.toLocaleString()}</span>
+                  )}
                 </div>
               </div>
             )}
@@ -1622,8 +1650,14 @@ export default function WalkInPage() {
         footer={paymentEntry && !paymentOk ? (
           <>
             <Button variant="secondary" onClick={() => setPaymentEntry(null)}>Cancel</Button>
-            <Button onClick={handleCollectPayment} loading={paymentSaving} disabled={paymentSaving || !paymentAmount || Number(paymentAmount) <= 0 || !paymentServices.length}>
-              {paymentSaving ? 'Collecting...' : `Collect Rs ${Number(paymentAmount || 0).toLocaleString()}`}
+            <Button onClick={handleCollectPayment} loading={paymentSaving} disabled={
+              paymentSaving
+              || !paymentServices.length
+              || (paymentMethod === 'Package' ? !paymentCustPackageId : (!paymentAmount || Number(paymentAmount) <= 0))
+            }>
+              {paymentSaving ? 'Collecting...' : paymentMethod === 'Package'
+                ? 'Complete · Rs. 0'
+                : `Collect Rs ${Number(paymentAmount || 0).toLocaleString()}`}
             </Button>
           </>
         ) : paymentEntry && paymentOk ? (
@@ -1667,9 +1701,19 @@ export default function WalkInPage() {
                     </div>
                   ))}
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: isDark ? '#1E293B' : '#F8FAFC', borderTop: `1px solid ${isDark ? '#334155' : '#EEF2F6'}` }}>
-                    <span style={{ fontWeight: 700, color: C.title }}>Subtotal</span>
+                    <span style={{ fontWeight: 700, color: C.title }}>List value</span>
                     <span style={{ fontSize: 16, fontWeight: 800, color: C.title }}>Rs. {calcServiceTotal(paymentServices).toLocaleString()}</span>
                   </div>
+                  {paymentMethod === 'Package' && paymentCustPackageId && (() => {
+                    const cp = paymentCustPackages.find((p) => String(p.id) === String(paymentCustPackageId));
+                    const bundle = getPackageBundlePrice(cp);
+                    return bundle > 0 ? (
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 12px', background: isDark ? '#172554' : '#EFF6FF', borderTop: `1px solid ${isDark ? '#334155' : '#EEF2F6'}` }}>
+                        <span style={{ fontWeight: 600, color: isDark ? '#93C5FD' : '#1D4ED8', fontSize: 13 }}>Package bundle</span>
+                        <span style={{ fontWeight: 800, color: isDark ? '#BFDBFE' : '#2563EB', fontSize: 14 }}>Rs. {bundle.toLocaleString()}</span>
+                      </div>
+                    ) : null;
+                  })()}
                   {(() => {
                     const g = calcServiceTotal(paymentServices);
                     const sd = paymentDiscountId ? paymentDiscounts.find((d) => String(d.id) === String(paymentDiscountId)) : null;

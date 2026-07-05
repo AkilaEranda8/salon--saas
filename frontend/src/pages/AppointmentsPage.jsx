@@ -20,6 +20,7 @@ import {
   resolveTemplateServiceIds,
   applyPackageSelection,
   formatPackageTemplateLabel,
+  getPackageBundlePrice,
 } from '../utils/packageHelpers';
 import {
   DataTable, ActionBtn, StaffAvatar, PagBtn,
@@ -1192,9 +1193,20 @@ export default function AppointmentsPage() {
                   <span style={{ fontSize: 14, fontWeight: 700, color: isDark ? '#BBF7D0' : '#064E3B' }}>
                     {bookingPackageTemplateId ? 'Collect at service' : 'Estimated Total'}
                   </span>
-                  <span style={{ fontSize: 22, fontWeight: 800, color: isDark ? '#fff' : '#047857', letterSpacing: '-0.02em' }}>
-                    Rs. {bookingPackageTemplateId ? '0' : Number(form.amount || 0).toLocaleString()}
-                  </span>
+                  <div style={{ textAlign: 'right' }}>
+                    {bookingPackageTemplateId && (() => {
+                      const tpl = packageTemplates.find((p) => String(p.id) === String(bookingPackageTemplateId));
+                      const bundle = getPackageBundlePrice(tpl);
+                      return bundle > 0 ? (
+                        <div style={{ fontSize: 11, color: isDark ? '#94A3B8' : '#64748B', fontWeight: 600, marginBottom: 2 }}>
+                          Bundle Rs. {bundle.toLocaleString()}
+                        </div>
+                      ) : null;
+                    })()}
+                    <span style={{ fontSize: 22, fontWeight: 800, color: isDark ? '#fff' : '#047857', letterSpacing: '-0.02em' }}>
+                      Rs. {bookingPackageTemplateId ? '0' : Number(form.amount || 0).toLocaleString()}
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>

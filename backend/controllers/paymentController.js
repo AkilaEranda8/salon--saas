@@ -14,6 +14,7 @@ const { recordCommissionTransactions } = require('../services/recordCommissionTr
 const { notifyPaymentReceipt } = require('../services/notificationService');
 const { tenantWhere, byIdWhere, resolveTenantId } = require('../utils/tenantScope');
 const { slToday } = require('../utils/dateUtils');
+const { redeemPackageForPayment } = require('../utils/packageRedemption');
 
 const getBranchWhere = (req) => {
   const where = tenantWhere(req);
@@ -267,25 +268,23 @@ const create = async (req, res) => {
     // Redeem package sessions for 'Package' splits
     for (const s of splits) {
       if (s.method === 'Package' && s.customer_package_id) {
-        const cp = await CustomerPackage.findOne({
-          where: byIdWhere(req, s.customer_package_id),
-          include: [{ model: PkgModel, as: 'package' }],
-          transaction: t,
-        });
-        if (cp && cp.status === 'active' && (cp.sessions_remaining === null || cp.sessions_remaining > 0)) {
-          await PackageRedemption.create({
-            customer_package_id: cp.id,
-            payment_id: payment.id,
-            service_id: service_id || null,
-            redeemed_at: new Date(),
-            redeemed_by: staff_id || null,
-            tenant_id: resolveTenantId(req),
-          }, { transaction: t });
-          const newUsed = (cp.sessions_used || 0) + 1;
-          const updates = { sessions_used: newUsed };
-          if (cp.sessions_total > 0 && newUsed >= cp.sessions_total) updates.status = 'completed';
-          await cp.update(updates, { transaction: t });
+        try {
+          await redeemPackageForPayment({
+            req,
+            transaction: t,
+            customerPackageId: s.customer_package_id,
+            serviceIds: serviceIdList,
+            paymentId: payment.id,
+            appointmentId: appointment_id || null,
+            staffId: staff_id || null,
+          });
+        } catch (pkgErr) {
+          await t.rollback();
+          return res.status(pkgErr.status || 400).json({ message: pkgErr.message || 'Package redemption failed.' });
         }
+      } else if (s.method === 'Package' && !s.customer_package_id) {
+        await t.rollback();
+        return res.status(400).json({ message: 'Select a customer package when using Package payment method.' });
       }
     }
 

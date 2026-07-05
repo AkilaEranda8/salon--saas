@@ -19,6 +19,10 @@ const WalkIn = sequelize.define('WalkIn', {
     type: DataTypes.STRING(30),
     allowNull: true,
   },
+  customer_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+  },
   branch_id: {
     type: DataTypes.INTEGER,
     allowNull: false,
@@ -69,6 +73,10 @@ const WalkIn = sequelize.define('WalkIn', {
   },
   note: {
     type: DataTypes.TEXT,
+    allowNull: true,
+  },
+  total_amount: {
+    type: DataTypes.DECIMAL(10, 2),
     allowNull: true,
   },
   tenant_id: {

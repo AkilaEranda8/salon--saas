@@ -156,7 +156,7 @@ const customerPackages = async (req, res) => {
     const rows = await CustomerPackage.findAll({
       where: { customer_id: req.params.customerId, ...tenantWhere(req) },
       include: [
-        { model: Package, as: 'package', attributes: ['id', 'name', 'type', 'services'] },
+        { model: Package, as: 'package', attributes: ['id', 'name', 'type', 'services', 'package_price', 'original_price', 'discount_percent'] },
         { model: Branch,  as: 'branch',  attributes: ['id', 'name'] },
       ],
       order: [['purchase_date', 'DESC']],
@@ -196,7 +196,7 @@ const activePackages = async (req, res) => {
         expiry_date: { [Op.gte]: today },
       },
       include: [
-        { model: Package, as: 'package', attributes: ['id', 'name', 'type', 'services'] },
+        { model: Package, as: 'package', attributes: ['id', 'name', 'type', 'services', 'package_price', 'original_price', 'discount_percent'] },
         { model: Branch,  as: 'branch',  attributes: ['id', 'name'] },
       ],
       order: [['expiry_date', 'ASC']],
@@ -358,7 +358,7 @@ const redeem = async (req, res) => {
     const result = await CustomerPackage.findOne({
       where: byIdWhere(req, customerPackageId),
       include: [
-        { model: Package, as: 'package', attributes: ['id', 'name', 'type', 'services'] },
+        { model: Package, as: 'package', attributes: ['id', 'name', 'type', 'services', 'package_price', 'original_price', 'discount_percent'] },
       ],
     });
 

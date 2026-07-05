@@ -13,6 +13,11 @@ import {
   DataTable,
 } from '../components/ui/PageKit';
 import { computePromoFromDiscount } from '../utils/promoDiscount';
+import {
+  resolvePackageServiceIds,
+  formatCustomerPackageLabel,
+  packageCoversAllServices,
+} from '../utils/packageHelpers';
 
 const METHODS = ['Cash','Card','Online Transfer','Loyalty Points','Package','LankaQR'];
 const METHOD_LABEL = { 'Cash':'Cash', 'Card':'Card', 'Online Transfer':'Bank Transfer', 'Loyalty Points':'Loyalty Pts', 'Package':'Package', 'LankaQR':'LankaQR' };
@@ -602,6 +607,7 @@ export default function PaymentsPage() {
   const [qrModal, setQrModal]     = useState(null); // { amount, reference, splitIdx }
   const [custPackages, setCustPackages] = useState([]);
   const [loadingPkgs, setLoadingPkgs]   = useState(false);
+  const [formPackageId, setFormPackageId] = useState('');
   const [discounts, setDiscounts]       = useState([]);
   const [discountsLoading, setDiscountsLoading] = useState(false);
   const [discountsLoadError, setDiscountsLoadError] = useState(false);
@@ -683,7 +689,30 @@ export default function PaymentsPage() {
     setForm({ ...EMPTY_FORM, branch_id: user?.branchId || filterBranch || '' });
     setFormErr('');
     setCustPackages([]);
+    setFormPackageId('');
     setShowForm(true);
+  };
+  const applyFormPackage = (packageId) => {
+    setFormPackageId(packageId);
+    if (!packageId) {
+      setForm((f) => ({
+        ...f,
+        splits: f.splits.length === 1 ? [{ method: 'Cash', amount: f.total_amount || '' }] : f.splits,
+      }));
+      return;
+    }
+    const cp = custPackages.find((p) => String(p.id) === String(packageId));
+    if (!cp) return;
+    const ids = resolvePackageServiceIds(cp, services);
+    if (!ids.length) return;
+    setForm((f) => ({
+      ...f,
+      service_ids: ids,
+      total_amount: '0',
+      loyalty_discount: 0,
+      discount_id: '',
+      splits: [{ method: 'Package', amount: '0', customer_package_id: packageId }],
+    }));
   };
 
   const openEdit = async (row) => {
@@ -706,6 +735,8 @@ export default function PaymentsPage() {
           customer_package_id: sp.customer_package_id,
         })),
       });
+      const pkgSplit = (p.splits || []).find((sp) => sp.method === 'Package');
+      setFormPackageId(pkgSplit?.customer_package_id ? String(pkgSplit.customer_package_id) : '');
       setCustPackages([]);
       if (p.customer_id) {
         setLoadingPkgs(true);
@@ -735,15 +766,34 @@ export default function PaymentsPage() {
   const handleSave = async () => {
     if (!String(form.customer_id || '').trim()) return setFormErr('Select a customer before recording payment.');
     if (!String(form.staff_id || '').trim()) return setFormErr('Select staff before recording payment.');
-    if (!form.total_amount || !form.service_ids.length) return setFormErr('Total amount and at least one service are required');
-    const subtotal = Number(form.total_amount);
+    if (!form.service_ids.length) return setFormErr('At least one service is required');
+    const usingPackage = form.splits.some((sp) => sp.method === 'Package');
+    if (usingPackage) {
+      const pkgSplit = form.splits.find((sp) => sp.method === 'Package');
+      if (!pkgSplit?.customer_package_id) return setFormErr('Select a customer package for Package payment.');
+      const cp = custPackages.find((p) => String(p.id) === String(pkgSplit.customer_package_id));
+      if (cp && !packageCoversAllServices(form.service_ids, cp)) {
+        return setFormErr('All selected services must be included in the package.');
+      }
+    }
+    if (!usingPackage && (!form.total_amount || Number(form.total_amount) <= 0)) {
+      return setFormErr('Total amount and at least one service are required');
+    }
+    const subtotal = usingPackage
+      ? form.service_ids.reduce((sum, sid) => {
+        const s = services.find((x) => Number(x.id) === Number(sid));
+        return sum + Number(s?.price || 0);
+      }, 0)
+      : Number(form.total_amount);
     const loyalty = Number(form.loyalty_discount || 0);
     const selDisc = form.discount_id ? discounts.find(d => String(d.id) === String(form.discount_id)) : null;
     const promo = selDisc ? computePromoFromDiscount(selDisc, subtotal) : 0;
     const net = subtotal - loyalty - promo;
     const splitTotal = form.splits.reduce((s, sp) => s + Number(sp.amount||0), 0);
-    if (Math.abs(splitTotal - net) > 0.02)
+    if (!usingPackage && Math.abs(splitTotal - net) > 0.02)
       return setFormErr(`Split total (Rs. ${splitTotal.toLocaleString()}) must equal net after discounts (Rs. ${net.toLocaleString()})`);
+    if (usingPackage && splitTotal > 0.02)
+      return setFormErr('Package payment should be Rs. 0 — customer already paid for the package.');
     setSaving(true);
     try {
       const { service_ids, ...rest } = form;
@@ -959,6 +1009,7 @@ export default function PaymentsPage() {
                   onSelect={cid => {
                     setForm(f => ({ ...f, customer_id: cid }));
                     setCustPackages([]);
+                    setFormPackageId('');
                     if (cid) {
                       setLoadingPkgs(true);
                       api.get(`/packages/customer/${cid}/active`).then(r => {
@@ -969,6 +1020,25 @@ export default function PaymentsPage() {
                   onNew={newCust => setCustomers(prev => [newCust, ...prev])}
                 />
               </FormGroup>
+              {form.customer_id && (loadingPkgs || custPackages.length > 0) && (
+                <FormGroup label="Redeem Package (optional)">
+                  {loadingPkgs ? (
+                    <div style={{ fontSize: 12, color: isDark ? '#64748B' : '#64748B' }}>Loading packages…</div>
+                  ) : (
+                    <Select value={formPackageId} onChange={(e) => applyFormPackage(e.target.value)}>
+                      <option value="">No package — pay normally</option>
+                      {custPackages.map((cp) => (
+                        <option key={cp.id} value={cp.id}>{formatCustomerPackageLabel(cp)}</option>
+                      ))}
+                    </Select>
+                  )}
+                  {formPackageId && (
+                    <div style={{ fontSize: 12, color: isDark ? '#6EE7B7' : '#047857', marginTop: 6, fontWeight: 600 }}>
+                      Package services selected · Record Rs. 0 payment
+                    </div>
+                  )}
+                </FormGroup>
+              )}
               <FormGroup label="Staff *">
                 <Select value={form.staff_id || ''} onChange={e => setForm(f => ({ ...f, staff_id: e.target.value }))}>
                   <option value="">Select staff</option>
@@ -987,6 +1057,7 @@ export default function PaymentsPage() {
                 onChange={ids => {
                   const svcs = services.filter(s => ids.includes(Number(s.id)));
                   const total = svcs.reduce((sum, s) => sum + Number(s.price || 0), 0);
+                  if (formPackageId) return;
                   setForm(f => ({
                     ...f,
                     service_ids: ids,

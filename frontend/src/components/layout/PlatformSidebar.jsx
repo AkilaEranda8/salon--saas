@@ -167,11 +167,11 @@ function NavItem({ item, collapsed, isActive, onClick, T }) {
           transition: 'color 0.18s',
           filter: isActive ? `drop-shadow(0 0 6px ${T.accentGlow})` : 'none',
         }}>
-          <Ico d={item.icon} size={17} />
+          <Ico d={item.icon} size={19} />
         </span>
         {!collapsed && (
           <span style={{
-            fontSize:      13,
+            fontSize:      15,
             fontWeight:    isActive ? 700 : 500,
             fontFamily:    "'Inter', sans-serif",
             whiteSpace:    'nowrap',
@@ -202,7 +202,7 @@ function NavItem({ item, collapsed, isActive, onClick, T }) {
           transform:     'translateY(-50%)',
           background:    T.tooltipBg,
           color:         '#fff',
-          fontSize:      12,
+          fontSize:      13,
           fontWeight:    600,
           padding:       '6px 14px',
           borderRadius:  10,
@@ -314,7 +314,7 @@ export default function PlatformSidebar({ collapsed, onToggle }) {
                 Hexaone
               </div>
               <div style={{
-                fontSize:      9.5,
+                fontSize:      10.5,
                 fontWeight:    700,
                 letterSpacing: '0.12em',
                 marginTop:     1,
@@ -392,7 +392,7 @@ export default function PlatformSidebar({ collapsed, onToggle }) {
           {!ec && (
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{
-                fontSize: 13, fontWeight: 700, color: T.text,
+                fontSize: 15, fontWeight: 700, color: T.text,
                 overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                 lineHeight: 1.3,
               }}>
@@ -400,7 +400,7 @@ export default function PlatformSidebar({ collapsed, onToggle }) {
               </div>
               <span style={{
                 display: 'inline-flex', alignItems: 'center',
-                fontSize: 9.5, fontWeight: 700, marginTop: 3,
+                fontSize: 10.5, fontWeight: 700, marginTop: 3,
                 padding: '1px 8px', borderRadius: 99,
                 background: T.badge.bg, color: T.badge.text,
                 border: `1px solid ${T.badge.border}`,
@@ -435,7 +435,7 @@ export default function PlatformSidebar({ collapsed, onToggle }) {
             )}
             {!ec && (
               <div style={{
-                fontSize:       9.5,
+                fontSize:       11,
                 fontWeight:     800,
                 color:          T.groupLabel,
                 textTransform:  'uppercase',
@@ -500,7 +500,7 @@ export default function PlatformSidebar({ collapsed, onToggle }) {
           </span>
           {!ec && (
             <>
-              <span style={{ fontSize: 13, fontWeight: 600, color: T.text }}>
+              <span style={{ fontSize: 15, fontWeight: 600, color: T.text }}>
                 {isDark ? 'Light Mode' : 'Dark Mode'}
               </span>
               <span style={{
@@ -547,7 +547,7 @@ export default function PlatformSidebar({ collapsed, onToggle }) {
             <Ico d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" size={17} />
           </span>
           {!ec && (
-            <span style={{ fontSize: 13, fontWeight: 600, color: T.danger }}>
+            <span style={{ fontSize: 15, fontWeight: 600, color: T.danger }}>
               Sign out
             </span>
           )}

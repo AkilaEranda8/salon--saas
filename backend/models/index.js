@@ -160,12 +160,16 @@ User.hasMany(Expense, { foreignKey: 'created_by', as: 'expenses' });
 WalkIn.belongsTo(Branch, { foreignKey: 'branch_id', as: 'branch' });
 WalkIn.belongsTo(Service, { foreignKey: 'service_id', as: 'service' });
 WalkIn.belongsTo(Staff, { foreignKey: 'staff_id', as: 'staff' });
+WalkIn.belongsTo(Customer, { foreignKey: 'customer_id', as: 'customer' });
 Branch.hasMany(WalkIn, { foreignKey: 'branch_id', as: 'walkIns' });
 Service.hasMany(WalkIn, { foreignKey: 'service_id', as: 'walkIns' });
 Staff.hasMany(WalkIn, { foreignKey: 'staff_id', as: 'walkIns' });
+Customer.hasMany(WalkIn, { foreignKey: 'customer_id', as: 'walkIns' });
 
 WalkIn.hasMany(WalkInQueueService, { foreignKey: 'walk_in_id', as: 'queueServices' });
 WalkIn.belongsToMany(Service, { through: WalkInQueueService, foreignKey: 'walk_in_id', otherKey: 'service_id', as: 'services' });
+WalkInQueueService.belongsTo(WalkIn, { foreignKey: 'walk_in_id', as: 'walkIn' });
+WalkInQueueService.belongsTo(Service, { foreignKey: 'service_id', as: 'service' });
 Service.hasMany(WalkInQueueService, { foreignKey: 'service_id', as: 'walkInQueueLinks' });
 Service.belongsToMany(WalkIn, { through: WalkInQueueService, foreignKey: 'service_id', otherKey: 'walk_in_id', as: 'walkInEntries' });
 

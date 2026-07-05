@@ -147,7 +147,7 @@ function NavItem({ item, collapsed, isActive, onClick, C }) {
         alignItems:     'center',
         justifyContent: collapsed ? 'center' : 'flex-start',
         gap:            10,
-        padding:        collapsed ? '10px 0' : '8px 12px',
+        padding:        collapsed ? '10px 0' : '10px 12px',
         borderRadius:   10,
         cursor:         'pointer',
         marginBottom:   2,
@@ -158,15 +158,15 @@ function NavItem({ item, collapsed, isActive, onClick, C }) {
       }}>
         <span style={{
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          width: 20, height: 20, flexShrink: 0,
+          width: 22, height: 22, flexShrink: 0,
           color: isActive ? C.accentTx : hov ? C.text : C.textSub,
           transition: 'color 0.15s',
         }}>
-          <Ico d={item.icon} size={16} />
+          <Ico d={item.icon} size={18} />
         </span>
         {!collapsed && (
           <span style={{
-            fontSize:      13,
+            fontSize:      15,
             fontWeight:    isActive ? 600 : 450,
             letterSpacing: '-0.01em',
             whiteSpace:    'nowrap',
@@ -185,7 +185,7 @@ function NavItem({ item, collapsed, isActive, onClick, C }) {
           transform:     'translateY(-50%)',
           background:    '#1E1B32',
           color:         '#fff',
-          fontSize:      12,
+          fontSize:      13,
           fontWeight:    600,
           padding:       '5px 12px',
           borderRadius:  8,
@@ -307,14 +307,14 @@ export default function Sidebar({ collapsed, onToggle, currentUser, mobileOpen, 
           {!ec && (
             <div style={{ overflow: 'hidden', flex: 1 }}>
               <div title={brandName} style={{
-                fontSize: 13, fontWeight: 800, color: isDarkSb ? '#FFFFFF' : '#101828',
+                fontSize: 15, fontWeight: 800, color: isDarkSb ? '#FFFFFF' : '#101828',
                 fontFamily: "'Sora','Manrope','Inter',sans-serif",
                 letterSpacing: '-0.025em', lineHeight: 1.25, whiteSpace: 'nowrap',
                 overflow: 'hidden', textOverflow: 'ellipsis',
               }}>
                 {brandName}
               </div>
-              <div style={{ fontSize: 9, color: isDarkSb ? '#8BA4BE' : C.textMuted, fontWeight: 700, letterSpacing: '0.10em', textTransform: 'uppercase' }}>
+              <div style={{ fontSize: 10, color: isDarkSb ? '#8BA4BE' : C.textMuted, fontWeight: 700, letterSpacing: '0.10em', textTransform: 'uppercase' }}>
                 Management
               </div>
             </div>
@@ -358,7 +358,7 @@ export default function Sidebar({ collapsed, onToggle, currentUser, mobileOpen, 
             )}
             {!ec && (
               <div style={{
-                fontSize:      9,
+                fontSize:      11,
                 fontWeight:    800,
                 color:         C.textMuted,
                 textTransform: 'uppercase',
@@ -402,11 +402,11 @@ export default function Sidebar({ collapsed, onToggle, currentUser, mobileOpen, 
             userSelect:     'none',
           }}
         >
-          <span style={{ display: 'flex', flexShrink: 0, color: '#EF4444', width: 20, height: 20, alignItems: 'center', justifyContent: 'center' }}>
-            <Ico d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" size={16} />
+          <span style={{ display: 'flex', flexShrink: 0, color: '#EF4444', width: 22, height: 22, alignItems: 'center', justifyContent: 'center' }}>
+            <Ico d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" size={18} />
           </span>
           {!ec && (
-            <span style={{ fontSize: 13, fontWeight: 600, color: '#EF4444' }}>Sign out</span>
+            <span style={{ fontSize: 15, fontWeight: 600, color: '#EF4444' }}>Sign out</span>
           )}
         </div>
       </div>

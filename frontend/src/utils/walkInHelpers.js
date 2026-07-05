@@ -11,7 +11,7 @@ export function parseAdditionalServiceIdsFromNote(note, allServices = []) {
 }
 
 export function getWalkInOrderedServiceIds(entry, allServices = []) {
-  const wiq = entry?.walkInServices;
+  const wiq = entry?.walkInServices || entry?.queueServices;
   if (Array.isArray(wiq) && wiq.length > 0) {
     return [...wiq]
       .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
@@ -31,7 +31,7 @@ export function getWalkInOrderedServiceIds(entry, allServices = []) {
 
 /** Comma-separated service names (junction table or note fallback). */
 export function getWalkInServicesTitle(entry) {
-  const wiq = entry?.walkInServices;
+  const wiq = entry?.walkInServices || entry?.queueServices;
   if (Array.isArray(wiq) && wiq.length > 0) {
     return [...wiq]
       .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))

@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useRef, useLayoutEffect } from 'react';
+import React, { useEffect, useState, useCallback, useRef, useLayoutEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { io } from 'socket.io-client';
 import { useAuth } from '../context/AuthContext';
@@ -7,14 +7,21 @@ import usePageTheme from '../hooks/usePageTheme';
 import api from '../api/axios';
 import PageWrapper from '../components/layout/PageWrapper';
 import Button from '../components/ui/Button';
-import Badge from '../components/ui/Badge';
 import { useToast } from '../components/ui/Toast';
 import { Input, Label, Textarea, Select } from '../components/ui/FormElements';
 import { computePromoFromDiscount } from '../utils/promoDiscount';
+import {
+  stripPackageLine,
+  parsePackageSelection,
+  buildPackageNoteLine,
+  resolvePackageServiceIds,
+  formatCustomerPackageLabel,
+  packageCoversAllServices,
+} from '../utils/packageHelpers';
 import { getKcAccessToken } from '../utils/kcTokenStore';
 import {
   PKModal as Modal, StatCard, StaffAvatar,
-  IconUsers, IconCheck, IconClock, IconCalendar, IconClose,
+  IconUsers, IconCheck, IconClock, IconClose, IconPlus, IconDollar,
 } from '../components/ui/PageKit';
 import {
   ADDITIONAL_SERVICES_PREFIX,
@@ -24,13 +31,15 @@ import {
 } from '../utils/walkInHelpers';
 
 /*  Constants  */
-const STATUS_BORDER = { waiting: '#f59e0b', serving: '#10b981', completed: '#94a3b8', cancelled: '#ef4444' };
-const STATUS_LABELS = { waiting: 'Waiting', serving: 'In Service', completed: 'Completed', cancelled: 'Cancelled' };
+const STATUS_META = {
+  waiting:   { color: '#D97706', bg: '#FFFBEB', label: 'Waiting',   border: '#F59E0B' },
+  serving:   { color: '#059669', bg: '#ECFDF5', label: 'In Service', border: '#10B981' },
+  completed: { color: '#64748B', bg: '#F8FAFC', label: 'Completed', border: '#94A3B8' },
+  cancelled: { color: '#DC2626', bg: '#FEF2F2', label: 'Cancelled', border: '#EF4444' },
+};
+const QUEUE_SECTION_ORDER = ['waiting', 'serving', 'completed', 'cancelled'];
 const FILTER_PILLS  = ['all', 'waiting', 'serving', 'completed', 'cancelled'];
 const EMPTY_FORM    = { customerName: '', phone: '', serviceId: '', branchId: '', note: '' };
-const DARK          = '#101828';
-const MUTED         = '#64748B';
-const ACTIVE_PILL   = '#1e293b';
 
 /*  Helpers  */
 const fmtTime = (t) => { if (!t) return ''; const [h, m] = t.split(':'); const hr = +h % 12 || 12; return `${hr}:${m} ${+h >= 12 ? 'PM' : 'AM'}`; };
@@ -142,7 +151,7 @@ function WalkInSection({ title, desc, children, dark = false }) {
   );
 }
 
-function WalkInModal({ open, onClose, title, subtitle, children, footer, size = 'lg', dark = false }) {
+function WalkInModal({ open, onClose, title, subtitle, children, footer, size = 'lg', dark = false, accent = 'amber' }) {
   useEffect(() => {
     if (!open) return;
     document.body.style.overflow = 'hidden';
@@ -150,6 +159,22 @@ function WalkInModal({ open, onClose, title, subtitle, children, footer, size = 
   }, [open]);
   if (!open) return null;
   const widths = { sm: 420, md: 560, lg: 720, xl: 900 };
+  const accents = {
+    amber: {
+      headerLight: 'linear-gradient(135deg,#FFFBEB 0%,#FEF3C7 45%,#FFF7ED 100%)',
+      headerDark: 'linear-gradient(135deg,#78350f 0%,#1e3a8a 100%)',
+      borderLight: '#FDE68A', iconLight: '#D97706', iconBorderLight: '#FCD34D',
+      iconDark: '#FCD34D',
+    },
+    emerald: {
+      headerLight: 'linear-gradient(135deg,#ECFDF5 0%,#D1FAE5 45%,#EFF6FF 100%)',
+      headerDark: 'linear-gradient(135deg,#064e3b 0%,#1e3a8a 100%)',
+      borderLight: '#A7F3D0', iconLight: '#059669', iconBorderLight: '#6EE7B7',
+      iconDark: '#6EE7B7',
+    },
+  };
+  const ac = accents[accent] || accents.amber;
+  const HeaderIcon = accent === 'emerald' ? IconDollar : IconClock;
   return createPortal(
     <div style={{ position: 'fixed', inset: 0, zIndex: 900, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
       <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'rgba(16,24,40,0.5)', backdropFilter: 'blur(4px)' }} />
@@ -163,10 +188,8 @@ function WalkInModal({ open, onClose, title, subtitle, children, footer, size = 
         <style>{'@keyframes walkin-modal-pop { from { opacity:0; transform:scale(0.97) translateY(10px); } to { opacity:1; transform:scale(1) translateY(0); } }'}</style>
         <div style={{
           padding: '18px 22px',
-          background: dark
-            ? 'linear-gradient(135deg,#78350f 0%,#1e3a8a 100%)'
-            : 'linear-gradient(135deg,#FFFBEB 0%,#FEF3C7 45%,#FFF7ED 100%)',
-          borderBottom: `1px solid ${dark ? '#334155' : '#FDE68A'}`,
+          background: dark ? ac.headerDark : ac.headerLight,
+          borderBottom: `1px solid ${dark ? '#334155' : ac.borderLight}`,
           borderRadius: '18px 18px 0 0',
           display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexShrink: 0, gap: 12,
         }}>
@@ -174,12 +197,12 @@ function WalkInModal({ open, onClose, title, subtitle, children, footer, size = 
             <div style={{
               width: 44, height: 44, borderRadius: 12, flexShrink: 0,
               background: dark ? 'rgba(255,255,255,0.12)' : '#fff',
-              border: dark ? '1px solid rgba(255,255,255,0.15)' : '1px solid #FCD34D',
+              border: dark ? '1px solid rgba(255,255,255,0.15)' : `1px solid ${ac.iconBorderLight}`,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              color: dark ? '#FCD34D' : '#D97706',
-              boxShadow: dark ? 'none' : '0 2px 8px rgba(217,119,6,0.15)',
+              color: dark ? ac.iconDark : ac.iconLight,
+              boxShadow: dark ? 'none' : `0 2px 8px ${ac.iconLight}26`,
             }}>
-              <IconClock />
+              <HeaderIcon />
             </div>
             <div style={{ minWidth: 0 }}>
               <h3 style={{ margin: 0, fontSize: 17, fontWeight: 800, color: dark ? '#F8FAFC' : '#0F172A', fontFamily: "'Inter',sans-serif", letterSpacing: '-0.02em' }}>{title}</h3>
@@ -212,6 +235,161 @@ function WalkInModal({ open, onClose, title, subtitle, children, footer, size = 
   );
 }
 
+function FeaturedQueueStat({ waiting, serving, total, dark }) {
+  return (
+    <div style={{
+      background: dark
+        ? 'linear-gradient(135deg, #78350f 0%, #1e3a8a 100%)'
+        : 'linear-gradient(135deg, #D97706 0%, #F59E0B 50%, #FBBF24 100%)',
+      borderRadius: 18, padding: '22px 24px', color: '#fff', position: 'relative', overflow: 'hidden',
+      minWidth: 260, flex: '1.5 1 300px',
+      boxShadow: dark ? '0 8px 24px rgba(120,53,15,0.45)' : '0 8px 24px rgba(217,119,6,0.28)',
+    }}>
+      <div style={{ position: 'absolute', top: -30, right: -30, width: 120, height: 120, borderRadius: '50%', background: 'rgba(255,255,255,0.1)' }} />
+      <div style={{ position: 'relative', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 700, opacity: 0.9, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Live Queue</div>
+          <div style={{ fontSize: 36, fontWeight: 900, letterSpacing: '-1px', lineHeight: 1.1, marginTop: 6 }}>{waiting}</div>
+          <div style={{ fontSize: 12, opacity: 0.85, marginTop: 8 }}>waiting now · {serving} in service · {total} today</div>
+        </div>
+        <div style={{ width: 48, height: 48, borderRadius: 14, background: 'rgba(255,255,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <IconClock />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function QueueShell({ title, subtitle, children, action }) {
+  const { C } = usePageTheme();
+  return (
+    <div style={{ background: C.cardBg, borderRadius: 16, border: `1px solid ${C.border}`, overflow: 'hidden', boxShadow: C.shadow }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', padding: '16px 20px', borderBottom: `1px solid ${C.border}`, background: C.headerGrad }}>
+        <div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: C.title }}>{title}</div>
+          {subtitle && <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>{subtitle}</div>}
+        </div>
+        {action}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function QueueStatusBadge({ status, dark = false }) {
+  const m = STATUS_META[status] || STATUS_META.waiting;
+  const bg = dark ? `${m.color}22` : m.bg;
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 10px', borderRadius: 20, fontSize: 12, fontWeight: 600, background: bg, color: m.color, whiteSpace: 'nowrap', border: `1px solid ${dark ? `${m.color}40` : 'transparent'}` }}>
+      <span style={{ width: 6, height: 6, borderRadius: '50%', background: m.color, flexShrink: 0 }} />
+      {m.label}
+    </span>
+  );
+}
+
+function QueueEntryCard({
+  entry, C, isDark, staffList, busyStaffIds,
+  onAssignStaff, onChangeStatus, onEdit, onPayment, onShowToken,
+}) {
+  const svc = entry.service || {};
+  const stf = entry.staff;
+  const servicesLine = getWalkInServicesTitle(entry);
+  const noteOnly = removeAdditionalServicesLine(entry.note || '');
+  const meta = STATUS_META[entry.status] || STATUS_META.waiting;
+
+  return (
+    <div style={{
+      background: isDark ? '#0F172A' : '#fff',
+      borderRadius: 14,
+      border: `1px solid ${isDark ? '#334155' : '#EAECF0'}`,
+      borderLeft: `4px solid ${meta.border}`,
+      padding: '16px 18px',
+      display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap',
+      boxShadow: isDark ? 'none' : '0 1px 4px rgba(16,24,40,0.04)',
+      transition: 'box-shadow 0.15s ease',
+    }}>
+      <div style={{ textAlign: 'center', flexShrink: 0 }}>
+        <div style={{
+          width: 56, height: 56, borderRadius: 14,
+          background: isDark ? 'linear-gradient(135deg,#1e293b,#334155)' : 'linear-gradient(135deg,#1e293b,#475569)',
+          color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: 18, fontWeight: 900, fontFamily: 'monospace', letterSpacing: 1,
+          boxShadow: '0 4px 12px rgba(15,23,42,0.25)',
+        }}>
+          {entry.token}
+        </div>
+        <div style={{ fontSize: 11, color: C.muted, marginTop: 5, fontWeight: 600 }}>{fmtTime(entry.check_in_time)}</div>
+      </div>
+
+      <div style={{ flex: '1 1 200px', minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: C.title }}>{entry.customer_name || 'Walk-in'}</div>
+          <QueueStatusBadge status={entry.status} dark={isDark} />
+        </div>
+        {entry.phone && <div style={{ fontSize: 12, color: C.muted }}>{entry.phone}</div>}
+        {servicesLine && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 12, fontWeight: 600, color: C.label, background: isDark ? '#1E293B' : C.soft, padding: '3px 9px', borderRadius: 6 }}>{servicesLine}</span>
+            {svc.duration_minutes && (
+              <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 99, background: isDark ? '#172033' : '#F1F5F9', color: C.muted, fontWeight: 600 }}>
+                {svc.duration_minutes} min
+              </span>
+            )}
+            {Number(entry.total_amount) > 0 && (
+              <span style={{ fontSize: 12, fontWeight: 800, color: '#059669' }}>
+                Rs. {Number(entry.total_amount).toLocaleString()}
+              </span>
+            )}
+          </div>
+        )}
+        {noteOnly && <div style={{ fontSize: 12, color: C.muted, fontStyle: 'italic', marginTop: 4 }}>{noteOnly}</div>}
+        {entry.status === 'waiting' && entry.estimated_wait != null && (
+          <div style={{ fontSize: 11, color: '#D97706', fontWeight: 600, marginTop: 6 }}>~{entry.estimated_wait} min estimated wait</div>
+        )}
+      </div>
+
+      <div style={{ flex: '0 0 180px', minWidth: 140 }}>
+        {stf ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 10, background: isDark ? '#172033' : C.soft, border: `1px solid ${isDark ? '#334155' : C.border}` }}>
+            <StaffAvatar name={stf.name} size={34} />
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: C.title, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{stf.name}</div>
+              {stf.role_title && <div style={{ fontSize: 11, color: C.muted }}>{stf.role_title}</div>}
+            </div>
+          </div>
+        ) : (
+          <Select value="" onChange={(e) => e.target.value && onAssignStaff(entry.id, e.target.value)} style={{ width: '100%' }}>
+            <option value="">Assign staff…</option>
+            {staffList.filter((s) => s.is_active !== false).map((s) => (
+              <option key={s.id} value={s.id} disabled={busyStaffIds.has(s.id)}>
+                {s.name}{busyStaffIds.has(s.id) ? ' (Busy)' : ''}
+              </option>
+            ))}
+          </Select>
+        )}
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0, flexWrap: 'wrap', marginLeft: 'auto' }}>
+        {entry.status !== 'completed' && (
+          <Button size="sm" variant="secondary" onClick={() => onEdit(entry)}>Edit</Button>
+        )}
+        {entry.status === 'waiting' && (
+          <Button size="sm" onClick={() => onChangeStatus(entry.id, 'serving')}>Start</Button>
+        )}
+        {entry.status === 'serving' && (
+          <Button size="sm" onClick={() => onPayment(entry)} style={{ background: 'linear-gradient(135deg,#059669,#10B981)' }}>
+            Collect
+          </Button>
+        )}
+        <Button size="sm" variant="ghost" onClick={() => onShowToken(entry)}>Token</Button>
+        {(entry.status === 'waiting' || entry.status === 'serving') && (
+          <Button size="sm" variant="danger" onClick={() => onChangeStatus(entry.id, 'cancelled')}>Cancel</Button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function WalkInPage() {
   const { user }  = useAuth();
   const { isDark } = useTheme();
@@ -225,6 +403,7 @@ export default function WalkInPage() {
   const [stats,          setStats]          = useState({ waiting: 0, serving: 0, completed: 0, cancelled: 0, total: 0 });
   const [selectedBranch, setSelectedBranch] = useState(defaultBranch);
   const [filterStatus,   setFilterStatus]   = useState('all');
+  const [queueSearch,    setQueueSearch]    = useState('');
   const [showCheckin,    setShowCheckin]    = useState(false);
   const [showToken,      setShowToken]      = useState(null);
   const [form,           setForm]           = useState({ ...EMPTY_FORM, branchId: defaultBranch });
@@ -247,6 +426,9 @@ export default function WalkInPage() {
   const [paymentCustPackages, setPaymentCustPackages] = useState([]);
   const [paymentCustPackageId, setPaymentCustPackageId] = useState('');
   const [loadingPaymentPkgs, setLoadingPaymentPkgs] = useState(false);
+  const [checkinCustPackages, setCheckinCustPackages] = useState([]);
+  const [checkinCustPackageId, setCheckinCustPackageId] = useState('');
+  const [loadingCheckinPkgs, setLoadingCheckinPkgs] = useState(false);
   const [editEntry,      setEditEntry]      = useState(null);
   const [editForm,       setEditForm]       = useState({ customerName: '', phone: '', serviceId: '', note: '' });
   const [editExtraServiceIds, setEditExtraServiceIds] = useState([]);
@@ -325,7 +507,6 @@ export default function WalkInPage() {
 
   /*  Derived  */
   const busyStaffIds  = new Set(queue.filter((e) => e.status === 'serving' && e.staff_id).map((e) => e.staff_id));
-  const filteredQueue = filterStatus === 'all' ? queue : queue.filter((e) => e.status === filterStatus);
 
   /*  Actions  */
   const changeStatus = async (id, status) => {
@@ -369,8 +550,20 @@ export default function WalkInPage() {
     setPaymentCustPackageId('');
     if (entry.customer_id) {
       setLoadingPaymentPkgs(true);
+      const pkgSel = parsePackageSelection(entry.note || entry.notes || '');
       api.get(`/packages/customer/${entry.customer_id}/active`)
-        .then((r) => setPaymentCustPackages(Array.isArray(r.data) ? r.data : []))
+        .then((r) => {
+          const pkgs = Array.isArray(r.data) ? r.data : [];
+          setPaymentCustPackages(pkgs);
+          if (pkgSel.id && pkgs.find((p) => String(p.id) === String(pkgSel.id))) {
+            const cp = pkgs.find((p) => String(p.id) === String(pkgSel.id));
+            const ids = resolvePackageServiceIds(cp, services);
+            if (ids.length) setPaymentServices(ids);
+            setPaymentCustPackageId(String(pkgSel.id));
+            setPaymentMethod('Package');
+            setPaymentAmount('0');
+          }
+        })
         .catch(() => {})
         .finally(() => setLoadingPaymentPkgs(false));
     }
@@ -396,6 +589,10 @@ export default function WalkInPage() {
 
   useEffect(() => {
     if (!paymentEntry) return;
+    if (paymentMethod === 'Package' && paymentCustPackageId) {
+      setPaymentAmount('0');
+      return;
+    }
     const gross = calcServiceTotal(paymentServices);
     const sel = paymentDiscountId
       ? paymentDiscounts.find((d) => String(d.id) === String(paymentDiscountId))
@@ -403,10 +600,49 @@ export default function WalkInPage() {
     const promo = sel ? computePromoFromDiscount(sel, gross) : 0;
     const net = Math.max(0, gross - promo);
     setPaymentAmount(net > 0 ? String(net) : '');
-  }, [paymentEntry, paymentServices, paymentDiscountId, paymentDiscounts, services]);
+  }, [paymentEntry, paymentServices, paymentDiscountId, paymentDiscounts, services, paymentMethod, paymentCustPackageId]);
+  const applyPaymentPackage = (customerPackageId) => {
+    setPaymentCustPackageId(customerPackageId);
+    if (!customerPackageId) {
+      setPaymentMethod('Cash');
+      return;
+    }
+    const cp = paymentCustPackages.find((p) => String(p.id) === String(customerPackageId));
+    if (!cp) return;
+    const nextIds = resolvePackageServiceIds(cp, services);
+    if (!nextIds.length) return;
+    setPaymentServices(nextIds);
+    setPaymentMethod('Package');
+    setPaymentAmount('0');
+    setPaymentDiscountId('');
+  };
+  const applyCheckinPackage = (customerPackageId) => {
+    setCheckinCustPackageId(customerPackageId);
+    if (!customerPackageId) return;
+    const cp = checkinCustPackages.find((p) => String(p.id) === String(customerPackageId));
+    if (!cp) return;
+    const nextIds = resolvePackageServiceIds(cp, services);
+    if (!nextIds.length) return;
+    setForm((f) => ({ ...f, serviceId: String(nextIds[0]) }));
+    setCheckinExtraServiceIds(nextIds.slice(1));
+  };
   const handleCollectPayment = async () => {
     if (!paymentEntry) return;
-    if (!paymentAmount || Number(paymentAmount) <= 0) {
+    if (paymentMethod === 'Package') {
+      if (!paymentCustPackageId) {
+        setPaymentError('Select a customer package.');
+        return;
+      }
+      const cp = paymentCustPackages.find((p) => String(p.id) === String(paymentCustPackageId));
+      if (!cp) {
+        setPaymentError('Selected package not found.');
+        return;
+      }
+      if (!packageCoversAllServices(paymentServices, cp)) {
+        setPaymentError('All selected services must be included in the package.');
+        return;
+      }
+    } else if (!paymentAmount || Number(paymentAmount) <= 0) {
       setPaymentError('Enter a valid amount.');
       return;
     }
@@ -421,6 +657,7 @@ export default function WalkInPage() {
       await api.post('/payments', {
         branch_id: paymentEntry.branch_id || selectedBranch,
         staff_id: paymentEntry.staff_id || paymentEntry.staff?.id || null,
+        customer_id: paymentEntry.customer_id || null,
         service_id: paymentServices[0] || paymentEntry.service_id || paymentEntry.service?.id || null,
         service_ids: paymentServices,
         customer_name: paymentEntry.customer_name || 'Walk-in',
@@ -570,17 +807,25 @@ export default function WalkInPage() {
         setSaving(false);
         return;
       }
-      const baseNote = removeAdditionalServicesLine(form.note || '');
+      const baseNote = stripPackageLine(removeAdditionalServicesLine(form.note || ''));
       const extraServiceNames = services
         .filter((s) => selectedServiceIds.slice(1).includes(Number(s.id)))
         .map((s) => s.name);
+      const pkgLine = checkinCustPackageId
+        ? buildPackageNoteLine(
+          checkinCustPackageId,
+          checkinCustPackages.find((cp) => String(cp.id) === String(checkinCustPackageId))?.package?.name,
+        )
+        : '';
       const fullNote = [
         baseNote,
+        pkgLine,
         extraServiceNames.length ? `${ADDITIONAL_SERVICES_PREFIX} ${extraServiceNames.join(', ')}` : '',
       ].filter(Boolean).join('\n');
       const res = await api.post('/walkin/checkin', {
         customerName: nameTrim,
         phone:        form.phone || getCustomerPhone(selectedCustomer) || undefined,
+        customerId:   selectedCustomer?.id || undefined,
         branchId:     form.branchId   || selectedBranch,
         serviceId:    Number(selectedServiceIds[0]),
         serviceIds:   selectedServiceIds.map(Number),
@@ -590,6 +835,8 @@ export default function WalkInPage() {
       setShowCheckin(false);
       setForm({ ...EMPTY_FORM, branchId: selectedBranch });
       setCheckinExtraServiceIds([]);
+      setCheckinCustPackages([]);
+      setCheckinCustPackageId('');
       setSelectedCustomer(null);
       setCustSearch('');
       setShowToken(res.data);
@@ -628,6 +875,15 @@ export default function WalkInPage() {
     setCustSearch(c.name);
     setSelectedCustomer(c);
     setShowCustDrop(false);
+    setCheckinCustPackageId('');
+    setCheckinCustPackages([]);
+    if (c.id) {
+      setLoadingCheckinPkgs(true);
+      api.get(`/packages/customer/${c.id}/active`)
+        .then((r) => setCheckinCustPackages(Array.isArray(r.data) ? r.data : []))
+        .catch(() => setCheckinCustPackages([]))
+        .finally(() => setLoadingCheckinPkgs(false));
+    }
   };
 
   const closeCheckin = () => {
@@ -742,72 +998,156 @@ export default function WalkInPage() {
   }
   const waitPreview = checkinSelectedIds.length ? stats.waiting * checkinDurationSum : null;
 
-  /*  Page actions  */
+  const branchName = branches.find((b) => String(b.id) === String(selectedBranch))?.name || '';
+
+  const searchedQueue = useMemo(() => {
+    const base = filterStatus === 'all' ? queue : queue.filter((e) => e.status === filterStatus);
+    const q = queueSearch.trim().toLowerCase();
+    if (!q) return base;
+    return base.filter((e) =>
+      (e.customer_name || '').toLowerCase().includes(q)
+      || (e.phone || '').includes(q)
+      || String(e.token || '').toLowerCase().includes(q)
+      || getWalkInServicesTitle(e).toLowerCase().includes(q),
+    );
+  }, [queue, filterStatus, queueSearch]);
+
+  const queueGroups = useMemo(() => {
+    if (filterStatus !== 'all') return [{ status: filterStatus, items: searchedQueue }];
+    return QUEUE_SECTION_ORDER
+      .map((s) => ({ status: s, items: searchedQueue.filter((e) => e.status === s) }))
+      .filter((g) => g.items.length > 0);
+  }, [filterStatus, searchedQueue]);
+
+  const openCheckin = () => {
+    setFormError('');
+    setForm({ ...EMPTY_FORM, branchId: selectedBranch });
+    setCheckinExtraServiceIds([]);
+    setCheckinCustPackages([]);
+    setCheckinCustPackageId('');
+    setSelectedCustomer(null);
+    setCustSearch('');
+    setCustResults([]);
+    setCustAll([]);
+    setShowCustDrop(false);
+    setShowCheckin(true);
+  };
+
   const pageActions = (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-      <span style={{ fontFamily: 'monospace', fontSize: 15, fontWeight: 700, color: DARK, letterSpacing: 1 }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 8, padding: '8px 14px', borderRadius: 12,
+        background: isDark ? '#1E293B' : '#fff',
+        border: `1px solid ${isDark ? '#334155' : '#E4E7EC'}`,
+        fontFamily: 'monospace', fontSize: 14, fontWeight: 700, color: C.title, letterSpacing: 0.5,
+      }}>
+        <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#10B981', boxShadow: '0 0 0 3px rgba(16,185,129,0.25)' }} />
         {clock.toLocaleTimeString()}
-      </span>
-      <Button variant="ghost" size="sm" onClick={() => window.open(`/token-display?branchId=${selectedBranch}`, '_blank')}>
+      </div>
+      <Button variant="secondary" size="sm" onClick={() => window.open(`/token-display?branchId=${selectedBranch}`, '_blank')}>
         Token Display
       </Button>
-      <Button size="sm" onClick={() => { setFormError(''); setForm({ ...EMPTY_FORM, branchId: selectedBranch }); setCheckinExtraServiceIds([]); setSelectedCustomer(null); setCustSearch(''); setCustResults([]); setCustAll([]); setShowCustDrop(false); setShowCheckin(true); }}>
-        + New Walk-in
+      <Button variant="primary" onClick={openCheckin} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <IconPlus /> New Walk-in
       </Button>
     </div>
   );
 
-  /* 
-     RENDER
-      */
   return (
-    <PageWrapper title="Walk-In Queue" subtitle="Real-time queue management" actions={pageActions}>
+    <PageWrapper
+      title="Walk-In Queue"
+      subtitle={`${stats.waiting} waiting · ${stats.serving} in service · ${stats.total} today${branchName ? ` · ${branchName}` : ''}`}
+      actions={pageActions}
+    >
       <style>{PRINT_CSS}</style>
 
-      {/*  No branch selected  */}
       {!selectedBranch && isAdmin && (
-        <div style={{ background: '#FEF3C7', border: '1px solid #FDE68A', borderRadius: 12, padding: '14px 20px', color: '#92400E', fontSize: 14, fontWeight: 600 }}>
+        <div style={{
+          background: isDark ? 'rgba(217,119,6,0.15)' : '#FEF3C7',
+          border: `1px solid ${isDark ? 'rgba(251,191,36,0.3)' : '#FDE68A'}`,
+          borderRadius: 12, padding: '14px 20px', color: isDark ? '#FCD34D' : '#92400E', fontSize: 14, fontWeight: 600,
+        }}>
           Please select a branch to view the walk-in queue.
         </div>
       )}
 
-      {/*  Branch selector (admin)  */}
-      {isAdmin && (
-        <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #E4E7EC', padding: '14px 20px', display: 'flex', alignItems: 'center', gap: 12 }}>
-          <span style={{ fontSize: 13, fontWeight: 600, color: DARK }}>Branch:</span>
-          <select value={selectedBranch} onChange={(e) => setSelectedBranch(e.target.value)}
-            style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #D0D5DD', fontSize: 13, fontFamily: 'inherit', width: 200, background: '#fff', color: DARK }}>
-            <option value="">Select branch</option>
-            {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
-          </select>
-        </div>
-      )}
-
-      {/*  STATS ROW  */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 16 }}>
-        <StatCard label="Waiting"     value={stats.waiting}   color="#f59e0b" icon={<IconClock />} />
-        <StatCard label="In Service"  value={stats.serving}   color="#10b981" icon={<IconUsers />} />
-        <StatCard label="Completed"   value={stats.completed} color="#94a3b8" icon={<IconCheck />} />
-        <StatCard label="Total Today" value={stats.total}     color="#6366f1" icon={<IconCalendar />} />
+      {/* Stats */}
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+        <FeaturedQueueStat waiting={stats.waiting} serving={stats.serving} total={stats.total} dark={isDark} />
+        <StatCard label="Waiting" value={stats.waiting} color="#F59E0B" icon={<IconClock />} />
+        <StatCard label="In Service" value={stats.serving} color="#10B981" icon={<IconUsers />} />
+        <StatCard label="Completed" value={stats.completed} color="#64748B" icon={<IconCheck />} />
       </div>
 
-      {/*  STAFF AVAILABILITY  */}
+      {/* Toolbar: branch + filters + search */}
+      <div style={{ background: C.cardBg, borderRadius: 16, border: `1px solid ${C.border}`, padding: '14px 16px', boxShadow: C.shadow }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
+          {isAdmin && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 12, fontWeight: 600, color: C.muted }}>Branch</span>
+              <select
+                value={selectedBranch}
+                onChange={(e) => setSelectedBranch(e.target.value)}
+                className="pk-filter-control"
+                style={{ minWidth: 160 }}
+              >
+                <option value="">Select branch</option>
+                {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+              </select>
+            </div>
+          )}
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', flex: 1 }}>
+            {FILTER_PILLS.map((f) => {
+              const active = filterStatus === f;
+              const meta = f !== 'all' ? STATUS_META[f] : null;
+              const cnt = f === 'all' ? queue.length : (stats[f] ?? 0);
+              return (
+                <button
+                  key={f}
+                  onClick={() => setFilterStatus(f)}
+                  style={{
+                    padding: '6px 14px', borderRadius: 20, fontSize: 12, cursor: 'pointer', fontFamily: "'Inter',sans-serif",
+                    border: '1.5px solid',
+                    borderColor: active ? (meta?.color ?? '#2563EB') : (isDark ? '#334155' : C.border),
+                    background: active ? (meta?.bg ?? (isDark ? 'rgba(37,99,235,0.2)' : '#EFF6FF')) : (isDark ? '#0F172A' : C.cardBg),
+                    color: active ? (meta?.color ?? '#2563EB') : C.muted,
+                    fontWeight: active ? 700 : 500, whiteSpace: 'nowrap',
+                  }}
+                >
+                  {f === 'all' ? 'All' : STATUS_META[f]?.label || f}
+                  {cnt > 0 && <span style={{ marginLeft: 5, opacity: 0.75 }}>({cnt})</span>}
+                </button>
+              );
+            })}
+          </div>
+          <input
+            type="search"
+            className="pk-filter-control"
+            placeholder="Search token, customer, service…"
+            value={queueSearch}
+            onChange={(e) => setQueueSearch(e.target.value)}
+            style={{ width: 220, minWidth: 160 }}
+          />
+        </div>
+      </div>
+
+      {/* Staff availability */}
       {staffList.length > 0 && (
-        <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #E4E7EC', padding: '16px 20px' }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: DARK, marginBottom: 12 }}>Staff Availability</div>
-          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+        <div style={{ background: C.cardBg, borderRadius: 14, border: `1px solid ${C.border}`, padding: '14px 18px', boxShadow: C.shadow }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: C.title, marginBottom: 10 }}>Staff Availability</div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {staffList.filter((s) => s.is_active !== false).map((s) => {
               const busy = busyStaffIds.has(s.id);
               return (
                 <div key={s.id} style={{
                   display: 'inline-flex', alignItems: 'center', gap: 8,
                   padding: '6px 14px 6px 6px', borderRadius: 999,
-                  background: busy ? '#FFF7ED' : '#F0FDF4',
-                  border: `1.5px solid ${busy ? '#FED7AA' : '#BBF7D0'}`,
+                  background: busy ? (isDark ? 'rgba(234,88,12,0.15)' : '#FFF7ED') : (isDark ? 'rgba(5,150,105,0.12)' : '#F0FDF4'),
+                  border: `1.5px solid ${busy ? (isDark ? 'rgba(251,146,60,0.4)' : '#FED7AA') : (isDark ? 'rgba(52,211,153,0.35)' : '#BBF7D0')}`,
                 }}>
                   <StaffAvatar name={s.name} size={28} />
                   <div>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: DARK, lineHeight: 1.2 }}>{s.name}</div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: C.title, lineHeight: 1.2 }}>{s.name}</div>
                     <div style={{ fontSize: 11, color: busy ? '#C2410C' : '#15803D', fontWeight: 600 }}>{busy ? 'Busy' : 'Available'}</div>
                   </div>
                 </div>
@@ -817,153 +1157,61 @@ export default function WalkInPage() {
         </div>
       )}
 
-      {/*  FILTER BAR  */}
-      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-        {FILTER_PILLS.map((f) => {
-          const active = filterStatus === f;
-          return (
-            <button key={f} onClick={() => setFilterStatus(f)} style={{
-              padding: '7px 18px', borderRadius: 999,
-              border: `1.5px solid ${active ? ACTIVE_PILL : '#D0D5DD'}`,
-              background: active ? ACTIVE_PILL : '#fff',
-              color: active ? '#fff' : DARK,
-              fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
-              transition: 'all 0.15s',
-            }}>
-              {f === 'all' ? 'All' : STATUS_LABELS[f] || f}
-              {f !== 'all' && stats[f] != null && (
-                <span style={{ marginLeft: 6, fontSize: 11, opacity: 0.75 }}>({stats[f]})</span>
-              )}
-            </button>
-          );
-        })}
-      </div>
-
-      {/*  QUEUE LIST  */}
-      {loading ? (
-        <div style={{ textAlign: 'center', padding: 48, color: MUTED, fontSize: 14 }}>Loading queue…</div>
-      ) : error ? (
-        <div style={{ background: '#FEE2E2', border: '1px solid #FECACA', borderRadius: 10, padding: '12px 18px', color: '#B91C1C', fontSize: 14 }}>{error}</div>
-      ) : filteredQueue.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '56px 16px', color: '#94A3B8' }}>
-          <div style={{ fontSize: 40, marginBottom: 12 }}>🪑</div>
-          <div style={{ fontSize: 15, fontWeight: 600, color: MUTED }}>Queue is empty</div>
-          <div style={{ fontSize: 13, marginTop: 4 }}>No walk-in entries for the selected filter</div>
-        </div>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {filteredQueue.map((entry) => {
-            const svc = entry.service || {};
-            const stf = entry.staff;
-            const servicesLine = getWalkInServicesTitle(entry);
-            const noteOnly = removeAdditionalServicesLine(entry.note || '');
-            return (
-              <div key={entry.id} style={{
-                background: '#fff', borderRadius: 14,
-                boxShadow: '0 1px 4px rgba(16,24,40,0.06)',
-                border: '1px solid #EAECF0',
-                borderLeft: `5px solid ${STATUS_BORDER[entry.status] || '#E4E7EC'}`,
-                padding: '16px 20px',
-                display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap',
-              }}>
-
-                {/* TOKEN */}
-                <div style={{ textAlign: 'center', flexShrink: 0 }}>
-                  <div style={{
-                    width: 52, height: 52, borderRadius: 12,
-                    background: '#1e293b', color: '#fff',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: 17, fontWeight: 900, fontFamily: 'monospace',
-                    letterSpacing: 1,
-                  }}>{entry.token}</div>
-                  <div style={{ fontSize: 11, color: MUTED, marginTop: 4 }}>{fmtTime(entry.check_in_time)}</div>
-                </div>
-
-                {/* CUSTOMER + SERVICE */}
-                <div style={{ flex: '1 1 180px', minWidth: 0 }}>
-                  <div style={{ fontSize: 15, fontWeight: 700, color: DARK }}>{entry.customer_name || 'Walk-in'}</div>
-                  {entry.phone && <div style={{ fontSize: 12, color: MUTED, marginTop: 1 }}>{entry.phone}</div>}
-                  {servicesLine && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 5, flexWrap: 'wrap' }}>
-                      <span style={{ fontSize: 12, fontWeight: 600, color: '#344054' }}>{servicesLine}</span>
-                      {svc.duration_minutes && (
-                        <span style={{ fontSize: 11, padding: '1px 7px', borderRadius: 99, background: '#F1F5F9', color: MUTED, fontWeight: 600 }}>
-                          {svc.duration_minutes} min
-                        </span>
-                      )}
-                      {Number(entry.total_amount) > 0 && (
-                        <span style={{ fontSize: 12, fontWeight: 800, color: '#059669' }}>
-                          Rs. {Number(entry.total_amount).toLocaleString()}
-                        </span>
-                      )}
+      {/* Queue list */}
+      <QueueShell
+        title="Live Queue"
+        subtitle={loading ? 'Updating…' : `${searchedQueue.length} entr${searchedQueue.length !== 1 ? 'ies' : 'y'} shown`}
+        action={!loading && (
+          <Button variant="ghost" size="sm" onClick={fetchData}>↻ Refresh</Button>
+        )}
+      >
+        <div style={{ padding: '12px 16px 16px' }}>
+          {loading ? (
+            <div style={{ textAlign: 'center', padding: 48, color: C.muted, fontSize: 14 }}>Loading queue…</div>
+          ) : error ? (
+            <div style={{ background: isDark ? '#450a0a' : '#FEE2E2', border: `1px solid ${isDark ? '#7f1d1d' : '#FECACA'}`, borderRadius: 10, padding: '12px 18px', color: isDark ? '#FCA5A5' : '#B91C1C', fontSize: 14 }}>{error}</div>
+          ) : searchedQueue.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '48px 16px' }}>
+              <div style={{ fontSize: 44, marginBottom: 12 }}>🪑</div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: C.title }}>Queue is empty</div>
+              <div style={{ fontSize: 13, color: C.muted, marginTop: 6 }}>No walk-ins match your filters</div>
+              <Button onClick={openCheckin} style={{ marginTop: 16, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                <IconPlus /> Check in first customer
+              </Button>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+              {queueGroups.map(({ status, items }) => (
+                <div key={status}>
+                  {filterStatus === 'all' && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                      <QueueStatusBadge status={status} dark={isDark} />
+                      <span style={{ fontSize: 12, color: C.muted, fontWeight: 600 }}>{items.length} customer{items.length !== 1 ? 's' : ''}</span>
                     </div>
                   )}
-                  {noteOnly && (
-                    <div style={{ fontSize: 12, color: '#94A3B8', fontStyle: 'italic', marginTop: 3 }}>{noteOnly}</div>
-                  )}
-                </div>
-
-                {/* STAFF */}
-                <div style={{ flex: '0 0 170px' }}>
-                  {stf ? (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <StaffAvatar name={stf.name} size={32} />
-                      <div>
-                        <div style={{ fontSize: 13, fontWeight: 600, color: DARK }}>{stf.name}</div>
-                        {stf.role_title && <div style={{ fontSize: 11, color: MUTED }}>{stf.role_title}</div>}
-                      </div>
-                    </div>
-                  ) : (
-                    <select
-                      style={{ width: '100%', padding: '7px 10px', borderRadius: 8, border: '1px solid #D0D5DD', fontSize: 13, fontFamily: 'inherit', background: '#fff', color: DARK }}
-                      value="" onChange={(e) => assignStaff(entry.id, e.target.value)}
-                    >
-                      <option value="" disabled>Assign staff…</option>
-                      {staffList.filter((s) => s.is_active !== false).map((s) => (
-                        <option key={s.id} value={s.id} disabled={busyStaffIds.has(s.id)}>
-                          {s.name}{busyStaffIds.has(s.id) ? ' (Busy)' : ''}
-                        </option>
-                      ))}
-                    </select>
-                  )}
-                </div>
-
-                {/* STATUS + WAIT */}
-                <div style={{ flexShrink: 0, minWidth: 90, textAlign: 'center' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, flexWrap: 'wrap' }}>
-                    <Badge variant={entry.status} dot>{STATUS_LABELS[entry.status] || entry.status}</Badge>
-                    {entry.status === 'completed' && (
-                      <span style={{ fontSize: 12, padding: '3px 10px', borderRadius: 99, background: '#FEF2F2', color: '#DC2626', fontWeight: 800 }}>
-                        Paid
-                      </span>
-                    )}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {items.map((entry) => (
+                      <QueueEntryCard
+                        key={entry.id}
+                        entry={entry}
+                        C={C}
+                        isDark={isDark}
+                        staffList={staffList}
+                        busyStaffIds={busyStaffIds}
+                        onAssignStaff={assignStaff}
+                        onChangeStatus={changeStatus}
+                        onEdit={openEdit}
+                        onPayment={openPayment}
+                        onShowToken={setShowToken}
+                      />
+                    ))}
                   </div>
-                  {entry.status === 'waiting' && entry.estimated_wait != null && (
-                    <div style={{ fontSize: 11, color: MUTED, marginTop: 4 }}>~{entry.estimated_wait} min wait</div>
-                  )}
                 </div>
-
-                {/* ACTIONS */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0, flexWrap: 'wrap' }}>
-                  {entry.status !== 'completed' && (
-                    <Button size="sm" variant="ghost" onClick={() => openEdit(entry)}>Edit</Button>
-                  )}
-                  {entry.status === 'waiting' && (
-                    <Button size="sm" onClick={() => changeStatus(entry.id, 'serving')}>Start</Button>
-                  )}
-                  {entry.status === 'serving' && (
-                    <Button size="sm" onClick={() => openPayment(entry)}>Done & Collect</Button>
-                  )}
-                  <Button size="sm" variant="ghost" onClick={() => setShowToken(entry)}>Token</Button>
-                  {(entry.status === 'waiting' || entry.status === 'serving') && (
-                    <Button size="sm" variant="danger" onClick={() => changeStatus(entry.id, 'cancelled')}>Cancel</Button>
-                  )}
-                </div>
-              </div>
-            );
-          })}
+              ))}
+            </div>
+          )}
         </div>
-      )}
+      </QueueShell>
 
       {/*  CHECK-IN MODAL  */}
       <WalkInModal
@@ -1057,6 +1305,8 @@ export default function WalkInPage() {
                       setSelectedCustomer(null);
                       setCustSearch('');
                       setForm((f) => ({ ...f, customerName: '', phone: '' }));
+                      setCheckinCustPackages([]);
+                      setCheckinCustPackageId('');
                       setShowCustDrop(true);
                     }}
                   >
@@ -1084,6 +1334,27 @@ export default function WalkInPage() {
               <Label>Phone</Label>
               <Input placeholder="Optional" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
             </div>
+
+            {selectedCustomer && (loadingCheckinPkgs || checkinCustPackages.length > 0) && (
+              <div>
+                <Label>Redeem Package (optional)</Label>
+                {loadingCheckinPkgs ? (
+                  <div style={{ fontSize: 12, color: C.muted, padding: '4px 0' }}>Loading packages…</div>
+                ) : (
+                  <Select value={checkinCustPackageId} onChange={(e) => applyCheckinPackage(e.target.value)}>
+                    <option value="">No package</option>
+                    {checkinCustPackages.map((cp) => (
+                      <option key={cp.id} value={cp.id}>{formatCustomerPackageLabel(cp)}</option>
+                    ))}
+                  </Select>
+                )}
+                {checkinCustPackageId && (
+                  <div style={{ fontSize: 12, color: isDark ? '#6EE7B7' : '#047857', marginTop: 6, fontWeight: 600 }}>
+                    Package services auto-selected for this visit
+                  </div>
+                )}
+              </div>
+            )}
 
             {isAdmin && (
               <div>
@@ -1171,9 +1442,9 @@ export default function WalkInPage() {
                 {showToken.token}
               </span>
             </div>
-            <div style={{ fontSize: 16, fontWeight: 700, color: DARK, marginBottom: 4 }}>{showToken.customer_name}</div>
+            <div style={{ fontSize: 16, fontWeight: 700, color: C.title, marginBottom: 4 }}>{showToken.customer_name}</div>
             {getWalkInServicesTitle(showToken) && (
-              <div style={{ fontSize: 13, color: MUTED, marginBottom: 2, maxWidth: 320, margin: '0 auto 2px', lineHeight: 1.4 }}>
+              <div style={{ fontSize: 13, color: C.muted, marginBottom: 2, maxWidth: 320, margin: '0 auto 2px', lineHeight: 1.4 }}>
                 {getWalkInServicesTitle(showToken)}
               </div>
             )}
@@ -1192,11 +1463,29 @@ export default function WalkInPage() {
       )}
 
       {/*  PAYMENT MODAL  */}
-      <Modal open={!!paymentEntry} onClose={() => setPaymentEntry(null)} title="Collect Walk-in Payment" size="lg">
+      <WalkInModal
+        open={!!paymentEntry}
+        onClose={() => setPaymentEntry(null)}
+        title="Collect Walk-in Payment"
+        subtitle={paymentEntry ? `${paymentEntry.customer_name || 'Walk-in'}${paymentEntry.phone ? ` · ${paymentEntry.phone}` : ''}` : ''}
+        size="lg"
+        dark={isDark}
+        accent="emerald"
+        footer={paymentEntry && !paymentOk ? (
+          <>
+            <Button variant="secondary" onClick={() => setPaymentEntry(null)}>Cancel</Button>
+            <Button onClick={handleCollectPayment} loading={paymentSaving} disabled={paymentSaving || !paymentAmount || Number(paymentAmount) <= 0 || !paymentServices.length}>
+              {paymentSaving ? 'Collecting...' : `Collect Rs ${Number(paymentAmount || 0).toLocaleString()}`}
+            </Button>
+          </>
+        ) : paymentEntry && paymentOk ? (
+          <Button onClick={() => setPaymentEntry(null)}>Done</Button>
+        ) : null}
+      >
         {paymentEntry && (
           paymentOk ? (
             <div style={{ textAlign: 'center', padding: '24px 0' }}>
-              <div style={{ width: 56, height: 56, borderRadius: '50%', background: '#ECFDF5', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 14px' }}>
+              <div style={{ width: 56, height: 56, borderRadius: '50%', background: isDark ? '#064E3B' : '#ECFDF5', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 14px' }}>
                 <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#059669" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
               </div>
               <div style={{ fontSize: 16, fontWeight: 700, color: '#059669' }}>Payment Recorded!</div>
@@ -1204,53 +1493,73 @@ export default function WalkInPage() {
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               {paymentError && (
-                <div style={{ background: '#FEE2E2', border: '1px solid #FECACA', borderRadius: 8, padding: '10px 14px', color: '#B91C1C', fontSize: 13 }}>
+                <div style={{ background: isDark ? '#450A0A' : '#FEE2E2', border: `1px solid ${isDark ? '#7F1D1D' : '#FECACA'}`, borderRadius: 8, padding: '10px 14px', color: isDark ? '#FCA5A5' : '#B91C1C', fontSize: 13 }}>
                   {paymentError}
                 </div>
               )}
-              <div style={{ background: '#F8FAFC', border: '1px solid #EEF2F6', borderRadius: 12, padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ background: isDark ? '#1E293B' : '#F8FAFC', border: `1px solid ${isDark ? '#334155' : '#EEF2F6'}`, borderRadius: 12, padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 10 }}>
                 <div style={{ width: 42, height: 42, borderRadius: 10, background: '#172554', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 20 }}>
                   {(paymentEntry.customer_name || 'W').trim().charAt(0).toUpperCase()}
                 </div>
                 <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: 14, fontWeight: 800, color: '#0F172A', lineHeight: 1.2 }}>{paymentEntry.customer_name || 'Walk-in'}</div>
-                  <div style={{ marginTop: 4, display: 'flex', gap: 10, flexWrap: 'wrap', fontSize: 12, color: '#64748B', fontWeight: 600 }}>
+                  <div style={{ fontSize: 14, fontWeight: 800, color: C.title, lineHeight: 1.2 }}>{paymentEntry.customer_name || 'Walk-in'}</div>
+                  <div style={{ marginTop: 4, display: 'flex', gap: 10, flexWrap: 'wrap', fontSize: 12, color: C.muted, fontWeight: 600 }}>
                     {paymentEntry.phone && <span>📞 {paymentEntry.phone}</span>}
                     {(paymentEntry.staff?.name || paymentEntry.staff_id) && <span>✂ {paymentEntry.staff?.name || 'Staff'}</span>}
                   </div>
                 </div>
               </div>
               <div>
-                <div style={{ border: '1px solid #E5EAF0', borderRadius: 12, overflow: 'hidden', background: '#fff' }}>
+                <div style={{ border: `1px solid ${isDark ? '#334155' : '#E5EAF0'}`, borderRadius: 12, overflow: 'hidden', background: isDark ? '#0F172A' : '#fff' }}>
                   {services.filter((s) => paymentServices.includes(Number(s.id))).map((s, idx, arr) => (
-                    <div key={s.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', borderBottom: idx !== arr.length - 1 ? '1px solid #EEF2F6' : 'none' }}>
-                      <div style={{ fontSize: 14, fontWeight: 700, color: '#0F172A' }}>{s.name}</div>
-                      <div style={{ fontSize: 12, color: '#94A3B8', fontWeight: 600 }}>{s.duration_minutes || 30} min</div>
+                    <div key={s.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', borderBottom: idx !== arr.length - 1 ? `1px solid ${isDark ? '#334155' : '#EEF2F6'}` : 'none' }}>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: C.title }}>{s.name}</div>
+                      <div style={{ fontSize: 12, color: C.muted, fontWeight: 600 }}>{s.duration_minutes || 30} min</div>
                       <div style={{ fontSize: 16, color: '#059669', fontWeight: 800 }}>Rs. {Number(s.price || 0).toLocaleString()}</div>
                     </div>
                   ))}
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: '#F8FAFC', borderTop: '1px solid #EEF2F6' }}>
-                    <span style={{ fontWeight: 700, color: '#0F172A' }}>Subtotal</span>
-                    <span style={{ fontSize: 16, fontWeight: 800, color: '#0F172A' }}>Rs. {calcServiceTotal(paymentServices).toLocaleString()}</span>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: isDark ? '#1E293B' : '#F8FAFC', borderTop: `1px solid ${isDark ? '#334155' : '#EEF2F6'}` }}>
+                    <span style={{ fontWeight: 700, color: C.title }}>Subtotal</span>
+                    <span style={{ fontSize: 16, fontWeight: 800, color: C.title }}>Rs. {calcServiceTotal(paymentServices).toLocaleString()}</span>
                   </div>
                   {(() => {
                     const g = calcServiceTotal(paymentServices);
                     const sd = paymentDiscountId ? paymentDiscounts.find((d) => String(d.id) === String(paymentDiscountId)) : null;
                     const pr = sd ? computePromoFromDiscount(sd, g) : 0;
                     return pr > 0 ? (
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 12px', background: '#FAF5FF', borderTop: '1px solid #E9D5FF' }}>
-                        <span style={{ fontWeight: 600, color: '#6B21A8', fontSize: 13 }}>Promo</span>
-                        <span style={{ fontWeight: 800, color: '#7C3AED', fontSize: 14 }}>− Rs. {pr.toLocaleString()}</span>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 12px', background: isDark ? '#3B0764' : '#FAF5FF', borderTop: `1px solid ${isDark ? '#6B21A8' : '#E9D5FF'}` }}>
+                        <span style={{ fontWeight: 600, color: isDark ? '#E9D5FF' : '#6B21A8', fontSize: 13 }}>Promo</span>
+                        <span style={{ fontWeight: 800, color: isDark ? '#C4B5FD' : '#7C3AED', fontSize: 14 }}>− Rs. {pr.toLocaleString()}</span>
                       </div>
                     ) : null;
                   })()}
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', background: '#ECFDF5', borderTop: '1px solid #BBF7D0' }}>
-                    <span style={{ fontWeight: 700, color: '#065F46' }}>Collect</span>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', background: isDark ? '#064E3B' : '#ECFDF5', borderTop: `1px solid ${isDark ? '#065F46' : '#BBF7D0'}` }}>
+                    <span style={{ fontWeight: 700, color: isDark ? '#A7F3D0' : '#065F46' }}>Collect</span>
                     <span style={{ fontSize: 28, fontWeight: 900, color: '#059669', lineHeight: 1 }}>Rs. {Number(paymentAmount || 0).toLocaleString()}</span>
                   </div>
                 </div>
               </div>
-              {paymentDiscounts.length > 0 && (
+              {paymentEntry?.customer_id && (loadingPaymentPkgs || paymentCustPackages.length > 0) && (
+                <div>
+                  <Label>Redeem Package (optional)</Label>
+                  {loadingPaymentPkgs ? (
+                    <div style={{ fontSize: 12, color: C.muted, padding: '4px 0' }}>Loading packages…</div>
+                  ) : (
+                    <Select value={paymentCustPackageId} onChange={(e) => applyPaymentPackage(e.target.value)} style={{ width: '100%', marginTop: 4 }}>
+                      <option value="">No package — pay normally</option>
+                      {paymentCustPackages.map((cp) => (
+                        <option key={cp.id} value={cp.id}>{formatCustomerPackageLabel(cp)}</option>
+                      ))}
+                    </Select>
+                  )}
+                  {paymentCustPackageId && (
+                    <div style={{ fontSize: 12, color: isDark ? '#6EE7B7' : '#047857', marginTop: 6, fontWeight: 600 }}>
+                      Package covers this visit · Collect Rs. 0
+                    </div>
+                  )}
+                </div>
+              )}
+              {paymentDiscounts.length > 0 && paymentMethod !== 'Package' && (
                 <div>
                   <Label>Promo discount</Label>
                   <Select
@@ -1270,19 +1579,19 @@ export default function WalkInPage() {
               <div>
                 <Label>Payment Method</Label>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
-                  {['Cash', 'Card', 'Online Transfer', 'LankaQR', ...(paymentEntry?.customer_id ? ['Package'] : [])].map((m) => {
+                  {['Cash', 'Card', 'Online Transfer', 'LankaQR', ...(paymentEntry?.customer_id || paymentEntry?.customer?.id ? ['Package'] : [])].map((m) => {
                     const active = paymentMethod === m;
                     return (
                       <button
                         key={m}
                         type="button"
-                        onClick={() => { setPaymentMethod(m); if (m !== 'Package') setPaymentCustPackageId(''); }}
+                        onClick={() => { if (m === 'Package') { if (!paymentCustPackageId && paymentCustPackages[0]) applyPaymentPackage(String(paymentCustPackages[0].id)); else setPaymentMethod('Package'); } else { setPaymentMethod(m); setPaymentCustPackageId(''); } }}
                         style={{
                           padding: '8px 18px',
                           borderRadius: 10,
-                          border: `1.5px solid ${active ? '#10B981' : '#CBD5E1'}`,
-                          background: active ? '#ECFDF5' : '#fff',
-                          color: '#0F172A',
+                          border: `1.5px solid ${active ? '#10B981' : (isDark ? '#475569' : '#CBD5E1')}`,
+                          background: active ? (isDark ? '#064E3B' : '#ECFDF5') : (isDark ? '#1E293B' : '#fff'),
+                          color: active ? (isDark ? '#A7F3D0' : '#065F46') : C.title,
                           fontWeight: 700,
                           fontSize: 15,
                           cursor: 'pointer',
@@ -1294,25 +1603,6 @@ export default function WalkInPage() {
                     );
                   })}
                 </div>
-                {paymentMethod === 'Package' && (
-                  <div style={{ marginTop: 8 }}>
-                    {loadingPaymentPkgs ? (
-                      <div style={{ fontSize: 12, color: '#94A3B8', padding: '4px 0' }}>Loading packages...</div>
-                    ) : paymentCustPackages.length === 0 ? (
-                      <div style={{ fontSize: 12, color: '#92400E', background: '#FFFBEB', padding: '8px 12px', borderRadius: 8, border: '1px solid #FDE68A' }}>No active packages for this customer</div>
-                    ) : (
-                      <select value={paymentCustPackageId} onChange={e => setPaymentCustPackageId(e.target.value)}
-                        style={{ width: '100%', padding: '9px 12px', borderRadius: 10, border: '1.5px solid #D0D5DD', fontSize: 13, fontFamily: 'inherit', background: '#fff', color: '#0F172A', outline: 'none' }}>
-                        <option value="">Select package...</option>
-                        {paymentCustPackages.map(cp => (
-                          <option key={cp.id} value={cp.id}>
-                            {cp.package?.name || 'Package'} — {cp.sessions_remaining !== null ? `${cp.sessions_remaining} sessions left` : 'Unlimited'} (exp {new Date(cp.expiry_date).toLocaleDateString()})
-                          </option>
-                        ))}
-                      </select>
-                    )}
-                  </div>
-                )}
                 {paymentMethod === 'LankaQR' && paymentAmount && Number(paymentAmount) > 0 && (
                   <button
                     type="button"
@@ -1341,7 +1631,13 @@ export default function WalkInPage() {
                     {services.filter((s) => s.is_active !== false).map((s) => {
                       const active = paymentServices.includes(Number(s.id));
                       return (
-                        <button key={s.id} type="button" onClick={() => togglePaymentService(s.id)} style={{ padding: '6px 10px', borderRadius: 8, border: `1.5px solid ${active ? '#2563EB' : '#E4E7EC'}`, background: active ? '#EFF6FF' : '#fff', color: active ? '#2563EB' : '#667085', fontWeight: active ? 700 : 500, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
+                        <button key={s.id} type="button" onClick={() => togglePaymentService(s.id)} style={{
+                          padding: '6px 10px', borderRadius: 8,
+                          border: `1.5px solid ${active ? '#2563EB' : (isDark ? '#475569' : '#E4E7EC')}`,
+                          background: active ? (isDark ? '#1E3A5F' : '#EFF6FF') : (isDark ? '#1E293B' : '#fff'),
+                          color: active ? (isDark ? '#93C5FD' : '#2563EB') : C.muted,
+                          fontWeight: active ? 700 : 500, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit',
+                        }}>
                           {s.name}
                         </button>
                       );
@@ -1353,15 +1649,7 @@ export default function WalkInPage() {
             </div>
           )
         )}
-        {!paymentOk && (
-          <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 20 }}>
-            <Button variant="secondary" onClick={() => setPaymentEntry(null)}>Cancel</Button>
-            <Button onClick={handleCollectPayment} loading={paymentSaving} disabled={paymentSaving || !paymentAmount || Number(paymentAmount) <= 0 || !paymentServices.length}>
-              {paymentSaving ? 'Collecting...' : `Collect Rs ${Number(paymentAmount || 0).toLocaleString()}`}
-            </Button>
-          </div>
-        )}
-      </Modal>
+      </WalkInModal>
 
       {qrModal && createPortal(
         <div style={{ position:'fixed', inset:0, zIndex:9999, display:'flex', alignItems:'center', justifyContent:'center', background:'rgba(0,0,0,0.65)', backdropFilter:'blur(4px)' }}>
@@ -1371,10 +1659,25 @@ export default function WalkInPage() {
       )}
 
       {/*  EDIT MODAL  */}
-      <Modal open={!!editEntry} onClose={() => setEditEntry(null)} title="Edit Walk-in Entry" size="sm">
+      <WalkInModal
+        open={!!editEntry}
+        onClose={() => setEditEntry(null)}
+        title="Edit Walk-in Entry"
+        subtitle="Update customer details and services"
+        size="sm"
+        dark={isDark}
+        footer={(
+          <>
+            <Button variant="secondary" onClick={() => setEditEntry(null)}>Cancel</Button>
+            <Button onClick={handleEditSave} loading={editSaving} disabled={editSaving || !editForm.customerName.trim() || !editForm.serviceId}>
+              Save Changes
+            </Button>
+          </>
+        )}
+      >
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           {editError && (
-            <div style={{ background: '#FEE2E2', border: '1px solid #FECACA', borderRadius: 8, padding: '10px 14px', color: '#B91C1C', fontSize: 13 }}>
+            <div style={{ background: isDark ? '#450A0A' : '#FEE2E2', border: `1px solid ${isDark ? '#7F1D1D' : '#FECACA'}`, borderRadius: 8, padding: '10px 14px', color: isDark ? '#FCA5A5' : '#B91C1C', fontSize: 13 }}>
               {editError}
             </div>
           )}
@@ -1396,16 +1699,12 @@ export default function WalkInPage() {
           </div>
           <div>
             <Label>Service *</Label>
-            <select
-              value={editForm.serviceId}
-              onChange={(e) => setEditForm((f) => ({ ...f, serviceId: e.target.value }))}
-              style={{ width: '100%', padding: '9px 12px', borderRadius: 10, border: '1px solid #D0D5DD', fontSize: 14, fontFamily: 'inherit', background: '#fff', color: DARK }}
-            >
+            <Select value={editForm.serviceId} onChange={(e) => setEditForm((f) => ({ ...f, serviceId: e.target.value }))}>
               <option value="">Select service</option>
               {services.filter((s) => s.is_active !== false).map((s) => (
                 <option key={s.id} value={s.id}>{s.name} — {s.duration_minutes} min</option>
               ))}
-            </select>
+            </Select>
           </div>
           <div>
             <Label>Additional Services (Optional)</Label>
@@ -1419,7 +1718,13 @@ export default function WalkInPage() {
                       key={s.id}
                       type="button"
                       onClick={() => toggleEditExtraService(s.id)}
-                      style={{ padding: '7px 12px', borderRadius: 10, border: `1.5px solid ${active ? '#2563EB' : '#E4E7EC'}`, background: active ? '#EFF6FF' : '#fff', color: active ? '#2563EB' : '#667085', fontWeight: active ? 700 : 500, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}
+                      style={{
+                        padding: '7px 12px', borderRadius: 10,
+                        border: `1.5px solid ${active ? '#2563EB' : (isDark ? '#475569' : '#E4E7EC')}`,
+                        background: active ? (isDark ? '#1E3A5F' : '#EFF6FF') : (isDark ? '#1E293B' : '#fff'),
+                        color: active ? (isDark ? '#93C5FD' : '#2563EB') : C.muted,
+                        fontWeight: active ? 700 : 500, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit',
+                      }}
                     >
                       {s.name}
                       {s.price ? <span style={{ marginLeft: 6, opacity: 0.65 }}>Rs.{Number(s.price).toLocaleString()}</span> : ''}
@@ -1438,13 +1743,7 @@ export default function WalkInPage() {
             />
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 20 }}>
-          <Button variant="secondary" onClick={() => setEditEntry(null)}>Cancel</Button>
-          <Button onClick={handleEditSave} loading={editSaving} disabled={editSaving || !editForm.customerName.trim() || !editForm.serviceId}>
-            Save Changes
-          </Button>
-        </div>
-      </Modal>
+      </WalkInModal>
 
     </PageWrapper>
   );

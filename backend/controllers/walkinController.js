@@ -1,6 +1,6 @@
 const { Op } = require('sequelize');
 const { sequelize } = require('../config/database');
-const { WalkIn, Service, Staff, Branch } = require('../models');
+const { WalkIn, Service, Staff, Branch, WalkInQueueService, Customer } = require('../models');
 const { emitQueueUpdate } = require('../socket');
 const { notifyBranch } = require('../services/fcmService');
 const { notifyWalkInCheckIn, notifyWalkInServing, notifyWalkInCompleted } = require('../services/notificationService');
@@ -40,6 +40,14 @@ async function generateToken(branchId, date, transaction) {
 const defaultInclude = [
   { model: Service, as: 'service', attributes: ['id', 'name', 'duration_minutes', 'price'] },
   { model: Staff, as: 'staff', attributes: ['id', 'name'] },
+  { model: Customer, as: 'customer', attributes: ['id', 'name', 'phone'], required: false },
+  {
+    model: WalkInQueueService,
+    as: 'queueServices',
+    attributes: ['id', 'service_id', 'sort_order', 'line_price'],
+    include: [{ model: Service, as: 'service', attributes: ['id', 'name', 'duration_minutes', 'price'] }],
+    required: false,
+  },
 ];
 
 // ── GET /api/walkin ───────────────────────────────────────────────────────────
@@ -97,7 +105,7 @@ exports.stats = async (req, res) => {
 // ── POST /api/walkin/checkin ──────────────────────────────────────────────────
 exports.checkin = async (req, res) => {
   try {
-    const { customerName, phone, branchId, serviceId, note } = req.body;
+    const { customerName, phone, branchId, serviceId, serviceIds, customerId, note } = req.body;
     const branchResolution = resolveBranchIdFromRequest(req, branchId);
     if (branchResolution.error) return res.status(branchResolution.error.includes('Access denied') ? 403 : 400).json({ message: branchResolution.error });
     const effectiveBranchId = branchResolution.branchId;
@@ -111,30 +119,62 @@ exports.checkin = async (req, res) => {
     const result = await sequelize.transaction(async (t) => {
       const token = await generateToken(effectiveBranchId, dateStr, t);
 
-      // Calculate estimated wait
-      const service = await Service.findByPk(serviceId, { transaction: t });
+      const orderedServiceIds = Array.isArray(serviceIds) && serviceIds.length
+        ? [...new Set(serviceIds.map(Number).filter(Boolean))]
+        : [Number(serviceId)].filter(Boolean);
+      if (!orderedServiceIds.length) {
+        throw Object.assign(new Error('At least one service is required.'), { status: 400 });
+      }
+
+      const primaryServiceId = orderedServiceIds[0];
+      const service = await Service.findByPk(primaryServiceId, { transaction: t });
       if (!service) throw Object.assign(new Error('Service not found.'), { status: 404 });
+
+      const svcRows = orderedServiceIds.length > 1
+        ? await Service.findAll({
+          where: { id: orderedServiceIds },
+          attributes: ['id', 'price', 'duration_minutes'],
+          transaction: t,
+        })
+        : [service];
+      const durationSum = svcRows.reduce((sum, s) => sum + Number(s.duration_minutes || 30), 0);
+      const totalAmount = svcRows.reduce((sum, s) => sum + Number(s.price || 0), 0);
 
       const waitingCount = await WalkIn.count({
         where: { branch_id: effectiveBranchId, check_in_date: dateStr, status: 'waiting' },
         transaction: t,
       });
-      const estimatedWait = waitingCount * (service.duration_minutes || 30);
+      const estimatedWait = waitingCount * durationSum;
+
+      const linkedCustomerId = customerId || req.body.customer_id || null;
 
       const entry = await WalkIn.create({
         token,
         customer_name: customerName,
         phone: phone || null,
+        customer_id: linkedCustomerId || null,
         branch_id: effectiveBranchId,
-        service_id: serviceId,
+        service_id: primaryServiceId,
         staff_id: null,
         status: 'waiting',
         check_in_time: new Date().toTimeString().slice(0, 8),
         check_in_date: dateStr,
         estimated_wait: estimatedWait,
+        total_amount: totalAmount || null,
         note: note || null,
         tenant_id: resolveTenantId(req),
       }, { transaction: t });
+
+      const priceById = Object.fromEntries(svcRows.map((s) => [Number(s.id), Number(s.price || 0)]));
+      await WalkInQueueService.bulkCreate(
+        orderedServiceIds.map((sid, idx) => ({
+          walk_in_id: entry.id,
+          service_id: sid,
+          sort_order: idx,
+          line_price: priceById[sid] ?? null,
+        })),
+        { transaction: t },
+      );
 
       return WalkIn.findByPk(entry.id, { include: defaultInclude, transaction: t });
     });

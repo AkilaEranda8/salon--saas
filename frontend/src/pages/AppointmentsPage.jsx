@@ -8,6 +8,15 @@ import { Input, Select, FormGroup, Textarea } from '../components/ui/FormElement
 import PageWrapper from '../components/layout/PageWrapper';
 import { computePromoFromDiscount } from '../utils/promoDiscount';
 import {
+  PACKAGE_NOTE_PREFIX,
+  stripPackageLine,
+  parsePackageSelection,
+  buildPackageNoteLine,
+  resolvePackageServiceIds,
+  formatCustomerPackageLabel,
+  packageCoversAllServices,
+} from '../utils/packageHelpers';
+import {
   DataTable, ActionBtn, StaffAvatar, PagBtn,
   IconEye, IconEdit, IconTrash, IconClose, IconPlus, IconCalendar,
   StatCard,
@@ -19,25 +28,13 @@ const IconMoney    = () => <svg width="15" height="15" viewBox="0 0 24 24" fill=
 
 const APPT_STATUSES = ['pending','confirmed','in_service','completed','cancelled','no_show'];
 const APPT_EXTRA_SERVICES_PREFIX = 'Additional services:';
-const APPT_PACKAGE_PREFIX = 'Package:';
+const APPT_PACKAGE_PREFIX = PACKAGE_NOTE_PREFIX;
 const stripAdditionalServicesLine = (notes = '') =>
   String(notes)
     .split('\n')
     .filter((line) => !/^\s*additional\s+services?\s*[:\-]?\s*/i.test(line))
     .join('\n')
     .trim();
-const stripPackageLine = (notes = '') =>
-  String(notes)
-    .split('\n')
-    .filter((line) => !/^\s*package\s*[:\-]?\s*/i.test(line))
-    .join('\n')
-    .trim();
-const parsePackageSelection = (notes = '') => {
-  const line = String(notes).split('\n').find((l) => /^\s*package\s*[:\-]?\s*/i.test(l));
-  if (!line) return { id: null, label: '' };
-  const match = line.match(/#(\d+)/);
-  return { id: match ? Number(match[1]) : null, label: line.replace(/^\s*package\s*[:\-]?\s*/i, '').trim() };
-};
 const parseAdditionalServiceNames = (notes = '') => {
   const line = String(notes).split('\n').find((line) => /^\s*additional\s+services?\s*[:\-]?\s*/i.test(line));
   if (!line) return [];
@@ -419,8 +416,12 @@ export default function AppointmentsPage() {
           const pkgs = Array.isArray(r2.data) ? r2.data : [];
           setPaymentCustPackages(pkgs);
           if (pkgSel.id && pkgs.find((p) => String(p.id) === String(pkgSel.id))) {
+            const cp = pkgs.find((p) => String(p.id) === String(pkgSel.id));
+            const ids = resolvePackageServiceIds(cp, services);
+            if (ids.length) setPaymentServices(ids);
             setPaymentCustPackageId(String(pkgSel.id));
             setPaymentMethod('Package');
+            setPaymentAmt('0');
           }
         })
         .catch(() => {})
@@ -449,6 +450,10 @@ export default function AppointmentsPage() {
 
   useEffect(() => {
     if (!showPayment || !paymentAppt) return;
+    if (paymentMethod === 'Package' && paymentCustPackageId) {
+      setPaymentAmt('0');
+      return;
+    }
     const gross = calcServiceTotal(paymentServices);
     const sel = paymentDiscountId
       ? paymentDiscounts.find((d) => String(d.id) === String(paymentDiscountId))
@@ -456,12 +461,21 @@ export default function AppointmentsPage() {
     const promo = sel ? computePromoFromDiscount(sel, gross) : 0;
     const net = Math.max(0, gross - promo);
     setPaymentAmt(net > 0 ? String(net) : '');
-  }, [showPayment, paymentAppt, paymentServices, paymentDiscountId, paymentDiscounts, services]);
+  }, [showPayment, paymentAppt, paymentServices, paymentDiscountId, paymentDiscounts, services, paymentMethod, paymentCustPackageId]);
   const handlePayment = async () => {
     if (paymentAppt?.status !== 'in_service') {
       return setPaymentErr('Payment can be collected only when status is In Service.');
     }
-    if (!paymentAmt || Number(paymentAmt) <= 0) return setPaymentErr('Amount is required');
+    if (paymentMethod === 'Package') {
+      if (!paymentCustPackageId) return setPaymentErr('Select a customer package.');
+      const cp = paymentCustPackages.find((p) => String(p.id) === String(paymentCustPackageId));
+      if (!cp) return setPaymentErr('Selected package not found.');
+      if (!packageCoversAllServices(paymentServices, cp)) {
+        return setPaymentErr('All selected services must be included in the package.');
+      }
+    } else if (!paymentAmt || Number(paymentAmt) <= 0) {
+      return setPaymentErr('Amount is required');
+    }
     if (!paymentServices.length) return setPaymentErr('At least one service is required');
     setPaymentSaving(true);
     try {
@@ -569,7 +583,7 @@ export default function AppointmentsPage() {
         notes: [
           stripPackageLine(stripAdditionalServicesLine(form.notes || '')),
           selectedCustomerPackageId
-            ? `${APPT_PACKAGE_PREFIX} #${selectedCustomerPackageId} - ${customerPackages.find((cp) => String(cp.id) === String(selectedCustomerPackageId))?.package?.name || 'Selected Package'}`
+            ? buildPackageNoteLine(selectedCustomerPackageId, customerPackages.find((cp) => String(cp.id) === String(selectedCustomerPackageId))?.package?.name)
             : '',
           extraNote,
         ].filter(Boolean).join('\n'),
@@ -619,16 +633,28 @@ export default function AppointmentsPage() {
   };
   const applySelectedPackage = (customerPackageId) => {
     setSelectedCustomerPackageId(customerPackageId);
+    if (!customerPackageId) return;
     const cp = customerPackages.find((p) => String(p.id) === String(customerPackageId));
     if (!cp) return;
-    const pkgServiceIds = (cp.package?.services || []).map(Number).filter(Boolean);
-    if (!pkgServiceIds.length) return;
-    const availableSvcIds = services.filter((s) => s.is_active !== false).map((s) => Number(s.id));
-    const nextIds = pkgServiceIds.filter((id) => availableSvcIds.includes(id));
+    const nextIds = resolvePackageServiceIds(cp, services);
     if (!nextIds.length) return;
-    const pkgPrice = cp.package?.package_price ? Number(cp.package.package_price) : null;
     setApptServiceIds(nextIds);
-    setForm((f) => ({ ...f, service_id: nextIds[0] || '', amount: pkgPrice ?? calcServiceTotal(nextIds) ?? f.amount }));
+    setForm((f) => ({ ...f, service_id: nextIds[0] || '', amount: '0' }));
+  };
+  const applyPaymentPackage = (customerPackageId) => {
+    setPaymentCustPackageId(customerPackageId);
+    if (!customerPackageId) {
+      setPaymentMethod('Cash');
+      return;
+    }
+    const cp = paymentCustPackages.find((p) => String(p.id) === String(customerPackageId));
+    if (!cp) return;
+    const nextIds = resolvePackageServiceIds(cp, services);
+    if (!nextIds.length) return;
+    setPaymentServices(nextIds);
+    setPaymentMethod('Package');
+    setPaymentAmt('0');
+    setPaymentDiscountId('');
   };
 
   const filteredStaff = form.branch_id ? staffList.filter(s => s.branch_id==form.branch_id) : staffList;
@@ -1014,10 +1040,15 @@ export default function AppointmentsPage() {
                     <option value="">{!form.customer_id ? 'Select customer first' : loadingCustomerPackages ? 'Loading…' : 'No package'}</option>
                     {customerPackages.map((cp) => (
                       <option key={cp.id} value={cp.id}>
-                        {cp.package?.name || 'Package'} — {cp.sessions_remaining == null ? 'Unlimited' : `${cp.sessions_remaining} left`}
+                        {formatCustomerPackageLabel(cp)}
                       </option>
                     ))}
                   </Select>
+                  {selectedCustomerPackageId && (
+                    <div style={{ fontSize: 12, color: isDark ? '#6EE7B7' : '#047857', marginTop: 6, fontWeight: 600 }}>
+                      Package services auto-selected — collect Rs. 0 when paying with Package
+                    </div>
+                  )}
                 </FormGroup>
               </div>
             </ApptSection>
@@ -1185,14 +1216,14 @@ export default function AppointmentsPage() {
         {paymentAppt && (
           paymentOk ? (
             <div style={{ textAlign:'center', padding:'28px 0' }}>
-              <div style={{ width:56, height:56, borderRadius:'50%', background:'#ECFDF5', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 14px' }}>
+              <div style={{ width:56, height:56, borderRadius:'50%', background:isDark?'#064E3B':'#ECFDF5', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 14px' }}>
                 <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#059669" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
               </div>
               <div style={{ fontSize:16, fontWeight:700, color:'#059669' }}>Payment Recorded!</div>
             </div>
           ) : (
             <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
-              {paymentErr && <div style={{ background:'#FEF2F2', color:'#DC2626', padding:'9px 13px', borderRadius:9, fontSize:13, border:'1px solid #FEE2E2' }}>{paymentErr}</div>}
+              {paymentErr && <div style={{ background:isDark?'#450A0A':'#FEF2F2', color:isDark?'#FCA5A5':'#DC2626', padding:'9px 13px', borderRadius:9, fontSize:13, border:`1px solid ${isDark?'#7F1D1D':'#FEE2E2'}` }}>{paymentErr}</div>}
               <div style={{ background:isDark?'#1E293B':'#F9FAFB', borderRadius:12, padding:'14px 16px', border:isDark?'1px solid #334155':'none' }}>
                 <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
                   <div>
@@ -1207,7 +1238,7 @@ export default function AppointmentsPage() {
                   {services.filter(s => s.is_active !== false).map((s, idx, arr) => {
                     const active = paymentServices.includes(Number(s.id));
                     return (
-                      <label key={s.id} style={{ display:'grid', gridTemplateColumns:'24px 1fr auto', alignItems:'center', gap:10, padding:'9px 12px', borderBottom:idx!==arr.length-1?`1px solid ${isDark?'#334155':'#EEF2F6'}`:'none', background:active?'#F0F9FF':(isDark?'#0F172A':'#fff'), cursor:'pointer' }}>
+                      <label key={s.id} style={{ display:'grid', gridTemplateColumns:'24px 1fr auto', alignItems:'center', gap:10, padding:'9px 12px', borderBottom:idx!==arr.length-1?`1px solid ${isDark?'#334155':'#EEF2F6'}`:'none', background:active?(isDark?'#1e3a5f':'#F0F9FF'):'transparent', cursor:'pointer' }}>
                         <input type="checkbox" checked={active} onChange={() => togglePaymentService(s.id)} style={{ width:16, height:16, accentColor:'#2563EB' }} />
                         <span style={{ fontSize:14, color:isDark?'#E2E8F0':'#0F172A', fontWeight:active?700:500 }}>{s.name}</span>
                         <span style={{ fontSize:14, color:'#059669', fontWeight:800 }}>Rs.{Number(s.price||0).toLocaleString()}</span>
@@ -1238,36 +1269,35 @@ export default function AppointmentsPage() {
               </div>
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
                 <FormGroup label="Paid (Rs.)" required>
-                  <Input type="number" value={paymentAmt} onChange={e=>setPaymentAmt(e.target.value)} placeholder="0" />
+                  <Input type="number" value={paymentAmt} onChange={e=>setPaymentAmt(e.target.value)} placeholder="0" disabled={paymentMethod === 'Package'} />
                 </FormGroup>
                 <FormGroup label="Payment Method" required>
-                  <Select value={paymentMethod} onChange={e=>{ setPaymentMethod(e.target.value); if (e.target.value !== 'Package') setPaymentCustPackageId(''); }}>
+                  <Select value={paymentMethod} onChange={e=>{ setPaymentMethod(e.target.value); if (e.target.value !== 'Package') { setPaymentCustPackageId(''); } }}>
                     {['Cash','Card','Bank Transfer','Online','Package'].map(m=><option key={m} value={m}>{m}</option>)}
                   </Select>
                 </FormGroup>
               </div>
-              {paymentMethod === 'Package' && (
-                <FormGroup label="Customer Package">
-                  {!paymentAppt.customer_id ? (
-                    <div style={{ fontSize:12, color:'#92400E', background:'#FFFBEB', padding:'8px 12px', borderRadius:8, border:'1px solid #FDE68A' }}>No customer linked to this appointment</div>
-                  ) : loadingPaymentPkgs ? (
-                    <div style={{ fontSize:12, color:'#94A3B8', padding:'4px 0' }}>Loading packages...</div>
-                  ) : paymentCustPackages.length === 0 ? (
-                    <div style={{ fontSize:12, color:'#92400E', background:'#FFFBEB', padding:'8px 12px', borderRadius:8, border:'1px solid #FDE68A' }}>No active packages for this customer</div>
+              {paymentAppt.customer_id && (loadingPaymentPkgs || paymentCustPackages.length > 0) && (
+                <FormGroup label="Redeem Package (optional)">
+                  {loadingPaymentPkgs ? (
+                    <div style={{ fontSize:12, color:isDark?'#94A3B8':'#94A3B8', padding:'4px 0' }}>Loading packages...</div>
                   ) : (
-                    <Select value={paymentCustPackageId} onChange={e => setPaymentCustPackageId(e.target.value)}>
-                      <option value="">Select package...</option>
-                      {paymentCustPackages.map(cp => (
-                        <option key={cp.id} value={cp.id}>
-                          {cp.package?.name || 'Package'} — {cp.sessions_remaining !== null ? `${cp.sessions_remaining} sessions left` : 'Unlimited'} (exp {new Date(cp.expiry_date).toLocaleDateString()})
-                        </option>
+                    <Select value={paymentCustPackageId} onChange={(e) => applyPaymentPackage(e.target.value)}>
+                      <option value="">No package — pay normally</option>
+                      {paymentCustPackages.map((cp) => (
+                        <option key={cp.id} value={cp.id}>{formatCustomerPackageLabel(cp)}</option>
                       ))}
                     </Select>
                   )}
+                  {paymentCustPackageId && (
+                    <div style={{ fontSize: 12, color: isDark ? '#6EE7B7' : '#047857', marginTop: 6, fontWeight: 600 }}>
+                      Services from package selected · Collect Rs. 0
+                    </div>
+                  )}
                 </FormGroup>
               )}
-              <div style={{ background:'#F0FDF4', borderRadius:10, padding:'12px 16px', display:'flex', alignItems:'center', justifyContent:'space-between', border:'1px solid #BBF7D0' }}>
-                <span style={{ fontSize:13, fontWeight:600, color:'#166534' }}>Collected</span>
+              <div style={{ background:isDark?'#064E3B':'#F0FDF4', borderRadius:10, padding:'12px 16px', display:'flex', alignItems:'center', justifyContent:'space-between', border:`1px solid ${isDark?'#065F46':'#BBF7D0'}` }}>
+                <span style={{ fontSize:13, fontWeight:600, color:isDark?'#A7F3D0':'#166534' }}>Collected</span>
                 <span style={{ fontSize:18, fontWeight:800, color:'#059669' }}>Rs. {Number(paymentAmt||0).toLocaleString()}</span>
               </div>
             </div>

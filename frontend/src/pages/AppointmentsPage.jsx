@@ -8,9 +8,12 @@ import { Input, Select, FormGroup, Textarea } from '../components/ui/FormElement
 import PageWrapper from '../components/layout/PageWrapper';
 import { computePromoFromDiscount } from '../utils/promoDiscount';
 import {
-  DataTable, ActionBtn, StaffAvatar, PagBtn, FilterBar,
+  DataTable, ActionBtn, StaffAvatar, PagBtn,
   IconEye, IconEdit, IconTrash, IconClose, IconPlus, IconCalendar,
+  StatCard,
 } from '../components/ui/PageKit';
+import usePageTheme from '../hooks/usePageTheme';
+import { useNavigate } from 'react-router-dom';
 
 const IconMoney    = () => <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>;
 
@@ -130,28 +133,64 @@ const EMPTY = {
 };
 const LIMIT = 20;
 
-function StatusBadge({ status }) {
+function StatusBadge({ status, dark = false }) {
   const m = STATUS_META[status] ?? STATUS_META.pending;
+  const bg = dark ? `${m.color}22` : m.bg;
+  const border = dark ? `${m.color}40` : 'transparent';
   return (
-    <span style={{ display:'inline-flex', alignItems:'center', gap:5, padding:'4px 10px', borderRadius:20, fontSize:12, fontWeight:600, background:m.bg, color:m.color, whiteSpace:'nowrap' }}>
+    <span style={{ display:'inline-flex', alignItems:'center', gap:5, padding:'4px 10px', borderRadius:20, fontSize:12, fontWeight:600, background:bg, color:m.color, whiteSpace:'nowrap', border: `1px solid ${border}` }}>
       <span style={{ width:6, height:6, borderRadius:'50%', background:m.color, flexShrink:0 }} />
       {m.label}
     </span>
   );
 }
 
-function StatCard({ label, value, color, icon, dark = false }) {
-  const [hov, setHov] = useState(false);
+function FeaturedApptStat({ total, pending, inService, dark }) {
   return (
-    <div
-      onMouseEnter={() => setHov(true)}
-      onMouseLeave={() => setHov(false)}
-      style={{ background:dark?'#111827':'#fff', borderRadius:16, padding:'18px 20px', border:`1px solid ${dark?'#334155':'#EAECF0'}`, flex:1, minWidth:130, display:'flex', alignItems:'center', gap:14, boxShadow: hov ? (dark?'0 8px 20px rgba(2,6,23,0.50)':'0 8px 24px rgba(16,24,40,0.10)') : (dark?'0 8px 20px rgba(2,6,23,0.35)':'0 1px 4px rgba(16,24,40,0.04)'), transform: hov ? 'translateY(-2px)' : 'translateY(0)', transition:'all 0.2s ease', cursor:'default' }}>
-      <div style={{ width:46, height:46, borderRadius:12, background:`linear-gradient(135deg, ${color}22 0%, ${color}10 100%)`, display:'flex', alignItems:'center', justifyContent:'center', color, flexShrink:0, border:`1.5px solid ${color}20` }}>{icon}</div>
-      <div>
-        <div style={{ fontSize:26, fontWeight:800, color:dark?'#E2E8F0':'#101828', lineHeight:1.1, letterSpacing:'-0.5px' }}>{value}</div>
-        <div style={{ fontSize:11, color:dark?'#94A3B8':'#98A2B3', marginTop:3, fontWeight:600, textTransform:'uppercase', letterSpacing:'0.06em' }}>{label}</div>
+    <div style={{
+      background: dark
+        ? 'linear-gradient(135deg, #1e3a8a 0%, #312e81 100%)'
+        : 'linear-gradient(135deg, #1D4ED8 0%, #4F46E5 100%)',
+      borderRadius: 18, padding: '22px 24px', color: '#fff', position: 'relative', overflow: 'hidden',
+      minWidth: 260, flex: '1.4 1 280px',
+      boxShadow: dark ? '0 8px 24px rgba(30,58,138,0.45)' : '0 8px 24px rgba(37,99,235,0.28)',
+    }}>
+      <div style={{ position:'absolute', top:-30, right:-30, width:120, height:120, borderRadius:'50%', background:'rgba(255,255,255,0.08)' }} />
+      <div style={{ position:'relative', display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap: 16 }}>
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 700, opacity: 0.85, textTransform:'uppercase', letterSpacing:'0.08em' }}>All Appointments</div>
+          <div style={{ fontSize: 36, fontWeight: 900, letterSpacing:'-1px', lineHeight:1.1, marginTop: 6 }}>{total}</div>
+          <div style={{ fontSize: 12, opacity: 0.8, marginTop: 8, display:'flex', gap: 12, flexWrap:'wrap' }}>
+            <span>{pending} pending</span>
+            <span>·</span>
+            <span>{inService} in service</span>
+          </div>
+        </div>
+        <div style={{ width: 48, height: 48, borderRadius: 14, background:'rgba(255,255,255,0.15)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+          <IconCalendar />
+        </div>
       </div>
+    </div>
+  );
+}
+
+function ApptTableShell({ title, subtitle, children, footer, action }) {
+  const { C } = usePageTheme();
+  return (
+    <div style={{ background: C.cardBg, borderRadius: 16, border: `1px solid ${C.border}`, overflow: 'hidden', boxShadow: C.shadow }}>
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap: 12, flexWrap:'wrap', padding:'16px 20px', borderBottom:`1px solid ${C.border}`, background: C.headerGrad }}>
+        <div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: C.title }}>{title}</div>
+          {subtitle && <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>{subtitle}</div>}
+        </div>
+        {action}
+      </div>
+      {children}
+      {footer && (
+        <div style={{ padding:'12px 20px', borderTop:`1px solid ${C.border}`, background: C.soft, display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap: 8 }}>
+          {footer}
+        </div>
+      )}
     </div>
   );
 }
@@ -243,20 +282,28 @@ function Modal({ open, onClose, title, subtitle, children, footer, size = 'md', 
   );
 }
 
-function Drawer({ open, onClose, title, children, footer, dark = false }) {
+function Drawer({ open, onClose, title, subtitle, children, footer, dark = false }) {
   useEffect(() => { if (!open) return; document.body.style.overflow='hidden'; return () => { document.body.style.overflow=''; }; }, [open]);
   if (!open) return null;
   return createPortal(
     <div style={{ position:'fixed', inset:0, zIndex:900, display:'flex', justifyContent:'flex-end' }}>
-      <div onClick={onClose} style={{ position:'absolute', inset:0, background:'rgba(16,24,40,0.4)', backdropFilter:'blur(2px)' }} />
-      <div style={{ position:'relative', width:480, maxWidth:'95vw', background:dark?'#111827':'#fff', display:'flex', flexDirection:'column', boxShadow:dark?'-8px 0 40px rgba(2,6,23,0.55)':'-8px 0 40px rgba(16,24,40,0.15)', animation:'drawer-in 0.22s ease', borderLeft:dark?'1px solid #334155':'none' }}>
+      <div onClick={onClose} style={{ position:'absolute', inset:0, background:'rgba(16,24,40,0.45)', backdropFilter:'blur(3px)' }} />
+      <div style={{ position:'relative', width:500, maxWidth:'95vw', background:dark?'#111827':'#fff', display:'flex', flexDirection:'column', boxShadow:dark?'-8px 0 40px rgba(2,6,23,0.55)':'-8px 0 40px rgba(16,24,40,0.15)', animation:'drawer-in 0.22s ease', borderLeft:dark?'1px solid #334155':'none' }}>
         <style>{'@keyframes drawer-in { from { transform:translateX(100%); } to { transform:translateX(0); } }'}</style>
-        <div style={{ padding:'16px 24px', borderBottom:`1px solid ${dark?'#1E293B':'#EAECF0'}`, display:'flex', alignItems:'center', justifyContent:'space-between', flexShrink:0, background:dark?'#0F172A':'#fff' }}>
-          <h3 style={{ margin:0, fontSize:16, fontWeight:700, color:dark?'#F1F5F9':'#101828', fontFamily:"'Inter',sans-serif" }}>{title}</h3>
-          <button onClick={onClose} style={{ background:dark?'rgba(255,255,255,0.08)':'#F2F4F7', border:`1px solid ${dark?'rgba(255,255,255,0.12)':'#E4E7EC'}`, cursor:'pointer', color:dark?'#CBD5E1':'#667085', display:'flex', alignItems:'center', borderRadius:8, padding:6 }}><IconClose /></button>
+        <div style={{
+          padding:'18px 22px', flexShrink:0,
+          background: dark ? 'linear-gradient(135deg,#1e3a8a 0%,#312e81 100%)' : 'linear-gradient(135deg,#EFF6FF 0%,#DBEAFE 50%,#EEF2FF 100%)',
+          borderBottom: `1px solid ${dark ? '#334155' : '#BFDBFE'}`,
+          display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap: 12,
+        }}>
+          <div style={{ minWidth: 0 }}>
+            <h3 style={{ margin:0, fontSize:17, fontWeight:800, color:dark?'#F8FAFC':'#0F172A', fontFamily:"'Inter',sans-serif" }}>{title}</h3>
+            {subtitle && <p style={{ margin:'4px 0 0', fontSize:12, color:dark?'#CBD5E1':'#475569' }}>{subtitle}</p>}
+          </div>
+          <button onClick={onClose} style={{ background:dark?'rgba(255,255,255,0.1)':'rgba(255,255,255,0.85)', border:`1px solid ${dark?'rgba(255,255,255,0.15)':'#E4E7EC'}`, cursor:'pointer', color:dark?'#E2E8F0':'#64748B', display:'flex', alignItems:'center', borderRadius:10, padding:7, flexShrink:0 }}><IconClose /></button>
         </div>
-        <div style={{ flex:1, overflowY:'auto', padding:'20px 24px' }}>{children}</div>
-        {footer && <div style={{ padding:'16px 24px', borderTop:`1px solid ${dark?'#334155':'#EAECF0'}`, display:'flex', gap:8, justifyContent:'flex-end', flexShrink:0, background:dark?'#111827':'#FAFBFC' }}>{footer}</div>}
+        <div style={{ flex:1, overflowY:'auto', padding:'20px 24px', background: dark ? '#111827' : '#F8FAFC' }}>{children}</div>
+        {footer && <div style={{ padding:'16px 24px', borderTop:`1px solid ${dark?'#334155':'#EAECF0'}`, display:'flex', gap:8, justifyContent:'flex-end', flexShrink:0, background:dark?'#0F172A':'#fff' }}>{footer}</div>}
       </div>
     </div>,
     document.body
@@ -266,6 +313,8 @@ function Drawer({ open, onClose, title, children, footer, dark = false }) {
 export default function AppointmentsPage() {
   const { user }     = useAuth();
   const { isDark }   = useTheme();
+  const { C }        = usePageTheme();
+  const navigate     = useNavigate();
   const canEdit      = ['superadmin','admin','manager','staff'].includes(user?.role);
   const isSuperAdmin = user?.role === 'superadmin';
   const today        = new Date().toISOString().slice(0,10);
@@ -659,7 +708,7 @@ export default function AppointmentsPage() {
         const r = row.original;
         const s = r.status;
         const meta = STATUS_META[s] ?? STATUS_META.pending;
-        if (!canEdit || s === 'completed' || s === 'cancelled') return <StatusBadge status={s} />;
+        if (!canEdit || s === 'completed' || s === 'cancelled') return <StatusBadge status={s} dark={isDark} />;
         return (
           <select value={s} onChange={(e) => handleStatusChange(r.id, e.target.value)}
             style={{ padding: '4px 10px', borderRadius: 20, border: `1.5px solid ${meta.color}40`, background: meta.bg, color: meta.color, fontWeight: 700, fontSize: 12, fontFamily: "'Inter',sans-serif", outline: 'none', cursor: 'pointer' }}>
@@ -688,71 +737,123 @@ export default function AppointmentsPage() {
     },
   ], [canEdit, isDark]);
 
+  const tomorrow = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    return d.toISOString().slice(0, 10);
+  }, []);
+
+  const activeFilterLabel = filterStatus
+    ? STATUS_META[filterStatus]?.label
+    : filterDate
+      ? (filterDate === today ? 'Today' : filterDate === tomorrow ? 'Tomorrow' : filterDate)
+      : 'All statuses';
+
   return (
-    <PageWrapper title="Appointments" subtitle={`${total} total appointments`}
-      actions={canEdit && <Button variant="primary" onClick={openAdd} style={{ display:'flex', alignItems:'center', gap:6 }}><IconPlus /> New Appointment</Button>}>
+    <PageWrapper
+      title="Appointments"
+      subtitle={`Manage bookings · ${total.toLocaleString()} total · ${activeFilterLabel}`}
+      actions={canEdit && (
+        <div style={{ display:'flex', gap:10, alignItems:'center', flexWrap:'wrap' }}>
+          <Button variant="secondary" onClick={() => navigate('/calendar')} style={{ display:'flex', alignItems:'center', gap:6 }}>
+            <IconCalendar /> Calendar
+          </Button>
+          <Button variant="primary" onClick={openAdd} style={{ display:'flex', alignItems:'center', gap:6 }}>
+            <IconPlus /> New Appointment
+          </Button>
+        </div>
+      )}
+    >
 
-      {/* Stat Cards */}
+      {/* Stats */}
       <div style={{ display:'flex', gap:12, flexWrap:'wrap' }}>
-        <StatCard label="Total"     value={total}                color="#2563EB" dark={isDark} icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>} />
-        <StatCard label="Pending"   value={counts.pending||0}   color="#D97706" dark={isDark} icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>} />
-        <StatCard label="Confirmed" value={counts.confirmed||0} color="#2563EB" dark={isDark} icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>} />
-        <StatCard label="Completed" value={counts.completed||0} color="#059669" dark={isDark} icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/><path d="m9 12 2 2 4-4"/></svg>} />
+        <FeaturedApptStat total={total} pending={counts.pending||0} inService={counts.in_service||0} dark={isDark} />
+        <StatCard label="Pending" value={counts.pending||0} color="#D97706" icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>} />
+        <StatCard label="Confirmed" value={counts.confirmed||0} color="#2563EB" icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>} />
+        <StatCard label="In Service" value={counts.in_service||0} color="#7C3AED" icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>} />
+        <StatCard label="Completed" value={counts.completed||0} color="#059669" icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/><path d="m9 12 2 2 4-4"/></svg>} />
       </div>
 
-      {/* Filter Bar */}
-      <FilterBar>
-        <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
-          {[{val:'',label:'All'},...APPT_STATUSES.map(s=>({val:s,label:STATUS_META[s].label}))].map(({val,label}) => {
-            const active=filterStatus===val, meta=val?STATUS_META[val]:null, cnt=val?counts[val]:appts.length;
-            return (
-              <button key={val} onClick={()=>{setFilterStatus(val);setPage(1);}} style={{ padding:'6px 14px', borderRadius:20, border:'1.5px solid', borderColor:active?(meta?.color??'#2563EB'):(isDark?'#334155':'#E4E7EC'), background:active?(meta?.bg??'#EFF6FF'):(isDark?'#0F172A':'#fff'), color:active?(meta?.color??'#2563EB'):(isDark?'#CBD5E1':'#667085'), fontWeight:active?700:500, fontSize:12, cursor:'pointer', fontFamily:"'Inter',sans-serif", whiteSpace:'nowrap' }}>
-                {label}{cnt>0?<span style={{ marginLeft:5, opacity:0.7 }}>({cnt})</span>:''}
-              </button>
-            );
-          })}
-        </div>
-        <div style={{ display:'flex', alignItems:'center', gap:6, marginLeft:'auto' }}>
-          <span style={{ color:isDark?'#94A3B8':'#98A2B3', display:'flex' }}><IconCalendar /></span>
-          <input type="date" value={filterDate} onChange={e=>{setFilterDate(e.target.value);setPage(1);}} className="pk-filter-control" />
-          {filterDate && <button onClick={()=>setFilterDate('')} style={{ background:'none', border:'none', cursor:'pointer', color:isDark?'#94A3B8':'#98A2B3', display:'flex', padding:2 }}><IconClose /></button>}
-        </div>
-        {isSuperAdmin && (
-          <select value={filterBranch} onChange={e=>{setFilterBranch(e.target.value);setPage(1);}} className="pk-filter-control">
-            <option value="">All Branches</option>
-            {branches.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}
-          </select>
-        )}
-      </FilterBar>
-
-      <DataTable
-        columns={apptColumns}
-        data={appts}
-        loading={loading}
-        emptyMessage="No appointments found"
-        emptySub="Try adjusting your filters or add a new appointment"
-        pagination={false}
-        searchableColumns={[
-          { id: 'customer_name', title: 'Customer' },
-          { id: 'services', title: 'Service' },
-          { id: 'staff', title: 'Staff' },
-        ]}
-      />
-      <div style={{ padding:'4px 4px 0', display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:8 }}>
-        <span style={{ fontSize:12, color:isDark?'#94A3B8':'#98A2B3' }}>Showing {appts.length} of {total}</span>
-        {totalPages > 1 && (
-          <div style={{ display:'flex', gap:4 }}>
-            <PagBtn onClick={() => setPage(1)} disabled={page === 1} label="«" />
-            <PagBtn onClick={() => setPage((p) => p - 1)} disabled={page === 1} label="‹" />
-            {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-              const p = Math.max(1, Math.min(totalPages - 4, page - 2)) + i;
-              return <PagBtn key={p} onClick={() => setPage(p)} active={p === page} label={p} />;
+      {/* Filters */}
+      <div style={{ background: C.cardBg, borderRadius: 16, border: `1px solid ${C.border}`, padding: '14px 16px', boxShadow: C.shadow }}>
+        <div style={{ display:'flex', flexWrap:'wrap', gap: 12, alignItems:'center' }}>
+          <div style={{ display:'flex', gap:6, flexWrap:'wrap', flex: 1 }}>
+            {[{val:'',label:'All'},...APPT_STATUSES.map(s=>({val:s,label:STATUS_META[s].label}))].map(({val,label}) => {
+              const active=filterStatus===val, meta=val?STATUS_META[val]:null, cnt=val?counts[val]:appts.length;
+              return (
+                <button key={val} onClick={()=>{setFilterStatus(val);setPage(1);}} style={{ padding:'6px 14px', borderRadius:20, border:'1.5px solid', borderColor:active?(meta?.color??'#2563EB'):(isDark?'#334155':C.border), background:active?(meta?.bg??'#EFF6FF'):(isDark?'#0F172A':C.cardBg), color:active?(meta?.color??'#2563EB'):C.muted, fontWeight:active?700:500, fontSize:12, cursor:'pointer', fontFamily:"'Inter',sans-serif", whiteSpace:'nowrap' }}>
+                  {label}{cnt>0?<span style={{ marginLeft:5, opacity:0.7 }}>({cnt})</span>:''}
+                </button>
+              );
             })}
-            <PagBtn onClick={() => setPage((p) => p + 1)} disabled={page === totalPages} label="›" />
-            <PagBtn onClick={() => setPage(totalPages)} disabled={page === totalPages} label="»" />
           </div>
-        )}
+          <div style={{ display:'flex', alignItems:'center', gap:6, flexWrap:'wrap' }}>
+            {[
+              { label: 'Today', value: today },
+              { label: 'Tomorrow', value: tomorrow },
+              { label: 'All dates', value: '' },
+            ].map(({ label, value }) => (
+              <button
+                key={label}
+                onClick={() => { setFilterDate(value); setPage(1); }}
+                style={{
+                  padding:'6px 12px', borderRadius: 8, fontSize: 12, fontWeight: filterDate === value ? 700 : 500,
+                  border: `1.5px solid ${filterDate === value ? '#2563EB' : (isDark ? '#334155' : C.border)}`,
+                  background: filterDate === value ? (isDark ? 'rgba(37,99,235,0.2)' : '#EFF6FF') : (isDark ? '#0F172A' : C.soft),
+                  color: filterDate === value ? '#2563EB' : C.muted, cursor: 'pointer',
+                }}
+              >
+                {label}
+              </button>
+            ))}
+            <input type="date" value={filterDate} onChange={e=>{setFilterDate(e.target.value);setPage(1);}} className="pk-filter-control" style={{ width: 145 }} />
+            {isSuperAdmin && (
+              <select value={filterBranch} onChange={e=>{setFilterBranch(e.target.value);setPage(1);}} className="pk-filter-control" style={{ minWidth: 140 }}>
+                <option value="">All Branches</option>
+                {branches.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}
+              </select>
+            )}
+          </div>
+        </div>
       </div>
+
+      {/* Table */}
+      <ApptTableShell
+        title="Appointment List"
+        subtitle={loading ? 'Loading…' : `${appts.length} shown on this page`}
+        footer={(
+          <>
+            <span style={{ fontSize:12, color: C.muted }}>Showing {appts.length} of {total}</span>
+            {totalPages > 1 && (
+              <div style={{ display:'flex', gap:4 }}>
+                <PagBtn onClick={() => setPage(1)} disabled={page === 1} label="«" />
+                <PagBtn onClick={() => setPage((p) => p - 1)} disabled={page === 1} label="‹" />
+                {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                  const p = Math.max(1, Math.min(totalPages - 4, page - 2)) + i;
+                  return <PagBtn key={p} onClick={() => setPage(p)} active={p === page} label={p} />;
+                })}
+                <PagBtn onClick={() => setPage((p) => p + 1)} disabled={page === totalPages} label="›" />
+                <PagBtn onClick={() => setPage(totalPages)} disabled={page === totalPages} label="»" />
+              </div>
+            )}
+          </>
+        )}
+      >
+        <DataTable
+          noShell
+          columns={apptColumns}
+          data={appts}
+          loading={loading}
+          emptyMessage="No appointments found"
+          emptySub="Try adjusting your filters or book a new appointment"
+          pagination={false}
+          searchableColumns={[
+            { id: 'customer_name', title: 'Customer' },
+            { id: 'services', title: 'Service' },
+            { id: 'staff', title: 'Staff' },
+          ]}
+        />
+      </ApptTableShell>
 
       {/* New / Edit Modal */}
       <Modal
@@ -1166,7 +1267,7 @@ export default function AppointmentsPage() {
       </Modal>
 
       {/* Detail Drawer */}
-      <Drawer open={showDetail} onClose={()=>setShowDetail(false)} title="Appointment Details" dark={isDark}
+      <Drawer open={showDetail} onClose={()=>setShowDetail(false)} title="Appointment Details" subtitle={detailItem ? `${detailItem.date || ''} ${detailItem.time || ''}`.trim() : ''} dark={isDark}
         footer={canEdit&&detailItem&&(
           <div style={{ display:'flex', gap:8 }}>
             {detailItem.status!=='completed'&&detailItem.status!=='cancelled'&&<Button variant="primary" onClick={()=>{setShowDetail(false);openEdit(detailItem);}} style={{ display:'flex', alignItems:'center', gap:6 }}><IconEdit /> Edit</Button>}
@@ -1175,33 +1276,41 @@ export default function AppointmentsPage() {
         )}>
         {detailItem && (
           <div style={{ fontFamily:"'Inter',sans-serif" }}>
-            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:24, padding:'16px', background:isDark?'#1E293B':'#F9FAFB', borderRadius:12, border:isDark?'1px solid #334155':'none' }}>
-              <div>
-                <div style={{ fontSize:18, fontWeight:700, color:isDark?'#E2E8F0':'#101828' }}>{detailItem.customer_name}</div>
-                <div style={{ fontSize:13, color:isDark?'#94A3B8':'#667085', marginTop:2 }}>{detailItem.phone}</div>
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:20, padding:'16px', background:isDark?'#1E293B':'#fff', borderRadius:14, border:`1px solid ${isDark?'#334155':C.border}`, boxShadow: isDark ? 'none' : '0 2px 8px rgba(16,24,40,0.04)' }}>
+              <div style={{ display:'flex', alignItems:'center', gap: 12, minWidth: 0 }}>
+                <div style={{ width: 44, height: 44, borderRadius: '50%', background: 'linear-gradient(135deg,#2563EB,#4F46E5)', color:'#fff', display:'flex', alignItems:'center', justifyContent:'center', fontWeight: 800, fontSize: 18, flexShrink: 0 }}>
+                  {detailItem.customer_name?.charAt(0)?.toUpperCase() || 'C'}
+                </div>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize:17, fontWeight:700, color:isDark?'#E2E8F0':'#101828' }}>{detailItem.customer_name}</div>
+                  <div style={{ fontSize:13, color:isDark?'#94A3B8':'#667085', marginTop:2 }}>{detailItem.phone || 'No phone'}</div>
+                </div>
               </div>
-              <StatusBadge status={detailItem.status} />
+              <StatusBadge status={detailItem.status} dark={isDark} />
             </div>
             {(() => {
               const extraServiceNames = parseAdditionalServiceNames(detailItem.notes || '');
               const allServiceNames = Array.from(new Set([detailItem.service?.name, ...extraServiceNames].filter(Boolean)));
+              const rows = [
+                { icon:'✂️', label:'Services', value: allServiceNames.join(', ') || '—' },
+                { icon:'👤', label:'Staff', value: detailItem.staff?.name || '—' },
+                { icon:'📅', label:'Date', value: detailItem.date ? new Date(detailItem.date).toLocaleDateString('en-US',{weekday:'long',year:'numeric',month:'long',day:'numeric'}) : '—' },
+                { icon:'🕐', label:'Time', value: detailItem.time || '—' },
+                { icon:'🏢', label:'Branch', value: detailItem.branch?.name || '—' },
+                { icon:'💰', label:'Amount', value: `Rs. ${Number(detailItem.amount||detailItem.service?.price||0).toLocaleString()}`, highlight: true },
+              ];
               return (
-                <>
-                  {[
-                    { icon:'', label:'Services', value: allServiceNames.join(', ') || '' },
-                    { icon:'', label:'Staff',   value:detailItem.staff?.name||'' },
-                    { icon:'', label:'Date',    value:detailItem.date?new Date(detailItem.date).toLocaleDateString('en-US',{weekday:'long',year:'numeric',month:'long',day:'numeric'}):'' },
-                    { icon:'', label:'Time',    value:detailItem.time||'' },
-                    { icon:'', label:'Branch',  value:detailItem.branch?.name||'' },
-                    { icon:'', label:'Amount',  value:`Rs. ${Number(detailItem.amount||detailItem.service?.price||0).toLocaleString()}`, highlight:true },
-                  ].map(({icon,label,value,highlight})=>(
-                    <div key={label} style={{ display:'flex', alignItems:'center', padding:'12px 0', borderBottom:`1px solid ${isDark?'#334155':'#F2F4F7'}` }}>
-                      <span style={{ fontSize:16, width:28, flexShrink:0 }}>{icon}</span>
-                      <span style={{ fontSize:12, fontWeight:600, color:isDark?'#94A3B8':'#98A2B3', textTransform:'uppercase', width:80, flexShrink:0 }}>{label}</span>
-                      <span style={{ fontSize:14, color:highlight?'#059669':(isDark?'#E2E8F0':'#101828'), fontWeight:highlight?700:500 }}>{value}</span>
+                <div style={{ display:'flex', flexDirection:'column', gap: 8 }}>
+                  {rows.map(({ icon, label, value, highlight }) => (
+                    <div key={label} style={{ display:'flex', alignItems:'center', gap: 12, padding:'12px 14px', background: isDark ? '#0F172A' : '#fff', borderRadius: 12, border:`1px solid ${isDark?'#334155':C.border}` }}>
+                      <span style={{ fontSize: 18, width: 28, textAlign:'center', flexShrink: 0 }}>{icon}</span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform:'uppercase', letterSpacing:'0.05em' }}>{label}</div>
+                        <div style={{ fontSize: 14, color: highlight ? '#059669' : C.title, fontWeight: highlight ? 800 : 600, marginTop: 2 }}>{value}</div>
+                      </div>
                     </div>
                   ))}
-                </>
+                </div>
               );
             })()}
             {detailItem.notes && (

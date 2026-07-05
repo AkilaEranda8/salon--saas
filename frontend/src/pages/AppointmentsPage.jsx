@@ -176,15 +176,18 @@ function FeaturedApptStat({ total, pending, inService, dark }) {
 
 function ApptTableShell({ title, subtitle, children, footer, action }) {
   const { C } = usePageTheme();
+  const showHeader = !!(title || subtitle || action);
   return (
     <div style={{ background: C.cardBg, borderRadius: 16, border: `1px solid ${C.border}`, overflow: 'hidden', boxShadow: C.shadow }}>
-      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap: 12, flexWrap:'wrap', padding:'16px 20px', borderBottom:`1px solid ${C.border}`, background: C.headerGrad }}>
-        <div>
-          <div style={{ fontSize: 15, fontWeight: 700, color: C.title }}>{title}</div>
-          {subtitle && <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>{subtitle}</div>}
+      {showHeader && (
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap: 12, flexWrap:'wrap', padding:'16px 20px', borderBottom:`1px solid ${C.border}`, background: C.headerGrad }}>
+          <div>
+            {title && <div style={{ fontSize: 15, fontWeight: 700, color: C.title }}>{title}</div>}
+            {subtitle && <div style={{ fontSize: 12, color: C.muted, marginTop: title ? 2 : 0 }}>{subtitle}</div>}
+          </div>
+          {action}
         </div>
-        {action}
-      </div>
+      )}
       {children}
       {footer && (
         <div style={{ padding:'12px 20px', borderTop:`1px solid ${C.border}`, background: C.soft, display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap: 8 }}>
@@ -826,8 +829,6 @@ export default function AppointmentsPage() {
 
       {/* Table */}
       <ApptTableShell
-        title="Appointment List"
-        subtitle={loading ? 'Loading…' : `${appts.length} shown on this page`}
         footer={(
           <>
             <span style={{ fontSize:12, color: C.muted }}>Showing {appts.length} of {total}</span>

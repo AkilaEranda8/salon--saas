@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
@@ -395,13 +395,13 @@ function PaySection({ title, desc, children, dark = false }) {
     <div style={{
       border: `1px solid ${dark ? '#334155' : '#E4E7EC'}`,
       borderRadius: 14,
-      overflow: 'hidden',
       background: dark ? '#0F172A' : '#fff',
     }}>
       <div style={{
         padding: '12px 16px',
         background: dark ? '#1E293B' : '#F8FAFC',
         borderBottom: `1px solid ${dark ? '#334155' : '#EEF2F7'}`,
+        borderRadius: '14px 14px 0 0',
       }}>
         <div style={{ fontSize: 13, fontWeight: 700, color: dark ? '#E2E8F0' : '#101828' }}>{title}</div>
         {desc && <div style={{ fontSize: 11, color: dark ? '#94A3B8' : '#64748B', marginTop: 2 }}>{desc}</div>}
@@ -483,47 +483,92 @@ function PayModal({ open, onClose, title, subtitle, children, footer, size = 'lg
 
 function ServiceMultiSelect({ services, selected, onChange, dark = false }) {
   const [open, setOpen] = useState(false);
-  const selSvcs = services.filter(s => selected.includes(s.id));
-  const toggle = id => onChange(selected.includes(id) ? selected.filter(x => x !== id) : [...selected, id]);
+  const rootRef = useRef(null);
+  const [menuPos, setMenuPos] = useState({ top: 0, left: 0, width: 0 });
+
+  const selectedIds = useMemo(
+    () => Array.from(new Set((selected || []).map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0))),
+    [selected],
+  );
+  const selSvcs = services.filter((s) => selectedIds.includes(Number(s.id)));
+  const toggle = (id) => {
+    const n = Number(id);
+    onChange(selectedIds.includes(n) ? selectedIds.filter((x) => x !== n) : [...selectedIds, n]);
+  };
+
+  useLayoutEffect(() => {
+    if (!open || !rootRef.current) return;
+    const update = () => {
+      const rect = rootRef.current.getBoundingClientRect();
+      setMenuPos({ top: rect.bottom + 4, left: rect.left, width: rect.width });
+    };
+    update();
+    window.addEventListener('resize', update);
+    window.addEventListener('scroll', update, true);
+    return () => {
+      window.removeEventListener('resize', update);
+      window.removeEventListener('scroll', update, true);
+    };
+  }, [open]);
+
   return (
-    <div style={{ position:'relative' }}>
-      {open && <div onClick={() => setOpen(false)} style={{ position:'fixed', inset:0, zIndex:99 }} />}
-      <div onClick={() => setOpen(o => !o)} style={{
-        minHeight:38, padding:'6px 10px', borderRadius:10,
-        border:`1.5px solid ${dark ? '#334155' : '#D0D5DD'}`,
-        background: dark ? '#0B1220' : '#fff', cursor:'pointer', display:'flex', flexWrap:'wrap', gap:5, alignItems:'center',
-      }}>
+    <div ref={rootRef} style={{ position: 'relative' }}>
+      <div
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpen((o) => !o); } }}
+        onClick={() => setOpen((o) => !o)}
+        style={{
+          minHeight: 38, padding: '6px 10px', borderRadius: 10,
+          border: `1.5px solid ${open ? '#2563EB' : (dark ? '#334155' : '#D0D5DD')}`,
+          background: dark ? '#0B1220' : '#fff', cursor: 'pointer', display: 'flex', flexWrap: 'wrap', gap: 5, alignItems: 'center',
+        }}
+      >
         {selSvcs.length === 0
-          ? <span style={{ color: dark ? '#64748B' : '#98A2B3', fontSize:13, userSelect:'none' }}>Select services…</span>
-          : selSvcs.map(s => (
-            <span key={s.id} style={{ display:'inline-flex', alignItems:'center', gap:3, padding:'2px 8px 2px 10px', borderRadius:99, background: dark ? 'rgba(37,99,235,0.2)' : '#EFF6FF', color: dark ? '#93C5FD' : '#2563EB', fontSize:12, fontWeight:600 }}>
+          ? <span style={{ color: dark ? '#64748B' : '#98A2B3', fontSize: 13, userSelect: 'none' }}>Select services…</span>
+          : selSvcs.map((s) => (
+            <span key={s.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 3, padding: '2px 8px 2px 10px', borderRadius: 99, background: dark ? 'rgba(37,99,235,0.2)' : '#EFF6FF', color: dark ? '#93C5FD' : '#2563EB', fontSize: 12, fontWeight: 600 }}>
               {s.name}
-              <span onMouseDown={e => { e.stopPropagation(); toggle(s.id); }} style={{ cursor:'pointer', color:'#93C5FD', fontWeight:700, fontSize:14, lineHeight:1, marginLeft:3 }}>×</span>
+              <span onMouseDown={(e) => { e.stopPropagation(); toggle(s.id); }} style={{ cursor: 'pointer', color: '#93C5FD', fontWeight: 700, fontSize: 14, lineHeight: 1, marginLeft: 3 }}>×</span>
             </span>
           ))}
-        <span style={{ marginLeft:'auto', fontSize:11, color:'#98A2B3', userSelect:'none', paddingLeft:4 }}>▾</span>
+        <span style={{ marginLeft: 'auto', fontSize: 11, color: '#98A2B3', userSelect: 'none', paddingLeft: 4 }}>{open ? '▴' : '▾'}</span>
       </div>
-      {open && (
-        <div style={{
-          position:'absolute', top:'calc(100% + 4px)', left:0, right:0, zIndex:100,
-          background: dark ? '#1E293B' : '#fff',
-          border:`1.5px solid ${dark ? '#334155' : '#E4E7EC'}`, borderRadius:10,
-          boxShadow: dark ? '0 8px 24px rgba(2,6,23,0.45)' : '0 8px 24px rgba(16,24,40,0.12)', maxHeight:230, overflowY:'auto',
-        }}>
-          {services.length === 0 && <div style={{ padding:'12px 14px', fontSize:13, color: dark ? '#64748B' : '#98A2B3' }}>No services found</div>}
-          {services.map(s => (
-            <label key={s.id} style={{
-              display:'flex', alignItems:'center', gap:10, padding:'9px 14px', cursor:'pointer',
-              background: selected.includes(s.id) ? (dark ? 'rgba(37,99,235,0.15)' : '#F0F9FF') : 'transparent',
-              borderBottom:`1px solid ${dark ? '#334155' : '#F8FAFC'}`,
-            }}>
-              <input type="checkbox" checked={selected.includes(s.id)} onChange={() => toggle(s.id)}
-                style={{ accentColor:'#2563EB', width:15, height:15, flexShrink:0, cursor:'pointer' }} />
-              <span style={{ flex:1, fontSize:13, color: dark ? '#E2E8F0' : '#344054', fontWeight: selected.includes(s.id) ? 600 : 400 }}>{s.name}</span>
-              <span style={{ fontSize:12, color:'#059669', fontWeight:700, fontFamily:"'Outfit',sans-serif" }}>Rs. {Number(s.price||0).toLocaleString()}</span>
-            </label>
-          ))}
-        </div>
+      {open && createPortal(
+        <>
+          <div onClick={() => setOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 9998 }} />
+          <div style={{
+            position: 'fixed',
+            top: menuPos.top,
+            left: menuPos.left,
+            width: menuPos.width,
+            zIndex: 9999,
+            background: dark ? '#1E293B' : '#fff',
+            border: `1.5px solid ${dark ? '#334155' : '#E4E7EC'}`,
+            borderRadius: 10,
+            boxShadow: dark ? '0 8px 24px rgba(2,6,23,0.45)' : '0 8px 24px rgba(16,24,40,0.12)',
+            maxHeight: 230,
+            overflowY: 'auto',
+          }}>
+            {services.length === 0 && <div style={{ padding: '12px 14px', fontSize: 13, color: dark ? '#64748B' : '#98A2B3' }}>No services found</div>}
+            {services.map((s) => {
+              const checked = selectedIds.includes(Number(s.id));
+              return (
+                <label key={s.id} style={{
+                  display: 'flex', alignItems: 'center', gap: 10, padding: '9px 14px', cursor: 'pointer',
+                  background: checked ? (dark ? 'rgba(37,99,235,0.15)' : '#F0F9FF') : 'transparent',
+                  borderBottom: `1px solid ${dark ? '#334155' : '#F8FAFC'}`,
+                }}>
+                  <input type="checkbox" checked={checked} onChange={() => toggle(s.id)}
+                    style={{ accentColor: '#2563EB', width: 15, height: 15, flexShrink: 0, cursor: 'pointer' }} />
+                  <span style={{ flex: 1, fontSize: 13, color: dark ? '#E2E8F0' : '#344054', fontWeight: checked ? 600 : 400 }}>{s.name}</span>
+                  <span style={{ fontSize: 12, color: '#059669', fontWeight: 700, fontFamily: "'Outfit',sans-serif" }}>Rs. {Number(s.price || 0).toLocaleString()}</span>
+                </label>
+              );
+            })}
+          </div>
+        </>,
+        document.body,
       )}
     </div>
   );
@@ -940,7 +985,7 @@ export default function PaymentsPage() {
                 services={services.filter(s => s.is_active !== false)}
                 selected={form.service_ids}
                 onChange={ids => {
-                  const svcs = services.filter(s => ids.includes(s.id));
+                  const svcs = services.filter(s => ids.includes(Number(s.id)));
                   const total = svcs.reduce((sum, s) => sum + Number(s.price || 0), 0);
                   setForm(f => ({
                     ...f,
@@ -963,7 +1008,7 @@ export default function PaymentsPage() {
                     {form.service_ids.length} service{form.service_ids.length !== 1 ? 's' : ''} selected
                   </span>
                   <span style={{ fontSize: 14, fontWeight: 800, color: '#059669', fontFamily: "'Outfit',sans-serif" }}>
-                    Rs. {services.filter(s => form.service_ids.includes(s.id)).reduce((sum, s) => sum + Number(s.price || 0), 0).toLocaleString()}
+                    Rs. {services.filter(s => form.service_ids.includes(Number(s.id))).reduce((sum, s) => sum + Number(s.price || 0), 0).toLocaleString()}
                   </span>
                 </div>
               )}

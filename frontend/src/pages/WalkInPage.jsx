@@ -1,7 +1,9 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useRef, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { io } from 'socket.io-client';
 import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../context/ThemeContext';
+import usePageTheme from '../hooks/usePageTheme';
 import api from '../api/axios';
 import PageWrapper from '../components/layout/PageWrapper';
 import Button from '../components/ui/Button';
@@ -12,7 +14,7 @@ import { computePromoFromDiscount } from '../utils/promoDiscount';
 import { getKcAccessToken } from '../utils/kcTokenStore';
 import {
   PKModal as Modal, StatCard, StaffAvatar,
-  IconUsers, IconCheck, IconClock, IconCalendar,
+  IconUsers, IconCheck, IconClock, IconCalendar, IconClose,
 } from '../components/ui/PageKit';
 import {
   ADDITIONAL_SERVICES_PREFIX,
@@ -119,8 +121,101 @@ function WalkInQRPanel({ amount, reference, onClose, onSuccess }) {
   );
 }
 
+function WalkInSection({ title, desc, children, dark = false }) {
+  return (
+    <div style={{
+      border: `1px solid ${dark ? '#334155' : '#E4E7EC'}`,
+      borderRadius: 14,
+      background: dark ? '#0F172A' : '#fff',
+    }}>
+      <div style={{
+        padding: '12px 16px',
+        background: dark ? '#1E293B' : '#F8FAFC',
+        borderBottom: `1px solid ${dark ? '#334155' : '#EEF2F7'}`,
+        borderRadius: '14px 14px 0 0',
+      }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: dark ? '#E2E8F0' : '#101828' }}>{title}</div>
+        {desc && <div style={{ fontSize: 11, color: dark ? '#94A3B8' : '#64748B', marginTop: 2 }}>{desc}</div>}
+      </div>
+      <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 14 }}>{children}</div>
+    </div>
+  );
+}
+
+function WalkInModal({ open, onClose, title, subtitle, children, footer, size = 'lg', dark = false }) {
+  useEffect(() => {
+    if (!open) return;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = ''; };
+  }, [open]);
+  if (!open) return null;
+  const widths = { sm: 420, md: 560, lg: 720, xl: 900 };
+  return createPortal(
+    <div style={{ position: 'fixed', inset: 0, zIndex: 900, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+      <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'rgba(16,24,40,0.5)', backdropFilter: 'blur(4px)' }} />
+      <div style={{
+        position: 'relative', width: '100%', maxWidth: widths[size] ?? 720,
+        background: dark ? '#111827' : '#fff', borderRadius: 18, display: 'flex', flexDirection: 'column',
+        boxShadow: dark ? '0 24px 64px rgba(2,6,23,0.55)' : '0 24px 64px rgba(16,24,40,0.2)',
+        maxHeight: '92vh', animation: 'walkin-modal-pop 0.2s ease',
+        border: dark ? '1px solid #334155' : '1px solid #E4E7EC',
+      }}>
+        <style>{'@keyframes walkin-modal-pop { from { opacity:0; transform:scale(0.97) translateY(10px); } to { opacity:1; transform:scale(1) translateY(0); } }'}</style>
+        <div style={{
+          padding: '18px 22px',
+          background: dark
+            ? 'linear-gradient(135deg,#78350f 0%,#1e3a8a 100%)'
+            : 'linear-gradient(135deg,#FFFBEB 0%,#FEF3C7 45%,#FFF7ED 100%)',
+          borderBottom: `1px solid ${dark ? '#334155' : '#FDE68A'}`,
+          borderRadius: '18px 18px 0 0',
+          display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexShrink: 0, gap: 12,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, minWidth: 0 }}>
+            <div style={{
+              width: 44, height: 44, borderRadius: 12, flexShrink: 0,
+              background: dark ? 'rgba(255,255,255,0.12)' : '#fff',
+              border: dark ? '1px solid rgba(255,255,255,0.15)' : '1px solid #FCD34D',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              color: dark ? '#FCD34D' : '#D97706',
+              boxShadow: dark ? 'none' : '0 2px 8px rgba(217,119,6,0.15)',
+            }}>
+              <IconClock />
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <h3 style={{ margin: 0, fontSize: 17, fontWeight: 800, color: dark ? '#F8FAFC' : '#0F172A', fontFamily: "'Inter',sans-serif", letterSpacing: '-0.02em' }}>{title}</h3>
+              {subtitle && <p style={{ margin: '4px 0 0', fontSize: 12, color: dark ? '#CBD5E1' : '#475569', lineHeight: 1.45 }}>{subtitle}</p>}
+            </div>
+          </div>
+          <button type="button" onClick={onClose} aria-label="Close"
+            style={{
+              background: dark ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.85)',
+              border: `1px solid ${dark ? 'rgba(255,255,255,0.15)' : '#E4E7EC'}`,
+              cursor: 'pointer', color: dark ? '#E2E8F0' : '#64748B',
+              display: 'flex', alignItems: 'center', borderRadius: 10, padding: 7, flexShrink: 0,
+            }}>
+            <IconClose />
+          </button>
+        </div>
+        <div style={{ flex: 1, overflowY: 'auto', padding: '20px 22px', background: dark ? '#111827' : '#F8FAFC' }}>{children}</div>
+        {footer && (
+          <div style={{
+            padding: '14px 22px', borderTop: `1px solid ${dark ? '#334155' : '#E4E7EC'}`,
+            display: 'flex', gap: 8, justifyContent: 'flex-end', flexShrink: 0,
+            background: dark ? '#0F172A' : '#fff', borderRadius: '0 0 18px 18px', width: '100%', boxSizing: 'border-box',
+          }}>
+            {footer}
+          </div>
+        )}
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 export default function WalkInPage() {
   const { user }  = useAuth();
+  const { isDark } = useTheme();
+  const { C } = usePageTheme();
   const { toast } = useToast();
   const isAdmin   = ['superadmin', 'admin'].includes(user?.role);
   const defaultBranch = user?.branchId || '';
@@ -165,6 +260,7 @@ export default function WalkInPage() {
   const [showCustDrop,   setShowCustDrop]   = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const custSearchRef = useRef(null);
+  const [custDropPos, setCustDropPos] = useState({ top: 0, left: 0, width: 0 });
 
   const [branches,  setBranches]  = useState([]);
   const [services,  setServices]  = useState([]);
@@ -534,6 +630,105 @@ export default function WalkInPage() {
     setShowCustDrop(false);
   };
 
+  const closeCheckin = () => {
+    setShowCheckin(false);
+    setCheckinExtraServiceIds([]);
+    setSelectedCustomer(null);
+    setCustSearch('');
+    setCustResults([]);
+    setCustAll([]);
+    setShowCustDrop(false);
+  };
+
+  useLayoutEffect(() => {
+    if (!showCustDrop || !showCheckin || !custSearchRef.current) return;
+    const update = () => {
+      const rect = custSearchRef.current.getBoundingClientRect();
+      setCustDropPos({ top: rect.bottom + 4, left: rect.left, width: rect.width });
+    };
+    update();
+    window.addEventListener('resize', update);
+    window.addEventListener('scroll', update, true);
+    return () => {
+      window.removeEventListener('resize', update);
+      window.removeEventListener('scroll', update, true);
+    };
+  }, [showCustDrop, showCheckin, selectedCustomer, custSearch]);
+
+  const custDropdown = (showCustDrop && showCheckin && !selectedCustomer) && createPortal(
+    <>
+      <div onClick={() => setShowCustDrop(false)} style={{ position: 'fixed', inset: 0, zIndex: 9998 }} />
+      <div style={{
+        position: 'fixed',
+        top: custDropPos.top,
+        left: custDropPos.left,
+        width: custDropPos.width,
+        zIndex: 9999,
+        background: isDark ? '#1E293B' : '#fff',
+        border: `1.5px solid ${isDark ? '#334155' : '#E4E7EC'}`,
+        borderRadius: 10,
+        boxShadow: isDark ? '0 8px 24px rgba(2,6,23,0.45)' : '0 8px 28px rgba(16,24,40,0.14)',
+        maxHeight: 240,
+        overflowY: 'auto',
+      }}>
+        {custLoading ? (
+          [1, 2, 3].map((i) => (
+            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px' }}>
+              <div style={{ width: 32, height: 32, borderRadius: '50%', background: isDark ? '#334155' : '#F2F4F7' }} />
+              <div style={{ flex: 1 }}>
+                <div style={{ height: 12, borderRadius: 6, background: isDark ? '#334155' : '#F2F4F7', width: '60%', marginBottom: 5 }} />
+                <div style={{ height: 10, borderRadius: 6, background: isDark ? '#334155' : '#F2F4F7', width: '40%' }} />
+              </div>
+            </div>
+          ))
+        ) : custResults.length === 0 ? (
+          <div style={{ padding: '14px', fontSize: 13, color: C.muted, textAlign: 'center' }}>
+            No customers found for &quot;<strong>{custSearch}</strong>&quot;
+          </div>
+        ) : (
+          <>
+            {custSearch.trim() && (
+              <div style={{ padding: '6px 14px', fontSize: 11, color: C.muted, background: isDark ? '#0F172A' : '#F9FAFB', borderBottom: `1px solid ${isDark ? '#334155' : '#F2F4F7'}`, fontWeight: 600 }}>
+                {custResults.length} result{custResults.length !== 1 ? 's' : ''} found
+              </div>
+            )}
+            {custResults.slice(0, 50).map((c) => (
+              <div
+                key={c.id}
+                onMouseDown={() => selectCustomer(c)}
+                style={{
+                  padding: '9px 14px', cursor: 'pointer', display: 'flex',
+                  alignItems: 'center', gap: 10, borderBottom: `1px solid ${isDark ? '#334155' : '#F2F4F7'}`,
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = isDark ? '#172033' : '#F5F8FF'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+              >
+                <div style={{
+                  width: 32, height: 32, borderRadius: '50%', background: isDark ? 'rgba(37,99,235,0.2)' : '#EFF6FF',
+                  color: '#2563EB', fontWeight: 700, fontSize: 13, flexShrink: 0,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                  {c.name?.charAt(0)?.toUpperCase()}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: C.title }}>{c.name}</div>
+                  {getCustomerPhone(c) && <div style={{ fontSize: 11, color: C.muted }}>{getCustomerPhone(c)}</div>}
+                </div>
+                {c.loyalty_points > 0 && (
+                  <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 99, background: '#FEF9C3', color: '#854D0E', fontWeight: 700 }}>
+                    ★ {c.loyalty_points}
+                  </span>
+                )}
+                <span style={{ fontSize: 11, color: '#10b981', fontWeight: 700, flexShrink: 0 }}>Select →</span>
+              </div>
+            ))}
+          </>
+        )}
+      </div>
+    </>,
+    document.body,
+  );
+
   /*  Check-in: wait + bill preview (all selected services)  */
   const checkinSelectedIds = getCheckinSelectedServiceIds();
   let checkinDurationSum = 0;
@@ -771,52 +966,105 @@ export default function WalkInPage() {
       )}
 
       {/*  CHECK-IN MODAL  */}
-      <Modal open={showCheckin} onClose={() => { setShowCheckin(false); setCheckinExtraServiceIds([]); setSelectedCustomer(null); setCustSearch(''); setCustResults([]); setCustAll([]); setShowCustDrop(false); }} title="New Walk-in Check-in" size="md">
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          {formError && (
-            <div style={{ background: '#FEE2E2', border: '1px solid #FECACA', borderRadius: 8, padding: '10px 14px', color: '#B91C1C', fontSize: 13 }}>{formError}</div>
-          )}
-
-          {/* CUSTOMER SEARCH / CARD */}
-          <div style={{ position: 'relative' }} ref={custSearchRef}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-              <Label style={{ margin: 0 }}>Select Customer</Label>
-              {custLoading && (
-                <span style={{ fontSize: 11, color: '#6366f1', fontWeight: 600 }}>Loading…</span>
-              )}
-              {!custLoading && custAll.length > 0 && (
-                <span style={{ fontSize: 11, color: MUTED }}>{custAll.length} customers loaded</span>
+      <WalkInModal
+        open={showCheckin}
+        onClose={closeCheckin}
+        title="New Walk-in Check-in"
+        subtitle="Add a customer to the queue — select services and get a token."
+        size="xl"
+        dark={isDark}
+        footer={(
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: 12, flexWrap: 'wrap' }}>
+            <div style={{ fontSize: 13, color: C.muted }}>
+              {checkinSelectedIds.length > 0 ? (
+                <span style={{ fontWeight: 700, color: C.title }}>
+                  {checkinSelectedIds.length} service{checkinSelectedIds.length !== 1 ? 's' : ''}
+                  <span style={{ fontWeight: 800, color: '#059669', marginLeft: 8 }}>· Rs. {checkinTotalPreview.toLocaleString()}</span>
+                  {waitPreview != null && (
+                    <span style={{ fontWeight: 500, color: C.muted, marginLeft: 8 }}>· ~{waitPreview} min wait</span>
+                  )}
+                </span>
+              ) : (
+                <span>Select customer and at least one service</span>
               )}
             </div>
+            <div style={{ display: 'flex', gap: 8, marginLeft: 'auto' }}>
+              <Button variant="secondary" onClick={closeCheckin}>Cancel</Button>
+              <Button
+                onClick={handleCheckin}
+                loading={saving}
+                disabled={
+                  saving
+                  || !(form.customerName || '').trim()
+                  || !form.serviceId
+                  || (isAdmin && !(form.branchId || selectedBranch))
+                }
+                style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+              >
+                <IconCheck /> Check In
+              </Button>
+            </div>
+          </div>
+        )}
+      >
+        {formError && (
+          <div style={{
+            background: isDark ? '#450a0a' : '#FEE2E2', color: isDark ? '#FCA5A5' : '#B91C1C',
+            padding: '10px 14px', borderRadius: 10, marginBottom: 16, fontSize: 13,
+            border: `1px solid ${isDark ? '#7f1d1d' : '#FECACA'}`, fontWeight: 500,
+            display: 'flex', alignItems: 'center', gap: 8,
+          }}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            {formError}
+          </div>
+        )}
 
-            {selectedCustomer ? (
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, background: '#ECFDF3', border: '1px solid #86EFAC', borderRadius: 12, padding: '10px 12px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-                  <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#D1FAE5', color: '#15803D', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800 }}>
-                    {selectedCustomer.name?.charAt(0)?.toUpperCase() || 'C'}
-                  </div>
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: 14, fontWeight: 700, color: '#065F46' }}>{selectedCustomer.name}</div>
-                    <div style={{ fontSize: 12, color: '#047857' }}>{getCustomerPhone(selectedCustomer) || 'No phone'}</div>
-                  </div>
-                </div>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  onClick={() => {
-                    setSelectedCustomer(null);
-                    setCustSearch('');
-                    setForm((f) => ({ ...f, customerName: '', phone: '' }));
-                    setShowCustDrop(true);
-                  }}
-                >
-                  Change
-                </Button>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 16 }}>
+          <WalkInSection title="Customer" desc="Search existing customer or enter walk-in name" dark={isDark}>
+            <div ref={custSearchRef}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                <Label style={{ margin: 0 }}>Select Customer *</Label>
+                {custLoading ? (
+                  <span style={{ fontSize: 11, color: '#6366f1', fontWeight: 600 }}>Loading…</span>
+                ) : custAll.length > 0 && (
+                  <span style={{ fontSize: 11, color: C.muted }}>{custAll.length} loaded</span>
+                )}
               </div>
-            ) : (
-              <div style={{ position: 'relative' }}>
-                <input
-                  type="text"
+
+              {selectedCustomer ? (
+                <div style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+                  background: isDark ? '#052e16' : '#ECFDF3',
+                  border: `1px solid ${isDark ? '#166534' : '#86EFAC'}`,
+                  borderRadius: 12, padding: '12px 14px',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+                    <div style={{
+                      width: 40, height: 40, borderRadius: '50%', background: '#16A34A', color: '#fff',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 16, flexShrink: 0,
+                    }}>
+                      {selectedCustomer.name?.charAt(0)?.toUpperCase() || 'C'}
+                    </div>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: isDark ? '#BBF7D0' : '#065F46' }}>{selectedCustomer.name}</div>
+                      <div style={{ fontSize: 12, color: isDark ? '#86EFAC' : '#047857' }}>{getCustomerPhone(selectedCustomer) || 'No phone'}</div>
+                    </div>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => {
+                      setSelectedCustomer(null);
+                      setCustSearch('');
+                      setForm((f) => ({ ...f, customerName: '', phone: '' }));
+                      setShowCustDrop(true);
+                    }}
+                  >
+                    Change
+                  </Button>
+                </div>
+              ) : (
+                <Input
                   placeholder={custLoading ? 'Loading customers…' : 'Search by name or phone…'}
                   value={custSearch}
                   onChange={(e) => {
@@ -826,159 +1074,87 @@ export default function WalkInPage() {
                     setForm((f) => ({ ...f, customerName: v }));
                     setShowCustDrop(true);
                   }}
-                  onBlur={(e) => { e.target.style.borderColor = '#D0D5DD'; setTimeout(() => setShowCustDrop(false), 200); }}
-                  style={{
-                    width: '100%', padding: '9px 12px', borderRadius: 10,
-                    border: '1.5px solid #D0D5DD', fontSize: 14, fontFamily: 'inherit',
-                    background: '#FAFAFA', color: DARK, outline: 'none', boxSizing: 'border-box',
-                  }}
-                  onFocus={(e) => { e.target.style.borderColor = '#6366f1'; setShowCustDrop(true); }}
+                  onFocus={() => setShowCustDrop(true)}
+                  onBlur={() => setTimeout(() => setShowCustDrop(false), 200)}
                 />
-              </div>
-            )}
-
-            {/* DROPDOWN — shows all or filtered */}
-            {showCustDrop && !custLoading && (custResults.length > 0 || custSearch.trim()) && (
-              <div style={{
-                position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 999,
-                background: '#fff', border: '1.5px solid #E4E7EC', borderRadius: 10,
-                boxShadow: '0 8px 28px rgba(16,24,40,0.14)', marginTop: 4,
-                maxHeight: 240, overflowY: 'auto',
-              }}>
-                {custResults.length === 0 ? (
-                  <div style={{ padding: '14px', fontSize: 13, color: '#94A3B8', textAlign: 'center' }}>
-                    No customers found for "<strong>{custSearch}</strong>"
-                  </div>
-                ) : (
-                  <>
-                    {custSearch.trim() && (
-                      <div style={{ padding: '6px 14px', fontSize: 11, color: MUTED, background: '#F9FAFB', borderBottom: '1px solid #F2F4F7', fontWeight: 600 }}>
-                        {custResults.length} result{custResults.length !== 1 ? 's' : ''} found
-                      </div>
-                    )}
-                    {custResults.slice(0, 50).map((c) => (
-                      <div key={c.id}
-                        onMouseDown={() => selectCustomer(c)}
-                        style={{
-                          padding: '9px 14px', cursor: 'pointer', display: 'flex',
-                          alignItems: 'center', gap: 10, borderBottom: '1px solid #F2F4F7',
-                        }}
-                        onMouseEnter={(e) => (e.currentTarget.style.background = '#F5F8FF')}
-                        onMouseLeave={(e) => (e.currentTarget.style.background = '#fff')}
-                      >
-                        <div style={{
-                          width: 32, height: 32, borderRadius: '50%', background: '#EFF6FF',
-                          color: '#2563EB', fontWeight: 700, fontSize: 13, flexShrink: 0,
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        }}>
-                          {c.name?.charAt(0)?.toUpperCase()}
-                        </div>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: 13, fontWeight: 600, color: DARK }}>{c.name}</div>
-                          {getCustomerPhone(c) && <div style={{ fontSize: 11, color: MUTED }}>{getCustomerPhone(c)}</div>}
-                        </div>
-                        {c.loyalty_points > 0 && (
-                          <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 99, background: '#FEF9C3', color: '#854D0E', fontWeight: 700 }}>
-                            ★ {c.loyalty_points}
-                          </span>
-                        )}
-                        <span style={{ fontSize: 11, color: '#10b981', fontWeight: 700, flexShrink: 0 }}>Select →</span>
-                      </div>
-                    ))}
-                  </>
-                )}
-              </div>
-            )}
-
-            {/* Loading skeleton */}
-            {showCustDrop && custLoading && (
-              <div style={{
-                position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 999,
-                background: '#fff', border: '1.5px solid #E4E7EC', borderRadius: 10,
-                boxShadow: '0 8px 28px rgba(16,24,40,0.14)', marginTop: 4, padding: '12px 14px',
-              }}>
-                {[1,2,3].map((i) => (
-                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0' }}>
-                    <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#F2F4F7' }} />
-                    <div style={{ flex: 1 }}>
-                      <div style={{ height: 12, borderRadius: 6, background: '#F2F4F7', width: '60%', marginBottom: 5 }} />
-                      <div style={{ height: 10, borderRadius: 6, background: '#F2F4F7', width: '40%' }} />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <div>
-            <Label>Phone</Label>
-            <Input placeholder="Optional" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
-          </div>
-
-          {isAdmin && (
-            <div>
-              <Label>Branch</Label>
-              <select style={{ width: '100%', padding: '9px 12px', borderRadius: 10, border: '1px solid #D0D5DD', fontSize: 14, fontFamily: 'inherit', background: '#fff', color: DARK }}
-                value={form.branchId} onChange={(e) => setForm({ ...form, branchId: e.target.value })}>
-                <option value="">Select branch</option>
-                {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
-              </select>
+              )}
             </div>
-          )}
 
-          <div>
-            <Label>Services * (Select one or more)</Label>
-            <div style={{ fontSize: 12, color: MUTED, marginTop: 2 }}>First selected service is primary; order in queue follows your selection.</div>
-            <div style={{ border: '1px solid #DCE6F3', borderRadius: 12, overflow: 'hidden', marginTop: 4, maxHeight: 220, overflowY: 'auto' }}>
+            <div>
+              <Label>Phone</Label>
+              <Input placeholder="Optional" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
+            </div>
+
+            {isAdmin && (
+              <div>
+                <Label>Branch *</Label>
+                <Select value={form.branchId} onChange={(e) => setForm({ ...form, branchId: e.target.value })}>
+                  <option value="">Select branch</option>
+                  {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                </Select>
+              </div>
+            )}
+
+            <div>
+              <Label>Notes</Label>
+              <Textarea placeholder="Optional notes for this visit" rows={2} value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} />
+            </div>
+          </WalkInSection>
+
+          <WalkInSection title="Services" desc="Select one or more — first service is primary in queue" dark={isDark}>
+            <div style={{
+              border: `1px solid ${isDark ? '#334155' : '#DCE6F3'}`,
+              borderRadius: 12, maxHeight: 280, overflowY: 'auto',
+              background: isDark ? '#0F172A' : '#fff',
+            }}>
               {services.filter((s) => s.is_active !== false).map((s, idx, arr) => {
                 const active = getCheckinSelectedServiceIds().includes(Number(s.id));
                 return (
-                  <label key={s.id} style={{ display: 'grid', gridTemplateColumns: '24px 1fr auto auto', alignItems: 'center', gap: 10, padding: '10px 12px', borderBottom: idx !== arr.length - 1 ? '1px solid #EEF2F6' : 'none', background: active ? '#F0F9FF' : '#fff', cursor: 'pointer' }}>
+                  <label key={s.id} style={{
+                    display: 'grid', gridTemplateColumns: '24px 1fr auto auto', alignItems: 'center', gap: 10,
+                    padding: '10px 12px',
+                    borderBottom: idx !== arr.length - 1 ? `1px solid ${isDark ? '#334155' : '#EEF2F6'}` : 'none',
+                    background: active ? (isDark ? 'rgba(37,99,235,0.15)' : '#F0F9FF') : 'transparent',
+                    cursor: 'pointer',
+                  }}>
                     <input type="checkbox" checked={active} onChange={() => toggleCheckinService(s.id)} style={{ width: 16, height: 16, accentColor: '#2563EB' }} />
-                    <span style={{ fontSize: 14, fontWeight: active ? 700 : 500, color: '#0F172A' }}>{s.name}</span>
-                    <span style={{ fontSize: 12, color: '#94A3B8', fontWeight: 600 }}>{s.duration_minutes || 30} min</span>
+                    <span style={{ fontSize: 14, fontWeight: active ? 700 : 500, color: C.title }}>{s.name}</span>
+                    <span style={{ fontSize: 12, color: C.muted, fontWeight: 600 }}>{s.duration_minutes || 30} min</span>
                     <span style={{ fontSize: 14, color: '#059669', fontWeight: 800 }}>Rs.{Number(s.price || 0).toLocaleString()}</span>
                   </label>
                 );
               })}
             </div>
-          </div>
 
-          {checkinSelectedIds.length > 0 && (
-            <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 10, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {waitPreview != null && (
-                <div style={{ fontSize: 13, color: '#15803D', fontWeight: 600 }}>
-                  Estimated wait: ~{waitPreview} min <span style={{ fontWeight: 500, color: MUTED }}>({stats.waiting} ahead × {checkinDurationSum} min service time)</span>
+            {checkinSelectedIds.length > 0 && (
+              <div style={{
+                background: isDark ? '#172033' : '#F8FAFC',
+                border: `1px solid ${isDark ? '#334155' : '#E2E8F0'}`,
+                borderRadius: 12, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 8,
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+                  <span style={{ fontSize: 12, color: C.muted, fontWeight: 600 }}>Queue preview</span>
+                  <span style={{ fontSize: 12, color: '#D97706', fontWeight: 700 }}>{stats.waiting} waiting ahead</span>
                 </div>
-              )}
-              <div style={{ fontSize: 14, color: '#0F172A', fontWeight: 700 }}>
-                Estimated bill: Rs. {checkinTotalPreview.toLocaleString()}
+                {waitPreview != null && (
+                  <div style={{ fontSize: 13, color: '#15803D', fontWeight: 600 }}>
+                    Estimated wait: ~{waitPreview} min
+                    <span style={{ fontWeight: 500, color: C.muted, marginLeft: 6 }}>({checkinDurationSum} min per service)</span>
+                  </div>
+                )}
+                <div style={{
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  paddingTop: 8, borderTop: `1px solid ${isDark ? '#334155' : '#E2E8F0'}`,
+                }}>
+                  <span style={{ fontSize: 13, color: C.muted }}>Estimated bill</span>
+                  <span style={{ fontSize: 16, color: '#059669', fontWeight: 800 }}>Rs. {checkinTotalPreview.toLocaleString()}</span>
+                </div>
               </div>
-            </div>
-          )}
-
-          <div>
-            <Label>Notes</Label>
-            <Textarea placeholder="Optional notes" rows={2} value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} />
-          </div>
+            )}
+          </WalkInSection>
         </div>
-
-        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 20 }}>
-          <Button variant="secondary" onClick={() => setShowCheckin(false)}>Cancel</Button>
-          <Button
-            onClick={handleCheckin}
-            loading={saving}
-            disabled={
-              saving
-              || !(form.customerName || '').trim()
-              || !form.serviceId
-              || (isAdmin && !(form.branchId || selectedBranch))
-            }
-          >
-            Check In
-          </Button>
-        </div>
-      </Modal>
+      </WalkInModal>
+      {custDropdown}
 
       {/*  TOKEN MODAL  */}
       {showToken && (

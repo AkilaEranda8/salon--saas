@@ -1,14 +1,17 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../context/ThemeContext';
+import usePageTheme from '../hooks/usePageTheme';
 import { useFeatureGate } from '../hooks/useFeatureGate';
 import api from '../api/axios';
 import Button from '../components/ui/Button';
 import { Input, Select, FormGroup } from '../components/ui/FormElements';
 import PageWrapper from '../components/layout/PageWrapper';
 import {
-  IconEye, IconEdit, IconTrash, IconPlus, IconUsers,
-  StaffAvatar, ActionBtn, StatCard, Drawer, PKModal as Modal,
-  FilterBar, DataTable,
+  IconEye, IconEdit, IconTrash, IconPlus, IconUsers, IconClose,
+  StaffAvatar, ActionBtn, StatCard, Drawer,
+  DataTable,
 } from '../components/ui/PageKit';
 import {
   STAFF_ROLE_TITLES, STAFF_ROLE_OTHER, staffRoleSelectValue, MANAGEMENT_STAFF_ROLES,
@@ -23,16 +26,114 @@ function formatCommission(type, value) {
     : `${value}%`;
 }
 
-function CommBadge({ type, value }) {
+function CommBadge({ type, value, dark = false }) {
   return (
-    <span style={{ padding:'2px 8px', borderRadius:6, fontSize:12, fontWeight:700, background:type==='percentage'?'#EFF6FF':'#ECFDF5', color:type==='percentage'?'#2563EB':'#059669' }}>
-      {type==='percentage' ? `${value}%` : `Rs. ${Number(value).toLocaleString()}`}
+    <span style={{
+      padding: '2px 8px', borderRadius: 6, fontSize: 12, fontWeight: 700,
+      background: type === 'percentage' ? (dark ? 'rgba(37,99,235,0.2)' : '#EFF6FF') : (dark ? 'rgba(5,150,105,0.2)' : '#ECFDF5'),
+      color: type === 'percentage' ? '#2563EB' : '#059669',
+    }}>
+      {type === 'percentage' ? `${value}%` : `Rs. ${Number(value).toLocaleString()}`}
     </span>
+  );
+}
+
+function StaffSection({ title, desc, children, dark = false }) {
+  return (
+    <div style={{
+      border: `1px solid ${dark ? '#334155' : '#E4E7EC'}`,
+      borderRadius: 14,
+      background: dark ? '#0F172A' : '#fff',
+    }}>
+      <div style={{
+        padding: '12px 16px',
+        background: dark ? '#1E293B' : '#F8FAFC',
+        borderBottom: `1px solid ${dark ? '#334155' : '#EEF2F7'}`,
+        borderRadius: '14px 14px 0 0',
+      }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: dark ? '#E2E8F0' : '#101828' }}>{title}</div>
+        {desc && <div style={{ fontSize: 11, color: dark ? '#94A3B8' : '#64748B', marginTop: 2 }}>{desc}</div>}
+      </div>
+      <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 14 }}>{children}</div>
+    </div>
+  );
+}
+
+function StaffModal({ open, onClose, title, subtitle, children, footer, size = 'lg', dark = false }) {
+  useEffect(() => {
+    if (!open) return;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = ''; };
+  }, [open]);
+  if (!open) return null;
+  const widths = { sm: 420, md: 560, lg: 720, xl: 900 };
+  return createPortal(
+    <div style={{ position: 'fixed', inset: 0, zIndex: 900, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+      <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'rgba(16,24,40,0.5)', backdropFilter: 'blur(4px)' }} />
+      <div style={{
+        position: 'relative', width: '100%', maxWidth: widths[size] ?? 720,
+        background: dark ? '#111827' : '#fff', borderRadius: 18, display: 'flex', flexDirection: 'column',
+        boxShadow: dark ? '0 24px 64px rgba(2,6,23,0.55)' : '0 24px 64px rgba(16,24,40,0.2)',
+        maxHeight: '92vh', animation: 'staff-modal-pop 0.2s ease',
+        border: dark ? '1px solid #334155' : '1px solid #E4E7EC',
+      }}>
+        <style>{'@keyframes staff-modal-pop { from { opacity:0; transform:scale(0.97) translateY(10px); } to { opacity:1; transform:scale(1) translateY(0); } }'}</style>
+        <div style={{
+          padding: '18px 22px',
+          background: dark
+            ? 'linear-gradient(135deg,#4c1d95 0%,#1e3a8a 100%)'
+            : 'linear-gradient(135deg,#EDE9FE 0%,#DDD6FE 45%,#EFF6FF 100%)',
+          borderBottom: `1px solid ${dark ? '#334155' : '#C4B5FD'}`,
+          borderRadius: '18px 18px 0 0',
+          display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexShrink: 0, gap: 12,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, minWidth: 0 }}>
+            <div style={{
+              width: 44, height: 44, borderRadius: 12, flexShrink: 0,
+              background: dark ? 'rgba(255,255,255,0.12)' : '#fff',
+              border: dark ? '1px solid rgba(255,255,255,0.15)' : '1px solid #C4B5FD',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              color: dark ? '#C4B5FD' : '#7C3AED',
+              boxShadow: dark ? 'none' : '0 2px 8px rgba(124,58,237,0.15)',
+            }}>
+              <IconUsers />
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <h3 style={{ margin: 0, fontSize: 17, fontWeight: 800, color: dark ? '#F8FAFC' : '#0F172A', fontFamily: "'Inter',sans-serif", letterSpacing: '-0.02em' }}>{title}</h3>
+              {subtitle && <p style={{ margin: '4px 0 0', fontSize: 12, color: dark ? '#CBD5E1' : '#475569', lineHeight: 1.45 }}>{subtitle}</p>}
+            </div>
+          </div>
+          <button type="button" onClick={onClose} aria-label="Close"
+            style={{
+              background: dark ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.85)',
+              border: `1px solid ${dark ? 'rgba(255,255,255,0.15)' : '#E4E7EC'}`,
+              cursor: 'pointer', color: dark ? '#E2E8F0' : '#64748B',
+              display: 'flex', alignItems: 'center', borderRadius: 10, padding: 7, flexShrink: 0,
+            }}>
+            <IconClose />
+          </button>
+        </div>
+        <div style={{ flex: 1, overflowY: 'auto', padding: '20px 22px', background: dark ? '#111827' : '#F8FAFC' }}>{children}</div>
+        {footer && (
+          <div style={{
+            padding: '14px 22px', borderTop: `1px solid ${dark ? '#334155' : '#E4E7EC'}`,
+            display: 'flex', gap: 8, justifyContent: 'flex-end', flexShrink: 0,
+            background: dark ? '#0F172A' : '#fff', borderRadius: '0 0 18px 18px', width: '100%', boxSizing: 'border-box',
+          }}>
+            {footer}
+          </div>
+        )}
+      </div>
+    </div>,
+    document.body,
   );
 }
 
 export default function StaffPage() {
   const { user }     = useAuth();
+  const { isDark }   = useTheme();
+  const { C }        = usePageTheme();
+  const photoInputRef = useRef(null);
   const { allowed: serviceWiseCommission } = useFeatureGate('service_wise_commission');
   const { allowed: franchiseCommission } = useFeatureGate('franchise_commission');
   const isManager    = user?.role === 'manager';
@@ -334,220 +435,317 @@ export default function StaffPage() {
       />
 
       {/* Add / Edit Modal */}
-      <Modal open={showForm} onClose={() => setShowForm(false)} title={editItem ? 'Edit Staff' : 'Add Staff Member'} size="lg"
-        footer={<><Button variant="secondary" onClick={() => setShowForm(false)}>Cancel</Button><Button variant="primary" loading={saving} onClick={handleSave}>{editItem ? 'Save' : 'Add Staff'}</Button></>}>
-        {formErr && <div style={{ background:'#FEF2F2', color:'#DC2626', padding:'9px 13px', borderRadius:9, marginBottom:16, fontSize:13, border:'1px solid #FEE2E2' }}>{formErr}</div>}
-        <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
-          <FormGroup label="Profile Photo">
-            <div style={{ display:'flex', gap:12, alignItems:'center', flexWrap:'wrap' }}>
-              <StaffAvatar
-                name={form.name || 'Staff'}
-                size={56}
-                photoUrl={removePhoto ? '' : (photoPreview || form.photo_url || '')}
-              />
-              <input
-                type="file"
-                accept="image/*"
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  setPhotoFile(f || null);
-                  if (f) {
-                    setPhotoPreview(URL.createObjectURL(f));
-                    setRemovePhoto(false);
-                  }
-                }}
-              />
-              {(photoPreview || form.photo_url) && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPhotoFile(null);
-                    setPhotoPreview('');
-                    setRemovePhoto(true);
-                  }}
-                  style={{ border:'1px solid #FECACA', color:'#DC2626', background:'#FEF2F2', borderRadius:8, padding:'4px 10px', cursor:'pointer' }}
-                >
-                  Remove photo
-                </button>
+      <StaffModal
+        open={showForm}
+        onClose={() => setShowForm(false)}
+        title={editItem ? 'Edit Staff Member' : 'Add Staff Member'}
+        subtitle={editItem ? 'Update profile, branches, and pay settings.' : 'Create a team member — set role, branches, and commission.'}
+        size="xl"
+        dark={isDark}
+        footer={(
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: 12, flexWrap: 'wrap' }}>
+            <div style={{ fontSize: 13, color: C.muted }}>
+              {form.name ? (
+                <span style={{ fontWeight: 700, color: C.title }}>
+                  {form.name}
+                  {form.role_title && <span style={{ fontWeight: 500, color: C.muted, marginLeft: 8 }}>· {form.role_title}</span>}
+                  {(form.branch_ids || []).length > 0 && (
+                    <span style={{ fontWeight: 500, color: C.muted, marginLeft: 8 }}>
+                      · {(form.branch_ids || []).length} branch{(form.branch_ids || []).length !== 1 ? 'es' : ''}
+                    </span>
+                  )}
+                </span>
+              ) : (
+                <span>Enter staff details to continue</span>
               )}
             </div>
-          </FormGroup>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
-            <FormGroup label="Full Name" required><Input value={form.name||''} onChange={e => setForm(f=>({...f, name:e.target.value}))} /></FormGroup>
-            <FormGroup label="Phone"><Input value={form.phone||''} onChange={e => setForm(f=>({...f, phone:e.target.value}))} /></FormGroup>
+            <div style={{ display: 'flex', gap: 8, marginLeft: 'auto' }}>
+              <Button variant="secondary" onClick={() => setShowForm(false)}>Cancel</Button>
+              <Button variant="primary" loading={saving} onClick={handleSave} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <IconUsers />{editItem ? 'Save Changes' : 'Add Staff'}
+              </Button>
+            </div>
           </div>
-          <FormGroup label="Email"><Input type="email" value={form.email||''} onChange={e => setForm(f=>({...f, email:e.target.value}))} placeholder="name@example.com" /></FormGroup>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
-            <FormGroup label="Role" required>
-              {franchiseCommission ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: '#B45309', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                    Branch management (override commission)
-                  </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                    {MANAGEMENT_STAFF_ROLES.map((role) => {
-                      const active = form.role_title === role;
+        )}
+      >
+        {formErr && (
+          <div style={{
+            background: isDark ? '#450a0a' : '#FEF2F2', color: isDark ? '#FCA5A5' : '#DC2626',
+            padding: '10px 14px', borderRadius: 10, marginBottom: 16, fontSize: 13,
+            border: `1px solid ${isDark ? '#7f1d1d' : '#FEE2E2'}`, fontWeight: 500,
+            display: 'flex', alignItems: 'center', gap: 8,
+          }}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            {formErr}
+          </div>
+        )}
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 16 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <StaffSection title="Profile" desc="Photo and contact details" dark={isDark}>
+              <div style={{
+                display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap',
+                padding: 14, borderRadius: 12,
+                background: isDark ? '#172033' : '#F8FAFC',
+                border: `1px solid ${isDark ? '#334155' : '#E4E7EC'}`,
+              }}>
+                <StaffAvatar
+                  name={form.name || 'Staff'}
+                  size={64}
+                  photoUrl={removePhoto ? '' : (photoPreview || form.photo_url || '')}
+                />
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, flex: 1, minWidth: 160 }}>
+                  <input
+                    ref={photoInputRef}
+                    type="file"
+                    accept="image/*"
+                    style={{ display: 'none' }}
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      setPhotoFile(f || null);
+                      if (f) {
+                        setPhotoPreview(URL.createObjectURL(f));
+                        setRemovePhoto(false);
+                      }
+                    }}
+                  />
+                  <Button variant="secondary" size="sm" onClick={() => photoInputRef.current?.click()}>
+                    {photoPreview || form.photo_url ? 'Change Photo' : 'Upload Photo'}
+                  </Button>
+                  {(photoPreview || form.photo_url) && !removePhoto && (
+                    <button
+                      type="button"
+                      onClick={() => { setPhotoFile(null); setPhotoPreview(''); setRemovePhoto(true); }}
+                      style={{ border: 'none', background: 'none', color: '#DC2626', fontSize: 12, fontWeight: 600, cursor: 'pointer', textAlign: 'left', padding: 0 }}
+                    >
+                      Remove photo
+                    </button>
+                  )}
+                  <span style={{ fontSize: 11, color: C.muted }}>JPG or PNG, max 2MB</span>
+                </div>
+              </div>
+              <FormGroup label="Full Name" required>
+                <Input value={form.name || ''} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="e.g. Nimal Perera" />
+              </FormGroup>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                <FormGroup label="Phone">
+                  <Input value={form.phone || ''} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} placeholder="07X XXX XXXX" />
+                </FormGroup>
+                <FormGroup label="Email">
+                  <Input type="email" value={form.email || ''} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} placeholder="name@example.com" />
+                </FormGroup>
+              </div>
+            </StaffSection>
+
+            <StaffSection title="Employment" desc="Join date and account status" dark={isDark}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                <FormGroup label="Join Date">
+                  <Input type="date" value={form.join_date || ''} onChange={e => setForm(f => ({ ...f, join_date: e.target.value }))} />
+                </FormGroup>
+                <FormGroup label="Status">
+                  <Select value={form.is_active ? 'true' : 'false'} onChange={e => setForm(f => ({ ...f, is_active: e.target.value === 'true' }))}>
+                    <option value="true">Active</option>
+                    <option value="false">Inactive</option>
+                  </Select>
+                </FormGroup>
+              </div>
+              {form.salary_type === 'salary_only' && services.length > 0 && (
+                <FormGroup label="Specializations">
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                    {services.map(sv => {
+                      const active = specs.includes(sv.id);
                       return (
                         <button
-                          key={role}
+                          key={sv.id}
                           type="button"
-                          onClick={() => setForm((f) => ({ ...f, role_title: role }))}
+                          onClick={() => toggleSpec(sv.id)}
                           style={{
-                            padding: '10px 12px',
-                            borderRadius: 10,
-                            cursor: 'pointer',
-                            fontSize: 13,
-                            fontWeight: 700,
-                            border: active ? '2px solid #D97706' : '1.5px solid #E4E7EC',
-                            background: active ? '#FFFBEB' : '#fff',
-                            color: active ? '#B45309' : '#344054',
+                            padding: '6px 12px', borderRadius: 8, fontSize: 12, fontWeight: active ? 700 : 500, cursor: 'pointer',
+                            border: `1.5px solid ${active ? '#7C3AED' : (isDark ? '#334155' : '#E4E7EC')}`,
+                            background: active ? (isDark ? 'rgba(124,58,237,0.2)' : '#F5F3FF') : (isDark ? '#0F172A' : '#fff'),
+                            color: active ? '#7C3AED' : C.label,
                           }}
                         >
-                          {role}
+                          {sv.name}
                         </button>
                       );
                     })}
                   </div>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: '#667085', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                    Service staff
-                  </div>
-                  <Select
-                    value={isManagementRole ? '' : roleSelectValue}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      if (!v) return;
-                      if (v === STAFF_ROLE_OTHER) setForm((f) => ({ ...f, role_title: '' }));
-                      else setForm((f) => ({ ...f, role_title: v }));
-                    }}
-                  >
-                    <option value="">Select service role...</option>
-                    {serviceRoles.map((r) => <option key={r} value={r}>{r}</option>)}
-                    <option value={STAFF_ROLE_OTHER}>Other</option>
-                  </Select>
-                  {roleSelectValue === STAFF_ROLE_OTHER && (
-                    <Input
-                      value={form.role_title || ''}
-                      onChange={(e) => setForm((f) => ({ ...f, role_title: e.target.value }))}
-                      placeholder="Enter custom role"
-                    />
-                  )}
-                </div>
-              ) : (
-                <>
-                  <Select
-                    value={roleSelectValue}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      if (v === STAFF_ROLE_OTHER) setForm((f) => ({ ...f, role_title: '' }));
-                      else setForm((f) => ({ ...f, role_title: v }));
-                    }}
-                  >
-                    <option value="">Select role...</option>
-                    {STAFF_ROLE_TITLES.map((r) => <option key={r} value={r}>{r}</option>)}
-                    <option value={STAFF_ROLE_OTHER}>Other</option>
-                  </Select>
-                  {roleSelectValue === STAFF_ROLE_OTHER && (
-                    <Input
-                      value={form.role_title || ''}
-                      onChange={(e) => setForm((f) => ({ ...f, role_title: e.target.value }))}
-                      placeholder="Enter custom role"
-                      style={{ marginTop: 8 }}
-                    />
-                  )}
-                </>
+                </FormGroup>
               )}
-            </FormGroup>
-            <FormGroup label="Branches" required>
-              <div style={{ display:'flex', flexDirection:'column', gap:8, marginTop:4 }}>
-                {branchChoices.map(b => (
-                  <label key={b.id} style={{ display:'flex', alignItems:'center', gap:8, cursor:(user?.role === 'manager' && branchChoices.length <= 1)?'default':'pointer', fontSize:13, color:'#344054' }}>
-                    <input
-                      type="checkbox"
-                      checked={(form.branch_ids||[]).includes(String(b.id))}
-                      onChange={() => toggleBranch(b.id)}
-                      disabled={user?.role === 'manager' && branchChoices.length <= 1}
-                    />
-                    {b.name}
-                  </label>
-                ))}
-              </div>
-            </FormGroup>
+            </StaffSection>
           </div>
-          {/* Salary & Commission */}
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
-            <FormGroup label="Salary Type">
-              <Select value={form.salary_type||'commission_only'} onChange={e => setForm(f=>({...f, salary_type:e.target.value}))}>
-                <option value="commission_only">Commission Only</option>
-                <option value="salary_only">Fixed Salary Only</option>
-                <option value="salary_plus_commission">Salary + Commission</option>
-              </Select>
-            </FormGroup>
-            {(form.salary_type === 'salary_only' || form.salary_type === 'salary_plus_commission') && (
-              <FormGroup label="Base Salary (Rs./month)">
-                <Input type="number" min="0" value={form.base_salary||''} onChange={e => setForm(f=>({...f, base_salary:e.target.value}))} placeholder="e.g. 30000" />
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <StaffSection title="Role & Branches" desc="Job title and assigned locations" dark={isDark}>
+              <FormGroup label="Role" required>
+                {franchiseCommission ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: '#D97706', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                      Branch management (override commission)
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                      {MANAGEMENT_STAFF_ROLES.map((role) => {
+                        const active = form.role_title === role;
+                        return (
+                          <button
+                            key={role}
+                            type="button"
+                            onClick={() => setForm((f) => ({ ...f, role_title: role }))}
+                            style={{
+                              padding: '10px 12px', borderRadius: 10, cursor: 'pointer', fontSize: 13, fontWeight: 700,
+                              border: active ? '2px solid #D97706' : `1.5px solid ${isDark ? '#334155' : '#E4E7EC'}`,
+                              background: active ? (isDark ? 'rgba(217,119,6,0.15)' : '#FFFBEB') : (isDark ? '#0F172A' : '#fff'),
+                              color: active ? '#D97706' : C.label,
+                            }}
+                          >
+                            {role}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                      Service staff
+                    </div>
+                    <Select
+                      value={isManagementRole ? '' : roleSelectValue}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        if (!v) return;
+                        if (v === STAFF_ROLE_OTHER) setForm((f) => ({ ...f, role_title: '' }));
+                        else setForm((f) => ({ ...f, role_title: v }));
+                      }}
+                    >
+                      <option value="">Select service role...</option>
+                      {serviceRoles.map((r) => <option key={r} value={r}>{r}</option>)}
+                      <option value={STAFF_ROLE_OTHER}>Other</option>
+                    </Select>
+                    {roleSelectValue === STAFF_ROLE_OTHER && (
+                      <Input value={form.role_title || ''} onChange={(e) => setForm((f) => ({ ...f, role_title: e.target.value }))} placeholder="Enter custom role" />
+                    )}
+                  </div>
+                ) : (
+                  <>
+                    <Select
+                      value={roleSelectValue}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        if (v === STAFF_ROLE_OTHER) setForm((f) => ({ ...f, role_title: '' }));
+                        else setForm((f) => ({ ...f, role_title: v }));
+                      }}
+                    >
+                      <option value="">Select role...</option>
+                      {STAFF_ROLE_TITLES.map((r) => <option key={r} value={r}>{r}</option>)}
+                      <option value={STAFF_ROLE_OTHER}>Other</option>
+                    </Select>
+                    {roleSelectValue === STAFF_ROLE_OTHER && (
+                      <Input value={form.role_title || ''} onChange={(e) => setForm((f) => ({ ...f, role_title: e.target.value }))} placeholder="Enter custom role" style={{ marginTop: 8 }} />
+                    )}
+                  </>
+                )}
               </FormGroup>
-            )}
-          </div>
-          {form.salary_type !== 'salary_only' && (
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
-              <FormGroup label="Commission Type">
-                <Select value={form.commission_type||'percentage'} onChange={e => setForm(f=>({...f, commission_type:e.target.value}))}>
-                  <option value="percentage">Percentage %</option>
-                  {serviceWiseForUser && <option value="fixed">Fixed per Service</option>}
+              <FormGroup label="Branches" required>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                  {branchChoices.map(b => {
+                    const active = (form.branch_ids || []).includes(String(b.id));
+                    const locked = user?.role === 'manager' && branchChoices.length <= 1;
+                    return (
+                      <button
+                        key={b.id}
+                        type="button"
+                        disabled={locked}
+                        onClick={() => toggleBranch(b.id)}
+                        style={{
+                          display: 'inline-flex', alignItems: 'center', gap: 6,
+                          padding: '8px 14px', borderRadius: 10, fontSize: 13, fontWeight: active ? 700 : 500,
+                          cursor: locked ? 'default' : 'pointer',
+                          border: `1.5px solid ${active ? '#2563EB' : (isDark ? '#334155' : '#E4E7EC')}`,
+                          background: active ? (isDark ? 'rgba(37,99,235,0.2)' : '#EFF6FF') : (isDark ? '#0F172A' : '#fff'),
+                          color: active ? '#2563EB' : C.label,
+                          opacity: locked && !active ? 0.6 : 1,
+                        }}
+                      >
+                        <span style={{ width: 8, height: 8, borderRadius: '50%', background: b.color || '#2563EB', flexShrink: 0 }} />
+                        {b.name}
+                      </button>
+                    );
+                  })}
+                </div>
+              </FormGroup>
+            </StaffSection>
+
+            <StaffSection title="Pay & Commission" desc="Salary type and default commission rate" dark={isDark}>
+              <FormGroup label="Salary Type">
+                <Select value={form.salary_type || 'commission_only'} onChange={e => setForm(f => ({ ...f, salary_type: e.target.value }))}>
+                  <option value="commission_only">Commission Only</option>
+                  <option value="salary_only">Fixed Salary Only</option>
+                  <option value="salary_plus_commission">Salary + Commission</option>
                 </Select>
               </FormGroup>
-              <FormGroup label={
-                franchiseCommission && isManagementRole && form.commission_type === 'percentage'
-                  ? 'Manager Override Commission %'
-                  : (form.commission_type === 'percentage' ? 'Default Commission %' : 'Default Commission (Rs.)')
-              }>
-                <Input
-                  type="number" min="0" step="0.01" max={franchiseCommission && isManagementRole ? '100' : undefined}
-                  value={form.commission_value||''}
-                  onChange={e => setForm(f=>({...f, commission_value:e.target.value}))}
-                  placeholder={franchiseCommission && isManagementRole ? 'e.g. 5' : 'e.g. 10'}
-                />
-              </FormGroup>
-            </div>
-          )}
-          {form.salary_type !== 'salary_only' && (
-            <div style={{ padding:'12px 14px', background: serviceWiseForUser ? '#F0F9FF' : '#F0FDF4', border: serviceWiseForUser ? '1px solid #BAE6FD' : '1px solid #BBF7D0', borderRadius:12, fontSize:13, color: serviceWiseForUser ? '#0C4A6E' : '#166534', lineHeight:1.5 }}>
-              {franchiseCommission && isManagementRole ? (
-                <>
-                  <strong>Branch Manager / Salon Manager:</strong> set the <strong>override commission %</strong> above (e.g. 5%). This is calculated from the <strong>total service amount</strong> when other staff in this branch complete paid work — not from their commission.
-                </>
-              ) : serviceWiseForUser ? (
-                <>
-                  Per-service commission rates are set on the <strong>Services</strong> page. All active services are linked automatically. Use <strong>Default Commission %</strong> above only as a fallback when a service has no catalogue rate.
-                </>
-              ) : (
-                <>
-                  Set only the <strong>default commission rate</strong> above. It applies automatically to <strong>all services</strong> when this staff member completes work.
-                </>
+              {(form.salary_type === 'salary_only' || form.salary_type === 'salary_plus_commission') && (
+                <FormGroup label="Base Salary (Rs./month)">
+                  <Input type="number" min="0" value={form.base_salary || ''} onChange={e => setForm(f => ({ ...f, base_salary: e.target.value }))} placeholder="e.g. 30000" />
+                </FormGroup>
               )}
-            </div>
-          )}
-          <FormGroup label="Join Date"><Input type="date" value={form.join_date||''} onChange={e => setForm(f=>({...f, join_date:e.target.value}))} /></FormGroup>
-          {form.salary_type === 'salary_only' && services.length > 0 && (
-            <FormGroup label="Specializations">
-              <div style={{ display:'flex', flexWrap:'wrap', gap:8 }}>
-                {services.map(sv => (
-                  <label key={sv.id} style={{ display:'flex', alignItems:'center', gap:6, cursor:'pointer', fontSize:13, color:'#344054', background:specs.includes(sv.id)?'#EFF6FF':'#F9FAFB', border:specs.includes(sv.id)?'1.5px solid #2563EB':'1.5px solid #E4E7EC', borderRadius:8, padding:'4px 10px' }}>
-                    <input type="checkbox" checked={specs.includes(sv.id)} onChange={()=>toggleSpec(sv.id)} style={{ display:'none' }} />
-                    {sv.name}
-                  </label>
-                ))}
-              </div>
-            </FormGroup>
-          )}
-          <FormGroup label="Status">
-            <Select value={form.is_active ? 'true' : 'false'} onChange={e => setForm(f=>({...f, is_active:e.target.value==='true'}))}>
-              <option value="true">Active</option>
-              <option value="false">Inactive</option>
-            </Select>
-          </FormGroup>
+              {form.salary_type !== 'salary_only' && (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                  <FormGroup label="Commission Type">
+                    <Select value={form.commission_type || 'percentage'} onChange={e => setForm(f => ({ ...f, commission_type: e.target.value }))}>
+                      <option value="percentage">Percentage %</option>
+                      {serviceWiseForUser && <option value="fixed">Fixed per Service</option>}
+                    </Select>
+                  </FormGroup>
+                  <FormGroup label={
+                    franchiseCommission && isManagementRole && form.commission_type === 'percentage'
+                      ? 'Manager Override %'
+                      : (form.commission_type === 'percentage' ? 'Default Commission %' : 'Default Commission (Rs.)')
+                  }>
+                    <Input
+                      type="number" min="0" step="0.01" max={franchiseCommission && isManagementRole ? '100' : undefined}
+                      value={form.commission_value || ''}
+                      onChange={e => setForm(f => ({ ...f, commission_value: e.target.value }))}
+                      placeholder={franchiseCommission && isManagementRole ? 'e.g. 5' : 'e.g. 10'}
+                    />
+                  </FormGroup>
+                </div>
+              )}
+              {form.salary_type !== 'salary_only' && form.commission_value !== '' && form.commission_value != null && (
+                <div style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+                  padding: '10px 14px', borderRadius: 10,
+                  background: isDark ? '#172033' : '#F0FDF4',
+                  border: `1px solid ${isDark ? '#334155' : '#BBF7D0'}`,
+                }}>
+                  <span style={{ fontSize: 12, color: C.muted }}>Preview</span>
+                  <CommBadge type={form.commission_type || 'percentage'} value={form.commission_value} dark={isDark} />
+                </div>
+              )}
+              {form.salary_type !== 'salary_only' && (
+                <div style={{
+                  padding: '12px 14px',
+                  background: serviceWiseForUser ? (isDark ? 'rgba(37,99,235,0.12)' : '#F0F9FF') : (isDark ? 'rgba(5,150,105,0.12)' : '#F0FDF4'),
+                  border: `1px solid ${serviceWiseForUser ? (isDark ? 'rgba(96,165,250,0.25)' : '#BAE6FD') : (isDark ? 'rgba(52,211,153,0.25)' : '#BBF7D0')}`,
+                  borderRadius: 12, fontSize: 12, color: C.tipText || (isDark ? '#CBD5E1' : '#374151'), lineHeight: 1.5,
+                }}>
+                  {franchiseCommission && isManagementRole ? (
+                    <>
+                      <strong>Branch Manager / Salon Manager:</strong> override commission % applies to total service amount when other staff complete paid work.
+                    </>
+                  ) : serviceWiseForUser ? (
+                    <>
+                      Per-service rates are set on the <strong>Services</strong> page. Active services link automatically. Default % is a fallback only.
+                    </>
+                  ) : (
+                    <>
+                      Default commission applies to <strong>all services</strong> when this staff member completes work.
+                    </>
+                  )}
+                </div>
+              )}
+            </StaffSection>
+          </div>
         </div>
-      </Modal>
+      </StaffModal>
 
       {/* Profile Drawer */}
       <Drawer open={showProfile} onClose={() => setShowProfile(false)} title="Staff Profile" width={520}

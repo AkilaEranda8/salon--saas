@@ -634,15 +634,16 @@ export default function AppointmentsPage() {
 
   const apptColumns = useMemo(() => [
     {
-      accessorKey: 'customer_name',
+      id: 'customer_name',
+      accessorFn: (r) => [r.customer_name, r.phone, getAllServiceNamesForAppt(r).join(' '), r.staff?.name].filter(Boolean).join(' '),
       header: 'Customer',
-      meta: { width: '18%' },
+      meta: { width: '20%' },
       cell: ({ row }) => {
         const r = row.original;
         return (
           <>
-            <div style={{ fontWeight: 600, color: isDark ? '#E2E8F0' : '#101828', fontSize: 14 }}>{r.customer_name}</div>
-            {r.phone && <div style={{ fontSize: 12, color: isDark ? '#94A3B8' : '#98A2B3', marginTop: 1 }}>{r.phone}</div>}
+            <div style={{ fontWeight: 600, color: C.title, fontSize: 14 }}>{r.customer_name}</div>
+            {r.phone && <div style={{ fontSize: 12, color: C.muted, marginTop: 1 }}>{r.phone}</div>}
           </>
         );
       },
@@ -651,9 +652,9 @@ export default function AppointmentsPage() {
       id: 'services',
       accessorFn: (r) => getAllServiceNamesForAppt(r).join(', '),
       header: 'Service',
-      meta: { width: '15%' },
+      meta: { width: '16%' },
       cell: ({ getValue }) => (
-        <span style={{ background: isDark ? '#1E293B' : '#F2F4F7', padding: '3px 9px', borderRadius: 6, fontSize: 13, fontWeight: 500, color: isDark ? '#CBD5E1' : '#475467' }}>
+        <span style={{ background: isDark ? '#1E293B' : C.soft, padding: '3px 9px', borderRadius: 6, fontSize: 13, fontWeight: 500, color: C.label, display: 'inline-block', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {getValue()}
         </span>
       ),
@@ -662,30 +663,30 @@ export default function AppointmentsPage() {
       id: 'staff',
       accessorFn: (r) => r.staff?.name || '',
       header: 'Staff',
-      meta: { width: '16%' },
+      meta: { width: '14%' },
       cell: ({ row }) => {
         const r = row.original;
         return r.staff?.name ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
             <StaffAvatar name={r.staff.name} size={32} />
-            <span style={{ fontSize: 13, fontWeight: 500, color: isDark ? '#CBD5E1' : '#344054' }}>{r.staff.name}</span>
+            <span style={{ fontSize: 13, fontWeight: 500, color: C.label, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.staff.name}</span>
           </div>
-        ) : <span style={{ fontSize: 13, color: isDark ? '#64748B' : '#D0D5DD' }}>—</span>;
+        ) : <span style={{ fontSize: 13, color: C.muted }}>—</span>;
       },
     },
     {
       id: 'date',
       accessorFn: (r) => `${r.date || ''} ${r.time || ''}`,
       header: 'Date & Time',
-      meta: { width: '15%' },
+      meta: { width: '14%' },
       cell: ({ row }) => {
         const r = row.original;
         return (
           <>
-            <div style={{ fontWeight: 600, color: isDark ? '#E2E8F0' : '#101828', fontSize: 13 }}>
+            <div style={{ fontWeight: 600, color: C.title, fontSize: 13 }}>
               {r.date ? new Date(r.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : ''}
             </div>
-            {r.time && <div style={{ fontSize: 12, color: isDark ? '#94A3B8' : '#98A2B3', marginTop: 1 }}>{r.time}</div>}
+            {r.time && <div style={{ fontSize: 12, color: C.muted, marginTop: 1 }}>{r.time}</div>}
           </>
         );
       },
@@ -693,7 +694,7 @@ export default function AppointmentsPage() {
     {
       accessorKey: 'amount',
       header: 'Amount',
-      meta: { width: '12%', align: 'right' },
+      meta: { width: '11%', align: 'right' },
       cell: ({ row }) => (
         <span style={{ fontWeight: 700, color: '#059669', fontSize: 14 }}>
           Rs. {Number(row.original.amount || row.original.service?.price || 0).toLocaleString()}
@@ -703,7 +704,7 @@ export default function AppointmentsPage() {
     {
       accessorKey: 'status',
       header: 'Status',
-      meta: { width: '14%' },
+      meta: { width: '13%' },
       cell: ({ row }) => {
         const r = row.original;
         const s = r.status;
@@ -711,7 +712,13 @@ export default function AppointmentsPage() {
         if (!canEdit || s === 'completed' || s === 'cancelled') return <StatusBadge status={s} dark={isDark} />;
         return (
           <select value={s} onChange={(e) => handleStatusChange(r.id, e.target.value)}
-            style={{ padding: '4px 10px', borderRadius: 20, border: `1.5px solid ${meta.color}40`, background: meta.bg, color: meta.color, fontWeight: 700, fontSize: 12, fontFamily: "'Inter',sans-serif", outline: 'none', cursor: 'pointer' }}>
+            style={{
+              padding: '4px 10px', borderRadius: 20, maxWidth: '100%',
+              border: `1.5px solid ${meta.color}40`,
+              background: isDark ? `${meta.color}22` : meta.bg,
+              color: meta.color, fontWeight: 700, fontSize: 12,
+              fontFamily: "'Inter',sans-serif", outline: 'none', cursor: 'pointer',
+            }}>
             {APPT_STATUSES.filter((st) => st !== 'completed').map((st) => <option key={st} value={st}>{STATUS_META[st].label}</option>)}
           </select>
         );
@@ -735,7 +742,7 @@ export default function AppointmentsPage() {
         );
       },
     },
-  ], [canEdit, isDark]);
+  ], [canEdit, isDark, C]);
 
   const tomorrow = useMemo(() => {
     const d = new Date();
@@ -839,20 +846,21 @@ export default function AppointmentsPage() {
           </>
         )}
       >
-        <DataTable
-          noShell
-          columns={apptColumns}
-          data={appts}
-          loading={loading}
-          emptyMessage="No appointments found"
-          emptySub="Try adjusting your filters or book a new appointment"
-          pagination={false}
-          searchableColumns={[
-            { id: 'customer_name', title: 'Customer' },
-            { id: 'services', title: 'Service' },
-            { id: 'staff', title: 'Staff' },
-          ]}
-        />
+        <div style={{ padding: '0 4px 4px' }}>
+          <DataTable
+            noShell
+            compact
+            columns={apptColumns}
+            data={appts}
+            loading={loading}
+            emptyMessage="No appointments found"
+            emptySub="Try adjusting your filters or book a new appointment"
+            pagination={false}
+            showRowNumbers={false}
+            enableColumnVisibility={false}
+            searchableColumns={[{ id: 'customer_name', title: 'Appointments', placeholder: 'Search customer, service, staff…' }]}
+          />
+        </div>
       </ApptTableShell>
 
       {/* New / Edit Modal */}

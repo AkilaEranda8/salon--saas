@@ -1,67 +1,84 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { motion } from 'framer-motion';
 import api from '../api/axios';
 import PageWrapper from '../components/layout/PageWrapper';
 import Button from '../components/ui/Button';
+import { Input, Select, FormGroup, Textarea } from '../components/ui/FormElements';
 import { useToast } from '../components/ui/Toast';
 import { useAuth } from '../context/AuthContext';
-import { StatCard, DataTable } from '../components/ui/PageKit';
-
+import {
+  StatCard, DataTable, FilterBar, PKModal as Modal,
+  ActionBtn, IconEdit, IconTrash, IconPlus, IconUsers, IconStar, IconDollar, IconCheck,
+} from '../components/ui/PageKit';
+import usePageTheme, { PAGE_STAT_COLORS as SC } from '../hooks/usePageTheme';
 
 const Rs = (n) => `Rs. ${Number(n || 0).toLocaleString()}`;
 const CYCLES = { monthly: 'Monthly', quarterly: 'Quarterly', yearly: 'Yearly', one_time: 'One-time' };
-const STATUS_COLOR = {
-  active:    { bg: '#D1FAE5', text: '#065F46', border: '#A7F3D0' },
-  expired:   { bg: '#FEE2E2', text: '#991B1B', border: '#FECACA' },
-  cancelled: { bg: '#F3F4F6', text: '#374151', border: '#E5E7EB' },
-  paused:    { bg: '#FEF3C7', text: '#92400E', border: '#FDE68A' },
+
+const STATUS_META = {
+  active:    { color: '#059669', bg: '#ECFDF5', label: 'Active' },
+  expired:   { color: '#DC2626', bg: '#FEF2F2', label: 'Expired' },
+  cancelled: { color: '#64748B', bg: '#F8FAFC', label: 'Cancelled' },
+  paused:    { color: '#D97706', bg: '#FFFBEB', label: 'Paused' },
 };
 
-const PLAN_COLORS = [
-  { gradient: 'linear-gradient(135deg, #2563EB, #3B82F6)', light: '#EFF6FF', border: '#BFDBFE', text: '#2563EB' },
-  { gradient: 'linear-gradient(135deg, #7C3AED, #A855F7)', light: '#FAF5FF', border: '#DDD6FE', text: '#7C3AED' },
-  { gradient: 'linear-gradient(135deg, #059669, #10B981)', light: '#ECFDF5', border: '#A7F3D0', text: '#059669' },
-  { gradient: 'linear-gradient(135deg, #DC2626, #EF4444)', light: '#FEF2F2', border: '#FECACA', text: '#DC2626' },
-  { gradient: 'linear-gradient(135deg, #D97706, #F59E0B)', light: '#FFFBEB', border: '#FDE68A', text: '#D97706' },
-  { gradient: 'linear-gradient(135deg, #0891B2, #06B6D4)', light: '#ECFEFF', border: '#A5F3FC', text: '#0891B2' },
-];
-
-const getPlanTheme = (color, idx) => {
-  const hex = (color || '').toLowerCase();
-  if (hex.includes('7c3aed') || hex.includes('6366f1') || hex.includes('8b5cf6')) return PLAN_COLORS[1];
-  if (hex.includes('059669') || hex.includes('10b981') || hex.includes('22c55e')) return PLAN_COLORS[2];
-  if (hex.includes('dc2626') || hex.includes('ef4444') || hex.includes('f43f5e')) return PLAN_COLORS[3];
-  if (hex.includes('d97706') || hex.includes('f59e0b') || hex.includes('eab308')) return PLAN_COLORS[4];
-  if (hex.includes('0891b2') || hex.includes('06b6d4') || hex.includes('0ea5e9')) return PLAN_COLORS[5];
-  return PLAN_COLORS[idx % PLAN_COLORS.length];
+const BLANK_PLAN = {
+  name: '', description: '', price: '', billing_cycle: 'monthly',
+  discount_percent: 0, free_services_count: 0, bonus_loyalty_points: 0, color: '#6366f1', is_active: true,
 };
+
+function StatusBadge({ status, dark = false }) {
+  const m = STATUS_META[status] ?? STATUS_META.active;
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 10px', borderRadius: 20,
+      fontSize: 12, fontWeight: 600, background: dark ? `${m.color}22` : m.bg, color: m.color,
+      whiteSpace: 'nowrap', border: dark ? `1px solid ${m.color}40` : '1px solid transparent',
+      textTransform: 'capitalize',
+    }}>
+      <span style={{ width: 6, height: 6, borderRadius: '50%', background: m.color, flexShrink: 0 }} />
+      {m.label}
+    </span>
+  );
+}
 
 export default function MembershipPlansPage() {
   const { user } = useAuth();
   const { addToast } = useToast();
+  const { isDark, C } = usePageTheme();
   const canAdmin = ['superadmin', 'admin'].includes(user?.role);
 
-  const [plans, setPlans]             = useState([]);
+  const [plans, setPlans] = useState([]);
   const [enrollments, setEnrollments] = useState([]);
-  const [customers, setCustomers]     = useState([]);
-  const [tab, setTab]                 = useState('plans');
+  const [customers, setCustomers] = useState([]);
+  const [tab, setTab] = useState('plans');
   const [showPlanForm, setShowPlanForm] = useState(false);
-  const [editPlan, setEditPlan]       = useState(null);
+  const [editPlan, setEditPlan] = useState(null);
   const [showEnrollForm, setShowEnrollForm] = useState(false);
-  const [saving, setSaving]           = useState(false);
-  const [loading, setLoading]         = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [filterStatus, setFilterStatus] = useState('');
+  const [planFormError, setPlanFormError] = useState('');
+  const [enrollFormError, setEnrollFormError] = useState('');
 
-  const blankPlan = { name: '', description: '', price: '', billing_cycle: 'monthly', discount_percent: 0, free_services_count: 0, bonus_loyalty_points: 0, color: '#6366f1' };
-  const [planForm, setPlanForm]       = useState(blankPlan);
-  const [enrollForm, setEnrollForm]   = useState({ customer_id: '', plan_id: '', start_date: new Date().toISOString().slice(0, 10), amount_paid: '', notes: '' });
+  const [planForm, setPlanForm] = useState(BLANK_PLAN);
+  const [enrollForm, setEnrollForm] = useState({
+    customer_id: '', plan_id: '', start_date: new Date().toISOString().slice(0, 10), amount_paid: '', notes: '',
+  });
 
-  const loadPlans = useCallback(() => api.get('/membership/plans').then((r) => setPlans(Array.isArray(r.data) ? r.data : [])).catch(() => {}), []);
+  const loadPlans = useCallback(() =>
+    api.get('/membership/plans').then((r) => setPlans(Array.isArray(r.data) ? r.data : [])).catch(() => {}),
+  []);
+
   const loadEnrollments = useCallback(() => {
     setLoading(true);
-    api.get('/membership/enrollments').then((r) => setEnrollments(Array.isArray(r.data) ? r.data : [])).catch(() => {}).finally(() => setLoading(false));
+    api.get('/membership/enrollments')
+      .then((r) => setEnrollments(Array.isArray(r.data) ? r.data : []))
+      .catch(() => {})
+      .finally(() => setLoading(false));
   }, []);
 
   useEffect(() => { loadPlans(); loadEnrollments(); }, [loadPlans, loadEnrollments]);
+
   useEffect(() => {
     api.get('/customers').then((r) => {
       const list = Array.isArray(r.data?.data) ? r.data.data : (Array.isArray(r.data) ? r.data : []);
@@ -69,23 +86,99 @@ export default function MembershipPlansPage() {
     }).catch(() => {});
   }, []);
 
-  const savePlan = async (e) => {
-    e.preventDefault();
+  const activePlans = useMemo(() => plans.filter((p) => p.is_active !== false), [plans]);
+  const activeEnrollments = useMemo(() => enrollments.filter((e) => e.status === 'active').length, [enrollments]);
+
+  const displayedEnrollments = useMemo(() => {
+    if (!filterStatus) return enrollments;
+    return enrollments.filter((e) => e.status === filterStatus);
+  }, [enrollments, filterStatus]);
+
+  const openCreatePlan = () => {
+    setEditPlan(null);
+    setPlanForm(BLANK_PLAN);
+    setPlanFormError('');
+    setShowPlanForm(true);
+  };
+
+  const openEditPlan = (plan) => {
+    setEditPlan(plan);
+    setPlanForm({
+      ...BLANK_PLAN,
+      ...plan,
+      price: plan.price != null ? String(plan.price) : '',
+      discount_percent: plan.discount_percent != null ? String(plan.discount_percent) : '0',
+      free_services_count: plan.free_services_count != null ? String(plan.free_services_count) : '0',
+      bonus_loyalty_points: plan.bonus_loyalty_points != null ? String(plan.bonus_loyalty_points) : '0',
+      is_active: plan.is_active !== false,
+    });
+    setPlanFormError('');
+    setShowPlanForm(true);
+  };
+
+  const openEnrollModal = (planId = '') => {
+    const plan = planId ? plans.find((p) => String(p.id) === String(planId)) : null;
+    setEnrollForm({
+      customer_id: '',
+      plan_id: planId ? String(planId) : '',
+      start_date: new Date().toISOString().slice(0, 10),
+      amount_paid: plan?.price != null ? String(plan.price) : '',
+      notes: '',
+    });
+    setShowEnrollForm(true);
+  };
+
+  const onEnrollPlanChange = (planId) => {
+    const plan = plans.find((p) => String(p.id) === String(planId));
+    setEnrollForm((p) => ({
+      ...p,
+      plan_id: planId,
+      amount_paid: plan?.price != null ? String(plan.price) : p.amount_paid,
+    }));
+  };
+
+  const handleSavePlan = async (e) => {
+    e?.preventDefault?.();
+    setPlanFormError('');
+    if (!planForm.name?.trim()) {
+      setPlanFormError('Plan name is required.');
+      return;
+    }
+    if (planForm.price === '' || planForm.price == null || Number(planForm.price) < 0) {
+      setPlanFormError('Enter a valid price (Rs.).');
+      return;
+    }
+    const payload = {
+      name: planForm.name.trim(),
+      description: planForm.description?.trim() || '',
+      price: Number(planForm.price),
+      billing_cycle: planForm.billing_cycle || 'monthly',
+      discount_percent: Number(planForm.discount_percent) || 0,
+      free_services_count: Number(planForm.free_services_count) || 0,
+      bonus_loyalty_points: Number(planForm.bonus_loyalty_points) || 0,
+      color: planForm.color || '#6366f1',
+      ...(editPlan ? { is_active: planForm.is_active !== false } : {}),
+    };
     setSaving(true);
     try {
       if (editPlan) {
-        await api.put(`/membership/plans/${editPlan.id}`, planForm);
+        await api.put(`/membership/plans/${editPlan.id}`, payload);
         addToast('Plan updated', 'success');
       } else {
-        await api.post('/membership/plans', planForm);
+        await api.post('/membership/plans', payload);
         addToast('Plan created', 'success');
       }
       setShowPlanForm(false);
       setEditPlan(null);
-      setPlanForm(blankPlan);
+      setPlanForm(BLANK_PLAN);
       loadPlans();
-    } catch (err) { addToast(err.response?.data?.message || 'Error', 'error'); }
-    setSaving(false);
+    } catch (err) {
+      const msg = err.response?.data?.message || 'Failed to save plan.';
+      setPlanFormError(msg);
+      addToast(msg, 'error');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const deletePlan = async (id) => {
@@ -94,20 +187,50 @@ export default function MembershipPlansPage() {
       await api.delete(`/membership/plans/${id}`);
       addToast('Plan removed', 'success');
       loadPlans();
-    } catch { addToast('Error', 'error'); }
+    } catch {
+      addToast('Error', 'error');
+    }
   };
 
-  const saveEnroll = async (e) => {
-    e.preventDefault();
+  const handleSaveEnroll = async (e) => {
+    e?.preventDefault?.();
+    setEnrollFormError('');
+    if (!enrollForm.customer_id) {
+      setEnrollFormError('Select a customer.');
+      return;
+    }
+    if (!enrollForm.plan_id) {
+      setEnrollFormError('Select a membership plan.');
+      return;
+    }
+    if (!enrollForm.start_date) {
+      setEnrollFormError('Start date is required.');
+      return;
+    }
+    const payload = {
+      customer_id: Number(enrollForm.customer_id),
+      plan_id: Number(enrollForm.plan_id),
+      start_date: enrollForm.start_date,
+      amount_paid: enrollForm.amount_paid !== '' ? Number(enrollForm.amount_paid) : undefined,
+      notes: enrollForm.notes?.trim() || '',
+    };
     setSaving(true);
     try {
-      await api.post('/membership/enroll', enrollForm);
+      await api.post('/membership/enroll', payload);
       addToast('Customer enrolled!', 'success');
       setShowEnrollForm(false);
-      setEnrollForm({ customer_id: '', plan_id: '', start_date: new Date().toISOString().slice(0, 10), amount_paid: '', notes: '' });
+      setEnrollForm({
+        customer_id: '', plan_id: '', start_date: new Date().toISOString().slice(0, 10), amount_paid: '', notes: '',
+      });
+      setTab('enrollments');
       loadEnrollments();
-    } catch (err) { addToast(err.response?.data?.message || 'Error', 'error'); }
-    setSaving(false);
+    } catch (err) {
+      const msg = err.response?.data?.message || 'Failed to enroll customer.';
+      setEnrollFormError(msg);
+      addToast(msg, 'error');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const updateEnrollStatus = async (id, status) => {
@@ -115,69 +238,101 @@ export default function MembershipPlansPage() {
       await api.patch(`/membership/enrollments/${id}/status`, { status });
       addToast('Updated', 'success');
       loadEnrollments();
-    } catch { addToast('Error', 'error'); }
+    } catch {
+      addToast('Error', 'error');
+    }
   };
 
-  const activeEnrollments = enrollments.filter((e) => e.status === 'active').length;
-  const activePlans = plans.filter((p) => p.is_active !== false).length;
+  const tabBtn = (key, label) => {
+    const active = tab === key;
+    return (
+      <button
+        key={key}
+        type="button"
+        onClick={() => setTab(key)}
+        style={{
+          padding: '10px 22px', background: 'none', border: 'none', cursor: 'pointer',
+          fontSize: 14, fontWeight: 700, fontFamily: "'Inter', sans-serif", transition: 'all 0.2s',
+          color: active ? SC.primary : C.muted,
+          borderBottom: active ? `2px solid ${SC.primary}` : '2px solid transparent',
+          marginBottom: -2,
+        }}
+      >
+        {label}
+      </button>
+    );
+  };
+
+  const filterChip = (val, label) => {
+    const active = filterStatus === val;
+    return (
+      <button
+        key={val || 'all'}
+        type="button"
+        onClick={() => setFilterStatus(val)}
+        style={{
+          padding: '6px 14px', borderRadius: 20, cursor: 'pointer', fontSize: 12, fontWeight: 600,
+          fontFamily: "'Inter', sans-serif", border: '1.5px solid',
+          borderColor: active ? SC.primary : C.border,
+          background: active ? (isDark ? 'rgba(37,99,235,0.15)' : '#EFF6FF') : C.cardBg,
+          color: active ? SC.primary : C.muted,
+        }}
+      >
+        {label}
+      </button>
+    );
+  };
 
   const enrollColumns = useMemo(() => [
     {
       id: 'customer',
       header: 'Customer',
-      accessorFn: row => `${row.customer?.name || ''} ${row.customer?.phone || ''}`,
+      accessorFn: (row) => `${row.customer?.name || ''} ${row.customer?.phone || ''}`,
       cell: ({ row: { original: e } }) => (
         <>
-          <div style={{ fontWeight: 700 }}>{e.customer?.name || '—'}</div>
-          <div style={{ fontSize: 11, color: '#a1a1aa', marginTop: 1 }}>{e.customer?.phone}</div>
+          <div style={{ fontWeight: 700, color: C.text }}>{e.customer?.name || '—'}</div>
+          <div style={{ fontSize: 11, color: C.muted, marginTop: 1 }}>{e.customer?.phone}</div>
         </>
       ),
     },
     {
       id: 'plan',
       header: 'Plan',
-      accessorFn: row => row.plan?.name,
+      accessorFn: (row) => row.plan?.name,
       cell: ({ row: { original: e } }) => (
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 600 }}>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 600, color: C.text }}>
           <span style={{ width: 8, height: 8, borderRadius: '50%', background: e.plan?.color || '#6366f1' }} />
           {e.plan?.name || '—'}
         </span>
       ),
     },
     { id: 'start_date', header: 'Start', accessorKey: 'start_date' },
-    { id: 'end_date', header: 'End', accessorFn: row => row.end_date || '—' },
-    { id: 'credits', header: 'Credits', accessorKey: 'free_credits_remaining' },
+    { id: 'end_date', header: 'End', accessorFn: (row) => row.end_date || '—' },
+    { id: 'credits', header: 'Credits', accessorKey: 'free_credits_remaining', meta: { align: 'center' } },
     {
       id: 'amount_paid',
       header: 'Amount Paid',
       accessorKey: 'amount_paid',
-      cell: ({ row: { original: e } }) => <span style={{ fontWeight: 600 }}>{Rs(e.amount_paid)}</span>,
+      cell: ({ row: { original: e } }) => <span style={{ fontWeight: 600, color: '#059669' }}>{Rs(e.amount_paid)}</span>,
     },
     {
       id: 'status',
       header: 'Status',
       accessorKey: 'status',
-      cell: ({ row: { original: e } }) => {
-        const sc = STATUS_COLOR[e.status] || STATUS_COLOR.active;
-        return (
-          <span style={{ padding: '4px 12px', borderRadius: 99, fontSize: 11, fontWeight: 700, background: sc.bg, color: sc.text, border: `1px solid ${sc.border}`, textTransform: 'capitalize' }}>
-            {e.status}
-          </span>
-        );
-      },
+      cell: ({ row: { original: e } }) => <StatusBadge status={e.status} dark={isDark} />,
     },
     {
       id: 'actions',
-      header: 'Actions',
+      header: '',
       enableSorting: false,
+      meta: { width: '100px', align: 'center' },
       cell: ({ row: { original: e } }) => e.status === 'active' ? (
-        <button type="button" onClick={() => updateEnrollStatus(e.id, 'cancelled')}
-          style={{ padding: '5px 12px', borderRadius: 8, border: '1.5px solid #FECACA', background: '#FEF2F2', color: '#DC2626', cursor: 'pointer', fontSize: 11, fontWeight: 700, fontFamily: "'Inter', sans-serif" }}>
-          Cancel
-        </button>
+        <ActionBtn title="Cancel membership" color="#DC2626" onClick={() => updateEnrollStatus(e.id, 'cancelled')}>
+          <IconTrash />
+        </ActionBtn>
       ) : null,
     },
-  ], []);
+  ], [C, isDark]);
 
   const planColumns = useMemo(() => [
     {
@@ -186,10 +341,15 @@ export default function MembershipPlansPage() {
       accessorKey: 'name',
       cell: ({ row: { original: plan } }) => (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ width: 10, height: 10, borderRadius: '50%', background: plan.color || '#6366f1' }} />
-          <span style={{ fontWeight: 700, color: '#101828' }}>{plan.name}</span>
+          <span style={{ width: 10, height: 10, borderRadius: '50%', background: plan.color || '#6366f1', flexShrink: 0 }} />
+          <span style={{ fontWeight: 700, color: C.text }}>{plan.name}</span>
           {plan.is_active === false && (
-            <span style={{ fontSize: 10, fontWeight: 700, color: '#9CA3AF', background: '#F3F4F6', padding: '2px 8px', borderRadius: 99 }}>INACTIVE</span>
+            <span style={{
+              fontSize: 10, fontWeight: 700, color: C.muted,
+              background: isDark ? '#334155' : '#F3F4F6', padding: '2px 8px', borderRadius: 99,
+            }}>
+              INACTIVE
+            </span>
           )}
         </div>
       ),
@@ -197,9 +357,14 @@ export default function MembershipPlansPage() {
     {
       id: 'price',
       header: 'Price',
-      accessorFn: row => row.price,
+      accessorFn: (row) => row.price,
       cell: ({ row: { original: plan } }) => (
-        <span style={{ fontWeight: 800 }}>{Rs(plan.price)} <span style={{ fontWeight: 500, color: '#98A2B3', fontSize: 12 }}>/ {CYCLES[plan.billing_cycle] || plan.billing_cycle}</span></span>
+        <span style={{ fontWeight: 800, color: C.text }}>
+          {Rs(plan.price)}
+          <span style={{ fontWeight: 500, color: C.muted, fontSize: 12 }}>
+            {' '}/ {CYCLES[plan.billing_cycle] || plan.billing_cycle}
+          </span>
+        </span>
       ),
     },
     { id: 'discount_percent', header: 'Discount %', accessorKey: 'discount_percent', meta: { align: 'center' } },
@@ -207,396 +372,342 @@ export default function MembershipPlansPage() {
     {
       id: 'description',
       header: 'Description',
-      accessorFn: row => row.description || '',
-      cell: ({ getValue }) => <span style={{ fontSize: 13, color: '#667085' }}>{getValue() || '—'}</span>,
+      accessorFn: (row) => row.description || '',
+      cell: ({ getValue }) => <span style={{ fontSize: 13, color: C.muted }}>{getValue() || '—'}</span>,
     },
-    ...(canAdmin ? [{
+    {
       id: 'actions',
       header: '',
       enableSorting: false,
-      meta: { width: '140px', align: 'center' },
+      meta: { width: canAdmin ? '160px' : '90px', align: 'center' },
       cell: ({ row: { original: plan } }) => (
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
-          <button type="button" onClick={() => { setEditPlan(plan); setPlanForm(plan); setShowPlanForm(true); }}
-            style={{ padding: '6px 14px', borderRadius: 8, border: '1.5px solid #E4E7EC', background: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 700, color: '#344054' }}>
-            Edit
-          </button>
-          <button type="button" onClick={() => deletePlan(plan.id)}
-            style={{ padding: '6px 12px', borderRadius: 8, border: '1.5px solid #FECACA', background: '#FEF2F2', cursor: 'pointer', color: '#DC2626', fontSize: 12, fontWeight: 700 }}>
-            Delete
-          </button>
+        <div style={{ display: 'flex', gap: 6, justifyContent: 'center' }}>
+          {plan.is_active !== false && (
+            <ActionBtn title="Enroll customer" color={SC.purple} onClick={() => openEnrollModal(plan.id)}>
+              <IconUsers />
+            </ActionBtn>
+          )}
+          {canAdmin && (
+            <>
+              <ActionBtn title="Edit plan" onClick={() => openEditPlan(plan)}>
+                <IconEdit />
+              </ActionBtn>
+              <ActionBtn title="Delete plan" color="#DC2626" onClick={() => deletePlan(plan.id)}>
+                <IconTrash />
+              </ActionBtn>
+            </>
+          )}
         </div>
       ),
-    }] : []),
-  ], [canAdmin]);
+    },
+  ], [canAdmin, C, isDark, plans]);
 
-  const inp = {
-    padding: '10px 14px', borderRadius: 10, border: '1.5px solid #E5E7EB', fontSize: 13.5,
-    width: '100%', boxSizing: 'border-box', fontFamily: "'Inter', sans-serif",
-    outline: 'none', transition: 'border-color 0.15s, box-shadow 0.15s',
-    background: '#FAFBFC',
-  };
-  const lbl = { fontSize: 12, fontWeight: 700, color: '#344054', marginBottom: 6, display: 'block', fontFamily: "'Inter', sans-serif" };
-
-  const actionBtn = (
-    <div style={{ display: 'flex', gap: 8 }}>
-      {canAdmin && tab === 'plans' && (
-        <button
-          onClick={() => { setEditPlan(null); setPlanForm(blankPlan); setShowPlanForm(true); }}
-          style={{
-            display: 'flex', alignItems: 'center', gap: 7,
-            padding: '9px 18px', background: 'linear-gradient(135deg, #2563EB, #3B82F6)',
-            border: 'none', borderRadius: 10, cursor: 'pointer',
-            fontSize: 13, fontWeight: 700, color: '#fff',
-            boxShadow: '0 2px 10px rgba(37,99,235,0.35)',
-            transition: 'all 0.15s', fontFamily: "'Inter', sans-serif",
-          }}
-        >
-          + New Plan
-        </button>
-      )}
-      {tab === 'enrollments' && (
-        <button
-          onClick={() => setShowEnrollForm(true)}
-          style={{
-            display: 'flex', alignItems: 'center', gap: 7,
-            padding: '9px 18px', background: 'linear-gradient(135deg, #7C3AED, #A855F7)',
-            border: 'none', borderRadius: 10, cursor: 'pointer',
-            fontSize: 13, fontWeight: 700, color: '#fff',
-            boxShadow: '0 2px 10px rgba(124,58,237,0.35)',
-            transition: 'all 0.15s', fontFamily: "'Inter', sans-serif",
-          }}
-        >
-          + Enroll Customer
-        </button>
-      )}
-    </div>
-  );
+  const selectedEnrollPlan = plans.find((p) => String(p.id) === String(enrollForm.plan_id));
 
   return (
     <PageWrapper
       title="Membership Plans"
-      subtitle="Create and manage customer loyalty membership plans. Reward your best customers with exclusive benefits."
-      actions={actionBtn}
-    >
-
-      {/* ── Stat Cards ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 16 }}>
-        <StatCard label="Total Plans"         value={plans.length}       color="#2563EB" />
-        <StatCard label="Active Plans"        value={activePlans}        color="#059669" />
-        <StatCard label="Active Members"      value={activeEnrollments}  color="#7C3AED" />
-        <StatCard label="Total Enrollments"   value={enrollments.length} color="#D97706" />
-      </div>
-
-      {/* ── Hero Card ── */}
-      <motion.div
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.35 }}
-        style={{
-          background: 'linear-gradient(135deg, #1E3A5F 0%, #2563EB 100%)',
-          borderRadius: 18, padding: '28px 32px',
-          boxShadow: '0 8px 32px rgba(37,99,235,0.22)',
-          position: 'relative', overflow: 'hidden',
-        }}
-      >
-        <div style={{ position:'absolute', top:-40, right:-40, width:200, height:200, borderRadius:'50%', background:'rgba(255,255,255,0.06)', pointerEvents:'none' }} />
-        <div style={{ position:'absolute', bottom:-30, right:80, width:120, height:120, borderRadius:'50%', background:'rgba(255,255,255,0.04)', pointerEvents:'none' }} />
-
-        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', flexWrap:'wrap', gap:16, position:'relative' }}>
-          <div>
-            <span style={{
-              display: 'inline-flex', alignItems: 'center', gap: 6,
-              background: 'rgba(255,255,255,0.18)', color: '#fff',
-              fontSize: 11, fontWeight: 800, letterSpacing: '0.07em',
-              textTransform: 'uppercase', padding: '4px 12px', borderRadius: 99,
-              border: '1px solid rgba(255,255,255,0.25)',
-              fontFamily: "'Inter', sans-serif",
-            }}>
-              Membership
-            </span>
-            <h2 style={{
-              margin: '12px 0 2px', fontSize: 28, fontWeight: 900, color: '#fff',
-              lineHeight: 1.1, fontFamily: "'Sora', 'Manrope', sans-serif", letterSpacing: '-0.5px',
-            }}>
-              Membership Overview
-            </h2>
-            <p style={{ margin: 0, fontSize: 13.5, color: 'rgba(255,255,255,0.72)', fontFamily: "'Inter', sans-serif", maxWidth: 480 }}>
-              {plans.length === 0
-                ? 'Get started by creating your first membership plan to reward loyal customers.'
-                : `You have ${activePlans} active plan${activePlans !== 1 ? 's' : ''} with ${activeEnrollments} enrolled member${activeEnrollments !== 1 ? 's' : ''}.`}
-            </p>
-            {/* Enrollment bar */}
-            {plans.length > 0 && (
-              <div style={{ marginTop: 16, maxWidth: 360 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-                  <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.75)', fontWeight: 600, fontFamily: "'Inter', sans-serif" }}>
-                    Enrollment rate
-                  </span>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: '#fff', fontFamily: "'Inter', sans-serif" }}>
-                    {activeEnrollments} active member{activeEnrollments !== 1 ? 's' : ''}
-                  </span>
-                </div>
-                <div style={{ height: 7, background: 'rgba(255,255,255,0.2)', borderRadius: 99, overflow: 'hidden' }}>
-                  <motion.div
-                    initial={{ width: 0 }}
-                    animate={{ width: `${Math.min(100, enrollments.length > 0 ? (activeEnrollments / enrollments.length) * 100 : 0)}%` }}
-                    transition={{ duration: 0.9, ease: 'easeOut' }}
-                    style={{ height: '100%', background: 'rgba(255,255,255,0.85)', borderRadius: 99 }}
-                  />
-                </div>
-              </div>
-            )}
-          </div>
-          <div style={{
-            background: 'rgba(255,255,255,0.15)',
-            border: '1px solid rgba(255,255,255,0.3)',
-            borderRadius: 99, padding: '6px 16px',
-            fontSize: 12, fontWeight: 700, color: '#fff',
-            textTransform: 'uppercase', letterSpacing: '0.06em',
-            fontFamily: "'Inter', sans-serif",
-          }}>
-            {activePlans} Active
-          </div>
-        </div>
-      </motion.div>
-
-      {/* ── Tabs ── */}
-      <div style={{ display: 'flex', gap: 6 }}>
-        {[
-          { key: 'plans', label: 'Plans', icon: '📋' },
-          { key: 'enrollments', label: 'Enrollments', icon: '👥' },
-        ].map(({ key, label, icon }) => (
+      subtitle="Create loyalty plans and enroll customers with discounts and free service credits."
+      actions={
+        tab === 'plans' && canAdmin ? (
           <button
-            key={key}
-            onClick={() => setTab(key)}
+            type="button"
+            onClick={openCreatePlan}
             style={{
-              padding: '9px 22px', borderRadius: 10, fontSize: 13, fontWeight: 700,
-              cursor: 'pointer', border: tab === key ? 'none' : '1.5px solid #EAECF0',
-              background: tab === key ? 'linear-gradient(135deg, #2563EB, #3B82F6)' : '#fff',
-              color: tab === key ? '#fff' : '#344054',
-              boxShadow: tab === key ? '0 2px 10px rgba(37,99,235,0.30)' : '0 1px 4px rgba(16,24,40,0.06)',
-              transition: 'all 0.15s', fontFamily: "'Inter', sans-serif",
+              display: 'flex', alignItems: 'center', gap: 6, background: C.cardBg, color: C.text,
+              border: `1.5px solid ${C.border}`, borderRadius: 10, padding: '8px 18px',
+              fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: "'Inter', sans-serif",
             }}
           >
-            {icon} {label}
+            <IconPlus /> New Plan
           </button>
-        ))}
+        ) : tab === 'enrollments' ? (
+          <button
+            type="button"
+            onClick={() => openEnrollModal()}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6, background: C.cardBg, color: C.text,
+              border: `1.5px solid ${C.border}`, borderRadius: 10, padding: '8px 18px',
+              fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: "'Inter', sans-serif",
+            }}
+          >
+            <IconPlus /> Enroll Customer
+          </button>
+        ) : null
+      }
+    >
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 16 }}>
+        <StatCard label="Total Plans" value={plans.length} icon={<IconStar />} color={SC.primary} />
+        <StatCard label="Active Plans" value={activePlans.length} icon={<IconCheck />} color={SC.success} />
+        <StatCard label="Active Members" value={activeEnrollments} icon={<IconUsers />} color={SC.purple} />
+        <StatCard label="Total Enrollments" value={enrollments.length} icon={<IconDollar />} color={SC.warning} />
       </div>
 
-      {/* ── Plan Form Modal ── */}
-      {showPlanForm && (
-        <motion.div
-          initial={{ opacity: 0, y: -8 }}
-          animate={{ opacity: 1, y: 0 }}
-          style={{
-            background: '#fff', border: '1.5px solid #EAECF0', borderRadius: 18,
-            padding: '26px 28px', boxShadow: '0 4px 20px rgba(16,24,40,0.08)',
-          }}
-        >
-          <h3 style={{ margin: '0 0 20px', fontSize: 17, fontWeight: 800, color: '#101828', fontFamily: "'Sora', 'Manrope', sans-serif" }}>
-            {editPlan ? 'Edit Plan' : 'New Membership Plan'}
-          </h3>
-          <form onSubmit={savePlan}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14 }}>
-              <div style={{ gridColumn: '1 / -1' }}>
-                <label style={lbl}>Plan Name *</label>
-                <input style={inp} value={planForm.name} onChange={(e) => setPlanForm((p) => ({ ...p, name: e.target.value }))} required placeholder="e.g. Gold Membership" />
-              </div>
-              <div>
-                <label style={lbl}>Price (Rs.) *</label>
-                <input type="number" style={inp} value={planForm.price} onChange={(e) => setPlanForm((p) => ({ ...p, price: e.target.value }))} min="0" step="0.01" required placeholder="0.00" />
-              </div>
-              <div>
-                <label style={lbl}>Billing Cycle</label>
-                <select style={inp} value={planForm.billing_cycle} onChange={(e) => setPlanForm((p) => ({ ...p, billing_cycle: e.target.value }))}>
-                  {Object.entries(CYCLES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-                </select>
-              </div>
-              <div>
-                <label style={lbl}>Service Discount (%)</label>
-                <input type="number" style={inp} value={planForm.discount_percent} onChange={(e) => setPlanForm((p) => ({ ...p, discount_percent: e.target.value }))} min="0" max="100" step="0.01" placeholder="0" />
-              </div>
-              <div>
-                <label style={lbl}>Free Service Credits</label>
-                <input type="number" style={inp} value={planForm.free_services_count} onChange={(e) => setPlanForm((p) => ({ ...p, free_services_count: e.target.value }))} min="0" placeholder="0" />
-              </div>
-              <div>
-                <label style={lbl}>Bonus Loyalty Points</label>
-                <input type="number" style={inp} value={planForm.bonus_loyalty_points} onChange={(e) => setPlanForm((p) => ({ ...p, bonus_loyalty_points: e.target.value }))} min="0" placeholder="0" />
-              </div>
-              <div>
-                <label style={lbl}>Color</label>
-                <input type="color" style={{ ...inp, height: 42, padding: 4, cursor: 'pointer' }} value={planForm.color} onChange={(e) => setPlanForm((p) => ({ ...p, color: e.target.value }))} />
-              </div>
-              <div style={{ gridColumn: '1 / -1' }}>
-                <label style={lbl}>Description</label>
-                <textarea style={{ ...inp, height: 70, resize: 'vertical' }} value={planForm.description} onChange={(e) => setPlanForm((p) => ({ ...p, description: e.target.value }))} placeholder="Describe the benefits of this plan..." />
-              </div>
-            </div>
-            <div style={{ display: 'flex', gap: 10, marginTop: 18 }}>
-              <button
-                type="submit"
-                disabled={saving}
-                style={{
-                  padding: '10px 24px', background: 'linear-gradient(135deg, #2563EB, #3B82F6)',
-                  color: '#fff', border: 'none', borderRadius: 10, fontSize: 13.5, fontWeight: 700,
-                  cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.6 : 1,
-                  boxShadow: '0 2px 10px rgba(37,99,235,0.35)', transition: 'all 0.15s',
-                  fontFamily: "'Inter', sans-serif",
-                }}
-              >
-                {saving ? 'Saving…' : editPlan ? 'Update Plan' : 'Create Plan'}
-              </button>
-              <button
-                type="button"
-                onClick={() => { setShowPlanForm(false); setEditPlan(null); }}
-                style={{
-                  padding: '10px 20px', borderRadius: 10, border: '1.5px solid #EAECF0',
-                  background: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 600,
-                  color: '#344054', fontFamily: "'Inter', sans-serif",
-                }}
-              >
-                Cancel
-              </button>
-            </div>
-          </form>
-        </motion.div>
-      )}
+      <div style={{ display: 'flex', borderBottom: `2px solid ${C.border}`, gap: 0 }}>
+        {tabBtn('plans', 'Plans')}
+        {tabBtn('enrollments', 'Enrollments')}
+      </div>
 
       {tab === 'plans' && (
-        <DataTable
-          columns={planColumns}
-          data={plans}
-          loading={loading}
-          emptyMessage="No membership plans yet"
-          emptySub="Create your first plan to start enrolling customers."
-          searchableColumns={[{ id: 'name', title: 'Plan' }]}
-        />
-      )}
-
-      {/* ── Enroll Form Modal ── */}
-      {showEnrollForm && (
-        <motion.div
-          initial={{ opacity: 0, y: -8 }}
-          animate={{ opacity: 1, y: 0 }}
-          style={{
-            background: '#fff', border: '1.5px solid #EAECF0', borderRadius: 18,
-            padding: '26px 28px', boxShadow: '0 4px 20px rgba(16,24,40,0.08)',
-          }}
-        >
-          <h3 style={{ margin: '0 0 20px', fontSize: 17, fontWeight: 800, color: '#101828', fontFamily: "'Sora', 'Manrope', sans-serif" }}>
-            Enroll Customer
-          </h3>
-          <form onSubmit={saveEnroll}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14 }}>
-              <div>
-                <label style={lbl}>Customer *</label>
-                <select style={inp} value={enrollForm.customer_id} onChange={(e) => setEnrollForm((p) => ({ ...p, customer_id: e.target.value }))} required>
-                  <option value="">Select customer</option>
-                  {customers.map((c) => <option key={c.id} value={c.id}>{c.name} ({c.phone})</option>)}
-                </select>
-              </div>
-              <div>
-                <label style={lbl}>Plan *</label>
-                <select style={inp} value={enrollForm.plan_id} onChange={(e) => setEnrollForm((p) => ({ ...p, plan_id: e.target.value }))} required>
-                  <option value="">Select plan</option>
-                  {plans.filter((p) => p.is_active).map((p) => <option key={p.id} value={p.id}>{p.name} — {Rs(p.price)}</option>)}
-                </select>
-              </div>
-              <div>
-                <label style={lbl}>Start Date *</label>
-                <input type="date" style={inp} value={enrollForm.start_date} onChange={(e) => setEnrollForm((p) => ({ ...p, start_date: e.target.value }))} required />
-              </div>
-              <div>
-                <label style={lbl}>Amount Paid (Rs.)</label>
-                <input type="number" style={inp} value={enrollForm.amount_paid} onChange={(e) => setEnrollForm((p) => ({ ...p, amount_paid: e.target.value }))} min="0" step="0.01" placeholder="0.00" />
-              </div>
-              <div style={{ gridColumn: '1/-1' }}>
-                <label style={lbl}>Notes</label>
-                <input style={inp} value={enrollForm.notes} onChange={(e) => setEnrollForm((p) => ({ ...p, notes: e.target.value }))} placeholder="Optional notes..." />
-              </div>
-            </div>
-            <div style={{ display: 'flex', gap: 10, marginTop: 18 }}>
-              <button
-                type="submit"
-                disabled={saving}
-                style={{
-                  padding: '10px 24px', background: 'linear-gradient(135deg, #7C3AED, #A855F7)',
-                  color: '#fff', border: 'none', borderRadius: 10, fontSize: 13.5, fontWeight: 700,
-                  cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.6 : 1,
-                  boxShadow: '0 2px 10px rgba(124,58,237,0.35)', transition: 'all 0.15s',
-                  fontFamily: "'Inter', sans-serif",
-                }}
-              >
-                {saving ? 'Saving…' : 'Enroll'}
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowEnrollForm(false)}
-                style={{
-                  padding: '10px 20px', borderRadius: 10, border: '1.5px solid #EAECF0',
-                  background: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 600,
-                  color: '#344054', fontFamily: "'Inter', sans-serif",
-                }}
-              >
-                Cancel
-              </button>
-            </div>
-          </form>
-        </motion.div>
-      )}
-
-      {/* ── Enrollments Table ── */}
-      {tab === 'enrollments' && (
         loading ? (
-          <div style={{ textAlign: 'center', padding: 50, color: '#6B7280' }}>
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>Loading…</motion.div>
+          <DataTable
+            columns={planColumns}
+            data={[]}
+            loading
+            emptyMessage="No membership plans yet"
+            searchableColumns={[{ id: 'name', title: 'Plan' }]}
+          />
+        ) : plans.length === 0 ? (
+          <div style={{
+            textAlign: 'center', padding: '48px 20px', borderRadius: 14,
+            border: `1.5px dashed ${C.border}`, background: isDark ? C.soft : '#F8FAFC',
+          }}>
+            <div style={{ fontSize: 16, fontWeight: 700, color: C.text, marginBottom: 6 }}>No membership plans yet</div>
+            <div style={{ fontSize: 13, color: C.muted, marginBottom: 16 }}>
+              {canAdmin ? 'Create your first plan to start enrolling customers.' : 'Ask an admin to create a membership plan.'}
+            </div>
+            {canAdmin && (
+              <Button variant="primary" icon={<IconPlus />} onClick={openCreatePlan}>
+                New Membership Plan
+              </Button>
+            )}
           </div>
-        ) : enrollments.length === 0 ? (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            style={{
-              textAlign: 'center', padding: '50px 20px',
-              background: 'linear-gradient(135deg, #FAF5FF, #F3E8FF)',
-              borderRadius: 18, border: '2px dashed #DDD6FE',
-            }}
-          >
-            <div style={{ fontSize: 40, marginBottom: 12 }}>👥</div>
-            <div style={{ fontSize: 16, fontWeight: 700, color: '#374151', marginBottom: 4, fontFamily: "'Sora', sans-serif" }}>
-              No enrollments yet
-            </div>
-            <div style={{ fontSize: 13, color: '#667085', fontFamily: "'Inter', sans-serif" }}>
-              Enroll your first customer in a membership plan.
-            </div>
-          </motion.div>
         ) : (
-          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
-            <DataTable
-              columns={enrollColumns}
-              data={enrollments}
-              loading={loading}
-              emptyMessage="No enrollments yet"
-              emptySub="Enroll your first customer in a membership plan."
-              searchableColumns={[
-                { id: 'customer', title: 'Customer' },
-                { id: 'plan', title: 'Plan' },
-              ]}
-              filterableColumns={[{
-                id: 'status',
-                title: 'Status',
-                options: Object.keys(STATUS_COLOR).map(s => ({ label: s, value: s })),
-              }]}
-            />
-          </motion.div>
+          <DataTable
+            columns={planColumns}
+            data={plans}
+            emptyMessage="No membership plans yet"
+            searchableColumns={[{ id: 'name', title: 'Plan' }]}
+          />
         )
       )}
 
-      {/* ── Footer ── */}
-      <p style={{ margin: 0, fontSize: 12, color: '#98A2B3', textAlign: 'center', fontFamily: "'Inter', sans-serif" }}>
-        Membership plans help retain customers with exclusive benefits and rewards.
-      </p>
+      {tab === 'enrollments' && (
+        <>
+          <FilterBar>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {filterChip('', 'All')}
+              {Object.keys(STATUS_META).map((s) => filterChip(s, STATUS_META[s].label))}
+            </div>
+          </FilterBar>
+          <DataTable
+            columns={enrollColumns}
+            data={displayedEnrollments}
+            loading={loading}
+            emptyMessage="No enrollments yet"
+            emptySub="Pick a plan and enroll a customer — amount fills in automatically from the plan price."
+            searchableColumns={[
+              { id: 'customer', title: 'Customer' },
+              { id: 'plan', title: 'Plan' },
+            ]}
+          />
+        </>
+      )}
+
+      {/* Plan modal */}
+      <Modal
+        open={showPlanForm}
+        onClose={() => { setShowPlanForm(false); setEditPlan(null); setPlanFormError(''); }}
+        title={editPlan ? 'Edit Membership Plan' : 'New Membership Plan'}
+        width={640}
+        footer={(
+          <>
+            {editPlan && (
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginRight: 'auto', cursor: 'pointer', userSelect: 'none' }}>
+                <input
+                  type="checkbox"
+                  checked={planForm.is_active !== false}
+                  onChange={(e) => setPlanForm((p) => ({ ...p, is_active: e.target.checked }))}
+                  style={{ width: 16, height: 16, accentColor: SC.primary }}
+                />
+                <span style={{ fontSize: 13, fontWeight: 600, color: C.text }}>Active</span>
+              </label>
+            )}
+            <Button variant="secondary" onClick={() => { setShowPlanForm(false); setEditPlan(null); setPlanFormError(''); }}>Cancel</Button>
+            <Button type="submit" form="plan-form" variant="primary" loading={saving} disabled={saving}>
+              {editPlan ? 'Save Changes' : 'Create Plan'}
+            </Button>
+          </>
+        )}
+      >
+        {planFormError && (
+          <div style={{
+            background: isDark ? '#450A0A' : '#FEF2F2', color: isDark ? '#FCA5A5' : '#DC2626',
+            padding: '10px 14px', borderRadius: 10, marginBottom: 16, fontSize: 13,
+            border: `1px solid ${isDark ? '#7F1D1D' : '#FECACA'}`, fontWeight: 500,
+          }}>
+            {planFormError}
+          </div>
+        )}
+        <p style={{ margin: '0 0 16px', fontSize: 13, color: C.muted, lineHeight: 1.45 }}>
+          {editPlan ? 'Update plan price, benefits, and availability.' : 'Set price, billing cycle, and member benefits. Active plans appear in the enroll flow.'}
+        </p>
+        <form id="plan-form" onSubmit={handleSavePlan} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <FormGroup label="Plan Name" required>
+            <Input
+              value={planForm.name}
+              onChange={(e) => setPlanForm((p) => ({ ...p, name: e.target.value }))}
+              required
+              placeholder="e.g. Gold Membership"
+            />
+          </FormGroup>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+            <FormGroup label="Price (Rs.)" required>
+              <Input
+                type="number"
+                value={planForm.price}
+                onChange={(e) => setPlanForm((p) => ({ ...p, price: e.target.value }))}
+                min="0"
+                step="0.01"
+                required
+                placeholder="0.00"
+              />
+            </FormGroup>
+            <FormGroup label="Billing Cycle">
+              <Select
+                value={planForm.billing_cycle}
+                onChange={(e) => setPlanForm((p) => ({ ...p, billing_cycle: e.target.value }))}
+              >
+                {Object.entries(CYCLES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              </Select>
+            </FormGroup>
+            <FormGroup label="Service Discount (%)">
+              <Input
+                type="number"
+                value={planForm.discount_percent}
+                onChange={(e) => setPlanForm((p) => ({ ...p, discount_percent: e.target.value }))}
+                min="0"
+                max="100"
+                step="0.01"
+              />
+            </FormGroup>
+            <FormGroup label="Free Service Credits">
+              <Input
+                type="number"
+                value={planForm.free_services_count}
+                onChange={(e) => setPlanForm((p) => ({ ...p, free_services_count: e.target.value }))}
+                min="0"
+              />
+            </FormGroup>
+            <FormGroup label="Bonus Loyalty Points">
+              <Input
+                type="number"
+                value={planForm.bonus_loyalty_points}
+                onChange={(e) => setPlanForm((p) => ({ ...p, bonus_loyalty_points: e.target.value }))}
+                min="0"
+              />
+            </FormGroup>
+            <FormGroup label="Color">
+              <Input
+                type="color"
+                value={planForm.color}
+                onChange={(e) => setPlanForm((p) => ({ ...p, color: e.target.value }))}
+                style={{ height: 42, padding: 4, cursor: 'pointer' }}
+              />
+            </FormGroup>
+          </div>
+          <FormGroup label="Description">
+            <Textarea
+              value={planForm.description}
+              onChange={(e) => setPlanForm((p) => ({ ...p, description: e.target.value }))}
+              placeholder="Describe the benefits of this plan..."
+              rows={3}
+            />
+          </FormGroup>
+        </form>
+      </Modal>
+
+      {/* Enroll modal */}
+      <Modal
+        open={showEnrollForm}
+        onClose={() => { setShowEnrollForm(false); setEnrollFormError(''); }}
+        title="Enroll Customer"
+        width={520}
+        footer={(
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: 12, flexWrap: 'wrap' }}>
+            <div style={{ fontSize: 13, color: C.muted }}>
+              {selectedEnrollPlan ? (
+                <span>
+                  <strong style={{ color: '#059669' }}>{Rs(enrollForm.amount_paid || selectedEnrollPlan.price)}</strong>
+                  <span style={{ marginLeft: 8 }}>· {selectedEnrollPlan.name}</span>
+                </span>
+              ) : (
+                <span>Select a plan to see amount</span>
+              )}
+            </div>
+            <div style={{ display: 'flex', gap: 8, marginLeft: 'auto' }}>
+              <Button variant="secondary" onClick={() => { setShowEnrollForm(false); setEnrollFormError(''); }}>Cancel</Button>
+              <Button type="submit" form="enroll-form" variant="primary" loading={saving} disabled={saving}>Enroll</Button>
+            </div>
+          </div>
+        )}
+      >
+        {enrollFormError && (
+          <div style={{
+            background: isDark ? '#450A0A' : '#FEF2F2', color: isDark ? '#FCA5A5' : '#DC2626',
+            padding: '10px 14px', borderRadius: 10, marginBottom: 16, fontSize: 13,
+            border: `1px solid ${isDark ? '#7F1D1D' : '#FECACA'}`, fontWeight: 500,
+          }}>
+            {enrollFormError}
+          </div>
+        )}
+        <p style={{ margin: '0 0 16px', fontSize: 13, color: C.muted, lineHeight: 1.45 }}>
+          Choose customer and plan. Amount paid defaults to the plan price — adjust if needed.
+        </p>
+        <form id="enroll-form" onSubmit={handleSaveEnroll} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <FormGroup label="Customer" required>
+            <Select
+              value={enrollForm.customer_id}
+              onChange={(e) => setEnrollForm((p) => ({ ...p, customer_id: e.target.value }))}
+              required
+            >
+              <option value="">Select customer</option>
+              {customers.map((c) => (
+                <option key={c.id} value={c.id}>{c.name} ({c.phone})</option>
+              ))}
+            </Select>
+          </FormGroup>
+          <FormGroup label="Plan" required>
+            <Select
+              value={enrollForm.plan_id}
+              onChange={(e) => onEnrollPlanChange(e.target.value)}
+              required
+            >
+              <option value="">Select plan</option>
+              {activePlans.map((p) => (
+                <option key={p.id} value={p.id}>{p.name} — {Rs(p.price)} / {CYCLES[p.billing_cycle] || p.billing_cycle}</option>
+              ))}
+            </Select>
+          </FormGroup>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+            <FormGroup label="Start Date" required>
+              <Input
+                type="date"
+                value={enrollForm.start_date}
+                onChange={(e) => setEnrollForm((p) => ({ ...p, start_date: e.target.value }))}
+                required
+              />
+            </FormGroup>
+            <FormGroup label="Amount Paid (Rs.)">
+              <Input
+                type="number"
+                value={enrollForm.amount_paid}
+                onChange={(e) => setEnrollForm((p) => ({ ...p, amount_paid: e.target.value }))}
+                min="0"
+                step="0.01"
+                placeholder="0.00"
+              />
+            </FormGroup>
+          </div>
+          <FormGroup label="Notes">
+            <Input
+              value={enrollForm.notes}
+              onChange={(e) => setEnrollForm((p) => ({ ...p, notes: e.target.value }))}
+              placeholder="Optional notes..."
+            />
+          </FormGroup>
+        </form>
+      </Modal>
     </PageWrapper>
   );
 }

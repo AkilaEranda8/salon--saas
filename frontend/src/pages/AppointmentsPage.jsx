@@ -15,6 +15,7 @@ import {
   resolvePackageServiceIds,
   formatCustomerPackageLabel,
   packageCoversAllServices,
+  fetchActiveCustomerPackages,
 } from '../utils/packageHelpers';
 import {
   DataTable, ActionBtn, StaffAvatar, PagBtn,
@@ -358,6 +359,32 @@ export default function AppointmentsPage() {
   const [paymentCustPackages, setPaymentCustPackages] = useState([]);
   const [paymentCustPackageId, setPaymentCustPackageId] = useState('');
   const [loadingPaymentPkgs, setLoadingPaymentPkgs] = useState(false);
+  const [packageTemplates, setPackageTemplates] = useState([]);
+  const [assignTemplateId, setAssignTemplateId] = useState('');
+  const [assignPackageSaving, setAssignPackageSaving] = useState(false);
+
+  const loadCustomerPackagesFor = async (customerId) => {
+    if (!customerId) {
+      setCustomerPackages([]);
+      return;
+    }
+    setLoadingCustomerPackages(true);
+    try {
+      const pkgs = await fetchActiveCustomerPackages(api, customerId);
+      setCustomerPackages(pkgs);
+    } catch {
+      setCustomerPackages([]);
+    } finally {
+      setLoadingCustomerPackages(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!showForm) return;
+    api.get('/packages?activeOnly=true')
+      .then((r) => setPackageTemplates(Array.isArray(r.data) ? r.data : []))
+      .catch(() => setPackageTemplates([]));
+  }, [showForm]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -550,11 +577,7 @@ export default function AppointmentsPage() {
     setSelectedCustomerPackageId(pkgSel.id ? String(pkgSel.id) : '');
     setCustomerPackages([]);
     if (row.customer?.id || row.customer_id) {
-      setLoadingCustomerPackages(true);
-      api.get(`/packages/customer/${row.customer?.id || row.customer_id}/active`)
-        .then((r) => setCustomerPackages(Array.isArray(r.data) ? r.data : []))
-        .catch(() => setCustomerPackages([]))
-        .finally(() => setLoadingCustomerPackages(false));
+      loadCustomerPackagesFor(row.customer?.id || row.customer_id);
     }
     setShowCustomerDrop(false);
     setFormErr('');
@@ -625,11 +648,27 @@ export default function AppointmentsPage() {
     setCustomerSearch(c.name || '');
     setShowCustomerDrop(false);
     setSelectedCustomerPackageId('');
-    setLoadingCustomerPackages(true);
-    api.get(`/packages/customer/${c.id}/active`)
-      .then((r) => setCustomerPackages(Array.isArray(r.data) ? r.data : []))
-      .catch(() => setCustomerPackages([]))
-      .finally(() => setLoadingCustomerPackages(false));
+    setAssignTemplateId('');
+    loadCustomerPackagesFor(c.id);
+  };
+  const assignPackageToCustomer = async () => {
+    if (!form.customer_id || !assignTemplateId) return;
+    setAssignPackageSaving(true);
+    setFormErr('');
+    try {
+      await api.post('/packages/purchase', {
+        customer_id: Number(form.customer_id),
+        package_id: Number(assignTemplateId),
+        branch_id: form.branch_id || user?.branch_id || undefined,
+        payment_method: 'Cash',
+      });
+      setAssignTemplateId('');
+      await loadCustomerPackagesFor(form.customer_id);
+    } catch (e) {
+      setFormErr(e.response?.data?.message || 'Failed to assign package to customer.');
+    } finally {
+      setAssignPackageSaving(false);
+    }
   };
   const applySelectedPackage = (customerPackageId) => {
     setSelectedCustomerPackageId(customerPackageId);
@@ -1036,14 +1075,44 @@ export default function AppointmentsPage() {
                   <Input value={form.phone || ''} onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))} placeholder="07X XXX XXXX" />
                 </FormGroup>
                 <FormGroup label="Customer Package">
-                  <Select value={selectedCustomerPackageId} onChange={(e) => applySelectedPackage(e.target.value)} disabled={!form.customer_id || loadingCustomerPackages}>
-                    <option value="">{!form.customer_id ? 'Select customer first' : loadingCustomerPackages ? 'Loading…' : 'No package — pay normally'}</option>
-                    {customerPackages.map((cp) => (
-                      <option key={cp.id} value={cp.id}>
-                        {formatCustomerPackageLabel(cp)}
-                      </option>
-                    ))}
-                  </Select>
+                  {loadingCustomerPackages ? (
+                    <div style={{ fontSize: 12, color: isDark ? '#94A3B8' : '#64748B', padding: '4px 0' }}>Loading packages…</div>
+                  ) : (
+                    <>
+                      <Select value={selectedCustomerPackageId} onChange={(e) => applySelectedPackage(e.target.value)} disabled={!form.customer_id}>
+                        <option value="">{customerPackages.length ? 'No package — pay normally' : 'No active package'}</option>
+                        {customerPackages.map((cp) => (
+                          <option key={cp.id} value={cp.id}>
+                            {formatCustomerPackageLabel(cp)}
+                          </option>
+                        ))}
+                      </Select>
+                      {customerPackages.length === 0 && packageTemplates.length > 0 && (
+                        <div style={{ marginTop: 10, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                          <Select
+                            value={assignTemplateId}
+                            onChange={(e) => setAssignTemplateId(e.target.value)}
+                            style={{ flex: '1 1 180px', minWidth: 0 }}
+                          >
+                            <option value="">Assign package template…</option>
+                            {packageTemplates.map((p) => (
+                              <option key={p.id} value={p.id}>
+                                {p.name} — Rs. {Number(p.package_price || 0).toLocaleString()}
+                              </option>
+                            ))}
+                          </Select>
+                          <Button
+                            size="sm"
+                            onClick={assignPackageToCustomer}
+                            loading={assignPackageSaving}
+                            disabled={!assignTemplateId || assignPackageSaving}
+                          >
+                            Assign
+                          </Button>
+                        </div>
+                      )}
+                    </>
+                  )}
                   {selectedCustomerPackageId && (
                     <div style={{ fontSize: 12, color: isDark ? '#6EE7B7' : '#047857', marginTop: 6, fontWeight: 600 }}>
                       Package services auto-selected — collect Rs. 0 when paying with Package

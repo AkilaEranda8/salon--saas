@@ -1,6 +1,7 @@
 'use strict';
 const { DataTypes } = require('sequelize');
 const { sequelize } = require('../config/database');
+const { getSessionsRemaining } = require('../utils/customerPackageHelpers');
 
 const CustomerPackage = sequelize.define('CustomerPackage', {
   id: {
@@ -56,16 +57,15 @@ const CustomerPackage = sequelize.define('CustomerPackage', {
     type: DataTypes.INTEGER,
     allowNull: true,
   },
+  sessions_remaining: {
+    type: DataTypes.VIRTUAL,
+    get() {
+      return getSessionsRemaining(this);
+    },
+  },
 }, {
   tableName: 'customer_packages',
   timestamps: true,
-  getterMethods: {
-    sessions_remaining() {
-      const total = this.getDataValue('sessions_total');
-      if (total === null || total === undefined || total === 0) return null; // unlimited
-      return Math.max(0, total - (this.getDataValue('sessions_used') || 0));
-    },
-  },
 });
 
 module.exports = CustomerPackage;

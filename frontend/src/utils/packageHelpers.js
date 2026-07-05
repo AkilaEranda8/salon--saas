@@ -35,10 +35,12 @@ export const resolvePackageServiceIds = (customerPackage, allServices = []) => {
 export const formatCustomerPackageLabel = (cp) => {
   if (!cp) return 'Package';
   const name = cp.package?.name || 'Package';
-  const sessions =
-    cp.sessions_remaining == null
-      ? 'Unlimited'
-      : `${cp.sessions_remaining} left`;
+  const total = cp.sessions_total;
+  const used = cp.sessions_used || 0;
+  const remaining = cp.sessions_remaining != null
+    ? cp.sessions_remaining
+    : (!total || Number(total) === 0 ? null : Math.max(0, Number(total) - Number(used)));
+  const sessions = remaining == null ? 'Unlimited' : `${remaining} left`;
   const price = cp.package?.package_price != null
     ? ` · Rs.${Number(cp.package.package_price).toLocaleString()}`
     : '';

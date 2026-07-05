@@ -1,5 +1,6 @@
 'use strict';
 const { slToday } = require('./dateUtils');
+const { getSessionsRemaining } = require('./customerPackageHelpers');
 
 /**
  * Redeem a customer package against services in a payment.
@@ -66,8 +67,9 @@ async function redeemPackageForPayment({
   }
 
   const sessionsNeeded = redeemIds.length;
-  if (cp.sessions_remaining !== null && cp.sessions_remaining < sessionsNeeded) {
-    const err = new Error(`Not enough sessions remaining (need ${sessionsNeeded}, have ${cp.sessions_remaining}).`);
+  const sessionsLeft = getSessionsRemaining(cp);
+  if (sessionsLeft !== null && sessionsLeft < sessionsNeeded) {
+    const err = new Error(`Not enough sessions remaining (need ${sessionsNeeded}, have ${sessionsLeft}).`);
     err.status = 400;
     throw err;
   }

@@ -3,6 +3,7 @@ const { Op } = require('sequelize');
 const { sequelize } = require('../config/database');
 const { tenantWhere, byIdWhere, resolveTenantId } = require('../utils/tenantScope');
 const { slToday } = require('../utils/dateUtils');
+const { withSessionsRemaining, hasSessionsLeft, getSessionsRemaining } = require('../utils/customerPackageHelpers');
 
 // ── PACKAGE TEMPLATES ─────────────────────────────────────────────────────────
 
@@ -202,8 +203,9 @@ const activePackages = async (req, res) => {
       order: [['expiry_date', 'ASC']],
     });
 
-    // Keep packages with remaining sessions and unlimited packages.
-    const active = rows.filter((cp) => cp.sessions_remaining == null || cp.sessions_remaining > 0);
+    const active = rows
+      .filter((cp) => hasSessionsLeft(cp))
+      .map((cp) => withSessionsRemaining(cp));
     return res.json(active);
   } catch (err) {
     console.error(err);
@@ -320,7 +322,8 @@ const redeem = async (req, res) => {
     }
 
     // Validate sessions remaining (null = unlimited membership, skip check)
-    if (cp.sessions_remaining !== null && cp.sessions_remaining <= 0) {
+    const sessionsLeft = getSessionsRemaining(cp);
+    if (sessionsLeft !== null && sessionsLeft <= 0) {
       await cp.update({ status: 'completed' }, { transaction: t });
       await t.commit();
       return res.status(400).json({ message: 'No sessions remaining.' });

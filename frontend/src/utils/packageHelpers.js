@@ -51,6 +51,13 @@ export function packageIsBookable(pkg) {
   return Array.isArray(svc) && svc.length > 0;
 }
 
+/** Customer-owned package usable at payment / walk-in (already purchased). */
+export function packageIsRedeemable(pkg) {
+  if (!pkg) return false;
+  const svc = pkg.services || [];
+  return Array.isArray(svc) && svc.length > 0;
+}
+
 export function packageDiscountLabel(pkg) {
   if (!pkg || !packageHasDiscount(pkg)) return '';
   const pct = Number(pkg.discount_percent || 0);
@@ -62,7 +69,7 @@ export function packageDiscountLabel(pkg) {
 }
 
 export function filterRedeemableCustomerPackages(list = []) {
-  return list.filter((cp) => packageIsBookable(cp?.package));
+  return list.filter((cp) => packageIsRedeemable(cp?.package));
 }
 
 export function filterBookablePackageTemplates(list = []) {

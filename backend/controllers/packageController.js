@@ -22,6 +22,13 @@ function packageIsBookable(pkg) {
   return Array.isArray(svc) && svc.length > 0;
 }
 
+/** Sold customer packages redeemable at payment — no price/discount requirement. */
+function packageIsRedeemable(pkg) {
+  if (!pkg) return false;
+  const svc = pkg.services || [];
+  return Array.isArray(svc) && svc.length > 0;
+}
+
 async function resolveOriginalPriceFromServices(req, serviceIds, fallbackPrice, transaction) {
   const { Service } = require('../models');
   const ids = (serviceIds || []).map(Number).filter(Boolean);
@@ -247,7 +254,7 @@ const activePackages = async (req, res) => {
     const active = rows
       .filter((cp) => hasSessionsLeft(cp))
       .map((cp) => withSessionsRemaining(cp))
-      .filter((cp) => packageIsBookable(cp.package));
+      .filter((cp) => packageIsRedeemable(cp.package));
     return res.json(active);
   } catch (err) {
     console.error(err);

@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { createPortal } from 'react-dom';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import api from '../api/axios';
@@ -24,10 +23,10 @@ import {
 } from '../utils/packageHelpers';
 import {
   DataTable, ActionBtn, StaffAvatar, PagBtn,
-  IconEye, IconEdit, IconTrash, IconClose, IconPlus, IconCalendar,
-  StatCard,
+  IconEye, IconEdit, IconTrash, IconPlus, IconCalendar,
+  StatCard, FilterBar, PKModal as Modal, Drawer,
 } from '../components/ui/PageKit';
-import usePageTheme from '../hooks/usePageTheme';
+import usePageTheme, { PAGE_STAT_COLORS as SC } from '../hooks/usePageTheme';
 import { useNavigate } from 'react-router-dom';
 
 const IconMoney    = () => <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>;
@@ -147,31 +146,24 @@ function StatusBadge({ status, dark = false }) {
   );
 }
 
-function FeaturedApptStat({ total, pending, inService, dark }) {
+function ApptSection({ title, desc, children, dark = false }) {
+  const { C } = usePageTheme();
   return (
     <div style={{
-      background: dark
-        ? 'linear-gradient(135deg, #1e3a8a 0%, #312e81 100%)'
-        : 'linear-gradient(135deg, #1D4ED8 0%, #4F46E5 100%)',
-      borderRadius: 18, padding: '22px 24px', color: '#fff', position: 'relative', overflow: 'hidden',
-      minWidth: 260, flex: '1.4 1 280px',
-      boxShadow: dark ? '0 8px 24px rgba(30,58,138,0.45)' : '0 8px 24px rgba(37,99,235,0.28)',
+      border: `1px solid ${dark ? '#334155' : C.border}`,
+      borderRadius: 14,
+      overflow: 'hidden',
+      background: dark ? '#0F172A' : C.cardBg,
     }}>
-      <div style={{ position:'absolute', top:-30, right:-30, width:120, height:120, borderRadius:'50%', background:'rgba(255,255,255,0.08)' }} />
-      <div style={{ position:'relative', display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap: 16 }}>
-        <div>
-          <div style={{ fontSize: 11, fontWeight: 700, opacity: 0.85, textTransform:'uppercase', letterSpacing:'0.08em' }}>All Appointments</div>
-          <div style={{ fontSize: 36, fontWeight: 900, letterSpacing:'-1px', lineHeight:1.1, marginTop: 6 }}>{total}</div>
-          <div style={{ fontSize: 12, opacity: 0.8, marginTop: 8, display:'flex', gap: 12, flexWrap:'wrap' }}>
-            <span>{pending} pending</span>
-            <span>·</span>
-            <span>{inService} in service</span>
-          </div>
-        </div>
-        <div style={{ width: 48, height: 48, borderRadius: 14, background:'rgba(255,255,255,0.15)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-          <IconCalendar />
-        </div>
+      <div style={{
+        padding: '12px 16px',
+        background: dark ? '#1E293B' : C.soft,
+        borderBottom: `1px solid ${dark ? '#334155' : C.border}`,
+      }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: dark ? '#E2E8F0' : C.title }}>{title}</div>
+        {desc && <div style={{ fontSize: 11, color: dark ? '#94A3B8' : C.muted, marginTop: 2 }}>{desc}</div>}
       </div>
+      <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 14 }}>{children}</div>
     </div>
   );
 }
@@ -197,121 +189,6 @@ function ApptTableShell({ title, subtitle, children, footer, action }) {
         </div>
       )}
     </div>
-  );
-}
-
-function ApptSection({ title, desc, children, dark = false }) {
-  return (
-    <div style={{
-      border: `1px solid ${dark ? '#334155' : '#E4E7EC'}`,
-      borderRadius: 14,
-      overflow: 'hidden',
-      background: dark ? '#0F172A' : '#fff',
-    }}>
-      <div style={{
-        padding: '12px 16px',
-        background: dark ? '#1E293B' : '#F8FAFC',
-        borderBottom: `1px solid ${dark ? '#334155' : '#EEF2F7'}`,
-      }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: dark ? '#E2E8F0' : '#101828' }}>{title}</div>
-        {desc && <div style={{ fontSize: 11, color: dark ? '#94A3B8' : '#64748B', marginTop: 2 }}>{desc}</div>}
-      </div>
-      <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 14 }}>{children}</div>
-    </div>
-  );
-}
-
-function Modal({ open, onClose, title, subtitle, children, footer, size = 'md', dark = false }) {
-  useEffect(() => { if (!open) return; document.body.style.overflow = 'hidden'; return () => { document.body.style.overflow = ''; }; }, [open]);
-  if (!open) return null;
-  const widths = { sm: 420, md: 560, lg: 720, xl: 860 };
-  return createPortal(
-    <div style={{ position: 'fixed', inset: 0, zIndex: 900, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-      <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'rgba(16,24,40,0.5)', backdropFilter: 'blur(4px)' }} />
-      <div style={{
-        position: 'relative', width: '100%', maxWidth: widths[size] ?? 560,
-        background: dark ? '#111827' : '#fff', borderRadius: 18, display: 'flex', flexDirection: 'column',
-        boxShadow: dark ? '0 24px 64px rgba(2,6,23,0.55)' : '0 24px 64px rgba(16,24,40,0.2)',
-        maxHeight: '92vh', animation: 'modal-pop 0.2s ease',
-        border: dark ? '1px solid #334155' : '1px solid #E4E7EC',
-      }}>
-        <style>{'@keyframes modal-pop { from { opacity:0; transform:scale(0.97) translateY(10px); } to { opacity:1; transform:scale(1) translateY(0); } }'}</style>
-        <div style={{
-          padding: '18px 22px',
-          background: dark
-            ? 'linear-gradient(135deg,#1e3a8a 0%,#312e81 100%)'
-            : 'linear-gradient(135deg,#EFF6FF 0%,#DBEAFE 50%,#EEF2FF 100%)',
-          borderBottom: `1px solid ${dark ? '#334155' : '#BFDBFE'}`,
-          borderRadius: '18px 18px 0 0',
-          display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexShrink: 0, gap: 12,
-        }}>
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, minWidth: 0 }}>
-            <div style={{
-              width: 44, height: 44, borderRadius: 12, flexShrink: 0,
-              background: dark ? 'rgba(255,255,255,0.12)' : '#fff',
-              border: dark ? '1px solid rgba(255,255,255,0.15)' : '1px solid #BFDBFE',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              color: dark ? '#93C5FD' : '#2563EB',
-              boxShadow: dark ? 'none' : '0 2px 8px rgba(37,99,235,0.12)',
-            }}>
-              <IconCalendar />
-            </div>
-            <div style={{ minWidth: 0 }}>
-              <h3 style={{ margin: 0, fontSize: 17, fontWeight: 800, color: dark ? '#F8FAFC' : '#0F172A', fontFamily: "'Inter',sans-serif", letterSpacing: '-0.02em' }}>{title}</h3>
-              {subtitle && <p style={{ margin: '4px 0 0', fontSize: 12, color: dark ? '#CBD5E1' : '#475569', lineHeight: 1.45 }}>{subtitle}</p>}
-            </div>
-          </div>
-          <button type="button" onClick={onClose} aria-label="Close"
-            style={{
-              background: dark ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.85)',
-              border: `1px solid ${dark ? 'rgba(255,255,255,0.15)' : '#E4E7EC'}`,
-              cursor: 'pointer', color: dark ? '#E2E8F0' : '#64748B',
-              display: 'flex', alignItems: 'center', borderRadius: 10, padding: 7, flexShrink: 0,
-            }}>
-            <IconClose />
-          </button>
-        </div>
-        <div style={{ flex: 1, overflowY: 'auto', padding: '20px 22px', background: dark ? '#111827' : '#F8FAFC' }}>{children}</div>
-        {footer && (
-          <div style={{
-            padding: '14px 22px', borderTop: `1px solid ${dark ? '#334155' : '#E4E7EC'}`,
-            display: 'flex', gap: 8, justifyContent: 'flex-end', flexShrink: 0,
-            background: dark ? '#0F172A' : '#fff', borderRadius: '0 0 18px 18px', width: '100%', boxSizing: 'border-box',
-          }}>
-            {footer}
-          </div>
-        )}
-      </div>
-    </div>,
-    document.body
-  );
-}
-
-function Drawer({ open, onClose, title, subtitle, children, footer, dark = false }) {
-  useEffect(() => { if (!open) return; document.body.style.overflow='hidden'; return () => { document.body.style.overflow=''; }; }, [open]);
-  if (!open) return null;
-  return createPortal(
-    <div style={{ position:'fixed', inset:0, zIndex:900, display:'flex', justifyContent:'flex-end' }}>
-      <div onClick={onClose} style={{ position:'absolute', inset:0, background:'rgba(16,24,40,0.45)', backdropFilter:'blur(3px)' }} />
-      <div style={{ position:'relative', width:500, maxWidth:'95vw', background:dark?'#111827':'#fff', display:'flex', flexDirection:'column', boxShadow:dark?'-8px 0 40px rgba(2,6,23,0.55)':'-8px 0 40px rgba(16,24,40,0.15)', animation:'drawer-in 0.22s ease', borderLeft:dark?'1px solid #334155':'none' }}>
-        <style>{'@keyframes drawer-in { from { transform:translateX(100%); } to { transform:translateX(0); } }'}</style>
-        <div style={{
-          padding:'18px 22px', flexShrink:0,
-          background: dark ? 'linear-gradient(135deg,#1e3a8a 0%,#312e81 100%)' : 'linear-gradient(135deg,#EFF6FF 0%,#DBEAFE 50%,#EEF2FF 100%)',
-          borderBottom: `1px solid ${dark ? '#334155' : '#BFDBFE'}`,
-          display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap: 12,
-        }}>
-          <div style={{ minWidth: 0 }}>
-            <h3 style={{ margin:0, fontSize:17, fontWeight:800, color:dark?'#F8FAFC':'#0F172A', fontFamily:"'Inter',sans-serif" }}>{title}</h3>
-            {subtitle && <p style={{ margin:'4px 0 0', fontSize:12, color:dark?'#CBD5E1':'#475569' }}>{subtitle}</p>}
-          </div>
-          <button onClick={onClose} style={{ background:dark?'rgba(255,255,255,0.1)':'rgba(255,255,255,0.85)', border:`1px solid ${dark?'rgba(255,255,255,0.15)':'#E4E7EC'}`, cursor:'pointer', color:dark?'#E2E8F0':'#64748B', display:'flex', alignItems:'center', borderRadius:10, padding:7, flexShrink:0 }}><IconClose /></button>
-        </div>
-        <div style={{ flex:1, overflowY:'auto', padding:'20px 24px', background: dark ? '#111827' : '#F8FAFC' }}>{children}</div>
-        {footer && <div style={{ padding:'16px 24px', borderTop:`1px solid ${dark?'#334155':'#EAECF0'}`, display:'flex', gap:8, justifyContent:'flex-end', flexShrink:0, background:dark?'#0F172A':'#fff' }}>{footer}</div>}
-      </div>
-    </div>,
-    document.body
   );
 }
 
@@ -879,59 +756,75 @@ export default function AppointmentsPage() {
     >
 
       {/* Stats */}
-      <div style={{ display:'flex', gap:12, flexWrap:'wrap' }}>
-        <FeaturedApptStat total={total} pending={counts.pending||0} inService={counts.in_service||0} dark={isDark} />
-        <StatCard label="Pending" value={counts.pending||0} color="#D97706" icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>} />
-        <StatCard label="Confirmed" value={counts.confirmed||0} color="#2563EB" icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>} />
-        <StatCard label="In Service" value={counts.in_service||0} color="#7C3AED" icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>} />
-        <StatCard label="Completed" value={counts.completed||0} color="#059669" icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/><path d="m9 12 2 2 4-4"/></svg>} />
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 16 }}>
+        <StatCard label="Total" value={total.toLocaleString()} color={SC.primary} icon={<IconCalendar />} />
+        <StatCard label="Pending" value={counts.pending || 0} color={SC.warning} icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>} />
+        <StatCard label="Confirmed" value={counts.confirmed || 0} color={SC.primary} icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>} />
+        <StatCard label="In Service" value={counts.in_service || 0} color={SC.purple} icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>} />
+        <StatCard label="Completed" value={counts.completed || 0} color={SC.success} icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/><path d="m9 12 2 2 4-4"/></svg>} />
       </div>
 
       {/* Filters */}
-      <div style={{ background: C.cardBg, borderRadius: 16, border: `1px solid ${C.border}`, padding: '14px 16px', boxShadow: C.shadow }}>
-        <div style={{ display:'flex', flexWrap:'wrap', gap: 12, alignItems:'center' }}>
-          <div style={{ display:'flex', gap:6, flexWrap:'wrap', flex: 1 }}>
-            {[{val:'',label:'All'},...APPT_STATUSES.map(s=>({val:s,label:STATUS_META[s].label}))].map(({val,label}) => {
-              const active=filterStatus===val, meta=val?STATUS_META[val]:null, cnt=val?counts[val]:appts.length;
-              return (
-                <button key={val} onClick={()=>{setFilterStatus(val);setPage(1);}} style={{ padding:'6px 14px', borderRadius:20, border:'1.5px solid', borderColor:active?(meta?.color??'#2563EB'):(isDark?'#334155':C.border), background:active?(meta?.bg??'#EFF6FF'):(isDark?'#0F172A':C.cardBg), color:active?(meta?.color??'#2563EB'):C.muted, fontWeight:active?700:500, fontSize:12, cursor:'pointer', fontFamily:"'Inter',sans-serif", whiteSpace:'nowrap' }}>
-                  {label}{cnt>0?<span style={{ marginLeft:5, opacity:0.7 }}>({cnt})</span>:''}
-                </button>
-              );
-            })}
-          </div>
-          <div style={{ display:'flex', alignItems:'center', gap:6, flexWrap:'wrap' }}>
-            {[
-              { label: 'Today', value: today },
-              { label: 'Tomorrow', value: tomorrow },
-              { label: 'All dates', value: '' },
-            ].map(({ label, value }) => (
+      <FilterBar>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', flex: 1 }}>
+          {[{ val: '', label: 'All' }, ...APPT_STATUSES.map((s) => ({ val: s, label: STATUS_META[s].label }))].map(({ val, label }) => {
+            const active = filterStatus === val;
+            const meta = val ? STATUS_META[val] : null;
+            const cnt = val ? counts[val] : appts.length;
+            return (
               <button
-                key={label}
-                onClick={() => { setFilterDate(value); setPage(1); }}
+                key={val || 'all'}
+                type="button"
+                onClick={() => { setFilterStatus(val); setPage(1); }}
                 style={{
-                  padding:'6px 12px', borderRadius: 8, fontSize: 12, fontWeight: filterDate === value ? 700 : 500,
-                  border: `1.5px solid ${filterDate === value ? '#2563EB' : (isDark ? '#334155' : C.border)}`,
-                  background: filterDate === value ? (isDark ? 'rgba(37,99,235,0.2)' : '#EFF6FF') : (isDark ? '#0F172A' : C.soft),
-                  color: filterDate === value ? '#2563EB' : C.muted, cursor: 'pointer',
+                  padding: '6px 14px', borderRadius: 20, border: '1.5px solid', cursor: 'pointer',
+                  borderColor: active ? (meta?.color ?? SC.primary) : (isDark ? '#334155' : C.border),
+                  background: active
+                    ? (isDark ? (meta ? `${meta.color}22` : 'rgba(37,99,235,0.2)') : (meta?.bg ?? '#EFF6FF'))
+                    : (isDark ? '#0F172A' : C.cardBg),
+                  color: active ? (meta?.color ?? SC.primary) : C.muted,
+                  fontWeight: active ? 700 : 500, fontSize: 12, fontFamily: "'Inter',sans-serif", whiteSpace: 'nowrap',
                 }}
               >
-                {label}
+                {label}{cnt > 0 ? <span style={{ marginLeft: 5, opacity: 0.7 }}>({cnt})</span> : ''}
               </button>
-            ))}
-            <input type="date" value={filterDate} onChange={e=>{setFilterDate(e.target.value);setPage(1);}} className="pk-filter-control" style={{ width: 145 }} />
-            {isSuperAdmin && (
-              <select value={filterBranch} onChange={e=>{setFilterBranch(e.target.value);setPage(1);}} className="pk-filter-control" style={{ minWidth: 140 }}>
-                <option value="">All Branches</option>
-                {branches.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}
-              </select>
-            )}
-          </div>
+            );
+          })}
         </div>
-      </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+          {[
+            { label: 'Today', value: today },
+            { label: 'Tomorrow', value: tomorrow },
+            { label: 'All dates', value: '' },
+          ].map(({ label, value }) => (
+            <button
+              key={label}
+              type="button"
+              onClick={() => { setFilterDate(value); setPage(1); }}
+              style={{
+                padding: '6px 12px', borderRadius: 8, fontSize: 12, fontWeight: filterDate === value ? 700 : 500,
+                border: `1.5px solid ${filterDate === value ? SC.primary : (isDark ? '#334155' : C.border)}`,
+                background: filterDate === value ? (isDark ? 'rgba(37,99,235,0.2)' : '#EFF6FF') : (isDark ? '#0F172A' : C.soft),
+                color: filterDate === value ? SC.primary : C.muted, cursor: 'pointer',
+              }}
+            >
+              {label}
+            </button>
+          ))}
+          <input type="date" value={filterDate} onChange={(e) => { setFilterDate(e.target.value); setPage(1); }} className="pk-filter-control" style={{ width: 145 }} />
+          {isSuperAdmin && (
+            <select value={filterBranch} onChange={(e) => { setFilterBranch(e.target.value); setPage(1); }} className="pk-filter-control" style={{ minWidth: 140 }}>
+              <option value="">All Branches</option>
+              {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+            </select>
+          )}
+        </div>
+      </FilterBar>
 
       {/* Table */}
       <ApptTableShell
+        title="Appointments"
+        subtitle={loading ? 'Loading…' : `${appts.length} shown · ${total.toLocaleString()} total`}
         footer={(
           <>
             <span style={{ fontSize:12, color: C.muted }}>Showing {appts.length} of {total}</span>
@@ -972,9 +865,7 @@ export default function AppointmentsPage() {
         open={showForm}
         onClose={() => setShowForm(false)}
         title={editItem ? 'Edit Appointment' : 'New Appointment'}
-        subtitle={editItem ? 'Update booking details, services, and schedule.' : 'Book a customer — select services, staff, and time slot.'}
-        size="xl"
-        dark={isDark}
+        width={860}
         footer={(
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: 12, flexWrap: 'wrap' }}>
             <div style={{ fontSize: 13, color: isDark ? '#94A3B8' : '#64748B' }}>
@@ -1001,12 +892,15 @@ export default function AppointmentsPage() {
       >
         {formErr && (
           <div style={{
-            background: '#FEF2F2', color: '#DC2626', padding: '10px 14px', borderRadius: 10,
-            marginBottom: 16, fontSize: 13, border: '1px solid #FEE2E2', fontWeight: 500,
+            background: isDark ? '#450A0A' : '#FEF2F2', color: isDark ? '#FCA5A5' : '#DC2626', padding: '10px 14px', borderRadius: 10,
+            marginBottom: 16, fontSize: 13, border: `1px solid ${isDark ? '#7F1D1D' : '#FEE2E2'}`, fontWeight: 500,
           }}>
             {formErr}
           </div>
         )}
+        <p style={{ margin: '0 0 16px', fontSize: 13, color: C.muted, lineHeight: 1.45 }}>
+          {editItem ? 'Update booking details, services, and schedule.' : 'Book a customer — select services, staff, and time slot.'}
+        </p>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 16 }}>
           {/* Left column */}
@@ -1293,7 +1187,7 @@ export default function AppointmentsPage() {
       </Modal>
 
       {/* Delete Confirm Modal */}
-      <Modal open={!!deleteId} onClose={()=>setDeleteId(null)} title="Delete Appointment" size="sm" dark={isDark}
+      <Modal open={!!deleteId} onClose={() => setDeleteId(null)} title="Delete Appointment" size="sm"
         footer={<>
           <Button variant="secondary" onClick={()=>setDeleteId(null)}>No</Button>
           <Button variant="danger" onClick={handleDelete} style={{ background:'#DC2626', color:'#fff' }}>Yes, Delete</Button>
@@ -1308,7 +1202,7 @@ export default function AppointmentsPage() {
       </Modal>
 
       {/* Collect Payment Modal */}
-      <Modal open={showPayment} onClose={()=>setShowPayment(false)} title="Collect Payment" size="md" dark={isDark}
+      <Modal open={showPayment} onClose={() => setShowPayment(false)} title="Collect Payment" size="md"
         footer={!paymentOk&&<><Button variant="secondary" onClick={()=>setShowPayment(false)}>Cancel</Button><Button variant="primary" loading={paymentSaving} onClick={handlePayment}>Confirm Payment</Button></>}>
         {paymentAppt && (
           paymentOk ? (
@@ -1407,8 +1301,12 @@ export default function AppointmentsPage() {
       </Modal>
 
       {/* Detail Drawer */}
-      <Drawer open={showDetail} onClose={()=>setShowDetail(false)} title="Appointment Details" subtitle={detailItem ? `${detailItem.date || ''} ${detailItem.time || ''}`.trim() : ''} dark={isDark}
-        footer={canEdit&&detailItem&&(
+      <Drawer
+        open={showDetail}
+        onClose={() => setShowDetail(false)}
+        title={detailItem ? `Appointment · ${detailItem.date || ''} ${detailItem.time || ''}`.trim() : 'Appointment Details'}
+        width={500}
+        footer={canEdit && detailItem && (
           <div style={{ display:'flex', gap:8 }}>
             {detailItem.status!=='completed'&&detailItem.status!=='cancelled'&&<Button variant="primary" onClick={()=>{setShowDetail(false);openEdit(detailItem);}} style={{ display:'flex', alignItems:'center', gap:6 }}><IconEdit /> Edit</Button>}
             {detailItem.status==='in_service'&&<Button variant="primary" onClick={()=>{setShowDetail(false);openPayment(detailItem);}} style={{ display:'flex', alignItems:'center', gap:6, background:'#059669' }}><IconMoney /> Collect Payment</Button>}

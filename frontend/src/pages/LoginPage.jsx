@@ -69,20 +69,35 @@ const CSS = `
 
 .lp-root {
   min-height: 100vh;
+  height: 100vh;
+  width: 100%;
   display: grid;
   grid-template-columns: 1fr 1fr;
   font-family: 'Inter', system-ui, sans-serif;
   background: #06060b;
   color: #e8eaf0;
+  overflow: hidden;
 }
 .lp-hero {
   position: relative;
   overflow: hidden;
-  padding: 40px 52px 36px;
+  padding: clamp(36px, 4vw, 64px) clamp(40px, 6vw, 88px);
   display: flex;
   flex-direction: column;
+  justify-content: space-between;
   min-height: 100vh;
+  height: 100%;
   background: #06060b;
+}
+.lp-hero-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  width: 100%;
+  min-height: 0;
+  padding: clamp(24px, 4vh, 48px) 0;
+  gap: clamp(20px, 3vh, 36px);
 }
 .lp-hero-glow {
   position: absolute;
@@ -98,28 +113,32 @@ const CSS = `
 .lp-brand-row {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 16px;
+  flex-shrink: 0;
 }
 .lp-brand-row img {
-  width: 36px;
-  height: 36px;
+  width: clamp(52px, 5vw, 64px);
+  height: clamp(52px, 5vw, 64px);
   object-fit: contain;
-  border-radius: 8px;
+  border-radius: 12px;
 }
 .lp-brand-name {
   font-weight: 700;
-  font-size: 15px;
-  letter-spacing: .06em;
+  font-size: clamp(20px, 2vw, 26px);
+  letter-spacing: .08em;
   text-transform: uppercase;
-  color: #c4c9d8;
+  color: #e8eaf0;
+}
+.lp-hero-copy {
+  width: 100%;
 }
 .lp-title {
-  margin: 48px 0 0;
-  font-size: clamp(32px, 3.2vw, 44px);
+  margin: 0;
+  font-size: clamp(36px, 4.2vw, 56px);
   font-weight: 700;
-  line-height: 1.15;
+  line-height: 1.1;
   letter-spacing: -.03em;
-  max-width: 520px;
+  max-width: 100%;
   color: #fff !important;
 }
 .lp-title em {
@@ -130,25 +149,25 @@ const CSS = `
   background-clip: text;
 }
 .lp-sub {
-  margin: 16px 0 0;
-  font-size: 15px;
+  margin: 20px 0 0;
+  font-size: clamp(15px, 1.4vw, 18px);
   line-height: 1.65;
   color: #7a8299 !important;
-  max-width: 460px;
+  max-width: 100%;
 }
 .lp-features {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 12px;
-  margin-top: 36px;
-  max-width: 560px;
+  gap: clamp(12px, 1.5vw, 18px);
+  margin-top: 0;
+  width: 100%;
 }
 .lp-feat {
   display: flex;
   align-items: flex-start;
-  gap: 14px;
-  padding: 16px 18px;
-  border-radius: 12px;
+  gap: 16px;
+  padding: clamp(16px, 1.8vw, 22px) clamp(18px, 2vw, 24px);
+  border-radius: 14px;
   background: rgba(255,255,255,.03);
   border: 1px solid rgba(255,255,255,.06);
   transition: background .2s, border-color .2s;
@@ -159,9 +178,9 @@ const CSS = `
 }
 .lp-feat-icon {
   flex-shrink: 0;
-  width: 36px;
-  height: 36px;
-  border-radius: 9px;
+  width: clamp(40px, 3.5vw, 48px);
+  height: clamp(40px, 3.5vw, 48px);
+  border-radius: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -171,20 +190,20 @@ const CSS = `
 }
 .lp-feat strong {
   display: block;
-  font-size: 14px;
+  font-size: clamp(14px, 1.2vw, 16px);
   font-weight: 600;
-  margin-bottom: 3px;
+  margin-bottom: 4px;
   color: #f0f1f5 !important;
 }
 .lp-feat span {
-  font-size: 12px;
+  font-size: clamp(12px, 1vw, 13px);
   color: #6b7289 !important;
   line-height: 1.45;
 }
 .lp-hero-foot {
-  margin-top: auto;
-  padding-top: 32px;
-  font-size: 12px;
+  flex-shrink: 0;
+  padding-top: 0;
+  font-size: 13px;
   color: #4b5268;
   letter-spacing: .01em;
 }
@@ -193,41 +212,27 @@ const CSS = `
   display: flex;
   flex-direction: column;
   justify-content: center;
-  align-items: center;
-  padding: 48px 56px;
+  align-items: stretch;
+  padding: clamp(32px, 4vw, 64px) clamp(40px, 6vw, 96px);
   background: #08080f;
   border-left: 1px solid rgba(255,255,255,.04);
   min-height: 100vh;
+  height: 100%;
   animation: lp-in .45s ease-out both;
+  overflow-y: auto;
 }
 .lp-auth-inner {
   width: 100%;
-  max-width: 380px;
-}
-.lp-auth-top {
+  max-width: 460px;
+  margin: 0 auto;
+  flex: 1;
   display: flex;
-  justify-content: flex-end;
-  margin-bottom: 8px;
-}
-.lp-theme {
-  width: 36px; height: 36px;
-  border-radius: 8px;
-  border: 1px solid rgba(255,255,255,.08);
-  background: rgba(255,255,255,.03);
-  color: #6b7289;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
+  flex-direction: column;
   justify-content: center;
-  transition: all .2s;
-}
-.lp-theme:hover {
-  border-color: rgba(139,92,246,.35);
-  color: #a78bfa;
 }
 .lp-h1 {
   margin: 0;
-  font-size: 30px;
+  font-size: clamp(28px, 2.5vw, 34px);
   font-weight: 700;
   letter-spacing: -.02em;
   color: #fff;
@@ -352,51 +357,17 @@ const CSS = `
 .lp-auth-foot a:hover { color: #9ca3b8; }
 .lp-mobile-brand { display: none; }
 
-/* Light theme overrides */
-.lp-root.lp-light {
-  background: #f4f5f9;
-  color: #111827;
-}
-.lp-root.lp-light .lp-hero { background: #f4f5f9; }
-.lp-root.lp-light .lp-hero-glow {
-  background:
-    radial-gradient(ellipse 70% 55% at 0% 0%, rgba(139,92,246,.12), transparent 60%),
-    radial-gradient(ellipse 55% 45% at 100% 100%, rgba(59,130,246,.08), transparent 55%);
-}
-.lp-root.lp-light .lp-brand-name { color: #374151; }
-.lp-root.lp-light .lp-title { color: #111827 !important; }
-.lp-root.lp-light .lp-sub { color: #6b7280 !important; }
-.lp-root.lp-light .lp-feat {
-  background: #fff;
-  border-color: #e5e7eb;
-}
-.lp-root.lp-light .lp-feat:hover { border-color: #c4b5fd; }
-.lp-root.lp-light .lp-feat strong { color: #111827 !important; }
-.lp-root.lp-light .lp-feat span { color: #6b7280 !important; }
-.lp-root.lp-light .lp-hero-foot { color: #9ca3af; }
-.lp-root.lp-light .lp-auth {
-  background: #fff;
-  border-left-color: #e5e7eb;
-}
-.lp-root.lp-light .lp-h1 { color: #111827; }
-.lp-root.lp-light .lp-h2 { color: #6b7280; }
-.lp-root.lp-light .lp-label { color: #374151; }
-.lp-root.lp-light .lp-input {
-  background: #f9fafb;
-  border-color: #e5e7eb;
-  color: #111827;
-}
-.lp-root.lp-light .lp-auth-foot { color: #9ca3af; }
-
 @media (max-width: 960px) {
-  .lp-root { grid-template-columns: 1fr; }
+  .lp-root { grid-template-columns: 1fr; height: auto; min-height: 100vh; overflow: auto; }
   .lp-hero { display: none; }
   .lp-auth {
     border-left: none;
     padding: 32px 24px 40px;
     background: #06060b;
+    height: auto;
+    min-height: 100vh;
   }
-  .lp-root.lp-light .lp-auth { background: #fff; }
+  .lp-auth-inner { max-width: 100%; }
   .lp-mobile-brand {
     display: flex;
     align-items: center;
@@ -404,24 +375,17 @@ const CSS = `
     gap: 10px;
     margin-bottom: 32px;
   }
-  .lp-mobile-brand img { width: 36px; height: 36px; object-fit: contain; }
+  .lp-mobile-brand img { width: 48px; height: 48px; object-fit: contain; }
   .lp-mobile-brand span {
     font-weight: 700;
-    font-size: 15px;
+    font-size: 20px;
     letter-spacing: .06em;
     text-transform: uppercase;
     color: #c4c9d8;
   }
-  .lp-root.lp-light .lp-mobile-brand span { color: #374151; }
 }
 `;
 
-const IconSun = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/></svg>
-);
-const IconMoon = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
-);
 const IconEye = ({ open }) => open ? (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
 ) : (
@@ -431,11 +395,6 @@ const IconEye = ({ open }) => open ? (
 export default function LoginPage({ platformMode = false }) {
   const { login, logout, verify2FA } = useAuth();
   const navigate = useNavigate();
-
-  const [dark, setDark] = useState(() => {
-    const saved = localStorage.getItem('salon-login-theme');
-    return saved ? saved === 'dark' : true;
-  });
 
   const [form, setForm] = useState({ username: '', password: '' });
   const [showPw, setShowPw] = useState(false);
@@ -454,10 +413,6 @@ export default function LoginPage({ platformMode = false }) {
 
   const brandName = resolveBrandName(branding);
   const logoSrc = resolveBrandLogo(branding, 'login') || '/kogo.png?v=6';
-
-  useEffect(() => {
-    localStorage.setItem('salon-login-theme', dark ? 'dark' : 'light');
-  }, [dark]);
 
   useEffect(() => {
     let active = true;
@@ -650,7 +605,7 @@ export default function LoginPage({ platformMode = false }) {
   };
 
   return (
-    <div className={`lp-root${dark ? '' : ' lp-light'}`}>
+    <div className="lp-root">
       <style>{CSS}</style>
 
       <aside className="lp-hero">
@@ -659,28 +614,32 @@ export default function LoginPage({ platformMode = false }) {
           <img src={logoSrc} alt={brandName} onError={(e) => { e.currentTarget.src = '/kogo.png?v=6'; }} />
           <span className="lp-brand-name">{brandName}</span>
         </div>
-        <h2 className="lp-title">
-          {platformMode ? (
-            <>Manage your <em>entire platform</em> from one place</>
-          ) : (
-            <>Run your entire <em>salon</em> from one place</>
-          )}
-        </h2>
-        <p className="lp-sub">
-          {platformMode
-            ? 'Tenants, subscriptions, monitoring and system controls — built for scale.'
-            : `${brandName} brings appointments, payments, inventory, CRM and analytics into a single powerful platform.`}
-        </p>
-        <div className="lp-features">
-          {FEATURES.map((f) => (
-            <div key={f.title} className="lp-feat">
-              <div className="lp-feat-icon">{f.icon}</div>
-              <div>
-                <strong>{f.title}</strong>
-                <span>{f.desc}</span>
+        <div className="lp-hero-main">
+          <div className="lp-hero-copy">
+            <h2 className="lp-title">
+              {platformMode ? (
+                <>Manage your <em>entire platform</em> from one place</>
+              ) : (
+                <>Run your entire <em>salon</em> from one place</>
+              )}
+            </h2>
+            <p className="lp-sub">
+              {platformMode
+                ? 'Tenants, subscriptions, monitoring and system controls — built for scale.'
+                : `${brandName} brings appointments, payments, inventory, CRM and analytics into a single powerful platform.`}
+            </p>
+          </div>
+          <div className="lp-features">
+            {FEATURES.map((f) => (
+              <div key={f.title} className="lp-feat">
+                <div className="lp-feat-icon">{f.icon}</div>
+                <div>
+                  <strong>{f.title}</strong>
+                  <span>{f.desc}</span>
+                </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
         <div className="lp-hero-foot">
           256-bit encryption · JWT RS256 · Multi-branch support
@@ -693,11 +652,6 @@ export default function LoginPage({ platformMode = false }) {
           <span>{brandName}</span>
         </div>
         <div className="lp-auth-inner">
-          <div className="lp-auth-top">
-            <button type="button" className="lp-theme" onClick={() => setDark((d) => !d)} title={dark ? 'Light mode' : 'Dark mode'}>
-              {dark ? <IconSun /> : <IconMoon />}
-            </button>
-          </div>
           {renderForm()}
           <div className="lp-auth-foot">
             Having trouble? Contact your system administrator

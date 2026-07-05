@@ -1,10 +1,14 @@
 import { useState, useEffect, useCallback, useMemo, Fragment } from 'react';
+import { createPortal } from 'react-dom';
 import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../context/ThemeContext';
+import usePageTheme from '../hooks/usePageTheme';
 import api from '../api/axios';
 import PageWrapper from '../components/layout/PageWrapper';
 import Button from '../components/ui/Button';
+import { Input, Label, Select } from '../components/ui/FormElements';
 import {
-  IconPkg, IconCheck, IconDollar, IconUsers, IconTag,
+  IconPkg, IconCheck, IconDollar, IconUsers, IconTag, IconClose,
   StatCard, PKModal as Modal,
   FilterBar, DataTable, ActionBtn, IconEdit, IconTrash, IconStop,
 } from '../components/ui/PageKit';
@@ -18,9 +22,8 @@ const STATUS_BADGE  = {
   completed: { bg:'#F1F5F9', color:'#475467' },
 };
 const PAYMENT_METHODS = ['Cash','Card','Online Transfer','Bank Transfer'];
-const EMPTY_PKG  = { name:'', description:'', type:'bundle', services:[], sessions_count:'', validity_days:'90', package_price:'', is_active:true, branch_id:'' };
+const EMPTY_PKG  = { name:'', type:'bundle', services:[], sessions_count:'', validity_days:'90', package_price:'', is_active:true, branch_id:'' };
 const EMPTY_SELL = { customer_id:'', package_id:'', branch_id:'', payment_method:'Cash', notes:'' };
-const EMPTY_CREATE_ACTIVATE = { customer_id:'', payment_method:'Cash', notes:'', activate_all:false };
 const MUTED = '#64748B';
 
 /*  helpers  */
@@ -160,14 +163,106 @@ function PackageCard({ pkg, canEdit, onEdit, onToggle, onDelete, onSell }) {
   );
 }
 
-/*  inline form styles  */
+/*  inline form styles (sell/redeem modals)  */
 const inp  = { width:'100%', padding:'9px 12px', borderRadius:10, border:'1.5px solid #E4E7EC', fontSize:13, fontFamily:"'Inter',sans-serif", outline:'none', boxSizing:'border-box', color:'#101828', background:'#fff' };
-const head = { fontSize:11, fontWeight:700, color:'#64748B', textTransform:'uppercase', letterSpacing:'0.6px', paddingBottom:8, borderBottom:'1px solid #F2F4F7', marginBottom:4 };
 function Lbl({ children }) { return <div style={{ fontSize:12, fontWeight:700, color:'#344054', marginBottom:5, fontFamily:"'Inter',sans-serif" }}>{children}</div>; }
+
+function PkgSection({ title, desc, children, dark = false }) {
+  return (
+    <div style={{
+      border: `1px solid ${dark ? '#334155' : '#E4E7EC'}`,
+      borderRadius: 14,
+      background: dark ? '#0F172A' : '#fff',
+    }}>
+      <div style={{
+        padding: '12px 16px',
+        background: dark ? '#1E293B' : '#F8FAFC',
+        borderBottom: `1px solid ${dark ? '#334155' : '#EEF2F7'}`,
+        borderRadius: '14px 14px 0 0',
+      }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: dark ? '#E2E8F0' : '#101828' }}>{title}</div>
+        {desc && <div style={{ fontSize: 11, color: dark ? '#94A3B8' : '#64748B', marginTop: 2 }}>{desc}</div>}
+      </div>
+      <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 14 }}>{children}</div>
+    </div>
+  );
+}
+
+function PkgModal({ open, onClose, title, subtitle, children, footer, size = 'lg', dark = false }) {
+  useEffect(() => {
+    if (!open) return;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = ''; };
+  }, [open]);
+  if (!open) return null;
+  const widths = { sm: 420, md: 560, lg: 720, xl: 900 };
+  return createPortal(
+    <div style={{ position: 'fixed', inset: 0, zIndex: 900, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+      <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'rgba(16,24,40,0.5)', backdropFilter: 'blur(4px)' }} />
+      <div style={{
+        position: 'relative', width: '100%', maxWidth: widths[size] ?? 720,
+        background: dark ? '#111827' : '#fff', borderRadius: 18, display: 'flex', flexDirection: 'column',
+        boxShadow: dark ? '0 24px 64px rgba(2,6,23,0.55)' : '0 24px 64px rgba(16,24,40,0.2)',
+        maxHeight: '92vh', animation: 'pkg-modal-pop 0.2s ease',
+        border: dark ? '1px solid #334155' : '1px solid #E4E7EC',
+      }}>
+        <style>{'@keyframes pkg-modal-pop { from { opacity:0; transform:scale(0.97) translateY(10px); } to { opacity:1; transform:scale(1) translateY(0); } }'}</style>
+        <div style={{
+          padding: '18px 22px',
+          background: dark
+            ? 'linear-gradient(135deg,#4c1d95 0%,#1e3a8a 100%)'
+            : 'linear-gradient(135deg,#EDE9FE 0%,#DDD6FE 45%,#EFF6FF 100%)',
+          borderBottom: `1px solid ${dark ? '#334155' : '#C4B5FD'}`,
+          borderRadius: '18px 18px 0 0',
+          display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexShrink: 0, gap: 12,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, minWidth: 0 }}>
+            <div style={{
+              width: 44, height: 44, borderRadius: 12, flexShrink: 0,
+              background: dark ? 'rgba(255,255,255,0.12)' : '#fff',
+              border: dark ? '1px solid rgba(255,255,255,0.15)' : '1px solid #C4B5FD',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              color: dark ? '#C4B5FD' : '#7C3AED',
+              boxShadow: dark ? 'none' : '0 2px 8px rgba(124,58,237,0.15)',
+            }}>
+              <IconPkg />
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <h3 style={{ margin: 0, fontSize: 17, fontWeight: 800, color: dark ? '#F8FAFC' : '#0F172A', fontFamily: "'Inter',sans-serif", letterSpacing: '-0.02em' }}>{title}</h3>
+              {subtitle && <p style={{ margin: '4px 0 0', fontSize: 12, color: dark ? '#CBD5E1' : '#475569', lineHeight: 1.45 }}>{subtitle}</p>}
+            </div>
+          </div>
+          <button type="button" onClick={onClose} aria-label="Close"
+            style={{
+              background: dark ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.85)',
+              border: `1px solid ${dark ? 'rgba(255,255,255,0.15)' : '#E4E7EC'}`,
+              cursor: 'pointer', color: dark ? '#E2E8F0' : '#64748B',
+              display: 'flex', alignItems: 'center', borderRadius: 10, padding: 7, flexShrink: 0,
+            }}>
+            <IconClose />
+          </button>
+        </div>
+        <div style={{ flex: 1, overflowY: 'auto', padding: '20px 22px', background: dark ? '#111827' : '#F8FAFC' }}>{children}</div>
+        {footer && (
+          <div style={{
+            padding: '14px 22px', borderTop: `1px solid ${dark ? '#334155' : '#E4E7EC'}`,
+            display: 'flex', gap: 8, justifyContent: 'flex-end', alignItems: 'center', flexShrink: 0,
+            background: dark ? '#0F172A' : '#fff', borderRadius: '0 0 18px 18px', width: '100%', boxSizing: 'border-box',
+          }}>
+            {footer}
+          </div>
+        )}
+      </div>
+    </div>,
+    document.body,
+  );
+}
 
 /*  Page  */
 export default function PackagesPage() {
   const { user } = useAuth();
+  const { isDark } = useTheme();
+  const { C } = usePageTheme();
   const isAdmin  = ['superadmin','admin'].includes(user?.role);
   const canEdit  = ['superadmin','admin','manager'].includes(user?.role);
   const [activeTab, setActiveTab] = useState('templates');
@@ -184,7 +279,6 @@ export default function PackagesPage() {
   const [showPkgModal, setShowPkgModal] = useState(false);
   const [editPkg,      setEditPkg]      = useState(null);
   const [pkgForm,      setPkgForm]      = useState(EMPTY_PKG);
-  const [createActivate, setCreateActivate] = useState(EMPTY_CREATE_ACTIVATE);
   const [pkgSaving,    setPkgSaving]    = useState(false);
   const [pkgFormError, setPkgFormError] = useState('');
 
@@ -494,7 +588,6 @@ export default function PackagesPage() {
   const openCreatePkg = () => {
     setEditPkg(null);
     setPkgForm({ ...EMPTY_PKG, branch_id: user.branchId ? String(user.branchId) : '' });
-    setCreateActivate(EMPTY_CREATE_ACTIVATE);
     setPkgFormError('');
     setShowPkgModal(true);
   };
@@ -502,7 +595,6 @@ export default function PackagesPage() {
     setEditPkg(pkg);
     setPkgForm({
       name:          pkg.name         || '',
-      description:   pkg.description  || '',
       type:          pkg.type         || 'bundle',
       services:      (pkg.services || []).map(String),
       sessions_count:pkg.sessions_count != null ? String(pkg.sessions_count) : '',
@@ -511,66 +603,32 @@ export default function PackagesPage() {
       is_active:     pkg.is_active !== false,
       branch_id:     pkg.branch_id ? String(pkg.branch_id) : '',
     });
-    setCreateActivate(EMPTY_CREATE_ACTIVATE);
     setPkgFormError('');
     setShowPkgModal(true);
   };
 
-  const handleActivateAllExisting = async () => {
-    if (!editPkg) return;
-    const branchId = pkgForm.branch_id || user.branchId || null;
-    const label    = branchId ? 'customers in the selected branch' : 'ALL customers across all branches';
-    if (!window.confirm(`Activate "${editPkg.name}" for ${label}?`)) return;
-    setPkgSaving(true); setPkgFormError('');
-    try {
-      const res = await api.post('/packages/purchase-all', {
-        packageId:     editPkg.id,
-        branchId:      branchId ? Number(branchId) : undefined,
-        paymentMethod: createActivate.payment_method || 'Cash',
-        notes:         createActivate.notes || undefined,
-      });
-      setShowPkgModal(false);
-      loadPackages();
-      alert(res.data?.message || 'Activation complete.');
-    } catch (err) {
-      setPkgFormError(err.response?.data?.message || 'Activation failed.');
-    } finally {
-      setPkgSaving(false);
-    }
-  };
   const toggleService = (sid) => {
     const s = String(sid);
-    setPkgForm(f => ({ ...f, services: f.services.includes(s) ? f.services.filter(x => x !== s) : [...f.services, s] }));
+    setPkgForm((f) => {
+      const nextServices = f.services.includes(s) ? f.services.filter((x) => x !== s) : [...f.services, s];
+      return {
+        ...f,
+        services: nextServices,
+        sessions_count: f.sessions_count || String(nextServices.length || ''),
+      };
+    });
   };
-  const handleSavePkg = async (activationMode = 'none') => {
-    const activateForSingle = activationMode === 'single';
-    const activateForAll = activationMode === 'all';
+  const handleSavePkg = async () => {
     setPkgFormError('');
     if (!pkgForm.name.trim())          { setPkgFormError('Package name is required.');   return; }
     if (!pkgForm.package_price)        { setPkgFormError('Package price is required.');  return; }
     if (pkgForm.services.length === 0) { setPkgFormError('Select at least one service.'); return; }
-    if (!editPkg && activateForSingle && !createActivate.customer_id) {
-      setPkgFormError('Please select a customer to activate this package.');
-      return;
-    }
-    if (!editPkg && activateForSingle) {
-      const selectedCustomer = customers.find(c => String(c.id) === String(createActivate.customer_id));
-      const preBranchId = (pkgForm.branch_id ? Number(pkgForm.branch_id) : null) || user.branchId || selectedCustomer?.branch_id || selectedCustomer?.branchId;
-      if (!preBranchId) {
-        setPkgFormError('Please select a branch to activate this package.');
-        return;
-      }
-    }
-    if (!editPkg && activateForAll) {
-      const ok = window.confirm('Activate this package for ALL customers in the selected branch?');
-      if (!ok) return;
-    }
     setPkgSaving(true);
     try {
       const payload = {
         name:            pkgForm.name.trim(),
-        description:     pkgForm.description.trim(),
-        type:            pkgForm.type,
+        description:     '',
+        type:            pkgForm.type || 'bundle',
         services:        pkgForm.services.map(Number),
         sessions_count:  Number(pkgForm.sessions_count) || pkgForm.services.length,
         validity_days:   Number(pkgForm.validity_days)  || 90,
@@ -580,36 +638,10 @@ export default function PackagesPage() {
         is_active:       pkgForm.is_active,
         branch_id:       pkgForm.branch_id ? Number(pkgForm.branch_id) : null,
       };
-      let createdPkg = null;
       if (editPkg) {
         await api.put(`/packages/${editPkg.id}`, payload);
       } else {
-        const res = await api.post('/packages', payload);
-        createdPkg = res.data || null;
-      }
-      if (!editPkg && activateForSingle) {
-        const selectedCustomer = customers.find(c => String(c.id) === String(createActivate.customer_id));
-        const activationBranchId = payload.branch_id || user.branchId || selectedCustomer?.branch_id || selectedCustomer?.branchId;
-        if (!activationBranchId) {
-          setPkgFormError('Please select a branch to activate this package.');
-          return;
-        }
-        await api.post('/packages/purchase', {
-          customer_id: Number(createActivate.customer_id),
-          package_id: Number(createdPkg?.id),
-          branch_id: Number(activationBranchId),
-          payment_method: createActivate.payment_method || 'Cash',
-          notes: createActivate.notes || undefined,
-        });
-      }
-      if (!editPkg && activateForAll) {
-        const activationBranchId = payload.branch_id || user.branchId || null;
-        await api.post('/packages/purchase-all', {
-          packageId:     Number(createdPkg?.id),
-          branchId:      activationBranchId ? Number(activationBranchId) : undefined,
-          paymentMethod: createActivate.payment_method || 'Cash',
-          notes:         createActivate.notes || undefined,
-        });
+        await api.post('/packages', payload);
       }
       setShowPkgModal(false);
       loadPackages();
@@ -814,168 +846,168 @@ export default function PackagesPage() {
       )}
 
       {/*  Package Modal  */}
-      <Modal open={showPkgModal} onClose={() => setShowPkgModal(false)} title={editPkg ? 'Edit Package' : 'Create Package'} width={1200}
-        footer={<>
-          <button onClick={() => setShowPkgModal(false)} style={{ padding:'8px 20px', borderRadius:10, border:'1.5px solid #E4E7EC', background:'#fff', color:'#344054', fontWeight:600, cursor:'pointer', fontSize:13, fontFamily:"'Inter',sans-serif" }}>Cancel</button>
-          {editPkg && (
-            <button onClick={handleActivateAllExisting} disabled={pkgSaving}
-              style={{ padding:'8px 22px', borderRadius:10, border:'1.5px solid #86EFAC', background:pkgSaving?'#E5E7EB':'#F0FDF4', color:pkgSaving?'#64748B':'#166534', fontWeight:700, cursor:pkgSaving?'not-allowed':'pointer', fontSize:13, fontFamily:"'Inter',sans-serif" }}>
-              {pkgSaving ? 'Activating...' : '\u2713 Activate All Customers'}
-            </button>
-          )}
-          {!editPkg && (
-            <button onClick={() => handleSavePkg(createActivate.activate_all ? 'all' : 'single')} disabled={pkgSaving}
-              style={{ padding:'8px 22px', borderRadius:10, border:'1.5px solid #BFDBFE', background:pkgSaving?'#E5E7EB':'#EFF6FF', color:pkgSaving?'#64748B':'#1D4ED8', fontWeight:700, cursor:pkgSaving?'not-allowed':'pointer', fontSize:13, fontFamily:"'Inter',sans-serif" }}>
-              {pkgSaving ? 'Saving' : createActivate.activate_all ? 'Create & Activate All Customers' : 'Create & Activate'}
-            </button>
-          )}
-          <button onClick={handleSavePkg} disabled={pkgSaving}
-            style={{ padding:'8px 22px', borderRadius:10, border:'none', background:pkgSaving?'#93C5FD':'#2563EB', color:'#fff', fontWeight:700, cursor:pkgSaving?'not-allowed':'pointer', fontSize:13, fontFamily:"'Inter',sans-serif" }}>
-            {pkgSaving ? 'Saving' : editPkg ? 'Save Changes' : 'Create Package'}
-          </button>
-        </>}>
-        <div style={{ display:'flex', flexDirection:'column', gap:22 }}>
-          {/* §1 */}
-          <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
-            <div style={head}>1. Basic Information</div>
-            <div><Lbl>Package Name</Lbl><input value={pkgForm.name} onChange={e=>setPkgForm(f=>({...f,name:e.target.value}))} placeholder="e.g. Hair Care Bundle" style={inp} /></div>
+      <PkgModal
+        open={showPkgModal}
+        onClose={() => setShowPkgModal(false)}
+        title={editPkg ? 'Edit Package' : 'Create Package'}
+        subtitle={editPkg ? 'Update services, price, and validity' : 'Select services, set a discounted bundle price, then sell via Sell Package'}
+        size="lg"
+        dark={isDark}
+        footer={(
+          <>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginRight: 'auto', cursor: 'pointer', userSelect: 'none' }}>
+              <input
+                type="checkbox"
+                checked={pkgForm.is_active}
+                onChange={(e) => setPkgForm((f) => ({ ...f, is_active: e.target.checked }))}
+                style={{ width: 16, height: 16, accentColor: '#7C3AED' }}
+              />
+              <span style={{ fontSize: 13, fontWeight: 600, color: isDark ? '#E2E8F0' : '#344054' }}>Active</span>
+            </label>
+            <Button variant="secondary" onClick={() => setShowPkgModal(false)}>Cancel</Button>
+            <Button variant="primary" onClick={handleSavePkg} loading={pkgSaving} disabled={pkgSaving}>
+              {editPkg ? 'Save Changes' : 'Create Package'}
+            </Button>
+          </>
+        )}
+      >
+        {pkgFormError && (
+          <div style={{
+            background: isDark ? '#450A0A' : '#FEE2E2', color: isDark ? '#FCA5A5' : '#DC2626',
+            padding: '10px 14px', borderRadius: 10, marginBottom: 16, fontSize: 13,
+            border: `1px solid ${isDark ? '#7F1D1D' : '#FECACA'}`, fontWeight: 500,
+          }}>
+            {pkgFormError}
+          </div>
+        )}
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <PkgSection title="Package details" desc="Name, validity, and optional branch scope" dark={isDark}>
             <div>
-              <Lbl>Type</Lbl>
-              <div style={{ display:'flex', gap:10 }}>
-                {[['bundle','Bundle'],['membership','Membership']].map(([val,label]) => (
-                  <button key={val} type="button" onClick={() => setPkgForm(f=>({...f,type:val}))}
-                    style={{ flex:1, padding:'10px 16px', borderRadius:10, fontSize:14, fontWeight:700, cursor:'pointer', transition:'all 0.15s', fontFamily:"'Inter',sans-serif",
-                      border:     pkgForm.type===val?`2px solid ${ACCENT_COLOR[val]}`:'1.5px solid #D0D5DD',
-                      background: pkgForm.type===val?(val==='bundle'?'#EFF6FF':'#EDE9FE'):'#fff',
-                      color:      pkgForm.type===val?ACCENT_COLOR[val]:'#344054' }}>
-                    {label}
-                  </button>
-                ))}
+              <Label>Package name *</Label>
+              <Input
+                value={pkgForm.name}
+                onChange={(e) => setPkgForm((f) => ({ ...f, name: e.target.value }))}
+                placeholder="e.g. Hair Care Bundle"
+              />
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div>
+                <Label>Validity (days) *</Label>
+                <Input
+                  type="number"
+                  min="1"
+                  value={pkgForm.validity_days}
+                  onChange={(e) => setPkgForm((f) => ({ ...f, validity_days: e.target.value }))}
+                  placeholder="90"
+                />
               </div>
-            </div>
-            <div><Lbl>Description</Lbl>
-              <textarea value={pkgForm.description} onChange={e=>setPkgForm(f=>({...f,description:e.target.value}))} placeholder="Optional description" rows={2} style={{ ...inp, resize:'vertical' }} />
-            </div>
-          </div>
-          {/* §2 Services */}
-          <div>
-            <div style={head}>2. Included Services</div>
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, maxHeight:220, overflowY:'auto', padding:2 }}>
-              {allServices.map(svc => {
-                const sel = pkgForm.services.includes(String(svc.id));
-                return (
-                  <div key={svc.id} onClick={() => toggleService(svc.id)}
-                    style={{ display:'flex', alignItems:'center', gap:10, padding:'9px 12px', borderRadius:10, cursor:'pointer', transition:'all 0.15s',
-                      border:     sel?'2px solid #2563EB':'1.5px solid #E4E7EC',
-                      background: sel?'#EFF6FF':'#fff' }}>
-                    <div style={{ width:18, height:18, borderRadius:4, border:`2px solid ${sel?'#2563EB':'#D0D5DD'}`, background:sel?'#2563EB':'#fff', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-                      {sel && <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>}
-                    </div>
-                    <div style={{ flex:1, fontSize:13, fontWeight:600, color:'#344054', fontFamily:"'Inter',sans-serif" }}>{svc.name}</div>
-                    <div style={{ fontSize:12, fontWeight:700, color:'#64748B', fontFamily:"'Outfit',sans-serif" }}>Rs.{Number(svc.price).toLocaleString()}</div>
-                  </div>
-                );
-              })}
-            </div>
-            {originalPrice > 0 && (
-              <div style={{ marginTop:8, padding:'7px 12px', background:'#F9FAFB', borderRadius:8, fontSize:13, color:'#344054', fontFamily:"'Inter',sans-serif" }}>
-                Total value: <strong style={{ fontFamily:"'Outfit',sans-serif" }}>Rs. {originalPrice.toLocaleString()}</strong>
-              </div>
-            )}
-          </div>
-          {/* §3 Terms */}
-          <div>
-            <div style={head}>3. Terms</div>
-            <div style={{ display:'grid', gridTemplateColumns:pkgForm.type==='bundle'?'1fr 1fr':'1fr', gap:12 }}>
-              {pkgForm.type === 'bundle' && (
-                <div><Lbl>Sessions Count</Lbl>
-                  <input type="number" min="1" value={pkgForm.sessions_count} onChange={e=>setPkgForm(f=>({...f,sessions_count:e.target.value}))} placeholder={String(pkgForm.services.length||1)} style={inp} />
-                </div>
-              )}
-              <div><Lbl>Validity (days)</Lbl>
-                <input type="number" min="1" value={pkgForm.validity_days} onChange={e=>setPkgForm(f=>({...f,validity_days:e.target.value}))} placeholder="90" style={inp} />
+              <div>
+                <Label>Sessions</Label>
+                <Input
+                  type="number"
+                  min="1"
+                  value={pkgForm.sessions_count}
+                  onChange={(e) => setPkgForm((f) => ({ ...f, sessions_count: e.target.value }))}
+                  placeholder={String(pkgForm.services.length || 1)}
+                />
               </div>
             </div>
             {isAdmin && (
-              <div style={{ marginTop:12 }}>
-                <Lbl>Branch</Lbl>
-                <select value={pkgForm.branch_id} onChange={e=>setPkgForm(f=>({...f,branch_id:e.target.value}))} style={inp}>
-                  <option value="">All Branches</option>
-                  {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-                </select>
+              <div>
+                <Label>Branch</Label>
+                <Select value={pkgForm.branch_id} onChange={(e) => setPkgForm((f) => ({ ...f, branch_id: e.target.value }))}>
+                  <option value="">All branches</option>
+                  {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                </Select>
               </div>
             )}
-          </div>
-          {/* §4 Pricing */}
-          <div>
-            <div style={head}>4. Pricing</div>
-            <Lbl>Package Price (Rs.)</Lbl>
-            <input type="number" min="0" value={pkgForm.package_price} onChange={e=>setPkgForm(f=>({...f,package_price:e.target.value}))} placeholder="0" style={inp} />
-            {originalPrice>0 && pkgForm.package_price && (
-              <div style={{ marginTop:8, padding:'10px 14px', borderRadius:10, background:discountPct>0?'#D1FAE5':'#F9FAFB', border:`1px solid ${discountPct>0?'#A7F3D0':'#E4E7EC'}`, fontSize:13, fontWeight:600, color:discountPct>0?'#065F46':'#64748B', fontFamily:"'Inter',sans-serif" }}>
-                {discountPct>0 ? `Saving customers Rs. ${Math.round(originalPrice-Number(pkgForm.package_price)).toLocaleString()} (${discountPct.toFixed(1)}% off)` : 'No discount applied'}
+          </PkgSection>
+
+          <PkgSection title="Services *" desc="Select all services included in this bundle" dark={isDark}>
+            <div style={{
+              display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 8,
+              maxHeight: 240, overflowY: 'auto', padding: 2,
+            }}>
+              {allServices.map((svc) => {
+                const sel = pkgForm.services.includes(String(svc.id));
+                return (
+                  <button
+                    key={svc.id}
+                    type="button"
+                    onClick={() => toggleService(svc.id)}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 10,
+                      cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
+                      border: `1.5px solid ${sel ? '#7C3AED' : (isDark ? '#475569' : '#E4E7EC')}`,
+                      background: sel ? (isDark ? '#3B0764' : '#F5F3FF') : (isDark ? '#1E293B' : '#fff'),
+                    }}
+                  >
+                    <div style={{
+                      width: 18, height: 18, borderRadius: 4, flexShrink: 0,
+                      border: `2px solid ${sel ? '#7C3AED' : (isDark ? '#64748B' : '#D0D5DD')}`,
+                      background: sel ? '#7C3AED' : 'transparent',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}>
+                      {sel && <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3.5"><polyline points="20 6 9 17 4 12"/></svg>}
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: sel ? (isDark ? '#E9D5FF' : '#5B21B6') : C.title, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{svc.name}</div>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: '#059669', marginTop: 2 }}>Rs. {Number(svc.price || 0).toLocaleString()}</div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+            {pkgForm.services.length > 0 && (
+              <div style={{
+                padding: '10px 12px', borderRadius: 10,
+                background: isDark ? '#1E293B' : '#F8FAFC',
+                border: `1px solid ${isDark ? '#334155' : '#E4E7EC'}`,
+                fontSize: 13, color: C.muted,
+              }}>
+                {pkgForm.services.length} service{pkgForm.services.length !== 1 ? 's' : ''} selected · List value{' '}
+                <strong style={{ color: '#059669' }}>Rs. {originalPrice.toLocaleString()}</strong>
               </div>
             )}
-          </div>
-          {!editPkg && (
+          </PkgSection>
+
+          <PkgSection title="Bundle price" desc="Discounted price customers pay when buying this package" dark={isDark}>
             <div>
-              <div style={head}>5. Activation Options</div>
-              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
-                <div>
-                  <Lbl>Customer (for single activation)</Lbl>
-                  <select value={createActivate.customer_id} onChange={e=>setCreateActivate(f=>({...f,customer_id:e.target.value}))} style={{ ...inp, opacity:createActivate.activate_all ? 0.6 : 1 }} disabled={createActivate.activate_all}>
-                    <option value="">Select customer</option>
-                    {customers.map(c => <option key={c.id} value={c.id}>{c.name} {c.phone ? `(${c.phone})` : ''}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <Lbl>Payment Method</Lbl>
-                  <select value={createActivate.payment_method} onChange={e=>setCreateActivate(f=>({...f,payment_method:e.target.value}))} style={inp}>
-                    {PAYMENT_METHODS.map(m => <option key={m} value={m}>{m}</option>)}
-                  </select>
-                </div>
-              </div>
-              <div style={{ marginTop:10 }}>
-                <Lbl>Activation Notes (optional)</Lbl>
-                <textarea value={createActivate.notes} onChange={e=>setCreateActivate(f=>({...f,notes:e.target.value}))} placeholder="Notes for package activation" rows={2} style={{ ...inp, resize:'vertical' }} />
-              </div>
-              <label style={{ marginTop:10, display:'flex', alignItems:'center', gap:8, fontSize:13, fontWeight:600, color:'#065F46', fontFamily:"'Inter',sans-serif" }}>
-                <input type="checkbox" checked={createActivate.activate_all} onChange={e=>setCreateActivate(f=>({...f,activate_all:e.target.checked}))} style={{ width:14, height:14, accentColor:'#059669' }} />
-                Activate for all customers in selected branch
-              </label>
+              <Label>Package price (Rs.) *</Label>
+              <Input
+                type="number"
+                min="0"
+                value={pkgForm.package_price}
+                onChange={(e) => setPkgForm((f) => ({ ...f, package_price: e.target.value }))}
+                placeholder="0"
+              />
             </div>
-          )}
-          {editPkg && (
-            <div>
-              <div style={head}>5. Activate for All Customers</div>
-              <div style={{ padding:'12px 14px', background:'#F0FDF4', border:'1px solid #86EFAC', borderRadius:10, fontSize:13, color:'#166534', marginBottom:12, fontFamily:"'Inter',sans-serif" }}>
-                Activate <strong>"{editPkg.name}"</strong> for {pkgForm.branch_id ? 'all customers in the selected branch' : 'ALL customers across all branches'}.
-              </div>
-              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
-                <div>
-                  <Lbl>Payment Method</Lbl>
-                  <select value={createActivate.payment_method} onChange={e=>setCreateActivate(f=>({...f,payment_method:e.target.value}))} style={inp}>
-                    {PAYMENT_METHODS.map(m => <option key={m} value={m}>{m}</option>)}
-                  </select>
+            {originalPrice > 0 && pkgForm.package_price && (
+              <div style={{
+                padding: '12px 14px', borderRadius: 10,
+                background: discountPct > 0 ? (isDark ? '#064E3B' : '#ECFDF5') : (isDark ? '#1E293B' : '#F9FAFB'),
+                border: `1px solid ${discountPct > 0 ? (isDark ? '#065F46' : '#A7F3D0') : (isDark ? '#334155' : '#E4E7EC')}`,
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8,
+              }}>
+                <div style={{ fontSize: 13, color: discountPct > 0 ? (isDark ? '#A7F3D0' : '#065F46') : C.muted }}>
+                  {discountPct > 0
+                    ? `Customer saves Rs. ${Math.round(originalPrice - Number(pkgForm.package_price)).toLocaleString()}`
+                    : 'No discount vs list price'}
                 </div>
-                <div>
-                  <Lbl>Notes (optional)</Lbl>
-                  <input value={createActivate.notes} onChange={e=>setCreateActivate(f=>({...f,notes:e.target.value}))} placeholder="Activation notes" style={inp} />
-                </div>
+                {discountPct > 0 && (
+                  <span style={{ fontSize: 13, fontWeight: 800, color: '#059669' }}>{discountPct.toFixed(1)}% off</span>
+                )}
               </div>
-            </div>
-          )}
-          {/* Active toggle */}
-          <div style={{ display:'flex', alignItems:'center', gap:10, paddingTop:4, borderTop:'1px solid #F2F4F7' }}>
-            <button type="button" onClick={() => setPkgForm(f=>({...f,is_active:!f.is_active}))}
-              style={{ width:44, height:24, borderRadius:12, background:pkgForm.is_active?'#2563EB':'#D0D5DD', border:'none', cursor:'pointer', position:'relative', transition:'background 0.2s' }}>
-              <span style={{ position:'absolute', top:2, left:pkgForm.is_active?22:2, width:20, height:20, borderRadius:'50%', background:'#fff', transition:'left 0.2s', boxShadow:'0 1px 3px rgba(0,0,0,0.2)' }} />
-            </button>
-            <span style={{ fontSize:14, fontWeight:600, color:'#344054', fontFamily:"'Inter',sans-serif" }}>Active</span>
-          </div>
-          {pkgFormError && <div style={{ padding:'8px 12px', background:'#FEE2E2', borderRadius:8, color:'#DC2626', fontSize:13, fontFamily:"'Inter',sans-serif" }}>{pkgFormError}</div>}
+            )}
+            {!editPkg && (
+              <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.45 }}>
+                After creating, use <strong style={{ color: C.title }}>Sell Package</strong> to assign this bundle to a customer.
+              </div>
+            )}
+          </PkgSection>
         </div>
-      </Modal>
+      </PkgModal>
 
       {/*  Sell Modal (3-step)  */}
       <Modal open={showSellModal} onClose={() => setShowSellModal(false)} title="Sell Package" width={560}>

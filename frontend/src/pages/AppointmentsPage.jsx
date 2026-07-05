@@ -16,6 +16,8 @@ import {
   formatCustomerPackageLabel,
   packageCoversAllServices,
   fetchActiveCustomerPackages,
+  filterDiscountedPackageTemplates,
+  formatPackageTemplateLabel,
 } from '../utils/packageHelpers';
 import {
   DataTable, ActionBtn, StaffAvatar, PagBtn,
@@ -382,7 +384,7 @@ export default function AppointmentsPage() {
   useEffect(() => {
     if (!showForm) return;
     api.get('/packages?activeOnly=true')
-      .then((r) => setPackageTemplates(Array.isArray(r.data) ? r.data : []))
+      .then((r) => setPackageTemplates(filterDiscountedPackageTemplates(Array.isArray(r.data) ? r.data : [])))
       .catch(() => setPackageTemplates([]));
   }, [showForm]);
 
@@ -1097,7 +1099,7 @@ export default function AppointmentsPage() {
                             <option value="">Assign package template…</option>
                             {packageTemplates.map((p) => (
                               <option key={p.id} value={p.id}>
-                                {p.name} — Rs. {Number(p.package_price || 0).toLocaleString()}
+                                {formatPackageTemplateLabel(p)}
                               </option>
                             ))}
                           </Select>
@@ -1115,7 +1117,7 @@ export default function AppointmentsPage() {
                   )}
                   {selectedCustomerPackageId && (
                     <div style={{ fontSize: 12, color: isDark ? '#6EE7B7' : '#047857', marginTop: 6, fontWeight: 600 }}>
-                      Package services auto-selected — collect Rs. 0 when paying with Package
+                      Package discount applied — services auto-selected · Collect Rs. 0 at payment
                     </div>
                   )}
                 </FormGroup>
@@ -1323,7 +1325,7 @@ export default function AppointmentsPage() {
                     Rs. {calcServiceTotal(paymentServices).toLocaleString()}
                   </div>
                 </FormGroup>
-                {paymentDiscounts.length > 0 && (
+                {paymentDiscounts.length > 0 && paymentMethod !== 'Package' && !paymentCustPackageId && (
                   <FormGroup label="Promo discount">
                     <Select value={paymentDiscountId || ''} onChange={e => setPaymentDiscountId(e.target.value)}>
                       <option value="">None</option>
@@ -1346,21 +1348,25 @@ export default function AppointmentsPage() {
                   </Select>
                 </FormGroup>
               </div>
-              {paymentAppt.customer_id && (loadingPaymentPkgs || paymentCustPackages.length > 0) && (
+              {(paymentAppt.customer_id || paymentAppt.customer?.id) && (
                 <FormGroup label="Customer Package">
                   {loadingPaymentPkgs ? (
                     <div style={{ fontSize:12, color:isDark?'#94A3B8':'#94A3B8', padding:'4px 0' }}>Loading packages...</div>
-                  ) : (
+                  ) : paymentCustPackages.length > 0 ? (
                     <Select value={paymentCustPackageId} onChange={(e) => applyPaymentPackage(e.target.value)}>
                       <option value="">No package — pay normally</option>
                       {paymentCustPackages.map((cp) => (
                         <option key={cp.id} value={cp.id}>{formatCustomerPackageLabel(cp)}</option>
                       ))}
                     </Select>
+                  ) : (
+                    <div style={{ fontSize: 12, color: isDark ? '#94A3B8' : '#64748B', padding: '4px 0' }}>
+                      No discounted package for this customer — use promo discount above or assign a package when booking.
+                    </div>
                   )}
                   {paymentCustPackageId && (
                     <div style={{ fontSize: 12, color: isDark ? '#6EE7B7' : '#047857', marginTop: 6, fontWeight: 600 }}>
-                      Services from package selected · Collect Rs. 0
+                      Package discount applied · Collect Rs. 0 (promo discount disabled)
                     </div>
                   )}
                 </FormGroup>

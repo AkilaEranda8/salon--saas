@@ -5,6 +5,15 @@ const { tenantWhere, byIdWhere, resolveTenantId } = require('../utils/tenantScop
 const { slToday } = require('../utils/dateUtils');
 const { withSessionsRemaining, hasSessionsLeft, getSessionsRemaining } = require('../utils/customerPackageHelpers');
 
+function packageHasDiscount(pkg) {
+  if (!pkg) return false;
+  const original = Number(pkg.original_price || 0);
+  const price = Number(pkg.package_price || 0);
+  const discPct = Number(pkg.discount_percent || 0);
+  if (discPct > 0) return true;
+  return original > 0 && price < original;
+}
+
 // ── PACKAGE TEMPLATES ─────────────────────────────────────────────────────────
 
 const list = async (req, res) => {
@@ -205,7 +214,8 @@ const activePackages = async (req, res) => {
 
     const active = rows
       .filter((cp) => hasSessionsLeft(cp))
-      .map((cp) => withSessionsRemaining(cp));
+      .map((cp) => withSessionsRemaining(cp))
+      .filter((cp) => packageHasDiscount(cp.package));
     return res.json(active);
   } catch (err) {
     console.error(err);

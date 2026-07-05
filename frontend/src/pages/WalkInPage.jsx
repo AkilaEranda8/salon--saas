@@ -20,6 +20,8 @@ import {
   resolveCustomerId,
   fetchActiveCustomerPackages,
   applyPackageSelection,
+  filterDiscountedPackageTemplates,
+  formatPackageTemplateLabel,
 } from '../utils/packageHelpers';
 import { getKcAccessToken } from '../utils/kcTokenStore';
 import {
@@ -408,6 +410,9 @@ export default function WalkInPage() {
   const [checkinCustPackages, setCheckinCustPackages] = useState([]);
   const [checkinCustPackageId, setCheckinCustPackageId] = useState('');
   const [loadingCheckinPkgs, setLoadingCheckinPkgs] = useState(false);
+  const [packageTemplates, setPackageTemplates] = useState([]);
+  const [assignTemplateId, setAssignTemplateId] = useState('');
+  const [assignPackageSaving, setAssignPackageSaving] = useState(false);
   const [editEntry,      setEditEntry]      = useState(null);
   const [editForm,       setEditForm]       = useState({ customerName: '', phone: '', serviceId: '', note: '' });
   const [editExtraServiceIds, setEditExtraServiceIds] = useState([]);
@@ -890,6 +895,13 @@ export default function WalkInPage() {
       .finally(() => setCustLoading(false));
   }, [showCheckin, form.branchId, selectedBranch]);
 
+  useEffect(() => {
+    if (!showCheckin) return;
+    api.get('/packages?activeOnly=true')
+      .then((r) => setPackageTemplates(filterDiscountedPackageTemplates(Array.isArray(r.data) ? r.data : [])))
+      .catch(() => setPackageTemplates([]));
+  }, [showCheckin]);
+
   /*  Filter customers as user types  */
   useEffect(() => {
     if (!custSearch.trim()) {
@@ -910,6 +922,7 @@ export default function WalkInPage() {
     setSelectedCustomer(c);
     setShowCustDrop(false);
     setCheckinCustPackageId('');
+    setAssignTemplateId('');
     setCheckinCustPackages([]);
     if (c.id) {
       setLoadingCheckinPkgs(true);
@@ -917,6 +930,29 @@ export default function WalkInPage() {
         .then(setCheckinCustPackages)
         .catch(() => setCheckinCustPackages([]))
         .finally(() => setLoadingCheckinPkgs(false));
+    }
+  };
+
+  const assignPackageToCustomer = async () => {
+    if (!selectedCustomer?.id || !assignTemplateId) return;
+    setAssignPackageSaving(true);
+    setFormError('');
+    try {
+      await api.post('/packages/purchase', {
+        customer_id: Number(selectedCustomer.id),
+        package_id: Number(assignTemplateId),
+        branch_id: form.branchId || selectedBranch || user?.branchId || undefined,
+        payment_method: 'Cash',
+      });
+      setAssignTemplateId('');
+      setLoadingCheckinPkgs(true);
+      const pkgs = await fetchActiveCustomerPackages(api, selectedCustomer.id);
+      setCheckinCustPackages(pkgs);
+    } catch (err) {
+      setFormError(err.response?.data?.message || 'Failed to assign package.');
+    } finally {
+      setAssignPackageSaving(false);
+      setLoadingCheckinPkgs(false);
     }
   };
 
@@ -1380,22 +1416,47 @@ export default function WalkInPage() {
               <Input placeholder="Optional" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
             </div>
 
-            {selectedCustomer && (loadingCheckinPkgs || checkinCustPackages.length > 0) && (
+            {selectedCustomer && (
               <div>
                 <Label>Customer Package</Label>
                 {loadingCheckinPkgs ? (
                   <div style={{ fontSize: 12, color: C.muted, padding: '4px 0' }}>Loading packages…</div>
-                ) : (
+                ) : checkinCustPackages.length > 0 ? (
                   <Select value={checkinCustPackageId} onChange={(e) => applyCheckinPackage(e.target.value)}>
                     <option value="">No package — pay normally</option>
                     {checkinCustPackages.map((cp) => (
                       <option key={cp.id} value={cp.id}>{formatCustomerPackageLabel(cp)}</option>
                     ))}
                   </Select>
+                ) : packageTemplates.length > 0 ? (
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                    <Select
+                      value={assignTemplateId}
+                      onChange={(e) => setAssignTemplateId(e.target.value)}
+                      style={{ flex: '1 1 180px', minWidth: 0 }}
+                    >
+                      <option value="">Assign discounted package…</option>
+                      {packageTemplates.map((p) => (
+                        <option key={p.id} value={p.id}>{formatPackageTemplateLabel(p)}</option>
+                      ))}
+                    </Select>
+                    <Button
+                      size="sm"
+                      onClick={assignPackageToCustomer}
+                      loading={assignPackageSaving}
+                      disabled={!assignTemplateId || assignPackageSaving}
+                    >
+                      Assign
+                    </Button>
+                  </div>
+                ) : (
+                  <div style={{ fontSize: 12, color: C.muted, padding: '4px 0' }}>
+                    No discounted packages — create a package with a bundle discount first.
+                  </div>
                 )}
                 {checkinCustPackageId && (
                   <div style={{ fontSize: 12, color: isDark ? '#6EE7B7' : '#047857', marginTop: 6, fontWeight: 600 }}>
-                    Package services selected — collect Rs. 0 when service is done
+                    Package discount applied — collect Rs. 0 when service is done
                   </div>
                 )}
               </div>
@@ -1584,26 +1645,30 @@ export default function WalkInPage() {
                   </div>
                 </div>
               </div>
-              {paymentEntry?.customer_id || paymentCustomerId ? (loadingPaymentPkgs || paymentCustPackages.length > 0) && (
+              {(paymentEntry?.customer_id || paymentCustomerId) && (
                 <div>
                   <Label>Customer Package</Label>
                   {loadingPaymentPkgs ? (
                     <div style={{ fontSize: 12, color: C.muted, padding: '4px 0' }}>Loading packages…</div>
-                  ) : (
+                  ) : paymentCustPackages.length > 0 ? (
                     <Select value={paymentCustPackageId} onChange={(e) => applyPaymentPackage(e.target.value)} style={{ width: '100%', marginTop: 4 }}>
                       <option value="">No package — pay normally</option>
                       {paymentCustPackages.map((cp) => (
                         <option key={cp.id} value={cp.id}>{formatCustomerPackageLabel(cp)}</option>
                       ))}
                     </Select>
+                  ) : (
+                    <div style={{ fontSize: 12, color: C.muted, padding: '4px 0' }}>
+                      No discounted package — use promo discount or assign package at check-in.
+                    </div>
                   )}
                   {paymentCustPackageId && (
                     <div style={{ fontSize: 12, color: isDark ? '#6EE7B7' : '#047857', marginTop: 6, fontWeight: 600 }}>
-                      Package covers this visit · Collect Rs. 0
+                      Package discount applied · Collect Rs. 0 (promo disabled)
                     </div>
                   )}
                 </div>
-              ) : null}
+              )}
               {paymentDiscounts.length > 0 && paymentMethod !== 'Package' && (
                 <div>
                   <Label>Promo discount</Label>

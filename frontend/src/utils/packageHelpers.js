@@ -32,6 +32,40 @@ export const resolvePackageServiceIds = (customerPackage, allServices = []) => {
   return pkgServiceIds.filter((id) => activeIds.has(id));
 };
 
+/** True when bundle price is below list price (discount packages only). */
+export function packageHasDiscount(pkg) {
+  if (!pkg) return false;
+  const original = Number(pkg.original_price || 0);
+  const price = Number(pkg.package_price || 0);
+  const discPct = Number(pkg.discount_percent || 0);
+  if (discPct > 0) return true;
+  return original > 0 && price < original;
+}
+
+export function packageDiscountLabel(pkg) {
+  if (!pkg || !packageHasDiscount(pkg)) return '';
+  const pct = Number(pkg.discount_percent || 0);
+  if (pct > 0) return ` · ${Math.round(pct)}% off`;
+  const original = Number(pkg.original_price || 0);
+  const price = Number(pkg.package_price || 0);
+  if (original > price) return ` · Save Rs. ${Math.round(original - price).toLocaleString()}`;
+  return '';
+}
+
+export function filterRedeemableCustomerPackages(list = []) {
+  return list.filter((cp) => packageHasDiscount(cp?.package));
+}
+
+export function filterDiscountedPackageTemplates(list = []) {
+  return list.filter((p) => packageHasDiscount(p));
+}
+
+export function formatPackageTemplateLabel(pkg) {
+  if (!pkg) return 'Package';
+  const price = Number(pkg.package_price || 0);
+  return `${pkg.name} — Rs. ${price.toLocaleString()}${packageDiscountLabel(pkg)}`;
+}
+
 export const formatCustomerPackageLabel = (cp) => {
   if (!cp) return 'Package';
   const name = cp.package?.name || 'Package';
@@ -41,10 +75,8 @@ export const formatCustomerPackageLabel = (cp) => {
     ? cp.sessions_remaining
     : (!total || Number(total) === 0 ? null : Math.max(0, Number(total) - Number(used)));
   const sessions = remaining == null ? 'Unlimited' : `${remaining} left`;
-  const price = cp.package?.package_price != null
-    ? ` · Rs.${Number(cp.package.package_price).toLocaleString()}`
-    : '';
-  return `${name} — ${sessions}${price}`;
+  const disc = packageDiscountLabel(cp.package);
+  return `${name} — ${sessions}${disc}`;
 };
 
 export const servicesCoveredByPackage = (serviceIds = [], customerPackage) => {
@@ -84,7 +116,8 @@ export async function fetchActiveCustomerPackages(api, customerId) {
   if (!customerId || !api) return [];
   try {
     const r = await api.get(`/packages/customer/${customerId}/active`);
-    return Array.isArray(r.data) ? r.data : [];
+    const list = Array.isArray(r.data) ? r.data : [];
+    return filterRedeemableCustomerPackages(list);
   } catch {
     return [];
   }

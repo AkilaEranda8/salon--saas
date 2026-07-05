@@ -21,7 +21,7 @@ const STATUS_BADGE  = {
   expired:   { bg:'#FEE2E2', color:'#DC2626' },
   completed: { bg:'#F1F5F9', color:'#475467' },
 };
-const EMPTY_PKG  = { name:'', type:'bundle', services:[], sessions_count:'', validity_days:'90', package_price:'', is_active:true, branch_id:'' };
+const EMPTY_PKG  = { name:'', type:'bundle', services:[], validity_days:'90', package_price:'', is_active:true, branch_id:'' };
 const MUTED = '#64748B';
 
 /*  helpers  */
@@ -116,10 +116,10 @@ function PackageCard({ pkg, canEdit, onEdit, onToggle, onDelete }) {
           </div>
         </div>
         <div style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 12px', background:'#F8FAFC', borderRadius:10 }}>
-          <span style={{ color:'#64748B', display:'flex' }}><IconUsers /></span>
+          <span style={{ color:'#64748B', display:'flex' }}><IconTag /></span>
           <div>
-            <div style={{ fontSize:11, color:MUTED, fontFamily:"'Inter',sans-serif" }}>Sessions</div>
-            <div style={{ fontSize:14, fontWeight:700, color:'#344054', fontFamily:"'Outfit',sans-serif" }}>{pkg.sessions_count || ''}</div>
+            <div style={{ fontSize:11, color:MUTED, fontFamily:"'Inter',sans-serif" }}>Services</div>
+            <div style={{ fontSize:14, fontWeight:700, color:'#344054', fontFamily:"'Outfit',sans-serif" }}>{svcList.length || 0}</div>
           </div>
         </div>
       </div>
@@ -275,6 +275,7 @@ export default function PackagesPage() {
   const [pkgForm,      setPkgForm]      = useState(EMPTY_PKG);
   const [pkgSaving,    setPkgSaving]    = useState(false);
   const [pkgFormError, setPkgFormError] = useState('');
+  const [servicePicker, setServicePicker] = useState('');
 
   const [soldPkgs,     setSoldPkgs]     = useState([]);
   const [soldTotal,    setSoldTotal]    = useState(0);
@@ -321,13 +322,12 @@ export default function PackagesPage() {
     api.get('/services?limit=500').then(r => setAllServices(r.data.data || r.data || [])).catch(() => {});
   }, [isAdmin]);
 
-  const originalPrice = useMemo(() => {
-    const sessions = Number(pkgForm.sessions_count) || 1;
-    return pkgForm.services.reduce((sum, sid) => {
-      const svc = allServices.find(s => s.id === Number(sid));
+  const originalPrice = useMemo(() => (
+    pkgForm.services.reduce((sum, sid) => {
+      const svc = allServices.find((s) => s.id === Number(sid));
       return sum + (svc ? Number(svc.price) : 0);
-    }, 0) * sessions;
-  }, [pkgForm.services, pkgForm.sessions_count, allServices]);
+    }, 0)
+  ), [pkgForm.services, allServices]);
 
   const discountPct = useMemo(() => {
     if (!originalPrice || !pkgForm.package_price) return 0;
@@ -409,12 +409,13 @@ export default function PackagesPage() {
     },
     {
       id: 'validity',
-      accessorFn: (pkg) => `${pkg.validity_days || 0}d · ${pkg.sessions_count || 0} sessions`,
+      accessorFn: (pkg) => `${pkg.validity_days || 0}d · ${(pkg.serviceDetails || []).length} services`,
       header: 'Validity',
       meta: { width: '14%' },
       cell: ({ row }) => {
         const pkg = row.original;
-        return <span style={{ fontSize: 13, color: '#344054' }}>{pkg.validity_days} days · {pkg.sessions_count} sessions</span>;
+        const svcCount = (pkg.serviceDetails || []).length;
+        return <span style={{ fontSize: 13, color: '#344054' }}>{pkg.validity_days} days · {svcCount} service{svcCount !== 1 ? 's' : ''}</span>;
       },
     },
     {
@@ -566,6 +567,7 @@ export default function PackagesPage() {
   const openCreatePkg = () => {
     setEditPkg(null);
     setPkgForm({ ...EMPTY_PKG, branch_id: user.branchId ? String(user.branchId) : '' });
+    setServicePicker('');
     setPkgFormError('');
     setShowPkgModal(true);
   };
@@ -575,26 +577,27 @@ export default function PackagesPage() {
       name:          pkg.name         || '',
       type:          pkg.type         || 'bundle',
       services:      (pkg.services || []).map(String),
-      sessions_count:pkg.sessions_count != null ? String(pkg.sessions_count) : '',
       validity_days: pkg.validity_days  != null ? String(pkg.validity_days)  : '90',
       package_price: pkg.package_price  != null ? String(pkg.package_price)  : '',
       is_active:     pkg.is_active !== false,
       branch_id:     pkg.branch_id ? String(pkg.branch_id) : '',
     });
+    setServicePicker('');
     setPkgFormError('');
     setShowPkgModal(true);
   };
 
-  const toggleService = (sid) => {
+  const addServiceFromPicker = (serviceId) => {
+    const s = String(serviceId);
+    if (!s) return;
+    setPkgForm((f) => (
+      f.services.includes(s) ? f : { ...f, services: [...f.services, s] }
+    ));
+    setServicePicker('');
+  };
+  const removeService = (sid) => {
     const s = String(sid);
-    setPkgForm((f) => {
-      const nextServices = f.services.includes(s) ? f.services.filter((x) => x !== s) : [...f.services, s];
-      return {
-        ...f,
-        services: nextServices,
-        sessions_count: f.sessions_count || String(nextServices.length || ''),
-      };
-    });
+    setPkgForm((f) => ({ ...f, services: f.services.filter((x) => x !== s) }));
   };
   const handleSavePkg = async () => {
     setPkgFormError('');
@@ -608,7 +611,7 @@ export default function PackagesPage() {
         description:     '',
         type:            pkgForm.type || 'bundle',
         services:        pkgForm.services.map(Number),
-        sessions_count:  Number(pkgForm.sessions_count) || pkgForm.services.length,
+        sessions_count:  pkgForm.services.length,
         validity_days:   Number(pkgForm.validity_days)  || 90,
         package_price:   Number(pkgForm.package_price),
         original_price:  originalPrice || Number(pkgForm.package_price),
@@ -832,27 +835,15 @@ export default function PackagesPage() {
                 placeholder="e.g. Hair Care Bundle"
               />
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-              <div>
-                <Label>Validity (days) *</Label>
-                <Input
-                  type="number"
-                  min="1"
-                  value={pkgForm.validity_days}
-                  onChange={(e) => setPkgForm((f) => ({ ...f, validity_days: e.target.value }))}
-                  placeholder="90"
-                />
-              </div>
-              <div>
-                <Label>Sessions</Label>
-                <Input
-                  type="number"
-                  min="1"
-                  value={pkgForm.sessions_count}
-                  onChange={(e) => setPkgForm((f) => ({ ...f, sessions_count: e.target.value }))}
-                  placeholder={String(pkgForm.services.length || 1)}
-                />
-              </div>
+            <div>
+              <Label>Validity (days) *</Label>
+              <Input
+                type="number"
+                min="1"
+                value={pkgForm.validity_days}
+                onChange={(e) => setPkgForm((f) => ({ ...f, validity_days: e.target.value }))}
+                placeholder="90"
+              />
             </div>
             {isAdmin && (
               <div>
@@ -865,50 +856,67 @@ export default function PackagesPage() {
             )}
           </PkgSection>
 
-          <PkgSection title="Services *" desc="Select all services included in this bundle" dark={isDark}>
-            <div style={{
-              display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 8,
-              maxHeight: 240, overflowY: 'auto', padding: 2,
-            }}>
-              {allServices.map((svc) => {
-                const sel = pkgForm.services.includes(String(svc.id));
-                return (
-                  <button
-                    key={svc.id}
-                    type="button"
-                    onClick={() => toggleService(svc.id)}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 10,
-                      cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
-                      border: `1.5px solid ${sel ? '#7C3AED' : (isDark ? '#475569' : '#E4E7EC')}`,
-                      background: sel ? (isDark ? '#3B0764' : '#F5F3FF') : (isDark ? '#1E293B' : '#fff'),
-                    }}
-                  >
-                    <div style={{
-                      width: 18, height: 18, borderRadius: 4, flexShrink: 0,
-                      border: `2px solid ${sel ? '#7C3AED' : (isDark ? '#64748B' : '#D0D5DD')}`,
-                      background: sel ? '#7C3AED' : 'transparent',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    }}>
-                      {sel && <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3.5"><polyline points="20 6 9 17 4 12"/></svg>}
-                    </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: sel ? (isDark ? '#E9D5FF' : '#5B21B6') : C.title, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{svc.name}</div>
-                      <div style={{ fontSize: 12, fontWeight: 700, color: '#059669', marginTop: 2 }}>Rs. {Number(svc.price || 0).toLocaleString()}</div>
-                    </div>
-                  </button>
-                );
-              })}
+          <PkgSection title="Services *" desc="Add each service included in this package" dark={isDark}>
+            <div>
+              <Label>Service</Label>
+              <Select
+                value={servicePicker}
+                onChange={(e) => addServiceFromPicker(e.target.value)}
+              >
+                <option value="">Select a service to add…</option>
+                {allServices
+                  .filter((s) => s.is_active !== false && !pkgForm.services.includes(String(s.id)))
+                  .map((svc) => (
+                    <option key={svc.id} value={svc.id}>
+                      {svc.name} — Rs. {Number(svc.price || 0).toLocaleString()}
+                    </option>
+                  ))}
+              </Select>
             </div>
             {pkgForm.services.length > 0 && (
-              <div style={{
-                padding: '10px 12px', borderRadius: 10,
-                background: isDark ? '#1E293B' : '#F8FAFC',
-                border: `1px solid ${isDark ? '#334155' : '#E4E7EC'}`,
-                fontSize: 13, color: C.muted,
-              }}>
-                {pkgForm.services.length} service{pkgForm.services.length !== 1 ? 's' : ''} selected · List value{' '}
-                <strong style={{ color: '#059669' }}>Rs. {originalPrice.toLocaleString()}</strong>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {pkgForm.services.map((sid) => {
+                  const svc = allServices.find((s) => String(s.id) === String(sid));
+                  if (!svc) return null;
+                  return (
+                    <div
+                      key={sid}
+                      style={{
+                        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+                        padding: '10px 12px', borderRadius: 10,
+                        border: `1px solid ${isDark ? '#334155' : '#E4E7EC'}`,
+                        background: isDark ? '#1E293B' : '#F8FAFC',
+                      }}
+                    >
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: C.title }}>{svc.name}</div>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: '#059669', marginTop: 2 }}>
+                          Rs. {Number(svc.price || 0).toLocaleString()}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removeService(sid)}
+                        aria-label="Remove service"
+                        style={{
+                          background: 'transparent', border: 'none', cursor: 'pointer',
+                          color: isDark ? '#FCA5A5' : '#DC2626', fontSize: 18, lineHeight: 1, padding: 4,
+                        }}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  );
+                })}
+                <div style={{
+                  padding: '10px 12px', borderRadius: 10,
+                  background: isDark ? '#0F172A' : '#fff',
+                  border: `1px solid ${isDark ? '#334155' : '#E4E7EC'}`,
+                  fontSize: 13, color: C.muted,
+                }}>
+                  {pkgForm.services.length} service{pkgForm.services.length !== 1 ? 's' : ''} · List value{' '}
+                  <strong style={{ color: '#059669' }}>Rs. {originalPrice.toLocaleString()}</strong>
+                </div>
               </div>
             )}
           </PkgSection>

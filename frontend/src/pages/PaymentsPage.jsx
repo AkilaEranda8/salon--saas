@@ -17,6 +17,7 @@ import {
   resolvePackageServiceIds,
   formatCustomerPackageLabel,
   packageCoversAllServices,
+  fetchActiveCustomerPackages,
 } from '../utils/packageHelpers';
 
 const METHODS = ['Cash','Card','Online Transfer','Loyalty Points','Package','LankaQR'];
@@ -740,9 +741,9 @@ export default function PaymentsPage() {
       setCustPackages([]);
       if (p.customer_id) {
         setLoadingPkgs(true);
-        api.get(`/packages/customer/${p.customer_id}/active`)
-          .then((r) => { setCustPackages(Array.isArray(r.data) ? r.data : []); })
-          .catch(() => {})
+        fetchActiveCustomerPackages(api, p.customer_id)
+          .then(setCustPackages)
+          .catch(() => setCustPackages([]))
           .finally(() => setLoadingPkgs(false));
       }
       setEditId(row.id);
@@ -1012,29 +1013,34 @@ export default function PaymentsPage() {
                     setFormPackageId('');
                     if (cid) {
                       setLoadingPkgs(true);
-                      api.get(`/packages/customer/${cid}/active`).then(r => {
-                        setCustPackages(Array.isArray(r.data) ? r.data : []);
-                      }).catch(() => {}).finally(() => setLoadingPkgs(false));
+                      fetchActiveCustomerPackages(api, cid)
+                        .then(setCustPackages)
+                        .catch(() => setCustPackages([]))
+                        .finally(() => setLoadingPkgs(false));
                     }
                   }}
                   onNew={newCust => setCustomers(prev => [newCust, ...prev])}
                 />
               </FormGroup>
-              {form.customer_id && (loadingPkgs || custPackages.length > 0) && (
-                <FormGroup label="Redeem Package (optional)">
+              {form.customer_id && (
+                <FormGroup label="Customer Package">
                   {loadingPkgs ? (
                     <div style={{ fontSize: 12, color: isDark ? '#64748B' : '#64748B' }}>Loading packages…</div>
-                  ) : (
+                  ) : custPackages.length > 0 ? (
                     <Select value={formPackageId} onChange={(e) => applyFormPackage(e.target.value)}>
                       <option value="">No package — pay normally</option>
                       {custPackages.map((cp) => (
                         <option key={cp.id} value={cp.id}>{formatCustomerPackageLabel(cp)}</option>
                       ))}
                     </Select>
+                  ) : (
+                    <div style={{ fontSize: 12, color: isDark ? '#64748B' : '#64748B' }}>
+                      No discounted package for this customer.
+                    </div>
                   )}
                   {formPackageId && (
                     <div style={{ fontSize: 12, color: isDark ? '#6EE7B7' : '#047857', marginTop: 6, fontWeight: 600 }}>
-                      Package services selected · Record Rs. 0 payment
+                      Package discount applied · Rs. 0 (promo discount disabled)
                     </div>
                   )}
                 </FormGroup>
@@ -1094,9 +1100,10 @@ export default function PaymentsPage() {
                   <Input type="number" value={form.total_amount || ''} onChange={e => setForm(f => ({ ...f, total_amount: e.target.value }))} />
                 </FormGroup>
                 <FormGroup label="Loyalty Discount (Rs.)">
-                  <Input type="number" value={form.loyalty_discount || 0} onChange={e => setForm(f => ({ ...f, loyalty_discount: Number(e.target.value) }))} />
+                  <Input type="number" value={form.loyalty_discount || 0} onChange={e => setForm(f => ({ ...f, loyalty_discount: Number(e.target.value) }))} disabled={!!formPackageId} />
                 </FormGroup>
               </div>
+              {!formPackageId && (
               <FormGroup label="Promo discount">
                 <Select value={form.discount_id || ''} onChange={e => setForm(f => ({ ...f, discount_id: e.target.value }))}>
                   <option value="">None</option>
@@ -1118,6 +1125,7 @@ export default function PaymentsPage() {
                   </div>
                 )}
               </FormGroup>
+              )}
               {form.total_amount && (
                 <div style={{
                   borderRadius: 12, padding: '12px 14px',

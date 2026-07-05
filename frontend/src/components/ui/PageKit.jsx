@@ -10,6 +10,7 @@ import {
 } from '@tanstack/react-table';
 import { createPortal } from 'react-dom';
 import { useTheme } from '../../context/ThemeContext';
+import { getSurface, DARK_TABLE_OVERRIDE, DARK_TABLE_TOOLBAR } from '../shared/appThemeTokens';
 
 /* ─── Table style tokens ─────────────────────────────────────────────────── */
 const TABLE_STYLE_TOKENS = {
@@ -315,16 +316,18 @@ export function ActionBtn({ onClick, title, color, children }) {
 
 /* ─── PagBtn ─────────────────────────────────────────────────────────────── */
 export function PagBtn({ onClick, disabled, active, label }) {
+  const { isDark } = useTheme();
+  const s = getSurface(isDark);
   const [hov, setHov] = useState(false);
   return (
     <button onClick={onClick} disabled={disabled}
       onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
       style={{
         minWidth: 32, height: 32, padding: '0 6px',
-        border: active ? '1.5px solid #2563EB' : '1px solid #E4E7EC',
+        border: active ? `1.5px solid ${s.pagActiveBorder}` : `1px solid ${s.pagBorder}`,
         borderRadius: 8,
-        background: active ? '#EFF6FF' : hov && !disabled ? '#F2F4F7' : '#fff',
-        color: active ? '#2563EB' : disabled ? '#D0D5DD' : '#344054',
+        background: active ? s.pagActiveBg : hov && !disabled ? s.pagHover : s.pagBg,
+        color: active ? (isDark ? '#60A5FA' : '#2563EB') : disabled ? s.pagDisabled : s.pagColor,
         fontSize: 13, fontWeight: active ? 700 : 400,
         fontFamily: "'Inter',sans-serif", cursor: disabled ? 'not-allowed' : 'pointer', transition: 'all 0.1s',
       }}>
@@ -335,16 +338,18 @@ export function PagBtn({ onClick, disabled, active, label }) {
 
 /* ─── StatCard ───────────────────────────────────────────────────────────── */
 export function StatCard({ label, value, color, icon }) {
+  const { isDark } = useTheme();
+  const s = getSurface(isDark);
   const [hov, setHov] = useState(false);
   return (
     <div
       onMouseEnter={() => setHov(true)}
       onMouseLeave={() => setHov(false)}
       style={{
-        background: '#fff', borderRadius: 16, padding: '18px 20px',
-        border: '1px solid #EAECF0', flex: 1, minWidth: 130,
+        background: s.panel, borderRadius: 16, padding: '18px 20px',
+        border: `1px solid ${s.border}`, flex: 1, minWidth: 130,
         display: 'flex', alignItems: 'center', gap: 14,
-        boxShadow: hov ? '0 8px 24px rgba(16,24,40,0.10)' : '0 1px 4px rgba(16,24,40,0.04)',
+        boxShadow: hov ? (isDark ? '0 8px 24px rgba(2,6,23,0.45)' : '0 8px 24px rgba(16,24,40,0.10)') : s.shadowSm,
         transform: hov ? 'translateY(-2px)' : 'translateY(0)',
         transition: 'all 0.2s ease',
         cursor: 'default',
@@ -357,8 +362,8 @@ export function StatCard({ label, value, color, icon }) {
         border: `1.5px solid ${color}20`,
       }}>{icon}</div>
       <div>
-        <div style={{ fontSize: 26, fontWeight: 800, color: '#101828', lineHeight: 1.1, letterSpacing: '-0.5px' }}>{value}</div>
-        <div style={{ fontSize: 11, color: '#98A2B3', marginTop: 3, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{label}</div>
+        <div style={{ fontSize: 26, fontWeight: 800, color: s.text, lineHeight: 1.1, letterSpacing: '-0.5px' }}>{value}</div>
+        <div style={{ fontSize: 11, color: s.faint, marginTop: 3, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{label}</div>
       </div>
     </div>
   );
@@ -366,6 +371,8 @@ export function StatCard({ label, value, color, icon }) {
 
 /* ─── Drawer ─────────────────────────────────────────────────────────────── */
 export function Drawer({ open, onClose, title, children, footer, width = 480 }) {
+  const { isDark } = useTheme();
+  const s = getSurface(isDark);
   useEffect(() => {
     if (!open) return;
     document.body.style.overflow = 'hidden';
@@ -374,19 +381,19 @@ export function Drawer({ open, onClose, title, children, footer, width = 480 }) 
   if (!open) return null;
   return createPortal(
     <div style={{ position: 'fixed', inset: 0, zIndex: 900, display: 'flex', justifyContent: 'flex-end' }}>
-      <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'rgba(16,24,40,0.4)', backdropFilter: 'blur(2px)' }} />
-      <div style={{
-        position: 'relative', width, maxWidth: '95vw', background: '#fff',
+      <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: s.overlay, backdropFilter: 'blur(2px)' }} />
+      <div className="app-modal-panel" style={{
+        position: 'relative', width, maxWidth: '95vw', background: s.panel,
         display: 'flex', flexDirection: 'column',
-        boxShadow: '-8px 0 40px rgba(16,24,40,0.15)', animation: 'pk-drawer 0.22s ease',
+        boxShadow: isDark ? '-8px 0 40px rgba(2,6,23,0.55)' : '-8px 0 40px rgba(16,24,40,0.15)', animation: 'pk-drawer 0.22s ease',
       }}>
         <style>{'@keyframes pk-drawer { from { transform:translateX(100%); } to { transform:translateX(0); } }'}</style>
-        <div style={{ padding: '16px 24px', borderBottom: '1px solid #EAECF0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0, background: '#fff' }}>
-          <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#101828', fontFamily: "'Inter',sans-serif" }}>{title}</h3>
-          <button onClick={onClose} style={{ background: '#F2F4F7', border: '1px solid #E4E7EC', cursor: 'pointer', color: '#667085', display: 'flex', alignItems: 'center', borderRadius: 8, padding: 6 }}><IconClose /></button>
+        <div style={{ padding: '16px 24px', borderBottom: `1px solid ${s.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0, background: s.panel }}>
+          <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: s.text, fontFamily: "'Inter',sans-serif" }}>{title}</h3>
+          <button onClick={onClose} style={{ background: s.softer, border: `1px solid ${s.border}`, cursor: 'pointer', color: s.muted, display: 'flex', alignItems: 'center', borderRadius: 8, padding: 6 }}><IconClose /></button>
         </div>
         <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>{children}</div>
-        {footer && <div style={{ padding: '16px 24px', borderTop: '1px solid #EAECF0', display: 'flex', gap: 8, justifyContent: 'flex-end', flexShrink: 0, background: '#FAFBFC' }}>{footer}</div>}
+        {footer && <div style={{ padding: '16px 24px', borderTop: `1px solid ${s.border}`, display: 'flex', gap: 8, justifyContent: 'flex-end', flexShrink: 0, background: s.soft }}>{footer}</div>}
       </div>
     </div>,
     document.body
@@ -395,6 +402,8 @@ export function Drawer({ open, onClose, title, children, footer, width = 480 }) 
 
 /* ─── Modal ──────────────────────────────────────────────────────────────── */
 export function PKModal({ open, onClose, title, children, footer, size = 'md', width }) {
+  const { isDark } = useTheme();
+  const s = getSurface(isDark);
   useEffect(() => {
     if (!open) return;
     document.body.style.overflow = 'hidden';
@@ -405,26 +414,26 @@ export function PKModal({ open, onClose, title, children, footer, size = 'md', w
   const modalMaxWidth = width ?? widths[size] ?? 560;
   return createPortal(
     <div style={{ position: 'fixed', inset: 0, zIndex: 900, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-      <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'rgba(16,24,40,0.45)', backdropFilter: 'blur(2px)' }} />
-      <div style={{
+      <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: s.overlay, backdropFilter: 'blur(2px)' }} />
+      <div className="app-modal-panel" style={{
         position: 'relative', width: '100%', maxWidth: modalMaxWidth,
-        background: '#fff', borderRadius: 16, display: 'flex', flexDirection: 'column',
-        boxShadow: '0 20px 60px rgba(16,24,40,0.18)', maxHeight: '90vh', animation: 'pk-modal 0.18s ease',
+        background: s.panel, borderRadius: 16, display: 'flex', flexDirection: 'column',
+        boxShadow: s.shadow, maxHeight: '90vh', animation: 'pk-modal 0.18s ease',
       }}>
         <style>{'@keyframes pk-modal { from { opacity:0; transform:scale(0.96) translateY(8px); } to { opacity:1; transform:scale(1) translateY(0); } }'}</style>
-        <div style={{ padding: '16px 24px', borderBottom: '1px solid #EAECF0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0, background: '#fff', borderRadius: '16px 16px 0 0' }}>
-          <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#101828', fontFamily: "'Inter',sans-serif" }}>{title}</h3>
+        <div style={{ padding: '16px 24px', borderBottom: `1px solid ${s.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0, background: s.panel, borderRadius: '16px 16px 0 0' }}>
+          <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: s.text, fontFamily: "'Inter',sans-serif" }}>{title}</h3>
           <button
             type="button"
             aria-label="Close dialog"
             onClick={onClose}
-            style={{ background: '#F2F4F7', border: '1px solid #E4E7EC', cursor: 'pointer', color: '#667085', display: 'flex', alignItems: 'center', borderRadius: 8, padding: 6 }}
+            style={{ background: s.softer, border: `1px solid ${s.border}`, cursor: 'pointer', color: s.muted, display: 'flex', alignItems: 'center', borderRadius: 8, padding: 6 }}
           >
             <IconClose />
           </button>
         </div>
         <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>{children}</div>
-        {footer && <div style={{ padding: '16px 24px', borderTop: '1px solid #EAECF0', display: 'flex', gap: 8, justifyContent: 'flex-end', flexShrink: 0, background: '#FAFBFC' }}>{footer}</div>}
+        {footer && <div style={{ padding: '16px 24px', borderTop: `1px solid ${s.border}`, display: 'flex', gap: 8, justifyContent: 'flex-end', flexShrink: 0, background: s.soft }}>{footer}</div>}
       </div>
     </div>,
     document.body
@@ -884,8 +893,12 @@ export function DataTable({
   const pagination = compact ? false : (paginationProp ?? true);
   const showRowNumbers = compact ? false : (showRowNumbersProp ?? true);
   const enableColumnVisibility = compact ? false : (enableColumnVisibilityProp ?? true);
-  const { tableStyle = 'default', tableDensity = 'comfortable' } = useTheme();
-  const ts = applyTableDensity(TABLE_STYLE_TOKENS[tableStyle] || TABLE_STYLE_TOKENS.default, tableDensity);
+  const { tableStyle = 'default', tableDensity = 'comfortable', isDark } = useTheme();
+  const baseTokens = TABLE_STYLE_TOKENS[tableStyle] || TABLE_STYLE_TOKENS.default;
+  const mergedTokens = isDark && !baseTokens.isCraft
+    ? { ...baseTokens, ...DARK_TABLE_OVERRIDE }
+    : baseTokens;
+  const ts = applyTableDensity(mergedTokens, tableDensity);
   const craft = !!ts.isCraft;
   const [sorting, setSorting] = useState([]);
   const [columnFilters, setColumnFilters] = useState([]);
@@ -964,7 +977,7 @@ export function DataTable({
   const hasToolbar = !!(searchableColumns?.length || filterableColumns?.length || enableColumnVisibility);
   const useFullToolbar = hasToolbar && !compact;
   const showCardsView = useFullToolbar && viewMode === 'cards';
-  const tbar = TABLECRAFT_TOOLBAR;
+  const tbar = isDark && !craft ? DARK_TABLE_TOOLBAR : TABLECRAFT_TOOLBAR;
 
   const activeFilters = columnFilters.filter(f => f.value != null && f.value !== '');
 
@@ -991,8 +1004,8 @@ export function DataTable({
             flexDirection: 'column',
             gap: 10,
             padding: useFullToolbar ? '12px 16px' : '12px 14px',
-            borderBottom: useFullToolbar ? tbar.toolbarBorder : '1px solid #F2F4F7',
-            background: useFullToolbar ? tbar.toolbarBg : '#FAFBFC',
+            borderBottom: useFullToolbar ? tbar.toolbarBorder : `1px solid ${isDark ? '#334155' : '#F2F4F7'}`,
+            background: useFullToolbar ? tbar.toolbarBg : (isDark ? '#172033' : '#FAFBFC'),
           }}
         >
           <div
@@ -1033,7 +1046,7 @@ export function DataTable({
             </div>
           )}
           {useFullToolbar && (
-            <div style={{ width: 1, height: 28, background: '#E4E7EC', flexShrink: 0 }} aria-hidden />
+            <div style={{ width: 1, height: 28, background: isDark ? '#334155' : '#E4E7EC', flexShrink: 0 }} aria-hidden />
           )}
           <div style={{
             display: 'flex',

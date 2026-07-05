@@ -53,7 +53,7 @@ export default function PageWrapper({ title, subtitle, actions, children }) {
                 <p style={{
                   margin:     '3px 0 0',
                   fontSize:   13.5,
-                  color:      '#667085',
+                  color:      'var(--app-text-muted, #667085)',
                   lineHeight: 1.5,
                   fontFamily: "'Inter', sans-serif",
                 }}>

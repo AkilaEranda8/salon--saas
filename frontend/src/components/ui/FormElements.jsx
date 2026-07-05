@@ -3,14 +3,14 @@ import { useState } from 'react';
 /* ─── Shared base styles ─────────────────────────────────────────────── */
 
 const BASE = {
-  border:      '1.5px solid #D0D5DD',
+  border:      '1.5px solid var(--app-input-border, #D0D5DD)',
   borderRadius: 10,
   padding:     '9px 13px',
   fontSize:    14,
-  color:       '#101828',
+  color:       'var(--app-text, #101828)',
   outline:     'none',
   fontFamily:  "'Inter', sans-serif",
-  background:  '#fff',
+  background:  'var(--app-input-bg, #fff)',
   width:       '100%',
   boxSizing:   'border-box',
   transition:  'border-color 0.15s, box-shadow 0.15s',
@@ -18,14 +18,14 @@ const BASE = {
 };
 
 const FOCUS = {
-  borderColor: '#2563EB',
-  boxShadow:   '0 0 0 4px rgba(37,99,235,0.12)',
+  borderColor: 'var(--app-accent, #2563EB)',
+  boxShadow:   '0 0 0 4px var(--app-accent-soft, rgba(37,99,235,0.12))',
 };
 
 const DISABLED = {
-  background: '#F9FAFB',
+  background: 'var(--app-surface-soft, #F9FAFB)',
   cursor:     'not-allowed',
-  color:      '#98A2B3',
+  color:      'var(--app-text-muted, #98A2B3)',
 };
 
 function useInputFocus() {
@@ -114,7 +114,7 @@ export function Label({ children, required, htmlFor }) {
         fontWeight:    600,
         textTransform: 'uppercase',
         letterSpacing: '0.05em',
-        color:         '#344054',
+        color:         'var(--app-text-secondary, #344054)',
         marginBottom:  6,
         fontFamily:    "'Inter', sans-serif",
       }}
@@ -135,7 +135,7 @@ export function FormGroup({ label, required, htmlFor, helper, error, children })
       )}
       {children}
       {helper && !error && (
-        <p style={{ margin: 0, fontSize: 12, color: '#98A2B3', fontFamily: "'Inter', sans-serif" }}>
+        <p style={{ margin: 0, fontSize: 12, color: 'var(--app-text-muted, #98A2B3)', fontFamily: "'Inter', sans-serif" }}>
           {helper}
         </p>
       )}
@@ -200,7 +200,7 @@ export function Toggle({ checked, onChange, disabled, label }) {
       </span>
 
       {label && (
-        <span style={{ fontSize: 14, color: '#344054', fontFamily: "'Inter', sans-serif" }}>
+        <span style={{ fontSize: 14, color: 'var(--app-text-secondary, #344054)', fontFamily: "'Inter', sans-serif" }}>
           {label}
         </span>
       )}
@@ -260,7 +260,7 @@ export function SearchInput({ value, onChange, onClear, placeholder = 'Search...
             border:     'none',
             cursor:     'pointer',
             padding:    4,
-            color:      '#98A2B3',
+                  color:      'var(--app-text-muted, #98A2B3)',
             fontSize:   14,
             lineHeight: 1,
             display:    'flex',

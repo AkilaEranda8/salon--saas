@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import api from '../api/axios';
 import Button from '../components/ui/Button';
-import { Input, Select, FormGroup } from '../components/ui/FormElements';
+import { Input, Select, FormGroup, Textarea } from '../components/ui/FormElements';
 import PageWrapper from '../components/layout/PageWrapper';
 import { computePromoFromDiscount } from '../utils/promoDiscount';
 import {
@@ -156,21 +156,87 @@ function StatCard({ label, value, color, icon, dark = false }) {
   );
 }
 
-function Modal({ open, onClose, title, children, footer, size='md', dark = false }) {
-  useEffect(() => { if (!open) return; document.body.style.overflow='hidden'; return () => { document.body.style.overflow=''; }; }, [open]);
+function ApptSection({ title, desc, children, dark = false }) {
+  return (
+    <div style={{
+      border: `1px solid ${dark ? '#334155' : '#E4E7EC'}`,
+      borderRadius: 14,
+      overflow: 'hidden',
+      background: dark ? '#0F172A' : '#fff',
+    }}>
+      <div style={{
+        padding: '12px 16px',
+        background: dark ? '#1E293B' : '#F8FAFC',
+        borderBottom: `1px solid ${dark ? '#334155' : '#EEF2F7'}`,
+      }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: dark ? '#E2E8F0' : '#101828' }}>{title}</div>
+        {desc && <div style={{ fontSize: 11, color: dark ? '#94A3B8' : '#64748B', marginTop: 2 }}>{desc}</div>}
+      </div>
+      <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 14 }}>{children}</div>
+    </div>
+  );
+}
+
+function Modal({ open, onClose, title, subtitle, children, footer, size = 'md', dark = false }) {
+  useEffect(() => { if (!open) return; document.body.style.overflow = 'hidden'; return () => { document.body.style.overflow = ''; }; }, [open]);
   if (!open) return null;
-  const widths = { sm:420, md:560, lg:720 };
+  const widths = { sm: 420, md: 560, lg: 720, xl: 860 };
   return createPortal(
-    <div style={{ position:'fixed', inset:0, zIndex:900, display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}>
-      <div onClick={onClose} style={{ position:'absolute', inset:0, background:'rgba(16,24,40,0.45)', backdropFilter:'blur(2px)' }} />
-      <div style={{ position:'relative', width:'100%', maxWidth:widths[size]??560, background:dark?'#111827':'#fff', borderRadius:16, display:'flex', flexDirection:'column', boxShadow:dark?'0 20px 60px rgba(2,6,23,0.55)':'0 20px 60px rgba(16,24,40,0.18)', maxHeight:'90vh', animation:'modal-pop 0.18s ease', border:dark?'1px solid #334155':'none' }}>
-        <style>{'@keyframes modal-pop { from { opacity:0; transform:scale(0.96) translateY(8px); } to { opacity:1; transform:scale(1) translateY(0); } }'}</style>
-        <div style={{ padding:'16px 24px', borderBottom:`1px solid ${dark?'#1E293B':'#EAECF0'}`, display:'flex', alignItems:'center', justifyContent:'space-between', flexShrink:0, background:dark?'#0F172A':'#fff', borderRadius:'16px 16px 0 0' }}>
-          <h3 style={{ margin:0, fontSize:16, fontWeight:700, color:dark?'#F1F5F9':'#101828', fontFamily:"'Inter',sans-serif" }}>{title}</h3>
-          <button onClick={onClose} style={{ background:dark?'rgba(255,255,255,0.08)':'#F2F4F7', border:`1px solid ${dark?'rgba(255,255,255,0.12)':'#E4E7EC'}`, cursor:'pointer', color:dark?'#CBD5E1':'#667085', display:'flex', alignItems:'center', borderRadius:8, padding:6 }}><IconClose /></button>
+    <div style={{ position: 'fixed', inset: 0, zIndex: 900, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+      <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'rgba(16,24,40,0.5)', backdropFilter: 'blur(4px)' }} />
+      <div style={{
+        position: 'relative', width: '100%', maxWidth: widths[size] ?? 560,
+        background: dark ? '#111827' : '#fff', borderRadius: 18, display: 'flex', flexDirection: 'column',
+        boxShadow: dark ? '0 24px 64px rgba(2,6,23,0.55)' : '0 24px 64px rgba(16,24,40,0.2)',
+        maxHeight: '92vh', animation: 'modal-pop 0.2s ease',
+        border: dark ? '1px solid #334155' : '1px solid #E4E7EC',
+      }}>
+        <style>{'@keyframes modal-pop { from { opacity:0; transform:scale(0.97) translateY(10px); } to { opacity:1; transform:scale(1) translateY(0); } }'}</style>
+        <div style={{
+          padding: '18px 22px',
+          background: dark
+            ? 'linear-gradient(135deg,#1e3a8a 0%,#312e81 100%)'
+            : 'linear-gradient(135deg,#EFF6FF 0%,#DBEAFE 50%,#EEF2FF 100%)',
+          borderBottom: `1px solid ${dark ? '#334155' : '#BFDBFE'}`,
+          borderRadius: '18px 18px 0 0',
+          display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexShrink: 0, gap: 12,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, minWidth: 0 }}>
+            <div style={{
+              width: 44, height: 44, borderRadius: 12, flexShrink: 0,
+              background: dark ? 'rgba(255,255,255,0.12)' : '#fff',
+              border: dark ? '1px solid rgba(255,255,255,0.15)' : '1px solid #BFDBFE',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              color: dark ? '#93C5FD' : '#2563EB',
+              boxShadow: dark ? 'none' : '0 2px 8px rgba(37,99,235,0.12)',
+            }}>
+              <IconCalendar />
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <h3 style={{ margin: 0, fontSize: 17, fontWeight: 800, color: dark ? '#F8FAFC' : '#0F172A', fontFamily: "'Inter',sans-serif", letterSpacing: '-0.02em' }}>{title}</h3>
+              {subtitle && <p style={{ margin: '4px 0 0', fontSize: 12, color: dark ? '#CBD5E1' : '#475569', lineHeight: 1.45 }}>{subtitle}</p>}
+            </div>
+          </div>
+          <button type="button" onClick={onClose} aria-label="Close"
+            style={{
+              background: dark ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.85)',
+              border: `1px solid ${dark ? 'rgba(255,255,255,0.15)' : '#E4E7EC'}`,
+              cursor: 'pointer', color: dark ? '#E2E8F0' : '#64748B',
+              display: 'flex', alignItems: 'center', borderRadius: 10, padding: 7, flexShrink: 0,
+            }}>
+            <IconClose />
+          </button>
         </div>
-        <div style={{ flex:1, overflowY:'auto', padding:'20px 24px' }}>{children}</div>
-        {footer && <div style={{ padding:'16px 24px', borderTop:`1px solid ${dark?'#334155':'#EAECF0'}`, display:'flex', gap:8, justifyContent:'flex-end', flexShrink:0, background:dark?'#111827':'#FAFBFC' }}>{footer}</div>}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '20px 22px', background: dark ? '#111827' : '#F8FAFC' }}>{children}</div>
+        {footer && (
+          <div style={{
+            padding: '14px 22px', borderTop: `1px solid ${dark ? '#334155' : '#E4E7EC'}`,
+            display: 'flex', gap: 8, justifyContent: 'flex-end', flexShrink: 0,
+            background: dark ? '#0F172A' : '#fff', borderRadius: '0 0 18px 18px', width: '100%', boxSizing: 'border-box',
+          }}>
+            {footer}
+          </div>
+        )}
       </div>
     </div>,
     document.body
@@ -689,143 +755,301 @@ export default function AppointmentsPage() {
       </div>
 
       {/* New / Edit Modal */}
-      <Modal open={showForm} onClose={()=>setShowForm(false)} title={editItem?'Edit Appointment':'New Appointment'} size="lg" dark={isDark}
-        footer={<><Button variant="secondary" onClick={()=>setShowForm(false)}>Cancel</Button><Button variant="primary" loading={saving} onClick={handleSave}>{editItem?'Save Changes':'Create Appointment'}</Button></>}>
-        {formErr && <div style={{ background:'#FEF2F2', color:'#DC2626', padding:'9px 13px', borderRadius:9, marginBottom:16, fontSize:13, border:'1px solid #FEE2E2' }}> {formErr}</div>}
-        <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
-          <FormGroup label="Customer" required>
-            {form.customer_id && form.customer_name ? (
-              <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:10, border:'1px solid #86EFAC', background:'#ECFDF3', borderRadius:10, padding:'10px 12px' }}>
-                <div style={{ display:'flex', alignItems:'center', gap:10, minWidth:0 }}>
-                  <div style={{ width:34, height:34, borderRadius:8, background:'#16A34A', color:'#fff', display:'flex', alignItems:'center', justifyContent:'center', fontWeight:800 }}>
-                    {form.customer_name?.charAt(0)?.toUpperCase() || 'C'}
-                  </div>
-                  <div style={{ minWidth:0 }}>
-                    <div style={{ fontSize:14, fontWeight:700, color:'#0F172A', lineHeight:1.2 }}>{form.customer_name}</div>
-                    {form.phone && <div style={{ fontSize:12, color:'#64748B' }}>{form.phone}</div>}
-                  </div>
-                </div>
-                <button type="button" onClick={() => { setForm(f=>({...f, customer_id:'', customer_name:'', phone:''})); setCustomerSearch(''); setShowCustomerDrop(true); setCustomerPackages([]); setSelectedCustomerPackageId(''); }} style={{ border:'none', background:'none', color:'#94A3B8', cursor:'pointer', fontSize:18, lineHeight:1 }}>×</button>
-              </div>
-            ) : (
-              <div style={{ position:'relative' }}>
-                <Input
-                  value={customerSearch}
-                  onChange={e => {
-                    const v = e.target.value;
-                    setCustomerSearch(v);
-                    setForm(f=>({...f, customer_id:'', customer_name:v}));
-                    setCustomerPackages([]);
-                    setSelectedCustomerPackageId('');
-                    setShowCustomerDrop(true);
-                  }}
-                  onFocus={() => setShowCustomerDrop(true)}
-                  onBlur={() => setTimeout(() => setShowCustomerDrop(false), 200)}
-                  placeholder={customerLoading ? 'Loading customers...' : 'Search customer name or phone'}
-                />
-                {showCustomerDrop && (
-                  <div style={{ position:'absolute', top:'calc(100% + 4px)', left:0, right:0, zIndex:20, background:'#fff', border:'1.5px solid #E4E7EC', borderRadius:10, boxShadow:'0 8px 24px rgba(16,24,40,0.12)', maxHeight:220, overflowY:'auto' }}>
-                    {customerLoading ? (
-                      <div style={{ padding:'10px 12px', fontSize:12, color:'#98A2B3' }}>Loading...</div>
-                    ) : filteredCustomers.length === 0 ? (
-                      <div style={{ padding:'10px 12px', fontSize:12, color:'#98A2B3' }}>No customer found</div>
-                    ) : (
-                      filteredCustomers.slice(0, 80).map(c => (
-                        <div key={c.id} onMouseDown={() => selectCustomer(c)} style={{ padding:'9px 12px', cursor:'pointer', borderBottom:'1px solid #F2F4F7' }}>
-                          <div style={{ fontSize:13, fontWeight:600, color:'#101828' }}>{c.name}</div>
-                          <div style={{ fontSize:11, color:'#98A2B3' }}>{c.phone || 'No phone'}</div>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-          </FormGroup>
-          <FormGroup label="Phone"><Input value={form.phone||''} onChange={e=>setForm(f=>({...f,phone:e.target.value}))} placeholder="0300-0000000" /></FormGroup>
-          <FormGroup label="Customer Package (Optional)">
-            <Select value={selectedCustomerPackageId} onChange={e => applySelectedPackage(e.target.value)} disabled={!form.customer_id || loadingCustomerPackages}>
-              <option value="">{!form.customer_id ? 'Select customer first' : loadingCustomerPackages ? 'Loading packages...' : 'No package / normal appointment'}</option>
-              {customerPackages.map(cp => (
-                <option key={cp.id} value={cp.id}>
-                  {cp.package?.name || 'Package'} - {cp.sessions_remaining == null ? 'Unlimited' : `${cp.sessions_remaining} left`}
-                </option>
-              ))}
-            </Select>
-          </FormGroup>
-          {isSuperAdmin && <FormGroup label="Branch"><Select value={form.branch_id||''} onChange={e=>setForm(f=>({...f,branch_id:e.target.value,staff_id:''}))}>
-            <option value="">Select branch</option>{branches.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}
-          </Select></FormGroup>}
-          <div style={{ background:'#F8FAFC', border:'1px solid #E2E8F0', borderRadius:10, padding:'10px 12px' }}>
-            <label style={{ display:'flex', alignItems:'center', gap:10, cursor:'pointer' }}>
-              <input
-                type="checkbox"
-                checked={!!form.is_recurring}
-                onChange={e => setForm(f => ({
-                  ...f,
-                  is_recurring: e.target.checked,
-                  recurrence_frequency: e.target.checked ? (f.recurrence_frequency || 'weekly') : 'weekly',
-                }))}
-                style={{ width:16, height:16, accentColor:'#2563EB' }}
-              />
-              <span style={{ fontSize:14, fontWeight:600, color:'#0F172A' }}>Recurring Appointment</span>
-            </label>
-            {form.is_recurring && (
-              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginTop:8 }}>
-                <div>
-                  <div style={{ fontSize:12, color:'#64748B', marginBottom:4, fontWeight:600 }}>Repeat</div>
-                  <select
-                    value={form.recurrence_frequency || 'weekly'}
-                    onChange={e => setForm(f => ({ ...f, recurrence_frequency: e.target.value }))}
-                    style={{ width:'100%', padding:'7px 10px', borderRadius:8, border:'1.5px solid #D0D5DD', fontSize:13, fontFamily:'inherit', background:'#fff', color:'#344054' }}
-                  >
-                    <option value="weekly">Weekly</option>
-                    <option value="monthly">Monthly</option>
-                  </select>
-                </div>
-                <div style={{ fontSize:12, color:'#64748B', alignSelf:'end' }}>
-                  Next appointment auto-create වෙන්නේ current appointment එක completed උනාමයි.
-                </div>
-              </div>
-            )}
-          </div>
-          <FormGroup label="Services" required>
-            <div style={{ border:'1px solid #DCE6F3', borderRadius:12, overflow:'hidden', maxHeight:180, overflowY:'auto' }}>
-              {services.filter(s => s.is_active !== false).map((s, idx, arr) => {
-                const active = apptServiceIds.includes(Number(s.id));
-                return (
-                  <label key={s.id} style={{ display:'grid', gridTemplateColumns:'24px 1fr auto', alignItems:'center', gap:10, padding:'9px 12px', borderBottom:idx!==arr.length-1?'1px solid #EEF2F6':'none', background:active?'#F0F9FF':'#fff', cursor:'pointer' }}>
-                    <input type="checkbox" checked={active} onChange={() => toggleApptService(s.id)} style={{ width:16, height:16, accentColor:'#2563EB' }} />
-                    <span style={{ fontSize:14, color:'#0F172A', fontWeight:active?700:500 }}>{s.name}</span>
-                    <span style={{ fontSize:14, color:'#059669', fontWeight:800 }}>Rs.{Number(s.price||0).toLocaleString()}</span>
-                  </label>
-                );
-              })}
-            </div>
-            {apptServiceIds.length > 0 && (
-              <div style={{ marginTop:8, display:'flex', gap:6, flexWrap:'wrap', alignItems:'center' }}>
-                {services.filter(s => apptServiceIds.includes(Number(s.id))).map(s => (
-                  <span key={s.id} style={{ fontSize:12, color:'#047857', background:'#D1FAE5', border:'1px solid #A7F3D0', padding:'2px 8px', borderRadius:999, fontWeight:700 }}>
-                    {s.name}
+      <Modal
+        open={showForm}
+        onClose={() => setShowForm(false)}
+        title={editItem ? 'Edit Appointment' : 'New Appointment'}
+        subtitle={editItem ? 'Update booking details, services, and schedule.' : 'Book a customer — select services, staff, and time slot.'}
+        size="xl"
+        dark={isDark}
+        footer={(
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: 12, flexWrap: 'wrap' }}>
+            <div style={{ fontSize: 13, color: isDark ? '#94A3B8' : '#64748B' }}>
+              {apptServiceIds.length > 0 ? (
+                <span style={{ fontWeight: 800, color: '#059669' }}>
+                  Rs. {Number(form.amount || 0).toLocaleString()}
+                  <span style={{ fontWeight: 500, color: isDark ? '#94A3B8' : '#64748B', marginLeft: 8 }}>
+                    · {apptServiceIds.length} service{apptServiceIds.length !== 1 ? 's' : ''}
+                    {form.date && form.time ? ` · ${form.date} ${form.time}` : ''}
                   </span>
-                ))}
-                <span style={{ fontSize:13, color:'#047857', fontWeight:800 }}>Total: Rs. {Number(form.amount||0).toLocaleString()}</span>
-              </div>
-            )}
-          </FormGroup>
-          <FormGroup label="Staff"><Select value={form.staff_id||''} onChange={e=>setForm(f=>({...f,staff_id:e.target.value}))}>
-            <option value="">Any available</option>{filteredStaff.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
-          </Select></FormGroup>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:14 }}>
-            <FormGroup label="Date" required><Input type="date" value={form.date||''} onChange={e=>setForm(f=>({...f,date:e.target.value}))} /></FormGroup>
-            <FormGroup label="Time" required><Input type="time" value={form.time||''} onChange={e=>setForm(f=>({...f,time:e.target.value}))} /></FormGroup>
-            <FormGroup label="Amount (Rs.)"><Input type="number" value={form.amount||''} onChange={e=>setForm(f=>({...f,amount:e.target.value}))} placeholder="0" /></FormGroup>
+                </span>
+              ) : (
+                <span>Select at least one service</span>
+              )}
+            </div>
+            <div style={{ display: 'flex', gap: 8, marginLeft: 'auto' }}>
+              <Button variant="secondary" onClick={() => setShowForm(false)}>Cancel</Button>
+              <Button variant="primary" loading={saving} onClick={handleSave}>
+                {editItem ? 'Save Changes' : 'Create Appointment'}
+              </Button>
+            </div>
           </div>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
-            <FormGroup label="Status"><Select value={form.status||'pending'} onChange={e=>setForm(f=>({...f,status:e.target.value}))}>
-              {APPT_STATUSES.filter(s => s !== 'completed').map(s=><option key={s} value={s}>{STATUS_META[s].label}</option>)}
-            </Select></FormGroup>
-            <FormGroup label="Notes"><Input value={form.notes||''} onChange={e=>setForm(f=>({...f,notes:e.target.value}))} placeholder="Special requests..." /></FormGroup>
+        )}
+      >
+        {formErr && (
+          <div style={{
+            background: '#FEF2F2', color: '#DC2626', padding: '10px 14px', borderRadius: 10,
+            marginBottom: 16, fontSize: 13, border: '1px solid #FEE2E2', fontWeight: 500,
+          }}>
+            {formErr}
+          </div>
+        )}
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 16 }}>
+          {/* Left column */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <ApptSection title="Customer" desc="Search existing customer or enter walk-in details" dark={isDark}>
+              {form.customer_id && form.customer_name ? (
+                <div style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+                  border: '1px solid #86EFAC', background: isDark ? '#052e16' : '#ECFDF3',
+                  borderRadius: 12, padding: '12px 14px',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+                    <div style={{
+                      width: 40, height: 40, borderRadius: '50%', background: '#16A34A', color: '#fff',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 16, flexShrink: 0,
+                    }}>
+                      {form.customer_name?.charAt(0)?.toUpperCase() || 'C'}
+                    </div>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 15, fontWeight: 700, color: isDark ? '#BBF7D0' : '#065F46', lineHeight: 1.2 }}>{form.customer_name}</div>
+                      {form.phone && <div style={{ fontSize: 12, color: isDark ? '#86EFAC' : '#047857', marginTop: 2 }}>{form.phone}</div>}
+                    </div>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => {
+                      setForm((f) => ({ ...f, customer_id: '', customer_name: '', phone: '' }));
+                      setCustomerSearch('');
+                      setShowCustomerDrop(true);
+                      setCustomerPackages([]);
+                      setSelectedCustomerPackageId('');
+                    }}
+                  >
+                    Change
+                  </Button>
+                </div>
+              ) : (
+                <div style={{ position: 'relative' }}>
+                  <Input
+                    value={customerSearch}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setCustomerSearch(v);
+                      setForm((f) => ({ ...f, customer_id: '', customer_name: v }));
+                      setCustomerPackages([]);
+                      setSelectedCustomerPackageId('');
+                      setShowCustomerDrop(true);
+                    }}
+                    onFocus={() => setShowCustomerDrop(true)}
+                    onBlur={() => setTimeout(() => setShowCustomerDrop(false), 200)}
+                    placeholder={customerLoading ? 'Loading customers…' : 'Search by name or phone…'}
+                  />
+                  {showCustomerDrop && (
+                    <div style={{
+                      position: 'absolute', top: 'calc(100% + 6px)', left: 0, right: 0, zIndex: 30,
+                      background: isDark ? '#1E293B' : '#fff',
+                      border: `1.5px solid ${isDark ? '#475569' : '#E4E7EC'}`,
+                      borderRadius: 12, boxShadow: '0 12px 32px rgba(16,24,40,0.14)',
+                      maxHeight: 240, overflowY: 'auto',
+                    }}>
+                      {customerLoading ? (
+                        <div style={{ padding: '12px 14px', fontSize: 12, color: '#98A2B3' }}>Loading…</div>
+                      ) : filteredCustomers.length === 0 ? (
+                        <div style={{ padding: '14px', fontSize: 12, color: '#98A2B3', textAlign: 'center' }}>
+                          No customer found — name will be saved as walk-in
+                        </div>
+                      ) : (
+                        filteredCustomers.slice(0, 80).map((c) => (
+                          <div
+                            key={c.id}
+                            onMouseDown={() => selectCustomer(c)}
+                            style={{
+                              padding: '10px 14px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10,
+                              borderBottom: `1px solid ${isDark ? '#334155' : '#F2F4F7'}`,
+                            }}
+                          >
+                            <div style={{
+                              width: 34, height: 34, borderRadius: '50%', background: '#EFF6FF', color: '#2563EB',
+                              fontWeight: 700, fontSize: 13, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            }}>
+                              {c.name?.charAt(0)?.toUpperCase()}
+                            </div>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: 13, fontWeight: 600, color: isDark ? '#E2E8F0' : '#101828' }}>{c.name}</div>
+                              <div style={{ fontSize: 11, color: '#98A2B3' }}>{c.phone || 'No phone'}</div>
+                            </div>
+                            {c.loyalty_points > 0 && (
+                              <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 99, background: '#FEF9C3', color: '#854D0E', fontWeight: 700 }}>
+                                ★ {c.loyalty_points}
+                              </span>
+                            )}
+                            <span style={{ fontSize: 11, color: '#10b981', fontWeight: 700, flexShrink: 0 }}>Select →</span>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <FormGroup label="Phone">
+                  <Input value={form.phone || ''} onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))} placeholder="07X XXX XXXX" />
+                </FormGroup>
+                <FormGroup label="Package (optional)">
+                  <Select value={selectedCustomerPackageId} onChange={(e) => applySelectedPackage(e.target.value)} disabled={!form.customer_id || loadingCustomerPackages}>
+                    <option value="">{!form.customer_id ? 'Select customer first' : loadingCustomerPackages ? 'Loading…' : 'No package'}</option>
+                    {customerPackages.map((cp) => (
+                      <option key={cp.id} value={cp.id}>
+                        {cp.package?.name || 'Package'} — {cp.sessions_remaining == null ? 'Unlimited' : `${cp.sessions_remaining} left`}
+                      </option>
+                    ))}
+                  </Select>
+                </FormGroup>
+              </div>
+            </ApptSection>
+
+            <ApptSection title="Services" desc="Select one or more — first service is primary" dark={isDark}>
+              <div style={{
+                border: `1px solid ${isDark ? '#334155' : '#DCE6F3'}`,
+                borderRadius: 12, overflow: 'hidden', maxHeight: 220, overflowY: 'auto',
+                background: isDark ? '#0F172A' : '#fff',
+              }}>
+                {services.filter((s) => s.is_active !== false).map((s, idx, arr) => {
+                  const active = apptServiceIds.includes(Number(s.id));
+                  return (
+                    <label
+                      key={s.id}
+                      style={{
+                        display: 'grid', gridTemplateColumns: '24px 1fr auto auto', alignItems: 'center', gap: 10,
+                        padding: '10px 14px',
+                        borderBottom: idx !== arr.length - 1 ? `1px solid ${isDark ? '#334155' : '#EEF2F6'}` : 'none',
+                        background: active ? (isDark ? '#1e3a5f' : '#F0F9FF') : 'transparent',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <input type="checkbox" checked={active} onChange={() => toggleApptService(s.id)} style={{ width: 16, height: 16, accentColor: '#2563EB' }} />
+                      <span style={{ fontSize: 14, color: isDark ? '#E2E8F0' : '#0F172A', fontWeight: active ? 700 : 500 }}>{s.name}</span>
+                      <span style={{ fontSize: 12, color: '#94A3B8', fontWeight: 600 }}>{s.duration_minutes || 30} min</span>
+                      <span style={{ fontSize: 14, color: '#059669', fontWeight: 800 }}>Rs.{Number(s.price || 0).toLocaleString()}</span>
+                    </label>
+                  );
+                })}
+              </div>
+              {apptServiceIds.length > 0 && (
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {services.filter((s) => apptServiceIds.includes(Number(s.id))).map((s) => (
+                    <span key={s.id} style={{ fontSize: 11, color: '#047857', background: '#D1FAE5', border: '1px solid #A7F3D0', padding: '3px 10px', borderRadius: 999, fontWeight: 700 }}>
+                      {s.name}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </ApptSection>
+
+            <ApptSection title="Staff & Notes" dark={isDark}>
+              <FormGroup label="Assign Staff">
+                <Select value={form.staff_id || ''} onChange={(e) => setForm((f) => ({ ...f, staff_id: e.target.value }))}>
+                  <option value="">Any available staff</option>
+                  {filteredStaff.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                </Select>
+              </FormGroup>
+              <FormGroup label="Notes">
+                <Textarea value={form.notes || ''} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} placeholder="Special requests, allergies, preferences…" rows={2} />
+              </FormGroup>
+            </ApptSection>
+          </div>
+
+          {/* Right column */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <ApptSection title="Schedule" desc="Date, time, and booking status" dark={isDark}>
+              {isSuperAdmin && (
+                <FormGroup label="Branch">
+                  <Select value={form.branch_id || ''} onChange={(e) => setForm((f) => ({ ...f, branch_id: e.target.value, staff_id: '' }))}>
+                    <option value="">Select branch</option>
+                    {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                  </Select>
+                </FormGroup>
+              )}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <FormGroup label="Date" required>
+                  <Input type="date" value={form.date || ''} onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))} />
+                </FormGroup>
+                <FormGroup label="Time" required>
+                  <Input type="time" value={form.time || ''} onChange={(e) => setForm((f) => ({ ...f, time: e.target.value }))} />
+                </FormGroup>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <FormGroup label="Status">
+                  <Select value={form.status || 'pending'} onChange={(e) => setForm((f) => ({ ...f, status: e.target.value }))}>
+                    {APPT_STATUSES.filter((s) => s !== 'completed').map((s) => <option key={s} value={s}>{STATUS_META[s].label}</option>)}
+                  </Select>
+                </FormGroup>
+                <FormGroup label="Amount (Rs.)">
+                  <Input type="number" value={form.amount || ''} onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))} placeholder="Auto from services" />
+                </FormGroup>
+              </div>
+            </ApptSection>
+
+            <ApptSection title="Recurring" desc="Auto-book next visit when completed" dark={isDark}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={!!form.is_recurring}
+                  onChange={(e) => setForm((f) => ({
+                    ...f,
+                    is_recurring: e.target.checked,
+                    recurrence_frequency: e.target.checked ? (f.recurrence_frequency || 'weekly') : 'weekly',
+                  }))}
+                  style={{ width: 18, height: 18, accentColor: '#2563EB' }}
+                />
+                <span style={{ fontSize: 14, fontWeight: 600, color: isDark ? '#E2E8F0' : '#0F172A' }}>Repeat this appointment</span>
+              </label>
+              {form.is_recurring && (
+                <Select
+                  value={form.recurrence_frequency || 'weekly'}
+                  onChange={(e) => setForm((f) => ({ ...f, recurrence_frequency: e.target.value }))}
+                >
+                  <option value="weekly">Every week</option>
+                  <option value="monthly">Every month</option>
+                </Select>
+              )}
+            </ApptSection>
+
+            {/* Summary card */}
+            <div style={{
+              borderRadius: 14, padding: '16px 18px',
+              background: isDark ? 'linear-gradient(135deg,#064e3b,#065f46)' : 'linear-gradient(135deg,#ECFDF5,#D1FAE5)',
+              border: `1px solid ${isDark ? '#047857' : '#A7F3D0'}`,
+            }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: isDark ? '#86EFAC' : '#047857', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10 }}>
+                Booking Summary
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: isDark ? '#D1FAE5' : '#065F46' }}>
+                  <span>Customer</span>
+                  <span style={{ fontWeight: 700, textAlign: 'right', maxWidth: '55%' }}>{form.customer_name || '—'}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: isDark ? '#D1FAE5' : '#065F46' }}>
+                  <span>Services</span>
+                  <span style={{ fontWeight: 700 }}>{apptServiceIds.length || '—'}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: isDark ? '#D1FAE5' : '#065F46' }}>
+                  <span>Date & Time</span>
+                  <span style={{ fontWeight: 700 }}>{form.date && form.time ? `${form.date} · ${form.time}` : '—'}</span>
+                </div>
+                <div style={{ height: 1, background: isDark ? 'rgba(255,255,255,0.15)' : 'rgba(5,150,105,0.2)', margin: '4px 0' }} />
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: 14, fontWeight: 700, color: isDark ? '#BBF7D0' : '#064E3B' }}>Estimated Total</span>
+                  <span style={{ fontSize: 22, fontWeight: 800, color: isDark ? '#fff' : '#047857', letterSpacing: '-0.02em' }}>
+                    Rs. {Number(form.amount || 0).toLocaleString()}
+                  </span>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </Modal>

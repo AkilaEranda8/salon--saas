@@ -30,10 +30,10 @@ const CSS = `
 .lp-hero {
   position: relative;
   overflow: hidden;
-  padding: 48px 56px 40px;
+  padding: 40px 48px 44px;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
+  justify-content: flex-start;
   background: var(--lp-hero-bg);
   color: #fff;
 }
@@ -57,6 +57,19 @@ const CSS = `
   pointer-events: none;
 }
 .lp-hero > * { position: relative; z-index: 1; }
+.lp-hero h1, .lp-hero h2, .lp-hero h3 {
+  color: #FFFFFF !important;
+  font-family: 'Plus Jakarta Sans', sans-serif !important;
+}
+.lp-hero-inner {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 28px;
+  align-items: start;
+  margin-top: 28px;
+  width: 100%;
+  max-width: 920px;
+}
 .lp-brand-row {
   display: flex;
   align-items: center;
@@ -80,7 +93,7 @@ const CSS = `
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  margin-top: 40px;
+  margin-top: 24px;
   padding: 6px 14px;
   border-radius: 99px;
   font-size: 11px;
@@ -99,33 +112,33 @@ const CSS = `
   animation: lp-glow 2s ease-in-out infinite;
 }
 .lp-title {
-  margin: 20px 0 0;
+  margin: 18px 0 0;
   font-family: 'Plus Jakarta Sans', sans-serif;
-  font-size: clamp(32px, 4vw, 48px);
+  font-size: clamp(30px, 3.6vw, 46px);
   font-weight: 800;
-  line-height: 1.1;
+  line-height: 1.12;
   letter-spacing: -.04em;
   max-width: 520px;
+  color: #FFFFFF !important;
 }
 .lp-title em {
   font-style: normal;
-  background: linear-gradient(135deg, #F5D0FE, #E9D5FF, #fff);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  color: #F0ABFC !important;
+  -webkit-text-fill-color: #F0ABFC !important;
+  background: none !important;
 }
 .lp-sub {
-  margin: 16px 0 0;
-  font-size: 16px;
+  margin: 14px 0 0;
+  font-size: 15px;
   line-height: 1.65;
-  opacity: .78;
+  color: rgba(255,255,255,.82) !important;
   max-width: 440px;
 }
 .lp-features {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 10px;
-  margin-top: 36px;
+  margin-top: 24px;
   max-width: 480px;
 }
 .lp-feat {
@@ -145,15 +158,15 @@ const CSS = `
   font-weight: 700;
   margin-bottom: 3px;
   font-family: 'Plus Jakarta Sans', sans-serif;
+  color: #fff !important;
 }
 .lp-feat span {
   font-size: 12px;
-  opacity: .7;
+  color: rgba(255,255,255,.72) !important;
   line-height: 1.4;
 }
 .lp-mock {
-  margin-top: auto;
-  padding-top: 32px;
+  margin-top: 0;
   animation: lp-drift 8s ease-in-out infinite;
 }
 .lp-mock-card {
@@ -163,7 +176,7 @@ const CSS = `
   border: 1px solid rgba(255,255,255,.12);
   backdrop-filter: blur(20px);
   box-shadow: 0 32px 80px rgba(0,0,0,.25);
-  max-width: 420px;
+  width: 100%;
 }
 .lp-mock-stats {
   display: grid;
@@ -196,14 +209,31 @@ const CSS = `
   padding: 40px 48px;
   background: var(--lp-auth-bg);
   border-left: 1px solid var(--lp-border);
+  box-shadow: -20px 0 60px rgba(0,0,0,.18);
   position: relative;
   animation: lp-in .5s ease-out both;
+}
+.lp-auth::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 1px;
+  background: linear-gradient(180deg, rgba(167,139,250,.35), rgba(167,139,250,.05));
+  pointer-events: none;
 }
 .lp-auth-top {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 40px;
+  margin-bottom: 36px;
+}
+@media (min-width: 961px) {
+  .lp-auth-logo { display: none; }
+  .lp-auth-top { justify-content: flex-end; margin-bottom: 28px; }
+}
+@media (max-width: 1200px) {
+  .lp-hero-inner { grid-template-columns: 1fr; }
+  .lp-mock { max-width: 420px; }
 }
 .lp-auth-logo {
   display: flex;
@@ -650,57 +680,59 @@ export default function LoginPage({ platformMode = false }) {
       <aside className="lp-hero">
         <div className="lp-hero-mesh" />
         <div className="lp-hero-grid" />
-        <div>
-          <div className="lp-brand-row">
-            <img src={logoSrc} alt={brandName} onError={(e) => { e.currentTarget.src = '/kogo.png?v=6'; }} />
-            <span className="lp-brand-name">{brandName}</span>
-          </div>
-          <div className="lp-badge">
-            <span className="lp-badge-dot" />
-            {platformMode ? 'Platform Console' : 'Salon Management SaaS'}
-          </div>
-          <h2 className="lp-title">
-            {platformMode ? (
-              <>Manage your <em>entire platform</em> from one place</>
-            ) : (
-              <>Run your salon smarter with <em>{brandName}</em></>
-            )}
-          </h2>
-          <p className="lp-sub">
-            {platformMode
-              ? 'Tenants, subscriptions, monitoring and system controls — built for scale.'
-              : 'Appointments, payments, inventory, loyalty and AI — all in one cloud platform.'}
-          </p>
-          <div className="lp-features">
-            {FEATURES.map((f) => (
-              <div key={f.title} className="lp-feat">
-                <strong>{f.title}</strong>
-                <span>{f.desc}</span>
-              </div>
-            ))}
-          </div>
+        <div className="lp-brand-row">
+          <img src={logoSrc} alt={brandName} onError={(e) => { e.currentTarget.src = '/kogo.png?v=6'; }} />
+          <span className="lp-brand-name">{brandName}</span>
         </div>
-        <div className="lp-mock">
-          <div className="lp-mock-card">
-            <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.1em', textTransform: 'uppercase', opacity: .65, marginBottom: 14 }}>Today&apos;s snapshot</div>
-            <div className="lp-mock-stats">
-              {[
-                { l: 'Revenue', v: 'Rs. 84K', c: '#C4B5FD' },
-                { l: 'Bookings', v: '32', c: '#93C5FD' },
-                { l: 'Walk-ins', v: '11', c: '#F9A8D4' },
-              ].map((s) => (
-                <div key={s.l} className="lp-mock-stat">
-                  <label>{s.l}</label>
-                  <b style={{ color: s.c }}>{s.v}</b>
+        <div className="lp-badge">
+          <span className="lp-badge-dot" />
+          {platformMode ? 'Platform Console' : 'Salon Management SaaS'}
+        </div>
+        <div className="lp-hero-inner">
+          <div className="lp-hero-copy">
+            <h2 className="lp-title">
+              {platformMode ? (
+                <>Manage your <em>entire platform</em> from one place</>
+              ) : (
+                <>Run your salon smarter with <em>{brandName}</em></>
+              )}
+            </h2>
+            <p className="lp-sub">
+              {platformMode
+                ? 'Tenants, subscriptions, monitoring and system controls — built for scale.'
+                : 'Appointments, payments, inventory, loyalty and AI — all in one cloud platform.'}
+            </p>
+            <div className="lp-features">
+              {FEATURES.map((f) => (
+                <div key={f.title} className="lp-feat">
+                  <strong>{f.title}</strong>
+                  <span>{f.desc}</span>
                 </div>
               ))}
             </div>
-            {['Haircut · 10:30', 'Color · 11:45', 'Spa · 14:00'].map((row, i) => (
-              <div key={row} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 0', borderTop: i === 0 ? '1px solid rgba(255,255,255,.08)' : 'none', fontSize: 12.5, opacity: .88 }}>
-                <span style={{ width: 6, height: 6, borderRadius: '50%', background: ['#34D399', '#FBBF24', '#A78BFA'][i] }} />
-                {row}
+          </div>
+          <div className="lp-mock">
+            <div className="lp-mock-card">
+              <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.1em', textTransform: 'uppercase', color: 'rgba(255,255,255,.7)', marginBottom: 14 }}>Today&apos;s snapshot</div>
+              <div className="lp-mock-stats">
+                {[
+                  { l: 'Revenue', v: 'Rs. 84K', c: '#C4B5FD' },
+                  { l: 'Bookings', v: '32', c: '#93C5FD' },
+                  { l: 'Walk-ins', v: '11', c: '#F9A8D4' },
+                ].map((s) => (
+                  <div key={s.l} className="lp-mock-stat">
+                    <label>{s.l}</label>
+                    <b style={{ color: s.c }}>{s.v}</b>
+                  </div>
+                ))}
               </div>
-            ))}
+              {['Haircut · 10:30', 'Color · 11:45', 'Spa · 14:00'].map((row, i) => (
+                <div key={row} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 0', borderTop: i === 0 ? '1px solid rgba(255,255,255,.08)' : 'none', fontSize: 12.5, color: 'rgba(255,255,255,.88)' }}>
+                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: ['#34D399', '#FBBF24', '#A78BFA'][i] }} />
+                  {row}
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </aside>

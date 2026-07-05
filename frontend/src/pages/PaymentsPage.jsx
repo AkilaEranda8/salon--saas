@@ -689,6 +689,15 @@ export default function PaymentsPage() {
   }, [filterBranch, filterMonth]);
   useEffect(() => { load(); }, [load]);
 
+  useEffect(() => {
+    if (!showForm || !form.customer_id) return;
+    setLoadingPkgs(true);
+    fetchActiveCustomerPackages(api, form.customer_id)
+      .then(setCustPackages)
+      .catch(() => setCustPackages([]))
+      .finally(() => setLoadingPkgs(false));
+  }, [showForm, form.customer_id]);
+
   const openAdd = () => {
     setEditId(null);
     setForm({ ...EMPTY_FORM, branch_id: user?.branchId || filterBranch || '' });
@@ -709,11 +718,10 @@ export default function PaymentsPage() {
     const cp = custPackages.find((p) => String(p.id) === String(packageId));
     if (!cp) return;
     const ids = resolvePackageServiceIds(cp, services);
-    if (!ids.length) return;
     const bundle = getPackageBundlePrice(cp);
     setForm((f) => ({
       ...f,
-      service_ids: ids,
+      service_ids: ids.length ? ids : f.service_ids,
       total_amount: bundle > 0 ? String(bundle) : '0',
       loyalty_discount: 0,
       discount_id: '',
@@ -1065,15 +1073,8 @@ export default function PaymentsPage() {
                   branchId={form.branch_id || user?.branch_id}
                   onSelect={cid => {
                     setForm(f => ({ ...f, customer_id: cid }));
-                    setCustPackages([]);
                     setFormPackageId('');
-                    if (cid) {
-                      setLoadingPkgs(true);
-                      fetchActiveCustomerPackages(api, cid)
-                        .then(setCustPackages)
-                        .catch(() => setCustPackages([]))
-                        .finally(() => setLoadingPkgs(false));
-                    }
+                    if (!cid) setCustPackages([]);
                   }}
                   onNew={newCust => setCustomers(prev => [newCust, ...prev])}
                 />

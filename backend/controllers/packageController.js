@@ -25,8 +25,36 @@ function packageIsBookable(pkg) {
 /** Sold customer packages redeemable at payment — no price/discount requirement. */
 function packageIsRedeemable(pkg) {
   if (!pkg) return false;
-  const svc = pkg.services || [];
-  return Array.isArray(svc) && svc.length > 0;
+  const svc = normalizePackageServices(pkg.services);
+  return svc.length > 0;
+}
+
+function normalizePackageServices(services) {
+  if (Array.isArray(services)) return services.map(Number).filter(Boolean);
+  if (typeof services === 'string') {
+    try {
+      const parsed = JSON.parse(services);
+      return Array.isArray(parsed) ? parsed.map(Number).filter(Boolean) : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
+function enrichCustomerPackageRow(cp) {
+  const json = withSessionsRemaining(cp);
+  if (json.package) {
+    json.package.services = normalizePackageServices(json.package.services);
+  } else if (json.package_id) {
+    json.package = {
+      id: json.package_id,
+      name: `Package #${json.package_id}`,
+      services: [],
+      package_price: json.amount_paid,
+    };
+  }
+  return json;
 }
 
 async function resolveOriginalPriceFromServices(req, serviceIds, fallbackPrice, transaction) {
@@ -245,16 +273,20 @@ const activePackages = async (req, res) => {
         expiry_date: { [Op.gte]: today },
       },
       include: [
-        { model: Package, as: 'package', attributes: ['id', 'name', 'type', 'services', 'package_price', 'original_price', 'discount_percent'] },
-        { model: Branch,  as: 'branch',  attributes: ['id', 'name'] },
+        {
+          model: Package,
+          as: 'package',
+          attributes: ['id', 'name', 'type', 'services', 'package_price', 'original_price', 'discount_percent', 'is_active'],
+          required: false,
+        },
+        { model: Branch, as: 'branch', attributes: ['id', 'name'] },
       ],
-      order: [['expiry_date', 'ASC']],
+      order: [['expiry_date', 'ASC'], ['purchase_date', 'DESC']],
     });
 
     const active = rows
       .filter((cp) => hasSessionsLeft(cp))
-      .map((cp) => withSessionsRemaining(cp))
-      .filter((cp) => packageIsRedeemable(cp.package));
+      .map((cp) => enrichCustomerPackageRow(cp));
     return res.json(active);
   } catch (err) {
     console.error(err);

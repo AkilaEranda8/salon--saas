@@ -51,7 +51,20 @@ export function packageIsBookable(pkg) {
   return Array.isArray(svc) && svc.length > 0;
 }
 
-/** Customer-owned package usable at payment / walk-in (already purchased). */
+/** Customer-owned package row selectable in payment / walk-in lists. */
+export function packageIsSelectableForPayment(cp) {
+  if (!cp || cp.status !== 'active') return false;
+  const total = Number(cp.sessions_total ?? 0);
+  const used = Number(cp.sessions_used || 0);
+  if (total > 0 && used >= total) return false;
+  if (cp.expiry_date) {
+    const today = new Date().toISOString().slice(0, 10);
+    if (String(cp.expiry_date).slice(0, 10) < today) return false;
+  }
+  return true;
+}
+
+/** Customer-owned package template has services for redemption. */
 export function packageIsRedeemable(pkg) {
   if (!pkg) return false;
   const svc = pkg.services || [];
@@ -66,6 +79,10 @@ export function packageDiscountLabel(pkg) {
   const price = Number(pkg.package_price || 0);
   if (original > price) return ` · Save Rs. ${Math.round(original - price).toLocaleString()}`;
   return '';
+}
+
+export function filterSelectableCustomerPackages(list = []) {
+  return list.filter((cp) => packageIsSelectableForPayment(cp));
 }
 
 export function filterRedeemableCustomerPackages(list = []) {
@@ -88,7 +105,7 @@ export function formatPackageTemplateLabel(pkg) {
 export const formatCustomerPackageLabel = (cp) => {
   if (!cp) return 'Package';
   const name = cp.package?.name || 'Package';
-  const bundlePrice = Number(cp.package?.package_price || 0);
+  const bundlePrice = getPackageBundlePrice(cp);
   const pricePart = bundlePrice > 0 ? `Rs. ${bundlePrice.toLocaleString()} · ` : '';
   const total = cp.sessions_total;
   const used = cp.sessions_used || 0;
@@ -109,7 +126,9 @@ export function calcServiceListTotal(serviceIds = [], allServices = []) {
 
 export function getPackageBundlePrice(pkgOrCustomerPackage) {
   const pkg = pkgOrCustomerPackage?.package || pkgOrCustomerPackage;
-  return Number(pkg?.package_price || 0);
+  const fromPkg = Number(pkg?.package_price || 0);
+  if (fromPkg > 0) return fromPkg;
+  return Number(pkgOrCustomerPackage?.amount_paid || 0);
 }
 
 /** User-facing copy when a package covers the visit. */
@@ -324,7 +343,7 @@ export async function fetchActiveCustomerPackages(api, customerId) {
   try {
     const r = await api.get(`/packages/customer/${customerId}/active`);
     const list = Array.isArray(r.data) ? r.data : [];
-    return filterRedeemableCustomerPackages(list);
+    return filterSelectableCustomerPackages(list);
   } catch {
     return [];
   }

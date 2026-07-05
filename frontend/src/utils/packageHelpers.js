@@ -22,9 +22,22 @@ export const parsePackageSelection = (notes = '') => {
 export const buildPackageNoteLine = (customerPackageId, packageName = 'Package') =>
   `${PACKAGE_NOTE_PREFIX} #${customerPackageId} - ${packageName}`;
 
+export function normalizePackageServices(services) {
+  if (Array.isArray(services)) return services.map(Number).filter(Boolean);
+  if (typeof services === 'string') {
+    try {
+      const parsed = JSON.parse(services);
+      return Array.isArray(parsed) ? parsed.map(Number).filter(Boolean) : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
 /** Resolve active service IDs from a customer package against the salon's service list. */
 export const resolvePackageServiceIds = (customerPackage, allServices = []) => {
-  const pkgServiceIds = (customerPackage?.package?.services || []).map(Number).filter(Boolean);
+  const pkgServiceIds = normalizePackageServices(customerPackage?.package?.services);
   if (!pkgServiceIds.length) return [];
   const activeIds = new Set(
     allServices.filter((s) => s.is_active !== false).map((s) => Number(s.id)),
@@ -53,12 +66,21 @@ export function packageIsBookable(pkg) {
 
 /** Active sold package — show in payment / walk-in lists (sessions validated at redeem). */
 export function packageIsSelectableForPayment(cp) {
-  return !!(cp && cp.status === 'active');
+  if (!cp) return false;
+  if (cp.status === 'expired' || cp.status === 'completed') return false;
+  return cp.status === 'active' || cp.status == null;
+}
+
+function packageExpiryPassed(cp) {
+  if (!cp?.expiry_date) return false;
+  const today = new Date().toISOString().slice(0, 10);
+  return String(cp.expiry_date).slice(0, 10) < today;
 }
 
 /** Package can be redeemed right now (has sessions + services). */
 export function packageCanRedeemNow(cp) {
   if (!packageIsSelectableForPayment(cp)) return false;
+  if (packageExpiryPassed(cp)) return false;
   const total = Number(cp.sessions_total ?? 0);
   const used = Number(cp.sessions_used || 0);
   if (total > 0 && used >= total) return false;
@@ -68,8 +90,7 @@ export function packageCanRedeemNow(cp) {
 /** Customer-owned package template has services for redemption. */
 export function packageIsRedeemable(pkg) {
   if (!pkg) return false;
-  const svc = pkg.services || [];
-  return Array.isArray(svc) && svc.length > 0;
+  return normalizePackageServices(pkg.services).length > 0;
 }
 
 export function packageDiscountLabel(pkg) {
@@ -148,7 +169,7 @@ export function formatPackageBillAmount(bundlePrice) {
 }
 
 export const servicesCoveredByPackage = (serviceIds = [], customerPackage) => {
-  const allowed = new Set((customerPackage?.package?.services || []).map(Number));
+  const allowed = new Set(normalizePackageServices(customerPackage?.package?.services));
   const ids = serviceIds.map(Number).filter(Boolean);
   if (!ids.length || !allowed.size) return false;
   return ids.every((id) => allowed.has(id));
@@ -341,13 +362,15 @@ export function resolveTemplateServiceIds(pkgOrCustomerPackage, allServices = []
 
 export async function fetchCustomerPackagesForPayment(api, customerId) {
   if (!customerId || !api) return [];
+  const id = String(customerId).trim();
+  if (!id) return [];
   try {
-    const r = await api.get(`/packages/customer/${customerId}`);
+    const r = await api.get(`/packages/customer/${id}`);
     const list = Array.isArray(r.data) ? r.data : [];
     return list.filter((cp) => packageIsSelectableForPayment(cp));
   } catch {
     try {
-      const r = await api.get(`/packages/customer/${customerId}/active`);
+      const r = await api.get(`/packages/customer/${id}/active`);
       const list = Array.isArray(r.data) ? r.data : [];
       return list.filter((cp) => packageIsSelectableForPayment(cp));
     } catch {

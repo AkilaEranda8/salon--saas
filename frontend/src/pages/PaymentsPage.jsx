@@ -692,11 +692,14 @@ export default function PaymentsPage() {
 
   useEffect(() => {
     if (!showForm || !form.customer_id) return;
+    let cancelled = false;
+    const customerId = String(form.customer_id).trim();
     setLoadingPkgs(true);
-    fetchCustomerPackagesForPayment(api, form.customer_id)
-      .then(setCustPackages)
-      .catch(() => setCustPackages([]))
-      .finally(() => setLoadingPkgs(false));
+    fetchCustomerPackagesForPayment(api, customerId)
+      .then((list) => { if (!cancelled) setCustPackages(list); })
+      .catch(() => { if (!cancelled) setCustPackages([]); })
+      .finally(() => { if (!cancelled) setLoadingPkgs(false); });
+    return () => { cancelled = true; };
   }, [showForm, form.customer_id]);
 
   const openAdd = () => {
@@ -1083,7 +1086,7 @@ export default function PaymentsPage() {
                   onSelect={cid => {
                     setForm(f => ({ ...f, customer_id: cid }));
                     setFormPackageId('');
-                    if (!cid) setCustPackages([]);
+                    setCustPackages([]);
                   }}
                   onNew={newCust => setCustomers(prev => [newCust, ...prev])}
                 />

@@ -16,11 +16,6 @@ import {
 /*  constants  */
 const ACCENT_COLOR  = { bundle:'#2563EB', membership:'#7C3AED' };
 const TYPE_BADGE    = { bundle:{ bg:'#EFF6FF', color:'#1D4ED8' }, membership:{ bg:'#EDE9FE', color:'#7C3AED' } };
-const STATUS_BADGE  = {
-  active:    { bg:'#D1FAE5', color:'#059669' },
-  expired:   { bg:'#FEE2E2', color:'#DC2626' },
-  completed: { bg:'#F1F5F9', color:'#475467' },
-};
 const EMPTY_PKG  = { name:'', type:'bundle', services:[], validity_days:'90', package_price:'', is_active:true, branch_id:'' };
 const MUTED = '#64748B';
 
@@ -28,6 +23,16 @@ const MUTED = '#64748B';
 function daysLeft(dateStr) {
   if (!dateStr) return null;
   return Math.ceil((new Date(dateStr) - new Date()) / 86400000);
+}
+
+function canRedeemSoldPackage(cp) {
+  if (!cp || cp.status === 'expired' || cp.status === 'completed') return false;
+  const total = Number(cp.sessions_total || 0);
+  const used = Number(cp.sessions_used || 0);
+  if (total > 0 && used >= total) return false;
+  const dl = daysLeft(cp.expiry_date);
+  if (dl !== null && dl < 0) return false;
+  return true;
 }
 
 /*  SessionBar  */
@@ -281,7 +286,6 @@ export default function PackagesPage() {
   const [soldTotal,    setSoldTotal]    = useState(0);
   const [soldPage,     setSoldPage]     = useState(1);
   const [soldLoading,  setSoldLoading]  = useState(false);
-  const [filterStatus, setFilterStatus] = useState('');
   const [filterBranch, setFilterBranch] = useState('');
   const [filterPkgType, setFilterPkgType] = useState('');
 
@@ -305,14 +309,13 @@ export default function PackagesPage() {
     setSoldLoading(true);
     try {
       const p = new URLSearchParams({ page:soldPage, limit:20 });
-      if (filterStatus) p.set('status', filterStatus);
       if (filterBranch) p.set('branchId', filterBranch);
       const res = await api.get(`/packages/customer-packages?${p}`);
       setSoldPkgs(res.data.data || []);
       setSoldTotal(res.data.total || 0);
     } catch {}
     setSoldLoading(false);
-  }, [soldPage, filterStatus, filterBranch]);
+  }, [soldPage, filterBranch]);
 
   useEffect(() => { loadPackages(); }, [loadPackages]);
   useEffect(() => { if (activeTab === 'sold') loadSold(); }, [activeTab, loadSold]);
@@ -531,28 +534,13 @@ export default function PackagesPage() {
       cell: ({ row }) => <SessionBar used={row.original.sessions_used || 0} total={row.original.sessions_total || 0} />,
     },
     {
-      id: 'status',
-      header: 'Status',
-      meta: { width: '12%', align: 'center' },
-      accessorFn: (r) => r.status || '',
-      cell: ({ row }) => {
-        const sb = STATUS_BADGE[row.original.status] || STATUS_BADGE.active;
-        return (
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 10px', borderRadius: 10, fontSize: 11, fontWeight: 700, background: sb.bg, color: sb.color }}>
-            <span style={{ width: 5, height: 5, borderRadius: '50%', background: sb.color }} />
-            {row.original.status}
-          </span>
-        );
-      },
-    },
-    {
       id: 'action',
       header: 'Action',
       meta: { width: '6%', align: 'center' },
       enableSorting: false,
       cell: ({ row }) => {
         const cp = row.original;
-        if (!canEdit || cp.status !== 'active') return null;
+        if (!canEdit || !canRedeemSoldPackage(cp)) return null;
         return (
           <button type="button" onClick={() => openRedeemModal(cp)} title="Redeem Session"
             style={{ padding: '5px 10px', borderRadius: 8, border: '1.5px solid #E4E7EC', background: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 600, color: '#059669' }}>
@@ -736,26 +724,15 @@ export default function PackagesPage() {
       {/* TAB: Sold Packages */}
       {activeTab === 'sold' && (
         <>
+          {isAdmin && (
           <FilterBar>
-            <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
-              {[['','All'],['active','Active'],['expired','Expired'],['completed','Completed']].map(([val,label]) => (
-                <button key={val} type="button" onClick={() => { setFilterStatus(val); setSoldPage(1); }}
-                  style={{ padding:'6px 14px', borderRadius:20, cursor:'pointer', fontSize:12, fontWeight:600, fontFamily:"'Inter',sans-serif", border:'1.5px solid',
-                    borderColor:filterStatus===val?'#2563EB':'#E4E7EC',
-                    background:  filterStatus===val?'#EFF6FF':'#fff',
-                    color:       filterStatus===val?'#2563EB':'#64748B' }}>
-                  {label}
-                </button>
-              ))}
-            </div>
-            {isAdmin && (
-              <select value={filterBranch} onChange={e=>{ setFilterBranch(e.target.value); setSoldPage(1); }}
-                className="pk-filter-control">
-                <option value="">All Branches</option>
-                {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-              </select>
-            )}
+            <select value={filterBranch} onChange={e=>{ setFilterBranch(e.target.value); setSoldPage(1); }}
+              className="pk-filter-control">
+              <option value="">All Branches</option>
+              {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+            </select>
           </FilterBar>
+          )}
 
           <DataTable
             columns={soldColumns}

@@ -57,6 +57,14 @@ function enrichCustomerPackageRow(cp) {
   return json;
 }
 
+async function findCustomerForTenant(req, customerId) {
+  const { Customer } = require('../models');
+  return Customer.findOne({
+    where: { id: customerId, ...tenantWhere(req) },
+    attributes: ['id'],
+  });
+}
+
 async function resolveOriginalPriceFromServices(req, serviceIds, fallbackPrice, transaction) {
   const { Service } = require('../models');
   const ids = (serviceIds || []).map(Number).filter(Boolean);
@@ -230,8 +238,12 @@ const remove = async (req, res) => {
 const customerPackages = async (req, res) => {
   try {
     const { CustomerPackage, Package, Branch } = require('../models');
+    const customerId = req.params.customerId;
+    const customer = await findCustomerForTenant(req, customerId);
+    if (!customer) return res.status(404).json({ message: 'Customer not found.' });
+
     const rows = await CustomerPackage.findAll({
-      where: { customer_id: req.params.customerId, ...tenantWhere(req) },
+      where: { customer_id: customerId },
       include: [
         {
           model: Package,
@@ -268,12 +280,15 @@ const customerPackages = async (req, res) => {
 const activePackages = async (req, res) => {
   try {
     const { CustomerPackage, Package, Branch } = require('../models');
+    const customerId = req.params.customerId;
+    const customer = await findCustomerForTenant(req, customerId);
+    if (!customer) return res.status(404).json({ message: 'Customer not found.' });
+
     const today = slToday();
 
     const rows = await CustomerPackage.findAll({
       where: {
-        customer_id: req.params.customerId,
-        ...tenantWhere(req),
+        customer_id: customerId,
         status: 'active',
         expiry_date: { [Op.gte]: today },
       },

@@ -27,6 +27,8 @@ import {
   formatPackageTemplateLabel,
   calcServiceListTotal,
   getPackageBundlePrice,
+  formatPackageAppliedMessage,
+  formatPackageBillAmount,
 } from '../utils/packageHelpers';
 import { getKcAccessToken } from '../utils/kcTokenStore';
 import {
@@ -1365,11 +1367,13 @@ export default function WalkInPage() {
                 <span style={{ fontWeight: 700, color: C.title }}>
                   {checkinSelectedIds.length} service{checkinSelectedIds.length !== 1 ? 's' : ''}
                   <span style={{ fontWeight: 800, color: checkinUsingPackage ? '#047857' : '#059669', marginLeft: 8 }}>
-                    · {checkinUsingPackage ? 'Collect Rs. 0' : `Rs. ${checkinCollectTotal.toLocaleString()}`}
+                    · {checkinUsingPackage
+                      ? (checkinBundlePrice > 0 ? `Bundle ${formatPackageBillAmount(checkinBundlePrice)}` : 'Package')
+                      : `Rs. ${checkinCollectTotal.toLocaleString()}`}
                   </span>
-                  {checkinUsingPackage && checkinBundlePrice > 0 && (
-                    <span style={{ fontWeight: 500, color: C.muted, marginLeft: 8 }}>
-                      · Bundle Rs. {checkinBundlePrice.toLocaleString()}
+                  {checkinUsingPackage && checkinListTotal > 0 && (
+                    <span style={{ fontWeight: 500, color: C.muted, marginLeft: 8, textDecoration: 'line-through' }}>
+                      List Rs. {checkinListTotal.toLocaleString()}
                     </span>
                   )}
                   {waitPreview != null && (
@@ -1510,7 +1514,7 @@ export default function WalkInPage() {
                 )}
                 {checkinPackageTemplateId && !packageSelectSaving && (
                   <div style={{ fontSize: 12, color: isDark ? '#6EE7B7' : '#047857', marginTop: 6, fontWeight: 600 }}>
-                    Package discount applied — collect Rs. 0 when service is done
+                    {formatPackageAppliedMessage(checkinBundlePrice)}
                   </div>
                 )}
               </div>
@@ -1578,19 +1582,18 @@ export default function WalkInPage() {
                   paddingTop: 8, borderTop: `1px solid ${isDark ? '#334155' : '#E2E8F0'}`,
                 }}>
                   <span style={{ fontSize: 13, color: C.muted }}>
-                    {checkinUsingPackage ? 'Collect at service' : 'Estimated bill'}
+                    {checkinUsingPackage ? 'Bundle price' : 'Estimated bill'}
                   </span>
                   {checkinUsingPackage ? (
                     <div style={{ textAlign: 'right' }}>
-                      {checkinBundlePrice > 0 && (
-                        <div style={{ fontSize: 11, color: C.muted, fontWeight: 600 }}>
-                          Bundle Rs. {checkinBundlePrice.toLocaleString()}
-                          <span style={{ marginLeft: 6, textDecoration: 'line-through' }}>
-                            List Rs. {checkinListTotal.toLocaleString()}
-                          </span>
+                      {checkinListTotal > 0 && (
+                        <div style={{ fontSize: 11, color: C.muted, fontWeight: 600, textDecoration: 'line-through' }}>
+                          List Rs. {checkinListTotal.toLocaleString()}
                         </div>
                       )}
-                      <span style={{ fontSize: 16, color: '#047857', fontWeight: 800 }}>Rs. 0</span>
+                      <span style={{ fontSize: 16, color: '#047857', fontWeight: 800 }}>
+                        {formatPackageBillAmount(checkinBundlePrice)}
+                      </span>
                     </div>
                   ) : (
                     <span style={{ fontSize: 16, color: '#059669', fontWeight: 800 }}>Rs. {checkinCollectTotal.toLocaleString()}</span>
@@ -1656,7 +1659,7 @@ export default function WalkInPage() {
               || (paymentMethod === 'Package' ? !paymentCustPackageId : (!paymentAmount || Number(paymentAmount) <= 0))
             }>
               {paymentSaving ? 'Collecting...' : paymentMethod === 'Package'
-                ? 'Complete · Rs. 0'
+                ? `Complete · ${formatPackageBillAmount(getPackageBundlePrice(paymentCustPackages.find((p) => String(p.id) === String(paymentCustPackageId))))}`
                 : `Collect Rs ${Number(paymentAmount || 0).toLocaleString()}`}
             </Button>
           </>
@@ -1726,8 +1729,14 @@ export default function WalkInPage() {
                     ) : null;
                   })()}
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', background: isDark ? '#064E3B' : '#ECFDF5', borderTop: `1px solid ${isDark ? '#065F46' : '#BBF7D0'}` }}>
-                    <span style={{ fontWeight: 700, color: isDark ? '#A7F3D0' : '#065F46' }}>Collect</span>
-                    <span style={{ fontSize: 28, fontWeight: 900, color: '#059669', lineHeight: 1 }}>Rs. {Number(paymentAmount || 0).toLocaleString()}</span>
+                    <span style={{ fontWeight: 700, color: isDark ? '#A7F3D0' : '#065F46' }}>
+                      {paymentMethod === 'Package' && paymentCustPackageId ? 'Bundle price' : 'Collect'}
+                    </span>
+                    <span style={{ fontSize: 28, fontWeight: 900, color: '#059669', lineHeight: 1 }}>
+                      {paymentMethod === 'Package' && paymentCustPackageId
+                        ? formatPackageBillAmount(getPackageBundlePrice(paymentCustPackages.find((p) => String(p.id) === String(paymentCustPackageId))))
+                        : `Rs. ${Number(paymentAmount || 0).toLocaleString()}`}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -1750,7 +1759,7 @@ export default function WalkInPage() {
                   )}
                   {paymentCustPackageId && (
                     <div style={{ fontSize: 12, color: isDark ? '#6EE7B7' : '#047857', marginTop: 6, fontWeight: 600 }}>
-                      Package discount applied · Collect Rs. 0 (promo disabled)
+                      {formatPackageAppliedMessage(getPackageBundlePrice(paymentCustPackages.find((p) => String(p.id) === String(paymentCustPackageId))))}
                     </div>
                   )}
                 </div>

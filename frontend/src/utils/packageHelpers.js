@@ -112,6 +112,21 @@ export function getPackageBundlePrice(pkgOrCustomerPackage) {
   return Number(pkg?.package_price || 0);
 }
 
+/** User-facing copy when a package covers the visit (shows bundle price, not "Collect Rs. 0"). */
+export function formatPackageAppliedMessage(bundlePrice) {
+  const price = Number(bundlePrice || 0);
+  if (price > 0) {
+    return `Package applied — Bundle Rs. ${price.toLocaleString()} (no extra charge today)`;
+  }
+  return 'Package applied — no extra charge today';
+}
+
+/** Primary bill line when package is selected — bundle price, not service list total. */
+export function formatPackageBillAmount(bundlePrice) {
+  const price = Number(bundlePrice || 0);
+  return price > 0 ? `Rs. ${price.toLocaleString()}` : 'Rs. 0';
+}
+
 export const servicesCoveredByPackage = (serviceIds = [], customerPackage) => {
   const allowed = new Set((customerPackage?.package?.services || []).map(Number));
   const ids = serviceIds.map(Number).filter(Boolean);

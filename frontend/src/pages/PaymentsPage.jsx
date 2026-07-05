@@ -20,6 +20,8 @@ import {
   fetchActiveCustomerPackages,
   calcServiceListTotal,
   getPackageBundlePrice,
+  formatPackageAppliedMessage,
+  formatPackageBillAmount,
 } from '../utils/packageHelpers';
 
 const METHODS = ['Cash','Card','Online Transfer','Loyalty Points','Package','LankaQR'];
@@ -953,19 +955,30 @@ export default function PaymentsPage() {
         footer={(
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: 12, flexWrap: 'wrap' }}>
             <div style={{ fontSize: 13, color: isDark ? '#94A3B8' : '#64748B' }}>
-              {form.total_amount ? (
+              {form.total_amount || formPackageId ? (
                 <span style={{ fontWeight: 800, color: '#059669' }}>
-                  Net: Rs. {(Number(form.total_amount || 0) - Number(form.loyalty_discount || 0) - promoPreview).toLocaleString()}
-                  {form.service_ids.length > 0 && (
-                    <span style={{ fontWeight: 500, color: isDark ? '#94A3B8' : '#64748B', marginLeft: 8 }}>
-                      · {form.service_ids.length} service{form.service_ids.length !== 1 ? 's' : ''}
-                      {(() => {
-                        const net = Number(form.total_amount || 0) - Number(form.loyalty_discount || 0) - promoPreview;
-                        const st = form.splits.reduce((s, sp) => s + Number(sp.amount || 0), 0);
-                        const ok = Math.abs(net - st) < 0.01;
-                        return ok && net > 0 ? ' · splits match' : net > 0 ? ` · Rs. ${st.toLocaleString()} allocated` : '';
-                      })()}
-                    </span>
+                  {formPackageId ? (
+                    <>
+                      Bundle: {formatPackageBillAmount(packageBundlePrice)}
+                      <span style={{ fontWeight: 500, color: isDark ? '#94A3B8' : '#64748B', marginLeft: 8 }}>
+                        · {form.service_ids.length} service{form.service_ids.length !== 1 ? 's' : ''} · covered by package
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      Net: Rs. {(Number(form.total_amount || 0) - Number(form.loyalty_discount || 0) - promoPreview).toLocaleString()}
+                      {form.service_ids.length > 0 && (
+                        <span style={{ fontWeight: 500, color: isDark ? '#94A3B8' : '#64748B', marginLeft: 8 }}>
+                          · {form.service_ids.length} service{form.service_ids.length !== 1 ? 's' : ''}
+                          {(() => {
+                            const net = Number(form.total_amount || 0) - Number(form.loyalty_discount || 0) - promoPreview;
+                            const st = form.splits.reduce((s, sp) => s + Number(sp.amount || 0), 0);
+                            const ok = Math.abs(net - st) < 0.01;
+                            return ok && net > 0 ? ' · splits match' : net > 0 ? ` · Rs. ${st.toLocaleString()} allocated` : '';
+                          })()}
+                        </span>
+                      )}
+                    </>
                   )}
                 </span>
               ) : (
@@ -1051,7 +1064,7 @@ export default function PaymentsPage() {
                   )}
                   {formPackageId && (
                     <div style={{ fontSize: 12, color: isDark ? '#6EE7B7' : '#047857', marginTop: 6, fontWeight: 600 }}>
-                      Package discount applied · Rs. 0 (promo discount disabled)
+                      {formatPackageAppliedMessage(packageBundlePrice)}
                     </div>
                   )}
                 </FormGroup>
@@ -1103,10 +1116,12 @@ export default function PaymentsPage() {
                   <span style={{ fontSize: 14, fontWeight: 800, color: formPackageId ? '#047857' : '#059669', fontFamily: "'Outfit',sans-serif" }}>
                     {formPackageId ? (
                       <>
-                        <span style={{ fontSize: 11, fontWeight: 600, textDecoration: 'line-through', color: isDark ? '#94A3B8' : '#64748B', marginRight: 8 }}>
-                          Rs. {serviceListTotal.toLocaleString()}
-                        </span>
-                        Collect Rs. 0
+                        {serviceListTotal > 0 && (
+                          <span style={{ fontSize: 11, fontWeight: 600, textDecoration: 'line-through', color: isDark ? '#94A3B8' : '#64748B', marginRight: 8 }}>
+                            List Rs. {serviceListTotal.toLocaleString()}
+                          </span>
+                        )}
+                        Bundle {formatPackageBillAmount(packageBundlePrice)}
                       </>
                     ) : (
                       <>Rs. {serviceListTotal.toLocaleString()}</>
@@ -1121,10 +1136,10 @@ export default function PaymentsPage() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <PaySection title="Amount & Discounts" desc="Bill total, loyalty points, and promo codes" dark={isDark}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <FormGroup label="Total Amount (Rs.)" required>
+                <FormGroup label={formPackageId ? 'Bundle price (Rs.)' : 'Total Amount (Rs.)'} required>
                   <Input
                     type="number"
-                    value={form.total_amount || ''}
+                    value={formPackageId ? String(packageBundlePrice || 0) : (form.total_amount || '')}
                     onChange={e => setForm(f => ({ ...f, total_amount: e.target.value }))}
                     disabled={!!formPackageId}
                   />
@@ -1158,40 +1173,59 @@ export default function PaymentsPage() {
               )}
               {formPackageId && (
                 <div style={{ fontSize: 12, color: isDark ? '#6EE7B7' : '#047857', marginTop: -4, marginBottom: 8, fontWeight: 600 }}>
-                  Package bundle{packageBundlePrice > 0 ? ` Rs. ${packageBundlePrice.toLocaleString()}` : ''} applied · Collect Rs. 0
+                  {formatPackageAppliedMessage(packageBundlePrice)}
                 </div>
               )}
-              {form.total_amount !== '' && form.total_amount != null && (
+              {(formPackageId || (form.total_amount !== '' && form.total_amount != null)) && (
                 <div style={{
                   borderRadius: 12, padding: '12px 14px',
                   background: isDark ? 'linear-gradient(135deg,#172554,#1e293b)' : 'linear-gradient(135deg,#EFF6FF,#ECFDF5)',
                   border: `1px solid ${isDark ? '#334155' : '#BFDBFE'}`,
                 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: isDark ? '#94A3B8' : '#64748B', marginBottom: 6 }}>
-                    <span>Subtotal</span>
-                    <span>Rs. {Number(form.total_amount || 0).toLocaleString()}</span>
-                  </div>
-                  {Number(form.loyalty_discount || 0) > 0 && (
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#EF4444', marginBottom: 4 }}>
-                      <span>Loyalty</span>
-                      <span>− Rs. {Number(form.loyalty_discount).toLocaleString()}</span>
-                    </div>
+                  {formPackageId ? (
+                    <>
+                      {serviceListTotal > 0 && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: isDark ? '#94A3B8' : '#64748B', marginBottom: 6 }}>
+                          <span>List value</span>
+                          <span style={{ textDecoration: 'line-through' }}>Rs. {serviceListTotal.toLocaleString()}</span>
+                        </div>
+                      )}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: serviceListTotal > 0 ? 8 : 0, marginTop: serviceListTotal > 0 ? 4 : 0, borderTop: serviceListTotal > 0 ? `1px dashed ${isDark ? '#334155' : '#BFDBFE'}` : 'none' }}>
+                        <span style={{ fontSize: 13, fontWeight: 700, color: isDark ? '#E2E8F0' : '#101828' }}>Bundle price</span>
+                        <span style={{ fontSize: 18, fontWeight: 900, color: '#059669', fontFamily: "'Outfit',sans-serif" }}>
+                          {formatPackageBillAmount(packageBundlePrice)}
+                        </span>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: isDark ? '#94A3B8' : '#64748B', marginBottom: 6 }}>
+                        <span>Subtotal</span>
+                        <span>Rs. {Number(form.total_amount || 0).toLocaleString()}</span>
+                      </div>
+                      {Number(form.loyalty_discount || 0) > 0 && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#EF4444', marginBottom: 4 }}>
+                          <span>Loyalty</span>
+                          <span>− Rs. {Number(form.loyalty_discount).toLocaleString()}</span>
+                        </div>
+                      )}
+                      {promoPreview > 0 && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#7C3AED', marginBottom: 4 }}>
+                          <span>Promo</span>
+                          <span>− Rs. {promoPreview.toLocaleString()}</span>
+                        </div>
+                      )}
+                      <div style={{
+                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                        paddingTop: 8, marginTop: 4, borderTop: `1px dashed ${isDark ? '#334155' : '#BFDBFE'}`,
+                      }}>
+                        <span style={{ fontSize: 13, fontWeight: 700, color: isDark ? '#E2E8F0' : '#101828' }}>Net payable</span>
+                        <span style={{ fontSize: 18, fontWeight: 900, color: '#059669', fontFamily: "'Outfit',sans-serif" }}>
+                          Rs. {(Number(form.total_amount || 0) - Number(form.loyalty_discount || 0) - promoPreview).toLocaleString()}
+                        </span>
+                      </div>
+                    </>
                   )}
-                  {promoPreview > 0 && (
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#7C3AED', marginBottom: 4 }}>
-                      <span>Promo</span>
-                      <span>− Rs. {promoPreview.toLocaleString()}</span>
-                    </div>
-                  )}
-                  <div style={{
-                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                    paddingTop: 8, marginTop: 4, borderTop: `1px dashed ${isDark ? '#334155' : '#BFDBFE'}`,
-                  }}>
-                    <span style={{ fontSize: 13, fontWeight: 700, color: isDark ? '#E2E8F0' : '#101828' }}>Net payable</span>
-                    <span style={{ fontSize: 18, fontWeight: 900, color: '#059669', fontFamily: "'Outfit',sans-serif" }}>
-                      Rs. {(Number(form.total_amount || 0) - Number(form.loyalty_discount || 0) - promoPreview).toLocaleString()}
-                    </span>
-                  </div>
                 </div>
               )}
             </PaySection>

@@ -21,6 +21,8 @@ import {
   applyPackageSelection,
   formatPackageTemplateLabel,
   getPackageBundlePrice,
+  formatPackageAppliedMessage,
+  formatPackageBillAmount,
 } from '../utils/packageHelpers';
 import {
   DataTable, ActionBtn, StaffAvatar, PagBtn,
@@ -879,7 +881,9 @@ export default function AppointmentsPage() {
             <div style={{ fontSize: 13, color: isDark ? '#94A3B8' : '#64748B' }}>
               {apptServiceIds.length > 0 ? (
                 <span style={{ fontWeight: 800, color: bookingPackageTemplateId ? '#047857' : '#059669' }}>
-                  {bookingPackageTemplateId ? 'Rs. 0' : `Rs. ${Number(form.amount || 0).toLocaleString()}`}
+                  {bookingPackageTemplateId
+                    ? formatPackageBillAmount(getPackageBundlePrice(packageTemplates.find((p) => String(p.id) === String(bookingPackageTemplateId))))
+                    : `Rs. ${Number(form.amount || 0).toLocaleString()}`}
                   <span style={{ fontWeight: 500, color: isDark ? '#94A3B8' : '#64748B', marginLeft: 8 }}>
                     · {apptServiceIds.length} service{apptServiceIds.length !== 1 ? 's' : ''}
                     {bookingPackageTemplateId ? ' · Package' : ''}
@@ -1046,7 +1050,7 @@ export default function AppointmentsPage() {
                   )}
                   {bookingPackageTemplateId && !packageSelectSaving && (
                     <div style={{ fontSize: 12, color: isDark ? '#6EE7B7' : '#047857', marginTop: 6, fontWeight: 600 }}>
-                      Package discount applied — collect Rs. 0 when service is done
+                      {formatPackageAppliedMessage(getPackageBundlePrice(packageTemplates.find((p) => String(p.id) === String(bookingPackageTemplateId))))}
                     </div>
                   )}
                 </FormGroup>
@@ -1129,12 +1133,14 @@ export default function AppointmentsPage() {
                     {APPT_STATUSES.filter((s) => s !== 'completed').map((s) => <option key={s} value={s}>{STATUS_META[s].label}</option>)}
                   </Select>
                 </FormGroup>
-                <FormGroup label="Amount (Rs.)">
+                <FormGroup label={bookingPackageTemplateId ? 'Bundle price (Rs.)' : 'Amount (Rs.)'}>
                   <Input
                     type="number"
-                    value={form.amount || ''}
+                    value={bookingPackageTemplateId
+                      ? String(getPackageBundlePrice(packageTemplates.find((p) => String(p.id) === String(bookingPackageTemplateId))) || '0')
+                      : (form.amount || '')}
                     onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))}
-                    placeholder={bookingPackageTemplateId ? 'Package — collect Rs. 0' : 'Auto from services'}
+                    placeholder={bookingPackageTemplateId ? 'Package bundle' : 'Auto from services'}
                     disabled={!!bookingPackageTemplateId}
                   />
                 </FormGroup>
@@ -1191,20 +1197,18 @@ export default function AppointmentsPage() {
                 <div style={{ height: 1, background: isDark ? 'rgba(255,255,255,0.15)' : 'rgba(5,150,105,0.2)', margin: '4px 0' }} />
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ fontSize: 14, fontWeight: 700, color: isDark ? '#BBF7D0' : '#064E3B' }}>
-                    {bookingPackageTemplateId ? 'Collect at service' : 'Estimated Total'}
+                    {bookingPackageTemplateId ? 'Bundle price' : 'Estimated Total'}
                   </span>
                   <div style={{ textAlign: 'right' }}>
-                    {bookingPackageTemplateId && (() => {
-                      const tpl = packageTemplates.find((p) => String(p.id) === String(bookingPackageTemplateId));
-                      const bundle = getPackageBundlePrice(tpl);
-                      return bundle > 0 ? (
-                        <div style={{ fontSize: 11, color: isDark ? '#94A3B8' : '#64748B', fontWeight: 600, marginBottom: 2 }}>
-                          Bundle Rs. {bundle.toLocaleString()}
-                        </div>
-                      ) : null;
-                    })()}
+                    {bookingPackageTemplateId && apptServiceIds.length > 0 && (
+                      <div style={{ fontSize: 11, color: isDark ? '#94A3B8' : '#64748B', fontWeight: 600, marginBottom: 2, textDecoration: 'line-through' }}>
+                        List Rs. {calcServiceTotal(apptServiceIds).toLocaleString()}
+                      </div>
+                    )}
                     <span style={{ fontSize: 22, fontWeight: 800, color: isDark ? '#fff' : '#047857', letterSpacing: '-0.02em' }}>
-                      Rs. {bookingPackageTemplateId ? '0' : Number(form.amount || 0).toLocaleString()}
+                      {bookingPackageTemplateId
+                        ? formatPackageBillAmount(getPackageBundlePrice(packageTemplates.find((p) => String(p.id) === String(bookingPackageTemplateId))))
+                        : `Rs. ${Number(form.amount || 0).toLocaleString()}`}
                     </span>
                   </div>
                 </div>
@@ -1314,7 +1318,7 @@ export default function AppointmentsPage() {
                   )}
                   {paymentCustPackageId && (
                     <div style={{ fontSize: 12, color: isDark ? '#6EE7B7' : '#047857', marginTop: 6, fontWeight: 600 }}>
-                      Package discount applied · Collect Rs. 0 (promo discount disabled)
+                      {formatPackageAppliedMessage(getPackageBundlePrice(paymentCustPackages.find((p) => String(p.id) === String(paymentCustPackageId))))}
                     </div>
                   )}
                 </FormGroup>

@@ -4,6 +4,7 @@ import toast from 'react-hot-toast';
 import api from '../api/axios';
 import PageWrapper from '../components/layout/PageWrapper';
 import { useAuth } from '../context/AuthContext';
+import usePageTheme from '../hooks/usePageTheme';
 
 /* ── SVG icons ───────────────────────────────────────────────────────────── */
 const IconUpload   = () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>;
@@ -12,20 +13,6 @@ const IconTag      = () => <svg width="18" height="18" viewBox="0 0 24 24" fill=
 const IconRefresh  = () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>;
 const IconSave     = () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>;
 const IconLink     = () => <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>;
-
-/* ── Design tokens ───────────────────────────────────────────────────────── */
-const C = {
-  primary:   '#2563EB',
-  primaryDk: '#1D4ED8',
-  border:    '#EAECF0',
-  cardBg:    '#FFFFFF',
-  pageBg:    '#F7F8FA',
-  label:     '#667085',
-  muted:     '#98A2B3',
-  text:      '#101828',
-  inputBg:   '#FFFFFF',
-  inputBdr:  '#D0D5DD',
-};
 
 const EMPTY = {
   name:             '',
@@ -40,19 +27,20 @@ const EMPTY = {
 
 /* ── Sub-components ──────────────────────────────────────────────────────── */
 function SectionCard({ title, subtitle, children }) {
+  const { C } = usePageTheme();
   return (
     <div style={{
       background: C.cardBg,
       border: `1px solid ${C.border}`,
       borderRadius: 16,
       overflow: 'hidden',
-      boxShadow: '0 2px 8px rgba(16,24,40,0.06)',
+      boxShadow: C.shadow,
     }}>
       {(title || subtitle) && (
         <div style={{
           padding: '16px 22px',
           borderBottom: `1px solid ${C.border}`,
-          background: 'linear-gradient(180deg, #F8F9FC 0%, #F1F3F9 100%)',
+          background: C.headerGrad,
         }}>
           {title && (
             <div style={{ fontSize: 14, fontWeight: 700, color: C.text, fontFamily: "'Sora','Manrope',sans-serif" }}>
@@ -72,6 +60,7 @@ function SectionCard({ title, subtitle, children }) {
 }
 
 function Field({ label, value, onChange, placeholder, hint }) {
+  const { C } = usePageTheme();
   const [focused, setFocused] = useState(false);
   return (
     <label style={{ display: 'block' }}>
@@ -110,6 +99,7 @@ function Field({ label, value, onChange, placeholder, hint }) {
 }
 
 function UploadField({ label, value, onChange, placeholder, variant, onUpload, uploadingVariant }) {
+  const { C, isDark } = usePageTheme();
   const isUploading = uploadingVariant === variant;
   const [focused, setFocused] = useState(false);
 
@@ -156,7 +146,7 @@ function UploadField({ label, value, onChange, placeholder, variant, onUpload, u
         <label style={{
           display: 'inline-flex', alignItems: 'center', gap: 6,
           borderRadius: 10, border: `1.5px solid ${C.inputBdr}`,
-          background: '#F7F8FA', color: '#344054',
+          background: C.soft, color: C.label,
           padding: '9px 13px', fontSize: 12.5, fontWeight: 700,
           cursor: isUploading ? 'not-allowed' : 'pointer',
           opacity: isUploading ? 0.65 : 1,
@@ -184,6 +174,7 @@ const DEFAULT_LOGO_PLACEHOLDER = 'data:image/svg+xml;utf8,' + encodeURIComponent
 );
 
 function LogoPreviewCard({ title, src, description }) {
+  const { C, isDark } = usePageTheme();
   const [imgError, setImgError] = useState(false);
   useEffect(() => { setImgError(false); }, [src]);
   return (
@@ -208,7 +199,7 @@ function LogoPreviewCard({ title, src, description }) {
         height: 90, borderRadius: 10,
         border: `1.5px dashed ${C.border}`,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        background: 'linear-gradient(180deg, #F8F9FC 0%, #F1F3F9 100%)',
+        background: isDark ? '#0B1220' : C.soft,
         overflow: 'hidden',
       }}>
         {src && !imgError ? (
@@ -233,6 +224,7 @@ function LogoPreviewCard({ title, src, description }) {
 
 /* ── Main Page ───────────────────────────────────────────────────────────── */
 export default function BrandingSettingsPage() {
+  const { C } = usePageTheme();
   const [loading, setLoading]                   = useState(true);
   const [saving, setSaving]                     = useState(false);
   const [form, setForm]                         = useState(EMPTY);
@@ -321,12 +313,12 @@ export default function BrandingSettingsPage() {
         disabled={loading}
         style={{
           display: 'flex', alignItems: 'center', gap: 7,
-          padding: '9px 16px', background: '#fff',
+          padding: '9px 16px', background: C.cardBg,
           border: `1.5px solid ${C.border}`, borderRadius: 10,
-          fontSize: 13, fontWeight: 700, color: '#344054',
+          fontSize: 13, fontWeight: 700, color: C.label,
           cursor: loading ? 'not-allowed' : 'pointer',
           opacity: loading ? 0.6 : 1,
-          boxShadow: '0 1px 4px rgba(16,24,40,0.06)',
+          boxShadow: C.shadow,
           fontFamily: "'Inter',sans-serif",
         }}
       >

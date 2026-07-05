@@ -4,6 +4,7 @@ import { useAuth }    from '../context/AuthContext';
 import api            from '../api/axios';
 import { useToast }   from '../components/ui/Toast';
 import { Select }     from '../components/ui/FormElements';
+import usePageTheme   from '../hooks/usePageTheme';
 
 /* ── design tokens ──────────────────────────────────── */
 const ACCENT  = '#6D28D9';        // purple – today / active
@@ -201,14 +202,25 @@ function EventCard({ appt, colorIdx, heightPx, navigate }) {
 
 /* ── MonthView ──────────────────────────────────────── */
 function MonthView({ year, month, calData, todayDate, anchor, setAnchor, setViewMode }) {
+  const { isDark } = usePageTheme();
+  const shellBg = isDark ? '#1E293B' : '#fff';
+  const shellBorder = isDark ? '#334155' : '#E5E7EB';
+  const headBg = isDark ? '#0F172A' : '#FAFAFA';
+  const cellBg = isDark ? '#1E293B' : '#fff';
+  const cellBgEmpty = isDark ? '#0F172A' : '#FAFAFA';
+  const cellBgWkd = isDark ? '#172033' : '#FAFAFA';
+  const cellBgSel = isDark ? 'rgba(109,40,217,0.15)' : '#F5F3FF';
+  const cellBgTod = isDark ? 'rgba(109,40,217,0.08)' : '#FDFCFF';
+  const lineColor = isDark ? '#334155' : '#F3F4F6';
+  const dayText = isDark ? '#E2E8F0' : '#111827';
   const cells    = buildMonthGrid(year, month);
   const todayKey = dateKey(todayDate);
   const DOW_H    = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 
   return (
-    <div style={{ background: '#fff', borderRadius: 16, border: '1px solid #E5E7EB', overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
+    <div style={{ background: shellBg, borderRadius: 16, border: `1px solid ${shellBorder}`, overflow: 'hidden', boxShadow: isDark ? '0 4px 16px rgba(2,6,23,0.35)' : '0 1px 4px rgba(0,0,0,0.04)' }}>
       {/* DOW header */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', background: '#FAFAFA', borderBottom: '1px solid #E5E7EB' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', background: headBg, borderBottom: `1px solid ${shellBorder}` }}>
         {DOW_H.map((d, i) => (
           <div key={d} style={{ textAlign: 'center', padding: '10px 0', fontSize: 11, fontWeight: 700, color: i===0||i===6 ? '#EF4444' : '#9CA3AF', letterSpacing: '0.5px', textTransform: 'uppercase' }}>{d}</div>
         ))}
@@ -216,7 +228,7 @@ function MonthView({ year, month, calData, todayDate, anchor, setAnchor, setView
       {/* Grid */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)' }}>
         {cells.map((day, i) => {
-          if (!day) return <div key={`e${i}`} style={{ minHeight: 100, borderRight: '1px solid #F3F4F6', borderBottom: '1px solid #F3F4F6', background: '#FAFAFA' }} />;
+          if (!day) return <div key={`e${i}`} style={{ minHeight: 100, borderRight: `1px solid ${lineColor}`, borderBottom: `1px solid ${lineColor}`, background: cellBgEmpty }} />;
           const d     = new Date(year, month, day);
           const k     = dateKey(d);
           const dow   = d.getDay();
@@ -230,19 +242,19 @@ function MonthView({ year, month, calData, todayDate, anchor, setAnchor, setView
               onClick={() => { setAnchor(d); setViewMode('day'); }}
               style={{
                 minHeight: 100, padding: '8px 8px 6px', boxSizing: 'border-box',
-                borderRight: '1px solid #F3F4F6', borderBottom: '1px solid #F3F4F6',
+                borderRight: `1px solid ${lineColor}`, borderBottom: `1px solid ${lineColor}`,
                 cursor: 'pointer',
-                background: isSel ? '#F5F3FF' : isTod ? '#FDFCFF' : isWkd ? '#FAFAFA' : '#fff',
+                background: isSel ? cellBgSel : isTod ? cellBgTod : isWkd ? cellBgWkd : cellBg,
                 transition: 'background .12s',
               }}
-              onMouseEnter={e => { if (!isSel && !isTod) e.currentTarget.style.background = '#F5F5F5'; }}
-              onMouseLeave={e => e.currentTarget.style.background = isSel ? '#F5F3FF' : isTod ? '#FDFCFF' : isWkd ? '#FAFAFA' : '#fff'}
+              onMouseEnter={e => { if (!isSel && !isTod) e.currentTarget.style.background = isDark ? '#243044' : '#F5F5F5'; }}
+              onMouseLeave={e => e.currentTarget.style.background = isSel ? cellBgSel : isTod ? cellBgTod : isWkd ? cellBgWkd : cellBg}
             >
               <div style={{
                 width: 28, height: 28, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 4,
                 background: isTod ? ACCENT : 'transparent',
                 fontSize: 13, fontWeight: isTod || isSel ? 700 : 400,
-                color: isTod ? '#fff' : isSel ? ACCENT : isWkd ? '#EF4444' : '#111827',
+                color: isTod ? '#fff' : isSel ? ACCENT : isWkd ? '#EF4444' : dayText,
               }}>{day}</div>
               {appts.slice(0, 3).map((a, ai) => {
                 const cpx = CARD_PAL[ai % CARD_PAL.length];
@@ -266,6 +278,21 @@ function MonthView({ year, month, calData, todayDate, anchor, setAnchor, setView
 
 /* ── CalendarPage ───────────────────────────────────── */
 export default function CalendarPage() {
+  const { isDark } = usePageTheme();
+  const shellBg = isDark ? '#1E293B' : '#fff';
+  const shellBorder = isDark ? '#334155' : '#E5E7EB';
+  const gridLine = isDark ? '#334155' : '#F1F5F9';
+  const gridLineDash = isDark ? '#243044' : '#F8FAFC';
+  const btnStyle = {
+    padding: '6px 14px', borderRadius: 8, border: `1.5px solid ${shellBorder}`,
+    background: isDark ? '#0F172A' : '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 700,
+    color: isDark ? '#E2E8F0' : '#374151', whiteSpace: 'nowrap',
+  };
+  const navBtnStyle = {
+    width: 30, height: 30, border: `1.5px solid ${shellBorder}`, background: isDark ? '#0F172A' : '#fff',
+    cursor: 'pointer', fontSize: 15, display: 'flex', alignItems: 'center', justifyContent: 'center',
+    color: isDark ? '#E2E8F0' : '#374151',
+  };
   const { user }  = useAuth();
   const navigate  = useNavigate();
   const { toast } = useToast();
@@ -354,19 +381,16 @@ export default function CalendarPage() {
 
         {/* Left: Today + nav + date label */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <button
-            onClick={() => setAnchor(new Date())}
-            style={{ padding: '6px 14px', borderRadius: 8, border: '1.5px solid #E5E7EB', background: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 700, color: '#374151', whiteSpace: 'nowrap' }}
-          >Today</button>
+          <button onClick={() => setAnchor(new Date())} style={btnStyle}>Today</button>
           <div style={{ display: 'flex', gap: 2 }}>
-            <button onClick={goBack} style={{ width: 30, height: 30, borderRadius: '8px 0 0 8px', border: '1.5px solid #E5E7EB', borderRight: 'none', background: '#fff', cursor: 'pointer', fontSize: 15, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#374151' }}>‹</button>
-            <button onClick={goNext} style={{ width: 30, height: 30, borderRadius: '0 8px 8px 0', border: '1.5px solid #E5E7EB', background: '#fff', cursor: 'pointer', fontSize: 15, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#374151' }}>›</button>
+            <button onClick={goBack} style={{ ...navBtnStyle, borderRadius: '8px 0 0 8px', borderRight: 'none' }}>‹</button>
+            <button onClick={goNext} style={{ ...navBtnStyle, borderRadius: '0 8px 8px 0' }}>›</button>
           </div>
-          <span style={{ fontSize: 17, fontWeight: 800, color: '#111827', letterSpacing: '-0.3px' }}>{headerLabel}</span>
+          <span style={{ fontSize: 17, fontWeight: 800, color: isDark ? '#F1F5F9' : '#111827', letterSpacing: '-0.3px' }}>{headerLabel}</span>
         </div>
 
         {/* Center: View tabs */}
-        <div style={{ display: 'flex', background: '#F1F5F9', borderRadius: 10, padding: 3, gap: 2 }}>
+        <div style={{ display: 'flex', background: isDark ? '#0F172A' : '#F1F5F9', borderRadius: 10, padding: 3, gap: 2 }}>
           {['Day','Week','Month'].map(v => (
             <button
               key={v}
@@ -374,9 +398,9 @@ export default function CalendarPage() {
               style={{
                 padding: '5px 16px', borderRadius: 8, border: 'none', cursor: 'pointer',
                 fontSize: 13, fontWeight: viewMode === v.toLowerCase() ? 700 : 500,
-                background: viewMode === v.toLowerCase() ? '#fff' : 'transparent',
-                color: viewMode === v.toLowerCase() ? '#111827' : '#64748B',
-                boxShadow: viewMode === v.toLowerCase() ? '0 1px 4px rgba(0,0,0,0.1)' : 'none',
+                background: viewMode === v.toLowerCase() ? (isDark ? '#1E293B' : '#fff') : 'transparent',
+                color: viewMode === v.toLowerCase() ? (isDark ? '#F1F5F9' : '#111827') : (isDark ? '#94A3B8' : '#64748B'),
+                boxShadow: viewMode === v.toLowerCase() ? (isDark ? '0 1px 4px rgba(0,0,0,0.25)' : '0 1px 4px rgba(0,0,0,0.1)') : 'none',
                 transition: 'all .15s',
               }}
             >{v}</button>
@@ -407,11 +431,11 @@ export default function CalendarPage() {
 
       {/* ── Week / Day view ────────────────────────── */}
       {viewMode !== 'month' && (
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: '#fff', borderRadius: 16, border: '1px solid #E5E7EB', overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: shellBg, borderRadius: 16, border: `1px solid ${shellBorder}`, overflow: 'hidden', boxShadow: isDark ? '0 4px 16px rgba(2,6,23,0.35)' : '0 1px 4px rgba(0,0,0,0.04)' }}>
 
           {/* Sticky day headers */}
-          <div style={{ display: 'flex', borderBottom: '1px solid #E5E7EB', flexShrink: 0, background: '#fff', zIndex: 10 }}>
-            <div style={{ width: 72, flexShrink: 0, borderRight: '1px solid #E5E7EB', display: 'flex', alignItems: 'flex-end', justifyContent: 'flex-end', paddingRight: 8, paddingBottom: 10 }}>
+          <div style={{ display: 'flex', borderBottom: `1px solid ${shellBorder}`, flexShrink: 0, background: shellBg, zIndex: 10 }}>
+            <div style={{ width: 72, flexShrink: 0, borderRight: `1px solid ${shellBorder}`, display: 'flex', alignItems: 'flex-end', justifyContent: 'flex-end', paddingRight: 8, paddingBottom: 10 }}>
               {loading && <span style={{ fontSize: 10, color: '#9CA3AF' }}>…</span>}
             </div>
             {displayDays.map((d, di) => {
@@ -424,13 +448,13 @@ export default function CalendarPage() {
                   onClick={() => { setAnchor(d); if (viewMode==='week') setViewMode('day'); }}
                   style={{
                     flex: 1, textAlign: 'center', padding: '12px 4px 10px',
-                    borderRight: di < displayDays.length-1 ? '1px solid #F1F5F9' : 'none',
+                    borderRight: di < displayDays.length-1 ? `1px solid ${gridLine}` : 'none',
                     cursor: viewMode==='week' ? 'pointer' : 'default',
                     borderBottom: isTod ? `3px solid ${ACCENT}` : '3px solid transparent',
                     background: isTod ? `${ACCENT}06` : 'transparent',
                     transition: 'background .15s',
                   }}
-                  onMouseEnter={e => { if (!isTod) e.currentTarget.style.background='#F8F9FB'; }}
+                  onMouseEnter={e => { if (!isTod) e.currentTarget.style.background = isDark ? 'rgba(109,40,217,0.08)' : '#F8F9FB'; }}
                   onMouseLeave={e => { e.currentTarget.style.background = isTod ? `${ACCENT}06` : 'transparent'; }}
                 >
                   <div style={{ fontSize: 11, fontWeight: 700, color: isTod ? ACCENT : isWkd ? '#EF4444' : '#9CA3AF', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 5 }}>
@@ -441,7 +465,7 @@ export default function CalendarPage() {
                     width: 34, height: 34, borderRadius: '50%',
                     background: isTod ? ACCENT : 'transparent',
                     fontSize: 15, fontWeight: isTod ? 800 : 500,
-                    color: isTod ? '#fff' : isWkd ? '#EF4444' : '#1F2937',
+                    color: isTod ? '#fff' : isWkd ? '#EF4444' : (isDark ? '#E2E8F0' : '#1F2937'),
                     boxShadow: isTod ? `0 2px 8px ${ACCENT}50` : 'none',
                   }}>{d.getDate()}</div>
                 </div>
@@ -458,10 +482,10 @@ export default function CalendarPage() {
               <div style={{ display: 'flex', minHeight: HOURS.length * HOUR_H }}>
 
                 {/* Time labels */}
-                <div style={{ width: 72, flexShrink: 0, borderRight: '1px solid #E5E7EB', position: 'relative' }}>
+                <div style={{ width: 72, flexShrink: 0, borderRight: `1px solid ${shellBorder}`, position: 'relative' }}>
                   {HOURS.map(h => (
                     <div key={h} style={{ height: HOUR_H, position: 'relative', boxSizing: 'border-box' }}>
-                      <span style={{ position: 'absolute', top: -8, right: 10, fontSize: 10.5, color: '#94A3B8', whiteSpace: 'nowrap', fontWeight: 500 }}>{fmtHour(h)}</span>
+                      <span style={{ position: 'absolute', top: -8, right: 10, fontSize: 10.5, color: isDark ? '#64748B' : '#94A3B8', whiteSpace: 'nowrap', fontWeight: 500 }}>{fmtHour(h)}</span>
                     </div>
                   ))}
                 </div>
@@ -475,20 +499,20 @@ export default function CalendarPage() {
                   return (
                     <div
                       key={key}
-                      style={{ flex: 1, position: 'relative', borderRight: di < displayDays.length-1 ? '1px solid #F1F5F9' : 'none', background: isTod ? `${ACCENT}04` : 'transparent' }}
+                      style={{ flex: 1, position: 'relative', borderRight: di < displayDays.length-1 ? `1px solid ${gridLine}` : 'none', background: isTod ? `${ACCENT}08` : 'transparent' }}
                     >
                       {/* Hour grid lines */}
                       {HOURS.map(h => (
-                        <div key={h} style={{ height: HOUR_H, boxSizing: 'border-box', borderBottom: '1px solid #F1F5F9', position: 'relative' }}>
+                        <div key={h} style={{ height: HOUR_H, boxSizing: 'border-box', borderBottom: `1px solid ${gridLine}`, position: 'relative' }}>
                           {/* half-hour tick */}
-                          <div style={{ position: 'absolute', top: '50%', left: 0, right: 0, borderBottom: '1px dashed #F8FAFC' }} />
+                          <div style={{ position: 'absolute', top: '50%', left: 0, right: 0, borderBottom: `1px dashed ${gridLineDash}` }} />
                         </div>
                       ))}
 
                       {/* Now indicator */}
                       {isTod && nowTopPx > 0 && nowTopPx < HOURS.length * HOUR_H && (
                         <div style={{ position: 'absolute', top: nowTopPx, left: 0, right: 0, zIndex: 5, pointerEvents: 'none', display: 'flex', alignItems: 'center' }}>
-                          <div style={{ width: 10, height: 10, minWidth: 10, borderRadius: '50%', background: '#EF4444', marginLeft: -5, boxShadow: '0 0 0 2px #fff' }} />
+                          <div style={{ width: 10, height: 10, minWidth: 10, borderRadius: '50%', background: '#EF4444', marginLeft: -5, boxShadow: `0 0 0 2px ${shellBg}` }} />
                           <div style={{ flex: 1, height: 2, background: '#EF4444', opacity: 0.75 }} />
                         </div>
                       )}

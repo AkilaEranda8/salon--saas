@@ -344,10 +344,10 @@ button:focus:not(:focus-visible) { outline: none; }
   background: #111827 !important;
 }
 
-[data-theme='dark'] [style*="background: linear-gradient(180deg, #F8F9FC"],
-[data-theme='dark'] [style*="background:linear-gradient(180deg, #F8F9FC"],
-[data-theme='dark'] [style*="background: linear-gradient(180deg, #F9FAFB"],
-[data-theme='dark'] [style*="background:linear-gradient(180deg, #F9FAFB"] {
+[data-theme='dark'] [style*="background: linear-gradient(180deg,#F8F9FC"],
+[data-theme='dark'] [style*="background:linear-gradient(180deg,#F8F9FC"],
+[data-theme='dark'] [style*="background: linear-gradient(180deg, #F8F9FC 0%, #F1F3F9 100%)"],
+[data-theme='dark'] [style*="background:linear-gradient(180deg, #F8F9FC 0%, #F1F3F9 100%)"] {
   background: linear-gradient(180deg, #1E293B 0%, #0F172A 100%) !important;
 }
 

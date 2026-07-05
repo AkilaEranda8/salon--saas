@@ -5,6 +5,8 @@ import {
   PieChart, Pie, Cell,
 } from 'recharts';
 import { useAuth }       from '../context/AuthContext';
+import { useTheme }      from '../context/ThemeContext';
+import usePageTheme      from '../hooks/usePageTheme';
 import { useBranch }     from '../context/BranchContext';
 import api               from '../api/axios';
 import PageWrapper       from '../components/layout/PageWrapper';
@@ -44,7 +46,8 @@ const sortApptsByTimeAsc = (rows) =>
 /*─── sub-components ────────────────────────────────────────────*/
 
 function Sk({ h = 20, w = '100%', mb = 0 }) {
-  return <div style={{ height: h, width: w, background: '#E5E7EB', borderRadius: 8, animation: 'pulse 1.5s ease-in-out infinite', marginBottom: mb }} />;
+  const { isDark } = useTheme();
+  return <div style={{ height: h, width: w, background: isDark ? '#334155' : '#E5E7EB', borderRadius: 8, animation: 'pulse 1.5s ease-in-out infinite', marginBottom: mb }} />;
 }
 
 /* Featured KPI – first card (indigo gradient) */
@@ -78,26 +81,27 @@ function FeaturedKpi({ label, value, sub, loading }) {
 
 /* Regular KPI card */
 function KpiCard({ label, value, sub, loading }) {
+  const { C } = usePageTheme();
   const [hov, setHov] = React.useState(false);
   return (
     <div
       onMouseEnter={() => setHov(true)}
       onMouseLeave={() => setHov(false)}
       style={{
-        background:'#fff', borderRadius:16, padding:'20px 22px 16px',
-        display:'flex', flexDirection:'column', gap:7,
-        boxShadow: hov ? '0 8px 20px rgba(16,24,40,0.10)' : '0 1px 4px rgba(0,0,0,0.05)',
-        border: hov ? '1px solid #BFDBFE' : '1px solid #EAECF0',
+        background: C.cardBg, borderRadius: 16, padding: '20px 22px 16px',
+        display: 'flex', flexDirection: 'column', gap: 7,
+        boxShadow: hov ? '0 8px 20px rgba(16,24,40,0.10)' : C.shadow,
+        border: hov ? '1px solid #BFDBFE' : `1px solid ${C.border}`,
         transform: hov ? 'translateY(-2px)' : 'translateY(0)',
         transition: 'all 0.2s ease',
       }}>
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start' }}>
-        <span style={{ fontSize:11, fontWeight:700, color:'#98A2B3', textTransform:'uppercase', letterSpacing:'0.06em' }}>{label}</span>
+        <span style={{ fontSize:11, fontWeight:700, color: C.muted, textTransform:'uppercase', letterSpacing:'0.06em' }}>{label}</span>
         <span style={{ background:G100, borderRadius:8, width:28, height:28, display:'flex', alignItems:'center', justifyContent:'center', fontSize:13, color:G700 }}>↗</span>
       </div>
       {loading
         ? <Sk h={30} w="60%" />
-        : <div style={{ fontSize:28, fontWeight:800, color:'#101828', letterSpacing:'-0.5px', lineHeight:1.1 }}>{value}</div>
+        : <div style={{ fontSize:28, fontWeight:800, color: C.title, letterSpacing:'-0.5px', lineHeight:1.1 }}>{value}</div>
       }
       {sub && !loading && (
         <div style={{ fontSize:11, color:'#98A2B3', display:'flex', alignItems:'center', gap:4 }}>
@@ -110,17 +114,19 @@ function KpiCard({ label, value, sub, loading }) {
 
 /* Generic card shell */
 function Card({ children, style }) {
+  const { C } = usePageTheme();
   return (
-    <div style={{ background:'#fff', borderRadius:16, padding:'20px 22px', boxShadow:'0 2px 8px rgba(16,24,40,0.06)', border:'1px solid #EAECF0', ...style }}>
+    <div style={{ background: C.cardBg, borderRadius: 16, padding: '20px 22px', boxShadow: C.shadow, border: `1px solid ${C.border}`, ...style }}>
       {children}
     </div>
   );
 }
 
 function CardHead({ title, action }) {
+  const { C } = usePageTheme();
   return (
     <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16 }}>
-      <span style={{ fontSize:15, fontWeight:700, color:'#111827' }}>{title}</span>
+      <span style={{ fontSize:15, fontWeight:700, color: C.title }}>{title}</span>
       {action}
     </div>
   );
@@ -141,6 +147,7 @@ function BarTip({ active, payload, label }) {
 
 /* Profit KPI — green if positive, red if loss */
 function ProfitKpi({ revenue, commission, expenses, loading }) {
+  const { C } = usePageTheme();
   const totalCost = (commission || 0) + (expenses || 0);
   const profit = revenue - totalCost;
   const pct    = revenue > 0 ? Math.round((profit / revenue) * 100) : 0;
@@ -151,15 +158,15 @@ function ProfitKpi({ revenue, commission, expenses, loading }) {
       onMouseEnter={() => setHov(true)}
       onMouseLeave={() => setHov(false)}
       style={{
-        background:'#fff', borderRadius:16, padding:'20px 22px 16px',
-        display:'flex', flexDirection:'column', gap:7,
-        boxShadow: hov ? '0 8px 20px rgba(16,24,40,0.10)' : '0 1px 4px rgba(0,0,0,0.05)',
-        border: hov ? '1px solid #BFDBFE' : '1px solid #EAECF0',
+        background: C.cardBg, borderRadius: 16, padding: '20px 22px 16px',
+        display: 'flex', flexDirection: 'column', gap: 7,
+        boxShadow: hov ? '0 8px 20px rgba(16,24,40,0.10)' : C.shadow,
+        border: hov ? '1px solid #BFDBFE' : `1px solid ${C.border}`,
         transform: hov ? 'translateY(-2px)' : 'translateY(0)',
         transition: 'all 0.2s ease',
       }}>
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start' }}>
-        <span style={{ fontSize:11, fontWeight:700, color:'#98A2B3', textTransform:'uppercase', letterSpacing:'0.06em' }}>Net Profit</span>
+        <span style={{ fontSize:11, fontWeight:700, color: C.muted, textTransform:'uppercase', letterSpacing:'0.06em' }}>Net Profit</span>
         <span style={{ background: pos ? '#D1FAE5' : '#FEE2E2', borderRadius:8, width:28, height:28, display:'flex', alignItems:'center', justifyContent:'center', fontSize:13 }}>{pos ? '📈' : '📉'}</span>
       </div>
       {loading
@@ -186,6 +193,7 @@ function ProfitKpi({ revenue, commission, expenses, loading }) {
 
 /* Low-Stock warning card */
 function LowStockCard({ items, loading, onClick }) {
+  const { C } = usePageTheme();
   const count = items.length;
   const [hov, setHov] = React.useState(false);
   return (
@@ -194,14 +202,14 @@ function LowStockCard({ items, loading, onClick }) {
       onMouseEnter={() => setHov(true)}
       onMouseLeave={() => setHov(false)}
       style={{
-        background:'#fff', borderRadius:16, padding:'20px 22px 16px',
+        borderRadius: 16, padding: '20px 22px 16px',
+        background: count > 0 ? (hov ? '#FFF7F7' : '#FFF9F9') : C.cardBg,
         display:'flex', flexDirection:'column', gap:7,
-        boxShadow: hov && count > 0 ? '0 8px 20px rgba(16,24,40,0.10)' : '0 1px 4px rgba(0,0,0,0.05)',
-        border: count > 0 ? (hov ? '1px solid #FCA5A5' : '1px solid #FECACA') : '1px solid #EAECF0',
+        boxShadow: hov && count > 0 ? '0 8px 20px rgba(16,24,40,0.10)' : C.shadow,
+        border: count > 0 ? (hov ? '1px solid #FCA5A5' : '1px solid #FECACA') : `1px solid ${C.border}`,
         transform: hov && count > 0 ? 'translateY(-2px)' : 'translateY(0)',
         transition: 'all 0.2s ease',
         cursor: count > 0 ? 'pointer' : 'default',
-        ...(count > 0 ? { background: hov ? '#FFF7F7' : '#FFF9F9' } : {}),
       }}>
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start' }}>
         <span style={{ fontSize:11, fontWeight:700, color:'#98A2B3', textTransform:'uppercase', letterSpacing:'0.06em' }}>Low Stock</span>
@@ -234,6 +242,7 @@ function LowStockCard({ items, loading, onClick }) {
 
 /*  main component  */
 export default function DashboardPage() {
+  const { C, isDark } = usePageTheme();
   const { user }        = useAuth();
   const { branchFilterKey } = useBranch();
   const navigate        = useNavigate();
@@ -670,8 +679,8 @@ export default function DashboardPage() {
 
       {/* ── Row 4: Recent Appointments table ─────────────── */}
       <Card style={{ padding:0, overflow:'hidden' }}>
-        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'18px 22px', borderBottom:'1px solid #F2F4F7', background:'linear-gradient(180deg, #F8F9FC 0%, #F1F3F9 100%)' }}>
-          <span style={{ fontSize:15, fontWeight:700, color:'#111827' }}>Recent Appointments</span>
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'18px 22px', borderBottom:`1px solid ${C.border}`, background: C.headerGrad }}>
+          <span style={{ fontSize:15, fontWeight:700, color: C.title }}>Recent Appointments</span>
           {linkBtn('View all →', '/appointments', true)}
         </div>
         <div style={{ padding:'0 12px 12px' }}>

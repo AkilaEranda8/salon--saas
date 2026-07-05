@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
 import api from '../api/axios';
 import PageWrapper from '../components/layout/PageWrapper';
+import usePageTheme from '../hooks/usePageTheme';
 
 /* ── Icons ─────────────────────────────────────────────────────────────────── */
 const IconSave    = () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>;
@@ -9,21 +10,16 @@ const IconRefresh = () => <svg width="14" height="14" viewBox="0 0 24 24" fill="
 const IconEye     = () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>;
 const IconEyeOff  = () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>;
 
-/* ── Tokens ─────────────────────────────────────────────────────────────────── */
-const C = {
-  primary: '#2563EB', border: '#EAECF0', cardBg: '#FFFFFF',
-  label: '#667085', muted: '#98A2B3', text: '#101828', inputBdr: '#D0D5DD',
-};
-
 /* ── Sub-components ─────────────────────────────────────────────────────────── */
 function SectionCard({ title, subtitle, badge, children }) {
+  const { C } = usePageTheme();
   return (
-    <div style={{ background: C.cardBg, border: `1px solid ${C.border}`, borderRadius: 16, overflow: 'hidden', boxShadow: '0 2px 8px rgba(16,24,40,0.06)' }}>
-      <div style={{ padding: '16px 22px', borderBottom: `1px solid ${C.border}`, background: 'linear-gradient(180deg,#F8F9FC,#F1F3F9)', display: 'flex', alignItems: 'center', gap: 10 }}>
+    <div style={{ background: C.cardBg, border: `1px solid ${C.border}`, borderRadius: 16, overflow: 'hidden', boxShadow: C.shadow }}>
+      <div style={{ padding: '16px 22px', borderBottom: `1px solid ${C.border}`, background: C.headerGrad, display: 'flex', alignItems: 'center', gap: 10 }}>
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: 14, fontWeight: 700, color: C.text, display: 'flex', alignItems: 'center', gap: 8 }}>
             {title}
-            {badge && <span style={{ fontSize: 11, fontWeight: 700, background: '#ECFDF5', color: '#059669', border: '1px solid #A7F3D0', borderRadius: 99, padding: '2px 10px' }}>{badge}</span>}
+            {badge && <span style={{ fontSize: 11, fontWeight: 700, background: 'rgba(5,150,105,0.15)', color: '#34D399', border: '1px solid rgba(52,211,153,0.35)', borderRadius: 99, padding: '2px 10px' }}>{badge}</span>}
           </div>
           {subtitle && <div style={{ fontSize: 12.5, color: C.label, marginTop: 2 }}>{subtitle}</div>}
         </div>
@@ -34,6 +30,7 @@ function SectionCard({ title, subtitle, badge, children }) {
 }
 
 function Field({ label, value, onChange, placeholder, hint, type = 'text', secret }) {
+  const { C } = usePageTheme();
   const [focused, setFocused] = useState(false);
   const [show,    setShow]    = useState(false);
   const inputType = secret ? (show ? 'text' : 'password') : type;
@@ -53,7 +50,7 @@ function Field({ label, value, onChange, placeholder, hint, type = 'text', secre
           onBlur={() => setFocused(false)}
           style={{
             width: '100%', borderRadius: 10, border: `1.5px solid ${focused ? C.primary : C.inputBdr}`,
-            background: '#fff', color: C.text, padding: secret ? '10px 40px 10px 13px' : '10px 13px',
+            background: C.inputBg, color: C.text, padding: secret ? '10px 40px 10px 13px' : '10px 13px',
             fontSize: 13.5, outline: 'none', boxSizing: 'border-box',
             transition: 'border-color 0.15s',
             boxShadow: focused ? '0 0 0 3px rgba(37,99,235,0.10)' : 'none',
@@ -85,6 +82,7 @@ const EMPTY = {
 
 /* ── Main Page ───────────────────────────────────────────────────────────────── */
 export default function PaymentSettingsPage() {
+  const { C, isDark } = usePageTheme();
   const [form,    setForm]    = useState(EMPTY);
   const [loading, setLoading] = useState(true);
   const [saving,  setSaving]  = useState(false);
@@ -136,7 +134,7 @@ export default function PaymentSettingsPage() {
   const actions = (
     <div style={{ display: 'flex', gap: 10 }}>
       <button onClick={load} disabled={loading}
-        style={{ display:'flex', alignItems:'center', gap:7, padding:'9px 16px', background:'#fff', border:`1.5px solid ${C.border}`, borderRadius:10, fontSize:13, fontWeight:700, color:'#344054', cursor: loading?'not-allowed':'pointer', opacity: loading?0.6:1, boxShadow:'0 1px 4px rgba(16,24,40,0.06)' }}>
+        style={{ display:'flex', alignItems:'center', gap:7, padding:'9px 16px', background: C.cardBg, border:`1.5px solid ${C.border}`, borderRadius:10, fontSize:13, fontWeight:700, color: C.label, cursor: loading?'not-allowed':'pointer', opacity: loading?0.6:1, boxShadow: C.shadow }}>
         <IconRefresh /> Reload
       </button>
       <button onClick={save} disabled={saving || loading}
@@ -154,11 +152,10 @@ export default function PaymentSettingsPage() {
     >
       {loading ? (
         <div style={{ display:'flex', gap:16 }}>
-          {[1,2].map(i => <div key={i} style={{ flex:1, height:180, borderRadius:14, background:'linear-gradient(90deg,#F1F3F9 25%,#E9ECF3 50%,#F1F3F9 75%)' }} />)}
+          {[1,2].map(i => <div key={i} style={{ flex:1, height:180, borderRadius:14, background: isDark ? '#1E293B' : 'linear-gradient(90deg,#F1F3F9 25%,#E9ECF3 50%,#F1F3F9 75%)' }} />)}
         </div>
       ) : (
         <>
-          {/* ── HelaPay / LankaQR ── */}
           <SectionCard
             title="HelaPay / LankaQR"
             subtitle="Credentials from your HelaPOS merchant account — used to generate dynamic QR codes."
@@ -204,22 +201,29 @@ export default function PaymentSettingsPage() {
             </div>
           </SectionCard>
 
-          {/* ── Info box ── */}
-          <div style={{ padding:'14px 18px', borderRadius:12, background:'linear-gradient(135deg,#EFF6FF,#DBEAFE)', border:'1px solid #BFDBFE', display:'flex', alignItems:'flex-start', gap:12 }}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2563EB" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink:0, marginTop:1 }}>
+          <div style={{
+            padding:'14px 18px', borderRadius:12, marginTop:16,
+            background: isDark ? 'linear-gradient(135deg,#172554,#1E293B)' : 'linear-gradient(135deg,#EFF6FF,#DBEAFE)',
+            border: `1px solid ${isDark ? '#334155' : '#BFDBFE'}`,
+            display:'flex', alignItems:'flex-start', gap:12,
+          }}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={isDark ? '#93C5FD' : '#2563EB'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink:0, marginTop:1 }}>
               <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
             </svg>
-            <div style={{ fontSize:13, color:'#1D4ED8', lineHeight:1.6 }}>
+            <div style={{ fontSize:13, color: isDark ? '#93C5FD' : '#1D4ED8', lineHeight:1.6 }}>
               <strong>How to get credentials:</strong> Register on the HelaPOS app → Settings → API Credentials.
-              Then email <a href="mailto:support@helapay.lk" style={{ color:'#1D4ED8', fontWeight:700 }}>support@helapay.lk</a> to register your Notify URL.
-              The webhook URL should be: <code style={{ background:'#DBEAFE', padding:'1px 6px', borderRadius:5, fontSize:12 }}>https://api.salon.hexalyte.com/api/helapay/callback</code>
+              Then email <a href="mailto:support@helapay.lk" style={{ color: isDark ? '#93C5FD' : '#1D4ED8', fontWeight:700 }}>support@helapay.lk</a> to register your Notify URL.
+              The webhook URL should be: <code style={{ background: isDark ? '#0F172A' : '#DBEAFE', padding:'1px 6px', borderRadius:5, fontSize:12 }}>https://api.salon.hexalyte.com/api/helapay/callback</code>
             </div>
           </div>
 
-          {/* ── QR Test hint ── */}
-          <div style={{ padding:'12px 16px', borderRadius:12, background:'#F8FAFC', border:'1px solid #EAECF0', display:'flex', alignItems:'center', gap:10 }}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#667085" strokeWidth="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M14 14h3v3h-3zM17 17h3v3h-3zM14 20h3"/></svg>
-            <span style={{ fontSize:13, color:'#475467' }}>
+          <div style={{
+            marginTop:12, padding:'12px 16px', borderRadius:12,
+            background: C.soft, border:`1px solid ${C.border}`,
+            display:'flex', alignItems:'center', gap:10,
+          }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={C.muted} strokeWidth="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M14 14h3v3h-3zM17 17h3v3h-3zM14 20h3"/></svg>
+            <span style={{ fontSize:13, color: C.label }}>
               Once saved, go to <strong>Payments → Record Payment</strong> or <strong>Walk-in → Collect Payment</strong> and select <strong>LankaQR</strong> as the payment method to generate a QR code.
             </span>
           </div>

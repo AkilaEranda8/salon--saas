@@ -15,10 +15,10 @@ import {
 import { computePromoFromDiscount } from '../utils/promoDiscount';
 import {
   resolvePackageServiceIds,
-  formatCustomerPackageLabel,
   packageCoversAllServices,
   fetchCustomerPackagesForPayment,
   packageCanRedeemNow,
+  formatCustomerPackageOptionLabel,
   calcServiceListTotal,
   getPackageBundlePrice,
   formatPackageAppliedMessage,
@@ -1100,13 +1100,13 @@ export default function PaymentsPage() {
                       <option value="">No package — pay normally</option>
                       {custPackages.map((cp) => (
                         <option key={cp.id} value={cp.id} disabled={!packageCanRedeemNow(cp)}>
-                          {formatCustomerPackageLabel(cp)}{!packageCanRedeemNow(cp) ? ' — unavailable' : ''}
+                          {formatCustomerPackageOptionLabel(cp)}
                         </option>
                       ))}
                     </Select>
                   ) : (
                     <div style={{ fontSize: 12, color: isDark ? '#64748B' : '#64748B' }}>
-                      No package for this customer.
+                      No sold packages for this customer.
                     </div>
                   )}
                   {formPackageId && (
@@ -1368,14 +1368,14 @@ export default function PaymentsPage() {
                             padding: '7px 10px', borderRadius: 8,
                             border: `1px solid ${isDark ? '#78350F' : '#FDE68A'}`,
                           }}>
-                            No active packages for this customer
+                            No sold packages for this customer
                           </div>
                         ) : (
                           <Select value={sp.customer_package_id || ''} onChange={e => setSplit(i, 'customer_package_id', e.target.value)} style={{ fontSize: 12 }}>
                             <option value="">Select package…</option>
                             {custPackages.map(cp => (
                               <option key={cp.id} value={cp.id} disabled={!packageCanRedeemNow(cp)}>
-                                {formatCustomerPackageLabel(cp)}{!packageCanRedeemNow(cp) ? ' — unavailable' : ''}
+                                {formatCustomerPackageOptionLabel(cp)}
                               </option>
                             ))}
                           </Select>

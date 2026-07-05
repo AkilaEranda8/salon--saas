@@ -64,7 +64,12 @@ export function packageIsBookable(pkg) {
   return Array.isArray(svc) && svc.length > 0;
 }
 
-/** Active sold package — show in payment / walk-in lists (sessions validated at redeem). */
+/** Sold package row — list in payment UI (any status; redeem rules apply on select). */
+export function packageIsVisibleForPayment(cp) {
+  return !!(cp && cp.id != null);
+}
+
+/** Active sold package — for appointment / walk-in auto-select flows. */
 export function packageIsSelectableForPayment(cp) {
   if (!cp) return false;
   if (cp.status === 'expired' || cp.status === 'completed') return false;
@@ -79,7 +84,8 @@ function packageExpiryPassed(cp) {
 
 /** Package can be redeemed right now (has sessions + services). */
 export function packageCanRedeemNow(cp) {
-  if (!packageIsSelectableForPayment(cp)) return false;
+  if (!packageIsVisibleForPayment(cp)) return false;
+  if (cp.status === 'expired' || cp.status === 'completed') return false;
   if (packageExpiryPassed(cp)) return false;
   const total = Number(cp.sessions_total ?? 0);
   const used = Number(cp.sessions_used || 0);
@@ -138,6 +144,19 @@ export const formatCustomerPackageLabel = (cp) => {
   const disc = packageDiscountLabel(cp.package);
   return `${name} — ${pricePart}${sessions}${disc}`;
 };
+
+/** Dropdown label with reason when package cannot be used for payment. */
+export function formatCustomerPackageOptionLabel(cp) {
+  const base = formatCustomerPackageLabel(cp);
+  if (packageCanRedeemNow(cp)) return base;
+  if (cp.status === 'expired' || packageExpiryPassed(cp)) return `${base} — expired`;
+  if (cp.status === 'completed') return `${base} — completed`;
+  const total = Number(cp.sessions_total ?? 0);
+  const used = Number(cp.sessions_used || 0);
+  if (total > 0 && used >= total) return `${base} — no sessions left`;
+  if (!packageIsRedeemable(cp?.package)) return `${base} — no services`;
+  return `${base} — unavailable`;
+}
 
 export function calcServiceListTotal(serviceIds = [], allServices = []) {
   return serviceIds.map(Number).filter(Boolean).reduce((sum, sid) => {
@@ -367,12 +386,12 @@ export async function fetchCustomerPackagesForPayment(api, customerId) {
   try {
     const r = await api.get(`/packages/customer/${id}`);
     const list = Array.isArray(r.data) ? r.data : [];
-    return list.filter((cp) => packageIsSelectableForPayment(cp));
+    return list.filter((cp) => packageIsVisibleForPayment(cp));
   } catch {
     try {
       const r = await api.get(`/packages/customer/${id}/active`);
       const list = Array.isArray(r.data) ? r.data : [];
-      return list.filter((cp) => packageIsSelectableForPayment(cp));
+      return list.filter((cp) => packageIsVisibleForPayment(cp));
     } catch {
       return [];
     }
@@ -380,7 +399,8 @@ export async function fetchCustomerPackagesForPayment(api, customerId) {
 }
 
 export async function fetchActiveCustomerPackages(api, customerId) {
-  return fetchCustomerPackagesForPayment(api, customerId);
+  const list = await fetchCustomerPackagesForPayment(api, customerId);
+  return list.filter((cp) => packageIsSelectableForPayment(cp) && packageCanRedeemNow(cp));
 }
 
 /** Apply package selection to service ids and payment fields (shared by walk-in / appointments). */

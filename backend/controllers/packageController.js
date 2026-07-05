@@ -59,8 +59,13 @@ function enrichCustomerPackageRow(cp) {
 
 async function findCustomerForTenant(req, customerId) {
   const { Customer } = require('../models');
+  const tenantId = resolveTenantId(req);
+  const where = { id: customerId };
+  if (tenantId) {
+    where[Op.or] = [{ tenant_id: tenantId }, { tenant_id: null }];
+  }
   return Customer.findOne({
-    where: { id: customerId, ...tenantWhere(req) },
+    where,
     attributes: ['id'],
   });
 }

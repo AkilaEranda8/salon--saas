@@ -86,22 +86,25 @@ const CSS = `
 .lp-hero {
   position: relative;
   overflow: hidden;
-  padding: clamp(40px, 5vh, 56px) clamp(48px, 6vw, 72px);
-  display: grid;
-  grid-template-rows: auto 1fr auto;
-  min-height: 100vh;
-  min-height: 100dvh;
+  padding: 48px 56px;
+  display: flex;
+  flex-direction: column;
   height: 100%;
   background: #06060b;
 }
-.lp-hero-main {
+.lp-panel-body {
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  align-self: stretch;
-  width: 100%;
+  flex: 1;
   min-height: 0;
-  gap: clamp(28px, 4.5vh, 48px);
+  justify-content: space-between;
+  gap: 0;
+}
+.lp-hero-top {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  flex-shrink: 0;
 }
 .lp-hero-glow {
   position: absolute;
@@ -116,23 +119,22 @@ const CSS = `
 
 .lp-brand-row {
   flex-shrink: 0;
-  margin-bottom: clamp(8px, 1.5vh, 16px);
 }
 .lp-brand-row img {
   display: block;
-  width: clamp(96px, 10vw, 128px);
-  height: clamp(96px, 10vw, 128px);
+  width: clamp(96px, 10vw, 120px);
+  height: clamp(96px, 10vw, 120px);
   object-fit: contain;
-  border-radius: 18px;
+  border-radius: 16px;
 }
 .lp-hero-copy {
   width: 100%;
 }
 .lp-title {
   margin: 0;
-  font-size: clamp(30px, 3.5vw, 44px);
+  font-size: clamp(26px, 2.8vw, 36px);
   font-weight: 700;
-  line-height: 1.14;
+  line-height: 1.15;
   letter-spacing: -.03em;
   color: #fff !important;
 }
@@ -144,23 +146,30 @@ const CSS = `
   background-clip: text;
 }
 .lp-sub {
-  margin: 14px 0 0;
-  font-size: clamp(14px, 1.15vw, 16px);
-  line-height: 1.65;
+  margin: 10px 0 0;
+  font-size: 14px;
+  line-height: 1.6;
   color: #7a8299 !important;
 }
 .lp-features {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: clamp(10px, 1.2vw, 14px);
+  grid-template-rows: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  flex: 1;
   width: 100%;
+  min-height: 0;
+  margin: 24px 0;
+  align-content: stretch;
 }
 .lp-feat {
   display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  padding: clamp(14px, 1.4vw, 18px) clamp(14px, 1.5vw, 18px);
-  border-radius: 12px;
+  align-items: center;
+  gap: 10px;
+  height: 100%;
+  min-height: 52px;
+  padding: 12px 14px;
+  border-radius: 10px;
   background: rgba(255,255,255,.03);
   border: 1px solid rgba(255,255,255,.06);
   transition: background .2s, border-color .2s;
@@ -171,9 +180,9 @@ const CSS = `
 }
 .lp-feat-icon {
   flex-shrink: 0;
-  width: 36px;
-  height: 36px;
-  border-radius: 9px;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -183,43 +192,41 @@ const CSS = `
 }
 .lp-feat strong {
   display: block;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
-  margin-bottom: 3px;
+  margin-bottom: 2px;
   color: #f0f1f5 !important;
 }
 .lp-feat span {
-  font-size: 12px;
+  font-size: 11px;
   color: #6b7289 !important;
-  line-height: 1.45;
+  line-height: 1.4;
 }
 .lp-hero-foot {
-  align-self: start;
-  padding-top: clamp(16px, 2.5vh, 24px);
+  flex-shrink: 0;
+  padding-top: 0;
   font-size: 11px;
   color: #4b5268;
   letter-spacing: .01em;
 }
 
 .lp-auth {
-  display: grid;
-  place-items: center;
-  padding: clamp(32px, 4vh, 48px) clamp(40px, 5vw, 64px);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 48px 56px;
   background: #08080f;
   border-left: 1px solid rgba(255,255,255,.04);
-  min-height: 100vh;
-  min-height: 100dvh;
   height: 100%;
   animation: lp-in .45s ease-out both;
   overflow-y: auto;
 }
 .lp-auth-inner {
   width: 100%;
-  max-width: 380px;
+  max-width: 360px;
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  min-height: min(100%, 560px);
 }
 .lp-h1 {
   margin: 0;
@@ -368,7 +375,7 @@ const CSS = `
     justify-content: center;
     margin-bottom: 32px;
   }
-  .lp-mobile-brand img { width: 88px; height: 88px; object-fit: contain; }
+  .lp-mobile-brand img { width: 96px; height: 96px; object-fit: contain; }
 }
 `;
 
@@ -596,23 +603,25 @@ export default function LoginPage({ platformMode = false }) {
 
       <aside className="lp-hero">
         <div className="lp-hero-glow" />
-        <div className="lp-brand-row">
-          <img src={logoSrc} alt={brandName} onError={(e) => { e.currentTarget.src = '/kogo.png?v=6'; }} />
-        </div>
-        <div className="lp-hero-main">
-          <div className="lp-hero-copy">
-            <h2 className="lp-title">
-              {platformMode ? (
-                <>Manage your <em>entire platform</em> from one place</>
-              ) : (
-                <>Run your entire <em>salon</em> from one place</>
-              )}
-            </h2>
-            <p className="lp-sub">
-              {platformMode
-                ? 'Tenants, subscriptions, monitoring and system controls — built for scale.'
-                : `${brandName} brings appointments, payments, inventory, CRM and analytics into a single powerful platform.`}
-            </p>
+        <div className="lp-panel-body">
+          <div className="lp-hero-top">
+            <div className="lp-brand-row">
+              <img src={logoSrc} alt={brandName} onError={(e) => { e.currentTarget.src = '/kogo.png?v=6'; }} />
+            </div>
+            <div className="lp-hero-copy">
+              <h2 className="lp-title">
+                {platformMode ? (
+                  <>Manage your <em>entire platform</em> from one place</>
+                ) : (
+                  <>Run your entire <em>salon</em> from one place</>
+                )}
+              </h2>
+              <p className="lp-sub">
+                {platformMode
+                  ? 'Tenants, subscriptions, monitoring and system controls — built for scale.'
+                  : `${brandName} brings appointments, payments, inventory, CRM and analytics into a single powerful platform.`}
+              </p>
+            </div>
           </div>
           <div className="lp-features">
             {FEATURES.map((f) => (
@@ -625,9 +634,9 @@ export default function LoginPage({ platformMode = false }) {
               </div>
             ))}
           </div>
-        </div>
-        <div className="lp-hero-foot">
-          256-bit encryption · JWT RS256 · Multi-branch support
+          <div className="lp-hero-foot">
+            256-bit encryption · JWT RS256 · Multi-branch support
+          </div>
         </div>
       </aside>
 

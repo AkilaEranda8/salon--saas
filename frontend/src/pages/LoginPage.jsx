@@ -69,7 +69,9 @@ const CSS = `
 
 .lp-root {
   min-height: 100vh;
+  min-height: 100dvh;
   height: 100vh;
+  height: 100dvh;
   width: 100%;
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -77,27 +79,29 @@ const CSS = `
   background: #06060b;
   color: #e8eaf0;
   overflow: hidden;
+  box-sizing: border-box;
 }
+.lp-root *, .lp-root *::before, .lp-root *::after { box-sizing: border-box; }
+
 .lp-hero {
   position: relative;
   overflow: hidden;
-  padding: clamp(36px, 4vw, 64px) clamp(40px, 6vw, 88px);
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
+  padding: clamp(40px, 5vh, 56px) clamp(48px, 6vw, 72px);
+  display: grid;
+  grid-template-rows: auto 1fr auto;
   min-height: 100vh;
+  min-height: 100dvh;
   height: 100%;
   background: #06060b;
 }
 .lp-hero-main {
-  flex: 1;
   display: flex;
   flex-direction: column;
   justify-content: center;
+  align-self: stretch;
   width: 100%;
   min-height: 0;
-  padding: clamp(16px, 3vh, 32px) 0;
-  gap: clamp(14px, 2vh, 24px);
+  gap: clamp(28px, 4.5vh, 48px);
 }
 .lp-hero-glow {
   position: absolute;
@@ -112,23 +116,24 @@ const CSS = `
 
 .lp-brand-row {
   flex-shrink: 0;
+  margin-bottom: clamp(8px, 1.5vh, 16px);
 }
 .lp-brand-row img {
-  width: clamp(72px, 7vw, 96px);
-  height: clamp(72px, 7vw, 96px);
+  display: block;
+  width: clamp(96px, 10vw, 128px);
+  height: clamp(96px, 10vw, 128px);
   object-fit: contain;
-  border-radius: 14px;
+  border-radius: 18px;
 }
 .lp-hero-copy {
   width: 100%;
 }
 .lp-title {
   margin: 0;
-  font-size: clamp(28px, 3.2vw, 42px);
+  font-size: clamp(30px, 3.5vw, 44px);
   font-weight: 700;
-  line-height: 1.12;
+  line-height: 1.14;
   letter-spacing: -.03em;
-  max-width: 100%;
   color: #fff !important;
 }
 .lp-title em {
@@ -139,25 +144,23 @@ const CSS = `
   background-clip: text;
 }
 .lp-sub {
-  margin: 12px 0 0;
-  font-size: clamp(13px, 1.1vw, 15px);
-  line-height: 1.6;
+  margin: 14px 0 0;
+  font-size: clamp(14px, 1.15vw, 16px);
+  line-height: 1.65;
   color: #7a8299 !important;
-  max-width: 100%;
 }
 .lp-features {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: clamp(8px, 1vw, 12px);
-  margin-top: 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: clamp(10px, 1.2vw, 14px);
   width: 100%;
 }
 .lp-feat {
   display: flex;
   align-items: flex-start;
   gap: 12px;
-  padding: clamp(12px, 1.2vw, 16px) clamp(14px, 1.4vw, 18px);
-  border-radius: 11px;
+  padding: clamp(14px, 1.4vw, 18px) clamp(14px, 1.5vw, 18px);
+  border-radius: 12px;
   background: rgba(255,255,255,.03);
   border: 1px solid rgba(255,255,255,.06);
   transition: background .2s, border-color .2s;
@@ -168,9 +171,9 @@ const CSS = `
 }
 .lp-feat-icon {
   flex-shrink: 0;
-  width: clamp(32px, 2.8vw, 38px);
-  height: clamp(32px, 2.8vw, 38px);
-  border-radius: 8px;
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -180,33 +183,32 @@ const CSS = `
 }
 .lp-feat strong {
   display: block;
-  font-size: clamp(12px, 1vw, 14px);
+  font-size: 13px;
   font-weight: 600;
-  margin-bottom: 2px;
+  margin-bottom: 3px;
   color: #f0f1f5 !important;
 }
 .lp-feat span {
-  font-size: clamp(11px, 0.85vw, 12px);
+  font-size: 12px;
   color: #6b7289 !important;
-  line-height: 1.4;
+  line-height: 1.45;
 }
 .lp-hero-foot {
-  flex-shrink: 0;
-  padding-top: 0;
+  align-self: start;
+  padding-top: clamp(16px, 2.5vh, 24px);
   font-size: 11px;
   color: #4b5268;
   letter-spacing: .01em;
 }
 
 .lp-auth {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: stretch;
-  padding: clamp(28px, 3.5vw, 48px) clamp(36px, 5vw, 72px);
+  display: grid;
+  place-items: center;
+  padding: clamp(32px, 4vh, 48px) clamp(40px, 5vw, 64px);
   background: #08080f;
   border-left: 1px solid rgba(255,255,255,.04);
   min-height: 100vh;
+  min-height: 100dvh;
   height: 100%;
   animation: lp-in .45s ease-out both;
   overflow-y: auto;
@@ -214,11 +216,10 @@ const CSS = `
 .lp-auth-inner {
   width: 100%;
   max-width: 380px;
-  margin: 0 auto;
-  flex: 1;
   display: flex;
   flex-direction: column;
   justify-content: center;
+  min-height: min(100%, 560px);
 }
 .lp-h1 {
   margin: 0;
@@ -351,6 +352,9 @@ const CSS = `
   .lp-root { grid-template-columns: 1fr; height: auto; min-height: 100vh; overflow: auto; }
   .lp-hero { display: none; }
   .lp-auth {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
     border-left: none;
     padding: 32px 24px 40px;
     background: #06060b;
@@ -364,7 +368,7 @@ const CSS = `
     justify-content: center;
     margin-bottom: 32px;
   }
-  .lp-mobile-brand img { width: 72px; height: 72px; object-fit: contain; }
+  .lp-mobile-brand img { width: 88px; height: 88px; object-fit: contain; }
 }
 `;
 

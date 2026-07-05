@@ -51,17 +51,18 @@ export function packageIsBookable(pkg) {
   return Array.isArray(svc) && svc.length > 0;
 }
 
-/** Customer-owned package row selectable in payment / walk-in lists. */
+/** Active sold package — show in payment / walk-in lists (sessions validated at redeem). */
 export function packageIsSelectableForPayment(cp) {
-  if (!cp || cp.status !== 'active') return false;
+  return !!(cp && cp.status === 'active');
+}
+
+/** Package can be redeemed right now (has sessions + services). */
+export function packageCanRedeemNow(cp) {
+  if (!packageIsSelectableForPayment(cp)) return false;
   const total = Number(cp.sessions_total ?? 0);
   const used = Number(cp.sessions_used || 0);
   if (total > 0 && used >= total) return false;
-  if (cp.expiry_date) {
-    const today = new Date().toISOString().slice(0, 10);
-    if (String(cp.expiry_date).slice(0, 10) < today) return false;
-  }
-  return true;
+  return packageIsRedeemable(cp?.package);
 }
 
 /** Customer-owned package template has services for redemption. */
@@ -338,15 +339,25 @@ export function resolveTemplateServiceIds(pkgOrCustomerPackage, allServices = []
   return resolvePackageServiceIds({ package: pkg }, allServices);
 }
 
-export async function fetchActiveCustomerPackages(api, customerId) {
+export async function fetchCustomerPackagesForPayment(api, customerId) {
   if (!customerId || !api) return [];
   try {
-    const r = await api.get(`/packages/customer/${customerId}/active`);
+    const r = await api.get(`/packages/customer/${customerId}`);
     const list = Array.isArray(r.data) ? r.data : [];
-    return filterSelectableCustomerPackages(list);
+    return list.filter((cp) => packageIsSelectableForPayment(cp));
   } catch {
-    return [];
+    try {
+      const r = await api.get(`/packages/customer/${customerId}/active`);
+      const list = Array.isArray(r.data) ? r.data : [];
+      return list.filter((cp) => packageIsSelectableForPayment(cp));
+    } catch {
+      return [];
+    }
   }
+}
+
+export async function fetchActiveCustomerPackages(api, customerId) {
+  return fetchCustomerPackagesForPayment(api, customerId);
 }
 
 /** Apply package selection to service ids and payment fields (shared by walk-in / appointments). */

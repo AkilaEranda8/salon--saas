@@ -17,7 +17,8 @@ import {
   resolvePackageServiceIds,
   formatCustomerPackageLabel,
   packageCoversAllServices,
-  fetchActiveCustomerPackages,
+  fetchCustomerPackagesForPayment,
+  packageCanRedeemNow,
   calcServiceListTotal,
   getPackageBundlePrice,
   formatPackageAppliedMessage,
@@ -692,7 +693,7 @@ export default function PaymentsPage() {
   useEffect(() => {
     if (!showForm || !form.customer_id) return;
     setLoadingPkgs(true);
-    fetchActiveCustomerPackages(api, form.customer_id)
+    fetchCustomerPackagesForPayment(api, form.customer_id)
       .then(setCustPackages)
       .catch(() => setCustPackages([]))
       .finally(() => setLoadingPkgs(false));
@@ -717,6 +718,11 @@ export default function PaymentsPage() {
     }
     const cp = custPackages.find((p) => String(p.id) === String(packageId));
     if (!cp) return;
+    if (!packageCanRedeemNow(cp)) {
+      setFormErr('This package has no sessions left or no services configured.');
+      setFormPackageId('');
+      return;
+    }
     const ids = resolvePackageServiceIds(cp, services);
     const bundle = getPackageBundlePrice(cp);
     setForm((f) => ({
@@ -754,7 +760,7 @@ export default function PaymentsPage() {
       setCustPackages([]);
       if (p.customer_id) {
         setLoadingPkgs(true);
-        fetchActiveCustomerPackages(api, p.customer_id)
+        fetchCustomerPackagesForPayment(api, p.customer_id)
           .then(setCustPackages)
           .catch(() => setCustPackages([]))
           .finally(() => setLoadingPkgs(false));
@@ -815,6 +821,9 @@ export default function PaymentsPage() {
       if (!pkgSplit?.customer_package_id) return setFormErr('Select a customer package for Package payment.');
       if (pkgCp && !packageCoversAllServices(form.service_ids, pkgCp)) {
         return setFormErr('All selected services must be included in the package.');
+      }
+      if (pkgCp && !packageCanRedeemNow(pkgCp)) {
+        return setFormErr('Selected package has no sessions remaining or cannot be used.');
       }
     }
     if (!usingPackage && (!form.total_amount || Number(form.total_amount) <= 0)) {
@@ -1087,7 +1096,9 @@ export default function PaymentsPage() {
                     <Select value={formPackageId} onChange={(e) => applyFormPackage(e.target.value)}>
                       <option value="">No package — pay normally</option>
                       {custPackages.map((cp) => (
-                        <option key={cp.id} value={cp.id}>{formatCustomerPackageLabel(cp)}</option>
+                        <option key={cp.id} value={cp.id} disabled={!packageCanRedeemNow(cp)}>
+                          {formatCustomerPackageLabel(cp)}{!packageCanRedeemNow(cp) ? ' — unavailable' : ''}
+                        </option>
                       ))}
                     </Select>
                   ) : (
@@ -1360,8 +1371,8 @@ export default function PaymentsPage() {
                           <Select value={sp.customer_package_id || ''} onChange={e => setSplit(i, 'customer_package_id', e.target.value)} style={{ fontSize: 12 }}>
                             <option value="">Select package…</option>
                             {custPackages.map(cp => (
-                              <option key={cp.id} value={cp.id}>
-                                {cp.package?.name || 'Package'} — {cp.sessions_remaining || (cp.sessions_total - cp.sessions_used)} sessions left
+                              <option key={cp.id} value={cp.id} disabled={!packageCanRedeemNow(cp)}>
+                                {formatCustomerPackageLabel(cp)}{!packageCanRedeemNow(cp) ? ' — unavailable' : ''}
                               </option>
                             ))}
                           </Select>

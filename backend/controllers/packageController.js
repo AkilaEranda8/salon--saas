@@ -233,8 +233,13 @@ const customerPackages = async (req, res) => {
     const rows = await CustomerPackage.findAll({
       where: { customer_id: req.params.customerId, ...tenantWhere(req) },
       include: [
-        { model: Package, as: 'package', attributes: ['id', 'name', 'type', 'services', 'package_price', 'original_price', 'discount_percent'] },
-        { model: Branch,  as: 'branch',  attributes: ['id', 'name'] },
+        {
+          model: Package,
+          as: 'package',
+          attributes: ['id', 'name', 'type', 'services', 'package_price', 'original_price', 'discount_percent', 'is_active'],
+          required: false,
+        },
+        { model: Branch, as: 'branch', attributes: ['id', 'name'] },
       ],
       order: [['purchase_date', 'DESC']],
     });
@@ -253,7 +258,7 @@ const customerPackages = async (req, res) => {
       });
     }
 
-    return res.json(rows);
+    return res.json(rows.map((cp) => enrichCustomerPackageRow(cp)));
   } catch (err) {
     console.error(err);
     return res.status(500).json({ message: 'Server error.' });
@@ -284,9 +289,7 @@ const activePackages = async (req, res) => {
       order: [['expiry_date', 'ASC'], ['purchase_date', 'DESC']],
     });
 
-    const active = rows
-      .filter((cp) => hasSessionsLeft(cp))
-      .map((cp) => enrichCustomerPackageRow(cp));
+    const active = rows.map((cp) => enrichCustomerPackageRow(cp));
     return res.json(active);
   } catch (err) {
     console.error(err);

@@ -5,259 +5,216 @@ import MaintenancePage from './MaintenancePage';
 import { normalizeBranding, resolveBrandName, resolveBrandLogo } from '../utils/branding';
 
 const FEATURES = [
-  { title: 'Scheduling', desc: 'Appointments & walk-ins' },
-  { title: 'Payments', desc: 'Packages & billing' },
-  { title: 'Multi-Branch', desc: 'All locations, one hub' },
-  { title: 'AI Assistant', desc: 'Smart customer replies' },
+  {
+    title: 'Appointments',
+    desc: 'Bookings, walk-ins & calendar',
+    icon: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+        <rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" />
+      </svg>
+    ),
+  },
+  {
+    title: 'Payments',
+    desc: 'Packages, billing & receipts',
+    icon: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+        <rect x="1" y="4" width="22" height="16" rx="2" /><line x1="1" y1="10" x2="23" y2="10" />
+      </svg>
+    ),
+  },
+  {
+    title: 'Analytics',
+    desc: 'Revenue & performance insights',
+    icon: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+        <line x1="18" y1="20" x2="18" y2="10" /><line x1="12" y1="20" x2="12" y2="4" /><line x1="6" y1="20" x2="6" y2="14" />
+      </svg>
+    ),
+  },
+  {
+    title: 'Inventory',
+    desc: 'Stock, products & suppliers',
+    icon: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+        <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+      </svg>
+    ),
+  },
+  {
+    title: 'Client CRM',
+    desc: 'History, loyalty & follow-ups',
+    icon: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" />
+      </svg>
+    ),
+  },
+  {
+    title: 'Multi-Branch',
+    desc: 'All locations, one dashboard',
+    icon: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+        <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><polyline points="9 22 9 12 15 12 15 22" />
+      </svg>
+    ),
+  },
 ];
 
 const CSS = `
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
-@keyframes lp-in   { from { opacity:0; transform:translateY(16px); } to { opacity:1; transform:none; } }
+@keyframes lp-in   { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:none; } }
 @keyframes lp-spin { to { transform:rotate(360deg); } }
-@keyframes lp-glow { 0%,100% { opacity:.45; } 50% { opacity:.85; } }
-@keyframes lp-drift { 0%,100% { transform:translate(0,0); } 50% { transform:translate(0,-12px); } }
 
 .lp-root {
   min-height: 100vh;
   display: grid;
-  grid-template-columns: 1fr 480px;
+  grid-template-columns: 1fr 1fr;
   font-family: 'Inter', system-ui, sans-serif;
-  background: var(--lp-bg);
-  color: var(--lp-text);
+  background: #06060b;
+  color: #e8eaf0;
 }
 .lp-hero {
   position: relative;
   overflow: hidden;
-  padding: 40px 48px 44px;
+  padding: 40px 52px 36px;
   display: flex;
   flex-direction: column;
-  justify-content: flex-start;
-  background: var(--lp-hero-bg);
-  color: #fff;
+  min-height: 100vh;
+  background: #06060b;
 }
-.lp-hero-mesh {
+.lp-hero-glow {
   position: absolute;
   inset: 0;
+  pointer-events: none;
   background:
-    radial-gradient(ellipse 80% 60% at 10% 0%, rgba(167,139,250,.35), transparent 55%),
-    radial-gradient(ellipse 60% 50% at 90% 100%, rgba(236,72,153,.2), transparent 50%),
-    radial-gradient(ellipse 50% 40% at 70% 20%, rgba(59,130,246,.15), transparent 45%);
-  pointer-events: none;
-}
-.lp-hero-grid {
-  position: absolute;
-  inset: 0;
-  background-image:
-    linear-gradient(rgba(255,255,255,.04) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255,255,255,.04) 1px, transparent 1px);
-  background-size: 64px 64px;
-  mask-image: linear-gradient(180deg, #000 0%, transparent 90%);
-  pointer-events: none;
+    radial-gradient(ellipse 70% 55% at 0% 0%, rgba(139,92,246,.22), transparent 60%),
+    radial-gradient(ellipse 55% 45% at 100% 100%, rgba(59,130,246,.14), transparent 55%);
 }
 .lp-hero > * { position: relative; z-index: 1; }
-.lp-hero h1, .lp-hero h2, .lp-hero h3 {
-  color: #FFFFFF !important;
-  font-family: 'Plus Jakarta Sans', sans-serif !important;
-}
-.lp-hero-inner {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 340px;
-  gap: 28px;
-  align-items: start;
-  margin-top: 28px;
-  width: 100%;
-  max-width: 920px;
-}
+.lp-hero h1, .lp-hero h2, .lp-hero h3 { color: #fff !important; font-family: 'Inter', sans-serif !important; }
+
 .lp-brand-row {
   display: flex;
   align-items: center;
   gap: 12px;
 }
 .lp-brand-row img {
-  width: 40px;
-  height: 40px;
+  width: 36px;
+  height: 36px;
   object-fit: contain;
-  border-radius: 10px;
-  background: rgba(255,255,255,.1);
-  padding: 4px;
+  border-radius: 8px;
 }
 .lp-brand-name {
-  font-family: 'Plus Jakarta Sans', sans-serif;
-  font-weight: 800;
-  font-size: 18px;
-  letter-spacing: -.02em;
-}
-.lp-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  margin-top: 24px;
-  padding: 6px 14px;
-  border-radius: 99px;
-  font-size: 11px;
   font-weight: 700;
-  letter-spacing: .08em;
+  font-size: 15px;
+  letter-spacing: .06em;
   text-transform: uppercase;
-  background: rgba(255,255,255,.1);
-  border: 1px solid rgba(255,255,255,.15);
-  backdrop-filter: blur(8px);
-}
-.lp-badge-dot {
-  width: 6px; height: 6px;
-  border-radius: 50%;
-  background: #34D399;
-  box-shadow: 0 0 8px #34D399;
-  animation: lp-glow 2s ease-in-out infinite;
+  color: #c4c9d8;
 }
 .lp-title {
-  margin: 18px 0 0;
-  font-family: 'Plus Jakarta Sans', sans-serif;
-  font-size: clamp(30px, 3.6vw, 46px);
-  font-weight: 800;
-  line-height: 1.12;
-  letter-spacing: -.04em;
+  margin: 48px 0 0;
+  font-size: clamp(32px, 3.2vw, 44px);
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -.03em;
   max-width: 520px;
-  color: #FFFFFF !important;
+  color: #fff !important;
 }
 .lp-title em {
   font-style: normal;
-  color: #F0ABFC !important;
-  -webkit-text-fill-color: #F0ABFC !important;
-  background: none !important;
+  background: linear-gradient(90deg, #a855f7, #6366f1, #3b82f6);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 .lp-sub {
-  margin: 14px 0 0;
+  margin: 16px 0 0;
   font-size: 15px;
   line-height: 1.65;
-  color: rgba(255,255,255,.82) !important;
-  max-width: 440px;
+  color: #7a8299 !important;
+  max-width: 460px;
 }
 .lp-features {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 10px;
-  margin-top: 24px;
-  max-width: 480px;
+  gap: 12px;
+  margin-top: 36px;
+  max-width: 560px;
 }
 .lp-feat {
-  padding: 14px 16px;
-  border-radius: 14px;
-  background: rgba(255,255,255,.07);
-  border: 1px solid rgba(255,255,255,.1);
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 16px 18px;
+  border-radius: 12px;
+  background: rgba(255,255,255,.03);
+  border: 1px solid rgba(255,255,255,.06);
   transition: background .2s, border-color .2s;
 }
 .lp-feat:hover {
-  background: rgba(255,255,255,.11);
-  border-color: rgba(255,255,255,.18);
+  background: rgba(255,255,255,.05);
+  border-color: rgba(139,92,246,.2);
+}
+.lp-feat-icon {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(139,92,246,.12);
+  border: 1px solid rgba(139,92,246,.2);
+  color: #a78bfa;
 }
 .lp-feat strong {
   display: block;
-  font-size: 13px;
-  font-weight: 700;
+  font-size: 14px;
+  font-weight: 600;
   margin-bottom: 3px;
-  font-family: 'Plus Jakarta Sans', sans-serif;
-  color: #fff !important;
+  color: #f0f1f5 !important;
 }
 .lp-feat span {
   font-size: 12px;
-  color: rgba(255,255,255,.72) !important;
-  line-height: 1.4;
+  color: #6b7289 !important;
+  line-height: 1.45;
 }
-.lp-mock {
-  margin-top: 0;
-  animation: lp-drift 8s ease-in-out infinite;
+.lp-hero-foot {
+  margin-top: auto;
+  padding-top: 32px;
+  font-size: 12px;
+  color: #4b5268;
+  letter-spacing: .01em;
 }
-.lp-mock-card {
-  border-radius: 20px;
-  padding: 20px 22px;
-  background: rgba(255,255,255,.08);
-  border: 1px solid rgba(255,255,255,.12);
-  backdrop-filter: blur(20px);
-  box-shadow: 0 32px 80px rgba(0,0,0,.25);
-  width: 100%;
-}
-.lp-mock-stats {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 10px;
-  margin-bottom: 14px;
-}
-.lp-mock-stat {
-  padding: 10px 12px;
-  border-radius: 12px;
-  background: rgba(0,0,0,.15);
-  border: 1px solid rgba(255,255,255,.06);
-}
-.lp-mock-stat label {
-  display: block;
-  font-size: 10px;
-  opacity: .6;
-  font-weight: 600;
-  margin-bottom: 4px;
-}
-.lp-mock-stat b {
-  font-family: 'Plus Jakarta Sans', sans-serif;
-  font-size: 15px;
-  font-weight: 800;
-}
+
 .lp-auth {
   display: flex;
   flex-direction: column;
   justify-content: center;
-  padding: 40px 48px;
-  background: var(--lp-auth-bg);
-  border-left: 1px solid var(--lp-border);
-  box-shadow: -20px 0 60px rgba(0,0,0,.18);
-  position: relative;
-  animation: lp-in .5s ease-out both;
+  align-items: center;
+  padding: 48px 56px;
+  background: #08080f;
+  border-left: 1px solid rgba(255,255,255,.04);
+  min-height: 100vh;
+  animation: lp-in .45s ease-out both;
 }
-.lp-auth::before {
-  content: '';
-  position: absolute;
-  left: 0; top: 0; bottom: 0;
-  width: 1px;
-  background: linear-gradient(180deg, rgba(167,139,250,.35), rgba(167,139,250,.05));
-  pointer-events: none;
+.lp-auth-inner {
+  width: 100%;
+  max-width: 380px;
 }
 .lp-auth-top {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 36px;
-}
-@media (min-width: 961px) {
-  .lp-auth-logo { display: none; }
-  .lp-auth-top { justify-content: flex-end; margin-bottom: 28px; }
-}
-@media (max-width: 1200px) {
-  .lp-hero-inner { grid-template-columns: 1fr; }
-  .lp-mock { max-width: 420px; }
-}
-.lp-auth-logo {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-.lp-auth-logo img {
-  width: 36px;
-  height: 36px;
-  object-fit: contain;
-}
-.lp-auth-logo span {
-  font-family: 'Plus Jakarta Sans', sans-serif;
-  font-weight: 800;
-  font-size: 17px;
-  letter-spacing: -.02em;
-  color: var(--lp-text);
+  justify-content: flex-end;
+  margin-bottom: 8px;
 }
 .lp-theme {
-  width: 40px; height: 40px;
-  border-radius: 10px;
-  border: 1px solid var(--lp-border);
-  background: var(--lp-surface);
-  color: var(--lp-muted);
+  width: 36px; height: 36px;
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,.08);
+  background: rgba(255,255,255,.03);
+  color: #6b7289;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -265,97 +222,92 @@ const CSS = `
   transition: all .2s;
 }
 .lp-theme:hover {
-  border-color: var(--lp-accent);
-  color: var(--lp-accent);
+  border-color: rgba(139,92,246,.35);
+  color: #a78bfa;
 }
-.lp-form { max-width: 360px; width: 100%; margin: 0 auto; }
 .lp-h1 {
   margin: 0;
-  font-family: 'Plus Jakarta Sans', sans-serif;
-  font-size: 28px;
-  font-weight: 800;
-  letter-spacing: -.03em;
-  color: var(--lp-text);
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: -.02em;
+  color: #fff;
 }
 .lp-h2 {
-  margin: 6px 0 28px;
+  margin: 8px 0 32px;
   font-size: 14px;
-  color: var(--lp-muted);
+  color: #6b7289;
   line-height: 1.5;
 }
-.lp-field { margin-bottom: 18px; }
+.lp-field { margin-bottom: 20px; }
+.lp-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
 .lp-label {
   display: block;
   font-size: 13px;
-  font-weight: 600;
-  color: var(--lp-text);
-  margin-bottom: 7px;
+  font-weight: 500;
+  color: #9ca3b8;
 }
+.lp-forgot-inline {
+  background: none; border: none;
+  color: #818cf8;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  font-family: inherit;
+  padding: 0;
+}
+.lp-forgot-inline:hover { color: #a5b4fc; }
 .lp-input-wrap { position: relative; }
-.lp-input-icon {
-  position: absolute;
-  left: 14px; top: 50%;
-  transform: translateY(-50%);
-  color: var(--lp-muted);
-  pointer-events: none;
-  display: flex;
-}
 .lp-input {
   width: 100%;
-  padding: 12px 14px 12px 42px;
+  padding: 13px 16px;
   border-radius: 10px;
   font-size: 14px;
-  color: var(--lp-text);
-  background: var(--lp-input);
-  border: 1.5px solid var(--lp-border);
+  color: #e8eaf0;
+  background: rgba(255,255,255,.04);
+  border: 1px solid rgba(255,255,255,.08);
   outline: none;
   box-sizing: border-box;
   font-family: inherit;
   transition: border-color .15s, box-shadow .15s;
 }
+.lp-input::placeholder { color: #4b5268; }
 .lp-input:focus {
-  border-color: var(--lp-accent);
-  box-shadow: 0 0 0 3px var(--lp-accent-ring);
+  border-color: rgba(139,92,246,.5);
+  box-shadow: 0 0 0 3px rgba(139,92,246,.12);
 }
 .lp-eye {
   position: absolute;
-  right: 12px; top: 50%;
+  right: 14px; top: 50%;
   transform: translateY(-50%);
   background: none; border: none;
-  color: var(--lp-muted);
+  color: #6b7289;
   cursor: pointer;
   padding: 4px;
   display: flex;
 }
-.lp-forgot {
-  text-align: right;
-  margin: -6px 0 22px;
-}
-.lp-forgot button {
-  background: none; border: none;
-  color: var(--lp-accent);
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  font-family: inherit;
-}
 .lp-btn {
   width: 100%;
-  padding: 13px 16px;
+  padding: 14px 16px;
   border-radius: 10px;
   border: none;
   font-size: 15px;
-  font-weight: 700;
+  font-weight: 600;
   font-family: inherit;
   cursor: pointer;
   transition: transform .15s, box-shadow .15s, opacity .15s;
-  background: linear-gradient(135deg, #8B5CF6, #7C3AED);
+  background: linear-gradient(90deg, #9333ea, #6366f1, #3b82f6);
   color: #fff;
-  box-shadow: 0 8px 24px rgba(124,58,237,.35);
+  box-shadow: 0 4px 24px rgba(99,102,241,.35);
+  margin-top: 4px;
 }
 .lp-btn:hover:not(:disabled) {
   transform: translateY(-1px);
-  box-shadow: 0 12px 28px rgba(124,58,237,.42);
+  box-shadow: 0 8px 32px rgba(99,102,241,.45);
 }
 .lp-btn:disabled {
   opacity: .55;
@@ -365,16 +317,17 @@ const CSS = `
 }
 .lp-back {
   width: 100%;
-  margin-top: 12px;
+  margin-top: 14px;
   padding: 10px;
   border: none;
   background: none;
-  color: var(--lp-muted);
+  color: #6b7289;
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 500;
   cursor: pointer;
   font-family: inherit;
 }
+.lp-back:hover { color: #9ca3b8; }
 .lp-alert {
   padding: 11px 14px;
   border-radius: 10px;
@@ -383,79 +336,91 @@ const CSS = `
   font-weight: 500;
   border: 1px solid;
 }
-.lp-alert-err { background: var(--lp-err-bg); border-color: var(--lp-err-bdr); color: var(--lp-err-tx); }
-.lp-alert-ok  { background: var(--lp-ok-bg);  border-color: var(--lp-ok-bdr);  color: var(--lp-ok-tx); }
-.lp-footer {
-  margin-top: 40px;
-  padding-top: 20px;
-  border-top: 1px solid var(--lp-border);
+.lp-alert-err { background: rgba(239,68,68,.08); border-color: rgba(239,68,68,.2); color: #fca5a5; }
+.lp-alert-ok  { background: rgba(16,185,129,.08); border-color: rgba(16,185,129,.2); color: #6ee7b7; }
+.lp-auth-foot {
+  margin-top: 48px;
   text-align: center;
   font-size: 12px;
-  color: var(--lp-muted);
+  color: #4b5268;
+  line-height: 1.7;
 }
+.lp-auth-foot a {
+  color: #6b7289;
+  text-decoration: none;
+}
+.lp-auth-foot a:hover { color: #9ca3b8; }
 .lp-mobile-brand { display: none; }
+
+/* Light theme overrides */
+.lp-root.lp-light {
+  background: #f4f5f9;
+  color: #111827;
+}
+.lp-root.lp-light .lp-hero { background: #f4f5f9; }
+.lp-root.lp-light .lp-hero-glow {
+  background:
+    radial-gradient(ellipse 70% 55% at 0% 0%, rgba(139,92,246,.12), transparent 60%),
+    radial-gradient(ellipse 55% 45% at 100% 100%, rgba(59,130,246,.08), transparent 55%);
+}
+.lp-root.lp-light .lp-brand-name { color: #374151; }
+.lp-root.lp-light .lp-title { color: #111827 !important; }
+.lp-root.lp-light .lp-sub { color: #6b7280 !important; }
+.lp-root.lp-light .lp-feat {
+  background: #fff;
+  border-color: #e5e7eb;
+}
+.lp-root.lp-light .lp-feat:hover { border-color: #c4b5fd; }
+.lp-root.lp-light .lp-feat strong { color: #111827 !important; }
+.lp-root.lp-light .lp-feat span { color: #6b7280 !important; }
+.lp-root.lp-light .lp-hero-foot { color: #9ca3af; }
+.lp-root.lp-light .lp-auth {
+  background: #fff;
+  border-left-color: #e5e7eb;
+}
+.lp-root.lp-light .lp-h1 { color: #111827; }
+.lp-root.lp-light .lp-h2 { color: #6b7280; }
+.lp-root.lp-light .lp-label { color: #374151; }
+.lp-root.lp-light .lp-input {
+  background: #f9fafb;
+  border-color: #e5e7eb;
+  color: #111827;
+}
+.lp-root.lp-light .lp-auth-foot { color: #9ca3af; }
+
 @media (max-width: 960px) {
   .lp-root { grid-template-columns: 1fr; }
   .lp-hero { display: none; }
-  .lp-auth { border-left: none; padding: 32px 24px 40px; min-height: 100vh; }
+  .lp-auth {
+    border-left: none;
+    padding: 32px 24px 40px;
+    background: #06060b;
+  }
+  .lp-root.lp-light .lp-auth { background: #fff; }
   .lp-mobile-brand {
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 10px;
-    margin-bottom: 28px;
-    padding: 16px;
-    border-radius: 16px;
-    background: var(--lp-hero-bg);
-    color: #fff;
+    margin-bottom: 32px;
   }
   .lp-mobile-brand img { width: 36px; height: 36px; object-fit: contain; }
-  .lp-mobile-brand span { font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800; font-size: 18px; }
+  .lp-mobile-brand span {
+    font-weight: 700;
+    font-size: 15px;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: #c4c9d8;
+  }
+  .lp-root.lp-light .lp-mobile-brand span { color: #374151; }
 }
 `;
 
-const THEMES = {
-  light: {
-    bg: '#F4F2FF',
-    heroBg: 'linear-gradient(160deg, #5B21B6 0%, #4C1D95 40%, #312E81 100%)',
-    authBg: '#FFFFFF',
-    surface: '#F8F7FF',
-    border: '#E8E4F8',
-    text: '#0F0A1E',
-    muted: '#6B7280',
-    accent: '#7C3AED',
-    accentRing: 'rgba(124,58,237,.12)',
-    input: '#FAFAFF',
-    errBg: '#FEF2F2', errBdr: '#FECACA', errTx: '#DC2626',
-    okBg: '#ECFDF5', okBdr: '#A7F3D0', okTx: '#059669',
-  },
-  dark: {
-    bg: '#09090F',
-    heroBg: 'linear-gradient(160deg, #3B0764 0%, #1E1B4B 50%, #09090F 100%)',
-    authBg: '#0F1017',
-    surface: '#181A24',
-    border: '#252836',
-    text: '#F1F0F8',
-    muted: '#8B92A8',
-    accent: '#A78BFA',
-    accentRing: 'rgba(167,139,250,.15)',
-    input: '#14161F',
-    errBg: 'rgba(239,68,68,.1)', errBdr: 'rgba(239,68,68,.25)', errTx: '#FCA5A5',
-    okBg: 'rgba(16,185,129,.1)', okBdr: 'rgba(16,185,129,.25)', okTx: '#6EE7B7',
-  },
-};
-
 const IconSun = () => (
-  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/></svg>
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/></svg>
 );
 const IconMoon = () => (
-  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
-);
-const IconUser = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-);
-const IconLock = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
 );
 const IconEye = ({ open }) => open ? (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
@@ -471,7 +436,6 @@ export default function LoginPage({ platformMode = false }) {
     const saved = localStorage.getItem('salon-login-theme');
     return saved ? saved === 'dark' : true;
   });
-  const T = dark ? THEMES.dark : THEMES.light;
 
   const [form, setForm] = useState({ username: '', password: '' });
   const [showPw, setShowPw] = useState(false);
@@ -512,21 +476,6 @@ export default function LoginPage({ platformMode = false }) {
   }, []);
 
   if (maintenance.enabled) return <MaintenancePage />;
-
-  const vars = {
-    '--lp-bg': T.bg,
-    '--lp-hero-bg': T.heroBg,
-    '--lp-auth-bg': T.authBg,
-    '--lp-surface': T.surface,
-    '--lp-border': T.border,
-    '--lp-text': T.text,
-    '--lp-muted': T.muted,
-    '--lp-accent': T.accent,
-    '--lp-accent-ring': T.accentRing,
-    '--lp-input': T.input,
-    '--lp-err-bg': T.errBg, '--lp-err-bdr': T.errBdr, '--lp-err-tx': T.errTx,
-    '--lp-ok-bg': T.okBg, '--lp-ok-bdr': T.okBdr, '--lp-ok-tx': T.okTx,
-  };
 
   const handleChange = (e) => { setForm((p) => ({ ...p, [e.target.name]: e.target.value })); setError(''); };
 
@@ -583,7 +532,7 @@ export default function LoginPage({ platformMode = false }) {
               <label className="lp-label">Verification code</label>
               <input
                 className="lp-input"
-                style={{ paddingLeft: 16, textAlign: 'center', fontSize: 24, fontWeight: 800, letterSpacing: 10, fontFamily: 'monospace' }}
+                style={{ textAlign: 'center', fontSize: 24, fontWeight: 700, letterSpacing: 10, fontFamily: 'monospace' }}
                 value={totpCode}
                 onChange={(e) => { setTotpCode(e.target.value.replace(/\D/g, '').slice(0, 6)); setError(''); }}
                 placeholder="000000"
@@ -595,7 +544,7 @@ export default function LoginPage({ platformMode = false }) {
               />
             </div>
             <button type="submit" className="lp-btn" disabled={loading || totpCode.length !== 6}>
-              {loading ? 'Verifying…' : 'Verify & sign in'}
+              {loading ? 'Verifying…' : 'Verify & sign in →'}
             </button>
             <button type="button" className="lp-back" onClick={() => { setStep2fa(false); setTempToken(''); setTotpCode(''); setError(''); }}>
               ← Back to sign in
@@ -621,12 +570,19 @@ export default function LoginPage({ platformMode = false }) {
             <form onSubmit={handleForgot}>
               <div className="lp-field">
                 <label className="lp-label">Username</label>
-                <div className="lp-input-wrap">
-                  <span className="lp-input-icon"><IconUser /></span>
-                  <input className="lp-input" value={forgotUsername} onChange={(e) => { setForgotUsername(e.target.value); setForgotError(''); }} placeholder="Enter your username" autoFocus autoComplete="username" required />
-                </div>
+                <input
+                  className="lp-input"
+                  value={forgotUsername}
+                  onChange={(e) => { setForgotUsername(e.target.value); setForgotError(''); }}
+                  placeholder="Enter your username"
+                  autoFocus
+                  autoComplete="username"
+                  required
+                />
               </div>
-              <button type="submit" className="lp-btn" disabled={forgotLoading}>{forgotLoading ? 'Sending…' : 'Send reset link'}</button>
+              <button type="submit" className="lp-btn" disabled={forgotLoading}>
+                {forgotLoading ? 'Sending…' : 'Send reset link →'}
+              </button>
             </form>
           )}
           <button type="button" className="lp-back" onClick={() => setStepForgot(false)}>← Back to sign in</button>
@@ -637,27 +593,48 @@ export default function LoginPage({ platformMode = false }) {
     return (
       <>
         <h1 className="lp-h1">{platformMode ? 'Platform sign in' : 'Welcome back'}</h1>
-        <p className="lp-h2">{platformMode ? 'Enter your platform admin credentials' : 'Sign in to access your salon dashboard'}</p>
+        <p className="lp-h2">{platformMode ? 'Enter your platform admin credentials' : 'Sign in to your dashboard'}</p>
         {maintenance.enabled && <div className="lp-alert lp-alert-err">⚠️ {maintenance.message}</div>}
         {error && <div className="lp-alert lp-alert-err">{error}</div>}
         <form onSubmit={handleSubmit}>
           <div className="lp-field">
             <label className="lp-label">Username</label>
-            <div className="lp-input-wrap">
-              <span className="lp-input-icon"><IconUser /></span>
-              <input className="lp-input" name="username" value={form.username} onChange={handleChange} placeholder="Enter your username" autoFocus autoComplete="username" required />
-            </div>
+            <input
+              className="lp-input"
+              name="username"
+              value={form.username}
+              onChange={handleChange}
+              placeholder="owner@yoursalon.com"
+              autoFocus
+              autoComplete="username"
+              required
+            />
           </div>
           <div className="lp-field">
-            <label className="lp-label">Password</label>
+            <div className="lp-label-row">
+              <label className="lp-label">Password</label>
+              <button
+                type="button"
+                className="lp-forgot-inline"
+                onClick={() => { setStepForgot(true); setForgotSent(false); setForgotUsername(''); setForgotError(''); }}
+              >
+                Forgot password?
+              </button>
+            </div>
             <div className="lp-input-wrap">
-              <span className="lp-input-icon"><IconLock /></span>
-              <input className="lp-input" name="password" value={form.password} onChange={handleChange} type={showPw ? 'text' : 'password'} placeholder="Enter your password" autoComplete="current-password" style={{ paddingRight: 42 }} required />
+              <input
+                className="lp-input"
+                name="password"
+                value={form.password}
+                onChange={handleChange}
+                type={showPw ? 'text' : 'password'}
+                placeholder="••••••••"
+                autoComplete="current-password"
+                style={{ paddingRight: 44 }}
+                required
+              />
               <button type="button" className="lp-eye" onClick={() => setShowPw((s) => !s)}><IconEye open={showPw} /></button>
             </div>
-          </div>
-          <div className="lp-forgot">
-            <button type="button" onClick={() => { setStepForgot(true); setForgotSent(false); setForgotUsername(''); setForgotError(''); }}>Forgot password?</button>
           </div>
           <button type="submit" className="lp-btn" disabled={loading || maintenance.enabled}>
             {loading ? (
@@ -665,7 +642,7 @@ export default function LoginPage({ platformMode = false }) {
                 <span style={{ width: 15, height: 15, border: '2px solid rgba(255,255,255,.35)', borderTopColor: '#fff', borderRadius: '50%', animation: 'lp-spin .7s linear infinite' }} />
                 Signing in…
               </span>
-            ) : 'Sign in'}
+            ) : 'Sign in →'}
           </button>
         </form>
       </>
@@ -673,88 +650,60 @@ export default function LoginPage({ platformMode = false }) {
   };
 
   return (
-    <div className="lp-root" style={vars}>
+    <div className={`lp-root${dark ? '' : ' lp-light'}`}>
       <style>{CSS}</style>
 
-      {/* Hero */}
       <aside className="lp-hero">
-        <div className="lp-hero-mesh" />
-        <div className="lp-hero-grid" />
+        <div className="lp-hero-glow" />
         <div className="lp-brand-row">
           <img src={logoSrc} alt={brandName} onError={(e) => { e.currentTarget.src = '/kogo.png?v=6'; }} />
           <span className="lp-brand-name">{brandName}</span>
         </div>
-        <div className="lp-badge">
-          <span className="lp-badge-dot" />
-          {platformMode ? 'Platform Console' : 'Salon Management SaaS'}
-        </div>
-        <div className="lp-hero-inner">
-          <div className="lp-hero-copy">
-            <h2 className="lp-title">
-              {platformMode ? (
-                <>Manage your <em>entire platform</em> from one place</>
-              ) : (
-                <>Run your salon smarter with <em>{brandName}</em></>
-              )}
-            </h2>
-            <p className="lp-sub">
-              {platformMode
-                ? 'Tenants, subscriptions, monitoring and system controls — built for scale.'
-                : 'Appointments, payments, inventory, loyalty and AI — all in one cloud platform.'}
-            </p>
-            <div className="lp-features">
-              {FEATURES.map((f) => (
-                <div key={f.title} className="lp-feat">
-                  <strong>{f.title}</strong>
-                  <span>{f.desc}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-          <div className="lp-mock">
-            <div className="lp-mock-card">
-              <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.1em', textTransform: 'uppercase', color: 'rgba(255,255,255,.7)', marginBottom: 14 }}>Today&apos;s snapshot</div>
-              <div className="lp-mock-stats">
-                {[
-                  { l: 'Revenue', v: 'Rs. 84K', c: '#C4B5FD' },
-                  { l: 'Bookings', v: '32', c: '#93C5FD' },
-                  { l: 'Walk-ins', v: '11', c: '#F9A8D4' },
-                ].map((s) => (
-                  <div key={s.l} className="lp-mock-stat">
-                    <label>{s.l}</label>
-                    <b style={{ color: s.c }}>{s.v}</b>
-                  </div>
-                ))}
+        <h2 className="lp-title">
+          {platformMode ? (
+            <>Manage your <em>entire platform</em> from one place</>
+          ) : (
+            <>Run your entire <em>salon</em> from one place</>
+          )}
+        </h2>
+        <p className="lp-sub">
+          {platformMode
+            ? 'Tenants, subscriptions, monitoring and system controls — built for scale.'
+            : `${brandName} brings appointments, payments, inventory, CRM and analytics into a single powerful platform.`}
+        </p>
+        <div className="lp-features">
+          {FEATURES.map((f) => (
+            <div key={f.title} className="lp-feat">
+              <div className="lp-feat-icon">{f.icon}</div>
+              <div>
+                <strong>{f.title}</strong>
+                <span>{f.desc}</span>
               </div>
-              {['Haircut · 10:30', 'Color · 11:45', 'Spa · 14:00'].map((row, i) => (
-                <div key={row} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 0', borderTop: i === 0 ? '1px solid rgba(255,255,255,.08)' : 'none', fontSize: 12.5, color: 'rgba(255,255,255,.88)' }}>
-                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: ['#34D399', '#FBBF24', '#A78BFA'][i] }} />
-                  {row}
-                </div>
-              ))}
             </div>
-          </div>
+          ))}
+        </div>
+        <div className="lp-hero-foot">
+          256-bit encryption · JWT RS256 · Multi-branch support
         </div>
       </aside>
 
-      {/* Auth panel */}
       <section className="lp-auth">
         <div className="lp-mobile-brand">
           <img src={logoSrc} alt={brandName} onError={(e) => { e.currentTarget.src = '/kogo.png?v=6'; }} />
           <span>{brandName}</span>
         </div>
-        <div className="lp-auth-top">
-          <div className="lp-auth-logo">
-            <img src={logoSrc} alt="" onError={(e) => { e.currentTarget.src = '/kogo.png?v=6'; }} />
-            <span>{brandName}</span>
+        <div className="lp-auth-inner">
+          <div className="lp-auth-top">
+            <button type="button" className="lp-theme" onClick={() => setDark((d) => !d)} title={dark ? 'Light mode' : 'Dark mode'}>
+              {dark ? <IconSun /> : <IconMoon />}
+            </button>
           </div>
-          <button type="button" className="lp-theme" onClick={() => setDark((d) => !d)} title={dark ? 'Light mode' : 'Dark mode'}>
-            {dark ? <IconSun /> : <IconMoon />}
-          </button>
-        </div>
-        <div className="lp-form">{renderForm()}</div>
-        <div className="lp-footer">
-          {brandName} · Powered by Hexalyte Innovation
+          {renderForm()}
+          <div className="lp-auth-foot">
+            Having trouble? Contact your system administrator
+            <br />
+            <a href="/privacy">Privacy</a> · <a href="/terms">Terms</a>
+          </div>
         </div>
       </section>
     </div>

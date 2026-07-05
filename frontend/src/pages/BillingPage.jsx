@@ -6,6 +6,7 @@ import api from '../api/axios';
 import { useAuth } from '../context/AuthContext';
 import PageWrapper from '../components/layout/PageWrapper';
 import { StatCard } from '../components/ui/PageKit';
+import usePageTheme from '../hooks/usePageTheme';
 
 /* ── Inline SVG icons ──────────────────────────────────────────────────────── */
 const IconBuilding   = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/><path d="M3 9h6"/><path d="M3 15h6"/><path d="M15 3v18"/><path d="M15 9h6"/><path d="M15 15h6"/></svg>;
@@ -95,6 +96,7 @@ const TrialBar = ({ daysLeft, totalDays = 14 }) => {
 /* ── Main Component ─────────────────────────────────────────────────────────── */
 const BillingPage = () => {
   const { tenant } = useAuth();
+  const { isDark, C } = usePageTheme();
   const navigate = useNavigate();
   const [status, setStatus]     = useState(null);
   const [loading, setLoading]   = useState(true);
@@ -193,10 +195,10 @@ const BillingPage = () => {
       style={{
         display: 'flex', alignItems: 'center', gap: 7,
         padding: '9px 18px',
-        background: '#fff',
-        border: '1.5px solid #EAECF0',
+        background: C.cardBg,
+        border: `1.5px solid ${C.border}`,
         borderRadius: 10, cursor: managing ? 'not-allowed' : 'pointer',
-        fontSize: 13, fontWeight: 700, color: '#344054',
+        fontSize: 13, fontWeight: 700, color: C.label,
         boxShadow: '0 1px 4px rgba(16,24,40,0.06)',
         transition: 'all 0.15s',
         opacity: managing ? 0.6 : 1,
@@ -320,12 +322,12 @@ const BillingPage = () => {
         <>
           <div>
             <h2 style={{
-              margin: '0 0 4px', fontSize: 20, fontWeight: 800, color: '#101828',
+              margin: '0 0 4px', fontSize: 20, fontWeight: 800, color: C.title,
               fontFamily: "'Sora', 'Manrope', sans-serif", letterSpacing: '-0.3px',
             }}>
               {isSuspended ? 'Renew or change your plan' : 'Choose a plan'}
             </h2>
-            <p style={{ margin: 0, fontSize: 13, color: '#667085', fontFamily: "'Inter', sans-serif" }}>
+            <p style={{ margin: 0, fontSize: 13, color: C.muted, fontFamily: "'Inter', sans-serif" }}>
               {isSuspended
                 ? 'Reactivate your current plan or upgrade to restore access.'
                 : 'Unlock more capacity and features as your business grows.'}
@@ -347,9 +349,11 @@ const BillingPage = () => {
                   style={{
                     flex: 1, minWidth: 230,
                     background: hasOffer
-                      ? 'linear-gradient(160deg, #FFFBEB 0%, #FEF3C7 40%, #FFF 100%)'
-                      : popular ? 'linear-gradient(160deg, #FAF5FF 0%, #F3E8FF 100%)' : '#fff',
-                    border: `1.5px solid ${hasOffer ? '#F59E0B' : popular ? info.color : '#EAECF0'}`,
+                      ? (isDark ? 'linear-gradient(160deg, #422006 0%, #1E293B 100%)' : 'linear-gradient(160deg, #FFFBEB 0%, #FEF3C7 40%, #FFF 100%)')
+                      : popular
+                        ? (isDark ? 'linear-gradient(160deg, #2E1065 0%, #1E293B 100%)' : 'linear-gradient(160deg, #FAF5FF 0%, #F3E8FF 100%)')
+                        : C.planCardBg,
+                    border: `1.5px solid ${hasOffer ? '#F59E0B' : popular ? info.color : C.planCardBorder}`,
                     borderRadius: 18, padding: '26px 22px',
                     position: 'relative',
                     boxShadow: hasOffer
@@ -403,7 +407,7 @@ const BillingPage = () => {
                     </span>
                   </div>
 
-                  <p style={{ fontSize: 12.5, color: '#667085', margin: '0 0 14px', lineHeight: 1.5, fontFamily: "'Inter', sans-serif" }}>
+                  <p style={{ fontSize: 12.5, color: C.muted, margin: '0 0 14px', lineHeight: 1.5, fontFamily: "'Inter', sans-serif" }}>
                     {tagline}
                   </p>
 
@@ -426,7 +430,7 @@ const BillingPage = () => {
                       </div>
                     ) : (
                       <>
-                        <span style={{ fontSize: 29, fontWeight: 900, color: '#101828', fontFamily: "'Sora', sans-serif" }}>
+                        <span style={{ fontSize: 29, fontWeight: 900, color: C.title, fontFamily: "'Sora', sans-serif" }}>
                           {price}
                         </span>
                         <span style={{ fontSize: 13.5, color: '#98A2B3', fontWeight: 500, fontFamily: "'Inter', sans-serif" }}>
@@ -459,8 +463,8 @@ const BillingPage = () => {
                     {features.map((f) => (
                       <li key={f} style={{
                         display: 'flex', alignItems: 'center', gap: 9,
-                        padding: '5px 0', fontSize: 13.5, color: '#344054',
-                        borderBottom: '1px solid #F2F4F7',
+                        padding: '5px 0', fontSize: 13.5, color: C.label,
+                        borderBottom: `1px solid ${C.rowBorder}`,
                         fontFamily: "'Inter', sans-serif",
                       }}>
                         <span style={{
@@ -479,8 +483,8 @@ const BillingPage = () => {
                   {isCurrent && !isSuspended ? (
                     <div style={{
                       textAlign: 'center', padding: '11px 0',
-                      borderRadius: 10, background: '#F2F4F7',
-                      fontSize: 13, fontWeight: 700, color: '#667085',
+                      borderRadius: 10, background: C.soft,
+                      fontSize: 13, fontWeight: 700, color: C.muted,
                       fontFamily: "'Inter', sans-serif",
                     }}>
                       Current plan
@@ -562,7 +566,7 @@ const BillingPage = () => {
       )}
 
       {/* ── Footer ── */}
-      <p style={{ margin: 0, fontSize: 12, color: '#98A2B3', textAlign: 'center', fontFamily: "'Inter', sans-serif" }}>
+      <p style={{ margin: 0, fontSize: 12, color: C.muted, textAlign: 'center', fontFamily: "'Inter', sans-serif" }}>
         Pay via bank transfer and upload your slip for admin approval. Your subscription will be activated once approved.
       </p>
 
@@ -583,10 +587,11 @@ const BillingPage = () => {
             transition={{ duration: 0.2 }}
             onClick={(e) => e.stopPropagation()}
             style={{
-              background: '#fff', borderRadius: 20, padding: '36px 32px',
+              background: C.cardBg, borderRadius: 20, padding: '36px 32px',
               maxWidth: 440, width: '100%',
-              boxShadow: '0 24px 64px rgba(0,0,0,0.18)',
+              boxShadow: C.shadow,
               position: 'relative',
+              border: `1px solid ${C.border}`,
             }}
           >
             {/* Close button */}
@@ -594,10 +599,10 @@ const BillingPage = () => {
               onClick={() => setShowContactModal(false)}
               style={{
                 position: 'absolute', top: 16, right: 16,
-                background: '#F2F4F7', border: 'none', borderRadius: 99,
+                background: C.soft, border: `1px solid ${C.border}`, borderRadius: 99,
                 width: 32, height: 32, cursor: 'pointer',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                color: '#667085', fontSize: 18, fontWeight: 700,
+                color: C.muted, fontSize: 18, fontWeight: 700,
               }}
             >
               ×
@@ -613,12 +618,12 @@ const BillingPage = () => {
             </div>
             <h3 style={{
               textAlign: 'center', margin: '0 0 6px', fontSize: 22, fontWeight: 900,
-              color: '#101828', fontFamily: "'Sora', 'Manrope', sans-serif",
+              color: C.title, fontFamily: "'Sora', 'Manrope', sans-serif",
             }}>
               Enterprise Plan
             </h3>
             <p style={{
-              textAlign: 'center', margin: '0 0 28px', fontSize: 14, color: '#667085',
+              textAlign: 'center', margin: '0 0 28px', fontSize: 14, color: C.muted,
               lineHeight: 1.6, fontFamily: "'Inter', sans-serif",
             }}>
               Get unlimited branches, staff & services with custom pricing tailored for your business. Reach out to our sales team.
@@ -633,8 +638,9 @@ const BillingPage = () => {
                 style={{
                   display: 'flex', alignItems: 'center', gap: 14,
                   padding: '14px 18px', borderRadius: 12,
-                  border: '1.5px solid #D1FAE5', background: 'linear-gradient(135deg, #ECFDF5, #F0FDF4)',
-                  textDecoration: 'none', color: '#065F46',
+                  border: `1.5px solid ${isDark ? '#065F46' : '#D1FAE5'}`,
+                  background: isDark ? 'linear-gradient(135deg, #064E3B, #172033)' : 'linear-gradient(135deg, #ECFDF5, #F0FDF4)',
+                  textDecoration: 'none', color: isDark ? '#6EE7B7' : '#065F46',
                   transition: 'all 0.15s', cursor: 'pointer',
                 }}
               >
@@ -659,8 +665,9 @@ const BillingPage = () => {
                 style={{
                   display: 'flex', alignItems: 'center', gap: 14,
                   padding: '14px 18px', borderRadius: 12,
-                  border: '1.5px solid #BFDBFE', background: 'linear-gradient(135deg, #EFF6FF, #DBEAFE)',
-                  textDecoration: 'none', color: '#1E3A5F',
+                  border: `1.5px solid ${isDark ? '#1E3A8A' : '#BFDBFE'}`,
+                  background: isDark ? 'linear-gradient(135deg, #172554, #1E293B)' : 'linear-gradient(135deg, #EFF6FF, #DBEAFE)',
+                  textDecoration: 'none', color: isDark ? '#93C5FD' : '#1E3A5F',
                   transition: 'all 0.15s', cursor: 'pointer',
                 }}
               >
@@ -686,8 +693,8 @@ const BillingPage = () => {
                 style={{
                   display: 'flex', alignItems: 'center', gap: 14,
                   padding: '14px 18px', borderRadius: 12,
-                  border: '1.5px solid #E5E7EB', background: '#F9FAFB',
-                  textDecoration: 'none', color: '#374151',
+                  border: `1.5px solid ${C.border}`, background: C.soft,
+                  textDecoration: 'none', color: C.label,
                   transition: 'all 0.15s', cursor: 'pointer',
                 }}
               >

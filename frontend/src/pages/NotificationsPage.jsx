@@ -7,6 +7,68 @@ import PageWrapper from '../components/layout/PageWrapper';
 import Button from '../components/ui/Button';
 import { useToast } from '../components/ui/Toast';
 import { FilterBar, DataTable, IconBell } from '../components/ui/PageKit';
+import { useTheme } from '../context/ThemeContext';
+import { getSurface } from '../components/shared/appThemeTokens';
+
+function notifColors(isDark) {
+  const s = getSurface(isDark);
+  return {
+    card: s.panel,
+    border: s.border,
+    borderLight: s.borderSubtle,
+    title: s.text,
+    label: s.textSecondary,
+    muted: s.muted,
+    faint: s.faint,
+    soft: s.soft,
+    shadow: isDark ? '0 8px 20px rgba(2,6,23,0.35)' : '0 1px 4px rgba(16,24,40,0.07)',
+    code: isDark ? '#0F172A' : '#F1F5F9',
+    overlay: s.overlay,
+    inputBg: s.inputBg,
+    inputBorder: s.inputBorder,
+    inputText: s.text,
+    inputReadonlyBg: isDark ? '#172033' : '#F9FAFB',
+    inputReadonlyText: s.faint,
+    ghostBtnBg: isDark ? '#172033' : '#F8FAFC',
+    rowBorder: isDark ? s.borderSubtle : '#F9FAFB',
+    theadBorder: isDark ? s.border : '#F2F4F7',
+    sms: {
+      hdr: isDark ? 'rgba(217,119,6,0.18)' : '#FFFBEB',
+      hdrText: isDark ? '#FCD34D' : '#92400E',
+      hdrStroke: isDark ? '#FCD34D' : '#92400E',
+      body: isDark ? '#172033' : '#FFFDF0',
+      bodyBorder: isDark ? 'rgba(217,119,6,0.35)' : '#FDE68A',
+      bodyText: isDark ? '#FDE68A' : '#92400E',
+      dashBorder: isDark ? 'rgba(217,119,6,0.35)' : '#FDE68A',
+    },
+    smtp: {
+      hdr: isDark ? 'rgba(22,163,74,0.15)' : '#F0FDF4',
+      hdrText: isDark ? '#86EFAC' : '#14532D',
+      hdrStroke: isDark ? '#86EFAC' : '#14532D',
+      body: isDark ? '#172033' : '#F7FFFE',
+      bodyBorder: isDark ? 'rgba(22,163,74,0.35)' : '#BBF7D0',
+      bodyText: isDark ? '#86EFAC' : '#15803D',
+      dashBorder: isDark ? 'rgba(22,163,74,0.35)' : '#BBF7D0',
+    },
+    wa: {
+      hdr: isDark ? 'rgba(22,163,74,0.15)' : '#F0FDF4',
+      hdrText: isDark ? '#86EFAC' : '#166534',
+      body: isDark ? '#172033' : s.panel,
+      bodyBorder: s.border,
+    },
+    api: {
+      hdr: isDark ? '#172033' : '#F8FAFC',
+      hdrText: s.textSecondary,
+    },
+    tpl: {
+      groupHdr: isDark ? '#0F172A' : '#F8FAFC',
+      row: isDark ? s.panel : '#fff',
+      rowBorder: isDark ? s.borderSubtle : '#F2F4F7',
+    },
+    modal: { bg: s.panel, footer: s.soft, border: s.border },
+    pag: { border: s.borderSubtle, btnBg: s.panel, btnText: s.textSecondary },
+  };
+}
 
 const EVENTS = ['customer_registered','appointment_confirmed','appointment_completed','payment_receipt','loyalty_points','walk_in_checkin','walk_in_serving','walk_in_completed','test','review_request','staff_earnings_pdf_test','staff_monthly_earnings'];
 const EVENT_LABELS = {
@@ -109,10 +171,10 @@ const CH_COLOR = {
 const ST_COLOR = { sent:{ bg:'#D1FAE5', color:'#059669' }, failed:{ bg:'#FEE2E2', color:'#DC2626' } };
 const EV_COLOR = { appointment_confirmed:{ bg:'#EFF6FF', color:'#1D4ED8' }, payment_receipt:{ bg:'#D1FAE5', color:'#059669' }, loyalty_points:{ bg:'#FEF3C7', color:'#D97706' } };
 
-function Toggle({ checked, onChange }) {
+function Toggle({ checked, onChange, isDark }) {
   return (
     <button type="button" role="switch" aria-checked={checked} onClick={() => onChange(!checked)}
-      style={{ width:44, height:24, borderRadius:12, border:'none', background:checked?'#2563EB':'#D0D5DD', cursor:'pointer', position:'relative', transition:'background .2s' }}>
+      style={{ width:44, height:24, borderRadius:12, border:'none', background:checked?'#2563EB':(isDark?'#475569':'#D0D5DD'), cursor:'pointer', position:'relative', transition:'background .2s' }}>
       <span style={{ position:'absolute', top:3, left:checked?22:3, width:18, height:18, borderRadius:'50%', background:'#fff', transition:'left .2s', boxShadow:'0 1px 3px rgba(0,0,0,0.25)' }} />
     </button>
   );
@@ -120,6 +182,8 @@ function Toggle({ checked, onChange }) {
 
 export default function NotificationsPage() {
   const { user, tenant }  = useAuth();
+  const { isDark } = useTheme();
+  const C = notifColors(isDark);
   const waTenantId = tenant?.id ?? user?.tenant_id ?? user?.tenantId ?? null;
   const { toast } = useToast();
   const isAdmin   = ['superadmin','admin'].includes(user?.role);
@@ -374,9 +438,14 @@ export default function NotificationsPage() {
 
   const inputStyle = {
     width:'100%', padding:'8px 12px', borderRadius:8,
-    border:'1.5px solid #E4E7EC', fontSize:13,
-    fontFamily:"'Inter',sans-serif", color:'#344054',
-    background:'#fff', outline:'none', boxSizing:'border-box',
+    border:`1.5px solid ${C.inputBorder}`, fontSize:13,
+    fontFamily:"'Inter',sans-serif", color:C.inputText,
+    background:C.inputBg, outline:'none', boxSizing:'border-box',
+  };
+
+  const ghostBtn = {
+    padding:'0 10px', borderRadius:8, border:`1.5px solid ${C.ghostBtnBorder}`,
+    background:C.ghostBtnBg, cursor:'pointer', fontSize:12,
   };
 
   return (
@@ -384,14 +453,14 @@ export default function NotificationsPage() {
 
       {/* Settings Panel */}
       {isAdmin && (
-        <div style={{ background:'#fff', borderRadius:16, border:'1px solid #EAECF0', overflow:'hidden', boxShadow:'0 1px 4px rgba(16,24,40,0.07)' }}>
+        <div style={{ background:C.card, borderRadius:16, border:`1px solid ${C.border}`, overflow:'hidden', boxShadow:C.shadow }}>
           <button type="button" onClick={() => setSettingsOpen(o => !o)}
-            style={{ width:'100%', display:'flex', alignItems:'center', justifyContent:'space-between', padding:'16px 24px', background:'none', border:'none', cursor:'pointer', fontSize:15, fontWeight:700, color:'#101828', fontFamily:"'Inter',sans-serif" }}>
+            style={{ width:'100%', display:'flex', alignItems:'center', justifyContent:'space-between', padding:'16px 24px', background:'none', border:'none', cursor:'pointer', fontSize:15, fontWeight:700, color:C.title, fontFamily:"'Inter',sans-serif" }}>
             <span style={{ display:'flex', alignItems:'center', gap:8 }}>
               <span style={{ color:'#2563EB' }}><IconBell /></span>
               Notification Settings
             </span>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748B" strokeWidth="2.5" strokeLinecap="round" style={{ transform:settingsOpen?'rotate(180deg)':'none', transition:'transform 0.2s' }}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={C.muted} strokeWidth="2.5" strokeLinecap="round" style={{ transform:settingsOpen?'rotate(180deg)':'none', transition:'transform 0.2s' }}>
               <polyline points="6 9 12 15 18 9"/>
             </svg>
           </button>
@@ -399,10 +468,10 @@ export default function NotificationsPage() {
             <div style={{ padding:'0 24px 24px' }}>
               <table style={{ width:'100%', borderCollapse:'collapse' }}>
                 <thead>
-                  <tr style={{ borderBottom:'2px solid #F2F4F7' }}>
-                    <th style={{ textAlign:'left', padding:'10px 0', fontSize:11, fontWeight:700, color:'#98A2B3', textTransform:'uppercase', letterSpacing:'0.05em', width:'40%' }}>Event</th>
-                    <th style={{ textAlign:'center', padding:'10px 0', fontSize:11, fontWeight:700, color:'#98A2B3', textTransform:'uppercase', letterSpacing:'0.05em', width:'20%' }}>Email</th>
-                    <th style={{ textAlign:'center', padding:'10px 0', fontSize:11, fontWeight:700, color:'#98A2B3', textTransform:'uppercase', letterSpacing:'0.05em', width:'20%' }}>WhatsApp</th>
+                  <tr style={{ borderBottom:`2px solid ${C.theadBorder}` }}>
+                    <th style={{ textAlign:'left', padding:'10px 0', fontSize:11, fontWeight:700, color:C.faint, textTransform:'uppercase', letterSpacing:'0.05em', width:'40%' }}>Event</th>
+                    <th style={{ textAlign:'center', padding:'10px 0', fontSize:11, fontWeight:700, color:C.faint, textTransform:'uppercase', letterSpacing:'0.05em', width:'20%' }}>Email</th>
+                    <th style={{ textAlign:'center', padding:'10px 0', fontSize:11, fontWeight:700, color:C.faint, textTransform:'uppercase', letterSpacing:'0.05em', width:'20%' }}>WhatsApp</th>
                     <th style={{ textAlign:'center', padding:'10px 0', fontSize:11, fontWeight:700, color:'#B45309', textTransform:'uppercase', letterSpacing:'0.05em', width:'20%' }}>SMS</th>
                   </tr>
                 </thead>
@@ -413,22 +482,22 @@ export default function NotificationsPage() {
                     const waKey    = SETTINGS_KEY[`${ev}_whatsapp`];
                     const smsKey   = SETTINGS_KEY[`${ev}_sms`];
                     return (
-                      <tr key={ev} style={{ borderBottom:'1px solid #F9FAFB' }}>
-                        <td style={{ padding:'14px 0', fontSize:14, fontWeight:600, color:'#344054' }}>{EVENT_LABELS[ev]}</td>
+                      <tr key={ev} style={{ borderBottom:`1px solid ${C.rowBorder}` }}>
+                        <td style={{ padding:'14px 0', fontSize:14, fontWeight:600, color:C.title }}>{EVENT_LABELS[ev]}</td>
                         <td style={{ textAlign:'center', padding:'14px 0' }}>
                           {channels.includes('email')
-                            ? <Toggle checked={!!settings[emailKey]} onChange={() => setSettings(s=>({...s,[emailKey]:!s[emailKey]}))} />
-                            : <span style={{ color:'#E4E7EC', fontSize:16 }}></span>}
+                            ? <Toggle isDark={isDark} checked={!!settings[emailKey]} onChange={() => setSettings(s=>({...s,[emailKey]:!s[emailKey]}))} />
+                            : <span style={{ color:C.border, fontSize:16 }}>—</span>}
                         </td>
                         <td style={{ textAlign:'center', padding:'14px 0' }}>
                           {channels.includes('whatsapp')
-                            ? <Toggle checked={!!settings[waKey]} onChange={() => setSettings(s=>({...s,[waKey]:!s[waKey]}))} />
-                            : <span style={{ color:'#E4E7EC', fontSize:16 }}></span>}
+                            ? <Toggle isDark={isDark} checked={!!settings[waKey]} onChange={() => setSettings(s=>({...s,[waKey]:!s[waKey]}))} />
+                            : <span style={{ color:C.border, fontSize:16 }}>—</span>}
                         </td>
                         <td style={{ textAlign:'center', padding:'14px 0' }}>
                           {channels.includes('sms')
-                            ? <Toggle checked={!!settings[smsKey]} onChange={() => setSettings(s=>({...s,[smsKey]:!s[smsKey]}))} />
-                            : <span style={{ color:'#E4E7EC', fontSize:16 }}></span>}
+                            ? <Toggle isDark={isDark} checked={!!settings[smsKey]} onChange={() => setSettings(s=>({...s,[smsKey]:!s[smsKey]}))} />
+                            : <span style={{ color:C.border, fontSize:16 }}>—</span>}
                         </td>
                       </tr>
                     );
@@ -441,10 +510,10 @@ export default function NotificationsPage() {
               </div>
 
               {/* SMS Provider (Notify.lk) */}
-              <div style={{ marginTop:20, border:'1px solid #EAECF0', borderRadius:12, overflow:'hidden' }}>
+              <div style={{ marginTop:20, border:`1px solid ${C.border}`, borderRadius:12, overflow:'hidden' }}>
                 <button type="button" onClick={() => setSmsOpen(o => !o)}
-                  style={{ width:'100%', display:'flex', alignItems:'center', justifyContent:'space-between', padding:'14px 18px', background:'#FFFBEB', border:'none', cursor:'pointer', fontFamily:"'Inter',sans-serif" }}>
-                  <span style={{ display:'flex', alignItems:'center', gap:8, fontSize:13, fontWeight:700, color:'#92400E' }}>
+                  style={{ width:'100%', display:'flex', alignItems:'center', justifyContent:'space-between', padding:'14px 18px', background:C.sms.hdr, border:'none', cursor:'pointer', fontFamily:"'Inter',sans-serif" }}>
+                  <span style={{ display:'flex', alignItems:'center', gap:8, fontSize:13, fontWeight:700, color:C.sms.hdrText }}>
                     <span style={{ fontSize:16 }}>📱</span>
                     SMS Provider (Notify.lk)
                     {settings.sms_source === 'db'
@@ -454,19 +523,19 @@ export default function NotificationsPage() {
                       : <span style={{ fontSize:10, fontWeight:700, background:'#FEE2E2', color:'#DC2626', padding:'2px 8px', borderRadius:6 }}>Not Set</span>
                     }
                   </span>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#92400E" strokeWidth="2.5" strokeLinecap="round" style={{ transform:smsOpen?'rotate(180deg)':'none', transition:'transform 0.2s' }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={C.sms.hdrStroke} strokeWidth="2.5" strokeLinecap="round" style={{ transform:smsOpen?'rotate(180deg)':'none', transition:'transform 0.2s' }}>
                     <polyline points="6 9 12 15 18 9"/>
                   </svg>
                 </button>
                 {smsOpen && (
-                  <div style={{ padding:'16px 18px', display:'flex', flexDirection:'column', gap:14, borderTop:'1px solid #FDE68A', background:'#FFFDF0' }}>
-                    <p style={{ margin:0, fontSize:12, color:'#92400E' }}>
+                  <div style={{ padding:'16px 18px', display:'flex', flexDirection:'column', gap:14, borderTop:`1px solid ${C.sms.bodyBorder}`, background:C.sms.body }}>
+                    <p style={{ margin:0, fontSize:12, color:C.sms.bodyText }}>
                       Enter credentials from <strong>app.notify.lk</strong> → Account → API Keys tab.
                     </p>
 
                     {/* User ID */}
                     <div>
-                      <label style={{ display:'block', fontSize:12, fontWeight:600, color:'#344054', marginBottom:5 }}>User ID</label>
+                      <label style={{ display:'block', fontSize:12, fontWeight:600, color:C.label, marginBottom:5 }}>User ID</label>
                       <input
                         type="text"
                         value={settings.sms_user_id || ''}
@@ -478,7 +547,7 @@ export default function NotificationsPage() {
 
                     {/* API Key */}
                     <div>
-                      <label style={{ display:'block', fontSize:12, fontWeight:600, color:'#344054', marginBottom:5 }}>
+                      <label style={{ display:'block', fontSize:12, fontWeight:600, color:C.label, marginBottom:5 }}>
                         API Key
                         {settings.sms_api_key_set && !editingSmsKey && (
                           <span style={{ marginLeft:8, fontSize:11, color:'#059669', fontWeight:500 }}>● Set</span>
@@ -495,18 +564,18 @@ export default function NotificationsPage() {
                             autoFocus
                           />
                           <button type="button" onClick={() => setShowSmsKey(v => !v)}
-                            style={{ padding:'0 10px', borderRadius:8, border:'1.5px solid #E4E7EC', background:'#F8FAFC', cursor:'pointer', fontSize:12, color:'#64748B' }}>
+                            style={{ ...ghostBtn, color:C.muted }}>
                             {showSmsKey ? 'Hide' : 'Show'}
                           </button>
                           <button type="button" onClick={() => { setEditingSmsKey(false); setNewSmsKey(''); }}
-                            style={{ padding:'0 10px', borderRadius:8, border:'1.5px solid #E4E7EC', background:'#F8FAFC', cursor:'pointer', fontSize:12, color:'#DC2626' }}>
+                            style={{ ...ghostBtn, color:'#DC2626' }}>
                             Cancel
                           </button>
                         </div>
                       ) : (
                         <div style={{ display:'flex', gap:8, alignItems:'center' }}>
                           <input type="password" readOnly value={settings.sms_api_key || ''}
-                            style={{ ...inputStyle, flex:1, cursor:'not-allowed', background:'#F9FAFB', color:'#9CA3AF' }} />
+                            style={{ ...inputStyle, flex:1, cursor:'not-allowed', background:C.inputReadonlyBg, color:C.inputReadonlyText }} />
                           <button type="button" onClick={() => { setEditingSmsKey(true); setNewSmsKey(''); }}
                             style={{ padding:'8px 14px', borderRadius:8, border:'1.5px solid #D97706', background:'#FEF3C7', cursor:'pointer', fontSize:12, fontWeight:600, color:'#92400E', whiteSpace:'nowrap' }}>
                             Change
@@ -517,14 +586,14 @@ export default function NotificationsPage() {
 
                     {/* Sender ID (Service ID) */}
                     <div>
-                      <label style={{ display:'block', fontSize:12, fontWeight:600, color:'#344054', marginBottom:5 }}>Sender ID <span style={{ fontWeight:400, color:'#94A3B8' }}>(approved Sender ID from Sender IDs tab)</span></label>
+                      <label style={{ display:'block', fontSize:12, fontWeight:600, color:C.label, marginBottom:5 }}>Sender ID <span style={{ fontWeight:400, color:C.faint }}>(approved Sender ID from Sender IDs tab)</span></label>
                       <input type="text" value={settings.sms_sender_id || ''}
                         onChange={e => setSettings(s => ({ ...s, sms_sender_id: e.target.value.trim() }))}
                         placeholder="e.g. NotifyDEMO / Hexaone" style={inputStyle} />
                     </div>
 
                     {/* Test */}
-                    <div style={{ display:'flex', gap:8, alignItems:'center', paddingTop:4, borderTop:'1px dashed #FDE68A' }}>
+                    <div style={{ display:'flex', gap:8, alignItems:'center', paddingTop:4, borderTop:`1px dashed ${C.sms.dashBorder}` }}>
                       <input type="tel" value={testTo.sms} onChange={e => setTestTo(t => ({ ...t, sms: e.target.value }))}
                         placeholder="Test phone (e.g. 0771234567)" style={{ ...inputStyle, flex:1 }} />
                       <button type="button" disabled={testBusy.sms} onClick={() => sendTestProvider('sms')}
@@ -537,10 +606,10 @@ export default function NotificationsPage() {
               </div>
 
               {/* SMTP / Email */}
-              <div style={{ marginTop:12, border:'1px solid #EAECF0', borderRadius:12, overflow:'hidden' }}>
+              <div style={{ marginTop:12, border:`1px solid ${C.border}`, borderRadius:12, overflow:'hidden' }}>
                 <button type="button" onClick={() => setSmtpOpen(o => !o)}
-                  style={{ width:'100%', display:'flex', alignItems:'center', justifyContent:'space-between', padding:'14px 18px', background:'#F0FDF4', border:'none', cursor:'pointer', fontFamily:"'Inter',sans-serif" }}>
-                  <span style={{ display:'flex', alignItems:'center', gap:8, fontSize:13, fontWeight:700, color:'#14532D' }}>
+                  style={{ width:'100%', display:'flex', alignItems:'center', justifyContent:'space-between', padding:'14px 18px', background:C.smtp.hdr, border:'none', cursor:'pointer', fontFamily:"'Inter',sans-serif" }}>
+                  <span style={{ display:'flex', alignItems:'center', gap:8, fontSize:13, fontWeight:700, color:C.smtp.hdrText }}>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#16A34A" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
                     SMTP / Email
                     {settings.smtp_source === 'db'
@@ -550,26 +619,26 @@ export default function NotificationsPage() {
                       : <span style={{ fontSize:10, fontWeight:700, background:'#FEE2E2', color:'#DC2626', padding:'2px 8px', borderRadius:6 }}>Not Set</span>
                     }
                   </span>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#14532D" strokeWidth="2.5" strokeLinecap="round" style={{ transform:smtpOpen?'rotate(180deg)':'none', transition:'transform 0.2s' }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={C.smtp.hdrStroke} strokeWidth="2.5" strokeLinecap="round" style={{ transform:smtpOpen?'rotate(180deg)':'none', transition:'transform 0.2s' }}>
                     <polyline points="6 9 12 15 18 9"/>
                   </svg>
                 </button>
                 {smtpOpen && (
-                  <div style={{ padding:'16px 18px', display:'flex', flexDirection:'column', gap:14, borderTop:'1px solid #BBF7D0', background:'#F7FFFE' }}>
-                    <p style={{ margin:0, fontSize:12, color:'#15803D' }}>
+                  <div style={{ padding:'16px 18px', display:'flex', flexDirection:'column', gap:14, borderTop:`1px solid ${C.smtp.bodyBorder}`, background:C.smtp.body }}>
+                    <p style={{ margin:0, fontSize:12, color:C.smtp.bodyText }}>
                       Configure your outgoing email server. Gmail users: use an <strong>App Password</strong> (not your Gmail password).
                     </p>
 
                     {/* Host + Port */}
                     <div style={{ display:'grid', gridTemplateColumns:'1fr 100px', gap:10 }}>
                       <div>
-                        <label style={{ display:'block', fontSize:12, fontWeight:600, color:'#344054', marginBottom:5 }}>SMTP Host</label>
+                        <label style={{ display:'block', fontSize:12, fontWeight:600, color:C.label, marginBottom:5 }}>SMTP Host</label>
                         <input type="text" value={settings.smtp_host || ''}
                           onChange={e => setSettings(s => ({ ...s, smtp_host: e.target.value }))}
                           placeholder="smtp.gmail.com" style={inputStyle} />
                       </div>
                       <div>
-                        <label style={{ display:'block', fontSize:12, fontWeight:600, color:'#344054', marginBottom:5 }}>Port</label>
+                        <label style={{ display:'block', fontSize:12, fontWeight:600, color:C.label, marginBottom:5 }}>Port</label>
                         <input type="number" value={settings.smtp_port || ''}
                           onChange={e => setSettings(s => ({ ...s, smtp_port: e.target.value }))}
                           placeholder="587" style={inputStyle} />
@@ -578,7 +647,7 @@ export default function NotificationsPage() {
 
                     {/* Email (username) */}
                     <div>
-                      <label style={{ display:'block', fontSize:12, fontWeight:600, color:'#344054', marginBottom:5 }}>Email Address <span style={{ fontWeight:400, color:'#94A3B8' }}>(SMTP username)</span></label>
+                      <label style={{ display:'block', fontSize:12, fontWeight:600, color:C.label, marginBottom:5 }}>Email Address <span style={{ fontWeight:400, color:C.faint }}>(SMTP username)</span></label>
                       <input type="email" value={settings.smtp_user || ''}
                         onChange={e => setSettings(s => ({ ...s, smtp_user: e.target.value }))}
                         placeholder="youremail@gmail.com" style={inputStyle} />
@@ -586,7 +655,7 @@ export default function NotificationsPage() {
 
                     {/* Password / App Password */}
                     <div>
-                      <label style={{ display:'block', fontSize:12, fontWeight:600, color:'#344054', marginBottom:5 }}>
+                      <label style={{ display:'block', fontSize:12, fontWeight:600, color:C.label, marginBottom:5 }}>
                         Password / App Password
                         {settings.smtp_pass_set && !editingSmtpPass && (
                           <span style={{ marginLeft:8, fontSize:11, color:'#059669', fontWeight:500 }}>● Set</span>
@@ -603,18 +672,18 @@ export default function NotificationsPage() {
                             autoFocus
                           />
                           <button type="button" onClick={() => setShowSmtpPass(v => !v)}
-                            style={{ padding:'0 10px', borderRadius:8, border:'1.5px solid #E4E7EC', background:'#F8FAFC', cursor:'pointer', fontSize:12, color:'#64748B' }}>
+                            style={{ ...ghostBtn, color:C.muted }}>
                             {showSmtpPass ? 'Hide' : 'Show'}
                           </button>
                           <button type="button" onClick={() => { setEditingSmtpPass(false); setNewSmtpPass(''); }}
-                            style={{ padding:'0 10px', borderRadius:8, border:'1.5px solid #E4E7EC', background:'#F8FAFC', cursor:'pointer', fontSize:12, color:'#DC2626' }}>
+                            style={{ ...ghostBtn, color:'#DC2626' }}>
                             Cancel
                           </button>
                         </div>
                       ) : (
                         <div style={{ display:'flex', gap:8, alignItems:'center' }}>
                           <input type="password" readOnly value={settings.smtp_pass || ''}
-                            style={{ ...inputStyle, flex:1, cursor:'not-allowed', background:'#F9FAFB', color:'#9CA3AF' }} />
+                            style={{ ...inputStyle, flex:1, cursor:'not-allowed', background:C.inputReadonlyBg, color:C.inputReadonlyText }} />
                           <button type="button" onClick={() => { setEditingSmtpPass(true); setNewSmtpPass(''); }}
                             style={{ padding:'8px 14px', borderRadius:8, border:'1.5px solid #16A34A', background:'#DCFCE7', cursor:'pointer', fontSize:12, fontWeight:600, color:'#14532D', whiteSpace:'nowrap' }}>
                             Change
@@ -625,14 +694,14 @@ export default function NotificationsPage() {
 
                     {/* From name */}
                     <div>
-                      <label style={{ display:'block', fontSize:12, fontWeight:600, color:'#344054', marginBottom:5 }}>From Name / Address <span style={{ fontWeight:400, color:'#94A3B8' }}>(optional)</span></label>
+                      <label style={{ display:'block', fontSize:12, fontWeight:600, color:C.label, marginBottom:5 }}>From Name / Address <span style={{ fontWeight:400, color:C.faint }}>(optional)</span></label>
                       <input type="text" value={settings.smtp_from || ''}
                         onChange={e => setSettings(s => ({ ...s, smtp_from: e.target.value }))}
                         placeholder={`HEXAONE <youremail@gmail.com>`} style={inputStyle} />
                     </div>
 
                     {/* Test */}
-                    <div style={{ display:'flex', flexDirection:'column', gap:10, paddingTop:4, borderTop:'1px dashed #BBF7D0' }}>
+                    <div style={{ display:'flex', flexDirection:'column', gap:10, paddingTop:4, borderTop:`1px dashed ${C.smtp.dashBorder}` }}>
                       <div style={{ display:'flex', gap:8, alignItems:'center' }}>
                         <input type="email" value={testTo.smtp} onChange={e => setTestTo(t => ({ ...t, smtp: e.target.value }))}
                           placeholder="Test recipient email" style={{ ...inputStyle, flex:1 }} />
@@ -641,12 +710,12 @@ export default function NotificationsPage() {
                           {testBusy.smtp ? 'Sending…' : '▶ Send Test Email'}
                         </button>
                       </div>
-                      <p style={{ margin:0, fontSize:11, color:'#15803D' }}>
+                      <p style={{ margin:0, fontSize:11, color:C.smtp.bodyText }}>
                         <strong>Staff earnings report:</strong> sends a <strong>sample PDF</strong> (demo data, same layout as the real monthly email) to the address above — use this to verify SMTP + attachments.
                       </p>
                       <div style={{ display:'flex', gap:8, alignItems:'center' }}>
                         <button type="button" disabled={testBusy.earningsPdf || testBusy.smtp} onClick={sendTestStaffEarningsPdf}
-                          style={{ padding:'8px 16px', borderRadius:8, border:'1.5px solid #15803D', background: testBusy.earningsPdf ? '#DCFCE7' : '#fff', color:'#14532D', fontWeight:700, fontSize:12, cursor: (testBusy.earningsPdf || testBusy.smtp) ? 'not-allowed' : 'pointer', whiteSpace:'nowrap', fontFamily:"'Inter',sans-serif" }}>
+                          style={{ padding:'8px 16px', borderRadius:8, border:`1.5px solid ${isDark ? '#166534' : '#15803D'}`, background: testBusy.earningsPdf ? (isDark ? 'rgba(22,163,74,0.2)' : '#DCFCE7') : C.card, color:isDark ? '#86EFAC' : '#14532D', fontWeight:700, fontSize:12, cursor: (testBusy.earningsPdf || testBusy.smtp) ? 'not-allowed' : 'pointer', whiteSpace:'nowrap', fontFamily:"'Inter',sans-serif" }}>
                           {testBusy.earningsPdf ? 'Sending PDF…' : '▶ Send test earnings PDF (report)'}
                         </button>
                       </div>
@@ -656,10 +725,10 @@ export default function NotificationsPage() {
               </div>
 
               {/* WhatsApp QR Connect */}
-              <div style={{ marginTop:12, border:'1px solid #EAECF0', borderRadius:12, overflow:'hidden' }}>
+              <div style={{ marginTop:12, border:`1px solid ${C.border}`, borderRadius:12, overflow:'hidden' }}>
                 <button type="button" onClick={() => setWaOpen(o => !o)}
-                  style={{ width:'100%', display:'flex', alignItems:'center', justifyContent:'space-between', padding:'14px 18px', background:'#F0FDF4', border:'none', cursor:'pointer', fontFamily:"'Inter',sans-serif" }}>
-                  <span style={{ display:'flex', alignItems:'center', gap:8, fontSize:13, fontWeight:700, color:'#166534' }}>
+                  style={{ width:'100%', display:'flex', alignItems:'center', justifyContent:'space-between', padding:'14px 18px', background:C.wa.hdr, border:'none', cursor:'pointer', fontFamily:"'Inter',sans-serif" }}>
+                  <span style={{ display:'flex', alignItems:'center', gap:8, fontSize:13, fontWeight:700, color:C.wa.hdrText }}>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#16A34A" strokeWidth="2"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
                     WhatsApp — QR Connect
                     {waStatus.status === 'connected'
@@ -668,24 +737,24 @@ export default function NotificationsPage() {
                         ? <span style={{ fontSize:10, fontWeight:700, background:'#FEF3C7', color:'#92400E', padding:'2px 8px', borderRadius:6 }}>Scan QR</span>
                         : <span style={{ fontSize:10, fontWeight:700, background:'#F3F4F6', color:'#6B7280', padding:'2px 8px', borderRadius:6 }}>Not connected</span>}
                   </span>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#64748B" strokeWidth="2.5" strokeLinecap="round" style={{ transform:waOpen?'rotate(180deg)':'none', transition:'transform 0.2s' }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={C.muted} strokeWidth="2.5" strokeLinecap="round" style={{ transform:waOpen?'rotate(180deg)':'none', transition:'transform 0.2s' }}>
                     <polyline points="6 9 12 15 18 9"/>
                   </svg>
                 </button>
                 {waOpen && (
-                  <div style={{ padding:'16px 18px', borderTop:'1px solid #EAECF0', display:'flex', flexDirection:'column', gap:16 }}>
-                    <div style={{ padding:'12px 14px', background:'#EFF6FF', border:'1px solid #BFDBFE', borderRadius:10, fontSize:12, color:'#1E40AF', lineHeight:1.6 }}>
+                  <div style={{ padding:'16px 18px', borderTop:`1px solid ${C.wa.bodyBorder}`, display:'flex', flexDirection:'column', gap:16, background:C.wa.body }}>
+                    <div style={{ padding:'12px 14px', background:isDark?'rgba(37,99,235,0.12)':'#EFF6FF', border:`1px solid ${isDark?'rgba(96,165,250,0.25)':'#BFDBFE'}`, borderRadius:10, fontSize:12, color:isDark?'#93C5FD':'#1E40AF', lineHeight:1.6 }}>
                       <strong>Per-salon isolation:</strong> Each tenant connects its own WhatsApp number.
                       Sessions, messages, and outgoing notifications are scoped to this salon only — other salons cannot access or use your connection.
                       Only Admin / Super Admin can connect or disconnect.
                     </div>
-                    <p style={{ margin:0, fontSize:12, color:'#64748B', lineHeight:1.6 }}>
+                    <p style={{ margin:0, fontSize:12, color:C.muted, lineHeight:1.6 }}>
                       Connect your salon WhatsApp by scanning a QR code. Once connected, system messages
                       (appointments, payments, walk-in queue) are sent from your number. Twilio is fallback only.
                     </p>
 
                     {waStatus.status === 'connected' ? (
-                      <div style={{ padding:'12px 14px', background:'#F0FDF4', border:'1px solid #BBF7D0', borderRadius:10, fontSize:13, color:'#166534' }}>
+                      <div style={{ padding:'12px 14px', background:isDark?'rgba(22,163,74,0.12)':'#F0FDF4', border:`1px solid ${isDark?'rgba(22,163,74,0.35)':'#BBF7D0'}`, borderRadius:10, fontSize:13, color:isDark?'#86EFAC':'#166534' }}>
                         <strong>Connected:</strong> +{waStatus.phone || '—'}
                         {waStatus.push_name ? ` (${waStatus.push_name})` : ''}
                         {waStatus.connected_at && (
@@ -696,10 +765,10 @@ export default function NotificationsPage() {
                       </div>
                     ) : waQrImage ? (
                       <div style={{ textAlign:'center' }}>
-                        <p style={{ fontSize:12, fontWeight:600, color:'#374151', margin:'0 0 10px' }}>
+                        <p style={{ fontSize:12, fontWeight:600, color:C.label, margin:'0 0 10px' }}>
                           Open WhatsApp → Linked Devices → Link a Device → Scan this QR
                         </p>
-                        <img src={waQrImage} alt="WhatsApp QR" style={{ width:280, height:280, borderRadius:12, border:'1px solid #E5E7EB' }} />
+                        <img src={waQrImage} alt="WhatsApp QR" style={{ width:280, height:280, borderRadius:12, border:`1px solid ${C.border}` }} />
                       </div>
                     ) : null}
 
@@ -717,24 +786,24 @@ export default function NotificationsPage() {
                         </button>
                       )}
                       <button type="button" onClick={loadWaMessages} disabled={waMsgLoading}
-                        style={{ padding:'9px 18px', borderRadius:9, border:'1px solid #E5E7EB', background:'#fff', color:'#374151', fontWeight:600, fontSize:13, cursor:'pointer' }}>
+                        style={{ padding:'9px 18px', borderRadius:9, border:`1px solid ${C.border}`, background:C.card, color:C.label, fontWeight:600, fontSize:13, cursor:'pointer' }}>
                         {waMsgLoading ? 'Loading…' : 'Refresh Inbox'}
                       </button>
                     </div>
 
                     {waMessages.length > 0 && (
                       <div>
-                        <p style={{ fontSize:11, fontWeight:700, color:'#6B7280', letterSpacing:'0.06em', textTransform:'uppercase', margin:'0 0 8px' }}>Recent Messages</p>
-                        <div style={{ maxHeight:240, overflowY:'auto', border:'1px solid #F3F4F6', borderRadius:10 }}>
+                        <p style={{ fontSize:11, fontWeight:700, color:C.faint, letterSpacing:'0.06em', textTransform:'uppercase', margin:'0 0 8px' }}>Recent Messages</p>
+                        <div style={{ maxHeight:240, overflowY:'auto', border:`1px solid ${C.borderLight}`, borderRadius:10, background:C.soft }}>
                           {waMessages.map(m => (
-                            <div key={m.id} style={{ padding:'10px 12px', borderBottom:'1px solid #F3F4F6', fontSize:12 }}>
+                            <div key={m.id} style={{ padding:'10px 12px', borderBottom:`1px solid ${C.borderLight}`, fontSize:12 }}>
                               <div style={{ display:'flex', justifyContent:'space-between', marginBottom:4 }}>
-                                <span style={{ fontWeight:700, color: m.direction === 'in' ? '#1D4ED8' : '#059669' }}>
+                                <span style={{ fontWeight:700, color: m.direction === 'in' ? '#60A5FA' : '#4ADE80' }}>
                                   {m.direction === 'in' ? '← In' : '→ Out'} {m.phone ? `+${m.phone}` : ''}
                                 </span>
-                                <span style={{ color:'#9CA3AF', fontSize:11 }}>{new Date(m.createdAt).toLocaleString()}</span>
+                                <span style={{ color:C.faint, fontSize:11 }}>{new Date(m.createdAt).toLocaleString()}</span>
                               </div>
-                              <div style={{ color:'#374151', whiteSpace:'pre-wrap' }}>{m.body}</div>
+                              <div style={{ color:C.label, whiteSpace:'pre-wrap' }}>{m.body}</div>
                             </div>
                           ))}
                         </div>
@@ -745,10 +814,10 @@ export default function NotificationsPage() {
               </div>
 
               {/* Twilio API Keys */}
-              <div style={{ marginTop:12, border:'1px solid #EAECF0', borderRadius:12, overflow:'hidden' }}>
+              <div style={{ marginTop:12, border:`1px solid ${C.border}`, borderRadius:12, overflow:'hidden' }}>
                 <button type="button" onClick={() => setApiOpen(o => !o)}
-                  style={{ width:'100%', display:'flex', alignItems:'center', justifyContent:'space-between', padding:'14px 18px', background:'#F8FAFC', border:'none', cursor:'pointer', fontFamily:"'Inter',sans-serif" }}>
-                  <span style={{ display:'flex', alignItems:'center', gap:8, fontSize:13, fontWeight:700, color:'#344054' }}>
+                  style={{ width:'100%', display:'flex', alignItems:'center', justifyContent:'space-between', padding:'14px 18px', background:C.api.hdr, border:'none', cursor:'pointer', fontFamily:"'Inter',sans-serif" }}>
+                  <span style={{ display:'flex', alignItems:'center', gap:8, fontSize:13, fontWeight:700, color:C.label }}>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6366F1" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
                     Twilio API Keys
                     {settings.twilio_source === 'db'
@@ -756,19 +825,19 @@ export default function NotificationsPage() {
                       : <span style={{ fontSize:10, fontWeight:700, background:'#EFF6FF', color:'#1D4ED8', padding:'2px 8px', borderRadius:6 }}>.env</span>
                     }
                   </span>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#64748B" strokeWidth="2.5" strokeLinecap="round" style={{ transform:apiOpen?'rotate(180deg)':'none', transition:'transform 0.2s' }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={C.muted} strokeWidth="2.5" strokeLinecap="round" style={{ transform:apiOpen?'rotate(180deg)':'none', transition:'transform 0.2s' }}>
                     <polyline points="6 9 12 15 18 9"/>
                   </svg>
                 </button>
                 {apiOpen && (
-                  <div style={{ padding:'16px 18px', display:'flex', flexDirection:'column', gap:14, borderTop:'1px solid #EAECF0' }}>
-                    <p style={{ margin:0, fontSize:12, color:'#64748B' }}>
-                      These credentials are used for WhatsApp &amp; SMS. Leave blank to use <code style={{ background:'#F1F5F9', padding:'1px 5px', borderRadius:4 }}>.env</code> values.
+                  <div style={{ padding:'16px 18px', display:'flex', flexDirection:'column', gap:14, borderTop:`1px solid ${C.border}`, background:C.wa.body }}>
+                    <p style={{ margin:0, fontSize:12, color:C.muted }}>
+                      These credentials are used for WhatsApp &amp; SMS. Leave blank to use <code style={{ background:C.code, padding:'1px 5px', borderRadius:4 }}>.env</code> values.
                     </p>
 
                     {/* Account SID */}
                     <div>
-                      <label style={{ display:'block', fontSize:12, fontWeight:600, color:'#344054', marginBottom:5 }}>Account SID</label>
+                      <label style={{ display:'block', fontSize:12, fontWeight:600, color:C.label, marginBottom:5 }}>Account SID</label>
                       <input
                         type="text"
                         value={settings.twilio_account_sid || ''}
@@ -780,7 +849,7 @@ export default function NotificationsPage() {
 
                     {/* Auth Token */}
                     <div>
-                      <label style={{ display:'block', fontSize:12, fontWeight:600, color:'#344054', marginBottom:5 }}>
+                      <label style={{ display:'block', fontSize:12, fontWeight:600, color:C.label, marginBottom:5 }}>
                         Auth Token
                         {settings.twilio_auth_token_set && !editingToken && (
                           <span style={{ marginLeft:8, fontSize:11, color:'#059669', fontWeight:500 }}>● Set</span>
@@ -797,18 +866,18 @@ export default function NotificationsPage() {
                             autoFocus
                           />
                           <button type="button" onClick={() => setShowToken(v => !v)}
-                            style={{ padding:'0 10px', borderRadius:8, border:'1.5px solid #E4E7EC', background:'#F8FAFC', cursor:'pointer', fontSize:12, color:'#64748B' }}>
+                            style={{ ...ghostBtn, color:C.muted }}>
                             {showToken ? 'Hide' : 'Show'}
                           </button>
                           <button type="button" onClick={() => { setEditingToken(false); setNewToken(''); }}
-                            style={{ padding:'0 10px', borderRadius:8, border:'1.5px solid #E4E7EC', background:'#F8FAFC', cursor:'pointer', fontSize:12, color:'#DC2626' }}>
+                            style={{ ...ghostBtn, color:'#DC2626' }}>
                             Cancel
                           </button>
                         </div>
                       ) : (
                         <div style={{ display:'flex', gap:8, alignItems:'center' }}>
                           <input type="password" readOnly value={settings.twilio_auth_token || ''}
-                            style={{ ...inputStyle, flex:1, cursor:'not-allowed', background:'#F9FAFB', color:'#9CA3AF' }} />
+                            style={{ ...inputStyle, flex:1, cursor:'not-allowed', background:C.inputReadonlyBg, color:C.inputReadonlyText }} />
                           <button type="button" onClick={() => { setEditingToken(true); setNewToken(''); }}
                             style={{ padding:'8px 14px', borderRadius:8, border:'1.5px solid #6366F1', background:'#EEF2FF', cursor:'pointer', fontSize:12, fontWeight:600, color:'#4F46E5', whiteSpace:'nowrap' }}>
                             Change
@@ -819,11 +888,11 @@ export default function NotificationsPage() {
 
                     {/* WhatsApp From */}
                     <div>
-                      <label style={{ display:'block', fontSize:12, fontWeight:600, color:'#344054', marginBottom:5 }}>WhatsApp From Number</label>
+                      <label style={{ display:'block', fontSize:12, fontWeight:600, color:C.label, marginBottom:5 }}>WhatsApp From Number</label>
                       <input type="text" value={settings.twilio_whatsapp_from || ''}
                         onChange={e => setSettings(s => ({ ...s, twilio_whatsapp_from: e.target.value }))}
                         placeholder="whatsapp:+14155238886" style={inputStyle} />
-                      <p style={{ margin:'4px 0 0', fontSize:11, color:'#94A3B8' }}>Twilio sandbox or approved WhatsApp number with <code style={{ background:'#F1F5F9', padding:'1px 4px', borderRadius:3 }}>whatsapp:</code> prefix.</p>
+                      <p style={{ margin:'4px 0 0', fontSize:11, color:C.faint }}>Twilio sandbox or approved WhatsApp number with <code style={{ background:C.code, padding:'1px 4px', borderRadius:3 }}>whatsapp:</code> prefix.</p>
                     </div>
 
                     {/* Test */}
@@ -848,11 +917,11 @@ export default function NotificationsPage() {
       )}
 
       {canTestPush && (
-        <div style={{ background:'#fff', borderRadius:16, border:'1px solid #EAECF0', overflow:'hidden', boxShadow:'0 1px 4px rgba(16,24,40,0.07)', marginTop:16 }}>
+        <div style={{ background:C.card, borderRadius:16, border:`1px solid ${C.border}`, overflow:'hidden', boxShadow:C.shadow, marginTop:16 }}>
           <div style={{ padding:'16px 24px', display:'flex', alignItems:'center', justifyContent:'space-between', gap:16, flexWrap:'wrap' }}>
             <div>
-              <div style={{ fontSize:15, fontWeight:700, color:'#101828' }}>Mobile Push (Staff App)</div>
-              <div style={{ fontSize:12, color:'#64748B', marginTop:4 }}>
+              <div style={{ fontSize:15, fontWeight:700, color:C.title }}>Mobile Push (Staff App)</div>
+              <div style={{ fontSize:12, color:C.muted, marginTop:4 }}>
                 Sends a test FCM notification to staff devices registered for the current branch. Staff must be signed in on the mobile app with notifications allowed.
               </div>
             </div>
@@ -866,16 +935,16 @@ export default function NotificationsPage() {
 
       {/* ── Message Templates ────────────────────────────────────────────── */}
       {isAdmin && (
-        <div style={{ background:'#fff', borderRadius:16, border:'1px solid #EAECF0', boxShadow:'0 1px 4px rgba(16,24,40,0.07)' }}>
+        <div style={{ background:C.card, borderRadius:16, border:`1px solid ${C.border}`, boxShadow:C.shadow }}>
           {/* Header */}
-          <div style={{ padding:'16px 24px', borderBottom:'1px solid #F2F4F7', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+          <div style={{ padding:'16px 24px', borderBottom:`1px solid ${C.borderLight}`, display:'flex', alignItems:'center', justifyContent:'space-between' }}>
             <div>
-              <div style={{ fontSize:15, fontWeight:700, color:'#101828' }}>Message Templates</div>
-              <div style={{ fontSize:12, color:'#64748B', marginTop:2 }}>
-                Customize all SMS, WhatsApp, and Email messages sent when connected — appointments, payments, walk-in queue, and more. Use <code style={{ background:'#F1F5F9', padding:'1px 5px', borderRadius:4 }}>{'{variable}'}</code> placeholders.
+              <div style={{ fontSize:15, fontWeight:700, color:C.title }}>Message Templates</div>
+              <div style={{ fontSize:12, color:C.muted, marginTop:2 }}>
+                Customize all SMS, WhatsApp, and Email messages sent when connected — appointments, payments, walk-in queue, and more. Use <code style={{ background:C.code, padding:'1px 5px', borderRadius:4 }}>{'{variable}'}</code> placeholders.
               </div>
             </div>
-            {tplLoading && <span style={{ fontSize:12, color:'#94A3B8' }}>Loading…</span>}
+            {tplLoading && <span style={{ fontSize:12, color:C.faint }}>Loading…</span>}
           </div>
 
           {/* Template cards grouped by event */}
@@ -894,8 +963,8 @@ export default function NotificationsPage() {
                 const CH_ORDER = { email: 0, whatsapp: 1, sms: 2 };
                 const list = [...groups[evt]].sort((a, b) => (CH_ORDER[a.channel] ?? 9) - (CH_ORDER[b.channel] ?? 9));
                 return (
-                <div key={evt} style={{ border:'1px solid #EAECF0', borderRadius:12, overflow:'hidden' }}>
-                  <div style={{ padding:'10px 16px', background:'#F8FAFC', borderBottom:'1px solid #EAECF0', fontSize:13, fontWeight:700, color:'#344054' }}>
+                <div key={evt} style={{ border:`1px solid ${C.border}`, borderRadius:12, overflow:'hidden' }}>
+                  <div style={{ padding:'10px 16px', background:C.tpl.groupHdr, borderBottom:`1px solid ${C.border}`, fontSize:13, fontWeight:700, color:C.title }}>
                     {EVENT_LABELS[evt] || evt}
                   </div>
                   <div style={{ display:'flex', flexDirection:'column', gap:0 }}>
@@ -903,20 +972,20 @@ export default function NotificationsPage() {
                       const CH = { email:{ bg:'#EFF6FF', color:'#1D4ED8', label:'Email' }, whatsapp:{ bg:'#DCFCE7', color:'#166534', label:'WhatsApp' }, sms:{ bg:'#FEF3C7', color:'#B45309', label:'SMS' } };
                       const ch = CH[tpl.channel] || { bg:'#F2F4F7', color:'#64748B', label:tpl.channel };
                       return (
-                        <div key={tpl.channel} style={{ display:'flex', alignItems:'center', gap:12, padding:'12px 16px', borderTop: idx > 0 ? '1px solid #F2F4F7' : 'none', background:'#fff' }}>
+                        <div key={tpl.channel} style={{ display:'flex', alignItems:'center', gap:12, padding:'12px 16px', borderTop: idx > 0 ? `1px solid ${C.tpl.rowBorder}` : 'none', background:C.tpl.row }}>
                           <span style={{ flexShrink:0, padding:'3px 10px', borderRadius:10, fontSize:11, fontWeight:700, background:ch.bg, color:ch.color, minWidth:72, textAlign:'center' }}>{ch.label}</span>
                           {tpl.is_custom && (
                             <span style={{ flexShrink:0, padding:'2px 8px', borderRadius:6, fontSize:10, fontWeight:700, background:'#EFF6FF', color:'#2563EB' }}>Custom</span>
                           )}
-                          <div style={{ flex:1, fontSize:12, color:'#64748B', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:'55%' }}>
+                          <div style={{ flex:1, fontSize:12, color:C.muted, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:'55%' }}>
                             {tpl.channel === 'email' && tpl.subject
-                              ? <><strong style={{ color:'#344054' }}>Subject:</strong> {tpl.subject}</>
+                              ? <><strong style={{ color:C.label }}>Subject:</strong> {tpl.subject}</>
                               : (tpl.body || '').replace(/<[^>]+>/g, '').slice(0, 100) + ((tpl.body || '').length > 100 ? '…' : '')}
                           </div>
                           <div style={{ display:'flex', gap:8, marginLeft:'auto', flexShrink:0 }}>
                             {tpl.is_custom && (
                               <button type="button" onClick={() => resetTpl(tpl)}
-                                style={{ padding:'5px 12px', borderRadius:7, border:'1.5px solid #E4E7EC', background:'#F9FAFB', fontSize:12, fontWeight:600, color:'#64748B', cursor:'pointer', fontFamily:"'Inter',sans-serif" }}>
+                                style={{ padding:'5px 12px', borderRadius:7, border:`1.5px solid ${C.inputBorder}`, background:C.soft, fontSize:12, fontWeight:600, color:C.muted, cursor:'pointer', fontFamily:"'Inter',sans-serif" }}>
                                 Reset
                               </button>
                             )}
@@ -939,22 +1008,22 @@ export default function NotificationsPage() {
 
       {/* ── Template Edit Modal ─────────────────────────────────────────────── */}
       {tplOpen && editTpl && (
-        <div style={{ position:'fixed', inset:0, zIndex:1000, background:'rgba(0,0,0,0.45)', display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}
+        <div style={{ position:'fixed', inset:0, zIndex:1000, background:C.overlay, display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}
           onClick={e => { if (e.target === e.currentTarget) setTplOpen(false); }}>
-          <div style={{ background:'#fff', borderRadius:16, width:'100%', maxWidth:680, maxHeight:'90vh', display:'flex', flexDirection:'column', boxShadow:'0 20px 60px rgba(0,0,0,0.2)' }}>
+          <div style={{ background:C.modal.bg, borderRadius:16, width:'100%', maxWidth:680, maxHeight:'90vh', display:'flex', flexDirection:'column', boxShadow:C.shadow, border:`1px solid ${C.modal.border}` }}>
             {/* Modal header */}
-            <div style={{ padding:'20px 24px', borderBottom:'1px solid #EAECF0', display:'flex', alignItems:'center', justifyContent:'space-between', flexShrink:0 }}>
+            <div style={{ padding:'20px 24px', borderBottom:`1px solid ${C.border}`, display:'flex', alignItems:'center', justifyContent:'space-between', flexShrink:0 }}>
               <div>
-                <div style={{ fontSize:15, fontWeight:700, color:'#101828' }}>
+                <div style={{ fontSize:15, fontWeight:700, color:C.title }}>
                   Edit Template — {EVENT_LABELS[editTpl.event_type] || editTpl.event_type}
                 </div>
                 <div style={{ display:'flex', alignItems:'center', gap:8, marginTop:4 }}>
                   {(() => { const CH={email:{bg:'#EFF6FF',color:'#1D4ED8',label:'Email'},whatsapp:{bg:'#DCFCE7',color:'#166534',label:'WhatsApp'},sms:{bg:'#FEF3C7',color:'#B45309',label:'SMS'}}; const ch=CH[editTpl.channel]||{bg:'#F2F4F7',color:'#64748B',label:editTpl.channel}; return <span style={{padding:'2px 10px',borderRadius:8,fontSize:11,fontWeight:700,background:ch.bg,color:ch.color}}>{ch.label}</span>; })()}
-                  <span style={{ fontSize:12, color:'#94A3B8' }}>Channel</span>
+                  <span style={{ fontSize:12, color:C.faint }}>Channel</span>
                 </div>
               </div>
               <button type="button" onClick={() => setTplOpen(false)}
-                style={{ width:32, height:32, borderRadius:8, border:'1.5px solid #E4E7EC', background:'#F8FAFC', cursor:'pointer', fontSize:18, color:'#64748B', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                style={{ width:32, height:32, borderRadius:8, border:`1.5px solid ${C.inputBorder}`, background:C.ghostBtnBg, cursor:'pointer', fontSize:18, color:C.muted, display:'flex', alignItems:'center', justifyContent:'center' }}>
                 ×
               </button>
             </div>
@@ -964,28 +1033,28 @@ export default function NotificationsPage() {
               {/* Subject (email only) */}
               {editTpl.channel === 'email' && (
                 <div>
-                  <label style={{ display:'block', fontSize:12, fontWeight:600, color:'#344054', marginBottom:5 }}>Subject Line</label>
+                  <label style={{ display:'block', fontSize:12, fontWeight:600, color:C.label, marginBottom:5 }}>Subject Line</label>
                   <input type="text" value={editSubject} onChange={e => setEditSubject(e.target.value)}
                     placeholder="e.g. Appointment Confirmed — {branch_name}"
-                    style={{ width:'100%', padding:'9px 12px', borderRadius:8, border:'1.5px solid #D0D5DD', fontSize:13, fontFamily:"'Inter',sans-serif", color:'#101828', outline:'none', boxSizing:'border-box' }} />
+                    style={{ ...inputStyle, width:'100%' }} />
                 </div>
               )}
 
               {/* Body */}
               <div style={{ flex:1 }}>
                 <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:5 }}>
-                  <label style={{ fontSize:12, fontWeight:600, color:'#344054' }}>
+                  <label style={{ fontSize:12, fontWeight:600, color:C.label }}>
                     Message Body {editTpl.channel === 'email' ? '(HTML supported)' : ''}
                   </label>
-                  <span style={{ fontSize:11, color:'#94A3B8' }}>{editBody.length} chars</span>
+                  <span style={{ fontSize:11, color:C.faint }}>{editBody.length} chars</span>
                 </div>
                 <textarea value={editBody} onChange={e => setEditBody(e.target.value)} rows={editTpl.channel === 'email' ? 12 : 8}
-                  style={{ width:'100%', padding:'10px 12px', borderRadius:8, border:'1.5px solid #D0D5DD', fontSize:12, fontFamily:'monospace', color:'#101828', outline:'none', resize:'vertical', boxSizing:'border-box', lineHeight:1.5 }} />
+                  style={{ ...inputStyle, width:'100%', fontFamily:'monospace', fontSize:12, lineHeight:1.5, resize:'vertical' }} />
               </div>
 
               {/* Variable hints */}
               <div>
-                <div style={{ fontSize:11, fontWeight:600, color:'#64748B', marginBottom:6 }}>Click to insert variable:</div>
+                <div style={{ fontSize:11, fontWeight:600, color:C.muted, marginBottom:6 }}>Click to insert variable:</div>
                 <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
                   {templateVariablesFor(editTpl.event_type).map(([key, label]) => (
                     <button key={key} type="button" onClick={() => insertVar(key)}
@@ -1010,16 +1079,16 @@ export default function NotificationsPage() {
             </div>
 
             {/* Modal footer */}
-            <div style={{ padding:'16px 24px', borderTop:'1px solid #EAECF0', display:'flex', alignItems:'center', justifyContent:'space-between', gap:10, flexShrink:0 }}>
+            <div style={{ padding:'16px 24px', borderTop:`1px solid ${C.border}`, display:'flex', alignItems:'center', justifyContent:'space-between', gap:10, flexShrink:0, background:C.modal.footer }}>
               {editTpl.is_custom && (
                 <button type="button" onClick={() => resetTpl(editTpl)}
-                  style={{ padding:'8px 18px', borderRadius:8, border:'1.5px solid #E4E7EC', background:'#F9FAFB', fontSize:13, fontWeight:600, color:'#64748B', cursor:'pointer', fontFamily:"'Inter',sans-serif" }}>
+                  style={{ padding:'8px 18px', borderRadius:8, border:`1.5px solid ${C.inputBorder}`, background:C.soft, fontSize:13, fontWeight:600, color:C.muted, cursor:'pointer', fontFamily:"'Inter',sans-serif" }}>
                   Reset to Default
                 </button>
               )}
               <div style={{ display:'flex', gap:10, marginLeft:'auto' }}>
                 <button type="button" onClick={() => setTplOpen(false)}
-                  style={{ padding:'8px 18px', borderRadius:8, border:'1.5px solid #E4E7EC', background:'#fff', fontSize:13, fontWeight:600, color:'#344054', cursor:'pointer', fontFamily:"'Inter',sans-serif" }}>
+                  style={{ padding:'8px 18px', borderRadius:8, border:`1.5px solid ${C.inputBorder}`, background:C.card, fontSize:13, fontWeight:600, color:C.label, cursor:'pointer', fontFamily:"'Inter',sans-serif" }}>
                   Cancel
                 </button>
                 <button type="button" onClick={saveTpl} disabled={tplBusy}
@@ -1033,9 +1102,9 @@ export default function NotificationsPage() {
       )}
 
       {/* Log Table */}
-      <div style={{ background:'#fff', borderRadius:16, border:'1px solid #EAECF0', overflow:'hidden', boxShadow:'0 1px 4px rgba(16,24,40,0.07)' }}>
-        <div style={{ padding:'16px 24px', borderBottom:'1px solid #F2F4F7' }}>
-          <div style={{ fontSize:15, fontWeight:700, color:'#101828', marginBottom:12 }}>Notification Log</div>
+      <div style={{ background:C.card, borderRadius:16, border:`1px solid ${C.border}`, overflow:'hidden', boxShadow:C.shadow }}>
+        <div style={{ padding:'16px 24px', borderBottom:`1px solid ${C.borderLight}` }}>
+          <div style={{ fontSize:15, fontWeight:700, color:C.title, marginBottom:12 }}>Notification Log</div>
           <FilterBar>
             <select value={filterEv} onChange={e=>{ setFilterEv(e.target.value); setLogPage(1); }} className="pk-filter-control">
               <option value="">All Events</option>
@@ -1053,7 +1122,7 @@ export default function NotificationsPage() {
               <option value="failed">Failed</option>
             </select>
             {(filterEv||filterCh||filterSt) && <Button variant="ghost" size="sm" onClick={() => { setFilterEv(''); setFilterCh(''); setFilterSt(''); setLogPage(1); }}>Clear</Button>}
-            <span style={{ marginLeft:'auto', fontSize:13, color:'#64748B', fontFamily:"'Inter',sans-serif" }}>{logTotal} record{logTotal!==1?'s':''}</span>
+            <span style={{ marginLeft:'auto', fontSize:13, color:C.muted, fontFamily:"'Inter',sans-serif" }}>{logTotal} record{logTotal!==1?'s':''}</span>
           </FilterBar>
         </div>
 
@@ -1068,11 +1137,11 @@ export default function NotificationsPage() {
             },
             { id:'company', header:'Branch / Company', meta:{ width:'14%' },
               accessorFn: r => r.company_name || r.branch?.name || '',
-              cell: ({ getValue }) => <span style={{ fontSize:12, fontWeight:600, color:'#344054' }}>{getValue() || '—'}</span>
+              cell: ({ getValue }) => <span style={{ fontSize:12, fontWeight:600, color:C.label }}>{getValue() || '—'}</span>
             },
             { id:'customer', header:'Customer', meta:{ width:'14%' },
               accessorFn: r => r.customer_name || '',
-              cell: ({ getValue }) => <span style={{ fontSize:13, fontWeight:600, color:'#101828' }}>{getValue() || '—'}</span>
+              cell: ({ getValue }) => <span style={{ fontSize:13, fontWeight:600, color:C.title }}>{getValue() || '—'}</span>
             },
             { accessorKey:'channel', header:'Channel', meta:{ width:'12%' },
               cell: ({ getValue }) => {
@@ -1081,11 +1150,11 @@ export default function NotificationsPage() {
               }
             },
             { accessorKey:'message_preview', header:'Message', meta:{ width:'22%' },
-              cell: ({ getValue }) => <span style={{ fontSize:12, color:'#64748B', maxWidth:200, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', display:'block' }}>{getValue()||''}</span>
+              cell: ({ getValue }) => <span style={{ fontSize:12, color:C.muted, maxWidth:200, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', display:'block' }}>{getValue()||''}</span>
             },
             { id:'sentAt', header:'Sent At', meta:{ width:'12%' },
               accessorFn: r => r.createdAt || '',
-              cell: ({ getValue }) => <span style={{ fontSize:12, color:'#98A2B3', whiteSpace:'nowrap' }}>{getValue() ? new Date(getValue()).toLocaleString('en-US',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}) : ''}</span>
+              cell: ({ getValue }) => <span style={{ fontSize:12, color:C.faint, whiteSpace:'nowrap' }}>{getValue() ? new Date(getValue()).toLocaleString('en-US',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}) : ''}</span>
             },
             { accessorKey:'status', header:'Status', meta:{ width:'10%', align:'center' },
               cell: ({ getValue }) => {
@@ -1110,13 +1179,13 @@ export default function NotificationsPage() {
         />
 
         {logPages > 1 && (
-          <div style={{ display:'flex', gap:6, padding:'12px 16px', justifyContent:'center', borderTop:'1px solid #F2F4F7' }}>
+          <div style={{ display:'flex', gap:6, padding:'12px 16px', justifyContent:'center', borderTop:`1px solid ${C.pag.border}`, background:C.soft }}>
             {Array.from({ length: Math.min(logPages, 10) }, (_, i) => (
               <button key={i} onClick={() => setLogPage(i+1)}
                 style={{ width:34, height:34, borderRadius:8, border:'1.5px solid', cursor:'pointer', fontWeight:600, fontSize:13, fontFamily:"'Inter',sans-serif", transition:'all 0.15s',
-                  borderColor: logPage===i+1 ? '#2563EB' : '#E4E7EC',
-                  background:  logPage===i+1 ? '#2563EB' : '#fff',
-                  color:       logPage===i+1 ? '#fff' : '#344054' }}>
+                  borderColor: logPage===i+1 ? '#2563EB' : C.inputBorder,
+                  background:  logPage===i+1 ? '#2563EB' : C.pag.btnBg,
+                  color:       logPage===i+1 ? '#fff' : C.pag.btnText }}>
                 {i+1}
               </button>
             ))}

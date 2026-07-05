@@ -15,6 +15,7 @@ import { getSurface, DARK_TABLE_OVERRIDE, DARK_TABLE_TOOLBAR } from '../shared/a
 /* ─── Table style tokens ─────────────────────────────────────────────────── */
 const TABLE_STYLE_TOKENS = {
   default: {
+    shellBg: '#fff',
     shellBorder: '1px solid #EAECF0',
     shellRadius: 16,
     shellShadow: '0 2px 8px rgba(16,24,40,0.06)',
@@ -27,6 +28,12 @@ const TABLE_STYLE_TOKENS = {
     rowOdd: '#FAFBFC',
     rowHover: '#EEF4FF',
     rowBorder: '1px solid #F2F4F7',
+    emptyBg: '#FAFBFC',
+    footerBg: '#FAFBFC',
+    footerBorder: '1px solid #F2F4F7',
+    footerText: '#475467',
+    bodyColor: '#101828',
+    bodyMuted: '#98A2B3',
     cellPadding: '13px 16px',
     cellBorderRight: 'none',
   },
@@ -494,8 +501,10 @@ export function FilterBar({ children, className, style }) {
 
 /* ─── Table shell ────────────────────────────────────────────────────────── */
 export function TableShell({ children }) {
+  const { isDark } = useTheme();
+  const ts = isDark ? { ...TABLE_STYLE_TOKENS.default, ...DARK_TABLE_OVERRIDE } : TABLE_STYLE_TOKENS.default;
   return (
-    <div style={{ background: '#fff', borderRadius: 16, border: '1px solid #EAECF0', overflow: 'hidden', boxShadow: '0 2px 8px rgba(16,24,40,0.06)' }}>
+    <div style={{ background: ts.shellBg, borderRadius: ts.shellRadius, border: ts.shellBorder, overflow: 'hidden', boxShadow: ts.shellShadow }}>
       <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: "'Inter',sans-serif", tableLayout: 'fixed' }}>
           {children}
@@ -530,22 +539,27 @@ export function Th({ children, align = 'left', onClick, sortActive, sortDir, ts,
 }
 
 /* ─── Table skeleton rows ────────────────────────────────────────────────── */
-export function SkeletonRows({ cols = 5, rows = 5 }) {
+export function SkeletonRows({ cols = 5, rows = 5, ts }) {
+  const t = ts || TABLE_STYLE_TOKENS.default;
+  const shimmer = t.emptyBg === '#FAFBFC' || !t.emptyBg
+    ? 'linear-gradient(90deg,#F2F4F7 25%,#E8EAED 50%,#F2F4F7 75%)'
+    : 'linear-gradient(90deg,#1E293B 25%,#243044 50%,#1E293B 75%)';
   return Array.from({ length: rows }).map((_, i) => (
     <tr key={i}>{Array.from({ length: cols }).map((_, j) => (
-      <td key={j} style={{ padding: '14px 16px' }}>
-        <div style={{ height: 13, borderRadius: 6, width: `${50 + (j * 13) % 40}%`, background: 'linear-gradient(90deg,#F2F4F7 25%,#E8EAED 50%,#F2F4F7 75%)', backgroundSize: '200% 100%', animation: 'pk-shimmer 1.4s infinite' }} />
+      <td key={j} style={{ padding: '14px 16px', background: t.rowEven }}>
+        <div style={{ height: 13, borderRadius: 6, width: `${50 + (j * 13) % 40}%`, background: shimmer, backgroundSize: '200% 100%', animation: 'pk-shimmer 1.4s infinite' }} />
       </td>
     ))}</tr>
   ));
 }
 
 /* ─── Empty state row ────────────────────────────────────────────────────── */
-export function EmptyRow({ cols = 5, message = 'No records found', sub = 'Try adjusting your filters' }) {
+export function EmptyRow({ cols = 5, message = 'No records found', sub = 'Try adjusting your filters', ts }) {
+  const t = ts || TABLE_STYLE_TOKENS.default;
   return (
-    <tr><td colSpan={cols} style={{ padding: '60px 16px', textAlign: 'center', background: '#FAFBFC' }}>
-      <div style={{ color: '#344054', fontWeight: 700, fontSize: 15, fontFamily: "'Inter',sans-serif" }}>{message}</div>
-      <div style={{ color: '#98A2B3', fontSize: 13, marginTop: 6, fontFamily: "'Inter',sans-serif" }}>{sub}</div>
+    <tr><td colSpan={cols} style={{ padding: '60px 16px', textAlign: 'center', background: t.emptyBg || t.rowOdd }}>
+      <div style={{ color: t.bodyColor || '#344054', fontWeight: 700, fontSize: 15, fontFamily: "'Inter',sans-serif" }}>{message}</div>
+      <div style={{ color: t.bodyMuted || '#98A2B3', fontSize: 13, marginTop: 6, fontFamily: "'Inter',sans-serif" }}>{sub}</div>
     </td></tr>
   );
 }
@@ -581,10 +595,10 @@ function DataTableCardsGrid({ table, loading, emptyMessage, emptySub, ts }) {
   }
   if (!rows.length) {
     return (
-      <div style={{ padding: '48px 16px', textAlign: 'center', background: '#FAFBFC' }}>
-        <div style={{ color: '#344054', fontWeight: 700, fontSize: 15, fontFamily: "'Inter',sans-serif" }}>{emptyMessage}</div>
+      <div style={{ padding: '48px 16px', textAlign: 'center', background: ts.emptyBg || ts.rowOdd }}>
+        <div style={{ color: ts.bodyColor || '#344054', fontWeight: 700, fontSize: 15, fontFamily: "'Inter',sans-serif" }}>{emptyMessage}</div>
         {emptySub && (
-          <div style={{ color: '#98A2B3', fontSize: 13, marginTop: 6, fontFamily: "'Inter',sans-serif" }}>{emptySub}</div>
+          <div style={{ color: ts.bodyMuted || '#98A2B3', fontSize: 13, marginTop: 6, fontFamily: "'Inter',sans-serif" }}>{emptySub}</div>
         )}
       </div>
     );
@@ -604,11 +618,11 @@ function DataTableCardsGrid({ table, loading, emptyMessage, emptySub, ts }) {
           <div
             key={row.id}
             style={{
-              background: '#fff',
-              border: '1px solid #EAECF0',
+              background: ts.rowEven,
+              border: ts.shellBorder || '1px solid #EAECF0',
               borderRadius: 12,
               padding: '14px 16px',
-              boxShadow: '0 1px 3px rgba(16,24,40,0.06)',
+              boxShadow: ts.shellShadow || '0 1px 3px rgba(16,24,40,0.06)',
             }}
           >
             {bodyCells.map(cell => (
@@ -616,7 +630,7 @@ function DataTableCardsGrid({ table, loading, emptyMessage, emptySub, ts }) {
                 <div style={{
                   fontSize: 11,
                   fontWeight: 600,
-                  color: '#667085',
+                  color: ts.headerColor || '#667085',
                   textTransform: 'uppercase',
                   letterSpacing: '0.04em',
                   marginBottom: 4,
@@ -633,7 +647,7 @@ function DataTableCardsGrid({ table, loading, emptyMessage, emptySub, ts }) {
               <div style={{
                 marginTop: 4,
                 paddingTop: 10,
-                borderTop: '1px solid #F2F4F7',
+                borderTop: ts.rowBorder || '1px solid #F2F4F7',
                 display: 'flex',
                 justifyContent: 'flex-end',
                 flexWrap: 'wrap',
@@ -651,16 +665,18 @@ function DataTableCardsGrid({ table, loading, emptyMessage, emptySub, ts }) {
 
 /* ─── Pagination bar ─────────────────────────────────────────────────────── */
 export function Pagination({ page, total, limit, onPageChange }) {
+  const { isDark } = useTheme();
+  const ts = isDark ? { ...TABLE_STYLE_TOKENS.default, ...DARK_TABLE_OVERRIDE } : TABLE_STYLE_TOKENS.default;
   const totalPages = Math.ceil(total / limit);
   const shown = Math.min(limit, total - (page - 1) * limit);
   if (totalPages <= 1) return (
-    <div style={{ padding: '12px 18px', borderTop: '1px solid #F2F4F7', background: '#FAFBFC' }}>
-      <span style={{ fontSize: 12, color: '#98A2B3', fontFamily: "'Inter',sans-serif" }}>Showing {total} record{total !== 1 ? 's' : ''}</span>
+    <div style={{ padding: '12px 18px', borderTop: ts.footerBorder, background: ts.footerBg }}>
+      <span style={{ fontSize: 12, color: ts.footerText, fontFamily: "'Inter',sans-serif" }}>Showing {total} record{total !== 1 ? 's' : ''}</span>
     </div>
   );
   return (
-    <div style={{ padding: '12px 18px', borderTop: '1px solid #F2F4F7', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, background: '#FAFBFC' }}>
-      <span style={{ fontSize: 12, color: '#98A2B3', fontFamily: "'Inter',sans-serif" }}>Showing <b style={{ color: '#344054' }}>{shown}</b> of <b style={{ color: '#344054' }}>{total}</b></span>
+    <div style={{ padding: '12px 18px', borderTop: ts.footerBorder, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, background: ts.footerBg }}>
+      <span style={{ fontSize: 12, color: ts.footerText, fontFamily: "'Inter',sans-serif" }}>Showing <b style={{ color: ts.bodyColor }}>{shown}</b> of <b style={{ color: ts.bodyColor }}>{total}</b></span>
       <div style={{ display: 'flex', gap: 4 }}>
         <PagBtn onClick={() => onPageChange(1)} disabled={page === 1} label="«" />
         <PagBtn onClick={() => onPageChange(page - 1)} disabled={page === 1} label="‹" />
@@ -1226,9 +1242,9 @@ export function DataTable({
           </thead>
           <tbody>
             {loading ? (
-              <SkeletonRows cols={colCount} rows={5} />
+              <SkeletonRows cols={colCount} rows={5} ts={ts} />
             ) : table.getRowModel().rows.length === 0 ? (
-              <EmptyRow cols={colCount} message={emptyMessage} sub={emptySub} />
+              <EmptyRow cols={colCount} message={emptyMessage} sub={emptySub} ts={ts} />
             ) : (
               <>
                 {table.getRowModel().rows.map((row, idx) => (
@@ -1257,15 +1273,15 @@ export function DataTable({
       {pagination && !loading && totalFiltered > 0 && (
         <div style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12,
-          padding: '12px 14px', borderTop: craft ? ts.footerBorder : '1px solid #F2F4F7',
-          background: craft ? ts.footerBg : '#FAFBFC',
+          padding: '12px 14px', borderTop: ts.footerBorder,
+          background: ts.footerBg,
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
-            <span style={{ fontSize: 13, color: craft ? ts.footerText : '#475467' }}>
-              Showing <strong style={{ color: craft ? ts.bodyColor : '#344054' }}>{pageIndex * pageSize + 1}-{Math.min((pageIndex + 1) * pageSize, totalFiltered)}</strong>
-              {' '}of <strong style={{ color: craft ? ts.bodyColor : '#344054' }}>{totalFiltered}</strong> records
+            <span style={{ fontSize: 13, color: ts.footerText }}>
+              Showing <strong style={{ color: ts.bodyColor }}>{pageIndex * pageSize + 1}-{Math.min((pageIndex + 1) * pageSize, totalFiltered)}</strong>
+              {' '}of <strong style={{ color: ts.bodyColor }}>{totalFiltered}</strong> records
             </span>
-            <label style={{ fontSize: 13, color: craft ? ts.footerText : '#475467', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <label style={{ fontSize: 13, color: ts.footerText, display: 'flex', alignItems: 'center', gap: 8 }}>
               Rows Per Page
               <select value={pageSize} onChange={e => table.setPageSize(Number(e.target.value))}
                 className={PK_FILTER_CONTROL}
@@ -1290,7 +1306,7 @@ export function DataTable({
               <>
                 <PagBtn onClick={() => table.setPageIndex(0)} disabled={!table.getCanPreviousPage()} label="«" />
                 <PagBtn onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()} label="‹" />
-                <span style={{ fontSize: 12, color: '#475467' }}>{pageIndex + 1} / {Math.max(1, pageCount)}</span>
+                <span style={{ fontSize: 12, color: ts.footerText }}>{pageIndex + 1} / {Math.max(1, pageCount)}</span>
                 <PagBtn onClick={() => table.nextPage()} disabled={!table.getCanNextPage()} label="›" />
                 <PagBtn onClick={() => table.setPageIndex(pageCount - 1)} disabled={!table.getCanNextPage()} label="»" />
               </>
@@ -1303,8 +1319,8 @@ export function DataTable({
 
   if (noShell) return inner;
   return (
-    <div style={{
-      background: ts.shellBg || '#fff',
+    <div className="pk-data-table-shell" style={{
+      background: ts.shellBg,
       borderRadius: ts.shellRadius,
       border: ts.shellBorder,
       overflow: 'hidden',

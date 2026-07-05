@@ -6,6 +6,7 @@ import PageWrapper from '../components/layout/PageWrapper';
 import api from '../api/axios';
 import toast from 'react-hot-toast';
 import TableDensityToggle from '../components/ui/TableDensityToggle';
+import usePageTheme from '../hooks/usePageTheme';
 
 /* ── SVG icons ─────────────────────────────────────────────────────────────── */
 const IconSun    = () => <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>;
@@ -16,17 +17,8 @@ const IconPalette = () => <svg width="15" height="15" viewBox="0 0 24 24" fill="
 const IconType   = () => <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>;
 const IconSave   = () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>;
 
-/* ── Design tokens (always light — page itself is always light) ─────────────── */
-const C = {
-  primary:  '#2563EB',
-  border:   '#EAECF0',
-  text:     '#101828',
-  label:    '#667085',
-  muted:    '#98A2B3',
-  cardBg:   '#FFFFFF',
-  soft:     '#F7F8FA',
-  inputBdr: '#D0D5DD',
-};
+/* Preview accent for layout thumbnails */
+const PRIMARY = '#2563EB';
 
 const PRESET_COLORS = [
   { hex: '#2563EB', label: 'Indigo' },
@@ -43,18 +35,19 @@ const FONT_OPTIONS = ['Inter', 'Poppins', 'Roboto', 'Nunito', 'Lato', 'Montserra
 
 /* ── SectionCard ───────────────────────────────────────────────────────────── */
 function SectionCard({ title, subtitle, children }) {
+  const { C } = usePageTheme();
   return (
     <div style={{
       background: C.cardBg,
       border: `1px solid ${C.border}`,
       borderRadius: 16,
       overflow: 'hidden',
-      boxShadow: '0 2px 8px rgba(16,24,40,0.06)',
+      boxShadow: C.shadow,
     }}>
       <div style={{
         padding: '16px 22px',
         borderBottom: `1px solid ${C.border}`,
-        background: 'linear-gradient(180deg, #F8F9FC 0%, #F1F3F9 100%)',
+        background: C.headerGrad,
       }}>
         <div style={{ fontSize: 14, fontWeight: 700, color: C.text, fontFamily: "'Sora','Manrope',sans-serif" }}>{title}</div>
         {subtitle && <div style={{ fontSize: 12.5, color: C.label, marginTop: 2, fontFamily: "'Inter',sans-serif" }}>{subtitle}</div>}
@@ -66,6 +59,7 @@ function SectionCard({ title, subtitle, children }) {
 
 /* ── AppearanceCard ────────────────────────────────────────────────────────── */
 function AppearanceCard({ value, label, description, icon, active, onClick, previewBg, previewContent }) {
+  const { C, isDark } = usePageTheme();
   const [hov, setHov] = useState(false);
   return (
     <motion.div
@@ -75,7 +69,7 @@ function AppearanceCard({ value, label, description, icon, active, onClick, prev
       onMouseLeave={() => setHov(false)}
       style={{
         flex: '1 1 160px', minWidth: 150, maxWidth: 220,
-        border: `2px solid ${active ? C.primary : hov ? '#C7D7F8' : C.border}`,
+        border: `2px solid ${active ? C.primary : hov ? (isDark ? '#3B82F6' : '#C7D7F8') : C.border}`,
         borderRadius: 16, overflow: 'hidden',
         cursor: 'pointer',
         background: C.cardBg,
@@ -133,13 +127,13 @@ function LightPreview() {
   return (
     <div style={{ display: 'flex', gap: 0, width: 130, height: 72, borderRadius: 8, overflow: 'hidden', border: '1px solid #E5E7EB', boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
       <div style={{ width: 30, background: '#F9FAFB', borderRight: '1px solid #E5E7EB', padding: '5px 4px', display: 'flex', flexDirection: 'column', gap: 3 }}>
-        {[C.primary, '#E5E7EB', '#E5E7EB'].map((bg, i) => <div key={i} style={{ height: 5, borderRadius: 2, background: bg }} />)}
+        {[PRIMARY, '#E5E7EB', '#E5E7EB'].map((bg, i) => <div key={i} style={{ height: 5, borderRadius: 2, background: bg }} />)}
       </div>
       <div style={{ flex: 1, background: '#F7F8FA', padding: '6px 8px', display: 'flex', flexDirection: 'column', gap: 4 }}>
         <div style={{ height: 6, width: '60%', background: '#D1D5DB', borderRadius: 3 }} />
         <div style={{ height: 4, width: '80%', background: '#E5E7EB', borderRadius: 3 }} />
         <div style={{ height: 4, width: '50%', background: '#E5E7EB', borderRadius: 3 }} />
-        <div style={{ marginTop: 4, height: 14, width: 40, background: C.primary, borderRadius: 4 }} />
+        <div style={{ marginTop: 4, height: 14, width: 40, background: PRIMARY, borderRadius: 4 }} />
       </div>
     </div>
   );
@@ -185,10 +179,10 @@ function DefaultSidebarPreview() {
   return (
     <div style={{ display: 'flex', gap: 0, width: 130, height: 72, borderRadius: 8, overflow: 'hidden', border: '1px solid #E5E7EB', boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
       <div style={{ width: 38, background: '#F9FAFB', borderRight: '1px solid #E5E7EB', padding: '5px 6px', display: 'flex', flexDirection: 'column', gap: 3 }}>
-        <div style={{ height: 5, background: C.primary, borderRadius: 2, marginBottom: 2 }} />
-        {[C.primary + '33', '#E5E7EB', '#E5E7EB'].map((bg, i) => (
+        <div style={{ height: 5, background: PRIMARY, borderRadius: 2, marginBottom: 2 }} />
+        {[PRIMARY + '33', '#E5E7EB', '#E5E7EB'].map((bg, i) => (
           <div key={i} style={{ height: 10, borderRadius: 4, background: bg, display: 'flex', alignItems: 'center', paddingLeft: 3 }}>
-            <div style={{ width: 4, height: 4, borderRadius: 1, background: i === 0 ? C.primary : '#C4C9D4' }} />
+            <div style={{ width: 4, height: 4, borderRadius: 1, background: i === 0 ? PRIMARY : '#C4C9D4' }} />
           </div>
         ))}
       </div>
@@ -205,10 +199,10 @@ function CompactSidebarPreview() {
   return (
     <div style={{ display: 'flex', gap: 0, width: 130, height: 72, borderRadius: 10, overflow: 'hidden', border: '1px solid #E5E7EB', margin: '0 4px', boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
       <div style={{ width: 28, background: '#F9FAFB', borderRight: '1px solid #E5E7EB', borderRadius: '10px 0 0 10px', padding: '5px 4px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-        <div style={{ width: 8, height: 5, background: C.primary, borderRadius: 2, marginBottom: 2 }} />
-        {[C.primary + '33', '#E5E7EB', '#E5E7EB'].map((bg, i) => (
+        <div style={{ width: 8, height: 5, background: PRIMARY, borderRadius: 2, marginBottom: 2 }} />
+        {[PRIMARY + '33', '#E5E7EB', '#E5E7EB'].map((bg, i) => (
           <div key={i} style={{ width: 16, height: 16, borderRadius: 5, background: bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <div style={{ width: 6, height: 6, borderRadius: 2, background: i === 0 ? C.primary : '#C4C9D4' }} />
+            <div style={{ width: 6, height: 6, borderRadius: 2, background: i === 0 ? PRIMARY : '#C4C9D4' }} />
           </div>
         ))}
       </div>
@@ -225,10 +219,10 @@ function FloatingSidebarPreview() {
   return (
     <div style={{ display: 'flex', gap: 4, width: 130, height: 72, background: '#EFF1F7', borderRadius: 8, overflow: 'hidden', border: '1px solid #E5E7EB', padding: '6px 4px 6px 0', boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
       <div style={{ width: 32, background: '#F9FAFB', borderRadius: 8, padding: '5px 4px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, marginLeft: 4, boxShadow: '0 4px 12px rgba(0,0,0,0.10)', flexShrink: 0 }}>
-        <div style={{ width: 8, height: 5, background: C.primary, borderRadius: 2, marginBottom: 2 }} />
-        {[C.primary + '33', '#E5E7EB', '#E5E7EB'].map((bg, i) => (
+        <div style={{ width: 8, height: 5, background: PRIMARY, borderRadius: 2, marginBottom: 2 }} />
+        {[PRIMARY + '33', '#E5E7EB', '#E5E7EB'].map((bg, i) => (
           <div key={i} style={{ height: 10, width: '100%', borderRadius: 4, background: bg, display: 'flex', alignItems: 'center', paddingLeft: 2 }}>
-            <div style={{ width: 4, height: 4, borderRadius: 1, background: i === 0 ? C.primary : '#C4C9D4' }} />
+            <div style={{ width: 4, height: 4, borderRadius: 1, background: i === 0 ? PRIMARY : '#C4C9D4' }} />
           </div>
         ))}
       </div>
@@ -245,10 +239,10 @@ function GlassSidebarPreview() {
   return (
     <div style={{ display: 'flex', gap: 0, width: 130, height: 72, borderRadius: 8, overflow: 'hidden', border: '1px solid #E5E7EB', boxShadow: '0 2px 8px rgba(0,0,0,0.08)', background: 'linear-gradient(135deg, #C7D2FE 0%, #E0F2FE 100%)' }}>
       <div style={{ width: 38, background: 'rgba(255,255,255,0.72)', backdropFilter: 'blur(8px)', borderRight: '1px solid rgba(255,255,255,0.55)', padding: '5px 6px', display: 'flex', flexDirection: 'column', gap: 3 }}>
-        <div style={{ height: 5, background: C.primary, borderRadius: 2, marginBottom: 2 }} />
-        {[C.primary + '33', 'rgba(229,231,235,0.7)', 'rgba(229,231,235,0.7)'].map((bg, i) => (
+        <div style={{ height: 5, background: PRIMARY, borderRadius: 2, marginBottom: 2 }} />
+        {[PRIMARY + '33', 'rgba(229,231,235,0.7)', 'rgba(229,231,235,0.7)'].map((bg, i) => (
           <div key={i} style={{ height: 10, borderRadius: 4, background: bg, display: 'flex', alignItems: 'center', paddingLeft: 3 }}>
-            <div style={{ width: 4, height: 4, borderRadius: 1, background: i === 0 ? C.primary : '#C4C9D4' }} />
+            <div style={{ width: 4, height: 4, borderRadius: 1, background: i === 0 ? PRIMARY : '#C4C9D4' }} />
           </div>
         ))}
       </div>
@@ -265,10 +259,10 @@ function GradientSidebarPreview() {
   return (
     <div style={{ display: 'flex', gap: 0, width: 130, height: 72, borderRadius: 8, overflow: 'hidden', border: '1px solid #1E293B', boxShadow: '0 2px 8px rgba(0,0,0,0.18)' }}>
       <div style={{ width: 38, background: 'linear-gradient(180deg, #1E293B 0%, #0F172A 100%)', padding: '5px 6px', display: 'flex', flexDirection: 'column', gap: 3 }}>
-        <div style={{ height: 5, background: C.primary, borderRadius: 2, marginBottom: 2 }} />
-        {[C.primary + '33', 'rgba(255,255,255,0.10)', 'rgba(255,255,255,0.10)'].map((bg, i) => (
+        <div style={{ height: 5, background: PRIMARY, borderRadius: 2, marginBottom: 2 }} />
+        {[PRIMARY + '33', 'rgba(255,255,255,0.10)', 'rgba(255,255,255,0.10)'].map((bg, i) => (
           <div key={i} style={{ height: 10, borderRadius: 4, background: bg, display: 'flex', alignItems: 'center', paddingLeft: 3 }}>
-            <div style={{ width: 4, height: 4, borderRadius: 1, background: i === 0 ? C.primary : 'rgba(255,255,255,0.3)' }} />
+            <div style={{ width: 4, height: 4, borderRadius: 1, background: i === 0 ? PRIMARY : 'rgba(255,255,255,0.3)' }} />
           </div>
         ))}
       </div>
@@ -285,11 +279,11 @@ function AccentSidebarPreview() {
   return (
     <div style={{ display: 'flex', gap: 0, width: 130, height: 72, borderRadius: 8, overflow: 'hidden', border: '1px solid #E5E7EB', boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
       <div style={{ width: 38, background: '#F9FAFB', borderRight: '1px solid #E5E7EB', padding: '5px 6px', display: 'flex', flexDirection: 'column', gap: 3 }}>
-        <div style={{ height: 5, background: C.primary, borderRadius: 2, marginBottom: 2 }} />
+        <div style={{ height: 5, background: PRIMARY, borderRadius: 2, marginBottom: 2 }} />
         {[true, false, false].map((active, i) => (
-          <div key={i} style={{ height: 10, borderRadius: 4, background: active ? C.primary + '14' : 'transparent', display: 'flex', alignItems: 'center', position: 'relative', overflow: 'hidden' }}>
-            {active && <div style={{ position: 'absolute', left: 0, top: 1, bottom: 1, width: 2, background: C.primary, borderRadius: 1 }} />}
-            <div style={{ width: 4, height: 4, borderRadius: 1, background: active ? C.primary : '#C4C9D4', marginLeft: 4 }} />
+          <div key={i} style={{ height: 10, borderRadius: 4, background: active ? PRIMARY + '14' : 'transparent', display: 'flex', alignItems: 'center', position: 'relative', overflow: 'hidden' }}>
+            {active && <div style={{ position: 'absolute', left: 0, top: 1, bottom: 1, width: 2, background: PRIMARY, borderRadius: 1 }} />}
+            <div style={{ width: 4, height: 4, borderRadius: 1, background: active ? PRIMARY : '#C4C9D4', marginLeft: 4 }} />
           </div>
         ))}
       </div>
@@ -306,9 +300,9 @@ function PillSidebarPreview() {
   return (
     <div style={{ display: 'flex', gap: 0, width: 130, height: 72, borderRadius: 8, overflow: 'hidden', border: '1px solid #E5E7EB', boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
       <div style={{ width: 42, background: '#F9FAFB', borderRight: '1px solid #E5E7EB', padding: '5px 5px', display: 'flex', flexDirection: 'column', gap: 3 }}>
-        <div style={{ height: 5, background: C.primary, borderRadius: 2, marginBottom: 2 }} />
+        <div style={{ height: 5, background: PRIMARY, borderRadius: 2, marginBottom: 2 }} />
         {[true, false, false].map((active, i) => (
-          <div key={i} style={{ height: 10, borderRadius: 50, background: active ? C.primary : 'transparent', display: 'flex', alignItems: 'center', paddingLeft: 5 }}>
+          <div key={i} style={{ height: 10, borderRadius: 50, background: active ? PRIMARY : 'transparent', display: 'flex', alignItems: 'center', paddingLeft: 5 }}>
             <div style={{ width: 4, height: 4, borderRadius: '50%', background: active ? '#fff' : '#C4C9D4' }} />
           </div>
         ))}
@@ -326,11 +320,11 @@ function WideSidebarPreview() {
   return (
     <div style={{ display: 'flex', gap: 0, width: 130, height: 72, borderRadius: 8, overflow: 'hidden', border: '1px solid #E5E7EB', boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
       <div style={{ width: 50, background: '#F9FAFB', borderRight: '1px solid #E5E7EB', padding: '5px 6px', display: 'flex', flexDirection: 'column', gap: 3 }}>
-        <div style={{ height: 5, background: C.primary, borderRadius: 2, marginBottom: 2 }} />
-        {[C.primary + '33', '#E5E7EB', '#E5E7EB'].map((bg, i) => (
+        <div style={{ height: 5, background: PRIMARY, borderRadius: 2, marginBottom: 2 }} />
+        {[PRIMARY + '33', '#E5E7EB', '#E5E7EB'].map((bg, i) => (
           <div key={i} style={{ height: 10, borderRadius: 5, background: bg, display: 'flex', alignItems: 'center', paddingLeft: 3, gap: 2 }}>
-            <div style={{ width: 4, height: 4, borderRadius: 1, background: i === 0 ? C.primary : '#C4C9D4', flexShrink: 0 }} />
-            <div style={{ height: 3, width: i === 0 ? 18 : 12, background: i === 0 ? C.primary + '60' : '#E5E7EB', borderRadius: 2 }} />
+            <div style={{ width: 4, height: 4, borderRadius: 1, background: i === 0 ? PRIMARY : '#C4C9D4', flexShrink: 0 }} />
+            <div style={{ height: 3, width: i === 0 ? 18 : 12, background: i === 0 ? PRIMARY + '60' : '#E5E7EB', borderRadius: 2 }} />
           </div>
         ))}
       </div>
@@ -347,10 +341,10 @@ function MinimalSidebarPreview() {
   return (
     <div style={{ display: 'flex', gap: 0, width: 130, height: 72, borderRadius: 8, overflow: 'hidden', border: '1px solid #E5E7EB', background: '#F3F4F6', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
       <div style={{ width: 38, background: 'rgba(255,255,255,0.55)', padding: '5px 6px', display: 'flex', flexDirection: 'column', gap: 3 }}>
-        <div style={{ height: 5, background: C.primary, borderRadius: 2, marginBottom: 2, opacity: 0.8 }} />
-        {[C.primary + '22', 'transparent', 'transparent'].map((bg, i) => (
+        <div style={{ height: 5, background: PRIMARY, borderRadius: 2, marginBottom: 2, opacity: 0.8 }} />
+        {[PRIMARY + '22', 'transparent', 'transparent'].map((bg, i) => (
           <div key={i} style={{ height: 10, borderRadius: 4, background: bg, display: 'flex', alignItems: 'center', paddingLeft: 3 }}>
-            <div style={{ width: 4, height: 4, borderRadius: 1, background: i === 0 ? C.primary : '#D1D5DB' }} />
+            <div style={{ width: 4, height: 4, borderRadius: 1, background: i === 0 ? PRIMARY : '#D1D5DB' }} />
           </div>
         ))}
       </div>
@@ -366,6 +360,7 @@ function MinimalSidebarPreview() {
 /* ── Main page ─────────────────────────────────────────────────────────────── */
 export default function ThemeOptionsPage() {
   const { mode, setMode, sidebarStyle, setSidebarStyle, primaryColor, setPrimaryColor, fontFamily, setFontFamily, sidebarAppearance, setSidebarAppearance, tableStyle, setTableStyle, tableDensity } = useTheme();
+  const { C, isDark } = usePageTheme();
   const [layoutSaving, setLayoutSaving] = useState(false);
   const { user, refreshUser } = useAuth();
   const isAdmin = user?.role === 'superadmin' || user?.role === 'admin';
@@ -443,8 +438,8 @@ export default function ThemeOptionsPage() {
     <div style={{
       display: 'flex', alignItems: 'center', gap: 8,
       padding: '7px 14px', borderRadius: 10,
-      background: 'linear-gradient(135deg, #EFF6FF, #DBEAFE)',
-      border: '1px solid #BFDBFE',
+      background: C.tipBg,
+      border: `1px solid ${C.tipBorder}`,
     }}>
       <div style={{ width: 8, height: 8, borderRadius: '50%', background: C.primary }} />
       <span style={{ fontSize: 12.5, fontWeight: 700, color: C.primary, fontFamily: "'Inter',sans-serif" }}>

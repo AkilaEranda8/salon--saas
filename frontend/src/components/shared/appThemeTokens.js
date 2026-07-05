@@ -54,6 +54,7 @@ export function getSurface(isDark) {
 }
 
 export const DARK_TABLE_OVERRIDE = {
+  shellBg: '#1E293B',
   shellBorder: '1px solid #334155',
   shellShadow: '0 8px 20px rgba(2,6,23,0.35)',
   headerBg: 'linear-gradient(180deg, #1E293B 0%, #0F172A 100%)',
@@ -63,6 +64,7 @@ export const DARK_TABLE_OVERRIDE = {
   rowOdd: '#172033',
   rowHover: '#243044',
   rowBorder: '1px solid #2A3A52',
+  emptyBg: '#172033',
   footerBg: '#0F172A',
   footerBorder: '1px solid #334155',
   footerText: '#94A3B8',

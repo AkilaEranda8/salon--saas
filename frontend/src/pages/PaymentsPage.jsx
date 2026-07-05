@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../context/ThemeContext';
 import api from '../api/axios';
 import Button from '../components/ui/Button';
 import { Input, Select, FormGroup } from '../components/ui/FormElements';
@@ -8,7 +9,7 @@ import PageWrapper from '../components/layout/PageWrapper';
 import { useToast } from '../components/ui/Toast';
 import {
   IconEye, IconEdit, IconPlus, IconDollar, IconReceipt, IconCalendar,
-  ActionBtn, StatCard, PKModal as Modal, FilterBar,
+  IconClose, ActionBtn, StatCard, FilterBar,
   DataTable,
 } from '../components/ui/PageKit';
 import { computePromoFromDiscount } from '../utils/promoDiscount';
@@ -389,7 +390,98 @@ function InvoiceModal({ open, onClose, payment }) {
   );
 }
 
-function ServiceMultiSelect({ services, selected, onChange }) {
+function PaySection({ title, desc, children, dark = false }) {
+  return (
+    <div style={{
+      border: `1px solid ${dark ? '#334155' : '#E4E7EC'}`,
+      borderRadius: 14,
+      overflow: 'hidden',
+      background: dark ? '#0F172A' : '#fff',
+    }}>
+      <div style={{
+        padding: '12px 16px',
+        background: dark ? '#1E293B' : '#F8FAFC',
+        borderBottom: `1px solid ${dark ? '#334155' : '#EEF2F7'}`,
+      }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: dark ? '#E2E8F0' : '#101828' }}>{title}</div>
+        {desc && <div style={{ fontSize: 11, color: dark ? '#94A3B8' : '#64748B', marginTop: 2 }}>{desc}</div>}
+      </div>
+      <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 14 }}>{children}</div>
+    </div>
+  );
+}
+
+function PayModal({ open, onClose, title, subtitle, children, footer, size = 'lg', dark = false }) {
+  useEffect(() => {
+    if (!open) return;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = ''; };
+  }, [open]);
+  if (!open) return null;
+  const widths = { sm: 420, md: 560, lg: 720, xl: 900 };
+  return createPortal(
+    <div style={{ position: 'fixed', inset: 0, zIndex: 900, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+      <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'rgba(16,24,40,0.5)', backdropFilter: 'blur(4px)' }} />
+      <div style={{
+        position: 'relative', width: '100%', maxWidth: widths[size] ?? 720,
+        background: dark ? '#111827' : '#fff', borderRadius: 18, display: 'flex', flexDirection: 'column',
+        boxShadow: dark ? '0 24px 64px rgba(2,6,23,0.55)' : '0 24px 64px rgba(16,24,40,0.2)',
+        maxHeight: '92vh', animation: 'pay-modal-pop 0.2s ease',
+        border: dark ? '1px solid #334155' : '1px solid #E4E7EC',
+      }}>
+        <style>{'@keyframes pay-modal-pop { from { opacity:0; transform:scale(0.97) translateY(10px); } to { opacity:1; transform:scale(1) translateY(0); } }'}</style>
+        <div style={{
+          padding: '18px 22px',
+          background: dark
+            ? 'linear-gradient(135deg,#064e3b 0%,#1e3a8a 100%)'
+            : 'linear-gradient(135deg,#ECFDF5 0%,#D1FAE5 45%,#EFF6FF 100%)',
+          borderBottom: `1px solid ${dark ? '#334155' : '#A7F3D0'}`,
+          borderRadius: '18px 18px 0 0',
+          display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexShrink: 0, gap: 12,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, minWidth: 0 }}>
+            <div style={{
+              width: 44, height: 44, borderRadius: 12, flexShrink: 0,
+              background: dark ? 'rgba(255,255,255,0.12)' : '#fff',
+              border: dark ? '1px solid rgba(255,255,255,0.15)' : '1px solid #6EE7B7',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              color: dark ? '#6EE7B7' : '#059669',
+              boxShadow: dark ? 'none' : '0 2px 8px rgba(5,150,105,0.15)',
+            }}>
+              <IconDollar />
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <h3 style={{ margin: 0, fontSize: 17, fontWeight: 800, color: dark ? '#F8FAFC' : '#0F172A', fontFamily: "'Inter',sans-serif", letterSpacing: '-0.02em' }}>{title}</h3>
+              {subtitle && <p style={{ margin: '4px 0 0', fontSize: 12, color: dark ? '#CBD5E1' : '#475569', lineHeight: 1.45 }}>{subtitle}</p>}
+            </div>
+          </div>
+          <button type="button" onClick={onClose} aria-label="Close"
+            style={{
+              background: dark ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.85)',
+              border: `1px solid ${dark ? 'rgba(255,255,255,0.15)' : '#E4E7EC'}`,
+              cursor: 'pointer', color: dark ? '#E2E8F0' : '#64748B',
+              display: 'flex', alignItems: 'center', borderRadius: 10, padding: 7, flexShrink: 0,
+            }}>
+            <IconClose />
+          </button>
+        </div>
+        <div style={{ flex: 1, overflowY: 'auto', padding: '20px 22px', background: dark ? '#111827' : '#F8FAFC' }}>{children}</div>
+        {footer && (
+          <div style={{
+            padding: '14px 22px', borderTop: `1px solid ${dark ? '#334155' : '#E4E7EC'}`,
+            display: 'flex', gap: 8, justifyContent: 'flex-end', flexShrink: 0,
+            background: dark ? '#0F172A' : '#fff', borderRadius: '0 0 18px 18px', width: '100%', boxSizing: 'border-box',
+          }}>
+            {footer}
+          </div>
+        )}
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+function ServiceMultiSelect({ services, selected, onChange, dark = false }) {
   const [open, setOpen] = useState(false);
   const selSvcs = services.filter(s => selected.includes(s.id));
   const toggle = id => onChange(selected.includes(id) ? selected.filter(x => x !== id) : [...selected, id]);
@@ -397,13 +489,14 @@ function ServiceMultiSelect({ services, selected, onChange }) {
     <div style={{ position:'relative' }}>
       {open && <div onClick={() => setOpen(false)} style={{ position:'fixed', inset:0, zIndex:99 }} />}
       <div onClick={() => setOpen(o => !o)} style={{
-        minHeight:38, padding:'6px 10px', borderRadius:10, border:'1.5px solid #D0D5DD',
-        background:'#fff', cursor:'pointer', display:'flex', flexWrap:'wrap', gap:5, alignItems:'center',
+        minHeight:38, padding:'6px 10px', borderRadius:10,
+        border:`1.5px solid ${dark ? '#334155' : '#D0D5DD'}`,
+        background: dark ? '#0B1220' : '#fff', cursor:'pointer', display:'flex', flexWrap:'wrap', gap:5, alignItems:'center',
       }}>
         {selSvcs.length === 0
-          ? <span style={{ color:'#98A2B3', fontSize:13, userSelect:'none' }}>Select services…</span>
+          ? <span style={{ color: dark ? '#64748B' : '#98A2B3', fontSize:13, userSelect:'none' }}>Select services…</span>
           : selSvcs.map(s => (
-            <span key={s.id} style={{ display:'inline-flex', alignItems:'center', gap:3, padding:'2px 8px 2px 10px', borderRadius:99, background:'#EFF6FF', color:'#2563EB', fontSize:12, fontWeight:600 }}>
+            <span key={s.id} style={{ display:'inline-flex', alignItems:'center', gap:3, padding:'2px 8px 2px 10px', borderRadius:99, background: dark ? 'rgba(37,99,235,0.2)' : '#EFF6FF', color: dark ? '#93C5FD' : '#2563EB', fontSize:12, fontWeight:600 }}>
               {s.name}
               <span onMouseDown={e => { e.stopPropagation(); toggle(s.id); }} style={{ cursor:'pointer', color:'#93C5FD', fontWeight:700, fontSize:14, lineHeight:1, marginLeft:3 }}>×</span>
             </span>
@@ -413,19 +506,20 @@ function ServiceMultiSelect({ services, selected, onChange }) {
       {open && (
         <div style={{
           position:'absolute', top:'calc(100% + 4px)', left:0, right:0, zIndex:100,
-          background:'#fff', border:'1.5px solid #E4E7EC', borderRadius:10,
-          boxShadow:'0 8px 24px rgba(16,24,40,0.12)', maxHeight:230, overflowY:'auto',
+          background: dark ? '#1E293B' : '#fff',
+          border:`1.5px solid ${dark ? '#334155' : '#E4E7EC'}`, borderRadius:10,
+          boxShadow: dark ? '0 8px 24px rgba(2,6,23,0.45)' : '0 8px 24px rgba(16,24,40,0.12)', maxHeight:230, overflowY:'auto',
         }}>
-          {services.length === 0 && <div style={{ padding:'12px 14px', fontSize:13, color:'#98A2B3' }}>No services found</div>}
+          {services.length === 0 && <div style={{ padding:'12px 14px', fontSize:13, color: dark ? '#64748B' : '#98A2B3' }}>No services found</div>}
           {services.map(s => (
             <label key={s.id} style={{
               display:'flex', alignItems:'center', gap:10, padding:'9px 14px', cursor:'pointer',
-              background: selected.includes(s.id) ? '#F0F9FF' : 'transparent',
-              borderBottom:'1px solid #F8FAFC',
+              background: selected.includes(s.id) ? (dark ? 'rgba(37,99,235,0.15)' : '#F0F9FF') : 'transparent',
+              borderBottom:`1px solid ${dark ? '#334155' : '#F8FAFC'}`,
             }}>
               <input type="checkbox" checked={selected.includes(s.id)} onChange={() => toggle(s.id)}
                 style={{ accentColor:'#2563EB', width:15, height:15, flexShrink:0, cursor:'pointer' }} />
-              <span style={{ flex:1, fontSize:13, color:'#344054', fontWeight: selected.includes(s.id) ? 600 : 400 }}>{s.name}</span>
+              <span style={{ flex:1, fontSize:13, color: dark ? '#E2E8F0' : '#344054', fontWeight: selected.includes(s.id) ? 600 : 400 }}>{s.name}</span>
               <span style={{ fontSize:12, color:'#059669', fontWeight:700, fontFamily:"'Outfit',sans-serif" }}>Rs. {Number(s.price||0).toLocaleString()}</span>
             </label>
           ))}
@@ -437,6 +531,7 @@ function ServiceMultiSelect({ services, selected, onChange }) {
 
 export default function PaymentsPage() {
   const { user } = useAuth();
+  const { isDark } = useTheme();
   const { toast } = useToast();
   const canEdit  = ['superadmin','admin','manager','staff'].includes(user?.role);
   const isAdmin  = ['superadmin','admin'].includes(user?.role);
@@ -741,45 +836,76 @@ export default function PaymentsPage() {
       />
 
       {/* Record Payment Modal */}
-      <Modal open={showForm} onClose={() => { setShowForm(false); setEditId(null); }} title={editId ? 'Edit Payment' : 'Record Payment'} size="lg"
-        footer={
-          <div style={{ display:'flex', gap:10, justifyContent:'flex-end', width:'100%' }}>
-            <Button variant="secondary" onClick={() => { setShowForm(false); setEditId(null); }}>Cancel</Button>
-            <Button
-              variant="primary"
-              loading={saving}
-              disabled={saving || !String(form.customer_id || '').trim() || !String(form.staff_id || '').trim()}
-              onClick={handleSave}
-            >
-              <span style={{ display:'flex', alignItems:'center', gap:6 }}>
-                <IconDollar />{editId ? 'Save changes' : 'Record Payment'}
-              </span>
-            </Button>
+      <PayModal
+        open={showForm}
+        onClose={() => { setShowForm(false); setEditId(null); }}
+        title={editId ? 'Edit Payment' : 'Record Payment'}
+        subtitle={editId ? 'Update transaction details, services, and payment splits.' : 'Record a sale — select customer, services, and how they paid.'}
+        size="xl"
+        dark={isDark}
+        footer={(
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: 12, flexWrap: 'wrap' }}>
+            <div style={{ fontSize: 13, color: isDark ? '#94A3B8' : '#64748B' }}>
+              {form.total_amount ? (
+                <span style={{ fontWeight: 800, color: '#059669' }}>
+                  Net: Rs. {(Number(form.total_amount || 0) - Number(form.loyalty_discount || 0) - promoPreview).toLocaleString()}
+                  {form.service_ids.length > 0 && (
+                    <span style={{ fontWeight: 500, color: isDark ? '#94A3B8' : '#64748B', marginLeft: 8 }}>
+                      · {form.service_ids.length} service{form.service_ids.length !== 1 ? 's' : ''}
+                      {(() => {
+                        const net = Number(form.total_amount || 0) - Number(form.loyalty_discount || 0) - promoPreview;
+                        const st = form.splits.reduce((s, sp) => s + Number(sp.amount || 0), 0);
+                        const ok = Math.abs(net - st) < 0.01;
+                        return ok && net > 0 ? ' · splits match' : net > 0 ? ` · Rs. ${st.toLocaleString()} allocated` : '';
+                      })()}
+                    </span>
+                  )}
+                </span>
+              ) : (
+                <span>Select services to calculate amount</span>
+              )}
+            </div>
+            <div style={{ display: 'flex', gap: 8, marginLeft: 'auto' }}>
+              <Button variant="secondary" onClick={() => { setShowForm(false); setEditId(null); }}>Cancel</Button>
+              <Button
+                variant="primary"
+                loading={saving}
+                disabled={saving || !String(form.customer_id || '').trim() || !String(form.staff_id || '').trim()}
+                onClick={handleSave}
+              >
+                <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <IconDollar />{editId ? 'Save Changes' : 'Record Payment'}
+                </span>
+              </Button>
+            </div>
           </div>
-        }>
+        )}
+      >
         {formErr && (
-          <div style={{ background:'#FEF2F2', color:'#B91C1C', padding:'10px 14px', borderRadius:10, marginBottom:16, fontSize:13, border:'1px solid #FECACA', display:'flex', alignItems:'center', gap:8 }}>
+          <div style={{
+            background: isDark ? '#450a0a' : '#FEF2F2', color: isDark ? '#FCA5A5' : '#DC2626',
+            padding: '10px 14px', borderRadius: 10, marginBottom: 16, fontSize: 13,
+            border: `1px solid ${isDark ? '#7f1d1d' : '#FEE2E2'}`, fontWeight: 500,
+            display: 'flex', alignItems: 'center', gap: 8,
+          }}>
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
             {formErr}
           </div>
         )}
-        <div style={{ display:'flex', flexDirection:'column', gap:0 }}>
 
-          {/* ── Section: Who ── */}
-          <div style={{ background:'#F8FAFC', borderRadius:12, border:'1px solid #EAECF0', padding:'14px 16px', marginBottom:12 }}>
-            <div style={{ fontSize:11, fontWeight:700, color:'#667085', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:12, display:'flex', alignItems:'center', gap:6 }}>
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-              Customer & Staff
-            </div>
-            {(isAdmin && !hasFixedBranch) && (
-              <FormGroup label="Branch" style={{ marginBottom:10 }}>
-                <Select value={form.branch_id||''} disabled={!!editId} onChange={e => setForm(f=>({...f, branch_id:e.target.value, staff_id:''}))}>
-                  <option value="">Select branch</option>
-                  {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-                </Select>
-              </FormGroup>
-            )}
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 16 }}>
+
+          {/* Left column */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <PaySection title="Customer & Staff" desc="Who received the service and who served them" dark={isDark}>
+              {(isAdmin && !hasFixedBranch) && (
+                <FormGroup label="Branch">
+                  <Select value={form.branch_id || ''} disabled={!!editId} onChange={e => setForm(f => ({ ...f, branch_id: e.target.value, staff_id: '' }))}>
+                    <option value="">Select branch</option>
+                    {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                  </Select>
+                </FormGroup>
+              )}
               <FormGroup label="Customer *">
                 <CustomerTypeahead
                   customers={customers}
@@ -799,182 +925,251 @@ export default function PaymentsPage() {
                 />
               </FormGroup>
               <FormGroup label="Staff *">
-                <Select value={form.staff_id||''} onChange={e => setForm(f=>({...f, staff_id:e.target.value}))}>
+                <Select value={form.staff_id || ''} onChange={e => setForm(f => ({ ...f, staff_id: e.target.value }))}>
                   <option value="">Select staff</option>
-                  {(form.branch_id ? staffList.filter(s => s.branch_id == form.branch_id) : staffList).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  {(form.branch_id ? staffList.filter(s => s.branch_id == form.branch_id) : staffList).map(s => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
                 </Select>
               </FormGroup>
-            </div>
+            </PaySection>
+
+            <PaySection title="Services" desc="Select one or more services — total auto-calculates" dark={isDark}>
+              <ServiceMultiSelect
+                dark={isDark}
+                services={services.filter(s => s.is_active !== false)}
+                selected={form.service_ids}
+                onChange={ids => {
+                  const svcs = services.filter(s => ids.includes(s.id));
+                  const total = svcs.reduce((sum, s) => sum + Number(s.price || 0), 0);
+                  setForm(f => ({
+                    ...f,
+                    service_ids: ids,
+                    total_amount: total > 0 ? String(total) : '',
+                    splits: total > 0 && f.splits.length === 1
+                      ? [{ ...f.splits[0], amount: String(total) }]
+                      : f.splits,
+                  }));
+                }}
+              />
+              {form.service_ids.length > 0 && (
+                <div style={{
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8,
+                  padding: '10px 12px', borderRadius: 10,
+                  background: isDark ? 'rgba(5,150,105,0.12)' : '#ECFDF5',
+                  border: `1px solid ${isDark ? '#065F46' : '#6EE7B7'}`,
+                }}>
+                  <span style={{ fontSize: 12, color: isDark ? '#6EE7B7' : '#047857', fontWeight: 600 }}>
+                    {form.service_ids.length} service{form.service_ids.length !== 1 ? 's' : ''} selected
+                  </span>
+                  <span style={{ fontSize: 14, fontWeight: 800, color: '#059669', fontFamily: "'Outfit',sans-serif" }}>
+                    Rs. {services.filter(s => form.service_ids.includes(s.id)).reduce((sum, s) => sum + Number(s.price || 0), 0).toLocaleString()}
+                  </span>
+                </div>
+              )}
+            </PaySection>
           </div>
 
-          {/* ── Section: Services ── */}
-          <div style={{ background:'#F8FAFC', borderRadius:12, border:'1px solid #EAECF0', padding:'14px 16px', marginBottom:12 }}>
-            <div style={{ fontSize:11, fontWeight:700, color:'#667085', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:12, display:'flex', alignItems:'center', gap:6 }}>
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
-              Services <span style={{ color:'#EF4444', marginLeft:2 }}>*</span>
-            </div>
-            <ServiceMultiSelect
-              services={services.filter(s => s.is_active !== false)}
-              selected={form.service_ids}
-              onChange={ids => {
-                const svcs = services.filter(s => ids.includes(s.id));
-                const total = svcs.reduce((sum, s) => sum + Number(s.price || 0), 0);
-                setForm(f => ({
-                  ...f,
-                  service_ids: ids,
-                  total_amount: total > 0 ? String(total) : '',
-                  splits: total > 0 && f.splits.length === 1
-                    ? [{ ...f.splits[0], amount: String(total) }]
-                    : f.splits,
-                }));
-              }}
-            />
-            {form.service_ids.length > 0 && (
-              <div style={{ marginTop:10, display:'flex', gap:6, flexWrap:'wrap' }}>
-                {services.filter(s => form.service_ids.includes(s.id)).map(s => (
-                  <span key={s.id} style={{ fontSize:11, color:'#344054', background:'#fff', border:'1px solid #D0D5DD', padding:'3px 10px', borderRadius:20, fontWeight:500 }}>
-                    {s.name} <span style={{ color:'#667085' }}>Rs. {Number(s.price||0).toLocaleString()}</span>
-                  </span>
-                ))}
-                {form.service_ids.length > 1 && (
-                  <span style={{ fontSize:11, fontWeight:700, color:'#065F46', background:'#ECFDF5', border:'1px solid #6EE7B7', padding:'3px 10px', borderRadius:20 }}>
-                    Total: Rs. {services.filter(s => form.service_ids.includes(s.id)).reduce((sum, s) => sum + Number(s.price||0), 0).toLocaleString()}
-                  </span>
+          {/* Right column */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <PaySection title="Amount & Discounts" desc="Bill total, loyalty points, and promo codes" dark={isDark}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <FormGroup label="Total Amount (Rs.)" required>
+                  <Input type="number" value={form.total_amount || ''} onChange={e => setForm(f => ({ ...f, total_amount: e.target.value }))} />
+                </FormGroup>
+                <FormGroup label="Loyalty Discount (Rs.)">
+                  <Input type="number" value={form.loyalty_discount || 0} onChange={e => setForm(f => ({ ...f, loyalty_discount: Number(e.target.value) }))} />
+                </FormGroup>
+              </div>
+              <FormGroup label="Promo discount">
+                <Select value={form.discount_id || ''} onChange={e => setForm(f => ({ ...f, discount_id: e.target.value }))}>
+                  <option value="">None</option>
+                  {discounts.map(d => (
+                    <option key={d.id} value={d.id}>{d.name} ({d.discount_type === 'fixed' ? `Rs.${d.value}` : `${d.value}%`})</option>
+                  ))}
+                </Select>
+                {discountsLoading && (
+                  <div style={{ fontSize: 12, color: isDark ? '#64748B' : '#64748B', marginTop: 6 }}>Loading promos…</div>
                 )}
-              </div>
-            )}
-          </div>
-
-          {/* ── Section: Amount ── */}
-          <div style={{ background:'#F8FAFC', borderRadius:12, border:'1px solid #EAECF0', padding:'14px 16px', marginBottom:12 }}>
-            <div style={{ fontSize:11, fontWeight:700, color:'#667085', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:12, display:'flex', alignItems:'center', gap:6 }}>
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-              Amount
-            </div>
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
-              <FormGroup label="Total Amount (Rs.)" required>
-                <Input type="number" value={form.total_amount||''} onChange={e => setForm(f=>({...f, total_amount:e.target.value}))} />
-              </FormGroup>
-              <FormGroup label="Loyalty Discount (Rs.)">
-                <Input type="number" value={form.loyalty_discount||0} onChange={e => setForm(f=>({...f, loyalty_discount:Number(e.target.value)}))} />
-              </FormGroup>
-            </div>
-            <FormGroup label="Promo discount" style={{ marginTop:10 }}>
-              <Select value={form.discount_id||''} onChange={e => setForm(f=>({...f, discount_id:e.target.value}))}>
-                <option value="">None</option>
-                {discounts.map(d => (
-                  <option key={d.id} value={d.id}>{d.name} ({d.discount_type === 'fixed' ? `Rs.${d.value}` : `${d.value}%`})</option>
-                ))}
-              </Select>
-              {discountsLoading && (
-                <div style={{ fontSize:12, color:'#64748B', marginTop:6 }}>Loading promos…</div>
-              )}
-              {!discountsLoading && showForm && !effectiveBranchForDiscounts && (
-                <div style={{ fontSize:12, color:'#B45309', marginTop:6 }}>
-                  Select branch (above) or pick a branch in the Payments filter on this page, then reopen Record Payment — promos load per branch.
-                </div>
-              )}
-              {!discountsLoading && !discountsLoadError && effectiveBranchForDiscounts && discounts.length === 0 && (
-                <div style={{ fontSize:12, color:'#64748B', marginTop:6 }}>
-                  No active promos for this branch. Add them under <strong>Discounts</strong> (dates, active, min bill).
-                </div>
-              )}
-            </FormGroup>
-            {form.total_amount && (
-              <div style={{ marginTop:12, background: 'linear-gradient(135deg,#EFF6FF 0%,#F0FDF4 100%)', borderRadius:10, padding:'10px 14px', display:'flex', justifyContent:'space-between', alignItems:'center', border:'1px solid #BFDBFE' }}>
-                <div style={{ fontSize:12, color:'#3B82F6' }}>
-                  Rs. {Number(form.total_amount||0).toLocaleString()}
-                  {Number(form.loyalty_discount||0) > 0 && <span style={{ color:'#EF4444', marginLeft:6 }}>− Rs. {Number(form.loyalty_discount).toLocaleString()}</span>}
-                  {promoPreview > 0 && <span style={{ color:'#7C3AED', marginLeft:6 }}>− Rs. {promoPreview.toLocaleString()} promo</span>}
-                </div>
-                <div style={{ fontSize:14, fontWeight:800, color:'#1D4ED8', fontFamily:"'Outfit',sans-serif" }}>
-                  Net: Rs. {(Number(form.total_amount||0) - Number(form.loyalty_discount||0) - promoPreview).toLocaleString()}
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* ── Section: Payment Splits ── */}
-          <div style={{ background:'#F8FAFC', borderRadius:12, border:'1px solid #EAECF0', padding:'14px 16px' }}>
-            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
-              <div style={{ fontSize:11, fontWeight:700, color:'#667085', textTransform:'uppercase', letterSpacing:'0.06em', display:'flex', alignItems:'center', gap:6 }}>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
-                Payment Method
-              </div>
-              <button onClick={addSplit} style={{ background:'#EFF6FF', border:'1px solid #BFDBFE', color:'#1D4ED8', borderRadius:8, padding:'4px 12px', fontSize:12, fontWeight:600, cursor:'pointer', display:'flex', alignItems:'center', gap:4 }}>
-                <span style={{ fontSize:16, lineHeight:1 }}>+</span> Add Split
-              </button>
-            </div>
-            <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-              {form.splits.map((sp, i) => (
-                <div key={i} style={{ background:'#fff', borderRadius:10, border:'1px solid #E4E7EC', padding:'10px 12px' }}>
-                  <div style={{ display:'flex', gap:8, alignItems:'center' }}>
-                    <Select value={sp.method} onChange={e => setSplit(i,'method',e.target.value)} style={{ flex:'0 0 148px' }}>
-                      {METHODS.map(m => <option key={m} value={m}>{METHOD_LABEL[m]}</option>)}
-                    </Select>
-                    <Input type="number" value={sp.amount} placeholder="Amount (Rs.)" onChange={e => setSplit(i,'amount',e.target.value)} style={{ flex:1 }} />
-                    {form.splits.length > 1 && (
-                      <button onClick={() => removeSplit(i)} style={{ background:'#FEF2F2', border:'1px solid #FECACA', borderRadius:7, cursor:'pointer', color:'#DC2626', fontSize:15, width:30, height:30, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>×</button>
-                    )}
+                {!discountsLoading && showForm && !effectiveBranchForDiscounts && (
+                  <div style={{ fontSize: 12, color: '#B45309', marginTop: 6 }}>
+                    Select branch or set Payments filter — promos load per branch.
                   </div>
-                  {sp.method === 'LankaQR' && sp.amount && Number(sp.amount) > 0 && (
-                    <div style={{ marginTop:8 }}>
+                )}
+                {!discountsLoading && !discountsLoadError && effectiveBranchForDiscounts && discounts.length === 0 && (
+                  <div style={{ fontSize: 12, color: isDark ? '#64748B' : '#64748B', marginTop: 6 }}>
+                    No active promos for this branch.
+                  </div>
+                )}
+              </FormGroup>
+              {form.total_amount && (
+                <div style={{
+                  borderRadius: 12, padding: '12px 14px',
+                  background: isDark ? 'linear-gradient(135deg,#172554,#1e293b)' : 'linear-gradient(135deg,#EFF6FF,#ECFDF5)',
+                  border: `1px solid ${isDark ? '#334155' : '#BFDBFE'}`,
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: isDark ? '#94A3B8' : '#64748B', marginBottom: 6 }}>
+                    <span>Subtotal</span>
+                    <span>Rs. {Number(form.total_amount || 0).toLocaleString()}</span>
+                  </div>
+                  {Number(form.loyalty_discount || 0) > 0 && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#EF4444', marginBottom: 4 }}>
+                      <span>Loyalty</span>
+                      <span>− Rs. {Number(form.loyalty_discount).toLocaleString()}</span>
+                    </div>
+                  )}
+                  {promoPreview > 0 && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#7C3AED', marginBottom: 4 }}>
+                      <span>Promo</span>
+                      <span>− Rs. {promoPreview.toLocaleString()}</span>
+                    </div>
+                  )}
+                  <div style={{
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                    paddingTop: 8, marginTop: 4, borderTop: `1px dashed ${isDark ? '#334155' : '#BFDBFE'}`,
+                  }}>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: isDark ? '#E2E8F0' : '#101828' }}>Net payable</span>
+                    <span style={{ fontSize: 18, fontWeight: 900, color: '#059669', fontFamily: "'Outfit',sans-serif" }}>
+                      Rs. {(Number(form.total_amount || 0) - Number(form.loyalty_discount || 0) - promoPreview).toLocaleString()}
+                    </span>
+                  </div>
+                </div>
+              )}
+            </PaySection>
+
+            <PaySection title="Payment Method" desc="Cash, card, LankaQR, package, or split across methods" dark={isDark}>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: -4, marginBottom: -4 }}>
+                <button
+                  type="button"
+                  onClick={addSplit}
+                  style={{
+                    background: isDark ? 'rgba(37,99,235,0.15)' : '#EFF6FF',
+                    border: `1px solid ${isDark ? '#1E40AF' : '#BFDBFE'}`,
+                    color: isDark ? '#93C5FD' : '#1D4ED8',
+                    borderRadius: 8, padding: '5px 12px', fontSize: 12, fontWeight: 600,
+                    cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4,
+                  }}
+                >
+                  <span style={{ fontSize: 15, lineHeight: 1 }}>+</span> Add Split
+                </button>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {form.splits.map((sp, i) => (
+                  <div key={i} style={{
+                    borderRadius: 12,
+                    border: `1px solid ${isDark ? '#334155' : '#E4E7EC'}`,
+                    background: isDark ? '#0B1220' : '#FAFBFC',
+                    padding: '12px 14px',
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                      <span style={{
+                        width: 22, height: 22, borderRadius: 6, flexShrink: 0,
+                        background: isDark ? '#1E293B' : '#E2E8F0',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: 11, fontWeight: 800, color: isDark ? '#94A3B8' : '#64748B',
+                      }}>
+                        {i + 1}
+                      </span>
+                      <span style={{ fontSize: 12, fontWeight: 600, color: isDark ? '#CBD5E1' : '#475569' }}>Split payment</span>
+                      {form.splits.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => removeSplit(i)}
+                          style={{
+                            marginLeft: 'auto', background: isDark ? '#450a0a' : '#FEF2F2',
+                            border: `1px solid ${isDark ? '#7f1d1d' : '#FECACA'}`,
+                            borderRadius: 7, cursor: 'pointer', color: '#DC2626',
+                            fontSize: 14, width: 28, height: 28,
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                          }}
+                        >
+                          ×
+                        </button>
+                      )}
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      <Select value={sp.method} onChange={e => setSplit(i, 'method', e.target.value)} style={{ flex: '0 0 148px' }}>
+                        {METHODS.map(m => <option key={m} value={m}>{METHOD_LABEL[m]}</option>)}
+                      </Select>
+                      <Input type="number" value={sp.amount} placeholder="Amount (Rs.)" onChange={e => setSplit(i, 'amount', e.target.value)} style={{ flex: 1 }} />
+                    </div>
+                    {sp.method === 'LankaQR' && sp.amount && Number(sp.amount) > 0 && (
                       <button
                         type="button"
                         onClick={() => setQrModal({ amount: sp.amount, reference: `PAY-${Date.now()}`, splitIdx: i })}
-                        style={{ width:'100%', padding:'9px 0', borderRadius:9, border:'none', background:'linear-gradient(135deg,#1e3a5f,#2563EB)', color:'#fff', fontWeight:700, fontSize:13, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}
+                        style={{
+                          width: '100%', marginTop: 10, padding: '9px 0', borderRadius: 9, border: 'none',
+                          background: 'linear-gradient(135deg,#1e3a5f,#2563EB)', color: '#fff',
+                          fontWeight: 700, fontSize: 13, cursor: 'pointer',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                        }}
                       >
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M14 14h3v3h-3zM17 17h3v3h-3zM14 20h3"/></svg>
                         Generate QR Code
                       </button>
-                    </div>
-                  )}
-                  {sp.method === 'Package' && (
-                    <div style={{ marginTop:8 }}>
-                      {!form.customer_id ? (
-                        <div style={{ fontSize:12, color:'#92400E', background:'#FFFBEB', padding:'7px 10px', borderRadius:8, border:'1px solid #FDE68A', display:'flex', alignItems:'center', gap:6 }}>
-                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                          Select a customer first to use package payment
-                        </div>
-                      ) : loadingPkgs ? (
-                        <div style={{ fontSize:12, color:'#98A2B3', padding:'4px 0' }}>Loading packages...</div>
-                      ) : custPackages.length === 0 ? (
-                        <div style={{ fontSize:12, color:'#92400E', background:'#FFFBEB', padding:'7px 10px', borderRadius:8, border:'1px solid #FDE68A' }}>No active packages for this customer</div>
-                      ) : (
-                        <Select value={sp.customer_package_id||''} onChange={e => setSplit(i,'customer_package_id',e.target.value)} style={{ fontSize:12 }}>
-                          <option value="">Select package…</option>
-                          {custPackages.map(cp => (
-                            <option key={cp.id} value={cp.id}>
-                              {cp.package?.name || 'Package'} — {cp.sessions_remaining || (cp.sessions_total - cp.sessions_used)} sessions left (expires {new Date(cp.expiry_date).toLocaleDateString()})
-                            </option>
-                          ))}
-                        </Select>
-                      )}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-            {form.splits.length > 0 && form.total_amount && (() => {
-              const splitTotal = form.splits.reduce((s,sp)=>s+Number(sp.amount||0),0);
-              const net = Number(form.total_amount||0) - Number(form.loyalty_discount||0) - promoPreview;
-              const diff = net - splitTotal;
-              const ok = Math.abs(diff) < 0.01;
-              return (
-                <div style={{ marginTop:10, display:'flex', justifyContent:'space-between', alignItems:'center', background: ok ? '#F0FDF4' : '#FFFBEB', border:`1px solid ${ok ? '#BBF7D0' : '#FDE68A'}`, borderRadius:8, padding:'7px 12px', fontSize:12 }}>
-                  <span style={{ color: ok ? '#166534' : '#92400E', fontWeight:600 }}>
-                    {ok ? '✓ Splits match net amount' : `Remaining: Rs. ${Math.abs(diff).toLocaleString()}`}
-                  </span>
-                  <span style={{ color:'#667085' }}>
-                    Rs. {splitTotal.toLocaleString()} / Rs. {net.toLocaleString()}
-                  </span>
-                </div>
-              );
-            })()}
+                    )}
+                    {sp.method === 'Package' && (
+                      <div style={{ marginTop: 10 }}>
+                        {!form.customer_id ? (
+                          <div style={{
+                            fontSize: 12, color: '#92400E',
+                            background: isDark ? '#422006' : '#FFFBEB',
+                            padding: '7px 10px', borderRadius: 8,
+                            border: `1px solid ${isDark ? '#78350F' : '#FDE68A'}`,
+                          }}>
+                            Select a customer first to use package payment
+                          </div>
+                        ) : loadingPkgs ? (
+                          <div style={{ fontSize: 12, color: isDark ? '#64748B' : '#98A2B3' }}>Loading packages…</div>
+                        ) : custPackages.length === 0 ? (
+                          <div style={{
+                            fontSize: 12, color: '#92400E',
+                            background: isDark ? '#422006' : '#FFFBEB',
+                            padding: '7px 10px', borderRadius: 8,
+                            border: `1px solid ${isDark ? '#78350F' : '#FDE68A'}`,
+                          }}>
+                            No active packages for this customer
+                          </div>
+                        ) : (
+                          <Select value={sp.customer_package_id || ''} onChange={e => setSplit(i, 'customer_package_id', e.target.value)} style={{ fontSize: 12 }}>
+                            <option value="">Select package…</option>
+                            {custPackages.map(cp => (
+                              <option key={cp.id} value={cp.id}>
+                                {cp.package?.name || 'Package'} — {cp.sessions_remaining || (cp.sessions_total - cp.sessions_used)} sessions left
+                              </option>
+                            ))}
+                          </Select>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+              {form.splits.length > 0 && form.total_amount && (() => {
+                const splitTotal = form.splits.reduce((s, sp) => s + Number(sp.amount || 0), 0);
+                const net = Number(form.total_amount || 0) - Number(form.loyalty_discount || 0) - promoPreview;
+                const diff = net - splitTotal;
+                const ok = Math.abs(diff) < 0.01;
+                return (
+                  <div style={{
+                    marginTop: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                    background: ok ? (isDark ? '#052e16' : '#F0FDF4') : (isDark ? '#422006' : '#FFFBEB'),
+                    border: `1px solid ${ok ? (isDark ? '#065F46' : '#BBF7D0') : (isDark ? '#78350F' : '#FDE68A')}`,
+                    borderRadius: 10, padding: '8px 12px', fontSize: 12,
+                  }}>
+                    <span style={{ color: ok ? (isDark ? '#6EE7B7' : '#166534') : '#92400E', fontWeight: 600 }}>
+                      {ok ? '✓ Splits match net amount' : `Remaining: Rs. ${Math.abs(diff).toLocaleString()}`}
+                    </span>
+                    <span style={{ color: isDark ? '#94A3B8' : '#667085' }}>
+                      Rs. {splitTotal.toLocaleString()} / Rs. {net.toLocaleString()}
+                    </span>
+                  </div>
+                );
+              })()}
+            </PaySection>
           </div>
-
         </div>
-      </Modal>
+      </PayModal>
 
       <InvoiceModal open={showInvoice} onClose={() => setShowInvoice(false)} payment={invoiceItem} />
 

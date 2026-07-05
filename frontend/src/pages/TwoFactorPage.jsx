@@ -4,38 +4,29 @@ import api from '../api/axios';
 import PageWrapper from '../components/layout/PageWrapper';
 import { useToast } from '../components/ui/Toast';
 import { useAuth } from '../context/AuthContext';
+import usePageTheme from '../hooks/usePageTheme';
 
 const G700 = '#2563EB';
-const G100 = '#EFF6FF';
 
-const C = {
-  primary:  '#2563EB',
-  border:   '#EAECF0',
-  text:     '#101828',
-  label:    '#667085',
-  cardBg:   '#FFFFFF',
-  soft:     '#F7F8FA',
-};
-
-function SectionCard({ title, subtitle, icon, children }) {
+function SectionCard({ title, subtitle, icon, children, C }) {
   return (
     <div style={{
       background: C.cardBg,
       border: `1px solid ${C.border}`,
       borderRadius: 16,
       overflow: 'hidden',
-      boxShadow: '0 2px 8px rgba(16,24,40,0.06)',
+      boxShadow: C.shadow,
     }}>
       <div style={{
         padding: '16px 22px',
         borderBottom: `1px solid ${C.border}`,
-        background: 'linear-gradient(180deg,#F8F9FC 0%,#F1F3F9 100%)',
+        background: C.headerGrad,
         display: 'flex', alignItems: 'center', gap: 10,
       }}>
         {icon && <span style={{ fontSize: 18 }}>{icon}</span>}
         <div>
           <div style={{ fontSize: 14, fontWeight: 700, color: C.text, fontFamily: "'Sora','Manrope',sans-serif" }}>{title}</div>
-          {subtitle && <div style={{ fontSize: 12.5, color: C.label, marginTop: 2, fontFamily: "'Inter',sans-serif" }}>{subtitle}</div>}
+          {subtitle && <div style={{ fontSize: 12.5, color: C.muted, marginTop: 2, fontFamily: "'Inter',sans-serif" }}>{subtitle}</div>}
         </div>
       </div>
       <div style={{ padding: '24px 22px' }}>{children}</div>
@@ -43,9 +34,6 @@ function SectionCard({ title, subtitle, icon, children }) {
   );
 }
 
-/* ── small helper components ─ */
-
-/* password strength 0-4 */
 function pwStrength(pw) {
   if (!pw) return 0;
   let s = 0;
@@ -66,7 +54,7 @@ function StrengthBar({ score }) {
         {[1,2,3,4].map(i => (
           <div key={i} style={{
             flex: 1, height: 4, borderRadius: 4,
-            background: score >= i ? STRENGTH_COLOR[score] : '#E5E7EB',
+            background: score >= i ? STRENGTH_COLOR[score] : '#475569',
             transition: 'background .2s',
           }} />
         ))}
@@ -80,11 +68,11 @@ function StrengthBar({ score }) {
   );
 }
 
-function PwInput({ label, value, onChange, disabled, placeholder }) {
+function PwInput({ label, value, onChange, disabled, placeholder, C }) {
   const [show, setShow] = useState(false);
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-      <label style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>{label}</label>
+      <label style={{ fontSize: 13, fontWeight: 600, color: C.label }}>{label}</label>
       <div style={{ position: 'relative' }}>
         <input
           type={show ? 'text' : 'password'}
@@ -95,14 +83,14 @@ function PwInput({ label, value, onChange, disabled, placeholder }) {
           style={{
             width: '100%', boxSizing: 'border-box',
             padding: '10px 42px 10px 14px',
-            borderRadius: 10, border: '1.5px solid #E5E7EB',
+            borderRadius: 10, border: `1.5px solid ${C.inputBorder}`,
             fontSize: 14, outline: 'none',
-            background: disabled ? '#F9FAFB' : '#fff',
-            color: '#111827',
+            background: disabled ? C.inputReadonlyBg : C.inputBg,
+            color: C.inputText,
             fontFamily: "'Inter',sans-serif",
           }}
           onFocus={e => { e.target.style.borderColor = G700; e.target.style.boxShadow = '0 0 0 3px rgba(37,99,235,.1)'; }}
-          onBlur={e => { e.target.style.borderColor = '#E5E7EB'; e.target.style.boxShadow = 'none'; }}
+          onBlur={e => { e.target.style.borderColor = C.inputBorder; e.target.style.boxShadow = 'none'; }}
         />
         <button
           type="button"
@@ -110,7 +98,7 @@ function PwInput({ label, value, onChange, disabled, placeholder }) {
           style={{
             position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)',
             background: 'none', border: 'none', cursor: 'pointer',
-            color: '#9CA3AF', fontSize: 14, padding: 0,
+            color: C.faint, fontSize: 14, padding: 0,
           }}
         >{show ? '\uD83D\uDE48' : '\uD83D\uDC41'}</button>
       </div>
@@ -118,7 +106,7 @@ function PwInput({ label, value, onChange, disabled, placeholder }) {
   );
 }
 
-function SecurityScore({ twoFaEnabled, passwordChanged }) {
+function SecurityScore({ twoFaEnabled, passwordChanged, isDark }) {
   const score = useMemo(() => {
     let s = 0;
     if (twoFaEnabled)   s += 50;
@@ -127,57 +115,61 @@ function SecurityScore({ twoFaEnabled, passwordChanged }) {
   }, [twoFaEnabled, passwordChanged]);
 
   const level = score >= 100 ? 'Strong' : score >= 50 ? 'Moderate' : 'Weak';
-  const color = score >= 100 ? '#10B981' : score >= 50 ? '#F59E0B' : '#EF4444';
-  const bg    = score >= 100 ? '#D1FAE5' : score >= 50 ? '#FEF3C7' : '#FEE2E2';
-  const bd    = score >= 100 ? '#6EE7B7' : score >= 50 ? '#FCD34D' : '#FCA5A5';
+  const palettes = {
+    strong: { color: '#10B981', bg: isDark ? 'rgba(16,185,129,0.12)' : '#D1FAE5', bd: isDark ? 'rgba(16,185,129,0.35)' : '#6EE7B7' },
+    moderate: { color: '#F59E0B', bg: isDark ? 'rgba(245,158,11,0.12)' : '#FEF3C7', bd: isDark ? 'rgba(245,158,11,0.35)' : '#FCD34D' },
+    weak: { color: '#EF4444', bg: isDark ? 'rgba(239,68,68,0.12)' : '#FEE2E2', bd: isDark ? 'rgba(239,68,68,0.35)' : '#FCA5A5' },
+  };
+  const p = score >= 100 ? palettes.strong : score >= 50 ? palettes.moderate : palettes.weak;
 
   return (
     <div style={{
-      background: bg, borderRadius: 18, padding: '22px 28px',
-      border: `2px solid ${bd}`, boxShadow: '0 2px 12px rgba(16,24,40,.06)',
+      background: p.bg, borderRadius: 18, padding: '22px 28px',
+      border: `2px solid ${p.bd}`, boxShadow: '0 2px 12px rgba(16,24,40,.06)',
       marginBottom: 20,
     }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
         <div>
-          <div style={{ fontSize: 12, fontWeight: 700, color, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: p.color, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>
             Security Score
           </div>
-          <div style={{ fontSize: 26, fontWeight: 800, color: '#111827' }}>
-            {score}<span style={{ fontSize: 15, fontWeight: 600, color: '#6B7280' }}>/100</span>
+          <div style={{ fontSize: 26, fontWeight: 800, color: isDark ? '#F8FAFC' : '#111827' }}>
+            {score}<span style={{ fontSize: 15, fontWeight: 600, color: isDark ? '#94A3B8' : '#6B7280' }}>/100</span>
           </div>
-          <div style={{ fontSize: 13, color, fontWeight: 700, marginTop: 2 }}>{level}</div>
+          <div style={{ fontSize: 13, color: p.color, fontWeight: 700, marginTop: 2 }}>{level}</div>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, flex: 1, maxWidth: 340 }}>
-          <CheckItem ok={twoFaEnabled}    label="Two-factor authentication enabled" />
-          <CheckItem ok={passwordChanged} label="Password meets strength requirements" />
+          <CheckItem ok={twoFaEnabled}    label="Two-factor authentication enabled" isDark={isDark} />
+          <CheckItem ok={passwordChanged} label="Password meets strength requirements" isDark={isDark} />
         </div>
       </div>
     </div>
   );
 }
 
-function CheckItem({ ok, label }) {
+function CheckItem({ ok, label, isDark }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
       <div style={{
         width: 20, height: 20, borderRadius: '50%', flexShrink: 0,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        background: ok ? '#D1FAE5' : '#F3F4F6',
-        fontSize: 11, fontWeight: 800, color: ok ? '#059669' : '#9CA3AF',
+        background: ok ? (isDark ? 'rgba(16,185,129,0.2)' : '#D1FAE5') : (isDark ? '#334155' : '#F3F4F6'),
+        fontSize: 11, fontWeight: 800, color: ok ? '#059669' : (isDark ? '#64748B' : '#9CA3AF'),
       }}>
         {ok ? '\u2713' : '\u2013'}
       </div>
-      <span style={{ fontSize: 13, color: ok ? '#111827' : '#9CA3AF', fontWeight: ok ? 600 : 400 }}>
+      <span style={{ fontSize: 13, color: ok ? (isDark ? '#E2E8F0' : '#111827') : (isDark ? '#64748B' : '#9CA3AF'), fontWeight: ok ? 600 : 400 }}>
         {label}
       </span>
     </div>
   );
 }
-function Sk({ h = 20, w = '100%' }) {
-  return <div style={{ height: h, width: w, background: '#E5E7EB', borderRadius: 8, animation: 'pulse 1.5s ease-in-out infinite' }} />;
+
+function Sk({ h = 20, w = '100%', isDark }) {
+  return <div style={{ height: h, width: w, background: isDark ? '#334155' : '#E5E7EB', borderRadius: 8, animation: 'pulse 1.5s ease-in-out infinite' }} />;
 }
 
-function CodeInput({ value, onChange, disabled }) {
+function CodeInput({ value, onChange, disabled, C }) {
   return (
     <input
       value={value}
@@ -192,15 +184,15 @@ function CodeInput({ value, onChange, disabled }) {
         fontWeight: 800,
         letterSpacing: 10,
         padding: '14px 16px',
-        border: '2px solid #E5E7EB',
+        border: `2px solid ${C.inputBorder}`,
         borderRadius: 14,
         outline: 'none',
         fontFamily: 'monospace',
-        background: disabled ? '#F9FAFB' : '#fff',
-        color: '#111827',
+        background: disabled ? C.inputReadonlyBg : C.inputBg,
+        color: C.inputText,
       }}
       onFocus={e => { e.target.style.borderColor = G700; e.target.style.boxShadow = '0 0 0 3px rgba(37,99,235,.15)'; }}
-      onBlur={e => { e.target.style.borderColor = '#E5E7EB'; e.target.style.boxShadow = 'none'; }}
+      onBlur={e => { e.target.style.borderColor = C.inputBorder; e.target.style.boxShadow = 'none'; }}
     />
   );
 }
@@ -208,19 +200,16 @@ function CodeInput({ value, onChange, disabled }) {
 export default function TwoFactorPage() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const { isDark, C } = usePageTheme();
 
   const [statusLoading, setStatusLoading] = useState(true);
   const [enabled, setEnabled] = useState(false);
-
-  /* setup flow */
-  const [step, setStep] = useState('idle'); // 'idle' | 'scan' | 'confirm' | 'working' | 'disable_confirm'
+  const [step, setStep] = useState('idle');
   const [qr, setQr] = useState('');
   const [secret, setSecret] = useState('');
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [showSecret, setShowSecret] = useState(false);
-
-  /* change password */
   const [cpCurrent, setCpCurrent] = useState('');
   const [cpNew,     setCpNew]     = useState('');
   const [cpConfirm, setCpConfirm] = useState('');
@@ -295,7 +284,6 @@ export default function TwoFactorPage() {
     setSecret('');
   };
 
-  /* ── change password ── */
   const handleChangePassword = async () => {
     if (!cpCurrent) { toast('Enter your current password.', 'error'); return; }
     if (cpNew.length < 8) { toast('New password must be at least 8 characters.', 'error'); return; }
@@ -314,45 +302,29 @@ export default function TwoFactorPage() {
   const strength  = pwStrength(cpNew);
   const canSubmit = cpCurrent && cpNew.length >= 8 && cpNew === cpConfirm;
 
+  const ghostBtn = {
+    padding: '10px 18px', borderRadius: 10, border: `1.5px solid ${C.inputBorder}`,
+    background: C.cardBg, color: C.muted, fontSize: 13, fontWeight: 600, cursor: 'pointer',
+  };
+
   return (
     <PageWrapper title="Account Security" subtitle="Manage your password and two-factor authentication">
       <style>{`@keyframes pulse { 0%,100%{opacity:1}50%{opacity:.45} }`}</style>
 
-      {/* ── Security Score banner ── */}
       {!statusLoading && (
-        <SecurityScore twoFaEnabled={enabled} passwordChanged={cpChanged} />
+        <SecurityScore twoFaEnabled={enabled} passwordChanged={cpChanged} isDark={isDark} />
       )}
 
-      {/* ── Main two-column grid ── */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(380px, 1fr))', gap: 24, marginBottom: 24 }}>
 
-        {/* Change Password */}
-        <SectionCard icon="🔑" title="Change Password" subtitle="Use a strong, unique password with mixed case, numbers and symbols.">
+        <SectionCard C={C} icon="🔑" title="Change Password" subtitle="Use a strong, unique password with mixed case, numbers and symbols.">
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            <PwInput
-              label="Current Password"
-              value={cpCurrent}
-              onChange={setCpCurrent}
-              disabled={cpBusy}
-              placeholder="Enter your current password"
-            />
+            <PwInput label="Current Password" value={cpCurrent} onChange={setCpCurrent} disabled={cpBusy} placeholder="Enter your current password" C={C} />
             <div>
-              <PwInput
-                label="New Password"
-                value={cpNew}
-                onChange={setCpNew}
-                disabled={cpBusy}
-                placeholder="At least 8 characters"
-              />
+              <PwInput label="New Password" value={cpNew} onChange={setCpNew} disabled={cpBusy} placeholder="At least 8 characters" C={C} />
               {cpNew.length > 0 && <StrengthBar score={strength} />}
             </div>
-            <PwInput
-              label="Confirm New Password"
-              value={cpConfirm}
-              onChange={setCpConfirm}
-              disabled={cpBusy}
-              placeholder="Re-enter new password"
-            />
+            <PwInput label="Confirm New Password" value={cpConfirm} onChange={setCpConfirm} disabled={cpBusy} placeholder="Re-enter new password" C={C} />
             {cpNew && cpConfirm && cpNew !== cpConfirm && (
               <div style={{ fontSize: 12.5, color: '#EF4444', fontWeight: 600 }}>
                 Passwords do not match
@@ -366,8 +338,8 @@ export default function TwoFactorPage() {
                 disabled={cpBusy || !canSubmit}
                 style={{
                   padding: '11px 28px', borderRadius: 12, border: 'none',
-                  background: canSubmit ? 'linear-gradient(135deg,#1D4ED8,#2563EB)' : '#E5E7EB',
-                  color: canSubmit ? '#fff' : '#9CA3AF',
+                  background: canSubmit ? 'linear-gradient(135deg,#1D4ED8,#2563EB)' : (isDark ? '#334155' : '#E5E7EB'),
+                  color: canSubmit ? '#fff' : C.faint,
                   fontSize: 13.5, fontWeight: 700,
                   cursor: canSubmit && !cpBusy ? 'pointer' : 'not-allowed',
                   boxShadow: canSubmit ? '0 2px 8px rgba(37,99,235,.3)' : 'none',
@@ -380,25 +352,22 @@ export default function TwoFactorPage() {
           </div>
         </SectionCard>
 
-        {/* 2FA */}
-        <SectionCard
+        <SectionCard C={C}
           icon={enabled ? '🔒' : '🔓'}
           title="Two-Factor Authentication"
           subtitle="Require a time-based one-time code on every login for maximum protection."
         >
           {statusLoading ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <Sk h={20} w="60%" /><Sk h={16} w="80%" /><Sk h={38} w={120} />
+              <Sk isDark={isDark} h={20} w="60%" /><Sk isDark={isDark} h={16} w="80%" /><Sk isDark={isDark} h={38} w={120} />
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-
-              {/* Status pill */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                 <div style={{
                   display: 'inline-flex', alignItems: 'center', gap: 7,
                   padding: '6px 14px', borderRadius: 50,
-                  background: enabled ? '#D1FAE5' : '#FEE2E2',
+                  background: enabled ? (isDark ? 'rgba(16,185,129,0.15)' : '#D1FAE5') : (isDark ? 'rgba(239,68,68,0.15)' : '#FEE2E2'),
                   fontSize: 12.5, fontWeight: 700,
                   color: enabled ? '#059669' : '#DC2626',
                 }}>
@@ -410,22 +379,20 @@ export default function TwoFactorPage() {
                   {enabled ? 'Active' : 'Disabled'}
                 </div>
                 {enabled && (
-                  <span style={{ fontSize: 12.5, color: '#6B7280' }}>Your account is protected</span>
+                  <span style={{ fontSize: 12.5, color: C.muted }}>Your account is protected</span>
                 )}
               </div>
 
-              {/* What 2FA does */}
               <div style={{
-                background: '#F8FAFC', borderRadius: 12, padding: '14px 16px',
-                border: '1px solid #E5E7EB',
-                fontSize: 13, color: '#374151', lineHeight: 1.7,
+                background: C.infoBg, borderRadius: 12, padding: '14px 16px',
+                border: `1px solid ${C.infoBorder}`,
+                fontSize: 13, color: C.infoText, lineHeight: 1.7,
               }}>
                 {enabled
                   ? 'Every login requires a 6-digit code from your authenticator app. Even if your password is stolen, your account stays safe.'
                   : 'Enable 2FA to require a 6-digit code from Google Authenticator or Authy on every login.'}
               </div>
 
-              {/* Action button */}
               {step === 'idle' && (
                 enabled
                   ? <motion.button
@@ -434,7 +401,7 @@ export default function TwoFactorPage() {
                       style={{
                         alignSelf: 'flex-start',
                         padding: '10px 20px', borderRadius: 12, border: '1.5px solid #FCA5A5',
-                        background: '#FFF5F5', color: '#DC2626', fontSize: 13, fontWeight: 700,
+                        background: isDark ? 'rgba(239,68,68,0.1)' : '#FFF5F5', color: '#DC2626', fontSize: 13, fontWeight: 700,
                         cursor: 'pointer', fontFamily: "'Inter',sans-serif",
                       }}
                     >Disable 2FA</motion.button>
@@ -454,41 +421,38 @@ export default function TwoFactorPage() {
                     >{busy ? 'Starting…' : 'Enable 2FA'}</motion.button>
               )}
 
-              {/* Scan QR inline */}
               {step === 'scan' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                  <div style={{ fontSize: 13.5, fontWeight: 700, color: '#111827' }}>Step 1 — Scan QR Code</div>
-                  <div style={{ fontSize: 12.5, color: '#6B7280' }}>
+                  <div style={{ fontSize: 13.5, fontWeight: 700, color: C.title }}>Step 1 — Scan QR Code</div>
+                  <div style={{ fontSize: 12.5, color: C.muted }}>
                     Open Google Authenticator, Authy, or any TOTP app and scan the code below.
                   </div>
                   {qr && (
                     <div style={{ display: 'flex', justifyContent: 'center' }}>
-                      <div style={{ padding: 10, background: '#fff', border: '2px solid #E5E7EB', borderRadius: 14 }}>
+                      <div style={{ padding: 10, background: '#fff', border: `2px solid ${C.border}`, borderRadius: 14 }}>
                         <img src={qr} alt="2FA QR Code" style={{ width: 180, height: 180, display: 'block' }} />
                       </div>
                     </div>
                   )}
-                  <div style={{ background: '#F8FAFC', borderRadius: 10, padding: '12px 16px', border: '1px solid #E5E7EB' }}>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>
+                  <div style={{ background: C.infoBg, borderRadius: 10, padding: '12px 16px', border: `1px solid ${C.infoBorder}` }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>
                       Can't scan? Enter manually
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                       <code style={{
-                        flex: 1, fontSize: 13, fontWeight: 700, color: '#111827', wordBreak: 'break-all',
+                        flex: 1, fontSize: 13, fontWeight: 700, color: C.title, wordBreak: 'break-all',
                         letterSpacing: showSecret ? 2 : 'normal',
                         filter: showSecret ? 'none' : 'blur(5px)',
                         userSelect: showSecret ? 'text' : 'none',
                         transition: 'filter .2s',
                       }}>{secret}</code>
                       <button onClick={() => setShowSecret(v => !v)}
-                        style={{ padding: '5px 10px', borderRadius: 7, border: '1px solid #E5E7EB', background: '#fff', cursor: 'pointer', fontSize: 11.5, color: '#6B7280', fontWeight: 600 }}
+                        style={{ ...ghostBtn, padding: '5px 10px', borderRadius: 7, fontSize: 11.5, fontWeight: 600 }}
                       >{showSecret ? 'Hide' : 'Reveal'}</button>
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: 10 }}>
-                    <button onClick={cancelSetup}
-                      style={{ padding: '10px 18px', borderRadius: 10, border: '1.5px solid #E5E7EB', background: '#fff', color: '#6B7280', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
-                    >Cancel</button>
+                    <button onClick={cancelSetup} style={ghostBtn}>Cancel</button>
                     <button onClick={() => setStep('confirm')}
                       style={{
                         flex: 1, padding: '10px 18px', borderRadius: 10, border: 'none',
@@ -501,25 +465,22 @@ export default function TwoFactorPage() {
                 </div>
               )}
 
-              {/* Verify code inline */}
               {step === 'confirm' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                  <div style={{ fontSize: 13.5, fontWeight: 700, color: '#111827' }}>Step 2 — Verify Code</div>
-                  <div style={{ fontSize: 12.5, color: '#6B7280' }}>
+                  <div style={{ fontSize: 13.5, fontWeight: 700, color: C.title }}>Step 2 — Verify Code</div>
+                  <div style={{ fontSize: 12.5, color: C.muted }}>
                     Enter the 6-digit code shown in your authenticator app.
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'center' }}>
-                    <CodeInput value={code} onChange={setCode} disabled={busy} />
+                    <CodeInput value={code} onChange={setCode} disabled={busy} C={C} />
                   </div>
                   <div style={{ display: 'flex', gap: 10 }}>
-                    <button onClick={cancelSetup}
-                      style={{ padding: '10px 18px', borderRadius: 10, border: '1.5px solid #E5E7EB', background: '#fff', color: '#6B7280', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
-                    >Cancel</button>
+                    <button onClick={cancelSetup} style={ghostBtn}>Cancel</button>
                     <button onClick={confirmEnable} disabled={busy || code.length !== 6}
                       style={{
                         flex: 1, padding: '10px 18px', borderRadius: 10, border: 'none',
-                        background: code.length === 6 ? 'linear-gradient(135deg,#059669,#10B981)' : '#E5E7EB',
-                        color: code.length === 6 ? '#fff' : '#9CA3AF',
+                        background: code.length === 6 ? 'linear-gradient(135deg,#059669,#10B981)' : (isDark ? '#334155' : '#E5E7EB'),
+                        color: code.length === 6 ? '#fff' : C.faint,
                         fontSize: 13, fontWeight: 700, cursor: code.length === 6 ? 'pointer' : 'not-allowed',
                         boxShadow: code.length === 6 ? '0 2px 8px rgba(16,185,129,.3)' : 'none',
                       }}
@@ -528,27 +489,24 @@ export default function TwoFactorPage() {
                 </div>
               )}
 
-              {/* Disable confirm inline */}
               {step === 'disable_confirm' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                   <div style={{
-                    background: '#FFF9F9', borderRadius: 10, padding: '12px 14px',
-                    border: '1px solid #FECACA', fontSize: 12.5, color: '#7F1D1D',
+                    background: isDark ? 'rgba(239,68,68,0.1)' : '#FFF9F9', borderRadius: 10, padding: '12px 14px',
+                    border: '1px solid #FECACA', fontSize: 12.5, color: isDark ? '#FCA5A5' : '#7F1D1D',
                   }}>
                     ⚠ Disabling 2FA will make your account less secure. Enter your current authenticator code to confirm.
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'center' }}>
-                    <CodeInput value={code} onChange={setCode} disabled={busy} />
+                    <CodeInput value={code} onChange={setCode} disabled={busy} C={C} />
                   </div>
                   <div style={{ display: 'flex', gap: 10 }}>
-                    <button onClick={cancelSetup}
-                      style={{ padding: '10px 18px', borderRadius: 10, border: '1.5px solid #E5E7EB', background: '#fff', color: '#6B7280', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
-                    >Cancel</button>
+                    <button onClick={cancelSetup} style={ghostBtn}>Cancel</button>
                     <button onClick={confirmDisable} disabled={busy || code.length !== 6}
                       style={{
                         flex: 1, padding: '10px 18px', borderRadius: 10, border: 'none',
-                        background: code.length === 6 ? '#DC2626' : '#E5E7EB',
-                        color: code.length === 6 ? '#fff' : '#9CA3AF',
+                        background: code.length === 6 ? '#DC2626' : (isDark ? '#334155' : '#E5E7EB'),
+                        color: code.length === 6 ? '#fff' : C.faint,
                         fontSize: 13, fontWeight: 700, cursor: code.length === 6 ? 'pointer' : 'not-allowed',
                       }}
                     >{busy ? 'Disabling…' : 'Disable 2FA'}</button>
@@ -560,8 +518,7 @@ export default function TwoFactorPage() {
         </SectionCard>
       </div>
 
-      {/* ── Security Tips ── */}
-      <SectionCard icon="💡" title="Security Tips" subtitle="Best practices to keep your account safe.">
+      <SectionCard C={C} icon="💡" title="Security Tips" subtitle="Best practices to keep your account safe.">
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 16 }}>
           {[
             { icon: '🔑', tip: 'Use a unique password not shared with other services.' },
@@ -573,11 +530,11 @@ export default function TwoFactorPage() {
           ].map(({ icon, tip }) => (
             <div key={tip} style={{
               display: 'flex', alignItems: 'flex-start', gap: 12,
-              background: G100, borderRadius: 12, padding: '14px 16px',
-              border: '1px solid #BFDBFE',
+              background: C.tipBg, borderRadius: 12, padding: '14px 16px',
+              border: `1px solid ${C.tipBorder}`,
             }}>
               <span style={{ fontSize: 18, flexShrink: 0 }}>{icon}</span>
-              <span style={{ fontSize: 13, color: '#374151', lineHeight: 1.65, fontFamily: "'Inter',sans-serif" }}>{tip}</span>
+              <span style={{ fontSize: 13, color: C.tipText, lineHeight: 1.65, fontFamily: "'Inter',sans-serif" }}>{tip}</span>
             </div>
           ))}
         </div>

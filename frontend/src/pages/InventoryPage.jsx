@@ -60,9 +60,20 @@ export default function InventoryPage() {
 
   const handleSave = async () => {
     if (!form.name) return setFormErr('Name is required');
+    if (isSuperAdmin && !form.branch_id) return setFormErr('Branch is required');
     setSaving(true);
     try {
-      editItem ? await api.put(`/inventory/${editItem.id}`, form) : await api.post('/inventory', form);
+      const payload = {
+        branch_id: form.branch_id || user?.branch_id || undefined,
+        name: form.name,
+        category: form.category || null,
+        quantity: Number(form.quantity) || 0,
+        min_quantity: Number(form.min_quantity) || 0,
+        unit: form.unit || 'pcs',
+        cost_price: form.cost_price === '' || form.cost_price == null ? 0 : Number(form.cost_price),
+        sell_price: form.sell_price === '' || form.sell_price == null ? 0 : Number(form.sell_price),
+      };
+      editItem ? await api.put(`/inventory/${editItem.id}`, payload) : await api.post('/inventory', payload);
       setShowForm(false); load();
     } catch (e) { setFormErr(e.response?.data?.message || 'Save failed'); }
     setSaving(false);

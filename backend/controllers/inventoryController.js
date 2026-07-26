@@ -46,28 +46,35 @@ const lowStock = async (req, res) => {
   }
 };
 
+const toDecimal = (value, fallback = 0) => {
+  if (value === '' || value === null || value === undefined) return fallback;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+};
+
 const create = async (req, res) => {
   try {
     const { branch_id, name, category, quantity, min_quantity, unit, cost_price, sell_price } = req.body;
-    const effectiveBranchId = req.userBranchId || branch_id || req.user?.branchId || null;
+    const effectiveBranchId = req.userBranchId || branch_id || req.user?.branch_id || req.user?.branchId || null;
     if (!effectiveBranchId || !name) return res.status(400).json({ message: 'branch_id and name are required.' });
     if (req.userBranchId && Number(effectiveBranchId) !== Number(req.userBranchId)) {
       return res.status(403).json({ message: 'You can only create inventory in your branch.' });
     }
 
     const item = await Inventory.create({
-      branch_id: effectiveBranchId,
-      name,
-      category,
-      quantity,
-      min_quantity,
-      unit,
-      cost_price,
-      sell_price,
+      branch_id: Number(effectiveBranchId),
+      name: String(name).trim(),
+      category: category || null,
+      quantity: toDecimal(quantity, 0),
+      min_quantity: toDecimal(min_quantity, 0),
+      unit: unit || null,
+      cost_price: toDecimal(cost_price, 0),
+      sell_price: toDecimal(sell_price, 0),
       tenant_id: resolveTenantId(req),
     });
     return res.status(201).json(item);
   } catch (err) {
+    console.error('inventory.create failed:', err.message);
     return res.status(500).json({ message: 'Server error.' });
   }
 };
@@ -77,14 +84,17 @@ const update = async (req, res) => {
     const item = await Inventory.findOne({ where: byIdWhere(req, req.params.id) });
     if (!item) return res.status(404).json({ message: 'Inventory item not found.' });
 
-    const allowed = ['name', 'category', 'quantity', 'unit', 'min_quantity', 'cost_price', 'supplier', 'notes'];
+    const allowed = ['name', 'category', 'quantity', 'unit', 'min_quantity', 'cost_price', 'sell_price', 'notes'];
+    const decimalFields = new Set(['quantity', 'min_quantity', 'cost_price', 'sell_price']);
     const updates = {};
     for (const field of allowed) {
-      if (req.body[field] !== undefined) updates[field] = req.body[field];
+      if (req.body[field] === undefined) continue;
+      updates[field] = decimalFields.has(field) ? toDecimal(req.body[field], 0) : req.body[field];
     }
     await item.update(updates);
     return res.json(item);
   } catch (err) {
+    console.error('inventory.update failed:', err.message);
     return res.status(500).json({ message: 'Server error.' });
   }
 };

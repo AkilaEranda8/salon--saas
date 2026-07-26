@@ -178,6 +178,7 @@ app.use('/api/appointments', require('./routes/appointments'));
 app.use('/api/customers',    require('./routes/customers'));
 app.use('/api/payments',     require('./routes/payments'));
 app.use('/api/inventory',    require('./routes/inventory'));
+app.use('/api/salon-inventory', require('./routes/salonInventory'));
 app.use('/api/attendance',   require('./routes/attendance'));
 app.use('/api/reminders',    require('./routes/reminders'));
 app.use('/api/reports',      require('./routes/reports'));

@@ -48,6 +48,23 @@ const CommissionTransaction = require('./CommissionTransaction');
 const WhatsAppMessage = require('./WhatsAppMessage');
 const WhatsAppConnection = require('./WhatsAppConnection');
 
+// Salon Inventory (v2)
+const InvCategory = require('./InvCategory');
+const InvSupplier = require('./InvSupplier');
+const InvProduct = require('./InvProduct');
+const InvStockMovement = require('./InvStockMovement');
+const InvPurchaseOrder = require('./InvPurchaseOrder');
+const InvPurchaseOrderItem = require('./InvPurchaseOrderItem');
+const InvGoodsReceipt = require('./InvGoodsReceipt');
+const InvGoodsReceiptItem = require('./InvGoodsReceiptItem');
+const InvConsumption = require('./InvConsumption');
+const InvDayEndBatch = require('./InvDayEndBatch');
+const InvDayEndBatchItem = require('./InvDayEndBatchItem');
+const InvStockAdjustment = require('./InvStockAdjustment');
+const InvStockCount = require('./InvStockCount');
+const InvStockCountItem = require('./InvStockCountItem');
+const InvSettings = require('./InvSettings');
+
 // Tenant
 Tenant.hasMany(Subscription, { foreignKey: 'tenant_id', as: 'subscriptions' });
 Subscription.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
@@ -254,6 +271,53 @@ CommissionPayout.belongsTo(User,   { foreignKey: 'paid_by',  as: 'paidBy', const
 Staff.hasMany(CommissionPayout,    { foreignKey: 'staff_id', as: 'commissionPayouts' });
 Branch.hasMany(CommissionPayout,   { foreignKey: 'branch_id', as: 'commissionPayouts' });
 
+// ── Salon Inventory associations ─────────────────────────────────────────────
+InvCategory.hasMany(InvProduct, { foreignKey: 'category_id', as: 'products' });
+InvProduct.belongsTo(InvCategory, { foreignKey: 'category_id', as: 'category' });
+InvSupplier.hasMany(InvProduct, { foreignKey: 'supplier_id', as: 'products' });
+InvProduct.belongsTo(InvSupplier, { foreignKey: 'supplier_id', as: 'supplier' });
+InvProduct.belongsTo(Branch, { foreignKey: 'branch_id', as: 'branch' });
+Branch.hasMany(InvProduct, { foreignKey: 'branch_id', as: 'invProducts' });
+
+InvProduct.hasMany(InvStockMovement, { foreignKey: 'product_id', as: 'movements' });
+InvStockMovement.belongsTo(InvProduct, { foreignKey: 'product_id', as: 'product' });
+InvStockMovement.belongsTo(Branch, { foreignKey: 'branch_id', as: 'branch' });
+InvStockMovement.belongsTo(User, { foreignKey: 'user_id', as: 'user', constraints: false });
+
+InvPurchaseOrder.belongsTo(Branch, { foreignKey: 'branch_id', as: 'branch' });
+InvPurchaseOrder.belongsTo(InvSupplier, { foreignKey: 'supplier_id', as: 'supplier' });
+InvPurchaseOrder.hasMany(InvPurchaseOrderItem, { foreignKey: 'purchase_order_id', as: 'items' });
+InvPurchaseOrderItem.belongsTo(InvPurchaseOrder, { foreignKey: 'purchase_order_id', as: 'purchaseOrder' });
+InvPurchaseOrderItem.belongsTo(InvProduct, { foreignKey: 'product_id', as: 'product' });
+
+InvGoodsReceipt.belongsTo(Branch, { foreignKey: 'branch_id', as: 'branch' });
+InvGoodsReceipt.belongsTo(InvSupplier, { foreignKey: 'supplier_id', as: 'supplier' });
+InvGoodsReceipt.belongsTo(InvPurchaseOrder, { foreignKey: 'purchase_order_id', as: 'purchaseOrder' });
+InvGoodsReceipt.hasMany(InvGoodsReceiptItem, { foreignKey: 'goods_receipt_id', as: 'items' });
+InvGoodsReceiptItem.belongsTo(InvGoodsReceipt, { foreignKey: 'goods_receipt_id', as: 'goodsReceipt' });
+InvGoodsReceiptItem.belongsTo(InvProduct, { foreignKey: 'product_id', as: 'product' });
+
+InvConsumption.belongsTo(InvProduct, { foreignKey: 'product_id', as: 'product' });
+InvConsumption.belongsTo(Branch, { foreignKey: 'branch_id', as: 'branch' });
+InvConsumption.belongsTo(Staff, { foreignKey: 'staff_id', as: 'staff', constraints: false });
+InvConsumption.belongsTo(Appointment, { foreignKey: 'appointment_id', as: 'appointment', constraints: false });
+InvConsumption.belongsTo(Service, { foreignKey: 'service_id', as: 'service', constraints: false });
+InvConsumption.belongsTo(InvDayEndBatch, { foreignKey: 'day_end_batch_id', as: 'dayEndBatch', constraints: false });
+
+InvDayEndBatch.belongsTo(Branch, { foreignKey: 'branch_id', as: 'branch' });
+InvDayEndBatch.hasMany(InvDayEndBatchItem, { foreignKey: 'day_end_batch_id', as: 'items' });
+InvDayEndBatch.hasMany(InvConsumption, { foreignKey: 'day_end_batch_id', as: 'consumptions' });
+InvDayEndBatchItem.belongsTo(InvDayEndBatch, { foreignKey: 'day_end_batch_id', as: 'batch' });
+InvDayEndBatchItem.belongsTo(InvProduct, { foreignKey: 'product_id', as: 'product' });
+
+InvStockAdjustment.belongsTo(InvProduct, { foreignKey: 'product_id', as: 'product' });
+InvStockAdjustment.belongsTo(Branch, { foreignKey: 'branch_id', as: 'branch' });
+
+InvStockCount.belongsTo(Branch, { foreignKey: 'branch_id', as: 'branch' });
+InvStockCount.hasMany(InvStockCountItem, { foreignKey: 'stock_count_id', as: 'items' });
+InvStockCountItem.belongsTo(InvStockCount, { foreignKey: 'stock_count_id', as: 'stockCount' });
+InvStockCountItem.belongsTo(InvProduct, { foreignKey: 'product_id', as: 'product' });
+
 module.exports = {
   Tenant,
   Subscription,
@@ -304,4 +368,19 @@ module.exports = {
   CommissionTransaction,
   WhatsAppMessage,
   WhatsAppConnection,
+  InvCategory,
+  InvSupplier,
+  InvProduct,
+  InvStockMovement,
+  InvPurchaseOrder,
+  InvPurchaseOrderItem,
+  InvGoodsReceipt,
+  InvGoodsReceiptItem,
+  InvConsumption,
+  InvDayEndBatch,
+  InvDayEndBatchItem,
+  InvStockAdjustment,
+  InvStockCount,
+  InvStockCountItem,
+  InvSettings,
 };

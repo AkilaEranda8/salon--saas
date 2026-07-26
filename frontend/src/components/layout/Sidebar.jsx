@@ -41,8 +41,22 @@ const NAV_GROUPS = [
   { label:'CATALOGUE', items:[
     { path:'/services',      label:'Services',      roles:ALL, icon:'M14.121 14.121L19 19m-7-7l7-7m-7 7l-2.879 2.879M12 12L9.121 9.121m0 5.758a3 3 0 10-4.243 4.243 3 3 0 004.243-4.243zm0-5.758a3 3 0 10-4.243-4.243 3 3 0 004.243 4.243z' },
     { path:'/categories',    label:'Categories',    roles:ADM, icon:'M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z' },
-    { path:'/inventory',     label:'Inventory',     roles:MGR, feature:'inventory', icon:'M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4' },
-    { path:'/inventory-reorder', label:'Reorders', roles:MGR, feature:'inventory', icon:'M20 12H4m0 0l4-4m-4 4l4 4m12-4l-4-4m4 4l-4 4' },
+  ]},
+  { label:'INVENTORY', items:[
+    { path:'/inventory', label:'Dashboard', roles:MGR, feature:'inventory', icon:'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-4 0a1 1 0 01-1-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 01-1 1h-2z' },
+    { path:'/inventory/products', label:'Products', roles:MGR, feature:'inventory', icon:'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4' },
+    { path:'/inventory/categories', label:'Categories', roles:MGR, feature:'inventory', icon:'M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z' },
+    { path:'/inventory/suppliers', label:'Suppliers', roles:MGR, feature:'inventory', icon:'M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z' },
+    { path:'/inventory/purchase-orders', label:'Purchase Orders', roles:MGR, feature:'inventory', icon:'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2' },
+    { path:'/inventory/goods-received', label:'Goods Received', roles:MGR, feature:'inventory', icon:'M5 13l4 4L19 7' },
+    { path:'/inventory/consumption', label:'Stock Consumption', roles:MGR, feature:'inventory', icon:'M19 14l-7 7m0 0l-7-7m7 7V3' },
+    { path:'/inventory/day-end', label:'Day End Closing', roles:MGR, feature:'inventory', icon:'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z' },
+    { path:'/inventory/adjustments', label:'Stock Adjustments', roles:MGR, feature:'inventory', icon:'M12 6v6m0 0v6m0-6h6m-6 0H6' },
+    { path:'/inventory/stock-count', label:'Stock Count', roles:MGR, feature:'inventory', icon:'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4' },
+    { path:'/inventory/low-stock', label:'Low Stock', roles:MGR, feature:'inventory', icon:'M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z' },
+    { path:'/inventory/history', label:'Inventory History', roles:MGR, feature:'inventory', icon:'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z' },
+    { path:'/inventory/reports', label:'Inv. Reports', roles:MGR, feature:'inventory', icon:'M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z' },
+    { path:'/inventory/settings', label:'Inv. Settings', roles:MGR, feature:'inventory', icon:'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 11-6 0 3 3 0 016 0z' },
   ]},
   { label:'TEAM', items:[
     { path:'/staff',         label:'Staff',         roles:ALL, icon:'M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z' },
@@ -233,7 +247,11 @@ export default function Sidebar({ collapsed, onToggle, currentUser, mobileOpen, 
     }),
   })).filter(g => g.items.length > 0);
 
-  const isActive     = p => location.pathname === p || location.pathname === (ROUTE_ALIASES[p] ?? null);
+  const isActive = (p) => {
+    if (p === '/inventory') return location.pathname === '/inventory';
+    if (p.startsWith('/inventory/')) return location.pathname === p || location.pathname.startsWith(`${p}/`);
+    return location.pathname === p || location.pathname === (ROUTE_ALIASES[p] ?? null);
+  };
   const handleNavigate = p => { navigate(p); onMobileClose?.(); };
   const handleLogout   = async () => { try { await logout(); } catch (_) {} navigate('/login'); };
 

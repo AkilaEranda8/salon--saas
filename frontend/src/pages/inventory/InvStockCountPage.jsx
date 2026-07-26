@@ -4,7 +4,7 @@ import api from '../../api/axios';
 import Button from '../../components/ui/Button';
 import { Select, FormGroup, Input } from '../../components/ui/FormElements';
 import { useToast } from '../../components/ui/Toast';
-import { DataTable, IconPlus } from '../../components/ui/PageKit';
+import { DataTable, FilterBar, IconPlus, TableShell, Th } from '../../components/ui/PageKit';
 import { INV_API, fmtQty, loadBranches } from './invApi';
 
 export default function InvStockCountPage() {
@@ -63,45 +63,80 @@ export default function InvStockCountPage() {
 
   return (
     <div>
-      <div style={{ display: 'flex', gap: 10, marginBottom: 12, alignItems: 'end' }}>
+      <FilterBar style={{ marginBottom: 12 }}>
         {user?.role === 'superadmin' && (
-          <FormGroup label="Branch"><Select value={branchId} onChange={(e) => setBranchId(e.target.value)}><option value="">Select</option>{branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</Select></FormGroup>
+          <FormGroup label="Branch">
+            <Select value={branchId} onChange={(e) => setBranchId(e.target.value)}>
+              <option value="">Select</option>
+              {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+            </Select>
+          </FormGroup>
         )}
-        <Button variant="primary" loading={saving} onClick={create}><IconPlus /> Start Stock Count</Button>
-      </div>
+        <Button variant="primary" loading={saving} onClick={create} style={{ marginLeft: 'auto' }}>
+          <IconPlus /> Start Stock Count
+        </Button>
+      </FilterBar>
 
       {active && active.status === 'draft' && (
-        <div style={{ background: '#fff', border: '1px solid #EAECF0', borderRadius: 12, padding: 16, marginBottom: 16 }}>
-          <div style={{ fontWeight: 700, marginBottom: 10 }}>Physical Count — {active.count_date}</div>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+        <div style={{
+          background: 'var(--app-panel, #fff)',
+          border: '1px solid var(--app-border, #EAECF0)',
+          borderRadius: 14,
+          padding: 16,
+          marginBottom: 16,
+          boxShadow: 'var(--app-shadow, 0 2px 8px rgba(16,24,40,0.06))',
+        }}>
+          <div style={{
+            fontWeight: 700,
+            marginBottom: 12,
+            color: 'var(--app-title, #101828)',
+            fontFamily: "'Sora',sans-serif",
+          }}>
+            Physical Count — {active.count_date}
+          </div>
+          <TableShell>
             <thead>
-              <tr style={{ textAlign: 'left', background: '#F8FAFC' }}>
-                <th style={{ padding: 8 }}>Product</th>
-                <th style={{ padding: 8 }}>Expected</th>
-                <th style={{ padding: 8 }}>Actual</th>
-                <th style={{ padding: 8 }}>Variance</th>
+              <tr>
+                <Th>Product</Th>
+                <Th>Expected</Th>
+                <Th>Actual</Th>
+                <Th>Variance</Th>
               </tr>
             </thead>
             <tbody>
               {(active.items || []).map((it) => (
-                <tr key={it.id} style={{ borderTop: '1px solid #F2F4F7' }}>
-                  <td style={{ padding: 8 }}>{it.product?.name}</td>
-                  <td style={{ padding: 8 }}>{fmtQty(it.expected_qty, it.product?.unit)}</td>
-                  <td style={{ padding: 8 }}>
-                    <Input type="number" value={it.actual_qty} onChange={(e) => setActive((prev) => ({
-                      ...prev,
-                      items: prev.items.map((x) => x.id === it.id
-                        ? { ...x, actual_qty: e.target.value, variance: Number(e.target.value) - Number(x.expected_qty) }
-                        : x),
-                    }))} style={{ width: 110 }} />
+                <tr key={it.id} style={{ borderTop: '1px solid var(--app-border, #F2F4F7)' }}>
+                  <td style={{ padding: 10, fontFamily: "'Inter',sans-serif", color: 'var(--app-text, #101828)' }}>
+                    {it.product?.name}
                   </td>
-                  <td style={{ padding: 8, color: Number(it.variance) === 0 ? '#059669' : '#DC2626', fontWeight: 600 }}>
+                  <td style={{ padding: 10, fontFamily: "'Inter',sans-serif" }}>
+                    {fmtQty(it.expected_qty, it.product?.unit)}
+                  </td>
+                  <td style={{ padding: 10 }}>
+                    <Input
+                      type="number"
+                      value={it.actual_qty}
+                      onChange={(e) => setActive((prev) => ({
+                        ...prev,
+                        items: prev.items.map((x) => x.id === it.id
+                          ? { ...x, actual_qty: e.target.value, variance: Number(e.target.value) - Number(x.expected_qty) }
+                          : x),
+                      }))}
+                      style={{ width: 110 }}
+                    />
+                  </td>
+                  <td style={{
+                    padding: 10,
+                    color: Number(it.variance) === 0 ? '#059669' : '#DC2626',
+                    fontWeight: 600,
+                    fontFamily: "'Inter',sans-serif",
+                  }}>
                     {fmtQty(it.variance, it.product?.unit)}
                   </td>
                 </tr>
               ))}
             </tbody>
-          </table>
+          </TableShell>
           <div style={{ display: 'flex', gap: 8, marginTop: 12, justifyContent: 'flex-end' }}>
             <Button variant="secondary" loading={saving} onClick={saveItems}>Save</Button>
             <Button variant="primary" loading={saving} onClick={complete}>Generate Adjustment & Complete</Button>

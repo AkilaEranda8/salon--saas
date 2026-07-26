@@ -4,7 +4,7 @@ import api from '../../api/axios';
 import Button from '../../components/ui/Button';
 import { Input, Select, FormGroup } from '../../components/ui/FormElements';
 import { useToast } from '../../components/ui/Toast';
-import { DataTable, IconPlus, PKModal as Modal } from '../../components/ui/PageKit';
+import { DataTable, FilterBar, IconPlus, PKModal as Modal } from '../../components/ui/PageKit';
 import { INV_API, loadBranches } from './invApi';
 
 export default function InvGoodsReceivedPage() {
@@ -54,9 +54,11 @@ export default function InvGoodsReceivedPage() {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
-        <Button variant="primary" onClick={() => setShow(true)}><IconPlus /> Receive Goods</Button>
-      </div>
+      <FilterBar style={{ marginBottom: 12 }}>
+        <Button variant="primary" onClick={() => setShow(true)} style={{ marginLeft: 'auto' }}>
+          <IconPlus /> Receive Goods
+        </Button>
+      </FilterBar>
       <DataTable
         columns={[
           { id: 'grn', header: 'GRN #', accessorFn: (r) => r.grn_number },

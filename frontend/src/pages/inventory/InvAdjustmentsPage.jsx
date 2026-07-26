@@ -4,7 +4,7 @@ import api from '../../api/axios';
 import Button from '../../components/ui/Button';
 import { Input, Select, FormGroup } from '../../components/ui/FormElements';
 import { useToast } from '../../components/ui/Toast';
-import { DataTable, IconPlus, PKModal as Modal } from '../../components/ui/PageKit';
+import { DataTable, FilterBar, IconPlus, PKModal as Modal } from '../../components/ui/PageKit';
 import { INV_API, fmtQty, loadBranches } from './invApi';
 
 export default function InvAdjustmentsPage() {
@@ -48,9 +48,11 @@ export default function InvAdjustmentsPage() {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
-        <Button variant="primary" onClick={() => setShow(true)}><IconPlus /> New Adjustment</Button>
-      </div>
+      <FilterBar style={{ marginBottom: 12 }}>
+        <Button variant="primary" onClick={() => setShow(true)} style={{ marginLeft: 'auto' }}>
+          <IconPlus /> New Adjustment
+        </Button>
+      </FilterBar>
       <DataTable
         columns={[
           { id: 'product', header: 'Product', accessorFn: (r) => r.product?.name },

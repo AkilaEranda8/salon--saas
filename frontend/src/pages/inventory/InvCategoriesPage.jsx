@@ -3,7 +3,7 @@ import api from '../../api/axios';
 import Button from '../../components/ui/Button';
 import { Input, Select, FormGroup } from '../../components/ui/FormElements';
 import { useToast } from '../../components/ui/Toast';
-import { ActionBtn, DataTable, IconEdit, IconPlus, IconTrash, PKModal as Modal } from '../../components/ui/PageKit';
+import { ActionBtn, DataTable, FilterBar, IconEdit, IconPlus, IconTrash, PKModal as Modal } from '../../components/ui/PageKit';
 import { INV_API, PRODUCT_TYPES } from './invApi';
 
 export default function InvCategoriesPage() {
@@ -39,9 +39,15 @@ export default function InvCategoriesPage() {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
-        <Button variant="primary" onClick={() => { setEdit(null); setForm({ name: '', type: 'consumable', description: '' }); setShow(true); }}><IconPlus /> Add Category</Button>
-      </div>
+      <FilterBar style={{ marginBottom: 12 }}>
+        <Button
+          variant="primary"
+          onClick={() => { setEdit(null); setForm({ name: '', type: 'consumable', description: '' }); setShow(true); }}
+          style={{ marginLeft: 'auto' }}
+        >
+          <IconPlus /> Add Category
+        </Button>
+      </FilterBar>
       <DataTable
         columns={[
           { id: 'name', header: 'Name', accessorFn: (r) => r.name },

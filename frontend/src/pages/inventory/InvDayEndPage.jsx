@@ -4,6 +4,7 @@ import api from '../../api/axios';
 import Button from '../../components/ui/Button';
 import { Input, Select, FormGroup } from '../../components/ui/FormElements';
 import { useToast } from '../../components/ui/Toast';
+import { FilterBar, TableShell, Th } from '../../components/ui/PageKit';
 import { INV_API, fmtQty, loadBranches } from './invApi';
 
 export default function InvDayEndPage() {
@@ -80,16 +81,31 @@ export default function InvDayEndPage() {
   return (
     <div>
       <div style={{
-        background: 'linear-gradient(135deg,#EEF2FF,#F5F3FF)', border: '1px solid #E0E7FF',
-        borderRadius: 12, padding: 16, marginBottom: 16,
+        background: 'var(--app-accent-soft, #EFF6FF)',
+        border: '1px solid #BFDBFE',
+        borderRadius: 14,
+        padding: 16,
+        marginBottom: 16,
       }}>
-        <div style={{ fontWeight: 700, marginBottom: 6 }}>Day End Stock Consumption</div>
-        <div style={{ fontSize: 13, color: '#475467', lineHeight: 1.5 }}>
+        <div style={{
+          fontWeight: 700,
+          marginBottom: 6,
+          color: 'var(--app-title, #101828)',
+          fontFamily: "'Sora',sans-serif",
+        }}>
+          Day End Stock Consumption
+        </div>
+        <div style={{
+          fontSize: 13,
+          color: 'var(--app-text-secondary, #475467)',
+          lineHeight: 1.5,
+          fontFamily: "'Inter',sans-serif",
+        }}>
           Appointments during the day record usage as <strong>Pending</strong>. Stock does not change until you confirm deduction here.
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 16, alignItems: 'end' }}>
+      <FilterBar style={{ marginBottom: 16 }}>
         {user?.role === 'superadmin' && (
           <FormGroup label="Branch">
             <Select value={branchId} onChange={(e) => setBranchId(e.target.value)}>
@@ -102,45 +118,72 @@ export default function InvDayEndPage() {
           <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
         </FormGroup>
         <Button variant="secondary" onClick={loadPreview} loading={loading}>Refresh Preview</Button>
-      </div>
+      </FilterBar>
 
-      <div style={{ marginBottom: 12, fontSize: 13, color: '#475467' }}>
+      <div style={{
+        marginBottom: 12,
+        fontSize: 13,
+        color: 'var(--app-text-secondary, #475467)',
+        fontFamily: "'Inter',sans-serif",
+      }}>
         Pending usage records: <strong>{pendingCount}</strong> · Grouped products: <strong>{items.length}</strong>
       </div>
 
-      <div style={{ background: '#fff', border: '1px solid #EAECF0', borderRadius: 12, overflow: 'hidden' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-          <thead>
-            <tr style={{ background: '#F8FAFC', textAlign: 'left' }}>
-              <th style={{ padding: 12 }}>Product</th>
-              <th style={{ padding: 12 }}>Current Stock</th>
-              <th style={{ padding: 12 }}>Used Today</th>
-              <th style={{ padding: 12 }}>Unit</th>
+      <TableShell>
+        <thead>
+          <tr>
+            <Th>Product</Th>
+            <Th>Current Stock</Th>
+            <Th>Used Today</Th>
+            <Th>Unit</Th>
+          </tr>
+        </thead>
+        <tbody>
+          {!items.length ? (
+            <tr>
+              <td
+                colSpan={4}
+                style={{
+                  padding: 24,
+                  color: 'var(--app-text-muted, #98A2B3)',
+                  textAlign: 'center',
+                  fontFamily: "'Inter',sans-serif",
+                }}
+              >
+                No pending consumption for this date
+              </td>
             </tr>
-          </thead>
-          <tbody>
-            {!items.length ? (
-              <tr><td colSpan={4} style={{ padding: 24, color: '#98A2B3', textAlign: 'center' }}>No pending consumption for this date</td></tr>
-            ) : items.map((it) => (
-              <tr key={it.product_id} style={{ borderTop: '1px solid #F2F4F7' }}>
-                <td style={{ padding: 12, fontWeight: 600 }}>{it.product?.name}</td>
-                <td style={{ padding: 12 }}>{fmtQty(it.product?.current_stock, it.unit)}</td>
-                <td style={{ padding: 12 }}>
-                  <Input
-                    type="number"
-                    value={it.quantity_used}
-                    onChange={(e) => setItems((prev) => prev.map((x) => (
-                      x.product_id === it.product_id ? { ...x, quantity_used: Number(e.target.value) } : x
-                    )))}
-                    style={{ width: 120 }}
-                  />
-                </td>
-                <td style={{ padding: 12 }}>{it.unit}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+          ) : items.map((it, i) => (
+            <tr
+              key={it.product_id}
+              style={{
+                borderTop: '1px solid var(--app-border, #F2F4F7)',
+                background: i % 2 ? 'var(--app-surface-muted, transparent)' : 'transparent',
+              }}
+            >
+              <td style={{ padding: 12, fontWeight: 600, color: 'var(--app-text, #101828)', fontFamily: "'Inter',sans-serif" }}>
+                {it.product?.name}
+              </td>
+              <td style={{ padding: 12, fontFamily: "'Inter',sans-serif", color: 'var(--app-text-secondary, #344054)' }}>
+                {fmtQty(it.product?.current_stock, it.unit)}
+              </td>
+              <td style={{ padding: 12 }}>
+                <Input
+                  type="number"
+                  value={it.quantity_used}
+                  onChange={(e) => setItems((prev) => prev.map((x) => (
+                    x.product_id === it.product_id ? { ...x, quantity_used: Number(e.target.value) } : x
+                  )))}
+                  style={{ width: 120 }}
+                />
+              </td>
+              <td style={{ padding: 12, fontFamily: "'Inter',sans-serif", color: 'var(--app-text-muted, #667085)' }}>
+                {it.unit}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </TableShell>
 
       <div style={{ display: 'flex', gap: 10, marginTop: 16, justifyContent: 'flex-end' }}>
         <Button variant="secondary" onClick={() => { setItems([]); toast.success('Cleared preview'); }}>Cancel</Button>

@@ -5,6 +5,14 @@ import { INV_API, fmtQty } from './invApi';
 import { StatCard, IconBox } from '../../components/ui/PageKit';
 import Button from '../../components/ui/Button';
 
+const panel = {
+  background: 'var(--app-panel, #fff)',
+  border: '1px solid var(--app-border, #EAECF0)',
+  borderRadius: 14,
+  padding: 16,
+  boxShadow: 'var(--app-shadow, 0 2px 8px rgba(16,24,40,0.06))',
+};
+
 export default function InvDashboardPage() {
   const navigate = useNavigate();
   const [data, setData] = useState(null);
@@ -22,7 +30,13 @@ export default function InvDashboardPage() {
     return () => { alive = false; };
   }, []);
 
-  if (loading) return <div style={{ padding: 24, color: '#98A2B3' }}>Loading dashboard…</div>;
+  if (loading) {
+    return (
+      <div style={{ padding: 24, color: 'var(--app-text-muted, #98A2B3)', fontFamily: "'Inter',sans-serif" }}>
+        Loading dashboard…
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -41,22 +55,41 @@ export default function InvDashboardPage() {
         <Button variant="secondary" onClick={() => navigate('/inventory/low-stock')}>Low Stock</Button>
       </div>
 
-      <div style={{
-        background: '#fff', border: '1px solid #EAECF0', borderRadius: 12, padding: 16,
-      }}>
-        <div style={{ fontWeight: 700, marginBottom: 12, fontSize: 15 }}>Low Stock Alerts</div>
+      <div style={panel}>
+        <div style={{
+          fontWeight: 700,
+          marginBottom: 12,
+          fontSize: 15,
+          color: 'var(--app-title, #101828)',
+          fontFamily: "'Sora',sans-serif",
+        }}>
+          Low Stock Alerts
+        </div>
         {!data?.lowStockItems?.length ? (
-          <div style={{ color: '#98A2B3', fontSize: 13 }}>No low stock items right now.</div>
+          <div style={{ color: 'var(--app-text-muted, #98A2B3)', fontSize: 13, fontFamily: "'Inter',sans-serif" }}>
+            No low stock items right now.
+          </div>
         ) : (
           <div style={{ display: 'grid', gap: 8 }}>
             {data.lowStockItems.map((p) => (
-              <div key={p.id} style={{
-                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                padding: '10px 12px', borderRadius: 8, background: '#FEF2F2', border: '1px solid #FEE2E2',
-              }}>
+              <div
+                key={p.id}
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  padding: '10px 12px',
+                  borderRadius: 10,
+                  background: '#FEF2F2',
+                  border: '1px solid #FEE2E2',
+                  fontFamily: "'Inter',sans-serif",
+                }}
+              >
                 <div>
-                  <div style={{ fontWeight: 600 }}>{p.name}</div>
-                  <div style={{ fontSize: 12, color: '#98A2B3' }}>{p.product_type} · Min {fmtQty(p.min_stock, p.unit)}</div>
+                  <div style={{ fontWeight: 600, color: 'var(--app-text, #101828)' }}>{p.name}</div>
+                  <div style={{ fontSize: 12, color: 'var(--app-text-muted, #98A2B3)' }}>
+                    {p.product_type} · Min {fmtQty(p.min_stock, p.unit)}
+                  </div>
                 </div>
                 <div style={{ fontWeight: 700, color: '#DC2626' }}>{fmtQty(p.current_stock, p.unit)}</div>
               </div>

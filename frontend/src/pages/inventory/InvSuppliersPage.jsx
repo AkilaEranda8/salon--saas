@@ -3,7 +3,7 @@ import api from '../../api/axios';
 import Button from '../../components/ui/Button';
 import { Input, FormGroup } from '../../components/ui/FormElements';
 import { useToast } from '../../components/ui/Toast';
-import { ActionBtn, DataTable, IconEdit, IconPlus, IconTrash, PKModal as Modal } from '../../components/ui/PageKit';
+import { ActionBtn, DataTable, FilterBar, IconEdit, IconPlus, IconTrash, PKModal as Modal } from '../../components/ui/PageKit';
 import { INV_API } from './invApi';
 
 const EMPTY = { name: '', contact_person: '', phone: '', email: '', address: '', notes: '' };
@@ -32,9 +32,11 @@ export default function InvSuppliersPage() {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
-        <Button variant="primary" onClick={() => { setEdit(null); setForm(EMPTY); setShow(true); }}><IconPlus /> Add Supplier</Button>
-      </div>
+      <FilterBar style={{ marginBottom: 12 }}>
+        <Button variant="primary" onClick={() => { setEdit(null); setForm(EMPTY); setShow(true); }} style={{ marginLeft: 'auto' }}>
+          <IconPlus /> Add Supplier
+        </Button>
+      </FilterBar>
       <DataTable
         columns={[
           { id: 'name', header: 'Supplier', accessorFn: (r) => r.name },

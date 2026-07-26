@@ -19,8 +19,19 @@ export default function InvLowStockPage() {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12, gap: 8, flexWrap: 'wrap' }}>
-        <div style={{ fontSize: 13, color: '#475467' }}>
+      <div style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        marginBottom: 12,
+        gap: 8,
+        flexWrap: 'wrap',
+        alignItems: 'center',
+      }}>
+        <div style={{
+          fontSize: 13,
+          color: 'var(--app-text-secondary, #475467)',
+          fontFamily: "'Inter',sans-serif",
+        }}>
           Products where current stock ≤ minimum stock. Suggested order helps restock.
         </div>
         <div style={{ display: 'flex', gap: 8 }}>

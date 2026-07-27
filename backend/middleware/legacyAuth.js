@@ -35,6 +35,27 @@ const verifyToken = async (req, res, next) => {
       // RevokedToken table may not exist yet — fail open to avoid lockout
     }
 
+    // ── Bulk session revoke (per-user timestamp) ──────────────────────────────
+    try {
+      if (decoded?.id) {
+        const { User } = require('../models');
+        const row = await User.findByPk(decoded.id, {
+          attributes: ['id', 'sessions_revoked_at', 'is_active'],
+        });
+        if (row && row.is_active === false) {
+          return res.status(401).json({ message: 'Account is inactive.' });
+        }
+        if (row?.sessions_revoked_at && decoded.iat) {
+          const revokedAtSec = Math.floor(new Date(row.sessions_revoked_at).getTime() / 1000);
+          if (decoded.iat < revokedAtSec) {
+            return res.status(401).json({ message: 'Session has been revoked. Please log in again.' });
+          }
+        }
+      }
+    } catch (_) {
+      // Column may not exist yet — fail open
+    }
+
     req.user = decoded;
     req.userTenantId = decoded.role === 'platform_admin' ? null : (decoded.tenantId ?? null);
     next();

@@ -64,6 +64,10 @@ const InvStockAdjustment = require('./InvStockAdjustment');
 const InvStockCount = require('./InvStockCount');
 const InvStockCountItem = require('./InvStockCountItem');
 const InvSettings = require('./InvSettings');
+const PlatformAnnouncement = require('./PlatformAnnouncement');
+const { PlatformRelease, PlatformReleaseItem } = require('./PlatformRelease');
+const { FeatureSuggestion, FeatureSuggestionHistory } = require('./FeatureSuggestion');
+const { MasterCatalogCategory, MasterCatalogItem } = require('./MasterCatalog');
 
 // Tenant
 Tenant.hasMany(Subscription, { foreignKey: 'tenant_id', as: 'subscriptions' });
@@ -383,4 +387,11 @@ module.exports = {
   InvStockCount,
   InvStockCountItem,
   InvSettings,
+  PlatformAnnouncement,
+  PlatformRelease,
+  PlatformReleaseItem,
+  FeatureSuggestion,
+  FeatureSuggestionHistory,
+  MasterCatalogCategory,
+  MasterCatalogItem,
 };

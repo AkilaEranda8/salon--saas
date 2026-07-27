@@ -75,6 +75,11 @@ const User = sequelize.define('User', {
     type: DataTypes.DATE,
     allowNull: true,
   },
+  /** When set, JWTs with iat earlier than this are rejected (session revoke). */
+  sessions_revoked_at: {
+    type: DataTypes.DATE,
+    allowNull: true,
+  },
 }, {
   tableName: 'users',
   timestamps: true,

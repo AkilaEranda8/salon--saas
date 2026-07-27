@@ -25,6 +25,7 @@ const ensurePaymentCommissionBreakdownColumn = require('./services/ensurePayment
 const ensurePaymentManagerCommissionColumns = require('./services/ensurePaymentManagerCommissionColumns');
 const ensureFranchiseCommissionSchema = require('./services/ensureFranchiseCommissionSchema');
 const ensureUserMobileFeaturesColumn = require('./services/ensureUserMobileFeaturesColumn');
+const ensureUsersSessionsRevokedColumn = require('./services/ensureUsersSessionsRevokedColumn');
 const ensureTenantMobileRoleDefaultsColumn = require('./services/ensureTenantMobileRoleDefaultsColumn');
 const { ensureTenantEnabledFeaturesColumn } = require('./services/ensureTenantEnabledFeaturesColumn');
 const { ensureStaffPhotoColumn } = require('./services/ensureStaffPhotoColumn');
@@ -356,6 +357,7 @@ connectWithRetry().then(async () => {
   await ensurePaymentManagerCommissionColumns();
   await ensureFranchiseCommissionSchema();
   await ensureUserMobileFeaturesColumn();
+  await ensureUsersSessionsRevokedColumn();
   await ensureTenantMobileRoleDefaultsColumn();
   await ensureTenantEnabledFeaturesColumn();
   await ensureWalkInNotificationColumns();

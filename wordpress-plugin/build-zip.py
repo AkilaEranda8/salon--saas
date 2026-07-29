@@ -1,6 +1,9 @@
 import zipfile
 from pathlib import Path
 
+# Source folder on disk can keep any name; archive root must be a NEW folder
+# so WordPress installs cleanly even when an older broken folder remains.
+PLUGIN_SLUG = 'hexaone-booking'
 src = Path(r'E:\salon_v1\wordpress-plugin\hexaone-salon-booking')
 zip_paths = [
     Path(r'E:\salon_v1\wordpress-plugin\hexaone-salon-booking.zip'),
@@ -14,7 +17,7 @@ def build(dest: Path) -> None:
         for path in sorted(src.rglob('*')):
             if not path.is_file():
                 continue
-            arc = f'hexaone-salon-booking/{path.relative_to(src).as_posix()}'
+            arc = f'{PLUGIN_SLUG}/{path.relative_to(src).as_posix()}'
             info = zipfile.ZipInfo(arc)
             info.compress_type = zipfile.ZIP_DEFLATED
             info.external_attr = 0o644 << 16

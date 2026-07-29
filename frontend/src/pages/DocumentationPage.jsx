@@ -270,7 +270,7 @@ export default function DocumentationPage() {
           <div className="docs-hero-pills">
             <span>REST + JSON</span>
             <span>No API key required</span>
-            <span>Plugin v1.0.1</span>
+            <span>Plugin v1.0.2</span>
           </div>
         </div>
       </header>
@@ -383,11 +383,11 @@ export default function DocumentationPage() {
                 <span aria-hidden="true">↓</span>
                 {downloading ? 'Preparing download…' : 'Download WordPress plugin'}
               </button>
-              <small>ZIP package · v1.0.1</small>
+              <small>ZIP package · v1.0.2</small>
             </div>
             {downloadError && <p className="docs-download-error" role="alert">{downloadError}</p>}
             <div className="docs-info-grid">
-              <div><small>Plugin version</small><code>1.0.1</code></div>
+              <div><small>Plugin version</small><code>1.0.2</code></div>
               <div><small>WordPress</small><code>5.8 or newer</code></div>
               <div><small>PHP</small><code>7.4 or newer</code></div>
               <div><small>Package</small><code>hexaone-salon-booking.zip</code></div>
@@ -395,13 +395,19 @@ export default function DocumentationPage() {
 
             <h3>Installation</h3>
             <ol className="docs-numbered">
-              <li>Open WordPress Admin → <strong>Plugins → Add New Plugin → Upload Plugin</strong>.</li>
+              <li>If an older Hexaone Salon Booking entry is listed, click <strong>Delete</strong>.</li>
+              <li>Download the ZIP from this page (do not extract it on your computer).</li>
+              <li>Open WordPress Admin → <strong>Plugins → Add New → Upload Plugin</strong>.</li>
               <li>Select <code>hexaone-salon-booking.zip</code>, install it, and click <strong>Activate</strong>.</li>
               <li>Open <strong>Settings → Salon Booking</strong>.</li>
               <li>Set the API base URL to <code>{API_BASE}</code>.</li>
               <li>Set Tenant ID to <code>{tenantId}</code>, then save the settings.</li>
               <li>Add <code>[salon_booking]</code> to a page and publish it.</li>
             </ol>
+            <div className="docs-note">
+              File Manager / FTP is not required. Upload the ZIP only through WordPress Admin.
+              Version 1.0.2 installs into a fresh folder (<code>hexaone-booking</code>) so leftover broken folders do not block activation.
+            </div>
 
             <h3>Values for Settings → Salon Booking</h3>
             <div className="docs-credentials">

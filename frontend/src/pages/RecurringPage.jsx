@@ -378,7 +378,7 @@ export default function RecurringPage() {
           data={chains}
           loading={loading}
           emptyMessage="No recurring appointments found"
-          emptySub="Enable Repeat weekly on Walk-In or Payments checkout"
+          emptySub="Enable Recurring on Walk-In or Payments checkout"
           searchableColumns={[
             { id: 'customer', title: 'Customer' },
             { id: 'service', title: 'Service' },

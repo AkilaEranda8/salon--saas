@@ -1780,7 +1780,7 @@ export default function WalkInPage() {
                       style={{ marginTop: 3, width: 16, height: 16, accentColor: '#2563EB' }}
                     />
                     <span>
-                      <div style={{ fontWeight: 700, fontSize: 14, color: C.title }}>Repeat weekly</div>
+                      <div style={{ fontWeight: 700, fontSize: 14, color: C.title }}>Recurring</div>
                       <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>
                         Book next visit and send SMS on the selected day
                       </div>

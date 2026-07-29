@@ -1164,7 +1164,7 @@ export default function PaymentsPage() {
                       style={{ marginTop: 3, width: 16, height: 16, accentColor: '#2563EB' }}
                     />
                     <span>
-                      <div style={{ fontWeight: 700, fontSize: 14, color: isDark ? '#E2E8F0' : '#101828' }}>Repeat weekly</div>
+                      <div style={{ fontWeight: 700, fontSize: 14, color: isDark ? '#E2E8F0' : '#101828' }}>Recurring</div>
                       <div style={{ fontSize: 12, color: isDark ? '#94A3B8' : '#667085', marginTop: 2 }}>
                         Book next visit — SMS is sent on the selected day
                       </div>

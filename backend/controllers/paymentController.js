@@ -238,9 +238,20 @@ const create = async (req, res) => {
     const today = slToday();
 
     let resolvedAppointmentId = appointment_id ? Number(appointment_id) : null;
-    let recurringSeeded = false;
+    let pendingRecurringSeed = null;
 
-    if (is_recurring && !resolvedAppointmentId) {
+    if (is_recurring && resolvedAppointmentId) {
+      const appt = await Appointment.findOne({
+        where: byIdWhere(req, resolvedAppointmentId),
+        transaction: t,
+      });
+      if (appt) {
+        await appt.update({
+          is_recurring: true,
+          recurrence_frequency: 'weekly',
+        }, { transaction: t });
+      }
+    } else if (is_recurring && !resolvedAppointmentId) {
       let resolvedPhone = phone || null;
       let resolvedName = customer_name || null;
       if (customer_id) {
@@ -254,39 +265,21 @@ const create = async (req, res) => {
           resolvedName = resolvedName || cust.name;
         }
       }
-      try {
-        // Own transactions — avoids nesting with payment tx
-        const { seed } = await seedRecurringFromVisit({
-          tenantId: resolveTenantId(req),
-          branchId: branch_id,
-          customerId: customer_id || null,
-          staffId: staff_id || null,
-          serviceId: serviceIdList[0] || service_id || null,
-          serviceIds: serviceIdList,
-          customerName: resolvedName || customer_name || 'Guest',
-          phone: resolvedPhone,
-          amount: total_amount,
-          appointmentTime: appointment_time,
-          nextDate: recurring_next_date,
-          notes: walkin_token ? `Walk-in recurring seed (${walkin_token})` : 'Payment recurring seed',
-        });
-        resolvedAppointmentId = seed.id;
-        recurringSeeded = true;
-      } catch (seedErr) {
-        await t.rollback();
-        return res.status(seedErr.status || 400).json({ message: seedErr.message || 'Failed to start recurring series.' });
-      }
-    } else if (is_recurring && resolvedAppointmentId) {
-      const appt = await Appointment.findOne({
-        where: byIdWhere(req, resolvedAppointmentId),
-        transaction: t,
-      });
-      if (appt) {
-        await appt.update({
-          is_recurring: true,
-          recurrence_frequency: 'weekly',
-        }, { transaction: t });
-      }
+      // Defer seed until after payment commits — avoids orphan appointments when package/payment fails
+      pendingRecurringSeed = {
+        tenantId: resolveTenantId(req),
+        branchId: branch_id,
+        customerId: customer_id || null,
+        staffId: staff_id || null,
+        serviceId: serviceIdList[0] || service_id || null,
+        serviceIds: serviceIdList,
+        customerName: resolvedName || customer_name || 'Guest',
+        phone: resolvedPhone,
+        amount: total_amount,
+        appointmentTime: appointment_time,
+        nextDate: recurring_next_date,
+        notes: walkin_token ? `Walk-in recurring seed (${walkin_token})` : 'Payment recurring seed',
+      };
     }
 
     const payment = await Payment.create({
@@ -382,8 +375,17 @@ const create = async (req, res) => {
 
     await t.commit();
 
-    // Existing appointment marked recurring — spawn next on selected date (no SMS)
-    if (is_recurring && resolvedAppointmentId && !recurringSeeded) {
+    // Recurring: seed after payment succeeds (walk-in / payments without appointment)
+    if (pendingRecurringSeed) {
+      try {
+        const { seed } = await seedRecurringFromVisit(pendingRecurringSeed);
+        resolvedAppointmentId = seed.id;
+        await payment.update({ appointment_id: seed.id });
+      } catch (e) {
+        console.error('[payment] seedRecurringFromVisit after commit', e.message);
+      }
+    } else if (is_recurring && resolvedAppointmentId) {
+      // Existing appointment marked recurring — spawn next on selected date (no SMS)
       setImmediate(async () => {
         try {
           const { createNextRecurring } = require('../services/recurringService');

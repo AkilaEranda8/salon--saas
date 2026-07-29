@@ -261,7 +261,7 @@ const customerPackages = async (req, res) => {
       order: [['purchase_date', 'DESC']],
     });
 
-    // Auto-expire overdue packages (single bulk update instead of N+1)
+    // Auto-expire overdue packages + mark session-exhausted as completed
     const today = slToday();
     const expiredIds = rows
       .filter((cp) => cp.status === 'active' && cp.expiry_date < today)
@@ -272,6 +272,17 @@ const customerPackages = async (req, res) => {
       expiredIds.forEach((id) => {
         const cp = rows.find((r) => r.id === id);
         if (cp) cp.status = 'expired';
+      });
+    }
+    const exhaustedIds = rows
+      .filter((cp) => cp.status === 'active' && !hasSessionsLeft(cp))
+      .map((cp) => cp.id);
+    if (exhaustedIds.length) {
+      const { CustomerPackage: CP } = require('../models');
+      await CP.update({ status: 'completed' }, { where: { id: exhaustedIds } });
+      exhaustedIds.forEach((id) => {
+        const cp = rows.find((r) => r.id === id);
+        if (cp) cp.status = 'completed';
       });
     }
 
@@ -309,7 +320,14 @@ const activePackages = async (req, res) => {
       order: [['expiry_date', 'ASC'], ['purchase_date', 'DESC']],
     });
 
-    const active = rows.map((cp) => enrichCustomerPackageRow(cp));
+    const exhaustedIds = rows.filter((cp) => !hasSessionsLeft(cp)).map((cp) => cp.id);
+    if (exhaustedIds.length) {
+      await CustomerPackage.update({ status: 'completed' }, { where: { id: exhaustedIds } });
+    }
+
+    const active = rows
+      .filter((cp) => hasSessionsLeft(cp))
+      .map((cp) => enrichCustomerPackageRow(cp));
     return res.json(active);
   } catch (err) {
     console.error(err);

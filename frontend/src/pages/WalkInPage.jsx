@@ -429,7 +429,7 @@ export default function WalkInPage() {
   const [paymentCustPackages, setPaymentCustPackages] = useState([]);
   const [paymentCustPackageId, setPaymentCustPackageId] = useState('');
   const [paymentCustomerId, setPaymentCustomerId] = useState(null);
-  const [paymentRecurring, setPaymentRecurring] = useState(true);
+  const [paymentRecurring, setPaymentRecurring] = useState(false);
   const [paymentRecurringDate, setPaymentRecurringDate] = useState(defaultRecurringNextDate());
   const { allowed: recurringAllowed } = useFeatureGate('recurring');
   const [loadingPaymentPkgs, setLoadingPaymentPkgs] = useState(false);
@@ -582,7 +582,7 @@ export default function WalkInPage() {
     setPaymentCustPackages([]);
     setPaymentCustPackageId('');
     setPaymentCustomerId(null);
-    setPaymentRecurring(!!recurringAllowed);
+    setPaymentRecurring(false);
     setPaymentRecurringDate(defaultRecurringNextDate());
 
     const custId = await resolveCustomerId(api, {
@@ -759,6 +759,13 @@ export default function WalkInPage() {
         setPaymentError('Selected package not found.');
         return;
       }
+      const total = Number(cp.sessions_total || 0);
+      const used = Number(cp.sessions_used || 0);
+      const left = total > 0 ? Math.max(0, total - used) : null;
+      if (left === 0) {
+        setPaymentError('This package has no sessions remaining. Choose Cash/Card or assign a new package.');
+        return;
+      }
       if (!packageCoversAllServices(paymentServices, cp)) {
         setPaymentError('All selected services must be included in the package.');
         return;
@@ -778,6 +785,9 @@ export default function WalkInPage() {
         ? paymentCustPackages.find((p) => String(p.id) === String(paymentCustPackageId))
         : null;
       const subtotal = cp ? getPackageBundlePrice(cp) : calcServiceTotal(paymentServices);
+      const collectAmount = cp
+        ? (subtotal > 0 ? subtotal : Number(paymentAmount) || 0)
+        : Number(paymentAmount);
       await api.post('/payments', {
         branch_id: paymentEntry.branch_id || selectedBranch,
         staff_id: paymentEntry.staff_id || paymentEntry.staff?.id || null,
@@ -790,7 +800,13 @@ export default function WalkInPage() {
         subtotal,
         loyalty_discount: 0,
         ...(paymentDiscountId ? { discount_id: Number(paymentDiscountId) } : {}),
-        splits: [{ method: paymentMethod, amount: Number(paymentAmount), ...(paymentMethod === 'Package' && paymentCustPackageId ? { customer_package_id: Number(paymentCustPackageId) } : {}) }],
+        splits: [{
+          method: paymentMethod,
+          amount: collectAmount,
+          ...(paymentMethod === 'Package' && paymentCustPackageId
+            ? { customer_package_id: Number(paymentCustPackageId) }
+            : {}),
+        }],
         ...(recurringAllowed && paymentRecurring ? {
           is_recurring: true,
           recurring_next_date: paymentRecurringDate,

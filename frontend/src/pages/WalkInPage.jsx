@@ -599,18 +599,15 @@ export default function WalkInPage() {
         .then((pkgs) => {
           setPaymentCustPackages(pkgs);
           if (pkgSel.id && pkgs.find((p) => String(p.id) === String(pkgSel.id))) {
-            // Prefill package id + services, but keep Cash as default method so
-            // exhausted / multi-service packages don't block payment by accident.
             applyPackageSelection({
               customerPackageId: String(pkgSel.id),
               customerPackages: pkgs,
               allServices: services,
               onServices: setPaymentServices,
               onPackageId: setPaymentCustPackageId,
-              onMethod: () => {},
+              onMethod: setPaymentMethod,
               onAmount: setPaymentAmount,
             });
-            setPaymentMethod('Cash');
           }
         })
         .catch(() => {})
@@ -1879,9 +1876,14 @@ export default function WalkInPage() {
                       No package — use promo discount or select a package at check-in.
                     </div>
                   )}
-                  {paymentCustPackageId && (
+                  {paymentUsesPackage && (
                     <div style={{ fontSize: 12, color: isDark ? '#6EE7B7' : '#047857', marginTop: 6, fontWeight: 600 }}>
-                      {formatPackageAppliedMessage(getPackageBundlePrice(paymentCustPackages.find((p) => String(p.id) === String(paymentCustPackageId))))}
+                      {formatPackageAppliedMessage(paymentBundlePrice)}
+                    </div>
+                  )}
+                  {paymentCustPackageId && paymentMethod !== 'Package' && (
+                    <div style={{ fontSize: 12, color: isDark ? '#FCD34D' : '#B45309', marginTop: 6, fontWeight: 600 }}>
+                      Package selected — switch payment method to Package to charge the bundle price (Rs. {paymentBundlePrice.toLocaleString()}).
                     </div>
                   )}
                 </div>

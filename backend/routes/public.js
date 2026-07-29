@@ -28,13 +28,32 @@ function toPublicUrl(req, relPath = '') {
   return `${proto}://${host}${relPath.startsWith('/') ? relPath : `/${relPath}`}`;
 }
 
-async function resolveWebBookingBranchId(fallbackBranchId = null) {
+async function resolveWebBookingBranchId(fallbackBranchId = null, tenantId = null) {
+  const where = { name: WEB_BOOKING_BRANCH_NAME, status: 'active' };
+  if (tenantId) where.tenant_id = Number(tenantId);
+
   const vip = await Branch.findOne({
-    where: { name: WEB_BOOKING_BRANCH_NAME, status: 'active' },
+    where,
     attributes: ['id'],
   });
   if (vip?.id) return vip.id;
-  return fallbackBranchId ? Number(fallbackBranchId) : null;
+
+  if (!fallbackBranchId) return null;
+
+  // When a tenant is provided, only accept a branch that belongs to that tenant.
+  if (tenantId) {
+    const branch = await Branch.findOne({
+      where: {
+        id: Number(fallbackBranchId),
+        tenant_id: Number(tenantId),
+        status: 'active',
+      },
+      attributes: ['id'],
+    });
+    return branch?.id || null;
+  }
+
+  return Number(fallbackBranchId);
 }
 
 function buildBookingConflictWhere({ staffId, date, branchId = null }) {
@@ -138,7 +157,7 @@ router.get('/staff', async (req, res) => {
 // duration = new booking's service duration in minutes (default 30).
 router.get('/availability', async (req, res) => {
   try {
-    const { staffId, date, duration, branchId } = req.query;
+    const { staffId, date, duration, branchId, tenantId } = req.query;
     if (!staffId || !date) {
       return res.status(400).json({ message: 'staffId and date are required' });
     }
@@ -149,7 +168,8 @@ router.get('/availability', async (req, res) => {
     }
 
     const newDuration = Math.max(30, parseInt(duration, 10) || 30);
-    const effectiveBranchId = await resolveWebBookingBranchId(branchId);
+    const tenantIdNum = tenantId ? parseInt(tenantId, 10) : null;
+    const effectiveBranchId = await resolveWebBookingBranchId(branchId, tenantIdNum);
 
     // Fetch existing appointments with their service duration
     const appointments = await Appointment.findAll({
@@ -594,6 +614,7 @@ router.post('/bookings', async (req, res) => {
   try {
     const {
       branch_id, service_id, service_ids, staff_id, customer_name, phone, email, date, time, notes,
+      tenantId, tenant_id,
     } = req.body;
 
     if (!staff_id || !customer_name || !phone || !date || !time) {
@@ -604,9 +625,25 @@ router.post('/bookings', async (req, res) => {
       return res.status(400).json({ message: 'staff_id must be a valid number' });
     }
 
-    const effectiveBranchId = await resolveWebBookingBranchId(branch_id);
+    const rawTenantId = tenantId ?? tenant_id ?? req.query.tenantId ?? req.tenant?.id;
+    const bookingTenantId = rawTenantId != null && rawTenantId !== ''
+      ? parseInt(rawTenantId, 10)
+      : null;
+    if (!Number.isInteger(bookingTenantId) || bookingTenantId <= 0) {
+      return res.status(400).json({ message: 'tenantId is required' });
+    }
+
+    const effectiveBranchId = await resolveWebBookingBranchId(branch_id, bookingTenantId);
     if (!effectiveBranchId) {
-      return res.status(400).json({ message: 'No active booking branch is configured.' });
+      return res.status(400).json({ message: 'No active booking branch is configured for this salon.' });
+    }
+
+    const staffRow = await Staff.findOne({
+      where: { id: staffIdNum, tenant_id: bookingTenantId, is_active: true },
+      attributes: ['id'],
+    });
+    if (!staffRow) {
+      return res.status(404).json({ message: 'Selected staff was not found for this salon' });
     }
 
     const rawServiceIds = Array.isArray(service_ids) && service_ids.length > 0
@@ -624,7 +661,7 @@ router.post('/bookings', async (req, res) => {
     }
 
     const services = await Service.findAll({
-      where: { id: selectedServiceIds, is_active: true },
+      where: { id: selectedServiceIds, is_active: true, tenant_id: bookingTenantId },
       attributes: ['id', 'price', 'duration_minutes'],
     });
     if (services.length !== selectedServiceIds.length) {
@@ -697,7 +734,10 @@ router.post('/bookings', async (req, res) => {
       let linkedCustomer = null;
       if (phoneVariants.length) {
         linkedCustomer = await Customer.findOne({
-          where: { phone: { [Op.or]: phoneVariants } },
+          where: {
+            phone: { [Op.or]: phoneVariants },
+            tenant_id: bookingTenantId,
+          },
           transaction: tx,
         });
       }
@@ -707,18 +747,21 @@ router.post('/bookings', async (req, res) => {
           phone: bookingPhone,
           email: bookingEmail || null,
           branch_id: effectiveBranchId || null,
+          tenant_id: bookingTenantId,
         }, { transaction: tx });
       } else {
         const updates = {};
         if (!String(linkedCustomer.name || '').trim() && bookingName) updates.name = bookingName;
         if (!String(linkedCustomer.email || '').trim() && bookingEmail) updates.email = bookingEmail;
         if (!linkedCustomer.branch_id && effectiveBranchId) updates.branch_id = effectiveBranchId;
+        if (!linkedCustomer.tenant_id) updates.tenant_id = bookingTenantId;
         if (Object.keys(updates).length) await linkedCustomer.update(updates, { transaction: tx });
       }
 
       const created = [];
       for (const r of requestedRanges) {
         const appointment = await Appointment.create({
+          tenant_id: bookingTenantId,
           branch_id: effectiveBranchId,
           customer_id: linkedCustomer?.id || null,
           service_id: r.service.id,
@@ -759,10 +802,12 @@ router.post('/bookings', async (req, res) => {
           await sendSMS({
             to: bookingPhone,
             message: summaryMsg,
+            tenantId: bookingTenantId,
             meta: {
               customer_name: bookingName,
               event_type: 'appointment_confirmed',
               branch_id: effectiveBranchId || null,
+              tenant_id: bookingTenantId,
             },
           });
         } catch (smsErr) {

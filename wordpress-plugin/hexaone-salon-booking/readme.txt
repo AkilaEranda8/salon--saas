@@ -24,10 +24,11 @@ Optional shortcode attrs: `[salon_booking title="Book now" accent="#8B2942"]`
 
 == Changelog ==
 
-= 1.0.3 =
+= 1.0.4 =
+* Send tenantId with bookings so appointments appear in the correct salon.
 * Modern salon booking UI with refined typography, step markers, and empty states.
 
-= 1.0.2 =
+= 1.0.3 =
 * Fresh install folder path for easier activation without File Manager.
 
 == Notes ==

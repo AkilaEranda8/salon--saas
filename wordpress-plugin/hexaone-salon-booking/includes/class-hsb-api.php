@@ -32,7 +32,7 @@ class HSB_API {
         }
 
         if ($action === 'book') {
-            self::proxy_book($api_base);
+            self::proxy_book($api_base, $tenant_id);
             return;
         }
 
@@ -71,7 +71,7 @@ class HSB_API {
         self::relay($response);
     }
 
-    private static function proxy_book($api_base) {
+    private static function proxy_book($api_base, $tenant_id) {
         $raw = file_get_contents('php://input');
         $body = json_decode($raw, true);
         if (!is_array($body)) {
@@ -90,6 +90,7 @@ class HSB_API {
         }
 
         $payload = [
+            'tenantId'      => absint($tenant_id),
             'branch_id'     => absint($body['branch_id'] ?? 0),
             'staff_id'      => absint($body['staff_id'] ?? 0),
             'customer_name' => sanitize_text_field($body['customer_name'] ?? ''),

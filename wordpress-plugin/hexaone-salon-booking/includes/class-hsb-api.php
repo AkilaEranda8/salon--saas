@@ -9,7 +9,7 @@ class HSB_API {
             'api_base'  => 'https://api.salon.hexalyte.com/api/public',
             'tenant_id' => '',
             'title'     => 'Book an Appointment',
-            'accent'    => '#2563EB',
+            'accent'    => '#8B2942',
         ];
         return wp_parse_args(get_option('hsb_settings', []), $defaults);
     }

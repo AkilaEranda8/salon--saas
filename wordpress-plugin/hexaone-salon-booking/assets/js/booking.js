@@ -26,6 +26,16 @@
     return d.getFullYear() + '-' + m + '-' + day;
   }
 
+  function emptyState(title, copy) {
+    return (
+      '<div class="hsb-empty-state"><strong>' +
+      esc(title) +
+      '</strong><span>' +
+      esc(copy) +
+      '</span></div>'
+    );
+  }
+
   ready(function () {
     var root = document.getElementById('hsb-root');
     if (!root) return;
@@ -151,10 +161,12 @@
 
     function renderBranch() {
       if (!state.branches.length) {
-        bodyEl.innerHTML = '<p class="hsb-empty">No branches available.</p>';
+        bodyEl.innerHTML = emptyState('No branches available', 'Ask the salon to activate at least one branch for online booking.');
         return;
       }
       bodyEl.innerHTML =
+        '<div class="hsb-section-title">Choose a branch</div>' +
+        '<p class="hsb-section-copy">Select where you would like to visit.</p>' +
         '<div class="hsb-grid">' +
         state.branches
           .map(function (b) {
@@ -167,7 +179,7 @@
               '"><strong>' +
               esc(b.name) +
               '</strong><span>' +
-              esc(b.address || '') +
+              esc(b.address || 'Salon location') +
               '</span></button>'
             );
           })
@@ -210,7 +222,14 @@
       });
 
       if (!list.length) {
-        bodyEl.innerHTML = filters + '<p class="hsb-empty">No services found.</p>';
+        bodyEl.innerHTML =
+          filters +
+          emptyState(
+            'No services found',
+            state.services.length
+              ? 'Try another category.'
+              : 'Check that services are active in the salon admin, and that the correct Tenant ID is saved in plugin settings.'
+          );
         return;
       }
 
@@ -219,8 +238,9 @@
       });
 
       bodyEl.innerHTML =
+        '<div class="hsb-section-title">Select services</div>' +
+        '<p class="hsb-section-copy">Choose one or more treatments for this visit.</p>' +
         filters +
-        '<p class="hsb-empty" style="margin-bottom:0.75rem">Select one or more services.</p>' +
         '<div class="hsb-grid">' +
         list
           .map(function (s) {
@@ -256,19 +276,19 @@
                 '"><strong>' +
                 esc(st.name) +
                 '</strong><span>' +
-                esc(st.role_title || '') +
+                esc(st.role_title || 'Stylist') +
                 '</span></button>'
               );
             })
             .join('')
-        : '<p class="hsb-empty">No staff for this branch.</p>';
+        : emptyState('No staff available', 'No active staff are assigned to this branch.');
 
       var slotsHtml = !state.form.staff
-        ? '<p class="hsb-empty">Select a staff member first.</p>'
+        ? emptyState('Choose staff first', 'Pick a stylist to unlock available times.')
         : !state.form.date
-          ? '<p class="hsb-empty">Pick a date to see times.</p>'
+          ? emptyState('Choose a date', 'Select a date to see open appointment times.')
           : !state.slots.length
-            ? '<p class="hsb-empty">No available slots on this date.</p>'
+            ? emptyState('No times available', 'Try another date or staff member.')
             : '<div class="hsb-slots">' +
               state.slots
                 .map(function (t) {
@@ -287,8 +307,10 @@
               '</div>';
 
       bodyEl.innerHTML =
+        '<div class="hsb-section-title">Staff &amp; schedule</div>' +
+        '<p class="hsb-section-copy">Pick your stylist, then choose a date and time.</p>' +
         '<div class="hsb-row hsb-row-2">' +
-        '<div><h3 style="margin:0 0 0.65rem;font-size:0.95rem">Staff</h3><div class="hsb-grid">' +
+        '<div><div class="hsb-panel-title">Staff</div><div class="hsb-grid">' +
         staffHtml +
         '</div></div>' +
         '<div>' +
@@ -298,7 +320,7 @@
         '" value="' +
         esc(state.form.date) +
         '" /></div>' +
-        '<h3 style="margin:0 0 0.65rem;font-size:0.95rem">Time</h3>' +
+        '<div class="hsb-panel-title">Available times</div>' +
         slotsHtml +
         '</div></div>';
     }
@@ -310,22 +332,24 @@
         })
         .join(', ');
       bodyEl.innerHTML =
+        '<div class="hsb-section-title">Your details</div>' +
+        '<p class="hsb-section-copy">Review the visit, then leave your contact details.</p>' +
         '<dl class="hsb-summary">' +
-        '<dt>Branch</dt><dd>' +
+        '<div><dt>Branch</dt><dd>' +
         esc(state.form.branch && state.form.branch.name) +
-        '</dd>' +
-        '<dt>Services</dt><dd>' +
+        '</dd></div>' +
+        '<div><dt>Services</dt><dd>' +
         esc(names) +
         ' · ' +
         durationTotal() +
-        ' min</dd>' +
-        '<dt>Staff / when</dt><dd>' +
+        ' min</dd></div>' +
+        '<div><dt>Staff / when</dt><dd>' +
         esc(state.form.staff && state.form.staff.name) +
         ' · ' +
         esc(state.form.date) +
         ' ' +
         esc(state.form.time) +
-        '</dd></dl>' +
+        '</dd></div></dl>' +
         '<div class="hsb-row" style="margin-top:1rem">' +
         '<div class="hsb-field"><label for="hsb-name">Your name *</label>' +
         '<input id="hsb-name" type="text" autocomplete="name" value="' +
@@ -340,21 +364,21 @@
         esc(state.form.email) +
         '" /></div>' +
         '<div class="hsb-field"><label for="hsb-notes">Notes</label>' +
-        '<textarea id="hsb-notes" rows="3">' +
+        '<textarea id="hsb-notes" rows="3" placeholder="Anything we should know before your visit?">' +
         esc(state.form.notes) +
         '</textarea></div></div>';
     }
 
     function renderDone() {
       bodyEl.innerHTML =
-        '<div class="hsb-success"><h3>Booking requested</h3>' +
+        '<div class="hsb-success"><div class="hsb-success-icon" aria-hidden="true">✓</div><h3>Booking requested</h3>' +
         '<p>We received your request. The salon will confirm shortly.</p>' +
         '<p><strong>' +
         esc(state.form.date) +
         ' at ' +
         esc(state.form.time) +
         '</strong></p>' +
-        '<button type="button" class="hsb-btn hsb-btn-primary" style="margin-top:1rem" data-hsb="restart">Book another</button></div>';
+        '<button type="button" class="hsb-btn hsb-btn-primary" style="margin-top:1.2rem" data-hsb="restart">Book another</button></div>';
     }
 
     function render() {

@@ -39,17 +39,18 @@ class HSB_Shortcode {
         >
             <div class="hsb-card">
                 <header class="hsb-header">
+                    <p class="hsb-eyebrow">Online booking</p>
                     <h2 class="hsb-title"><?php echo esc_html($atts['title']); ?></h2>
                     <ol class="hsb-steps" aria-label="Booking steps">
-                        <li class="is-active" data-step="0">Branch</li>
-                        <li data-step="1">Service</li>
-                        <li data-step="2">Staff &amp; time</li>
-                        <li data-step="3">Details</li>
-                        <li data-step="4">Done</li>
+                        <li class="is-active" data-step="0" data-step-num="1"><span class="hsb-step-label">Branch</span></li>
+                        <li data-step="1" data-step-num="2"><span class="hsb-step-label">Service</span></li>
+                        <li data-step="2" data-step-num="3"><span class="hsb-step-label">Staff &amp; time</span></li>
+                        <li data-step="3" data-step-num="4"><span class="hsb-step-label">Details</span></li>
+                        <li data-step="4" data-step-num="5"><span class="hsb-step-label">Done</span></li>
                     </ol>
                 </header>
                 <div class="hsb-body" id="hsb-body">
-                    <p class="hsb-loading">Loading…</p>
+                    <p class="hsb-loading">Preparing your booking…</p>
                 </div>
                 <footer class="hsb-footer" id="hsb-footer" hidden></footer>
             </div>
@@ -66,9 +67,15 @@ class HSB_Shortcode {
         self::$printed = true;
 
         wp_enqueue_style(
+            'hsb-fonts',
+            'https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Outfit:wght@400;500;600;700&display=swap',
+            [],
+            null
+        );
+        wp_enqueue_style(
             'hsb-booking',
             HSB_PLUGIN_URL . 'assets/css/booking.css',
-            [],
+            ['hsb-fonts'],
             HSB_VERSION
         );
         wp_enqueue_script(

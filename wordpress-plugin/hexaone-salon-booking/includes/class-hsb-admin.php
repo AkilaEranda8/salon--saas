@@ -35,8 +35,8 @@ class HSB_Admin {
         $out['api_base']  = esc_url_raw(trim($input['api_base'] ?? $out['api_base']));
         $out['tenant_id'] = sanitize_text_field($input['tenant_id'] ?? '');
         $out['title']     = sanitize_text_field($input['title'] ?? 'Book an Appointment');
-        $accent = sanitize_hex_color($input['accent'] ?? '#2563EB');
-        $out['accent'] = $accent ?: '#2563EB';
+        $accent = sanitize_hex_color($input['accent'] ?? '#8B2942');
+        $out['accent'] = $accent ?: '#8B2942';
         return $out;
     }
 

@@ -24,10 +24,18 @@ import {
   formatPackageAppliedMessage,
   formatPackageBillAmount,
 } from '../utils/packageHelpers';
+import { useFeatureGate } from '../hooks/useFeatureGate';
+import RecurringDateCalendar, { defaultRecurringNextDate } from '../components/ui/RecurringDateCalendar';
 
 const METHODS = ['Cash','Card','Online Transfer','Loyalty Points','Package','LankaQR'];
 const METHOD_LABEL = { 'Cash':'Cash', 'Card':'Card', 'Online Transfer':'Bank Transfer', 'Loyalty Points':'Loyalty Pts', 'Package':'Package', 'LankaQR':'LankaQR' };
-const EMPTY_FORM = { branch_id:'', staff_id:'', customer_id:'', service_ids:[], total_amount:'', loyalty_discount:0, discount_id:'', splits:[{ method:'Cash', amount:'' }] };
+const EMPTY_FORM = {
+  branch_id:'', staff_id:'', customer_id:'', service_ids:[], total_amount:'', loyalty_discount:0, discount_id:'',
+  splits:[{ method:'Cash', amount:'' }],
+  is_recurring: true,
+  recurring_next_date: '',
+  appointment_time: '10:00',
+};
 
 // ── HelaPay QR Modal ─────────────────────────────────────────────────────────
 function HelaPayQRModal({ amount, reference, onClose, onSuccess }) {
@@ -617,6 +625,7 @@ export default function PaymentsPage() {
   const [discounts, setDiscounts]       = useState([]);
   const [discountsLoading, setDiscountsLoading] = useState(false);
   const [discountsLoadError, setDiscountsLoadError] = useState(false);
+  const { allowed: recurringAllowed } = useFeatureGate('recurring');
 
   // Load reference data once on mount (independent of payment filters)
   useEffect(() => {
@@ -704,7 +713,13 @@ export default function PaymentsPage() {
 
   const openAdd = () => {
     setEditId(null);
-    setForm({ ...EMPTY_FORM, branch_id: user?.branchId || filterBranch || '' });
+    setForm({
+      ...EMPTY_FORM,
+      branch_id: user?.branchId || filterBranch || '',
+      is_recurring: !!recurringAllowed,
+      recurring_next_date: defaultRecurringNextDate(),
+      appointment_time: '10:00',
+    });
     setFormErr('');
     setCustPackages([]);
     setFormPackageId('');
@@ -846,7 +861,7 @@ export default function PaymentsPage() {
       return setFormErr(`Package split must equal bundle price (Rs. ${packageBundle.toLocaleString()})`);
     setSaving(true);
     try {
-      const { service_ids, ...rest } = form;
+      const { service_ids, is_recurring, recurring_next_date, appointment_time, ...rest } = form;
       const payload = {
         ...rest,
         service_id: service_ids[0] || null,
@@ -855,6 +870,11 @@ export default function PaymentsPage() {
         promo_discount: promo,
         discount_id: form.discount_id || null,
       };
+      if (!editId && recurringAllowed && is_recurring) {
+        payload.is_recurring = true;
+        payload.recurring_next_date = recurring_next_date || defaultRecurringNextDate();
+        payload.appointment_time = appointment_time || '10:00';
+      }
       if (editId) {
         await api.put(`/payments/${editId}`, payload);
         toast('Payment updated successfully!', 'success');
@@ -1124,6 +1144,51 @@ export default function PaymentsPage() {
                   ))}
                 </Select>
               </FormGroup>
+              {!editId && recurringAllowed && (
+                <div style={{
+                  marginTop: 8,
+                  padding: 12,
+                  borderRadius: 12,
+                  border: `1px solid ${isDark ? '#334155' : '#E5EAF0'}`,
+                  background: isDark ? '#0F172A' : '#F8FAFC',
+                }}>
+                  <label style={{ display: 'flex', gap: 10, alignItems: 'flex-start', cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={!!form.is_recurring}
+                      onChange={(e) => setForm((f) => ({
+                        ...f,
+                        is_recurring: e.target.checked,
+                        recurring_next_date: f.recurring_next_date || defaultRecurringNextDate(),
+                      }))}
+                      style={{ marginTop: 3, width: 16, height: 16, accentColor: '#2563EB' }}
+                    />
+                    <span>
+                      <div style={{ fontWeight: 700, fontSize: 14, color: isDark ? '#E2E8F0' : '#101828' }}>Repeat weekly</div>
+                      <div style={{ fontSize: 12, color: isDark ? '#94A3B8' : '#667085', marginTop: 2 }}>
+                        Book next visit — SMS is sent on the selected day
+                      </div>
+                    </span>
+                  </label>
+                  {form.is_recurring && (
+                    <>
+                      <div style={{ marginTop: 10 }}>
+                        <FormGroup label="Preferred time">
+                          <Input
+                            type="time"
+                            value={(form.appointment_time || '10:00').slice(0, 5)}
+                            onChange={(e) => setForm((f) => ({ ...f, appointment_time: e.target.value }))}
+                          />
+                        </FormGroup>
+                      </div>
+                      <RecurringDateCalendar
+                        value={form.recurring_next_date || defaultRecurringNextDate()}
+                        onChange={(d) => setForm((f) => ({ ...f, recurring_next_date: d }))}
+                      />
+                    </>
+                  )}
+                </div>
+              )}
             </PaySection>
 
             <PaySection title="Services" desc="Select one or more services — total auto-calculates" dark={isDark}>

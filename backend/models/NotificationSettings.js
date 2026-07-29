@@ -126,6 +126,12 @@ const NotificationSettings = sequelize.define('NotificationSettings', {
     defaultValue: true,
     allowNull: false,
   },
+  /** Day-of SMS for recurring visit (controlled from Notifications page). */
+  recurring_reminder_sms: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: true,
+    allowNull: false,
+  },
   walkin_checkin_whatsapp: {
     type: DataTypes.BOOLEAN,
     defaultValue: true,

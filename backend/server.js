@@ -12,6 +12,7 @@ const validateEnv  = require('./config/validateEnv');
 const { initSocket } = require('./socket');
 const { startAppointmentReminderCron, startReminderDueCron } = require('./services/appointmentReminderCron');
 const { startMarketingAutomationCron } = require('./services/marketingAutomationCron');
+const { startRecurringSmsCron } = require('./services/recurringSmsCron');
 const { apiMonitorMiddleware } = require('./services/apiMonitoring');
 const { tenantScope }          = require('./middleware/tenantScope');
 const { checkSubscription }    = require('./middleware/checkSubscription');
@@ -26,6 +27,7 @@ const ensurePaymentManagerCommissionColumns = require('./services/ensurePaymentM
 const ensureFranchiseCommissionSchema = require('./services/ensureFranchiseCommissionSchema');
 const ensureUserMobileFeaturesColumn = require('./services/ensureUserMobileFeaturesColumn');
 const ensureUsersSessionsRevokedColumn = require('./services/ensureUsersSessionsRevokedColumn');
+const ensureAppointmentRecurringSmsColumn = require('./services/ensureAppointmentRecurringSmsColumn');
 const ensureTenantMobileRoleDefaultsColumn = require('./services/ensureTenantMobileRoleDefaultsColumn');
 const { ensureTenantEnabledFeaturesColumn } = require('./services/ensureTenantEnabledFeaturesColumn');
 const { ensureStaffPhotoColumn } = require('./services/ensureStaffPhotoColumn');
@@ -342,10 +344,12 @@ connectWithRetry().then(async () => {
   await ensureAppointmentReminderColumn();
   await ensureWalkInReminderColumns();
   await ensureServiceDurationDefaults();
+  await ensureAppointmentRecurringSmsColumn();
 
   startAppointmentReminderCron();
   startReminderDueCron();
   startMarketingAutomationCron();
+  startRecurringSmsCron();
 
   // ── New column migrations ───────────────────────────────────────────────────
   await ensureCustomerProfileColumns();

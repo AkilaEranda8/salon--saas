@@ -42,6 +42,8 @@ import {
   getWalkInOrderedServiceIds,
   getWalkInServicesTitle,
 } from '../utils/walkInHelpers';
+import { useFeatureGate } from '../hooks/useFeatureGate';
+import RecurringDateCalendar, { defaultRecurringNextDate } from '../components/ui/RecurringDateCalendar';
 
 /*  Constants  */
 const STATUS_META = {
@@ -427,6 +429,9 @@ export default function WalkInPage() {
   const [paymentCustPackages, setPaymentCustPackages] = useState([]);
   const [paymentCustPackageId, setPaymentCustPackageId] = useState('');
   const [paymentCustomerId, setPaymentCustomerId] = useState(null);
+  const [paymentRecurring, setPaymentRecurring] = useState(true);
+  const [paymentRecurringDate, setPaymentRecurringDate] = useState(defaultRecurringNextDate());
+  const { allowed: recurringAllowed } = useFeatureGate('recurring');
   const [loadingPaymentPkgs, setLoadingPaymentPkgs] = useState(false);
   const [checkinCustPackages, setCheckinCustPackages] = useState([]);
   const [checkinCustPackageId, setCheckinCustPackageId] = useState('');
@@ -577,6 +582,8 @@ export default function WalkInPage() {
     setPaymentCustPackages([]);
     setPaymentCustPackageId('');
     setPaymentCustomerId(null);
+    setPaymentRecurring(!!recurringAllowed);
+    setPaymentRecurringDate(defaultRecurringNextDate());
 
     const custId = await resolveCustomerId(api, {
       customerId: entry.customer_id || entry.customer?.id,
@@ -779,10 +786,16 @@ export default function WalkInPage() {
         service_ids: paymentServices,
         customer_name: paymentEntry.customer_name || 'Walk-in',
         phone: paymentEntry.phone || '',
+        walkin_token: paymentEntry.token || paymentEntry.queue_token || undefined,
         subtotal,
         loyalty_discount: 0,
         ...(paymentDiscountId ? { discount_id: Number(paymentDiscountId) } : {}),
         splits: [{ method: paymentMethod, amount: Number(paymentAmount), ...(paymentMethod === 'Package' && paymentCustPackageId ? { customer_package_id: Number(paymentCustPackageId) } : {}) }],
+        ...(recurringAllowed && paymentRecurring ? {
+          is_recurring: true,
+          recurring_next_date: paymentRecurringDate,
+          appointment_time: paymentEntry.started_at || paymentEntry.check_in_time || undefined,
+        } : {}),
       });
       if (paymentEntry.status !== 'completed') {
         await api.patch(`/walkin/${paymentEntry.id}/status`, { status: 'completed' });
@@ -1752,6 +1765,35 @@ export default function WalkInPage() {
                   </div>
                 </div>
               </div>
+              {recurringAllowed && (
+                <div style={{
+                  border: `1px solid ${isDark ? '#334155' : '#E5EAF0'}`,
+                  borderRadius: 12,
+                  padding: 12,
+                  background: isDark ? '#0F172A' : '#fff',
+                }}>
+                  <label style={{ display: 'flex', gap: 10, alignItems: 'flex-start', cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={paymentRecurring}
+                      onChange={(e) => setPaymentRecurring(e.target.checked)}
+                      style={{ marginTop: 3, width: 16, height: 16, accentColor: '#2563EB' }}
+                    />
+                    <span>
+                      <div style={{ fontWeight: 700, fontSize: 14, color: C.title }}>Repeat weekly</div>
+                      <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>
+                        Book next visit and send SMS on the selected day
+                      </div>
+                    </span>
+                  </label>
+                  {paymentRecurring && (
+                    <RecurringDateCalendar
+                      value={paymentRecurringDate}
+                      onChange={setPaymentRecurringDate}
+                    />
+                  )}
+                </div>
+              )}
               <div>
                 <div style={{ border: `1px solid ${isDark ? '#334155' : '#E5EAF0'}`, borderRadius: 12, overflow: 'hidden', background: isDark ? '#0F172A' : '#fff' }}>
                   {services.filter((s) => paymentServices.includes(Number(s.id))).map((s, idx, arr) => (

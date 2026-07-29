@@ -30,11 +30,15 @@ async function ensureWalkInNotificationColumns() {
   await addIfMissing('notification_settings', 'appt_completed_whatsapp', {
     type: DataTypes.BOOLEAN, defaultValue: true, allowNull: false,
   });
+  await addIfMissing('notification_settings', 'recurring_reminder_sms', {
+    type: DataTypes.BOOLEAN, defaultValue: true, allowNull: false,
+  });
 
   await sequelize.query(`
     ALTER TABLE notification_logs MODIFY COLUMN event_type ENUM(
       'appointment_confirmed','appointment_completed','payment_receipt','loyalty_points',
       'walk_in_checkin','walk_in_serving','walk_in_completed',
+      'recurring_reminder',
       'test','review_request','password_reset','custom_marketing'
     ) NOT NULL
   `).catch((e) => console.warn('[Schema] notification_logs.event_type:', e.message));

@@ -9,9 +9,10 @@ const {
   shouldApplyManagerOverride,
   staffBelongsToBranch,
 } = require('../utils/branchManagerCommission');
-const { allowsServiceWiseOverrides, hasFranchiseCommission } = require('../utils/tenantFeatures');
+const { allowsServiceWiseOverrides, hasFranchiseCommission, hasTenantFeature } = require('../utils/tenantFeatures');
 const { recordCommissionTransactions } = require('../services/recordCommissionTransactions');
 const { notifyPaymentReceipt } = require('../services/notificationService');
+const { seedRecurringFromVisit } = require('../services/recurringService');
 const { tenantWhere, byIdWhere, resolveTenantId } = require('../utils/tenantScope');
 const { slToday } = require('../utils/dateUtils');
 const { redeemPackageForPayment } = require('../utils/packageRedemption');
@@ -87,6 +88,7 @@ const create = async (req, res) => {
       branch_id, staff_id, customer_id, service_id, service_ids, appointment_id,
       customer_name, phone, walkin_token, splits = [], subtotal: bodySubtotal,
       loyalty_discount = 0, promo_discount = 0, usePoints = false,
+      is_recurring = false, recurring_next_date, appointment_time,
     } = req.body;
 
     if (!branch_id) {
@@ -97,6 +99,15 @@ const create = async (req, res) => {
     if (!splits.length) {
       await t.rollback();
       return res.status(400).json({ message: 'At least one payment split is required.' });
+    }
+
+    if (is_recurring && req.tenant && !hasTenantFeature(req.tenant, 'recurring')) {
+      await t.rollback();
+      return res.status(403).json({
+        message: 'Recurring Appointments is not enabled for this salon.',
+        code: 'FEATURE_GATED',
+        feature: 'recurring',
+      });
     }
 
     const total_amount = splits.reduce((sum, s) => sum + parseFloat(s.amount || 0), 0);
@@ -226,12 +237,64 @@ const create = async (req, res) => {
 
     const today = slToday();
 
+    let resolvedAppointmentId = appointment_id ? Number(appointment_id) : null;
+    let recurringSeeded = false;
+
+    if (is_recurring && !resolvedAppointmentId) {
+      let resolvedPhone = phone || null;
+      let resolvedName = customer_name || null;
+      if (customer_id) {
+        const cust = await Customer.findOne({
+          where: byIdWhere(req, customer_id),
+          attributes: ['id', 'name', 'phone'],
+          transaction: t,
+        });
+        if (cust) {
+          resolvedPhone = resolvedPhone || cust.phone;
+          resolvedName = resolvedName || cust.name;
+        }
+      }
+      try {
+        // Own transactions — avoids nesting with payment tx
+        const { seed } = await seedRecurringFromVisit({
+          tenantId: resolveTenantId(req),
+          branchId: branch_id,
+          customerId: customer_id || null,
+          staffId: staff_id || null,
+          serviceId: serviceIdList[0] || service_id || null,
+          serviceIds: serviceIdList,
+          customerName: resolvedName || customer_name || 'Guest',
+          phone: resolvedPhone,
+          amount: total_amount,
+          appointmentTime: appointment_time,
+          nextDate: recurring_next_date,
+          notes: walkin_token ? `Walk-in recurring seed (${walkin_token})` : 'Payment recurring seed',
+        });
+        resolvedAppointmentId = seed.id;
+        recurringSeeded = true;
+      } catch (seedErr) {
+        await t.rollback();
+        return res.status(seedErr.status || 400).json({ message: seedErr.message || 'Failed to start recurring series.' });
+      }
+    } else if (is_recurring && resolvedAppointmentId) {
+      const appt = await Appointment.findOne({
+        where: byIdWhere(req, resolvedAppointmentId),
+        transaction: t,
+      });
+      if (appt) {
+        await appt.update({
+          is_recurring: true,
+          recurrence_frequency: 'weekly',
+        }, { transaction: t });
+      }
+    }
+
     const payment = await Payment.create({
       branch_id,
       staff_id:       staff_id       || null,
       customer_id:    customer_id    || null,
       service_id:     service_id     || null,
-      appointment_id: appointment_id || null,
+      appointment_id: resolvedAppointmentId || null,
       customer_name, total_amount, loyalty_discount, promo_discount, points_earned,
       commission_amount, commission_breakdown,
       manager_staff_id, manager_commission_amount, manager_commission_breakdown,
@@ -275,7 +338,7 @@ const create = async (req, res) => {
             customerPackageId: s.customer_package_id,
             serviceIds: serviceIdList,
             paymentId: payment.id,
-            appointmentId: appointment_id || null,
+            appointmentId: resolvedAppointmentId || null,
             staffId: staff_id || null,
           });
         } catch (pkgErr) {
@@ -309,15 +372,28 @@ const create = async (req, res) => {
     }
 
     // Mark appointment commission
-    if (appointment_id) {
+    if (resolvedAppointmentId) {
       const { Appointment: ApptModel } = require('../models');
       await ApptModel.update({ commission_paid: commission_amount }, {
-        where: { id: appointment_id, ...tenantWhere(req) },
+        where: { id: resolvedAppointmentId, ...tenantWhere(req) },
         transaction: t,
       });
     }
 
     await t.commit();
+
+    // Existing appointment marked recurring — spawn next on selected date (no SMS)
+    if (is_recurring && resolvedAppointmentId && !recurringSeeded) {
+      setImmediate(async () => {
+        try {
+          const { createNextRecurring } = require('../services/recurringService');
+          const appt = await Appointment.findByPk(resolvedAppointmentId);
+          if (appt) await createNextRecurring(appt, { nextDate: recurring_next_date, skipNotify: true });
+        } catch (e) {
+          console.error('[payment] createNextRecurring', e.message);
+        }
+      });
+    }
 
     // Fire-and-forget notifications (after transaction commits successfully)
     // Walk-in: send SMS if phone provided even without customer_id

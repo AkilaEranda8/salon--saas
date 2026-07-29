@@ -111,6 +111,7 @@ const DEFAULT_FLAGS = {
   walkin_checkin_whatsapp:   true,
   walkin_serving_whatsapp:   true,
   walkin_completed_whatsapp: true,
+  recurring_reminder_sms:    true,
 };
 
 function resolveNotifyTenantId(explicit, ...sources) {
@@ -827,5 +828,6 @@ module.exports = {
   notifyWaitlistSlotAvailable,
   getTemplate,
   interpolate,
+  getChannelFlags,
 };
 

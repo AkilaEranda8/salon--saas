@@ -489,7 +489,7 @@ const changeStatus = async (req, res) => {
 
     // Auto-create next recurring appointment when completed
     if (status === 'completed' && appt.is_recurring) {
-      setImmediate(() => createNextRecurring(appt));
+      setImmediate(() => createNextRecurring(appt, { skipNotify: true }));
     }
 
     return res.json(appt);

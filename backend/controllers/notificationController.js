@@ -23,6 +23,7 @@ const DEFAULT_SETTINGS = {
   walkin_checkin_whatsapp:    true,
   walkin_serving_whatsapp:    true,
   walkin_completed_whatsapp:  true,
+  recurring_reminder_sms:     true,
 };
 
 const SETTINGS_FIELDS = Object.keys(DEFAULT_SETTINGS);
@@ -607,6 +608,11 @@ const DEFAULT_TEMPLATES = {
     },
     sms: {
       body: `{branch_name}\nHi {customer_name}! Your {service_name} is done.\n{date} {time} | {branch_name}\nThank you for visiting!`,
+    },
+  },
+  recurring_reminder: {
+    sms: {
+      body: `{branch_name}\nHi {customer_name}! Reminder for your recurring visit today.\nService: {service_name}\nDate: {date} | {time}\nBranch: {branch_name}\nSee you soon!`,
     },
   },
   payment_receipt: {

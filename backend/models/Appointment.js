@@ -91,6 +91,11 @@ const Appointment = sequelize.define('Appointment', {
     references: { model: 'appointments', key: 'id' },
     onDelete: 'SET NULL',
   },
+  /** Day-of recurring reminder SMS sent at (idempotency for cron). */
+  recurring_sms_sent_at: {
+    type: DataTypes.DATE,
+    allowNull: true,
+  },
   tenant_id: {
     type: DataTypes.INTEGER,
     allowNull: true,

@@ -270,7 +270,7 @@ export default function DocumentationPage() {
           <div className="docs-hero-pills">
             <span>REST + JSON</span>
             <span>No API key required</span>
-            <span>Plugin v1.0.0</span>
+            <span>Plugin v1.0.1</span>
           </div>
         </div>
       </header>
@@ -383,11 +383,11 @@ export default function DocumentationPage() {
                 <span aria-hidden="true">↓</span>
                 {downloading ? 'Preparing download…' : 'Download WordPress plugin'}
               </button>
-              <small>ZIP package · v1.0.0</small>
+              <small>ZIP package · v1.0.1</small>
             </div>
             {downloadError && <p className="docs-download-error" role="alert">{downloadError}</p>}
             <div className="docs-info-grid">
-              <div><small>Plugin version</small><code>1.0.0</code></div>
+              <div><small>Plugin version</small><code>1.0.1</code></div>
               <div><small>WordPress</small><code>5.8 or newer</code></div>
               <div><small>PHP</small><code>7.4 or newer</code></div>
               <div><small>Package</small><code>hexaone-salon-booking.zip</code></div>

@@ -237,6 +237,8 @@ export default function AppointmentsPage() {
   const [paymentServices, setPaymentServices] = useState([]);
   const [paymentDiscountId, setPaymentDiscountId] = useState('');
   const [paymentDiscounts, setPaymentDiscounts] = useState([]);
+  const [paymentRecurring, setPaymentRecurring] = useState(false);
+  const [paymentRecurringDate, setPaymentRecurringDate] = useState(defaultRecurringNextDate());
   const [apptServiceIds, setApptServiceIds] = useState([]);
   const [customerSearch, setCustomerSearch] = useState('');
   const [customerLoading, setCustomerLoading] = useState(false);
@@ -335,6 +337,12 @@ export default function AppointmentsPage() {
       const r = await api.get(`/appointments/${row.id}`);
       if (r?.data?.id) sourceRow = r.data;
     } catch { /* fallback to row data */ }
+    setPaymentAppt(sourceRow);
+    setPaymentRecurring(Boolean(sourceRow.is_recurring));
+    setPaymentRecurringDate(
+      sourceRow.recurring_next_date
+      || defaultRecurringNextDate(sourceRow.date?.slice(0, 10)),
+    );
     const ids = getInitialPaymentServiceIds(sourceRow, services);
     setPaymentServices(ids);
     setPaymentMethod('Cash');
@@ -417,6 +425,9 @@ export default function AppointmentsPage() {
       return setPaymentErr('Amount is required');
     }
     if (!paymentServices.length) return setPaymentErr('At least one service is required');
+    if (paymentRecurring && !paymentRecurringDate) {
+      return setPaymentErr('Select the next recurring appointment date.');
+    }
     setPaymentSaving(true);
     try {
       const subtotal = paymentMethod === 'Package' && paymentCustPackageId
@@ -432,6 +443,8 @@ export default function AppointmentsPage() {
         customer_name: paymentAppt.customer_name,
         subtotal,
         loyalty_discount: 0,
+        is_recurring: paymentRecurring,
+        recurring_next_date: paymentRecurring ? paymentRecurringDate : null,
         ...(paymentDiscountId ? { discount_id: Number(paymentDiscountId) } : {}),
         splits: [{ method: paymentMethod, amount: Number(paymentAmt), ...(paymentMethod === 'Package' && paymentCustPackageId ? { customer_package_id: Number(paymentCustPackageId) } : {}) }],
       });
@@ -1326,6 +1339,39 @@ export default function AppointmentsPage() {
                   </div>
                   {paymentAppt.staff?.name && <span style={{ background:isDark?'#334155':'#F3F4F6', color:isDark?'#CBD5E1':'#475467', padding:'4px 12px', borderRadius:8, fontSize:12, fontWeight:500 }}>{paymentAppt.staff.name}</span>}
                 </div>
+              </div>
+              <div style={{
+                border: `1px solid ${isDark ? '#334155' : '#E5EAF0'}`,
+                borderRadius: 12,
+                padding: 12,
+                background: isDark ? '#0F172A' : '#fff',
+              }}>
+                <label style={{ display:'flex', gap:10, alignItems:'flex-start', cursor:'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={paymentRecurring}
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      setPaymentRecurring(checked);
+                      if (checked && !paymentRecurringDate) {
+                        setPaymentRecurringDate(defaultRecurringNextDate(paymentAppt.date?.slice(0, 10)));
+                      }
+                    }}
+                    style={{ marginTop:3, width:16, height:16, accentColor:'#2563EB' }}
+                  />
+                  <span>
+                    <div style={{ fontWeight:700, fontSize:14, color:isDark?'#E2E8F0':'#101828' }}>Recurring Appointment</div>
+                    <div style={{ fontSize:12, color:isDark?'#94A3B8':'#667085', marginTop:2 }}>Book the next appointment on the selected date</div>
+                  </span>
+                </label>
+                {paymentRecurring && (
+                  <RecurringDateCalendar
+                    value={paymentRecurringDate}
+                    minDate={today}
+                    onChange={setPaymentRecurringDate}
+                    label="Next appointment date"
+                  />
+                )}
               </div>
               <FormGroup label="Services" required>
                 <div style={{ border:`1px solid ${isDark?'#334155':'#DCE6F3'}`, borderRadius:12, overflow:'hidden', maxHeight:180, overflowY:'auto', background:isDark?'#0F172A':'#fff' }}>

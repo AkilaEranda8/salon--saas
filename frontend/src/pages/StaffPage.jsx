@@ -152,6 +152,8 @@ export default function StaffPage() {
   const [profileItem, setProfileItem]   = useState(null);
   const [form, setForm]                 = useState(EMPTY);
   const [specs, setSpecs]               = useState([]);
+  /** Per-service override rates keyed by service_id. Empty value = catalogue/default fallback. */
+  const [specRates, setSpecRates]       = useState({});
   const [saving, setSaving]             = useState(false);
   const [formErr, setFormErr]           = useState('');
   const [loadErr, setLoadErr]         = useState('');
@@ -191,6 +193,18 @@ export default function StaffPage() {
     setSpecs(activeServices.map((sv) => sv.id));
   }, [activeServices]);
 
+  const setSpecRate = (serviceId, patch) => {
+    const key = String(serviceId);
+    setSpecRates((prev) => ({
+      ...prev,
+      [key]: {
+        commission_type: prev[key]?.commission_type || form.commission_type || 'percentage',
+        commission_value: prev[key]?.commission_value ?? '',
+        ...patch,
+      },
+    }));
+  };
+
   const prevSalaryTypeRef = useRef(EMPTY.salary_type);
   useEffect(() => {
     if (!showForm) {
@@ -200,7 +214,10 @@ export default function StaffPage() {
     if ((form.salary_type || 'commission_only') === prevSalaryTypeRef.current) return;
     prevSalaryTypeRef.current = form.salary_type || 'commission_only';
     if (!serviceWiseForUser || form.salary_type === 'salary_only') {
-      if (form.salary_type === 'salary_only') setSpecs([]);
+      if (form.salary_type === 'salary_only') {
+        setSpecs([]);
+        setSpecRates({});
+      }
       return;
     }
     linkAllSpecs();
@@ -210,6 +227,7 @@ export default function StaffPage() {
     setEditItem(null);
     const initial = { ...EMPTY, branch_ids: myBranchId != null ? [String(myBranchId)] : [], join_date: new Date().toISOString().slice(0,10) };
     setForm(initial);
+    setSpecRates({});
     if (serviceWiseForUser && initial.salary_type !== 'salary_only') {
       linkAllSpecs();
     } else {
@@ -227,7 +245,18 @@ export default function StaffPage() {
       : (row.branch_id != null || row.branch?.id != null ? [String(row.branch_id ?? row.branch?.id)] : []);
     setEditItem(row);
     setForm({ ...row, branch_ids: fromM2m, join_date: row.join_date?.slice(0,10)||'' });
-    setSpecs((row.specializations || []).map((s) => s.service_id));
+    const specsList = row.specializations || [];
+    setSpecs(specsList.map((s) => s.service_id));
+    const rates = {};
+    specsList.forEach((s) => {
+      if (s.commission_value != null && s.commission_value !== '') {
+        rates[String(s.service_id)] = {
+          commission_type: s.commission_type || 'percentage',
+          commission_value: String(s.commission_value),
+        };
+      }
+    });
+    setSpecRates(rates);
     setPhotoFile(null);
     setPhotoPreview(row.photo_url || '');
     setRemovePhoto(false);
@@ -236,7 +265,18 @@ export default function StaffPage() {
   };
   const openProfile = row => { setProfileItem(row); setShowProfile(true); };
   const toggleSpec = (id) => {
-    setSpecs((sp) => (sp.includes(id) ? sp.filter((x) => x !== id) : [...sp, id]));
+    const nid = Number(id);
+    setSpecs((sp) => {
+      if (sp.includes(nid) || sp.includes(id)) {
+        setSpecRates((prev) => {
+          const copy = { ...prev };
+          delete copy[String(id)];
+          return copy;
+        });
+        return sp.filter((x) => Number(x) !== nid);
+      }
+      return [...sp, nid];
+    });
   };
   const toggleBranch = (id) => {
     const s = String(id);
@@ -273,7 +313,19 @@ export default function StaffPage() {
         join_date: form.join_date || null,
         is_active: form.is_active !== false,
         ...(serviceWiseForUser || form.salary_type === 'salary_only'
-          ? { specializations: effectiveSpecs.map((id) => ({ service_id: Number(id) })) }
+          ? {
+            specializations: effectiveSpecs.map((id) => {
+              const rate = specRates[String(id)];
+              const hasOverride = rate && rate.commission_value !== '' && rate.commission_value != null;
+              return {
+                service_id: Number(id),
+                ...(hasOverride ? {
+                  commission_type: rate.commission_type || 'percentage',
+                  commission_value: parseFloat(rate.commission_value),
+                } : {}),
+              };
+            }),
+          }
           : { specializations: [] }),
       };
       if (form.salary_type !== 'salary_only') {
@@ -674,7 +726,7 @@ export default function StaffPage() {
               </FormGroup>
             </StaffSection>
 
-            <StaffSection title="Pay & Commission" desc="Salary type and default commission rate" dark={isDark}>
+            <StaffSection title="Pay & Commission" desc="Salary type, default rate, and optional per-service rates" dark={isDark}>
               <FormGroup label="Salary Type">
                 <Select value={form.salary_type || 'commission_only'} onChange={e => setForm(f => ({ ...f, salary_type: e.target.value }))}>
                   <option value="commission_only">Commission Only</option>
@@ -720,6 +772,82 @@ export default function StaffPage() {
                   <CommBadge type={form.commission_type || 'percentage'} value={form.commission_value} dark={isDark} />
                 </div>
               )}
+              {serviceWiseForUser && form.salary_type !== 'salary_only' && activeServices.length > 0 && (
+                <FormGroup label="Service Rates (optional)">
+                  <div style={{ fontSize: 12, color: C.muted, marginBottom: 8, lineHeight: 1.45 }}>
+                    Set a different rate for each service. Leave blank to use the service catalogue rate or this staff member&apos;s default.
+                  </div>
+                  <div style={{
+                    border: `1px solid ${isDark ? '#334155' : '#E4E7EC'}`,
+                    borderRadius: 12,
+                    overflow: 'hidden',
+                    maxHeight: 280,
+                    overflowY: 'auto',
+                    background: isDark ? '#0B1220' : '#fff',
+                  }}>
+                    {activeServices.map((sv, idx) => {
+                      const linked = specs.some((id) => Number(id) === Number(sv.id));
+                      const rate = specRates[String(sv.id)] || {};
+                      const type = rate.commission_type || form.commission_type || 'percentage';
+                      const value = rate.commission_value ?? '';
+                      const catalogue = sv.commission_value != null && sv.commission_value !== ''
+                        ? formatCommission(sv.commission_type, sv.commission_value)
+                        : null;
+                      const fallback = catalogue
+                        || formatCommission(form.commission_type || 'percentage', form.commission_value);
+                      return (
+                        <div
+                          key={sv.id}
+                          style={{
+                            display: 'grid',
+                            gridTemplateColumns: '22px minmax(0, 1.2fr) 110px 100px',
+                            gap: 8,
+                            alignItems: 'center',
+                            padding: '10px 12px',
+                            borderBottom: idx !== activeServices.length - 1 ? `1px solid ${isDark ? '#1E293B' : '#F1F5F9'}` : 'none',
+                            background: linked ? (isDark ? 'rgba(37,99,235,0.08)' : '#F8FBFF') : 'transparent',
+                            opacity: linked ? 1 : 0.55,
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={linked}
+                            onChange={() => toggleSpec(sv.id)}
+                            style={{ width: 16, height: 16, accentColor: '#2563EB' }}
+                          />
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontSize: 13, fontWeight: 700, color: isDark ? '#E2E8F0' : '#0F172A', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {sv.name}
+                            </div>
+                            <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>
+                              {value !== '' ? `Custom ${formatCommission(type, value)}` : `Fallback ${fallback}`}
+                            </div>
+                          </div>
+                          <Select
+                            value={type}
+                            disabled={!linked}
+                            onChange={(e) => setSpecRate(sv.id, { commission_type: e.target.value })}
+                            style={{ fontSize: 12, padding: '6px 8px' }}
+                          >
+                            <option value="percentage">%</option>
+                            <option value="fixed">Fixed Rs.</option>
+                          </Select>
+                          <Input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            disabled={!linked}
+                            value={value}
+                            onChange={(e) => setSpecRate(sv.id, { commission_value: e.target.value })}
+                            placeholder="Rate"
+                            style={{ fontSize: 12, padding: '6px 8px' }}
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                </FormGroup>
+              )}
               {form.salary_type !== 'salary_only' && (
                 <div style={{
                   padding: '12px 14px',
@@ -733,7 +861,7 @@ export default function StaffPage() {
                     </>
                   ) : serviceWiseForUser ? (
                     <>
-                      Per-service rates are set on the <strong>Services</strong> page. Active services link automatically. Default % is a fallback only.
+                      Use <strong>Service Rates</strong> above for staff-specific amounts. Blank rows fall back to the service catalogue rate, then this staff default.
                     </>
                   ) : (
                     <>
@@ -783,15 +911,22 @@ export default function StaffPage() {
                 <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
                   {p.specializations.map((s) => {
                     const svc = services.find((sv) => sv.id === s.service_id || sv.id === s.service?.id);
-                    const catalogue = svc?.commission_value != null && svc.commission_value !== ''
+                    const staffOverride = s.commission_value != null && s.commission_value !== ''
+                      ? formatCommission(s.commission_type || 'percentage', s.commission_value)
+                      : null;
+                    const catalogue = !staffOverride && svc?.commission_value != null && svc.commission_value !== ''
                       ? formatCommission(svc.commission_type, svc.commission_value)
                       : null;
                     return (
                       <div key={s.id} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'8px 12px', background:'#F9FAFB', borderRadius:8, fontSize:13 }}>
                         <span style={{ fontWeight:600, color:'#344054' }}>{s.service?.name || svc?.name || s.service_id}</span>
                         {serviceWiseForUser && p.salary_type !== 'salary_only' && (
-                          <span style={{ fontSize:12, color:'#667085' }}>
-                            {catalogue ? `Catalogue ${catalogue}` : `Default ${p.commission_type === 'percentage' ? `${p.commission_value}%` : `Rs.${Number(p.commission_value||0).toLocaleString()}`}`}
+                          <span style={{ fontSize:12, color: staffOverride ? '#059669' : '#667085', fontWeight: staffOverride ? 700 : 500 }}>
+                            {staffOverride
+                              ? staffOverride
+                              : (catalogue
+                                ? `Catalogue ${catalogue}`
+                                : `Default ${p.commission_type === 'percentage' ? `${p.commission_value}%` : `Rs.${Number(p.commission_value||0).toLocaleString()}`}`)}
                           </span>
                         )}
                       </div>

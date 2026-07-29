@@ -243,6 +243,7 @@ class _NotifCard extends StatelessWidget {
       case 'appointment_reminder_end':
         return Icons.alarm_rounded;
       case 'new_walkin':
+      case 'walkin_assigned':
       case 'walkin_reminder_start':
       case 'walkin_reminder_before_end':
       case 'walkin_reminder_end':
@@ -268,6 +269,7 @@ class _NotifCard extends StatelessWidget {
       case 'appointment_reminder_end':
         return const Color(0xFFFEF3C7);
       case 'new_walkin':
+      case 'walkin_assigned':
       case 'walkin_reminder_start':
       case 'walkin_reminder_before_end':
       case 'walkin_reminder_end':
@@ -293,6 +295,7 @@ class _NotifCard extends StatelessWidget {
       case 'appointment_reminder_end':
         return const Color(0xFFD97706);
       case 'new_walkin':
+      case 'walkin_assigned':
       case 'walkin_reminder_start':
       case 'walkin_reminder_before_end':
       case 'walkin_reminder_end':

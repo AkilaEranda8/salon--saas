@@ -2,7 +2,7 @@ const { Op } = require('sequelize');
 const { sequelize } = require('../config/database');
 const { WalkIn, Service, Staff, Branch, WalkInQueueService, Customer } = require('../models');
 const { emitQueueUpdate } = require('../socket');
-const { notifyBranch } = require('../services/fcmService');
+const { notifyBranch, notifyStaffUser } = require('../services/fcmService');
 const { notifyWalkInCheckIn, notifyWalkInServing, notifyWalkInCompleted } = require('../services/notificationService');
 const { tenantWhere, resolveTenantId } = require('../utils/tenantScope');
 const { slToday } = require('../utils/dateUtils');
@@ -202,11 +202,15 @@ exports.checkin = async (req, res) => {
 
     emitQueueUpdate(effectiveBranchId, { action: 'checkin', entry: full });
 
-    // Push notification to all branch staff
+    // Queue entries start unassigned, so only branch management needs to act on them.
     notifyBranch(effectiveBranchId, '🚶 New Walk-In', `${customerName} — Token ${full.token}`, {
       type: 'new_walkin',
       walkin_id: String(full.id),
       branch_id: String(effectiveBranchId),
+    }, {
+      tenantId: resolveTenantId(req),
+      roles: ['superadmin', 'admin', 'manager'],
+      excludeUserId: req.user?.id ?? null,
     });
 
     if (full.phone) {
@@ -399,6 +403,12 @@ exports.assign = async (req, res) => {
 
     const full = await WalkIn.findByPk(id, { include: defaultInclude });
     emitQueueUpdate(entry.branch_id, { action: 'assign', entry: full });
+
+    notifyStaffUser(staffId, '🚶 Walk-In Assigned', `${full.customer_name} — Token ${full.token}`, {
+      type: 'walkin_assigned',
+      walkin_id: String(full.id),
+      branch_id: String(entry.branch_id),
+    }, resolveTenantId(req) ?? entry.tenant_id);
 
     if (full.phone) {
       const branch = await Branch.findByPk(entry.branch_id, { attributes: ['id', 'name', 'phone', 'tenant_id'] });

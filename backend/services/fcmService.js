@@ -137,32 +137,56 @@ async function notifyStaffUser(staffId, title, body, data = {}, tenantId = null)
 }
 
 /**
- * Send a push notification to all staff devices registered for a branch (tenant-scoped).
+ * Send a push notification to staff devices registered for a branch (tenant-scoped).
  * @param {number|string} branchId
  * @param {string} title
  * @param {string} body
  * @param {object} data  - optional string key-value payload
- * @param {number|string|null} tenantId - optional; resolved from Branch when omitted
+ * @param {number|string|object|null} options - legacy tenantId, or
+ *   { tenantId, roles, excludeUserId } to narrow the audience.
+ *   `roles` limits delivery to users holding one of those roles.
+ *   `excludeUserId` skips the person who triggered the event.
  */
-async function notifyBranch(branchId, title, body, data = {}, tenantId = null) {
+async function notifyBranch(branchId, title, body, data = {}, options = null) {
   if (!branchId) return;
+  const opts = (options != null && typeof options === 'object') ? options : { tenantId: options };
+  const { tenantId = null, roles = null, excludeUserId = null } = opts;
   try {
     const { Op } = require('sequelize');
-    const { StaffFcmToken, Branch } = require('../models');
+    const { StaffFcmToken, Branch, User } = require('../models');
     let tid = tenantId;
     if (tid == null) {
       const branch = await Branch.findByPk(branchId, { attributes: ['id', 'tenant_id'] });
       tid = branch?.tenant_id ?? null;
     }
-    // branch_id is globally unique → null tenant_id legacy rows for this branch are safe
-    const where = { branch_id: branchId };
-    if (tid != null) {
-      where[Op.or] = [{ tenant_id: tid }, { tenant_id: null }];
-    }
-    const rows = await StaffFcmToken.findAll({
-      where,
-      attributes: ['fcm_token'],
+    const roleFiltered = Array.isArray(roles) && roles.length > 0;
+    // branch_id is globally unique → legacy rows with a null tenant_id are safe here
+    const branchTokens = tid != null
+      ? { branch_id: branchId, [Op.or]: [{ tenant_id: tid }, { tenant_id: null }] }
+      : { branch_id: branchId };
+    // Owners/admins aren't tied to a branch, so their tokens carry no branch_id.
+    // Include them when a role filter is what decides the audience.
+    const audience = (roleFiltered && tid != null)
+      ? { [Op.or]: [branchTokens, { branch_id: null, tenant_id: tid }] }
+      : branchTokens;
+    let rows = await StaffFcmToken.findAll({
+      where: audience,
+      attributes: ['fcm_token', 'user_id'],
     });
+
+    if (excludeUserId != null) {
+      rows = rows.filter((r) => Number(r.user_id) !== Number(excludeUserId));
+    }
+
+    if (roleFiltered && rows.length) {
+      const users = await User.findAll({
+        where: { id: rows.map((r) => r.user_id), role: roles, is_active: true },
+        attributes: ['id'],
+      });
+      const allowed = new Set(users.map((u) => Number(u.id)));
+      rows = rows.filter((r) => allowed.has(Number(r.user_id)));
+    }
+
     const tokens = rows.map((r) => r.fcm_token).filter(Boolean);
     if (tokens.length === 0) return;
     await sendToTokens(tokens, title, body, {

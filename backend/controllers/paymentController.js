@@ -90,6 +90,7 @@ const create = async (req, res) => {
       loyalty_discount = 0, promo_discount = 0, usePoints = false,
       is_recurring = false, recurring_next_date, appointment_time,
     } = req.body;
+    const recurringSpecified = req.body.is_recurring !== undefined;
 
     if (!branch_id) {
       await t.rollback();
@@ -240,15 +241,18 @@ const create = async (req, res) => {
     let resolvedAppointmentId = appointment_id ? Number(appointment_id) : null;
     let pendingRecurringSeed = null;
 
-    if (is_recurring && resolvedAppointmentId) {
+    if (recurringSpecified && resolvedAppointmentId) {
       const appt = await Appointment.findOne({
         where: byIdWhere(req, resolvedAppointmentId),
         transaction: t,
       });
       if (appt) {
         await appt.update({
-          is_recurring: true,
-          recurrence_frequency: 'weekly',
+          is_recurring: Boolean(is_recurring),
+          recurrence_frequency: is_recurring ? 'weekly' : null,
+          recurring_next_date: is_recurring
+            ? (recurring_next_date || appt.recurring_next_date || null)
+            : null,
         }, { transaction: t });
       }
     } else if (is_recurring && !resolvedAppointmentId) {
@@ -384,17 +388,6 @@ const create = async (req, res) => {
       } catch (e) {
         console.error('[payment] seedRecurringFromVisit after commit', e.message);
       }
-    } else if (is_recurring && resolvedAppointmentId) {
-      // Existing appointment marked recurring — spawn next on selected date (no SMS)
-      setImmediate(async () => {
-        try {
-          const { createNextRecurring } = require('../services/recurringService');
-          const appt = await Appointment.findByPk(resolvedAppointmentId);
-          if (appt) await createNextRecurring(appt, { nextDate: recurring_next_date, skipNotify: true });
-        } catch (e) {
-          console.error('[payment] createNextRecurring', e.message);
-        }
-      });
     }
 
     // Fire-and-forget notifications (after transaction commits successfully)

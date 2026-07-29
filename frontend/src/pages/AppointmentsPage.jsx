@@ -33,6 +33,7 @@ import {
 } from '../components/ui/PageKit';
 import usePageTheme, { PAGE_STAT_COLORS as SC } from '../hooks/usePageTheme';
 import { useNavigate } from 'react-router-dom';
+import RecurringDateCalendar, { defaultRecurringNextDate } from '../components/ui/RecurringDateCalendar';
 
 const IconMoney    = () => <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>;
 
@@ -136,6 +137,7 @@ const EMPTY = {
   status: 'pending',
   is_recurring: false,
   recurrence_frequency: 'weekly',
+  recurring_next_date: '',
 };
 const LIMIT = 20;
 
@@ -500,6 +502,7 @@ export default function AppointmentsPage() {
       notes: stripPackageLine(stripAdditionalServicesLine(row.notes || '')),
       is_recurring: Boolean(row.is_recurring),
       recurrence_frequency: row.recurrence_frequency || 'weekly',
+      recurring_next_date: row.recurring_next_date || defaultRecurringNextDate(row.date?.slice(0, 10)),
     });
     setApptServiceIds(selectedIds);
     setCustomerSearch(row.customer_name || '');
@@ -1222,19 +1225,21 @@ export default function AppointmentsPage() {
                     ...f,
                     is_recurring: e.target.checked,
                     recurrence_frequency: e.target.checked ? (f.recurrence_frequency || 'weekly') : 'weekly',
+                    recurring_next_date: e.target.checked
+                      ? (f.recurring_next_date || defaultRecurringNextDate(f.date))
+                      : '',
                   }))}
                   style={{ width: 18, height: 18, accentColor: '#2563EB' }}
                 />
                 <span style={{ fontSize: 14, fontWeight: 600, color: isDark ? '#E2E8F0' : '#0F172A' }}>Repeat this appointment</span>
               </label>
               {form.is_recurring && (
-                <Select
-                  value={form.recurrence_frequency || 'weekly'}
-                  onChange={(e) => setForm((f) => ({ ...f, recurrence_frequency: e.target.value }))}
-                >
-                  <option value="weekly">Every week</option>
-                  <option value="monthly">Every month</option>
-                </Select>
+                <RecurringDateCalendar
+                  value={form.recurring_next_date || defaultRecurringNextDate(form.date)}
+                  minDate={form.date || undefined}
+                  onChange={(date) => setForm((f) => ({ ...f, recurring_next_date: date }))}
+                  label="Next appointment date"
+                />
               )}
             </ApptSection>
 

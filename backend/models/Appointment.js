@@ -79,6 +79,10 @@ const Appointment = sequelize.define('Appointment', {
     allowNull: true,
     defaultValue: null,
   },
+  recurring_next_date: {
+    type: DataTypes.DATEONLY,
+    allowNull: true,
+  },
   recurrence_parent_id: {
     type: DataTypes.INTEGER,
     allowNull: true,

@@ -228,7 +228,11 @@ const getOne = async (req, res) => {
 
 const create = async (req, res) => {
   try {
-    const { branch_id, customer_id, staff_id, service_id, service_ids, customer_name, phone, date, time, amount, notes, is_recurring, recurrence_frequency } = req.body;
+    const {
+      branch_id, customer_id, staff_id, service_id, service_ids, customer_name,
+      phone, date, time, amount, notes, is_recurring, recurrence_frequency,
+      recurring_next_date,
+    } = req.body;
 
     const requestedServiceIds = normalizeServiceIds(service_ids, service_id);
     const validServiceIds = await resolveValidServiceIds(req, requestedServiceIds);
@@ -270,6 +274,7 @@ const create = async (req, res) => {
       branch_id, customer_id, staff_id, service_id: primaryServiceId, customer_name, phone, date, time, amount: finalAmount, notes,
       is_recurring: is_recurring || false,
       recurrence_frequency: is_recurring ? (recurrence_frequency || 'weekly') : null,
+      recurring_next_date: is_recurring ? (recurring_next_date || null) : null,
       tenant_id: resolveTenantId(req),
     });
 
@@ -329,10 +334,17 @@ const update = async (req, res) => {
       return res.status(400).json({ message: 'Use PATCH /appointments/:id/status to update appointment status.' });
     }
 
-    const allowed = ['staff_id', 'service_id', 'customer_name', 'phone', 'date', 'time', 'amount', 'notes'];
+    const allowed = [
+      'staff_id', 'service_id', 'customer_name', 'phone', 'date', 'time',
+      'amount', 'notes', 'is_recurring', 'recurrence_frequency', 'recurring_next_date',
+    ];
     const updates = {};
     for (const field of allowed) {
       if (req.body[field] !== undefined) updates[field] = req.body[field];
+    }
+    if (updates.is_recurring === false) {
+      updates.recurrence_frequency = null;
+      updates.recurring_next_date = null;
     }
 
     let nextServiceIds = null;
@@ -489,7 +501,10 @@ const changeStatus = async (req, res) => {
 
     // Auto-create next recurring appointment when completed
     if (status === 'completed' && appt.is_recurring) {
-      setImmediate(() => createNextRecurring(appt, { skipNotify: true }));
+      setImmediate(() => createNextRecurring(appt, {
+        nextDate: appt.recurring_next_date || undefined,
+        skipNotify: true,
+      }));
     }
 
     return res.json(appt);

@@ -22,8 +22,8 @@ function addDaysKey(key, days) {
   return toKey(dt.getFullYear(), dt.getMonth(), dt.getDate());
 }
 
-export function defaultRecurringNextDate() {
-  return addDaysKey(todayKey(), 7);
+export function defaultRecurringNextDate(baseDate) {
+  return addDaysKey(baseDate || todayKey(), 7);
 }
 
 export default function RecurringDateCalendar({

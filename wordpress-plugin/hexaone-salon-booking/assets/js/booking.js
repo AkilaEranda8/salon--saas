@@ -6,11 +6,6 @@
     else document.addEventListener('DOMContentLoaded', fn);
   }
 
-  function money(n) {
-    var v = Number(n || 0);
-    return 'LKR ' + v.toLocaleString(undefined, { maximumFractionDigits: 0 });
-  }
-
   function esc(s) {
     return String(s == null ? '' : s)
       .replace(/&/g, '&amp;')
@@ -254,9 +249,7 @@
               esc(s.name) +
               '</strong><div class="hsb-option-meta"><span>' +
               esc(s.duration_minutes || 30) +
-              ' min</span><span>' +
-              money(s.price) +
-              '</span></div></button>'
+              ' min</span></div></button>'
             );
           })
           .join('') +

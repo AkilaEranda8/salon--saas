@@ -4,7 +4,7 @@ import api from '../api/axios';
 import './DocumentationPage.css';
 
 const API_BASE = 'https://api.salon.hexalyte.com/api/public';
-const PLUGIN_VERSION = '1.0.4';
+const PLUGIN_VERSION = '1.0.5';
 
 const ENDPOINTS = [
   {
@@ -26,14 +26,13 @@ const ENDPOINTS = [
     method: 'GET',
     path: '/services?tenantId={tenantId}',
     title: 'List active services',
-    description: 'Returns service pricing, category, duration, and public description.',
+    description: 'Returns the service category, duration, and public description. Prices are not exposed by the public API.',
     response: `[
   {
     "id": 8,
     "name": "Hair Cut",
     "category": "Hair",
     "duration_minutes": 30,
-    "price": "2500.00",
     "description": "Professional cut and finish"
   }
 ]`,

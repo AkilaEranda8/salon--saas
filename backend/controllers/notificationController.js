@@ -23,6 +23,9 @@ const DEFAULT_SETTINGS = {
   walkin_checkin_whatsapp:    true,
   walkin_serving_whatsapp:    true,
   walkin_completed_whatsapp:  true,
+  walkin_checkin_sms:         false,
+  walkin_serving_sms:         false,
+  walkin_completed_sms:       false,
   recurring_reminder_sms:     true,
   recurring_reminder_whatsapp: true,
 };
@@ -697,15 +700,24 @@ const DEFAULT_TEMPLATES = {
     whatsapp: {
       body: `🚶 *{branch_name} — Walk-In Check-In*\n\nHi {customer_name}! You're checked in.\n\n🎫 Token: *{token}*\n💇 Service: {service_name}\n🏠 Branch: {branch_name}\n⏳ Est. wait: {wait_mins} mins\n\nPlease wait — we'll call your token soon.`,
     },
+    sms: {
+      body: `{branch_name}\nHi {customer_name}! You are checked in.\nToken: {token}\nService: {service_name}\nEstimated wait: {wait_mins} mins.`,
+    },
   },
   walk_in_serving: {
     whatsapp: {
       body: `🚶 *{branch_name} — Your Turn!*\n\nHi {customer_name}, token *{token}* is now being served.\n💇 {service_name}\n🏠 {branch_name}\n\nPlease proceed to the service area.`,
     },
+    sms: {
+      body: `{branch_name}\nHi {customer_name}, token {token} is now being served.\nPlease proceed to the service area.`,
+    },
   },
   walk_in_completed: {
     whatsapp: {
       body: `✅ *{branch_name} — Service Complete*\n\nHi {customer_name}! Your walk-in service is complete.\n💇 {service_name}\n\nThank you for visiting {branch_name}! 🙏`,
+    },
+    sms: {
+      body: `{branch_name}\nHi {customer_name}! Your {service_name} is complete.\nThank you for visiting!`,
     },
   },
   review_request: {
@@ -742,26 +754,40 @@ const listTemplates = async (req, res) => {
     const { resolveTenantId } = require('../utils/tenantScope');
     const tenantId = resolveTenantId(req);
 
-    const rows = await MessageTemplate.findAll({ where: { tenant_id: tenantId || null } });
-    const dbMap = {};
-    for (const r of rows) {
-      if (!dbMap[r.event_type]) dbMap[r.event_type] = {};
-      dbMap[r.event_type][r.channel] = { id: r.id, subject: r.subject, body: r.body, is_active: r.is_active };
-    }
+    const rows = await MessageTemplate.findAll({
+      where: { tenant_id: tenantId || null },
+      order: [['event_type', 'ASC'], ['channel', 'ASC'], ['id', 'ASC']],
+    });
 
     const result = [];
     for (const [event_type, channels] of Object.entries(DEFAULT_TEMPLATES)) {
       for (const [channel, defaults] of Object.entries(channels)) {
-        const custom = dbMap[event_type]?.[channel];
+        const customs = rows.filter((row) => row.event_type === event_type && row.channel === channel);
+        const hasSelectedCustom = customs.some((row) => row.is_active && row.is_default);
         result.push({
           event_type,
           channel,
-          subject:   custom ? custom.subject  : (defaults.subject  || null),
-          body:      custom ? custom.body     : defaults.body,
-          is_active: custom ? custom.is_active : true,
-          is_custom: !!custom,
-          id:        custom ? custom.id        : null,
+          name:      'System default',
+          subject:   defaults.subject || null,
+          body:      defaults.body,
+          is_active: true,
+          is_default: !hasSelectedCustom,
+          is_custom: false,
+          id:        null,
         });
+        for (const custom of customs) {
+          result.push({
+            id: custom.id,
+            event_type,
+            channel,
+            name: custom.name || `Template ${custom.id}`,
+            subject: custom.subject,
+            body: custom.body,
+            is_active: custom.is_active,
+            is_default: custom.is_active && custom.is_default,
+            is_custom: true,
+          });
+        }
       }
     }
 
@@ -772,14 +798,15 @@ const listTemplates = async (req, res) => {
   }
 };
 
-// ── POST /api/notifications/templates — upsert ────────────────────────────────
+// ── POST /api/notifications/templates — create or update a variant ───────────
 const saveTemplate = async (req, res) => {
   try {
     const { MessageTemplate } = require('../models');
     const { resolveTenantId } = require('../utils/tenantScope');
+    const { sequelize } = require('../config/database');
     const tenantId = resolveTenantId(req);
 
-    const { event_type, channel, subject, body, is_active } = req.body;
+    const { id, event_type, channel, subject, body, is_active, is_default } = req.body;
     if (!event_type || !channel || !body) {
       return res.status(400).json({ message: 'event_type, channel, and body are required.' });
     }
@@ -787,21 +814,141 @@ const saveTemplate = async (req, res) => {
       return res.status(400).json({ message: 'Invalid event_type / channel combination.' });
     }
 
-    const [row] = await MessageTemplate.upsert(
-      {
-        event_type,
-        channel,
-        subject: subject || null,
-        body,
-        is_active: is_active !== false,
-        tenant_id: tenantId || null,
-      },
-      { conflictFields: ['event_type', 'channel', 'tenant_id'] }
-    );
+    const cleanName = String(req.body.name || '').trim().slice(0, 120);
+    if (!cleanName) {
+      return res.status(400).json({ message: 'Template name is required.' });
+    }
+
+    let row;
+    await sequelize.transaction(async (transaction) => {
+      if (id) {
+        row = await MessageTemplate.findOne({
+          where: { id: parseInt(id, 10), tenant_id: tenantId || null },
+          transaction,
+        });
+        if (!row) {
+          const err = new Error('Template not found.');
+          err.statusCode = 404;
+          throw err;
+        }
+        if (row.event_type !== event_type || row.channel !== channel) {
+          const err = new Error('A template event and channel cannot be changed.');
+          err.statusCode = 400;
+          throw err;
+        }
+        await row.update({
+          name: cleanName,
+          subject: subject || null,
+          body: String(body).trim(),
+          is_active: is_active !== false,
+          ...(is_default === true ? { is_default: true } : {}),
+        }, { transaction });
+      } else {
+        row = await MessageTemplate.create({
+          event_type,
+          channel,
+          name: cleanName,
+          subject: subject || null,
+          body: String(body).trim(),
+          is_active: is_active !== false,
+          is_default: is_default === true,
+          tenant_id: tenantId || null,
+        }, { transaction });
+      }
+
+      if (is_default === true) {
+        await MessageTemplate.update(
+          { is_default: false },
+          {
+            where: {
+              event_type,
+              channel,
+              tenant_id: tenantId || null,
+              id: { [Op.ne]: row.id },
+            },
+            transaction,
+          }
+        );
+      }
+    });
 
     return res.json({ ok: true, template: row });
   } catch (err) {
     console.error('[saveTemplate]', err);
+    if (err.statusCode) return res.status(err.statusCode).json({ message: err.message });
+    return res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+// ── GET /api/notifications/templates/options ─────────────────────────────────
+// Lightweight list used by operational pages (e.g. Record Payment) to pick the
+// message that should go out for a single record.
+const listTemplateOptions = async (req, res) => {
+  try {
+    const { MessageTemplate } = require('../models');
+    const tenantId = resolveTenantId(req);
+    const eventType = String(req.query.event_type || '').trim();
+
+    if (!DEFAULT_TEMPLATES[eventType]) {
+      return res.status(400).json({ message: 'Invalid event_type.' });
+    }
+
+    const rows = await MessageTemplate.findAll({
+      where: { event_type: eventType, tenant_id: tenantId || null, is_active: true },
+      attributes: ['id', 'name', 'channel', 'is_default'],
+      order: [['channel', 'ASC'], ['id', 'ASC']],
+    });
+
+    const options = rows.map((row) => ({
+      id: row.id,
+      name: row.name || `Template ${row.id}`,
+      channel: row.channel,
+      is_default: row.is_default,
+    }));
+
+    return res.json({ event_type: eventType, options });
+  } catch (err) {
+    console.error('[listTemplateOptions]', err);
+    return res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+// ── POST /api/notifications/templates/select ─────────────────────────────────
+const selectTemplate = async (req, res) => {
+  try {
+    const { MessageTemplate } = require('../models');
+    const { sequelize } = require('../config/database');
+    const tenantId = resolveTenantId(req);
+    const { event_type, channel } = req.body;
+    const templateId = req.body.template_id == null ? null : parseInt(req.body.template_id, 10);
+
+    if (!DEFAULT_TEMPLATES[event_type]?.[channel]) {
+      return res.status(400).json({ message: 'Invalid event_type / channel combination.' });
+    }
+
+    await sequelize.transaction(async (transaction) => {
+      await MessageTemplate.update(
+        { is_default: false },
+        { where: { event_type, channel, tenant_id: tenantId || null }, transaction }
+      );
+      if (templateId != null) {
+        const row = await MessageTemplate.findOne({
+          where: { id: templateId, event_type, channel, tenant_id: tenantId || null, is_active: true },
+          transaction,
+        });
+        if (!row) {
+          const err = new Error('Active template not found.');
+          err.statusCode = 404;
+          throw err;
+        }
+        await row.update({ is_default: true }, { transaction });
+      }
+    });
+
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error('[selectTemplate]', err);
+    if (err.statusCode) return res.status(err.statusCode).json({ message: err.message });
     return res.status(500).json({ message: 'Server error.' });
   }
 };
@@ -833,7 +980,9 @@ module.exports = {
   sendStaffMonthlyEarnings,
   testStaffEarningsPdf,
   listTemplates,
+  listTemplateOptions,
   saveTemplate,
+  selectTemplate,
   deleteTemplate,
   DEFAULT_TEMPLATES,
 };

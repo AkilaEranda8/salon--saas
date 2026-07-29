@@ -21,8 +21,10 @@ router.post('/staff-monthly-earnings',  requireRole('superadmin', 'admin'), ctrl
 router.post('/test-staff-earnings-pdf', requireRole('superadmin', 'admin'), ctrl.testStaffEarningsPdf);
 
 // Message templates
+router.get('/templates/options', requireRole('superadmin', 'admin', 'manager', 'staff'), ctrl.listTemplateOptions);
 router.get('/templates',        requireRole('superadmin', 'admin'), ctrl.listTemplates);
 router.post('/templates',       requireRole('superadmin', 'admin'), ctrl.saveTemplate);
+router.post('/templates/select', requireRole('superadmin', 'admin'), ctrl.selectTemplate);
 router.delete('/templates/:id', requireRole('superadmin', 'admin'), ctrl.deleteTemplate);
 
 // WhatsApp QR connection (per tenant)

@@ -111,6 +111,9 @@ const DEFAULT_FLAGS = {
   walkin_checkin_whatsapp:   true,
   walkin_serving_whatsapp:   true,
   walkin_completed_whatsapp: true,
+  walkin_checkin_sms:        false,
+  walkin_serving_sms:        false,
+  walkin_completed_sms:      false,
   recurring_reminder_sms:    true,
   recurring_reminder_whatsapp: true,
 };
@@ -156,18 +159,44 @@ function interpolate(tpl, vars) {
 
 /**
  * Fetch template for event + channel + tenantId.
- * Custom DB row wins; otherwise returns default from Message Templates.
+ * The selected active DB variant wins; otherwise use the built-in system default.
  */
 async function getTemplate(event_type, channel, tenantId) {
   try {
     const { MessageTemplate } = getModels();
     const row = await MessageTemplate.findOne({
-      where: { event_type, channel, tenant_id: tenantId || null, is_active: true },
+      where: {
+        event_type,
+        channel,
+        tenant_id: tenantId || null,
+        is_active: true,
+        is_default: true,
+      },
+      order: [['id', 'ASC']],
     });
     if (row) return { subject: row.subject, body: row.body };
     return getDefaultTemplate(event_type, channel);
   } catch {
     return getDefaultTemplate(event_type, channel);
+  }
+}
+
+/**
+ * Look up a template chosen at send time (e.g. picked in Record Payment).
+ * Returns null when no template was chosen or it is no longer usable.
+ */
+async function resolveChosenTemplate(templateId, event_type, tenantId) {
+  const id = parseInt(templateId, 10);
+  if (!Number.isInteger(id) || id <= 0) return null;
+  try {
+    const { MessageTemplate } = getModels();
+    const row = await MessageTemplate.findOne({
+      where: { id, event_type, tenant_id: tenantId || null, is_active: true },
+    });
+    if (!row) return null;
+    return { channel: row.channel, subject: row.subject, body: row.body };
+  } catch {
+    return null;
   }
 }
 
@@ -754,7 +783,7 @@ async function notifyPaymentReceipt(payment, branch, service, customer, tenantId
     const smsMsg = tpl
       ? interpolate(tpl.body, vars)
       : `${vars.branch_name} - Receipt\n${vars.ticket_line}Hi ${vars.customer_name}!\nPaid: ${vars.amount}\nService: ${vars.service_name} | ${vars.date}${vars.loyalty_section}`;
-    await sendSMS({ to: phone, message: smsMsg, meta });
+    await sendSMS({ to: phone, message: smsMsg, meta, tenantId: tid });
   }
 }
 
@@ -801,7 +830,7 @@ async function notifyWalkInCheckIn(walkin, branch, service, tenantId) {
   const tid = resolveNotifyTenantId(tenantId, walkin, branch);
   const flags = await getChannelFlags(tid);
   const phone = walkin?.phone || null;
-  if (!phone || !flags.walkin_checkin_whatsapp) return;
+  if (!phone) return;
 
   const name    = walkin.customer_name || 'Guest';
   const token   = walkin.token || '—';
@@ -815,18 +844,25 @@ async function notifyWalkInCheckIn(walkin, branch, service, tenantId) {
     tenant_id:     tid,
   };
   const vars = { customer_name: name, token, service_name: svcName, branch_name: brName, wait_mins: wait };
-  const tpl = await getTemplate('walk_in_checkin', 'whatsapp', tid);
-  const msg = tpl
-    ? interpolate(tpl.body, vars)
-    : `🚶 *HEXAONE — Walk-In Check-In*\n\nHi ${name}! You're checked in.\n\n🎫 Token: *${token}*\n💇 Service: ${svcName}\n🏠 Branch: ${brName}\n⏳ Est. wait: ${wait} mins\n\nPlease wait — we'll call your token soon.`;
-  await sendWhatsApp({ to: phone, message: msg, meta, tenantId: tid });
+  if (flags.walkin_checkin_whatsapp) {
+    const tpl = await getTemplate('walk_in_checkin', 'whatsapp', tid);
+    const msg = tpl
+      ? interpolate(tpl.body, vars)
+      : `🚶 *HEXAONE — Walk-In Check-In*\n\nHi ${name}! You're checked in.\n\n🎫 Token: *${token}*\n💇 Service: ${svcName}\n🏠 Branch: ${brName}\n⏳ Est. wait: ${wait} mins\n\nPlease wait — we'll call your token soon.`;
+    await sendWhatsApp({ to: phone, message: msg, meta, tenantId: tid });
+  }
+  if (flags.walkin_checkin_sms) {
+    const tpl = await getTemplate('walk_in_checkin', 'sms', tid);
+    const msg = interpolate(tpl.body, vars);
+    await sendSMS({ to: phone, message: msg, meta, tenantId: tid });
+  }
 }
 
 async function notifyWalkInServing(walkin, branch, service, tenantId) {
   const tid = resolveNotifyTenantId(tenantId, walkin, branch);
   const flags = await getChannelFlags(tid);
   const phone = walkin?.phone || null;
-  if (!phone || !flags.walkin_serving_whatsapp) return;
+  if (!phone) return;
 
   const name    = walkin.customer_name || 'Guest';
   const token   = walkin.token || '—';
@@ -839,18 +875,25 @@ async function notifyWalkInServing(walkin, branch, service, tenantId) {
     tenant_id:     tid,
   };
   const vars = { customer_name: name, token, service_name: svcName, branch_name: brName };
-  const tpl = await getTemplate('walk_in_serving', 'whatsapp', tid);
-  const msg = tpl
-    ? interpolate(tpl.body, vars)
-    : `🚶 *HEXAONE — Your Turn!*\n\nHi ${name}, token *${token}* is now being served.\n💇 ${svcName}\n🏠 ${brName}\n\nPlease proceed to the service area.`;
-  await sendWhatsApp({ to: phone, message: msg, meta, tenantId: tid });
+  if (flags.walkin_serving_whatsapp) {
+    const tpl = await getTemplate('walk_in_serving', 'whatsapp', tid);
+    const msg = tpl
+      ? interpolate(tpl.body, vars)
+      : `🚶 *HEXAONE — Your Turn!*\n\nHi ${name}, token *${token}* is now being served.\n💇 ${svcName}\n🏠 ${brName}\n\nPlease proceed to the service area.`;
+    await sendWhatsApp({ to: phone, message: msg, meta, tenantId: tid });
+  }
+  if (flags.walkin_serving_sms) {
+    const tpl = await getTemplate('walk_in_serving', 'sms', tid);
+    const msg = interpolate(tpl.body, vars);
+    await sendSMS({ to: phone, message: msg, meta, tenantId: tid });
+  }
 }
 
 async function notifyWalkInCompleted(walkin, branch, service, tenantId) {
   const tid = resolveNotifyTenantId(tenantId, walkin, branch);
   const flags = await getChannelFlags(tid);
   const phone = walkin?.phone || null;
-  if (!phone || !flags.walkin_completed_whatsapp) return;
+  if (!phone) return;
 
   const name   = walkin.customer_name || 'Guest';
   const brName = branch?.name || 'HEXAONE';
@@ -861,11 +904,18 @@ async function notifyWalkInCompleted(walkin, branch, service, tenantId) {
     tenant_id:     tid,
   };
   const vars = { customer_name: name, branch_name: brName, service_name: service?.name || '—' };
-  const tpl = await getTemplate('walk_in_completed', 'whatsapp', tid);
-  const msg = tpl
-    ? interpolate(tpl.body, vars)
-    : `✅ *HEXAONE — Service Complete*\n\nHi ${name}! Your walk-in service is complete.\n\nThank you for visiting ${brName}! 🙏`;
-  await sendWhatsApp({ to: phone, message: msg, meta, tenantId: tid });
+  if (flags.walkin_completed_whatsapp) {
+    const tpl = await getTemplate('walk_in_completed', 'whatsapp', tid);
+    const msg = tpl
+      ? interpolate(tpl.body, vars)
+      : `✅ *HEXAONE — Service Complete*\n\nHi ${name}! Your walk-in service is complete.\n\nThank you for visiting ${brName}! 🙏`;
+    await sendWhatsApp({ to: phone, message: msg, meta, tenantId: tid });
+  }
+  if (flags.walkin_completed_sms) {
+    const tpl = await getTemplate('walk_in_completed', 'sms', tid);
+    const msg = interpolate(tpl.body, vars);
+    await sendSMS({ to: phone, message: msg, meta, tenantId: tid });
+  }
 }
 
 // ── 6. Waitlist Slot Available ────────────────────────────────────────────────
@@ -898,6 +948,7 @@ module.exports = {
   notifyWalkInCompleted,
   notifyWaitlistSlotAvailable,
   getTemplate,
+  resolveChosenTemplate,
   interpolate,
   getChannelFlags,
 };

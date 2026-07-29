@@ -138,8 +138,10 @@ const EMPTY = {
   is_recurring: false,
   recurrence_frequency: 'weekly',
   recurring_next_date: '',
+  recurring_message_template_id: '',
 };
 const LIMIT = 20;
+const CHANNEL_LABELS = { email: 'Email', whatsapp: 'WhatsApp', sms: 'SMS' };
 
 function StatusBadge({ status, dark = false }) {
   const m = STATUS_META[status] ?? STATUS_META.pending;
@@ -239,6 +241,8 @@ export default function AppointmentsPage() {
   const [paymentDiscounts, setPaymentDiscounts] = useState([]);
   const [paymentRecurring, setPaymentRecurring] = useState(false);
   const [paymentRecurringDate, setPaymentRecurringDate] = useState(defaultRecurringNextDate());
+  const [paymentRecurringTemplateId, setPaymentRecurringTemplateId] = useState('');
+  const [recurringTemplates, setRecurringTemplates] = useState([]);
   const [apptServiceIds, setApptServiceIds] = useState([]);
   const [customerSearch, setCustomerSearch] = useState('');
   const [customerLoading, setCustomerLoading] = useState(false);
@@ -253,6 +257,13 @@ export default function AppointmentsPage() {
   const [paymentCustPackageId, setPaymentCustPackageId] = useState('');
   const [loadingPaymentPkgs, setLoadingPaymentPkgs] = useState(false);
   const [apptPackageCache, setApptPackageCache] = useState({});
+
+  useEffect(() => {
+    if (!canEdit) return;
+    api.get('/notifications/templates/options', { params: { event_type: 'recurring_reminder' } })
+      .then(({ data }) => setRecurringTemplates(Array.isArray(data?.options) ? data.options : []))
+      .catch(() => setRecurringTemplates([]));
+  }, [canEdit]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -343,6 +354,7 @@ export default function AppointmentsPage() {
       sourceRow.recurring_next_date
       || defaultRecurringNextDate(sourceRow.date?.slice(0, 10)),
     );
+    setPaymentRecurringTemplateId(sourceRow.recurring_message_template_id ? String(sourceRow.recurring_message_template_id) : '');
     const ids = getInitialPaymentServiceIds(sourceRow, services);
     setPaymentServices(ids);
     setPaymentMethod('Cash');
@@ -445,6 +457,9 @@ export default function AppointmentsPage() {
         loyalty_discount: 0,
         is_recurring: paymentRecurring,
         recurring_next_date: paymentRecurring ? paymentRecurringDate : null,
+        ...(paymentRecurring && paymentRecurringTemplateId
+          ? { recurring_message_template_id: paymentRecurringTemplateId }
+          : {}),
         ...(paymentDiscountId ? { discount_id: Number(paymentDiscountId) } : {}),
         splits: [{ method: paymentMethod, amount: Number(paymentAmt), ...(paymentMethod === 'Package' && paymentCustPackageId ? { customer_package_id: Number(paymentCustPackageId) } : {}) }],
       });
@@ -516,6 +531,7 @@ export default function AppointmentsPage() {
       is_recurring: Boolean(row.is_recurring),
       recurrence_frequency: row.recurrence_frequency || 'weekly',
       recurring_next_date: row.recurring_next_date || defaultRecurringNextDate(row.date?.slice(0, 10)),
+      recurring_message_template_id: row.recurring_message_template_id ? String(row.recurring_message_template_id) : '',
     });
     setApptServiceIds(selectedIds);
     setCustomerSearch(row.customer_name || '');
@@ -571,7 +587,12 @@ export default function AppointmentsPage() {
           extraNote,
         ].filter(Boolean).join('\n'),
       };
-      if (!payload.is_recurring) payload.recurrence_frequency = null;
+      if (!payload.is_recurring) {
+        payload.recurrence_frequency = null;
+        payload.recurring_message_template_id = null;
+      } else if (!payload.recurring_message_template_id) {
+        payload.recurring_message_template_id = null;
+      }
       editItem ? await api.put(`/appointments/${editItem.id}`, payload) : await api.post('/appointments', payload);
       setShowForm(false); load();
     } catch (e) { setFormErr(e.response?.data?.message||'Save failed'); }
@@ -1247,12 +1268,30 @@ export default function AppointmentsPage() {
                 <span style={{ fontSize: 14, fontWeight: 600, color: isDark ? '#E2E8F0' : '#0F172A' }}>Repeat this appointment</span>
               </label>
               {form.is_recurring && (
-                <RecurringDateCalendar
-                  value={form.recurring_next_date || defaultRecurringNextDate(form.date)}
-                  minDate={form.date || undefined}
-                  onChange={(date) => setForm((f) => ({ ...f, recurring_next_date: date }))}
-                  label="Next appointment date"
-                />
+                <>
+                  <RecurringDateCalendar
+                    value={form.recurring_next_date || defaultRecurringNextDate(form.date)}
+                    minDate={form.date || undefined}
+                    onChange={(date) => setForm((f) => ({ ...f, recurring_next_date: date }))}
+                    label="Next appointment date"
+                  />
+                  <FormGroup label="Reminder message">
+                    <Select
+                      value={form.recurring_message_template_id || ''}
+                      onChange={(e) => setForm((f) => ({ ...f, recurring_message_template_id: e.target.value }))}
+                    >
+                      <option value="">Use default recurring template</option>
+                      {recurringTemplates.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {CHANNEL_LABELS[t.channel] || t.channel} — {t.name}{t.is_default ? ' (default)' : ''}
+                        </option>
+                      ))}
+                    </Select>
+                    <div style={{ fontSize: 12, color: isDark ? '#94A3B8' : '#667085', marginTop: 6 }}>
+                      Sent on the visit day for this recurring booking.
+                    </div>
+                  </FormGroup>
+                </>
               )}
             </ApptSection>
 
@@ -1365,12 +1404,27 @@ export default function AppointmentsPage() {
                   </span>
                 </label>
                 {paymentRecurring && (
-                  <RecurringDateCalendar
-                    value={paymentRecurringDate}
-                    minDate={today}
-                    onChange={setPaymentRecurringDate}
-                    label="Next appointment date"
-                  />
+                  <>
+                    <RecurringDateCalendar
+                      value={paymentRecurringDate}
+                      minDate={today}
+                      onChange={setPaymentRecurringDate}
+                      label="Next appointment date"
+                    />
+                    <FormGroup label="Reminder message">
+                      <Select
+                        value={paymentRecurringTemplateId}
+                        onChange={(e) => setPaymentRecurringTemplateId(e.target.value)}
+                      >
+                        <option value="">Use default recurring template</option>
+                        {recurringTemplates.map((t) => (
+                          <option key={t.id} value={t.id}>
+                            {CHANNEL_LABELS[t.channel] || t.channel} — {t.name}{t.is_default ? ' (default)' : ''}
+                          </option>
+                        ))}
+                      </Select>
+                    </FormGroup>
+                  </>
                 )}
               </div>
               <FormGroup label="Services" required>

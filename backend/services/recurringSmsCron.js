@@ -13,12 +13,13 @@ function getModels() {
 /**
  * Send day-of recurring visit reminders (SMS / WhatsApp) for appointments today.
  * Channel toggles: Notifications → Recurring Visit Reminder.
+ * If recurring_message_template_id is set, only that selected template is sent.
  * Idempotent via appointments.recurring_sms_sent_at.
  */
 async function runRecurringDaySms(dateOverride) {
   const { Appointment, Branch, Service, Customer } = getModels();
   const {
-    sendSMS, sendWhatsApp, getChannelFlags, getTemplate, interpolate,
+    sendSMS, sendWhatsApp, getChannelFlags, getTemplate, resolveChosenTemplate, interpolate,
   } = require('./notificationService');
   const today = dateOverride || slToday();
 
@@ -79,6 +80,35 @@ async function runRecurringDaySms(dateOverride) {
 
     let anyOk = false;
 
+    // Staff picked a specific recurring template when booking — send only that message.
+    const chosen = await resolveChosenTemplate(
+      appt.recurring_message_template_id,
+      'recurring_reminder',
+      tid
+    );
+    if (chosen) {
+      const msg = interpolate(chosen.body, vars);
+      try {
+        if (chosen.channel === 'sms' && smsOn) {
+          await sendSMS({ to: phone, message: msg, meta, tenantId: tid });
+          anyOk = true;
+        } else if (chosen.channel === 'whatsapp' && waOn) {
+          await sendWhatsApp({ to: phone, message: msg, meta, tenantId: tid });
+          anyOk = true;
+        } else if (chosen.channel === 'email') {
+          // Recurring reminders are SMS/WhatsApp only in settings; skip email templates.
+        }
+      } catch (err) {
+        console.error('[recurringSmsCron] chosen template failed', appt.id, err.message);
+      }
+
+      if (anyOk) {
+        await appt.update({ recurring_sms_sent_at: new Date() });
+        sent += 1;
+      }
+      continue;
+    }
+
     if (smsOn) {
       let smsMsg;
       try {
@@ -90,7 +120,7 @@ async function runRecurringDaySms(dateOverride) {
         smsMsg = `${brName}\nHi ${customerName}! Reminder for your recurring visit today.\nService: ${svcName}\nDate: ${date} | ${time}\nBranch: ${brName}\nSee you soon!`;
       }
       try {
-        await sendSMS({ to: phone, message: smsMsg, meta });
+        await sendSMS({ to: phone, message: smsMsg, meta, tenantId: tid });
         anyOk = true;
       } catch (err) {
         console.error('[recurringSmsCron] SMS failed', appt.id, err.message);

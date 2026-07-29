@@ -24,6 +24,15 @@ async function ensureWalkInNotificationColumns() {
   await addIfMissing('notification_settings', 'walkin_completed_whatsapp', {
     type: DataTypes.BOOLEAN, defaultValue: true, allowNull: false,
   });
+  await addIfMissing('notification_settings', 'walkin_checkin_sms', {
+    type: DataTypes.BOOLEAN, defaultValue: false, allowNull: false,
+  });
+  await addIfMissing('notification_settings', 'walkin_serving_sms', {
+    type: DataTypes.BOOLEAN, defaultValue: false, allowNull: false,
+  });
+  await addIfMissing('notification_settings', 'walkin_completed_sms', {
+    type: DataTypes.BOOLEAN, defaultValue: false, allowNull: false,
+  });
   await addIfMissing('notification_settings', 'appt_completed_sms', {
     type: DataTypes.BOOLEAN, defaultValue: true, allowNull: false,
   });

@@ -100,6 +100,11 @@ const Appointment = sequelize.define('Appointment', {
     type: DataTypes.DATE,
     allowNull: true,
   },
+  /** Message template chosen for day-of recurring reminders. */
+  recurring_message_template_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+  },
   tenant_id: {
     type: DataTypes.INTEGER,
     allowNull: true,

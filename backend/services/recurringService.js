@@ -83,6 +83,7 @@ async function createNextRecurring(appointment, options = {}) {
         is_recurring: true,
         recurrence_frequency: 'weekly',
         recurrence_parent_id: parentId,
+        recurring_message_template_id: appointment.recurring_message_template_id || null,
         tenant_id: appointment.tenant_id || null,
       }, { transaction: t });
 
@@ -139,6 +140,7 @@ async function seedRecurringFromVisit({
   appointmentTime,
   nextDate,
   notes,
+  messageTemplateId,
   transaction,
 } = {}) {
   const { Appointment, AppointmentService } = require('../models');
@@ -153,6 +155,8 @@ async function seedRecurringFromVisit({
     err.status = 400;
     throw err;
   }
+  const tplId = parseInt(messageTemplateId, 10);
+  const recurringTemplateId = Number.isInteger(tplId) && tplId > 0 ? tplId : null;
 
   const run = async (t) => {
     const seed = await Appointment.create({
@@ -170,6 +174,7 @@ async function seedRecurringFromVisit({
       is_recurring: true,
       recurrence_frequency: 'weekly',
       recurrence_parent_id: null,
+      recurring_message_template_id: recurringTemplateId,
       tenant_id: tenantId || null,
     }, { transaction: t });
 

@@ -28,7 +28,9 @@ const ensureFranchiseCommissionSchema = require('./services/ensureFranchiseCommi
 const ensureUserMobileFeaturesColumn = require('./services/ensureUserMobileFeaturesColumn');
 const ensureUsersSessionsRevokedColumn = require('./services/ensureUsersSessionsRevokedColumn');
 const ensureAppointmentRecurringSmsColumn = require('./services/ensureAppointmentRecurringSmsColumn');
+const ensureAppointmentRecurringTemplateColumn = require('./services/ensureAppointmentRecurringTemplateColumn');
 const ensureSmsProviderColumn = require('./services/ensureSmsProviderColumn');
+const ensureMultipleMessageTemplates = require('./services/ensureMultipleMessageTemplates');
 const ensureTenantMobileRoleDefaultsColumn = require('./services/ensureTenantMobileRoleDefaultsColumn');
 const { ensureTenantEnabledFeaturesColumn } = require('./services/ensureTenantEnabledFeaturesColumn');
 const { ensureTenantDocsPageColumn } = require('./services/ensureTenantDocsPageColumn');
@@ -348,7 +350,9 @@ connectWithRetry().then(async () => {
   await ensureWalkInReminderColumns();
   await ensureServiceDurationDefaults();
   await ensureAppointmentRecurringSmsColumn();
+  await ensureAppointmentRecurringTemplateColumn();
   await ensureSmsProviderColumn();
+  await ensureMultipleMessageTemplates();
 
   startAppointmentReminderCron();
   startReminderDueCron();

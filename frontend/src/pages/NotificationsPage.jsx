@@ -157,9 +157,9 @@ const EVENT_CHANNELS = {
   recurring_reminder:['whatsapp','sms'],
   payment_receipt:['email','whatsapp','sms'],
   loyalty_points:['whatsapp','sms'],
-  walk_in_checkin:['whatsapp'],
-  walk_in_serving:['whatsapp'],
-  walk_in_completed:['whatsapp'],
+  walk_in_checkin:['whatsapp','sms'],
+  walk_in_serving:['whatsapp','sms'],
+  walk_in_completed:['whatsapp','sms'],
 };
 const SETTINGS_KEY = {
   customer_registered_email:'customer_registered_email', customer_registered_sms:'customer_registered_sms',
@@ -170,8 +170,11 @@ const SETTINGS_KEY = {
   payment_receipt_email:'payment_receipt_email', payment_receipt_whatsapp:'payment_receipt_whatsapp', payment_receipt_sms:'payment_receipt_sms',
   loyalty_points_whatsapp:'loyalty_points_whatsapp', loyalty_points_sms:'loyalty_points_sms',
   walk_in_checkin_whatsapp:'walkin_checkin_whatsapp',
+  walk_in_checkin_sms:'walkin_checkin_sms',
   walk_in_serving_whatsapp:'walkin_serving_whatsapp',
+  walk_in_serving_sms:'walkin_serving_sms',
   walk_in_completed_whatsapp:'walkin_completed_whatsapp',
+  walk_in_completed_sms:'walkin_completed_sms',
 };
 const CH_COLOR = {
   email:    { bg:'#EFF6FF', color:'#1D4ED8', label:'Email' },
@@ -228,6 +231,7 @@ export default function NotificationsPage() {
   const [tplLoading, setTplLoading]       = useState(false);
   const [tplOpen, setTplOpen]             = useState(false);
   const [editTpl, setEditTpl]             = useState(null);
+  const [editName, setEditName]           = useState('');
   const [editSubject, setEditSubject]     = useState('');
   const [editBody, setEditBody]           = useState('');
   const [tplBusy, setTplBusy]             = useState(false);
@@ -329,38 +333,69 @@ export default function NotificationsPage() {
 
   const openEditTpl = (tpl) => {
     setEditTpl(tpl);
+    setEditName(tpl.name || '');
     setEditSubject(tpl.subject || '');
     setEditBody(tpl.body || '');
     setTplOpen(true);
   };
 
+  const createTplVariant = (tpl) => {
+    openEditTpl({
+      ...tpl,
+      id: null,
+      name: '',
+      is_custom: true,
+      is_default: false,
+    });
+  };
+
   const saveTpl = async () => {
     if (!editTpl || tplBusy) return;
+    if (!editName.trim()) { toast('Template name cannot be empty.', 'error'); return; }
     if (!editBody.trim()) { toast('Message body cannot be empty.', 'error'); return; }
     setTplBusy(true);
     try {
       await api.post('/notifications/templates', {
+        id:          editTpl.id || null,
         event_type: editTpl.event_type,
         channel:    editTpl.channel,
+        name:       editName.trim(),
         subject:    editSubject.trim() || null,
         body:       editBody.trim(),
+        is_default: editTpl.is_default === true,
       });
       await loadTemplates();
       setTplOpen(false);
-      toast('Template saved!', 'success');
+      toast(editTpl.id ? 'Template updated!' : 'Template created!', 'success');
     } catch (err) {
       toast(err?.response?.data?.message || 'Failed to save template.', 'error');
     } finally { setTplBusy(false); }
   };
 
-  const resetTpl = async (tpl) => {
+  const deleteTpl = async (tpl) => {
     if (!tpl.id) return;
+    if (!window.confirm(`Delete “${tpl.name || 'this template'}”?`)) return;
     try {
       await api.delete(`/notifications/templates/${tpl.id}`);
       await loadTemplates();
       if (tplOpen && editTpl?.event_type === tpl.event_type && editTpl?.channel === tpl.channel) setTplOpen(false);
-      toast('Template reset to default.', 'success');
-    } catch { toast('Failed to reset template.', 'error'); }
+      toast('Template deleted.', 'success');
+    } catch { toast('Failed to delete template.', 'error'); }
+  };
+
+  const selectTpl = async (tpl) => {
+    if (tpl.is_default) return;
+    try {
+      await api.post('/notifications/templates/select', {
+        event_type: tpl.event_type,
+        channel: tpl.channel,
+        template_id: tpl.id,
+      });
+      await loadTemplates();
+      toast(`“${tpl.name}” will be used for new messages.`, 'success');
+    } catch (err) {
+      toast(err?.response?.data?.message || 'Failed to select template.', 'error');
+    }
   };
 
   const insertVar = (varName) => {
@@ -968,27 +1003,43 @@ export default function NotificationsPage() {
                       const CH = { email:{ bg:'#EFF6FF', color:'#1D4ED8', label:'Email' }, whatsapp:{ bg:'#DCFCE7', color:'#166534', label:'WhatsApp' }, sms:{ bg:'#FEF3C7', color:'#B45309', label:'SMS' } };
                       const ch = CH[tpl.channel] || { bg:'#F2F4F7', color:'#64748B', label:tpl.channel };
                       return (
-                        <div key={tpl.channel} style={{ display:'flex', alignItems:'center', gap:12, padding:'12px 16px', borderTop: idx > 0 ? `1px solid ${C.tpl.rowBorder}` : 'none', background:C.tpl.row }}>
+                        <div key={`${tpl.channel}-${tpl.id || 'system'}`} style={{ display:'flex', alignItems:'center', gap:12, padding:'12px 16px', borderTop: idx > 0 ? `1px solid ${C.tpl.rowBorder}` : 'none', background:C.tpl.row }}>
                           <span style={{ flexShrink:0, padding:'3px 10px', borderRadius:10, fontSize:11, fontWeight:700, background:ch.bg, color:ch.color, minWidth:72, textAlign:'center' }}>{ch.label}</span>
-                          {tpl.is_custom && (
-                            <span style={{ flexShrink:0, padding:'2px 8px', borderRadius:6, fontSize:10, fontWeight:700, background:'#EFF6FF', color:'#2563EB' }}>Custom</span>
+                          {tpl.is_default && (
+                            <span style={{ flexShrink:0, padding:'2px 8px', borderRadius:6, fontSize:10, fontWeight:700, background:'#DCFCE7', color:'#166534' }}>Selected</span>
                           )}
-                          <div style={{ flex:1, fontSize:12, color:C.muted, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:'55%' }}>
-                            {tpl.channel === 'email' && tpl.subject
-                              ? <><strong style={{ color:C.label }}>Subject:</strong> {tpl.subject}</>
-                              : (tpl.body || '').replace(/<[^>]+>/g, '').slice(0, 100) + ((tpl.body || '').length > 100 ? '…' : '')}
+                          <div style={{ flex:1, minWidth:0 }}>
+                            <div style={{ fontSize:12, fontWeight:700, color:C.label }}>{tpl.name || 'Template'}</div>
+                            <div style={{ fontSize:11, color:C.muted, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', marginTop:2 }}>
+                              {tpl.channel === 'email' && tpl.subject
+                                ? `Subject: ${tpl.subject}`
+                                : (tpl.body || '').replace(/<[^>]+>/g, '').slice(0, 100) + ((tpl.body || '').length > 100 ? '…' : '')}
+                            </div>
                           </div>
                           <div style={{ display:'flex', gap:8, marginLeft:'auto', flexShrink:0 }}>
-                            {tpl.is_custom && (
-                              <button type="button" onClick={() => resetTpl(tpl)}
-                                style={{ padding:'5px 12px', borderRadius:7, border:`1.5px solid ${C.inputBorder}`, background:C.soft, fontSize:12, fontWeight:600, color:C.muted, cursor:'pointer', fontFamily:"'Inter',sans-serif" }}>
-                                Reset
+                            {!tpl.is_default && (
+                              <button type="button" onClick={() => selectTpl(tpl)}
+                                style={{ padding:'5px 12px', borderRadius:7, border:'1.5px solid #16A34A', background:C.card, fontSize:12, fontWeight:700, color:'#15803D', cursor:'pointer', fontFamily:"'Inter',sans-serif" }}>
+                                Use this
                               </button>
                             )}
-                            <button type="button" onClick={() => openEditTpl(tpl)}
-                              style={{ padding:'5px 14px', borderRadius:7, border:'none', background:'#2563EB', fontSize:12, fontWeight:700, color:'#fff', cursor:'pointer', fontFamily:"'Inter',sans-serif" }}>
-                              Edit
-                            </button>
+                            {tpl.is_custom ? (
+                              <>
+                                <button type="button" onClick={() => openEditTpl(tpl)}
+                                  style={{ padding:'5px 14px', borderRadius:7, border:'none', background:'#2563EB', fontSize:12, fontWeight:700, color:'#fff', cursor:'pointer', fontFamily:"'Inter',sans-serif" }}>
+                                  Edit
+                                </button>
+                                <button type="button" onClick={() => deleteTpl(tpl)}
+                                  style={{ padding:'5px 12px', borderRadius:7, border:'1.5px solid #FCA5A5', background:C.card, fontSize:12, fontWeight:600, color:'#DC2626', cursor:'pointer', fontFamily:"'Inter',sans-serif" }}>
+                                  Delete
+                                </button>
+                              </>
+                            ) : (
+                              <button type="button" onClick={() => createTplVariant(tpl)}
+                                style={{ padding:'5px 14px', borderRadius:7, border:'none', background:'#2563EB', fontSize:12, fontWeight:700, color:'#fff', cursor:'pointer', fontFamily:"'Inter',sans-serif" }}>
+                                + New template
+                              </button>
+                            )}
                           </div>
                         </div>
                       );
@@ -1011,7 +1062,7 @@ export default function NotificationsPage() {
             <div style={{ padding:'20px 24px', borderBottom:`1px solid ${C.border}`, display:'flex', alignItems:'center', justifyContent:'space-between', flexShrink:0 }}>
               <div>
                 <div style={{ fontSize:15, fontWeight:700, color:C.title }}>
-                  Edit Template — {EVENT_LABELS[editTpl.event_type] || editTpl.event_type}
+                  {editTpl.id ? 'Edit Template' : 'New Template'} — {EVENT_LABELS[editTpl.event_type] || editTpl.event_type}
                 </div>
                 <div style={{ display:'flex', alignItems:'center', gap:8, marginTop:4 }}>
                   {(() => { const CH={email:{bg:'#EFF6FF',color:'#1D4ED8',label:'Email'},whatsapp:{bg:'#DCFCE7',color:'#166534',label:'WhatsApp'},sms:{bg:'#FEF3C7',color:'#B45309',label:'SMS'}}; const ch=CH[editTpl.channel]||{bg:'#F2F4F7',color:'#64748B',label:editTpl.channel}; return <span style={{padding:'2px 10px',borderRadius:8,fontSize:11,fontWeight:700,background:ch.bg,color:ch.color}}>{ch.label}</span>; })()}
@@ -1026,6 +1077,14 @@ export default function NotificationsPage() {
 
             {/* Modal body */}
             <div style={{ padding:'20px 24px', overflowY:'auto', flex:1, display:'flex', flexDirection:'column', gap:16 }}>
+              <div>
+                <label style={{ display:'block', fontSize:12, fontWeight:600, color:C.label, marginBottom:5 }}>Template Name</label>
+                <input type="text" value={editName} onChange={e => setEditName(e.target.value)}
+                  placeholder="e.g. Friendly reminder, Holiday message"
+                  maxLength={120}
+                  style={{ ...inputStyle, width:'100%' }} />
+              </div>
+
               {/* Subject (email only) */}
               {editTpl.channel === 'email' && (
                 <div>
@@ -1076,12 +1135,6 @@ export default function NotificationsPage() {
 
             {/* Modal footer */}
             <div style={{ padding:'16px 24px', borderTop:`1px solid ${C.border}`, display:'flex', alignItems:'center', justifyContent:'space-between', gap:10, flexShrink:0, background:C.modal.footer }}>
-              {editTpl.is_custom && (
-                <button type="button" onClick={() => resetTpl(editTpl)}
-                  style={{ padding:'8px 18px', borderRadius:8, border:`1.5px solid ${C.inputBorder}`, background:C.soft, fontSize:13, fontWeight:600, color:C.muted, cursor:'pointer', fontFamily:"'Inter',sans-serif" }}>
-                  Reset to Default
-                </button>
-              )}
               <div style={{ display:'flex', gap:10, marginLeft:'auto' }}>
                 <button type="button" onClick={() => setTplOpen(false)}
                   style={{ padding:'8px 18px', borderRadius:8, border:`1.5px solid ${C.inputBorder}`, background:C.card, fontSize:13, fontWeight:600, color:C.label, cursor:'pointer', fontFamily:"'Inter',sans-serif" }}>
@@ -1089,7 +1142,7 @@ export default function NotificationsPage() {
                 </button>
                 <button type="button" onClick={saveTpl} disabled={tplBusy}
                   style={{ padding:'8px 22px', borderRadius:8, border:'none', background: tplBusy ? '#93C5FD' : '#2563EB', fontSize:13, fontWeight:700, color:'#fff', cursor: tplBusy ? 'not-allowed' : 'pointer', fontFamily:"'Inter',sans-serif" }}>
-                  {tplBusy ? 'Saving…' : 'Save Template'}
+                  {tplBusy ? 'Saving…' : (editTpl.id ? 'Save Changes' : 'Create Template')}
                 </button>
               </div>
             </div>

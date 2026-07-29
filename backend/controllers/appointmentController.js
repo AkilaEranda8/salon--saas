@@ -231,7 +231,7 @@ const create = async (req, res) => {
     const {
       branch_id, customer_id, staff_id, service_id, service_ids, customer_name,
       phone, date, time, amount, notes, is_recurring, recurrence_frequency,
-      recurring_next_date,
+      recurring_next_date, recurring_message_template_id,
     } = req.body;
 
     const requestedServiceIds = normalizeServiceIds(service_ids, service_id);
@@ -270,11 +270,15 @@ const create = async (req, res) => {
       finalAmount = Number(finalAmount);
     }
 
+    const recurringTplId = parseInt(recurring_message_template_id, 10);
     const appt = await Appointment.create({
       branch_id, customer_id, staff_id, service_id: primaryServiceId, customer_name, phone, date, time, amount: finalAmount, notes,
       is_recurring: is_recurring || false,
       recurrence_frequency: is_recurring ? (recurrence_frequency || 'weekly') : null,
       recurring_next_date: is_recurring ? (recurring_next_date || null) : null,
+      recurring_message_template_id: is_recurring && Number.isInteger(recurringTplId) && recurringTplId > 0
+        ? recurringTplId
+        : null,
       tenant_id: resolveTenantId(req),
     });
 
@@ -337,6 +341,7 @@ const update = async (req, res) => {
     const allowed = [
       'staff_id', 'service_id', 'customer_name', 'phone', 'date', 'time',
       'amount', 'notes', 'is_recurring', 'recurrence_frequency', 'recurring_next_date',
+      'recurring_message_template_id',
     ];
     const updates = {};
     for (const field of allowed) {
@@ -345,6 +350,11 @@ const update = async (req, res) => {
     if (updates.is_recurring === false) {
       updates.recurrence_frequency = null;
       updates.recurring_next_date = null;
+      updates.recurring_message_template_id = null;
+    }
+    if (updates.recurring_message_template_id !== undefined) {
+      const tid = parseInt(updates.recurring_message_template_id, 10);
+      updates.recurring_message_template_id = Number.isInteger(tid) && tid > 0 ? tid : null;
     }
 
     let nextServiceIds = null;

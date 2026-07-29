@@ -158,6 +158,21 @@ const NotificationSettings = sequelize.define('NotificationSettings', {
     defaultValue: true,
     allowNull: false,
   },
+  walkin_checkin_sms: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+    allowNull: false,
+  },
+  walkin_serving_sms: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+    allowNull: false,
+  },
+  walkin_completed_sms: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+    allowNull: false,
+  },
 }, {
   tableName: 'notification_settings',
   timestamps: true,

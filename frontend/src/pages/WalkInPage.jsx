@@ -431,7 +431,10 @@ export default function WalkInPage() {
   const [paymentCustomerId, setPaymentCustomerId] = useState(null);
   const [paymentRecurring, setPaymentRecurring] = useState(false);
   const [paymentRecurringDate, setPaymentRecurringDate] = useState(defaultRecurringNextDate());
+  const [paymentRecurringTemplateId, setPaymentRecurringTemplateId] = useState('');
+  const [recurringTemplates, setRecurringTemplates] = useState([]);
   const { allowed: recurringAllowed } = useFeatureGate('recurring');
+  const CHANNEL_LABELS = { email: 'Email', whatsapp: 'WhatsApp', sms: 'SMS' };
   const [loadingPaymentPkgs, setLoadingPaymentPkgs] = useState(false);
   const [checkinCustPackages, setCheckinCustPackages] = useState([]);
   const [checkinCustPackageId, setCheckinCustPackageId] = useState('');
@@ -476,6 +479,13 @@ export default function WalkInPage() {
     if (isAdmin) api.get('/branches').then((r) => setBranches(r.data.data || r.data || [])).catch(() => {});
     api.get('/services?limit=500').then((r) => setServices(r.data.data || r.data || [])).catch(() => {});
   }, [isAdmin]);
+
+  useEffect(() => {
+    if (!recurringAllowed) return;
+    api.get('/notifications/templates/options', { params: { event_type: 'recurring_reminder' } })
+      .then(({ data }) => setRecurringTemplates(Array.isArray(data?.options) ? data.options : []))
+      .catch(() => setRecurringTemplates([]));
+  }, [recurringAllowed]);
 
   useEffect(() => {
     if (!selectedBranch) return;
@@ -584,6 +594,7 @@ export default function WalkInPage() {
     setPaymentCustomerId(null);
     setPaymentRecurring(false);
     setPaymentRecurringDate(defaultRecurringNextDate());
+    setPaymentRecurringTemplateId('');
 
     const custId = await resolveCustomerId(api, {
       customerId: entry.customer_id || entry.customer?.id,
@@ -811,6 +822,9 @@ export default function WalkInPage() {
           is_recurring: true,
           recurring_next_date: paymentRecurringDate,
           appointment_time: paymentEntry.started_at || paymentEntry.check_in_time || undefined,
+          ...(paymentRecurringTemplateId
+            ? { recurring_message_template_id: paymentRecurringTemplateId }
+            : {}),
         } : {}),
       });
       if (paymentEntry.status !== 'completed') {
@@ -1803,10 +1817,30 @@ export default function WalkInPage() {
                     </span>
                   </label>
                   {paymentRecurring && (
-                    <RecurringDateCalendar
-                      value={paymentRecurringDate}
-                      onChange={setPaymentRecurringDate}
-                    />
+                    <>
+                      <RecurringDateCalendar
+                        value={paymentRecurringDate}
+                        onChange={setPaymentRecurringDate}
+                      />
+                      <div style={{ marginTop: 10 }}>
+                        <Label>Reminder message</Label>
+                        <Select
+                          value={paymentRecurringTemplateId}
+                          onChange={(e) => setPaymentRecurringTemplateId(e.target.value)}
+                          style={{ width: '100%', marginTop: 4 }}
+                        >
+                          <option value="">Use default recurring template</option>
+                          {recurringTemplates.map((t) => (
+                            <option key={t.id} value={t.id}>
+                              {CHANNEL_LABELS[t.channel] || t.channel} — {t.name}{t.is_default ? ' (default)' : ''}
+                            </option>
+                          ))}
+                        </Select>
+                        <div style={{ fontSize: 12, color: C.muted, marginTop: 6 }}>
+                          Sent on the visit day for this recurring booking.
+                        </div>
+                      </div>
+                    </>
                   )}
                 </div>
               )}

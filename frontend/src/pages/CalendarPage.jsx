@@ -31,6 +31,20 @@ const CARD_PAL = [
   { accent:'#F59E0B', bg:'#FEFCE8', text:'#78350F' },
 ];
 
+/** Same hues lifted for dark surfaces — tinted panels instead of near-white fills. */
+const CARD_PAL_DARK = [
+  { accent:'#FB923C', bg:'rgba(251,146,60,0.16)', text:'#FED7AA' },
+  { accent:'#A78BFA', bg:'rgba(167,139,250,0.16)', text:'#DDD6FE' },
+  { accent:'#60A5FA', bg:'rgba(96,165,250,0.16)', text:'#BFDBFE' },
+  { accent:'#34D399', bg:'rgba(52,211,153,0.16)', text:'#A7F3D0' },
+  { accent:'#F472B6', bg:'rgba(244,114,182,0.16)', text:'#FBCFE8' },
+  { accent:'#FBBF24', bg:'rgba(251,191,36,0.16)', text:'#FDE68A' },
+];
+
+function cardPalette(isDark) {
+  return isDark ? CARD_PAL_DARK : CARD_PAL;
+}
+
 /* ── helpers ────────────────────────────────────────── */
 function pad(n)       { return String(n).padStart(2, '0'); }
 function dateKey(d)   { return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; }
@@ -91,7 +105,17 @@ function apptDur(a)   { return a.service?.duration_minutes || a.duration || 60; 
 /* ── EventCard ──────────────────────────────────────── */
 function EventCard({ appt, colorIdx, heightPx, navigate }) {
   const [tab, setTab]  = useState('desc');
-  const col   = CARD_PAL[colorIdx % CARD_PAL.length];
+  const { isDark } = usePageTheme();
+  const pal   = cardPalette(isDark);
+  const col   = pal[colorIdx % pal.length];
+  const titleColor  = isDark ? '#F8FAFC' : '#111827';
+  const timeColor   = isDark ? '#94A3B8' : '#6B7280';
+  const bodyColor   = isDark ? '#CBD5E1' : '#4B5563';
+  const nameColor   = isDark ? '#E2E8F0' : '#374151';
+  const idleTab     = isDark ? '#64748B' : '#9CA3AF';
+  const divider     = isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.06)';
+  const restShadow  = isDark ? '0 1px 3px rgba(2,6,23,0.45)' : '0 1px 3px rgba(0,0,0,0.06)';
+  const hoverShadow = isDark ? '0 4px 14px rgba(2,6,23,0.6)' : '0 3px 10px rgba(0,0,0,0.1)';
   const cName = custName(appt);
   const sName = staffName(appt);
   const t     = apptTime(appt);
@@ -116,34 +140,34 @@ function EventCard({ appt, colorIdx, heightPx, navigate }) {
         display: 'flex',
         flexDirection: 'column',
         gap: 2,
-        boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+        boxShadow: restShadow,
         transition: 'box-shadow .15s',
       }}
-      onMouseEnter={e => e.currentTarget.style.boxShadow='0 3px 10px rgba(0,0,0,0.1)'}
-      onMouseLeave={e => e.currentTarget.style.boxShadow='0 1px 3px rgba(0,0,0,0.06)'}
+      onMouseEnter={e => e.currentTarget.style.boxShadow=hoverShadow}
+      onMouseLeave={e => e.currentTarget.style.boxShadow=restShadow}
     >
       {/* colored dot + title row */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 5, overflow: 'hidden' }}>
         <span style={{ width: 6, height: 6, borderRadius: '50%', background: col.accent, flexShrink: 0 }} />
-        <span style={{ fontSize: 12, fontWeight: 700, color: '#111827', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <span style={{ fontSize: 12, fontWeight: 700, color: titleColor, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {appt.service?.name || 'Appointment'}
         </span>
       </div>
-      <div style={{ fontSize: 10.5, color: '#6B7280', paddingLeft: 11 }}>
+      <div style={{ fontSize: 10.5, color: timeColor, paddingLeft: 11 }}>
         {fmtTime12(t)} – {fmtTime12(endT)}
       </div>
 
       {showTabs && (
-        <div style={{ display: 'flex', gap: 6, borderBottom: '1px solid rgba(0,0,0,0.06)', paddingBottom: 3, marginBottom: 1, paddingLeft: 11 }}>
+        <div style={{ display: 'flex', gap: 6, borderBottom: `1px solid ${divider}`, paddingBottom: 3, marginBottom: 1, paddingLeft: 11 }}>
           {['Desc', 'People'].map(tb => (
             <button
               key={tb}
               onClick={e => { e.stopPropagation(); setTab(tb.toLowerCase()); }}
               style={{
-                background: tab === tb.toLowerCase() ? col.accent+'18' : 'none',
+                background: tab === tb.toLowerCase() ? col.accent+'2E' : 'none',
                 border: 'none', cursor: 'pointer',
                 fontSize: 10, fontWeight: 700,
-                color: tab === tb.toLowerCase() ? col.accent : '#9CA3AF',
+                color: tab === tb.toLowerCase() ? col.accent : idleTab,
                 padding: '2px 7px', borderRadius: 6,
               }}
             >{tb}</button>
@@ -152,7 +176,7 @@ function EventCard({ appt, colorIdx, heightPx, navigate }) {
       )}
 
       {showDetail && tab === 'desc' && (
-        <div style={{ fontSize: 11, color: '#4B5563', lineHeight: 1.5, flex: 1, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', paddingLeft: 11 }}>
+        <div style={{ fontSize: 11, color: bodyColor, lineHeight: 1.5, flex: 1, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', paddingLeft: 11 }}>
           {appt.notes || `${appt.service?.name || 'Service'} appointment${sName ? ` with ${sName}` : ''}.`}
         </div>
       )}
@@ -161,22 +185,30 @@ function EventCard({ appt, colorIdx, heightPx, navigate }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1, overflow: 'hidden', paddingLeft: 4 }}>
           {cName && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11 }}>
-              <div style={{ width: 20, height: 20, minWidth: 20, borderRadius: '50%', background: col.accent+'20', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 800, color: col.accent }}>
+              <div style={{ width: 20, height: 20, minWidth: 20, borderRadius: '50%', background: col.accent+(isDark?'33':'20'), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 800, color: col.accent }}>
                 {cName[0]?.toUpperCase() || '?'}
               </div>
-              <span style={{ flex: 1, color: '#374151', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 11 }}>{cName}</span>
-              <span style={{ fontSize: 9, padding: '2px 6px', borderRadius: 20, background: appt.status==='cancelled'?'#FEE2E2':'#DCFCE7', color: appt.status==='cancelled'?'#B91C1C':'#15803D', fontWeight: 700, flexShrink: 0 }}>
+              <span style={{ flex: 1, color: nameColor, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 11 }}>{cName}</span>
+              <span style={{
+                fontSize: 9, padding: '2px 6px', borderRadius: 20, fontWeight: 700, flexShrink: 0,
+                background: appt.status === 'cancelled'
+                  ? (isDark ? 'rgba(239,68,68,0.2)' : '#FEE2E2')
+                  : (isDark ? 'rgba(16,185,129,0.2)' : '#DCFCE7'),
+                color: appt.status === 'cancelled'
+                  ? (isDark ? '#FCA5A5' : '#B91C1C')
+                  : (isDark ? '#6EE7B7' : '#15803D'),
+              }}>
                 {appt.status === 'cancelled' ? 'Rejected' : 'Accepted'}
               </span>
             </div>
           )}
           {sName && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11 }}>
-              <div style={{ width: 20, height: 20, minWidth: 20, borderRadius: '50%', background: '#E0F2FE', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 800, color: '#0369A1' }}>
+              <div style={{ width: 20, height: 20, minWidth: 20, borderRadius: '50%', background: isDark ? 'rgba(56,189,248,0.2)' : '#E0F2FE', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 800, color: isDark ? '#7DD3FC' : '#0369A1' }}>
                 {sName[0]?.toUpperCase() || '?'}
               </div>
-              <span style={{ flex: 1, color: '#374151', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 11 }}>{sName}</span>
-              <span style={{ fontSize: 9, padding: '2px 6px', borderRadius: 20, background: '#EFF6FF', color: '#1D4ED8', fontWeight: 700, flexShrink: 0 }}>Staff</span>
+              <span style={{ flex: 1, color: nameColor, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 11 }}>{sName}</span>
+              <span style={{ fontSize: 9, padding: '2px 6px', borderRadius: 20, background: isDark ? 'rgba(59,130,246,0.2)' : '#EFF6FF', color: isDark ? '#93C5FD' : '#1D4ED8', fontWeight: 700, flexShrink: 0 }}>Staff</span>
             </div>
           )}
         </div>
@@ -185,14 +217,14 @@ function EventCard({ appt, colorIdx, heightPx, navigate }) {
       {showFoot && (
         <div style={{ marginTop: 'auto', paddingLeft: 11 }}>
           {appt.branch?.name && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 10, color: '#9CA3AF', marginBottom: 5 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 10, color: idleTab, marginBottom: 5 }}>
               <span style={{ fontSize: 11 }}>📍</span>
-              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#6B7280' }}>{appt.branch.name}</span>
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: timeColor }}>{appt.branch.name}</span>
             </div>
           )}
           <button
             onClick={e => { e.stopPropagation(); navigate(`/appointments/${appt.id}`); }}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 10px', borderRadius: 20, background: col.accent+'15', border: `1px solid ${col.accent}30`, cursor: 'pointer', fontSize: 10, fontWeight: 700, color: col.accent }}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 10px', borderRadius: 20, background: col.accent+(isDark?'2E':'15'), border: `1px solid ${col.accent}${isDark?'55':'30'}`, cursor: 'pointer', fontSize: 10, fontWeight: 700, color: col.accent }}
           >🗓 View</button>
         </div>
       )}
@@ -257,11 +289,12 @@ function MonthView({ year, month, calData, todayDate, anchor, setAnchor, setView
                 color: isTod ? '#fff' : isSel ? ACCENT : isWkd ? '#EF4444' : dayText,
               }}>{day}</div>
               {appts.slice(0, 3).map((a, ai) => {
-                const cpx = CARD_PAL[ai % CARD_PAL.length];
+                const pal = cardPalette(isDark);
+                const cpx = pal[ai % pal.length];
                 return (
                   <div key={a.id||ai} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 10.5, padding: '2px 6px', borderRadius: 4, background: cpx.bg, borderLeft: `2.5px solid ${cpx.accent}`, marginBottom: 2, overflow: 'hidden' }}>
-                    <span style={{ color: '#6B7280', flexShrink: 0 }}>{apptTime(a).slice(0,5)}</span>
-                    <span style={{ color: '#374151', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.service?.name || 'Appt'}</span>
+                    <span style={{ color: isDark ? '#94A3B8' : '#6B7280', flexShrink: 0 }}>{apptTime(a).slice(0,5)}</span>
+                    <span style={{ color: isDark ? '#E2E8F0' : '#374151', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.service?.name || 'Appt'}</span>
                   </div>
                 );
               })}

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { useFeatureGate } from '../hooks/useFeatureGate';
 import api from '../api/axios';
 import Button from '../components/ui/Button';
 import { Input, Select, FormGroup } from '../components/ui/FormElements';
@@ -14,6 +15,15 @@ const TIER       = pts => pts >= 500 ? 'Gold' : pts >= 200 ? 'Silver' : 'Bronze'
 const TIER_COLOR = { Gold: '#D97706', Silver: '#64748B', Bronze: '#92400E' };
 const TIER_BG    = { Gold: '#FFFBEB', Silver: '#F8FAFC', Bronze: '#FEF9F0' };
 const EMPTY      = { name: '', phone: '', email: '', branch_id: '' };
+const DEFAULT_LOYALTY_RULES = {
+  earn_per_amount: 100,
+  earn_points: 1,
+  redeem_points: 100,
+  redeem_value: 50,
+  min_points_redeem: 100,
+  expiry_days: '',
+  is_active: true,
+};
 
 function LoyaltyBar({ pts }) {
   const tier = TIER(pts);
@@ -35,7 +45,9 @@ function LoyaltyBar({ pts }) {
 
 export default function CustomersPage() {
   const { user } = useAuth();
+  const { allowed: loyaltyAllowed } = useFeatureGate('loyalty');
   const canEdit      = ['superadmin', 'admin', 'manager', 'staff'].includes(user?.role);
+  const canManageLoyalty = loyaltyAllowed && ['superadmin', 'admin'].includes(user?.role);
   const isSuperAdmin = user?.role === 'superadmin';
 
   const [customers, setCustomers]   = useState([]);
@@ -51,6 +63,11 @@ export default function CustomersPage() {
   const [formErr, setFormErr]       = useState('');
   const [custPayments, setCustPayments] = useState([]);
   const [custPayLoading, setCustPayLoading] = useState(false);
+  const [showLoyaltyRules, setShowLoyaltyRules] = useState(false);
+  const [loyaltyRules, setLoyaltyRules] = useState(DEFAULT_LOYALTY_RULES);
+  const [loyaltyLoading, setLoyaltyLoading] = useState(false);
+  const [loyaltySaving, setLoyaltySaving] = useState(false);
+  const [loyaltyErr, setLoyaltyErr] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -92,6 +109,55 @@ export default function CustomersPage() {
   const handleDelete = async id => {
     if (!window.confirm('Delete this customer?')) return;
     await api.delete(`/customers/${id}`); load();
+  };
+
+  const openLoyaltyRules = async () => {
+    setShowLoyaltyRules(true);
+    setLoyaltyLoading(true);
+    setLoyaltyErr('');
+    try {
+      const { data } = await api.get('/loyalty/rules');
+      setLoyaltyRules({
+        ...DEFAULT_LOYALTY_RULES,
+        ...(data || {}),
+        expiry_days: data?.expiry_days ?? '',
+      });
+    } catch (e) {
+      setLoyaltyErr(e.response?.data?.message || 'Failed to load loyalty rules.');
+    } finally {
+      setLoyaltyLoading(false);
+    }
+  };
+
+  const saveLoyaltyRules = async () => {
+    const earnAmount = Number(loyaltyRules.earn_per_amount);
+    const earnPoints = Number(loyaltyRules.earn_points);
+    const redeemPoints = Number(loyaltyRules.redeem_points);
+    const redeemValue = Number(loyaltyRules.redeem_value);
+    const minRedeem = Number(loyaltyRules.min_points_redeem || 0);
+    if (earnAmount <= 0 || earnPoints <= 0 || redeemPoints <= 0 || redeemValue <= 0 || minRedeem < 0) {
+      return setLoyaltyErr('Enter valid positive earning and redemption values.');
+    }
+    setLoyaltySaving(true);
+    setLoyaltyErr('');
+    try {
+      const payload = {
+        earn_per_amount: earnAmount,
+        earn_points: earnPoints,
+        redeem_points: redeemPoints,
+        redeem_value: redeemValue,
+        min_points_redeem: minRedeem,
+        expiry_days: loyaltyRules.expiry_days === '' ? null : Number(loyaltyRules.expiry_days),
+        is_active: Boolean(loyaltyRules.is_active),
+      };
+      const { data } = await api.put('/loyalty/rules', payload);
+      setLoyaltyRules({ ...payload, ...(data || {}), expiry_days: data?.expiry_days ?? '' });
+      setShowLoyaltyRules(false);
+    } catch (e) {
+      setLoyaltyErr(e.response?.data?.message || 'Failed to save loyalty rules.');
+    } finally {
+      setLoyaltySaving(false);
+    }
   };
 
   const tierCounts = { Gold: 0, Silver: 0, Bronze: 0 };
@@ -172,7 +238,20 @@ export default function CustomersPage() {
 
   return (
     <PageWrapper title="Customers" subtitle={`${customers.length} customers registered`}
-      actions={canEdit && <Button variant="primary" onClick={openAdd} style={{ display: 'flex', alignItems: 'center', gap: 6 }}><IconPlus /> Add Customer</Button>}>
+      actions={(canEdit || canManageLoyalty) && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          {canManageLoyalty && (
+            <Button variant="secondary" onClick={openLoyaltyRules} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="3" />
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1.08-1.5 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6h.08A1.65 1.65 0 0 0 10 3.09V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.12.6.64 1.03 1.25 1.04H21a2 2 0 1 1 0 4h-.09A1.65 1.65 0 0 0 19.4 15z" />
+              </svg>
+              Loyalty Rules
+            </Button>
+          )}
+          {canEdit && <Button variant="primary" onClick={openAdd} style={{ display: 'flex', alignItems: 'center', gap: 6 }}><IconPlus /> Add Customer</Button>}
+        </div>
+      )}>
 
       {/* Stat Cards */}
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
@@ -217,6 +296,71 @@ export default function CustomersPage() {
             </Select>
           </FormGroup>
         </div>
+      </Modal>
+
+      {/* Salon-level loyalty earning and redemption rules */}
+      <Modal
+        open={showLoyaltyRules}
+        onClose={() => setShowLoyaltyRules(false)}
+        title="Customer Loyalty Rules"
+        size="md"
+        footer={!loyaltyLoading && (
+          <>
+            <Button variant="secondary" onClick={() => setShowLoyaltyRules(false)}>Cancel</Button>
+            <Button variant="primary" loading={loyaltySaving} onClick={saveLoyaltyRules}>Save Rules</Button>
+          </>
+        )}
+      >
+        {loyaltyErr && (
+          <div style={{ background: '#FEF2F2', color: '#DC2626', padding: '9px 13px', borderRadius: 9, marginBottom: 16, fontSize: 13, border: '1px solid #FEE2E2' }}>
+            {loyaltyErr}
+          </div>
+        )}
+        {loyaltyLoading ? (
+          <div style={{ padding: '32px 0', textAlign: 'center', color: '#98A2B3' }}>Loading loyalty rules…</div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+            <div style={{ padding: '12px 14px', borderRadius: 10, background: '#EFF6FF', border: '1px solid #BFDBFE', color: '#1E3A8A', fontSize: 13, lineHeight: 1.5 }}>
+              Current rule: Every <strong>Rs. {Number(loyaltyRules.earn_per_amount || 0).toLocaleString()}</strong> spent earns{' '}
+              <strong>{loyaltyRules.earn_points || 0} point(s)</strong>.
+            </div>
+
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 800, color: '#101828', marginBottom: 10 }}>Earning points</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <FormGroup label="Amount spent (Rs.)" required>
+                  <Input type="number" min="1" step="0.01" value={loyaltyRules.earn_per_amount ?? ''} onChange={e => setLoyaltyRules(r => ({ ...r, earn_per_amount: e.target.value }))} placeholder="100" />
+                </FormGroup>
+                <FormGroup label="Points awarded" required>
+                  <Input type="number" min="1" step="1" value={loyaltyRules.earn_points ?? ''} onChange={e => setLoyaltyRules(r => ({ ...r, earn_points: e.target.value }))} placeholder="1" />
+                </FormGroup>
+              </div>
+            </div>
+
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 800, color: '#101828', marginBottom: 10 }}>Redeeming points</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <FormGroup label="Points to redeem" required>
+                  <Input type="number" min="1" step="1" value={loyaltyRules.redeem_points ?? ''} onChange={e => setLoyaltyRules(r => ({ ...r, redeem_points: e.target.value }))} placeholder="100" />
+                </FormGroup>
+                <FormGroup label="Discount value (Rs.)" required>
+                  <Input type="number" min="1" step="0.01" value={loyaltyRules.redeem_value ?? ''} onChange={e => setLoyaltyRules(r => ({ ...r, redeem_value: e.target.value }))} placeholder="50" />
+                </FormGroup>
+                <FormGroup label="Minimum points to redeem">
+                  <Input type="number" min="0" step="1" value={loyaltyRules.min_points_redeem ?? ''} onChange={e => setLoyaltyRules(r => ({ ...r, min_points_redeem: e.target.value }))} placeholder="100" />
+                </FormGroup>
+                <FormGroup label="Expiry days (blank = never)">
+                  <Input type="number" min="0" step="1" value={loyaltyRules.expiry_days ?? ''} onChange={e => setLoyaltyRules(r => ({ ...r, expiry_days: e.target.value }))} placeholder="Never" />
+                </FormGroup>
+              </div>
+            </div>
+
+            <label style={{ display: 'flex', alignItems: 'center', gap: 9, cursor: 'pointer', fontSize: 13, fontWeight: 700, color: '#344054' }}>
+              <input type="checkbox" checked={Boolean(loyaltyRules.is_active)} onChange={e => setLoyaltyRules(r => ({ ...r, is_active: e.target.checked }))} style={{ width: 17, height: 17, accentColor: '#2563EB' }} />
+              Loyalty program active
+            </label>
+          </div>
+        )}
       </Modal>
 
       {/* Profile Drawer */}

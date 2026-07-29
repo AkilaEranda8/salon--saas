@@ -116,13 +116,20 @@ const create = async (req, res) => {
     // Loyalty rule — look up once, fall back to defaults (100 Rs = 1 pt)
     const tenantId = resolveTenantId(req);
     const loyaltyRule = await LoyaltyRule.findOne({
-      where: { tenant_id: tenantId, is_active: true },
+      where: { tenant_id: tenantId },
     }).catch(() => null);
+    const loyaltyActive = loyaltyRule ? loyaltyRule.is_active !== false : true;
     const earnPerAmount = parseFloat(loyaltyRule?.earn_per_amount) || 100;
     const earnPoints    = parseInt(loyaltyRule?.earn_points)    || 1;
     const redeemPoints  = parseInt(loyaltyRule?.redeem_points)  || 100;
     const redeemValue   = parseFloat(loyaltyRule?.redeem_value) || 50;
-    const points_earned = Math.floor(total_amount / earnPerAmount) * earnPoints;
+    const points_earned = loyaltyActive
+      ? Math.floor(total_amount / earnPerAmount) * earnPoints
+      : 0;
+    if (!loyaltyActive && usePoints && Number(loyalty_discount) > 0) {
+      await t.rollback();
+      return res.status(400).json({ message: 'Loyalty program is not active for this salon.' });
+    }
 
     // Resolve services for commission (worker + manager oversight share the same payment lines)
     let serviceIdList = Array.isArray(service_ids) && service_ids.length

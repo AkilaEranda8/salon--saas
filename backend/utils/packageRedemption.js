@@ -4,7 +4,8 @@ const { getSessionsRemaining } = require('./customerPackageHelpers');
 
 /**
  * Redeem a customer package against services in a payment.
- * Deducts one session per included service redeemed.
+ * One visit / payment consumes one session (even if multiple package services are used).
+ * Each service still gets a redemption row for history.
  */
 async function redeemPackageForPayment({
   req,
@@ -28,6 +29,7 @@ async function redeemPackageForPayment({
     where: byIdWhere(req, customerPackageId),
     include: [{ model: PkgModel, as: 'package' }],
     transaction,
+    lock: transaction?.LOCK?.UPDATE,
   });
 
   if (!cp) {
@@ -66,7 +68,8 @@ async function redeemPackageForPayment({
     throw err;
   }
 
-  const sessionsNeeded = redeemIds.length;
+  // One payment / visit = one session, regardless of how many package services are used
+  const sessionsNeeded = 1;
   const sessionsLeft = getSessionsRemaining(cp);
   if (sessionsLeft !== null && sessionsLeft < sessionsNeeded) {
     const err = new Error(`Not enough sessions remaining (need ${sessionsNeeded}, have ${sessionsLeft}).`);

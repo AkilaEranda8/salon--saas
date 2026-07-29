@@ -599,15 +599,18 @@ export default function WalkInPage() {
         .then((pkgs) => {
           setPaymentCustPackages(pkgs);
           if (pkgSel.id && pkgs.find((p) => String(p.id) === String(pkgSel.id))) {
+            // Prefill package id + services, but keep Cash as default method so
+            // exhausted / multi-service packages don't block payment by accident.
             applyPackageSelection({
               customerPackageId: String(pkgSel.id),
               customerPackages: pkgs,
               allServices: services,
               onServices: setPaymentServices,
               onPackageId: setPaymentCustPackageId,
-              onMethod: setPaymentMethod,
+              onMethod: () => {},
               onAmount: setPaymentAmount,
             });
+            setPaymentMethod('Cash');
           }
         })
         .catch(() => {})

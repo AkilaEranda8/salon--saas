@@ -739,16 +739,32 @@ router.post('/bookings', async (req, res) => {
             tenant_id: bookingTenantId,
           },
           transaction: tx,
+          lock: tx.LOCK.UPDATE,
         });
       }
       if (!linkedCustomer) {
-        linkedCustomer = await Customer.create({
-          name: bookingName,
-          phone: bookingPhone,
-          email: bookingEmail || null,
-          branch_id: effectiveBranchId || null,
-          tenant_id: bookingTenantId,
-        }, { transaction: tx });
+        try {
+          linkedCustomer = await Customer.create({
+            name: bookingName,
+            phone: bookingPhone,
+            email: bookingEmail || null,
+            branch_id: effectiveBranchId || null,
+            tenant_id: bookingTenantId,
+          }, { transaction: tx });
+        } catch (createErr) {
+          // Concurrent booking with the same phone can hit the unique index.
+          if (createErr?.name === 'SequelizeUniqueConstraintError' && phoneVariants.length) {
+            linkedCustomer = await Customer.findOne({
+              where: {
+                phone: { [Op.or]: phoneVariants },
+                tenant_id: bookingTenantId,
+              },
+              transaction: tx,
+              lock: tx.LOCK.UPDATE,
+            });
+          }
+          if (!linkedCustomer) throw createErr;
+        }
       } else {
         const updates = {};
         if (!String(linkedCustomer.name || '').trim() && bookingName) updates.name = bookingName;
@@ -770,7 +786,7 @@ router.post('/bookings', async (req, res) => {
           phone: bookingPhone,
           date,
           time: toHHMM(r.start),
-          amount: r.service.price,
+          amount: parseFloat(r.service.price) || 0,
           status: 'pending',
           notes: notes ? notes.trim() : null,
         }, { transaction: tx });
@@ -820,7 +836,17 @@ router.post('/bookings', async (req, res) => {
     }
   } catch (err) {
     console.error('Public booking error:', err);
-    res.status(500).json({ message: 'Server error' });
+    if (err?.name === 'SequelizeValidationError') {
+      const detail = err.errors?.[0]?.message || 'Invalid booking data';
+      return res.status(400).json({ message: detail });
+    }
+    if (err?.name === 'SequelizeUniqueConstraintError') {
+      return res.status(409).json({ message: 'A customer with this phone already exists. Please try again.' });
+    }
+    if (/deadlock|could not serialize/i.test(String(err?.message || ''))) {
+      return res.status(409).json({ message: 'Booking conflict — please try again in a moment.' });
+    }
+    return res.status(500).json({ message: 'Server error' });
   }
 });
 

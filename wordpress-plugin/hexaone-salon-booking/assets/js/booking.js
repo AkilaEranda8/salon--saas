@@ -91,7 +91,13 @@
       }
 
       return fetch(url, opts).then(function (res) {
-        return res.json().then(function (payload) {
+        return res.text().then(function (text) {
+          var payload = null;
+          try {
+            payload = text ? JSON.parse(text) : null;
+          } catch (e) {
+            throw new Error(res.ok ? 'Invalid response from booking server.' : 'Booking failed (HTTP ' + res.status + ').');
+          }
           // WordPress wp_send_json_success / _error shape
           if (payload && typeof payload === 'object' && Object.prototype.hasOwnProperty.call(payload, 'success')) {
             if (!payload.success) {

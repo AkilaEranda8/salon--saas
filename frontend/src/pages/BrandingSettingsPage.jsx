@@ -23,6 +23,7 @@ const EMPTY = {
   primary_color:    '#2563EB',
   sidebar_style:    'light',
   font_family:      'Inter',
+  docs_page_enabled: false,
 };
 
 /* ── Sub-components ──────────────────────────────────────────────────────── */
@@ -228,6 +229,8 @@ export default function BrandingSettingsPage() {
   const [loading, setLoading]                   = useState(true);
   const [saving, setSaving]                     = useState(false);
   const [form, setForm]                         = useState(EMPTY);
+  const [tenantId, setTenantId]                 = useState('');
+  const [copiedTenantId, setCopiedTenantId]     = useState(false);
   const [uploadingVariant, setUploadingVariant] = useState('');
 
   const { refreshUser } = useAuth();
@@ -239,6 +242,7 @@ export default function BrandingSettingsPage() {
     try {
       const res = await api.get('/branding');
       const data = res.data?.data || {};
+      setTenantId(data.id != null ? String(data.id) : '');
       setForm({
         name:             data.brand_name || data.name || '',
         logo_sidebar_url: data.logo_sidebar_url || '',
@@ -248,6 +252,7 @@ export default function BrandingSettingsPage() {
         primary_color:    data.primary_color    || '#2563EB',
         sidebar_style:    data.sidebar_style    || 'light',
         font_family:      data.font_family      || 'Inter',
+        docs_page_enabled: data.docs_page_enabled === true,
       });
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to load branding settings.');
@@ -271,6 +276,7 @@ export default function BrandingSettingsPage() {
         primary_color:     form.primary_color,
         sidebar_style:     form.sidebar_style,
         font_family:       form.font_family,
+        docs_page_enabled:  form.docs_page_enabled,
       });
       toast.success('Branding settings saved!');
       await Promise.all([loadBranding(), refreshUser()]);
@@ -278,6 +284,31 @@ export default function BrandingSettingsPage() {
       toast.error(err.response?.data?.message || 'Failed to save branding settings.');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const copyTenantId = async () => {
+    if (!tenantId) return;
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(tenantId);
+      } else {
+        // Clipboard API needs a secure context; fall back for plain-HTTP hosts.
+        const helper = document.createElement('textarea');
+        helper.value = tenantId;
+        helper.setAttribute('readonly', '');
+        helper.style.position = 'fixed';
+        helper.style.opacity = '0';
+        document.body.appendChild(helper);
+        helper.select();
+        document.execCommand('copy');
+        helper.remove();
+      }
+      setCopiedTenantId(true);
+      toast.success('Tenant ID copied!');
+      window.setTimeout(() => setCopiedTenantId(false), 1600);
+    } catch {
+      toast.error('Could not copy the Tenant ID.');
     }
   };
 
@@ -473,6 +504,98 @@ export default function BrandingSettingsPage() {
                 description="Shown on the public booking widget"
               />
             </div>
+          </SectionCard>
+
+          <SectionCard
+            title="Public Documentation"
+            subtitle="Control access to your API reference and WordPress booking plugin guide."
+          >
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              gap: 20, padding: '4px 0',
+            }}>
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: C.text }}>
+                  Documentation page
+                </div>
+                <div style={{ marginTop: 4, fontSize: 12.5, color: C.muted, lineHeight: 1.5 }}>
+                  When enabled, visitors can open <strong>/documentation</strong> to view API endpoints,
+                  examples, and WordPress plugin installation instructions.
+                </div>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={form.docs_page_enabled}
+                onClick={() => updateField('docs_page_enabled', !form.docs_page_enabled)}
+                style={{
+                  width: 50, height: 28, borderRadius: 999, border: 'none',
+                  padding: 3, flexShrink: 0, cursor: 'pointer',
+                  background: form.docs_page_enabled ? C.primary : C.border,
+                  transition: 'background 0.2s',
+                }}
+              >
+                <span style={{
+                  display: 'block', width: 22, height: 22, borderRadius: '50%',
+                  background: '#fff', boxShadow: '0 1px 4px rgba(15,23,42,.25)',
+                  transform: form.docs_page_enabled ? 'translateX(22px)' : 'translateX(0)',
+                  transition: 'transform 0.2s',
+                }} />
+              </button>
+            </div>
+            {tenantId && (
+              <div style={{
+                marginTop: 18, padding: '14px 16px',
+                border: `1px solid ${C.border}`, borderRadius: 12,
+                background: C.soft,
+              }}>
+                <div style={{
+                  fontSize: 11, fontWeight: 700, letterSpacing: '0.06em',
+                  textTransform: 'uppercase', color: C.label, marginBottom: 8,
+                }}>
+                  Your Tenant ID
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                  <code style={{
+                    flex: 1, minWidth: 90, padding: '8px 12px',
+                    border: `1px solid ${C.inputBdr}`, borderRadius: 8,
+                    background: C.cardBg, color: C.text,
+                    fontSize: 14, fontWeight: 800, letterSpacing: '0.04em',
+                  }}>
+                    {tenantId}
+                  </code>
+                  <button
+                    type="button"
+                    onClick={copyTenantId}
+                    style={{
+                      padding: '9px 15px', border: 'none', borderRadius: 8,
+                      background: C.primary, color: '#fff',
+                      fontSize: 12.5, fontWeight: 700, cursor: 'pointer',
+                      fontFamily: "'Inter',sans-serif",
+                    }}
+                  >
+                    {copiedTenantId ? 'Copied!' : 'Copy'}
+                  </button>
+                </div>
+                <div style={{ marginTop: 8, fontSize: 12, color: C.muted, lineHeight: 1.5 }}>
+                  Enter this ID in the WordPress plugin under Settings → Salon Booking, and use it as the
+                  <code style={{ margin: '0 4px' }}>tenantId</code> query parameter on public API requests.
+                </div>
+              </div>
+            )}
+            {form.docs_page_enabled && (
+              <a
+                href="/documentation"
+                target="_blank"
+                rel="noreferrer"
+                style={{
+                  display: 'inline-block', marginTop: 14, color: C.primary,
+                  fontSize: 12.5, fontWeight: 700, textDecoration: 'none',
+                }}
+              >
+                Preview documentation ↗
+              </a>
+            )}
           </SectionCard>
 
           {/* ── Theme link ── */}

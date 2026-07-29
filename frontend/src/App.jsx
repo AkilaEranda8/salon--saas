@@ -91,6 +91,7 @@ import ThemeOptionsPage from './pages/ThemeOptionsPage';
 import TableCraftDemoPage from './pages/TableCraftDemoPage';
 import TwoFactorPage from './pages/TwoFactorPage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
+import DocumentationPage from './pages/DocumentationPage';
 
 // ── Branding seeder: apply tenant theme to ThemeContext on login ───────────
 const VALID_SIDEBAR_LAYOUTS = new Set([
@@ -571,6 +572,8 @@ export default function App() {
       <Route path="/register" element={<OnboardingPage />} />
       <Route path="/impersonate"    element={<ImpersonateGate />} />
       <Route path="/booking"        element={<BookingPage />} />
+      <Route path="/documentation"  element={<DocumentationPage />} />
+      <Route path="/docs"           element={<Navigate to="/documentation" replace />} />
       <Route path="/customer-portal/login"     element={<CustomerPortalLoginPage />} />
       <Route path="/customer-portal/register"  element={<CustomerRegisterPage />} />
       <Route path="/customer-portal" element={<CustomerPortalPage />} />

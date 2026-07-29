@@ -20,6 +20,7 @@ const DEFAULT_BRANDING = {
   primary_color: '#2563EB',
   sidebar_style: 'light',
   font_family: 'Inter',
+  docs_page_enabled: false,
 };
 
 const BRANDING_ATTRIBUTES = [
@@ -34,6 +35,7 @@ const BRANDING_ATTRIBUTES = [
   'primary_color',
   'sidebar_style',
   'font_family',
+  'docs_page_enabled',
 ];
 
 const MAX_LOGO_SIZE = 5 * 1024 * 1024; // 5MB
@@ -123,6 +125,7 @@ const toBrandingPayload = (tenant) => ({
   primary_color: tenant.primary_color || '#2563EB',
   sidebar_style: tenant.sidebar_style || 'light',
   font_family: tenant.font_family || 'Inter',
+  docs_page_enabled: tenant.docs_page_enabled === true,
 });
 
 const toPublicAssetUrl = (req, relativePath) => {
@@ -150,6 +153,30 @@ router.get('/public', async (req, res) => {
     return res.json({ data: toBrandingPayload(tenant) });
   } catch (err) {
     console.error('branding public error:', err);
+    return res.status(500).json({ message: 'Server error.' });
+  }
+});
+
+router.get('/plugin-download', async (req, res) => {
+  try {
+    const tenant = await resolveTenant(req);
+    if (!tenant || tenant.docs_page_enabled !== true) {
+      return res.status(404).json({ message: 'Plugin download is not available.' });
+    }
+
+    const pluginPath = path.join(__dirname, '..', 'assets', 'hexaone-salon-booking.zip');
+    if (!fs.existsSync(pluginPath)) {
+      return res.status(503).json({ message: 'Plugin package is temporarily unavailable.' });
+    }
+
+    return res.download(pluginPath, 'hexaone-salon-booking.zip', (err) => {
+      if (err && !res.headersSent) {
+        console.error('branding plugin download error:', err);
+        res.status(500).json({ message: 'Plugin download failed.' });
+      }
+    });
+  } catch (err) {
+    console.error('branding plugin download error:', err);
     return res.status(500).json({ message: 'Server error.' });
   }
 });
@@ -186,6 +213,9 @@ router.put('/', verifyToken, requireRole('superadmin', 'admin'), async (req, res
       primary_color: cleanHexColor(req.body?.primary_color) ?? tenant.primary_color ?? '#2563EB',
       sidebar_style: ALLOWED_SIDEBAR_STYLES.has(reqSidebarStyle) ? reqSidebarStyle : (tenant.sidebar_style ?? 'default'),
       font_family: (reqFontFamily && ALLOWED_FONTS.has(reqFontFamily)) ? reqFontFamily : (tenant.font_family ?? 'Inter'),
+      docs_page_enabled: req.body?.docs_page_enabled === undefined
+        ? tenant.docs_page_enabled
+        : req.body.docs_page_enabled === true,
     };
 
     await tenant.update(updates);

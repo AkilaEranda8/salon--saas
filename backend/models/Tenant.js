@@ -137,6 +137,12 @@ const Tenant = sequelize.define('Tenant', {
     allowNull: true,
     comment: 'Platform-admin per-tenant module toggles (only true keys are active)',
   },
+  docs_page_enabled: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: false,
+    comment: 'Controls public access to the tenant API and WordPress plugin documentation page',
+  },
   default_manager_commission_percent: {
     type: DataTypes.DECIMAL(5, 2),
     allowNull: true,

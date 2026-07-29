@@ -526,25 +526,41 @@ export default function NotificationsPage() {
                 {smsOpen && (
                   <div style={{ padding:'16px 18px', display:'flex', flexDirection:'column', gap:14, borderTop:`1px solid ${C.sms.bodyBorder}`, background:C.sms.body }}>
                     <p style={{ margin:0, fontSize:12, color:C.sms.bodyText }}>
-                      Enter your SMS gateway User ID, API Key, and approved Sender ID below.
+                      {(settings.sms_provider || 'notify_lk') === 'textit'
+                        ? 'Textit.biz needs only the REST API Key (from Settings → REST API Credentials). Sender ID is optional.'
+                        : 'Enter your SMS gateway User ID, API Key, and approved Sender ID below.'}
                     </p>
 
-                    {/* User ID */}
                     <div>
-                      <label style={{ display:'block', fontSize:12, fontWeight:600, color:C.label, marginBottom:5 }}>User ID</label>
-                      <input
-                        type="text"
-                        value={settings.sms_user_id || ''}
-                        onChange={e => setSettings(s => ({ ...s, sms_user_id: e.target.value }))}
-                        placeholder="e.g. 31293"
-                        style={inputStyle}
-                      />
+                      <label style={{ display:'block', fontSize:12, fontWeight:600, color:C.label, marginBottom:5 }}>SMS Gateway</label>
+                      <select
+                        value={settings.sms_provider || 'notify_lk'}
+                        onChange={e => setSettings(s => ({ ...s, sms_provider: e.target.value }))}
+                        style={{ ...inputStyle, cursor: 'pointer' }}
+                      >
+                        <option value="textit">Textit.biz (API Key only)</option>
+                        <option value="notify_lk">Notify.lk (User ID + API Key)</option>
+                      </select>
                     </div>
+
+                    {/* User ID — Notify.lk only */}
+                    {(settings.sms_provider || 'notify_lk') !== 'textit' && (
+                      <div>
+                        <label style={{ display:'block', fontSize:12, fontWeight:600, color:C.label, marginBottom:5 }}>User ID</label>
+                        <input
+                          type="text"
+                          value={settings.sms_user_id || ''}
+                          onChange={e => setSettings(s => ({ ...s, sms_user_id: e.target.value }))}
+                          placeholder="e.g. 31293"
+                          style={inputStyle}
+                        />
+                      </div>
+                    )}
 
                     {/* API Key */}
                     <div>
                       <label style={{ display:'block', fontSize:12, fontWeight:600, color:C.label, marginBottom:5 }}>
-                        API Key
+                        {(settings.sms_provider || 'notify_lk') === 'textit' ? 'REST API Key' : 'API Key'}
                         {settings.sms_api_key_set && !editingSmsKey && (
                           <span style={{ marginLeft:8, fontSize:11, color:'#059669', fontWeight:500 }}>● Set</span>
                         )}
@@ -555,7 +571,7 @@ export default function NotificationsPage() {
                             type={showSmsKey ? 'text' : 'password'}
                             value={newSmsKey}
                             onChange={e => setNewSmsKey(e.target.value)}
-                            placeholder="Paste new API key"
+                            placeholder={(settings.sms_provider || 'notify_lk') === 'textit' ? 'Paste Textit API Key' : 'Paste new API key'}
                             style={{ ...inputStyle, flex:1 }}
                             autoFocus
                           />
@@ -580,9 +596,16 @@ export default function NotificationsPage() {
                       )}
                     </div>
 
-                    {/* Sender ID (Service ID) */}
+                    {/* Sender ID — required for Notify.lk, optional for Textit */}
                     <div>
-                      <label style={{ display:'block', fontSize:12, fontWeight:600, color:C.label, marginBottom:5 }}>Sender ID <span style={{ fontWeight:400, color:C.faint }}>(approved Sender ID from Sender IDs tab)</span></label>
+                      <label style={{ display:'block', fontSize:12, fontWeight:600, color:C.label, marginBottom:5 }}>
+                        Sender ID
+                        <span style={{ fontWeight:400, color:C.faint }}>
+                          {(settings.sms_provider || 'notify_lk') === 'textit'
+                            ? ' (optional — usually set in Textit account)'
+                            : ' (approved Sender ID)'}
+                        </span>
+                      </label>
                       <input type="text" value={settings.sms_sender_id || ''}
                         onChange={e => setSettings(s => ({ ...s, sms_sender_id: e.target.value.trim() }))}
                         placeholder="e.g. Hexaone" style={inputStyle} />

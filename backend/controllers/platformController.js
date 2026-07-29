@@ -1856,7 +1856,8 @@ function buildSmtpSmsOut(row) {
     sms_api_key:           maskSecret(row?.sms_api_key || process.env.SMS_API_KEY  || ''),
     sms_api_key_set:       !!(row?.sms_api_key         || process.env.SMS_API_KEY),
     sms_sender_id:         row?.sms_sender_id          || process.env.SMS_SENDER_ID || '',
-    sms_source:            row?.sms_user_id && row?.sms_api_key ? 'db' : (process.env.SMS_USER_ID ? 'env' : 'none'),
+    sms_provider:          row?.sms_provider           || process.env.SMS_PROVIDER || 'notify_lk',
+    sms_source:            row?.sms_api_key ? 'db' : (process.env.SMS_API_KEY ? 'env' : 'none'),
     twilio_account_sid:    row?.twilio_account_sid    || process.env.TWILIO_ACCOUNT_SID    || '',
     twilio_auth_token:     maskSecret(row?.twilio_auth_token || process.env.TWILIO_AUTH_TOKEN || ''),
     twilio_auth_token_set: !!(row?.twilio_auth_token  || process.env.TWILIO_AUTH_TOKEN),
@@ -1886,6 +1887,10 @@ const updatePlatformSmtpSms = async (req, res) => {
     if (typeof req.body.smtp_from === 'string')  update.smtp_from = req.body.smtp_from.trim() || null;
     if (typeof req.body.smtp_pass === 'string' && !req.body.smtp_pass.includes('•')) {
       update.smtp_pass = req.body.smtp_pass.trim() || null;
+    }
+    if (typeof req.body.sms_provider === 'string') {
+      const p = req.body.sms_provider.trim().toLowerCase();
+      update.sms_provider = (p === 'textit' || p === 'notify_lk') ? p : 'notify_lk';
     }
     if (typeof req.body.sms_user_id   === 'string') update.sms_user_id   = req.body.sms_user_id.trim()   || null;
     if (typeof req.body.sms_sender_id === 'string') update.sms_sender_id = req.body.sms_sender_id.trim() || null;

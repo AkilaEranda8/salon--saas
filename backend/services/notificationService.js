@@ -172,39 +172,75 @@ async function getTemplate(event_type, channel, tenantId) {
 }
 
 // ── SMS credentials: tenant DB → platform DB (tenant_id=null) → env fallback ─
+function smsCredsFromRow(row) {
+  if (!row) return null;
+  const provider = String(row.sms_provider || 'notify_lk').toLowerCase();
+  const apiKey = row.sms_api_key?.trim();
+  if (!apiKey) return null;
+  if (provider === 'textit') {
+    return {
+      provider: 'textit',
+      apiKey,
+      senderId: row.sms_sender_id?.trim() || process.env.SMS_SENDER_ID || null,
+      userId: null,
+    };
+  }
+  const userId = row.sms_user_id?.trim();
+  if (!userId) return null;
+  return {
+    provider: 'notify_lk',
+    userId,
+    apiKey,
+    senderId: row.sms_sender_id?.trim() || process.env.SMS_SENDER_ID || null,
+  };
+}
+
+function smsCredsFromEnv() {
+  const provider = String(process.env.SMS_PROVIDER || 'notify_lk').toLowerCase();
+  if (provider === 'textit') {
+    if (!process.env.SMS_API_KEY) return null;
+    return {
+      provider: 'textit',
+      apiKey: process.env.SMS_API_KEY,
+      senderId: process.env.SMS_SENDER_ID || null,
+      userId: null,
+    };
+  }
+  if (process.env.SMS_USER_ID && process.env.SMS_API_KEY) {
+    return {
+      provider: 'notify_lk',
+      userId: process.env.SMS_USER_ID,
+      apiKey: process.env.SMS_API_KEY,
+      senderId: process.env.SMS_SENDER_ID || null,
+    };
+  }
+  return null;
+}
+
 async function getSMSCreds(tenantId = null) {
   try {
     const { NotificationSettings } = getModels();
     // 1. Tenant-specific SMS (saved on Notifications page per salon)
     if (tenantId) {
       const tenantRow = await NotificationSettings.findOne({ where: { branch_id: null, tenant_id: tenantId } });
-      if (tenantRow && tenantRow.sms_user_id && tenantRow.sms_api_key) {
-        return {
-          userId:   tenantRow.sms_user_id.trim(),
-          apiKey:   tenantRow.sms_api_key.trim(),
-          senderId: tenantRow.sms_sender_id?.trim() || process.env.SMS_SENDER_ID || null,
-        };
-      }
+      const tenantCreds = smsCredsFromRow(tenantRow);
+      if (tenantCreds) return tenantCreds;
     }
     // 2. Platform-level SMS
     const row = await NotificationSettings.findOne({ where: { branch_id: null, tenant_id: null } });
-    if (row && row.sms_user_id && row.sms_api_key) {
-      return {
-        userId:   row.sms_user_id.trim(),
-        apiKey:   row.sms_api_key.trim(),
-        senderId: row.sms_sender_id?.trim() || process.env.SMS_SENDER_ID || null,
-      };
-    }
+    const platformCreds = smsCredsFromRow(row);
+    if (platformCreds) return platformCreds;
   } catch { /* fall through */ }
   // 3. Env fallback
-  if (process.env.SMS_USER_ID && process.env.SMS_API_KEY) {
-    return {
-      userId:   process.env.SMS_USER_ID,
-      apiKey:   process.env.SMS_API_KEY,
-      senderId: process.env.SMS_SENDER_ID || null,
-    };
-  }
-  return null;
+  return smsCredsFromEnv();
+}
+
+function formatSmsTo94(to) {
+  const digits = String(to || '').replace(/\D/g, '');
+  const local = digits.startsWith('94') ? digits.slice(2)
+    : digits.startsWith('0') ? digits.slice(1)
+    : digits;
+  return '94' + local.slice(-9);
 }
 
 // ── Core senders ──────────────────────────────────────────────────────────────
@@ -257,7 +293,7 @@ async function sendEmail({ to, subject, html, meta = {}, tenantId = null, attach
 }
 
 /**
- * Send an SMS via Notify.lk. Logs result. Never throws.
+ * Send an SMS via Notify.lk or Textit.biz. Logs result. Never throws.
  * @param {{ to, message, meta?, tenantId? }} opts
  */
 async function sendSMS({ to, message, meta = {}, tenantId = null }) {
@@ -268,58 +304,77 @@ async function sendSMS({ to, message, meta = {}, tenantId = null }) {
     console.warn('[Notifications] SMS skipped — SMS credentials not configured.');
     return null;
   }
-  if (!creds.senderId) {
+  const provider = creds.provider || 'notify_lk';
+  if (provider === 'notify_lk' && !creds.senderId) {
     console.warn('[Notifications] SMS skipped — SMS Sender ID not configured.');
     return null;
   }
-  const digits  = to.replace(/\D/g, '');
-  const local   = digits.startsWith('94') ? digits.slice(2)
-                : digits.startsWith('0')  ? digits.slice(1)
-                : digits;
-  const toFormatted = '94' + local.slice(-9);
+  const toFormatted = formatSmsTo94(to);
   let status = 'sent', errorMsg = null;
   try {
-    const isUnicode = /[^\u0000-\u007F]/.test(message);
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 15000);
     let res;
     try {
-      res = await fetch('https://app.notify.lk/api/v1/send', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        signal:  controller.signal,
-        body:    JSON.stringify({
-          user_id:    creds.userId,
-          api_key:    creds.apiKey,
-          sender_id:  creds.senderId,
-          to:         toFormatted,
-          message,
-          ...(isUnicode ? { type: 'unicode' } : {}),
-        }),
-      });
+      if (provider === 'textit') {
+        // Textit.biz REST API — Key only (Authorization: Basic <API_KEY>)
+        // https://textit.biz/integration_REST_API.php
+        res = await fetch('https://api.textit.biz/', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: '*/*',
+            'X-API-VERSION': 'v1',
+            Authorization: `Basic ${creds.apiKey}`,
+          },
+          signal: controller.signal,
+          body: JSON.stringify({ to: toFormatted, text: message }),
+        });
+      } else {
+        const isUnicode = /[^\u0000-\u007F]/.test(message);
+        res = await fetch('https://app.notify.lk/api/v1/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          signal: controller.signal,
+          body: JSON.stringify({
+            user_id: creds.userId,
+            api_key: creds.apiKey,
+            sender_id: creds.senderId,
+            to: toFormatted,
+            message,
+            ...(isUnicode ? { type: 'unicode' } : {}),
+          }),
+        });
+      }
     } finally {
       clearTimeout(timer);
     }
-    const data = await res.json().catch(() => ({}));
-    console.log(`[Notifications] SMS API response → ${toFormatted}:`, JSON.stringify(data));
-    if (!res.ok || data.status === 'error') {
+    const raw = await res.text();
+    let data = {};
+    try { data = raw ? JSON.parse(raw) : {}; } catch { data = { raw }; }
+    console.log(`[Notifications] SMS (${provider}) response → ${toFormatted}:`, JSON.stringify(data));
+    if (provider === 'textit') {
+      if (!res.ok || data.status === 'error' || data.success === false || data.Status === 'Error') {
+        throw new Error(data.message || data.error || data.raw || `HTTP ${res.status}`);
+      }
+    } else if (!res.ok || data.status === 'error') {
       const errMsg = (Array.isArray(data.errors) && data.errors[0]) || data.message || `HTTP ${res.status}`;
       throw new Error(errMsg);
     }
-    console.log(`[Notifications] SMS sent → ${toFormatted}`);
+    console.log(`[Notifications] SMS sent via ${provider} → ${toFormatted}`);
   } catch (err) {
-    status   = 'failed';
+    status = 'failed';
     errorMsg = err.name === 'AbortError' ? 'SMS gateway timeout (15s)' : err.message;
     console.error(`[Notifications] SMS failed → ${toFormatted}:`, errorMsg);
   }
   await writeLog({
     ...meta,
-    tenant_id:       meta.tenant_id ?? tid,
-    channel:         'sms',
-    phone:           to,
+    tenant_id: meta.tenant_id ?? tid,
+    channel: 'sms',
+    phone: to,
     message_preview: message.slice(0, 255),
     status,
-    error_message:   errorMsg,
+    error_message: errorMsg,
   });
   return { status, error: errorMsg };
 }

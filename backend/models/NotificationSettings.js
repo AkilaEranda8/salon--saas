@@ -66,6 +66,12 @@ const NotificationSettings = sequelize.define('NotificationSettings', {
     allowNull: false,
   },
   // ── SMS provider credentials ──────────────────────────────────────────────
+  // notify_lk | textit
+  sms_provider: {
+    type: DataTypes.STRING(32),
+    allowNull: true,
+    defaultValue: 'notify_lk',
+  },
   sms_sender_id: {
     type: DataTypes.STRING(50),
     allowNull: true,

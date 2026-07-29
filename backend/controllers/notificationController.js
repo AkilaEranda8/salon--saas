@@ -87,12 +87,15 @@ function buildSettingsOut(row, envDefaults) {
   for (const f of SETTINGS_FIELDS) out[f] = row ? row[f] : DEFAULT_SETTINGS[f];
 
   // SMS gateway
+  out.sms_provider    = (row?.sms_provider)   || envDefaults.sms_provider || 'notify_lk';
   out.sms_sender_id   = (row?.sms_sender_id)  || envDefaults.sms_sender_id;
   out.sms_user_id     = (row?.sms_user_id)    || envDefaults.sms_user_id;
   const rawSmsKey     = (row?.sms_api_key)    || envDefaults.sms_api_key;
   out.sms_api_key     = maskSecret(rawSmsKey);
   out.sms_api_key_set = !!rawSmsKey;
-  out.sms_source      = (row?.sms_user_id && row?.sms_api_key) ? 'db' : (envDefaults.sms_user_id ? 'env' : 'none');
+  if (row?.sms_api_key) out.sms_source = 'db';
+  else if (envDefaults.sms_api_key) out.sms_source = 'env';
+  else out.sms_source = 'none';
 
   // Twilio
   out.twilio_account_sid    = (row?.twilio_account_sid)   || envDefaults.twilio_account_sid;
@@ -122,6 +125,7 @@ const getSettings = async (req, res) => {
     const row = await NotificationSettings.findOne({ where: { branch_id: null, tenant_id: tenantId || null } });
 
     const envDefaults = {
+      sms_provider:         process.env.SMS_PROVIDER          || 'notify_lk',
       sms_sender_id:        process.env.SMS_SENDER_ID        || '',
       sms_user_id:          process.env.SMS_USER_ID           || '',
       sms_api_key:          process.env.SMS_API_KEY           || '',
@@ -150,6 +154,10 @@ const updateSettings = async (req, res) => {
       if (typeof req.body[f] === 'boolean') update[f] = req.body[f];
     }
     // String fields
+    if (typeof req.body.sms_provider === 'string') {
+      const p = req.body.sms_provider.trim().toLowerCase();
+      update.sms_provider = (p === 'textit' || p === 'notify_lk') ? p : 'notify_lk';
+    }
     if (typeof req.body.sms_sender_id === 'string') {
       update.sms_sender_id = req.body.sms_sender_id.trim().slice(0, 50) || null;
     }
@@ -196,11 +204,13 @@ const updateSettings = async (req, res) => {
     }
 
     const envDef = {
+      sms_provider: process.env.SMS_PROVIDER || 'notify_lk',
       sms_sender_id: process.env.SMS_SENDER_ID || '', sms_user_id: process.env.SMS_USER_ID || '', sms_api_key: process.env.SMS_API_KEY || '',
       twilio_account_sid: process.env.TWILIO_ACCOUNT_SID || '', twilio_auth_token: process.env.TWILIO_AUTH_TOKEN || '', twilio_whatsapp_from: process.env.TWILIO_WHATSAPP_FROM || '',
       smtp_host: process.env.EMAIL_HOST || 'smtp.gmail.com', smtp_port: process.env.EMAIL_PORT || '587',
       smtp_user: process.env.EMAIL_USER || '', smtp_pass: process.env.EMAIL_PASS || '', smtp_from: process.env.EMAIL_FROM || '',
     };
+    await row.reload();
     return res.json(buildSettingsOut(row, envDef));
   } catch (err) {
     console.error(err);

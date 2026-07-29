@@ -4,6 +4,7 @@ import api from '../api/axios';
 import './DocumentationPage.css';
 
 const API_BASE = 'https://api.salon.hexalyte.com/api/public';
+const PLUGIN_VERSION = '1.0.2';
 
 const ENDPOINTS = [
   {
@@ -214,11 +215,16 @@ export default function DocumentationPage() {
     setDownloading(true);
     setDownloadError('');
     try {
-      const response = await api.get('/branding/plugin-download', { responseType: 'blob' });
+      const response = await api.get('/branding/plugin-download', {
+        responseType: 'blob',
+        params: { t: Date.now() },
+        headers: { 'Cache-Control': 'no-cache' },
+      });
+      const version = response.headers?.['x-plugin-version'] || PLUGIN_VERSION;
       const url = URL.createObjectURL(response.data);
       const link = document.createElement('a');
       link.href = url;
-      link.download = 'hexaone-salon-booking.zip';
+      link.download = `hexaone-salon-booking-${version}.zip`;
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -270,7 +276,7 @@ export default function DocumentationPage() {
           <div className="docs-hero-pills">
             <span>REST + JSON</span>
             <span>No API key required</span>
-            <span>Plugin v1.0.2</span>
+            <span>Plugin v{PLUGIN_VERSION}</span>
           </div>
         </div>
       </header>
@@ -383,14 +389,14 @@ export default function DocumentationPage() {
                 <span aria-hidden="true">↓</span>
                 {downloading ? 'Preparing download…' : 'Download WordPress plugin'}
               </button>
-              <small>ZIP package · v1.0.2</small>
+              <small>ZIP package · v{PLUGIN_VERSION}</small>
             </div>
             {downloadError && <p className="docs-download-error" role="alert">{downloadError}</p>}
             <div className="docs-info-grid">
-              <div><small>Plugin version</small><code>1.0.2</code></div>
+              <div><small>Plugin version</small><code>{PLUGIN_VERSION}</code></div>
               <div><small>WordPress</small><code>5.8 or newer</code></div>
               <div><small>PHP</small><code>7.4 or newer</code></div>
-              <div><small>Package</small><code>hexaone-salon-booking.zip</code></div>
+              <div><small>Package</small><code>hexaone-salon-booking-{PLUGIN_VERSION}.zip</code></div>
             </div>
 
             <h3>Installation</h3>
@@ -398,7 +404,7 @@ export default function DocumentationPage() {
               <li>If an older Hexaone Salon Booking entry is listed, click <strong>Delete</strong>.</li>
               <li>Download the ZIP from this page (do not extract it on your computer).</li>
               <li>Open WordPress Admin → <strong>Plugins → Add New → Upload Plugin</strong>.</li>
-              <li>Select <code>hexaone-salon-booking.zip</code>, install it, and click <strong>Activate</strong>.</li>
+              <li>Select <code>hexaone-salon-booking-{PLUGIN_VERSION}.zip</code>, install it, and click <strong>Activate</strong>.</li>
               <li>Open <strong>Settings → Salon Booking</strong>.</li>
               <li>Set the API base URL to <code>{API_BASE}</code>.</li>
               <li>Set Tenant ID to <code>{tenantId}</code>, then save the settings.</li>
@@ -406,7 +412,7 @@ export default function DocumentationPage() {
             </ol>
             <div className="docs-note">
               File Manager / FTP is not required. Upload the ZIP only through WordPress Admin.
-              Version 1.0.2 installs into a fresh folder (<code>hexaone-booking</code>) so leftover broken folders do not block activation.
+              Version {PLUGIN_VERSION} installs into a fresh folder (<code>hexaone-booking</code>) so leftover broken folders do not block activation.
             </div>
 
             <h3>Values for Settings → Salon Booking</h3>

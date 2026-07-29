@@ -38,6 +38,9 @@ const BRANDING_ATTRIBUTES = [
   'docs_page_enabled',
 ];
 
+// Keep in sync with wordpress-plugin/hexaone-salon-booking/salon-booking.php
+const PLUGIN_VERSION = '1.0.2';
+
 const MAX_LOGO_SIZE = 5 * 1024 * 1024; // 5MB
 const ALLOWED_MIME_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml']);
 const ALLOWED_VARIANTS = new Set(['sidebar', 'header', 'login', 'public']);
@@ -169,7 +172,13 @@ router.get('/plugin-download', async (req, res) => {
       return res.status(503).json({ message: 'Plugin package is temporarily unavailable.' });
     }
 
-    return res.download(pluginPath, 'hexaone-salon-booking.zip', (err) => {
+    // Proxies and browsers otherwise keep serving a stale package after a plugin release.
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    res.setHeader('X-Plugin-Version', PLUGIN_VERSION);
+
+    return res.download(pluginPath, `hexaone-salon-booking-${PLUGIN_VERSION}.zip`, (err) => {
       if (err && !res.headersSent) {
         console.error('branding plugin download error:', err);
         res.status(500).json({ message: 'Plugin download failed.' });

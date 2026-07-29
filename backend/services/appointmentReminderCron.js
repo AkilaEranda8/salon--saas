@@ -65,11 +65,16 @@ function inWindow(nowMs, targetMs) {
 }
 
 async function _resolveTokens(entry, StaffFcmToken, Staff) {
+  const { Op } = require('sequelize');
+  const tid = entry.tenant_id || null;
+
   if (entry.staff_id) {
     const staff = await Staff.findByPk(entry.staff_id, { attributes: ['id', 'user_id'] });
     if (staff?.user_id) {
+      const where = { user_id: staff.user_id };
+      if (tid != null) where[Op.or] = [{ tenant_id: tid }, { tenant_id: null }];
       const row = await StaffFcmToken.findOne({
-        where: { user_id: staff.user_id },
+        where,
         attributes: ['fcm_token'],
       });
       if (row?.fcm_token) return [row.fcm_token];
@@ -77,8 +82,11 @@ async function _resolveTokens(entry, StaffFcmToken, Staff) {
     return [];
   }
 
+  if (!entry.branch_id) return [];
+  const where = { branch_id: entry.branch_id };
+  if (tid != null) where[Op.or] = [{ tenant_id: tid }, { tenant_id: null }];
   const rows = await StaffFcmToken.findAll({
-    where: { branch_id: entry.branch_id },
+    where,
     attributes: ['fcm_token'],
   });
   return rows.map((r) => r.fcm_token).filter(Boolean);
@@ -320,8 +328,14 @@ function startReminderDueCron() {
       const typeEmoji = { general: '📝', inventory: '📦', staff: '👤', customer: '👥' };
 
       for (const [branchId, items] of Object.entries(byBranch)) {
+        const { Op } = require('sequelize');
+        const { Branch } = getModels();
+        const branch = await Branch.findByPk(branchId, { attributes: ['id', 'tenant_id'] });
+        const tid = branch?.tenant_id ?? null;
+        const where = { branch_id: branchId };
+        if (tid != null) where[Op.or] = [{ tenant_id: tid }, { tenant_id: null }];
         const rows = await StaffFcmToken.findAll({
-          where: { branch_id: branchId },
+          where,
           attributes: ['fcm_token'],
         });
         const tokens = rows.map((r) => r.fcm_token).filter(Boolean);

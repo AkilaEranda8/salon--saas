@@ -111,15 +111,22 @@ async function removeStaleToken(token) {
  * @param {string} title
  * @param {string} body
  * @param {object} data
+ * @param {number|string|null} tenantId - optional tenant scope
  */
-async function notifyStaffUser(staffId, title, body, data = {}) {
+async function notifyStaffUser(staffId, title, body, data = {}, tenantId = null) {
   if (!staffId) return;
   try {
+    const { Op } = require('sequelize');
     const { Staff, StaffFcmToken } = require('../models');
-    const staff = await Staff.findByPk(staffId, { attributes: ['id', 'user_id'] });
+    const staff = await Staff.findByPk(staffId, { attributes: ['id', 'user_id', 'tenant_id'] });
     if (!staff || !staff.user_id) return;
+    const tid = tenantId ?? staff.tenant_id ?? null;
+    const where = { user_id: staff.user_id };
+    if (tid != null) {
+      where[Op.or] = [{ tenant_id: tid }, { tenant_id: null }];
+    }
     const tokenRow = await StaffFcmToken.findOne({
-      where: { user_id: staff.user_id },
+      where,
       attributes: ['fcm_token'],
     });
     if (!tokenRow?.fcm_token) return;
@@ -130,23 +137,38 @@ async function notifyStaffUser(staffId, title, body, data = {}) {
 }
 
 /**
- * Send a push notification to all staff devices registered for a branch.
+ * Send a push notification to all staff devices registered for a branch (tenant-scoped).
  * @param {number|string} branchId
  * @param {string} title
  * @param {string} body
  * @param {object} data  - optional string key-value payload
+ * @param {number|string|null} tenantId - optional; resolved from Branch when omitted
  */
-async function notifyBranch(branchId, title, body, data = {}) {
+async function notifyBranch(branchId, title, body, data = {}, tenantId = null) {
   if (!branchId) return;
   try {
-    const { StaffFcmToken } = require('../models');
+    const { Op } = require('sequelize');
+    const { StaffFcmToken, Branch } = require('../models');
+    let tid = tenantId;
+    if (tid == null) {
+      const branch = await Branch.findByPk(branchId, { attributes: ['id', 'tenant_id'] });
+      tid = branch?.tenant_id ?? null;
+    }
+    // branch_id is globally unique → null tenant_id legacy rows for this branch are safe
+    const where = { branch_id: branchId };
+    if (tid != null) {
+      where[Op.or] = [{ tenant_id: tid }, { tenant_id: null }];
+    }
     const rows = await StaffFcmToken.findAll({
-      where: { branch_id: branchId },
+      where,
       attributes: ['fcm_token'],
     });
     const tokens = rows.map((r) => r.fcm_token).filter(Boolean);
     if (tokens.length === 0) return;
-    await sendToTokens(tokens, title, body, data);
+    await sendToTokens(tokens, title, body, {
+      ...data,
+      ...(tid != null ? { tenant_id: String(tid) } : {}),
+    });
   } catch (err) {
     console.error('[FCM] notifyBranch error:', err.message);
   }

@@ -24,6 +24,7 @@ const DEFAULT_SETTINGS = {
   walkin_serving_whatsapp:    true,
   walkin_completed_whatsapp:  true,
   recurring_reminder_sms:     true,
+  recurring_reminder_whatsapp: true,
 };
 
 const SETTINGS_FIELDS = Object.keys(DEFAULT_SETTINGS);
@@ -227,6 +228,7 @@ const sendTest = async (req, res) => {
       customer_name: 'Test Customer',
       event_type:    'test',
       branch_id:     branchId,
+      tenant_id:     tenantId,
     };
     const date = new Date().toISOString().slice(0, 10);
 
@@ -332,7 +334,8 @@ const testProvider = async (req, res) => {
       const result = await sendSMS({
         to,
         message: `[HEXAONE] SMS test successful! Sent at ${date}.`,
-        meta: { customer_name: 'Test', event_type: 'test', branch_id: null },
+        meta: { customer_name: 'Test', event_type: 'test', branch_id: null, tenant_id: tenantId },
+        tenantId,
       });
       if (result && result.status === 'failed') {
         return res.status(400).json({ message: `SMS failed: ${result.error}` });
@@ -361,7 +364,7 @@ const testProvider = async (req, res) => {
 };
 
 // ── POST /api/notifications/test-push ─────────────────────────────────────────
-// Sends a test FCM push to staff devices (branch-scoped when branch filter is active).
+// Sends a test FCM push to staff devices (always tenant-scoped; branch when set).
 const testPush = async (req, res) => {
   try {
     if (!isPushConfigured()) {
@@ -370,10 +373,37 @@ const testPush = async (req, res) => {
       });
     }
 
-    const { StaffFcmToken } = require('../models');
+    const { StaffFcmToken, Branch } = require('../models');
+    const { Op } = require('sequelize');
+    const tenantId = resolveTenantId(req);
+    if (!tenantId) {
+      return res.status(400).json({
+        message: 'Tenant context required. Open Notifications from a salon workspace (not platform-wide).',
+      });
+    }
+
     const branchId = req.body.branchId || req.userBranchId || req.user?.branchId || null;
-    const where = {};
-    if (branchId) where.branch_id = branchId;
+    const tenantBranches = await Branch.findAll({
+      where: { tenant_id: tenantId },
+      attributes: ['id'],
+    });
+    const tenantBranchIds = tenantBranches.map((b) => b.id);
+
+    // Match tagged tokens + legacy null-tenant rows only for this salon's branches
+    const where = {
+      [Op.or]: [
+        { tenant_id: tenantId },
+        ...(tenantBranchIds.length
+          ? [{ tenant_id: null, branch_id: { [Op.in]: tenantBranchIds } }]
+          : []),
+      ],
+    };
+    if (branchId) {
+      if (!tenantBranchIds.includes(Number(branchId)) && !tenantBranchIds.includes(branchId)) {
+        return res.status(403).json({ message: 'Branch does not belong to this salon.' });
+      }
+      where.branch_id = branchId;
+    }
 
     const rows = await StaffFcmToken.findAll({
       where,
@@ -384,7 +414,7 @@ const testPush = async (req, res) => {
       return res.status(404).json({
         message: branchId
           ? 'No staff devices registered for this branch. Open the staff mobile app, allow notifications, and sign in.'
-          : 'No staff devices registered. Open the staff mobile app, allow notifications, and sign in.',
+          : 'No staff devices registered for this salon. Open the staff mobile app, allow notifications, and sign in.',
       });
     }
 
@@ -395,7 +425,11 @@ const testPush = async (req, res) => {
     });
     const title = 'Hexaone — Test Notification';
     const body = `[TEST] Push reminder test at ${when}. If you see this, FCM is working.`;
-    const result = await sendTestPush(tokens, title, body, { type: 'test', branch_id: String(branchId || '') });
+    const result = await sendTestPush(tokens, title, body, {
+      type: 'test',
+      branch_id: String(branchId || ''),
+      tenant_id: String(tenantId),
+    });
 
     if (result.sent === 0) {
       return res.status(502).json({
@@ -457,6 +491,7 @@ const sendOfferSms = async (req, res) => {
     let sent = 0;
     let failed = 0;
     let skipped = 0;
+    const tenantId = resolveTenantId(req);
 
     for (const customer of customers) {
       const phone = String(customer.phone || '').trim();
@@ -471,7 +506,9 @@ const sendOfferSms = async (req, res) => {
           customer_name: customer.name,
           event_type: 'test',
           branch_id: customer.branch_id || req.userBranchId || null,
+          tenant_id: tenantId,
         },
+        tenantId,
       });
       if (!result) skipped++;
       else if (result.status === 'failed') failed++;
@@ -611,6 +648,9 @@ const DEFAULT_TEMPLATES = {
     },
   },
   recurring_reminder: {
+    whatsapp: {
+      body: `✂️ *{branch_name} — Recurring Visit Reminder*\n\nHi {customer_name}! Reminder for your visit today:\n\n📅 Date: {date}\n⏰ Time: {time}\n💇 Service: {service_name}\n🏠 Branch: {branch_name}\n\nSee you soon! 😊`,
+    },
     sms: {
       body: `{branch_name}\nHi {customer_name}! Reminder for your recurring visit today.\nService: {service_name}\nDate: {date} | {time}\nBranch: {branch_name}\nSee you soon!`,
     },

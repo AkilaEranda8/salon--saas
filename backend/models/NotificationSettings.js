@@ -132,6 +132,11 @@ const NotificationSettings = sequelize.define('NotificationSettings', {
     defaultValue: true,
     allowNull: false,
   },
+  recurring_reminder_whatsapp: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: true,
+    allowNull: false,
+  },
   walkin_checkin_whatsapp: {
     type: DataTypes.BOOLEAN,
     defaultValue: true,

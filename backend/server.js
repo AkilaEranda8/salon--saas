@@ -36,6 +36,7 @@ const ensureWalkInReminderColumns = require('./services/ensureWalkInReminderColu
 const ensureWalkInNotificationColumns = require('./services/ensureWalkInNotificationColumns');
 const { ensureWalkInCustomerIdColumn } = require('./services/ensureWalkInCustomerIdColumn');
 const { ensureWalkInTotalAmountColumn } = require('./services/ensureWalkInTotalAmountColumn');
+const { ensureFcmTokenTenantIds } = require('./services/ensureFcmTokenTenantIds');
 const { runWalkInQueueServicesMigration } = require('./services/walkInQueueServicesMigration');
 const ensureWhatsAppSchema = require('./services/ensureWhatsAppSchema');
 const { restoreSessionsOnBoot } = require('./services/whatsappWebService');
@@ -367,6 +368,7 @@ connectWithRetry().then(async () => {
   await ensureWalkInNotificationColumns();
   await ensureWalkInCustomerIdColumn();
   await ensureWalkInTotalAmountColumn();
+  await ensureFcmTokenTenantIds();
   await runWalkInQueueServicesMigration();
   await ensureWhatsAppSchema();
   restoreSessionsOnBoot().catch((e) => logger.warn('whatsapp_restore_failed', { message: e.message }));

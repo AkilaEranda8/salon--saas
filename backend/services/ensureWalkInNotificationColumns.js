@@ -33,6 +33,9 @@ async function ensureWalkInNotificationColumns() {
   await addIfMissing('notification_settings', 'recurring_reminder_sms', {
     type: DataTypes.BOOLEAN, defaultValue: true, allowNull: false,
   });
+  await addIfMissing('notification_settings', 'recurring_reminder_whatsapp', {
+    type: DataTypes.BOOLEAN, defaultValue: true, allowNull: false,
+  });
 
   await sequelize.query(`
     ALTER TABLE notification_logs MODIFY COLUMN event_type ENUM(

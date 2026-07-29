@@ -154,7 +154,7 @@ const EVENT_CHANNELS = {
   customer_registered:['email','sms'],
   appointment_confirmed:['email','whatsapp','sms'],
   appointment_completed:['whatsapp','sms'],
-  recurring_reminder:['sms'],
+  recurring_reminder:['whatsapp','sms'],
   payment_receipt:['email','whatsapp','sms'],
   loyalty_points:['whatsapp','sms'],
   walk_in_checkin:['whatsapp'],
@@ -166,6 +166,7 @@ const SETTINGS_KEY = {
   appointment_confirmed_email:'appt_confirmed_email', appointment_confirmed_whatsapp:'appt_confirmed_whatsapp', appointment_confirmed_sms:'appt_confirmed_sms',
   appointment_completed_whatsapp:'appt_completed_whatsapp', appointment_completed_sms:'appt_completed_sms',
   recurring_reminder_sms:'recurring_reminder_sms',
+  recurring_reminder_whatsapp:'recurring_reminder_whatsapp',
   payment_receipt_email:'payment_receipt_email', payment_receipt_whatsapp:'payment_receipt_whatsapp', payment_receipt_sms:'payment_receipt_sms',
   loyalty_points_whatsapp:'loyalty_points_whatsapp', loyalty_points_sms:'loyalty_points_sms',
   walk_in_checkin_whatsapp:'walkin_checkin_whatsapp',
@@ -235,8 +236,6 @@ export default function NotificationsPage() {
   const [waStatus, setWaStatus]           = useState({ status: 'disconnected' });
   const [waQrImage, setWaQrImage]         = useState(null);
   const [waBusy, setWaBusy]               = useState(false);
-  const [waMessages, setWaMessages]       = useState([]);
-  const [waMsgLoading, setWaMsgLoading]     = useState(false);
   const waSocketRef = useRef(null);
 
   useEffect(() => {
@@ -280,19 +279,9 @@ export default function NotificationsPage() {
     } catch { /* silent */ }
   }, []);
 
-  const loadWaMessages = useCallback(async () => {
-    setWaMsgLoading(true);
-    try {
-      const { data } = await api.get('/notifications/whatsapp/messages?limit=30');
-      setWaMessages(data?.data || []);
-    } catch { toast('Failed to load WhatsApp messages.', 'error'); }
-    finally { setWaMsgLoading(false); }
-  }, [toast]);
-
   useEffect(() => {
     if (!isAdmin) return;
     loadWaStatus();
-    loadWaMessages();
 
     const token = getKcAccessToken() || document.cookie.split(';').map(c => c.trim()).find(c => c.startsWith('token='))?.split('=')[1];
     const socket = io({ auth: { token } });
@@ -305,15 +294,13 @@ export default function NotificationsPage() {
       setWaStatus(prev => ({ ...prev, ...payload }));
       if (payload.status === 'connected') {
         setWaQrImage(null);
-        loadWaMessages();
         toast('WhatsApp connected!', 'success');
       }
       if (payload.status === 'disconnected') setWaQrImage(null);
     });
-    socket.on('whatsapp:message', () => loadWaMessages());
 
     return () => { socket.disconnect(); waSocketRef.current = null; };
-  }, [isAdmin, waTenantId, loadWaStatus, loadWaMessages, toast]);
+  }, [isAdmin, waTenantId, loadWaStatus, toast]);
 
   const handleWaConnect = async () => {
     setWaBusy(true);
@@ -518,13 +505,13 @@ export default function NotificationsPage() {
                 <Button onClick={saveSettings} disabled={settingsBusy}>{settingsBusy ? 'Saving…' : 'Save Settings'}</Button>
               </div>
 
-              {/* SMS Provider (Notify.lk) */}
+              {/* SMS Provider */}
               <div style={{ marginTop:20, border:`1px solid ${C.border}`, borderRadius:12, overflow:'hidden' }}>
                 <button type="button" onClick={() => setSmsOpen(o => !o)}
                   style={{ width:'100%', display:'flex', alignItems:'center', justifyContent:'space-between', padding:'14px 18px', background:C.sms.hdr, border:'none', cursor:'pointer', fontFamily:"'Inter',sans-serif" }}>
                   <span style={{ display:'flex', alignItems:'center', gap:8, fontSize:13, fontWeight:700, color:C.sms.hdrText }}>
                     <span style={{ fontSize:16 }}>📱</span>
-                    SMS Provider (Notify.lk)
+                    SMS Provider
                     {settings.sms_source === 'db'
                       ? <span style={{ fontSize:10, fontWeight:700, background:'#D1FAE5', color:'#065F46', padding:'2px 8px', borderRadius:6 }}>DB ✓</span>
                       : settings.sms_source === 'env'
@@ -539,7 +526,7 @@ export default function NotificationsPage() {
                 {smsOpen && (
                   <div style={{ padding:'16px 18px', display:'flex', flexDirection:'column', gap:14, borderTop:`1px solid ${C.sms.bodyBorder}`, background:C.sms.body }}>
                     <p style={{ margin:0, fontSize:12, color:C.sms.bodyText }}>
-                      Enter credentials from <strong>app.notify.lk</strong> → Account → API Keys tab.
+                      Enter your SMS gateway User ID, API Key, and approved Sender ID below.
                     </p>
 
                     {/* User ID */}
@@ -598,7 +585,7 @@ export default function NotificationsPage() {
                       <label style={{ display:'block', fontSize:12, fontWeight:600, color:C.label, marginBottom:5 }}>Sender ID <span style={{ fontWeight:400, color:C.faint }}>(approved Sender ID from Sender IDs tab)</span></label>
                       <input type="text" value={settings.sms_sender_id || ''}
                         onChange={e => setSettings(s => ({ ...s, sms_sender_id: e.target.value.trim() }))}
-                        placeholder="e.g. NotifyDEMO / Hexaone" style={inputStyle} />
+                        placeholder="e.g. Hexaone" style={inputStyle} />
                     </div>
 
                     {/* Test */}
@@ -794,30 +781,7 @@ export default function NotificationsPage() {
                           Disconnect
                         </button>
                       )}
-                      <button type="button" onClick={loadWaMessages} disabled={waMsgLoading}
-                        style={{ padding:'9px 18px', borderRadius:9, border:`1px solid ${C.border}`, background:C.card, color:C.label, fontWeight:600, fontSize:13, cursor:'pointer' }}>
-                        {waMsgLoading ? 'Loading…' : 'Refresh Inbox'}
-                      </button>
                     </div>
-
-                    {waMessages.length > 0 && (
-                      <div>
-                        <p style={{ fontSize:11, fontWeight:700, color:C.faint, letterSpacing:'0.06em', textTransform:'uppercase', margin:'0 0 8px' }}>Recent Messages</p>
-                        <div style={{ maxHeight:240, overflowY:'auto', border:`1px solid ${C.borderLight}`, borderRadius:10, background:C.soft }}>
-                          {waMessages.map(m => (
-                            <div key={m.id} style={{ padding:'10px 12px', borderBottom:`1px solid ${C.borderLight}`, fontSize:12 }}>
-                              <div style={{ display:'flex', justifyContent:'space-between', marginBottom:4 }}>
-                                <span style={{ fontWeight:700, color: m.direction === 'in' ? '#60A5FA' : '#4ADE80' }}>
-                                  {m.direction === 'in' ? '← In' : '→ Out'} {m.phone ? `+${m.phone}` : ''}
-                                </span>
-                                <span style={{ color:C.faint, fontSize:11 }}>{new Date(m.createdAt).toLocaleString()}</span>
-                              </div>
-                              <div style={{ color:C.label, whiteSpace:'pre-wrap' }}>{m.body}</div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
                   </div>
                 )}
               </div>

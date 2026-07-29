@@ -112,6 +112,7 @@ const DEFAULT_FLAGS = {
   walkin_serving_whatsapp:   true,
   walkin_completed_whatsapp: true,
   recurring_reminder_sms:    true,
+  recurring_reminder_whatsapp: true,
 };
 
 function resolveNotifyTenantId(explicit, ...sources) {
@@ -170,10 +171,22 @@ async function getTemplate(event_type, channel, tenantId) {
   }
 }
 
-// ── SMS credentials loader ──────────────────────────────────────────────────
-async function getSMSCreds() {
+// ── SMS credentials: tenant DB → platform DB (tenant_id=null) → env fallback ─
+async function getSMSCreds(tenantId = null) {
   try {
     const { NotificationSettings } = getModels();
+    // 1. Tenant-specific SMS (saved on Notifications page per salon)
+    if (tenantId) {
+      const tenantRow = await NotificationSettings.findOne({ where: { branch_id: null, tenant_id: tenantId } });
+      if (tenantRow && tenantRow.sms_user_id && tenantRow.sms_api_key) {
+        return {
+          userId:   tenantRow.sms_user_id.trim(),
+          apiKey:   tenantRow.sms_api_key.trim(),
+          senderId: tenantRow.sms_sender_id?.trim() || process.env.SMS_SENDER_ID || null,
+        };
+      }
+    }
+    // 2. Platform-level SMS
     const row = await NotificationSettings.findOne({ where: { branch_id: null, tenant_id: null } });
     if (row && row.sms_user_id && row.sms_api_key) {
       return {
@@ -183,6 +196,7 @@ async function getSMSCreds() {
       };
     }
   } catch { /* fall through */ }
+  // 3. Env fallback
   if (process.env.SMS_USER_ID && process.env.SMS_API_KEY) {
     return {
       userId:   process.env.SMS_USER_ID,
@@ -244,11 +258,12 @@ async function sendEmail({ to, subject, html, meta = {}, tenantId = null, attach
 
 /**
  * Send an SMS via Notify.lk. Logs result. Never throws.
- * @param {{ to, message, meta? }} opts
+ * @param {{ to, message, meta?, tenantId? }} opts
  */
-async function sendSMS({ to, message, meta = {} }) {
+async function sendSMS({ to, message, meta = {}, tenantId = null }) {
   if (!to) return null;
-  const creds = await getSMSCreds();
+  const tid = tenantId || meta.tenant_id || null;
+  const creds = await getSMSCreds(tid);
   if (!creds) {
     console.warn('[Notifications] SMS skipped — SMS credentials not configured.');
     return null;
@@ -299,6 +314,7 @@ async function sendSMS({ to, message, meta = {} }) {
   }
   await writeLog({
     ...meta,
+    tenant_id:       meta.tenant_id ?? tid,
     channel:         'sms',
     phone:           to,
     message_preview: message.slice(0, 255),

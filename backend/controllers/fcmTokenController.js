@@ -1,6 +1,7 @@
 'use strict';
 
 const { StaffFcmToken } = require('../models');
+const { resolveTenantId } = require('../utils/tenantScope');
 
 /**
  * POST /api/fcm-token
@@ -15,7 +16,8 @@ const registerToken = async (req, res) => {
     }
 
     const userId   = req.user?.id;
-    const branchId = req.user?.branchId || null;
+    const branchId = req.userBranchId || req.user?.branchId || null;
+    const tenantId = resolveTenantId(req);
 
     if (!userId) {
       return res.status(401).json({ message: 'Not authenticated.' });
@@ -25,6 +27,7 @@ const registerToken = async (req, res) => {
       user_id:     userId,
       fcm_token,
       branch_id:   branchId,
+      tenant_id:   tenantId,
       device_info: device_info || null,
     });
 

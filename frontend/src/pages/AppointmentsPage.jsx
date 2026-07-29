@@ -1288,7 +1288,9 @@ export default function AppointmentsPage() {
                       ))}
                     </Select>
                     <div style={{ fontSize: 12, color: isDark ? '#94A3B8' : '#667085', marginTop: 6 }}>
-                      Sent on the visit day for this recurring booking.
+                      {recurringTemplates.length
+                        ? 'Sent on the visit day for this recurring booking.'
+                        : 'No saved templates yet — add them in Notifications → Message Templates → Recurring Visit Reminder.'}
                     </div>
                   </FormGroup>
                 </>
@@ -1423,6 +1425,11 @@ export default function AppointmentsPage() {
                           </option>
                         ))}
                       </Select>
+                      <div style={{ fontSize: 12, color: isDark ? '#94A3B8' : '#667085', marginTop: 6 }}>
+                        {recurringTemplates.length
+                          ? 'Sent on the visit day for this recurring booking.'
+                          : 'No saved templates yet — add them in Notifications → Message Templates → Recurring Visit Reminder.'}
+                      </div>
                     </FormGroup>
                   </>
                 )}

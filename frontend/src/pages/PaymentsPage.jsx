@@ -1214,8 +1214,8 @@ export default function PaymentsPage() {
                           </Select>
                           <div style={{ fontSize: 12, color: isDark ? '#94A3B8' : '#667085', marginTop: 6 }}>
                             {receiptTemplates.length
-                              ? 'This message is sent on the visit day for this recurring booking.'
-                              : 'Add recurring templates under Notifications to choose one here.'}
+                              ? 'Sent on the visit day for this recurring booking.'
+                              : 'No saved templates yet — add them in Notifications → Message Templates → Recurring Visit Reminder.'}
                           </div>
                         </FormGroup>
                       </div>

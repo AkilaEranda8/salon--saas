@@ -1837,7 +1837,9 @@ export default function WalkInPage() {
                           ))}
                         </Select>
                         <div style={{ fontSize: 12, color: C.muted, marginTop: 6 }}>
-                          Sent on the visit day for this recurring booking.
+                          {recurringTemplates.length
+                            ? 'Sent on the visit day for this recurring booking.'
+                            : 'No saved templates yet — add them in Notifications → Message Templates → Recurring Visit Reminder.'}
                         </div>
                       </div>
                     </>

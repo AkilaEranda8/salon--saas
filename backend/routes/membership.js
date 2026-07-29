@@ -137,7 +137,7 @@ router.post('/enroll', requireRole('superadmin', 'admin', 'manager'), async (req
       tenant_id: tenantId,
       customer_id,
       plan_id,
-      branch_id: req.userBranchId || branch_id || null,
+      branch_id: req.userBranchId || branch_id || customer.branch_id || null,
       start_date,
       end_date: end ? end.toISOString().slice(0, 10) : null,
       status: 'active',
@@ -145,27 +145,31 @@ router.post('/enroll', requireRole('superadmin', 'admin', 'manager'), async (req
       amount_paid: amount_paid || plan.price,
       payment_reference,
       notes,
-      enrolled_by: req.user?.id,
+      enrolled_by: req.user?.id || null,
     });
 
     // Award bonus loyalty points
     if (plan.bonus_loyalty_points > 0) {
-      const newBalance = (customer.loyalty_points || 0) + plan.bonus_loyalty_points;
-      await customer.update({ loyalty_points: newBalance });
-      await LoyaltyTransaction.create({
-        tenant_id: tenantId,
-        customer_id,
-        type: 'earn',
-        points: plan.bonus_loyalty_points,
-        balance_after: newBalance,
-        description: `Membership bonus: ${plan.name}`,
-      }).catch(() => {});
+      try {
+        const newBalance = (customer.loyalty_points || 0) + plan.bonus_loyalty_points;
+        await customer.update({ loyalty_points: newBalance });
+        await LoyaltyTransaction.create({
+          tenant_id: tenantId,
+          customer_id,
+          type: 'earn',
+          points: plan.bonus_loyalty_points,
+          balance_after: newBalance,
+          description: `Membership bonus: ${plan.name}`,
+        });
+      } catch (loyaltyErr) {
+        console.error('[membership/enroll] loyalty bonus failed:', loyaltyErr.message);
+      }
     }
 
     return res.status(201).json(enrollment);
   } catch (err) {
-    console.error(err);
-    return res.status(500).json({ message: 'Server error.' });
+    console.error('[membership/enroll]', err);
+    return res.status(500).json({ message: err.message || 'Server error.' });
   }
 });
 

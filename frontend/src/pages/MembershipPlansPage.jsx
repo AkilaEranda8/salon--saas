@@ -43,7 +43,7 @@ function StatusBadge({ status, dark = false }) {
 
 export default function MembershipPlansPage() {
   const { user } = useAuth();
-  const { addToast } = useToast();
+  const { toast } = useToast();
   const { isDark, C } = usePageTheme();
   const canAdmin = ['superadmin', 'admin'].includes(user?.role);
 
@@ -163,10 +163,10 @@ export default function MembershipPlansPage() {
     try {
       if (editPlan) {
         await api.put(`/membership/plans/${editPlan.id}`, payload);
-        addToast('Plan updated', 'success');
+        toast.success('Plan updated');
       } else {
         await api.post('/membership/plans', payload);
-        addToast('Plan created', 'success');
+        toast.success('Plan created');
       }
       setShowPlanForm(false);
       setEditPlan(null);
@@ -175,7 +175,7 @@ export default function MembershipPlansPage() {
     } catch (err) {
       const msg = err.response?.data?.message || 'Failed to save plan.';
       setPlanFormError(msg);
-      addToast(msg, 'error');
+      toast.error(msg);
     } finally {
       setSaving(false);
     }
@@ -185,10 +185,10 @@ export default function MembershipPlansPage() {
     if (!window.confirm('Delete/deactivate this plan?')) return;
     try {
       await api.delete(`/membership/plans/${id}`);
-      addToast('Plan removed', 'success');
+      toast.success('Plan removed');
       loadPlans();
     } catch {
-      addToast('Error', 'error');
+      toast.error('Error');
     }
   };
 
@@ -217,7 +217,7 @@ export default function MembershipPlansPage() {
     setSaving(true);
     try {
       await api.post('/membership/enroll', payload);
-      addToast('Customer enrolled!', 'success');
+      toast.success('Customer enrolled!');
       setShowEnrollForm(false);
       setEnrollForm({
         customer_id: '', plan_id: '', start_date: new Date().toISOString().slice(0, 10), amount_paid: '', notes: '',
@@ -227,7 +227,7 @@ export default function MembershipPlansPage() {
     } catch (err) {
       const msg = err.response?.data?.message || 'Failed to enroll customer.';
       setEnrollFormError(msg);
-      addToast(msg, 'error');
+      toast.error(msg);
     } finally {
       setSaving(false);
     }
@@ -236,10 +236,10 @@ export default function MembershipPlansPage() {
   const updateEnrollStatus = async (id, status) => {
     try {
       await api.patch(`/membership/enrollments/${id}/status`, { status });
-      addToast('Updated', 'success');
+      toast.success('Updated');
       loadEnrollments();
     } catch {
-      addToast('Error', 'error');
+      toast.error('Error');
     }
   };
 

@@ -93,7 +93,7 @@ export default function InvDayEndPage() {
           color: 'var(--app-title, #101828)',
           fontFamily: "'Sora',sans-serif",
         }}>
-          Day End Stock Consumption
+          Day End Stock Closing
         </div>
         <div style={{
           fontSize: 13,
@@ -101,7 +101,8 @@ export default function InvDayEndPage() {
           lineHeight: 1.5,
           fontFamily: "'Inter',sans-serif",
         }}>
-          Appointments during the day record usage as <strong>Pending</strong>. Stock does not change until you confirm deduction here.
+          Consumable usage recorded during the day stays <strong>Pending</strong>. Completing appointments or payments does not change stock.
+          Stock decreases only when Day End Closing is confirmed here. All movements are saved in History.
         </div>
       </div>
 

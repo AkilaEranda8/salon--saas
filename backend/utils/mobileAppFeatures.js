@@ -10,6 +10,7 @@ const MOBILE_FEATURE_CATALOG = [
   { key: 'ai_chat', label: 'AI Chat' },
   { key: 'reminders', label: 'Reminders' },
   { key: 'expenses', label: 'Expenses' },
+  { key: 'inventory', label: 'Inventory' },
   { key: 'user_permissions', label: 'User Permissions' },
 ];
 
@@ -36,6 +37,7 @@ function getSystemRoleDefaults(role) {
       ai_chat: false,
       reminders: true,
       expenses: false,
+      inventory: true,
       user_permissions: false,
     };
   }
@@ -51,6 +53,7 @@ function getSystemRoleDefaults(role) {
     ai_chat: false,
     reminders: false,
     expenses: false,
+    inventory: true,
     user_permissions: false,
   };
 }

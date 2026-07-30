@@ -19,6 +19,9 @@ class Appointment {
     this.staffId = '',
     this.customerId = '',
     this.branchName = '',
+    this.isRecurring = false,
+    this.recurringNextDate = '',
+    this.recurringMessageTemplateIds = const [],
   });
 
   final String id;
@@ -38,6 +41,9 @@ class Appointment {
   final String staffId;
   final String customerId;
   final String branchName;
+  final bool isRecurring;
+  final String recurringNextDate;
+  final List<String> recurringMessageTemplateIds;
 
   /// Primary + additional service names (from notes), de-duplicated, order preserved.
   String get servicesDisplay {
@@ -90,6 +96,17 @@ class Appointment {
         if (s.isNotEmpty && s != 'null') parsedIds.add(s);
       }
     }
+    final rawTplIds = json['recurring_message_template_ids'];
+    final parsedTplIds = <String>[];
+    if (rawTplIds is List) {
+      for (final e in rawTplIds) {
+        final s = '$e'.trim();
+        if (s.isNotEmpty && s != 'null') parsedTplIds.add(s);
+      }
+    } else {
+      final legacy = '${json['recurring_message_template_id'] ?? ''}'.trim();
+      if (legacy.isNotEmpty && legacy != 'null') parsedTplIds.add(legacy);
+    }
     return Appointment(
       id: '${json['id']}',
       customerName: '${json['customer_name'] ?? ''}',
@@ -107,6 +124,9 @@ class Appointment {
       staffId: '${json['staff_id'] ?? staff?['id'] ?? ''}',
       customerId: '${json['customer_id'] ?? customer?['id'] ?? ''}',
       branchName: '${branch is Map ? branch['name'] ?? '' : ''}',
+      isRecurring: json['is_recurring'] == true,
+      recurringNextDate: '${json['recurring_next_date'] ?? ''}'.trim(),
+      recurringMessageTemplateIds: parsedTplIds,
     );
   }
 }

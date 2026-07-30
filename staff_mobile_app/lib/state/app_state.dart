@@ -12,6 +12,7 @@ import '../models/salon_service.dart';
 import '../models/staff_commission_summary.dart';
 import '../models/staff_member.dart';
 import '../models/mobile_feature.dart';
+import '../models/recurring_template_option.dart';
 import '../models/staff_user.dart';
 import '../models/walkin_entry.dart';
 import '../services/mobile_api.dart';
@@ -47,9 +48,9 @@ class AppState extends ChangeNotifier {
     });
   }
 
-  static const _kAuthTokenKey    = 'staff_auth_token';
-  static const _kUserJsonKey     = 'staff_user_json';
-  static const _kSlugKey         = 'salon_slug';
+  static const _kAuthTokenKey = 'staff_auth_token';
+  static const _kUserJsonKey = 'staff_user_json';
+  static const _kSlugKey = 'salon_slug';
   static const _kRefreshTokenKey = 'kc_refresh_token';
 
   MobileApi _api;
@@ -57,7 +58,10 @@ class AppState extends ChangeNotifier {
   String get apiBaseUrl => _api.baseUrl;
 
   void setSlug(String slug) {
-    _api = MobileApi(baseUrl: kStaffApiBaseUrl, slug: slug.trim().toLowerCase());
+    _api = MobileApi(
+      baseUrl: kStaffApiBaseUrl,
+      slug: slug.trim().toLowerCase(),
+    );
   }
 
   Future<String?> getSavedSlug() async {
@@ -95,7 +99,7 @@ class AppState extends ChangeNotifier {
   List<SalonService> get services => List.unmodifiable(_services);
   List<Map<String, String>> get branches => List.unmodifiable(_branches);
   StaffUser? get currentUser => _currentUser;
-  MobileApi  get api        => _api;
+  MobileApi get api => _api;
   String? get lastError => _lastError;
   int get appointmentTotal => _appointmentTotal;
 
@@ -287,7 +291,8 @@ class AppState extends ChangeNotifier {
     final staffBranchMap = staffProfile['branch'] is Map
         ? Map<String, dynamic>.from(staffProfile['branch'])
         : const <String, dynamic>{};
-    final rawBranchId = user['branchId'] ??
+    final rawBranchId =
+        user['branchId'] ??
         user['branch_id'] ??
         branchMap['id'] ??
         staffProfile['branch_id'] ??
@@ -300,7 +305,9 @@ class AppState extends ChangeNotifier {
         ? Map<String, dynamic>.from(user['tenant'])
         : const <String, dynamic>{};
     final tenantSlug = '${tenantMap['slug'] ?? prev?.tenantSlug ?? ''}'.trim();
-    final tenantName = '${tenantMap['name'] ?? tenantMap['brand_name'] ?? prev?.tenantName ?? ''}'.trim();
+    final tenantName =
+        '${tenantMap['name'] ?? tenantMap['brand_name'] ?? prev?.tenantName ?? ''}'
+            .trim();
     final effectiveFeatures = tenantMap['effective_features'];
     final tenantFeatures = <String, bool>{};
     if (effectiveFeatures is Map) {
@@ -314,11 +321,15 @@ class AppState extends ChangeNotifier {
       id: '${user['id'] ?? prev?.id ?? ''}',
       username: '${user['username'] ?? prev?.username ?? ''}',
       password: '',
-      displayName: '${user['name'] ?? user['username'] ?? prev?.displayName ?? 'Staff'}',
+      displayName:
+          '${user['name'] ?? user['username'] ?? prev?.displayName ?? 'Staff'}',
       isActive: true,
       role: role,
-      branchId: (branchId.isEmpty || branchId.toLowerCase() == 'null') ? null : branchId,
-      linkedStaffId: (linkedStaffId.isEmpty || linkedStaffId.toLowerCase() == 'null')
+      branchId: (branchId.isEmpty || branchId.toLowerCase() == 'null')
+          ? null
+          : branchId,
+      linkedStaffId:
+          (linkedStaffId.isEmpty || linkedStaffId.toLowerCase() == 'null')
           ? null
           : linkedStaffId,
       tenantSlug: tenantSlug.isEmpty ? null : tenantSlug,
@@ -434,7 +445,9 @@ class AppState extends ChangeNotifier {
         name: name,
         phone: phone,
         email: email,
-        branchId: (effectiveBranchId == null || effectiveBranchId.isEmpty) ? null : effectiveBranchId,
+        branchId: (effectiveBranchId == null || effectiveBranchId.isEmpty)
+            ? null
+            : effectiveBranchId,
       );
       _customers.insert(0, customer);
       notifyListeners();
@@ -532,8 +545,7 @@ class AppState extends ChangeNotifier {
         specs.add({
           'service_id': sid,
           'commission_type': commissionType ?? 'percentage',
-          'commission_value':
-              raw.isEmpty ? null : double.tryParse(raw),
+          'commission_value': raw.isEmpty ? null : double.tryParse(raw),
         });
       }
       if (specs.isEmpty && _services.isNotEmpty) {
@@ -613,11 +625,16 @@ class AppState extends ChangeNotifier {
     return _api.fetchStaff(token: token, branchId: branchId);
   }
 
-  Future<List<Map<String, dynamic>>> loadCustomerActivePackages(String customerId) async {
+  Future<List<Map<String, dynamic>>> loadCustomerActivePackages(
+    String customerId,
+  ) async {
     final token = _currentUser?.authToken;
     if (token == null || token.isEmpty || customerId.isEmpty) return const [];
     try {
-      return await _api.fetchActivePackages(token: token, customerId: customerId);
+      return await _api.fetchActivePackages(
+        token: token,
+        customerId: customerId,
+      );
     } catch (_) {
       return const [];
     }
@@ -645,10 +662,7 @@ class AppState extends ChangeNotifier {
       ..clear()
       ..addAll(
         scoped.map(
-          (b) => {
-            'id': '${b['id'] ?? ''}',
-            'name': '${b['name'] ?? ''}',
-          },
+          (b) => {'id': '${b['id'] ?? ''}', 'name': '${b['name'] ?? ''}'},
         ),
       );
     notifyListeners();
@@ -753,11 +767,28 @@ class AppState extends ChangeNotifier {
     return '${n.year}-${n.month.toString().padLeft(2, '0')}';
   }
 
-  Future<List<Map<String, dynamic>>> loadDiscountsForPayment(String branchId) async {
+  Future<List<Map<String, dynamic>>> loadDiscountsForPayment(
+    String branchId,
+  ) async {
     final token = _currentUser?.authToken;
     if (token == null || token.isEmpty) return const [];
     try {
-      return await _api.fetchDiscountsForPayment(token: token, branchId: branchId);
+      return await _api.fetchDiscountsForPayment(
+        token: token,
+        branchId: branchId,
+      );
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  bool get recurringAllowed => isTenantFeatureEnabled('recurring');
+
+  Future<List<RecurringTemplateOption>> loadRecurringTemplateOptions() async {
+    final token = _currentUser?.authToken;
+    if (token == null || token.isEmpty) return const [];
+    try {
+      return await _api.fetchRecurringTemplateOptions(token: token);
     } catch (_) {
       return const [];
     }
@@ -778,6 +809,10 @@ class AppState extends ChangeNotifier {
     required String paidAmount,
     String? discountId,
     String? walkinToken,
+    bool isRecurring = false,
+    String? recurringNextDate,
+    String? appointmentTime,
+    List<String>? recurringMessageTemplateIds,
   }) async {
     final token = _currentUser?.authToken;
     if (token == null || token.isEmpty) {
@@ -801,6 +836,10 @@ class AppState extends ChangeNotifier {
         paidAmount: paidAmount,
         discountId: discountId,
         walkinToken: walkinToken,
+        isRecurring: isRecurring,
+        recurringNextDate: recurringNextDate,
+        appointmentTime: appointmentTime,
+        recurringMessageTemplateIds: recurringMessageTemplateIds,
       );
       return true;
     } catch (e) {
@@ -855,11 +894,7 @@ class AppState extends ChangeNotifier {
     if (token == null || token.isEmpty) {
       throw Exception('Missing auth token (cannot load walk-ins).');
     }
-    return _api.fetchWalkIns(
-      token: token,
-      branchId: branchId,
-      date: date,
-    );
+    return _api.fetchWalkIns(token: token, branchId: branchId, date: date);
   }
 
   /// Returns the created queue row (including `total_amount`) on success.
@@ -934,7 +969,10 @@ class AppState extends ChangeNotifier {
     }
     try {
       await _api.assignWalkInStaff(
-          token: token, walkInId: walkInId, staffId: staffId);
+        token: token,
+        walkInId: walkInId,
+        staffId: staffId,
+      );
       return true;
     } catch (e) {
       _lastError = e.toString().replaceFirst('Exception: ', '');
@@ -1037,8 +1075,12 @@ class AppState extends ChangeNotifier {
     required String baseNotes,
     required String status,
     String? amountOverride,
+    bool isRecurring = false,
+    String? recurringNextDate,
+    List<String>? recurringMessageTemplateIds,
   }) async {
-    if (!hasPermission(StaffPermission.canAddAppointments) || _currentUser == null) {
+    if (!hasPermission(StaffPermission.canAddAppointments) ||
+        _currentUser == null) {
       return false;
     }
     final token = _currentUser?.authToken;
@@ -1070,7 +1112,8 @@ class AppState extends ChangeNotifier {
           .toList();
       final notes = AppointmentNotes.combineNotes(baseNotes, extraNames);
       final autoTotal = _sumServicePrices(orderedServiceIds);
-      final amountStr = (amountOverride != null && amountOverride.trim().isNotEmpty)
+      final amountStr =
+          (amountOverride != null && amountOverride.trim().isNotEmpty)
           ? amountOverride.trim()
           : (autoTotal > 0 ? autoTotal.toString() : null);
 
@@ -1089,6 +1132,9 @@ class AppState extends ChangeNotifier {
           amount: amountStr,
           notes: notes,
           status: status.isNotEmpty ? status : null,
+          isRecurring: isRecurring,
+          recurringNextDate: recurringNextDate,
+          recurringMessageTemplateIds: recurringMessageTemplateIds,
         );
       } else {
         await _api.createAppointment(
@@ -1104,6 +1150,9 @@ class AppState extends ChangeNotifier {
           staffId: staffId.isNotEmpty ? staffId : null,
           amount: amountStr,
           notes: notes,
+          isRecurring: isRecurring,
+          recurringNextDate: recurringNextDate,
+          recurringMessageTemplateIds: recurringMessageTemplateIds,
         );
       }
       await reloadAppointments();
@@ -1163,6 +1212,9 @@ class AppState extends ChangeNotifier {
     String promoDiscount = '0',
     String? discountId,
     String? phone,
+    bool isRecurring = false,
+    String? recurringNextDate,
+    List<String>? recurringMessageTemplateIds,
   }) async {
     final token = _currentUser?.authToken;
     if (token == null || token.isEmpty) {
@@ -1179,7 +1231,10 @@ class AppState extends ChangeNotifier {
       return false;
     }
     final effectiveBranchId =
-        (appointment.branchId.isNotEmpty ? appointment.branchId : (_currentUser?.branchId ?? '')).trim();
+        (appointment.branchId.isNotEmpty
+                ? appointment.branchId
+                : (_currentUser?.branchId ?? ''))
+            .trim();
     if (effectiveBranchId.isEmpty) {
       _lastError = 'Branch not found for this appointment.';
       return false;
@@ -1193,14 +1248,23 @@ class AppState extends ChangeNotifier {
         serviceId: paymentServiceIds.first,
         serviceIds: paymentServiceIds,
         staffId: appointment.staffId.isNotEmpty ? appointment.staffId : null,
-        customerId: appointment.customerId.isNotEmpty ? appointment.customerId : null,
+        customerId: appointment.customerId.isNotEmpty
+            ? appointment.customerId
+            : null,
         amount: amount,
         method: method,
         subtotal: subtotal,
         loyaltyDiscount: loyaltyDiscount,
         promoDiscount: promoDiscount,
-        phone: phone ?? (appointment.phone.trim().isEmpty ? null : appointment.phone.trim()),
+        phone:
+            phone ??
+            (appointment.phone.trim().isEmpty
+                ? null
+                : appointment.phone.trim()),
         discountId: discountId,
+        isRecurring: isRecurring,
+        recurringNextDate: recurringNextDate,
+        recurringMessageTemplateIds: recurringMessageTemplateIds,
       );
       await _api.updateAppointmentStatus(
         token: token,
@@ -1215,6 +1279,241 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  Future<List<Map<String, dynamic>>> loadInventoryProducts({
+    String? branchId,
+    bool consumableOnly = true,
+  }) async {
+    final token = _currentUser?.authToken;
+    if (token == null || token.isEmpty) throw Exception('Missing auth token.');
+    return _api.fetchInventoryProducts(
+      token: token,
+      branchId: branchId ?? _currentUser?.branchId,
+      consumableOnly: consumableOnly,
+    );
+  }
+
+  Future<bool> addInventoryProduct({
+    required String branchId,
+    required String name,
+    required String productType,
+    required String unit,
+    required double openingStock,
+    double minStock = 0,
+    double maxStock = 0,
+    double costPrice = 0,
+    String? sku,
+  }) async {
+    final token = _currentUser?.authToken;
+    if (token == null || token.isEmpty) {
+      _lastError = 'Missing auth token.';
+      return false;
+    }
+    try {
+      await _api.createInventoryProduct(
+        token: token,
+        branchId: branchId,
+        name: name,
+        productType: productType,
+        unit: unit,
+        openingStock: openingStock,
+        minStock: minStock,
+        maxStock: maxStock,
+        costPrice: costPrice,
+        sku: sku,
+      );
+      return true;
+    } catch (e) {
+      _lastError = e.toString().replaceFirst('Exception: ', '');
+      return false;
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> loadInventoryGoodsReceipts({
+    String? branchId,
+  }) async {
+    final token = _currentUser?.authToken;
+    if (token == null || token.isEmpty) throw Exception('Missing auth token.');
+    return _api.fetchInventoryGoodsReceipts(
+      token: token,
+      branchId: branchId ?? _currentUser?.branchId,
+    );
+  }
+
+  Future<bool> receiveInventoryGoods({
+    required String branchId,
+    required String receivedDate,
+    required List<Map<String, dynamic>> items,
+    String? notes,
+  }) async {
+    final token = _currentUser?.authToken;
+    if (token == null || token.isEmpty) {
+      _lastError = 'Missing auth token.';
+      return false;
+    }
+    try {
+      await _api.createInventoryGoodsReceipt(
+        token: token,
+        branchId: branchId,
+        receivedDate: receivedDate,
+        items: items,
+        notes: notes,
+      );
+      return true;
+    } catch (e) {
+      _lastError = e.toString().replaceFirst('Exception: ', '');
+      return false;
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> loadInventoryAdjustments({
+    String? branchId,
+  }) async {
+    final token = _currentUser?.authToken;
+    if (token == null || token.isEmpty) throw Exception('Missing auth token.');
+    return _api.fetchInventoryAdjustments(
+      token: token,
+      branchId: branchId ?? _currentUser?.branchId,
+    );
+  }
+
+  Future<bool> adjustInventoryStock({
+    required String branchId,
+    required String productId,
+    required String direction,
+    required double quantity,
+    required String reason,
+  }) async {
+    final token = _currentUser?.authToken;
+    if (token == null || token.isEmpty) {
+      _lastError = 'Missing auth token.';
+      return false;
+    }
+    try {
+      await _api.createInventoryAdjustment(
+        token: token,
+        branchId: branchId,
+        productId: productId,
+        direction: direction,
+        quantity: quantity,
+        reason: reason,
+      );
+      return true;
+    } catch (e) {
+      _lastError = e.toString().replaceFirst('Exception: ', '');
+      return false;
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> loadInventoryConsumptions({
+    String? branchId,
+    String? status,
+    String? date,
+  }) async {
+    final token = _currentUser?.authToken;
+    if (token == null || token.isEmpty) throw Exception('Missing auth token.');
+    return _api.fetchInventoryConsumptions(
+      token: token,
+      branchId: branchId ?? _currentUser?.branchId,
+      status: status,
+      date: date,
+    );
+  }
+
+  Future<bool> recordInventoryConsumption({
+    required String branchId,
+    required String productId,
+    required double quantity,
+    required String date,
+    required String unit,
+    String? staffId,
+    String? serviceId,
+    String? reason,
+  }) async {
+    final token = _currentUser?.authToken;
+    if (token == null || token.isEmpty) {
+      _lastError = 'Missing auth token.';
+      return false;
+    }
+    try {
+      await _api.createInventoryConsumption(
+        token: token,
+        branchId: branchId,
+        productId: productId,
+        quantity: quantity,
+        date: date,
+        unit: unit,
+        staffId: staffId,
+        serviceId: serviceId,
+        reason: reason,
+      );
+      return true;
+    } catch (e) {
+      _lastError = e.toString().replaceFirst('Exception: ', '');
+      return false;
+    }
+  }
+
+  Future<Map<String, dynamic>> loadInventoryDayEndPreview({
+    required String branchId,
+    required String date,
+  }) async {
+    final token = _currentUser?.authToken;
+    if (token == null || token.isEmpty) throw Exception('Missing auth token.');
+    return _api.fetchInventoryDayEndPreview(
+      token: token,
+      branchId: branchId,
+      date: date,
+    );
+  }
+
+  Future<bool> closeInventoryDay({
+    required String branchId,
+    required String date,
+    required List<Map<String, dynamic>> items,
+    String? notes,
+  }) async {
+    final token = _currentUser?.authToken;
+    if (token == null || token.isEmpty) {
+      _lastError = 'Missing auth token.';
+      return false;
+    }
+    if (!canManageSalonStaff) {
+      _lastError =
+          'Only managers and administrators can complete Day End Closing.';
+      return false;
+    }
+    try {
+      await _api.confirmInventoryDayEnd(
+        token: token,
+        branchId: branchId,
+        date: date,
+        items: items,
+        notes: notes,
+      );
+      return true;
+    } catch (e) {
+      _lastError = e.toString().replaceFirst('Exception: ', '');
+      return false;
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> loadInventoryHistory({
+    String? branchId,
+    String? movementType,
+    String? from,
+    String? to,
+  }) async {
+    final token = _currentUser?.authToken;
+    if (token == null || token.isEmpty) throw Exception('Missing auth token.');
+    return _api.fetchInventoryHistory(
+      token: token,
+      branchId: branchId ?? _currentUser?.branchId,
+      movementType: movementType,
+      from: from,
+      to: to,
+    );
+  }
+
   /// GET /api/commission-payouts
   Future<List<Map<String, dynamic>>> loadCommissionPayouts({
     String? staffId,
@@ -1224,12 +1523,15 @@ class AppState extends ChangeNotifier {
     if (token == null || token.isEmpty) throw Exception('Missing auth token.');
     final body = await _api.fetchCommissionPayouts(
       token: token,
-      staffId:  staffId,
-      month:    month,
+      staffId: staffId,
+      month: month,
       branchId: _currentUser?.branchId,
     );
     final list = body['data'] as List? ?? const [];
-    return list.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+    return list
+        .whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
   }
 
   /// POST /api/commission-payouts
@@ -1242,11 +1544,20 @@ class AppState extends ChangeNotifier {
     String? notes,
   }) async {
     final token = _currentUser?.authToken;
-    if (token == null || token.isEmpty) { _lastError = 'Missing auth token.'; return false; }
+    if (token == null || token.isEmpty) {
+      _lastError = 'Missing auth token.';
+      return false;
+    }
     try {
       await _api.createCommissionPayout(
-        token: token, staffId: staffId, branchId: branchId,
-        amount: amount, date: date, month: month, notes: notes);
+        token: token,
+        staffId: staffId,
+        branchId: branchId,
+        amount: amount,
+        date: date,
+        month: month,
+        notes: notes,
+      );
       return true;
     } catch (e) {
       _lastError = e.toString().replaceFirst('Exception: ', '');
@@ -1257,7 +1568,10 @@ class AppState extends ChangeNotifier {
   /// DELETE /api/commission-payouts/:id
   Future<bool> deleteCommissionPayout(String payoutId) async {
     final token = _currentUser?.authToken;
-    if (token == null || token.isEmpty) { _lastError = 'Missing auth token.'; return false; }
+    if (token == null || token.isEmpty) {
+      _lastError = 'Missing auth token.';
+      return false;
+    }
     try {
       await _api.deleteCommissionPayout(token: token, payoutId: payoutId);
       return true;
@@ -1277,13 +1591,16 @@ class AppState extends ChangeNotifier {
     if (token == null || token.isEmpty) throw Exception('Missing auth token.');
     final body = await _api.fetchAdvances(
       token: token,
-      staffId:  staffId,
-      month:    month,
+      staffId: staffId,
+      month: month,
       branchId: _currentUser?.branchId,
-      status:   status,
+      status: status,
     );
     final list = body['data'] as List? ?? const [];
-    return list.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+    return list
+        .whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
   }
 
   /// POST /api/advances
@@ -1296,11 +1613,20 @@ class AppState extends ChangeNotifier {
     String? reason,
   }) async {
     final token = _currentUser?.authToken;
-    if (token == null || token.isEmpty) { _lastError = 'Missing auth token.'; return false; }
+    if (token == null || token.isEmpty) {
+      _lastError = 'Missing auth token.';
+      return false;
+    }
     try {
       await _api.createAdvance(
-        token: token, staffId: staffId, branchId: branchId,
-        amount: amount, date: date, month: month, reason: reason);
+        token: token,
+        staffId: staffId,
+        branchId: branchId,
+        amount: amount,
+        date: date,
+        month: month,
+        reason: reason,
+      );
       return true;
     } catch (e) {
       _lastError = e.toString().replaceFirst('Exception: ', '');
@@ -1311,7 +1637,10 @@ class AppState extends ChangeNotifier {
   /// PATCH /api/advances/:id/deduct
   Future<bool> markAdvanceDeducted(String advanceId) async {
     final token = _currentUser?.authToken;
-    if (token == null || token.isEmpty) { _lastError = 'Missing auth token.'; return false; }
+    if (token == null || token.isEmpty) {
+      _lastError = 'Missing auth token.';
+      return false;
+    }
     try {
       await _api.markAdvanceDeducted(token: token, advanceId: advanceId);
       return true;
@@ -1324,7 +1653,10 @@ class AppState extends ChangeNotifier {
   /// PATCH /api/advances/:id/revert
   Future<bool> revertAdvanceToPending(String advanceId) async {
     final token = _currentUser?.authToken;
-    if (token == null || token.isEmpty) { _lastError = 'Missing auth token.'; return false; }
+    if (token == null || token.isEmpty) {
+      _lastError = 'Missing auth token.';
+      return false;
+    }
     try {
       await _api.revertAdvanceToPending(token: token, advanceId: advanceId);
       return true;
@@ -1337,7 +1669,10 @@ class AppState extends ChangeNotifier {
   /// DELETE /api/advances/:id
   Future<bool> deleteAdvance(String advanceId) async {
     final token = _currentUser?.authToken;
-    if (token == null || token.isEmpty) { _lastError = 'Missing auth token.'; return false; }
+    if (token == null || token.isEmpty) {
+      _lastError = 'Missing auth token.';
+      return false;
+    }
     try {
       await _api.deleteAdvance(token: token, advanceId: advanceId);
       return true;
@@ -1385,7 +1720,9 @@ class AppState extends ChangeNotifier {
   }
 
   /// PUT /api/users/mobile-features/role-defaults (superadmin).
-  Future<bool> saveMobileRoleDefaults(Map<String, Map<String, bool>> defaults) async {
+  Future<bool> saveMobileRoleDefaults(
+    Map<String, Map<String, bool>> defaults,
+  ) async {
     final token = _currentUser?.authToken;
     if (token == null || token.isEmpty) {
       _lastError = 'Missing auth token.';
@@ -1465,8 +1802,12 @@ class AppState extends ChangeNotifier {
       branchId: branchId ?? _currentUser?.branchId,
       month: month,
     );
-    final list = body['data'] as List? ?? (body is List ? body as List : const []);
-    return list.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+    final list =
+        body['data'] as List? ?? (body is List ? body as List : const []);
+    return list
+        .whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
   }
 
   /// POST /api/expenses — superadmin only.
@@ -1511,10 +1852,7 @@ class AppState extends ChangeNotifier {
     if (token == null || token.isEmpty) {
       throw Exception('Missing auth token (cannot load reminders).');
     }
-    return _api.fetchReminders(
-      token: token,
-      branchId: _currentUser?.branchId,
-    );
+    return _api.fetchReminders(token: token, branchId: _currentUser?.branchId);
   }
 
   Future<bool> createReminder({

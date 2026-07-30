@@ -10,6 +10,7 @@ class MobileFeatures {
   static const aiChat = 'ai_chat';
   static const reminders = 'reminders';
   static const expenses = 'expenses';
+  static const inventory = 'inventory';
   static const userPermissions = 'user_permissions';
 
   static const allKeys = [
@@ -24,6 +25,7 @@ class MobileFeatures {
     aiChat,
     reminders,
     expenses,
+    inventory,
     userPermissions,
   ];
 
@@ -39,6 +41,7 @@ class MobileFeatures {
     aiChat: 'AI Chat',
     reminders: 'Reminders',
     expenses: 'Expenses',
+    inventory: 'Inventory',
     userPermissions: 'User Permissions',
   };
 

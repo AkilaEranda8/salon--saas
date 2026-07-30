@@ -6,7 +6,7 @@ const InvStockMovement = require('../models/InvStockMovement');
 
 /**
  * Apply a stock movement atomically.
- * Equipment products never reduce on consumption.
+ * Consumption may only reduce Consumable products.
  */
 async function applyStockChange({
   product,
@@ -24,9 +24,17 @@ async function applyStockChange({
   const opening = parseFloat(product.current_stock) || 0;
   let change = parseFloat(delta) || 0;
 
-  // Equipment never auto-reduces via consumption
-  if (product.product_type === 'equipment' && movementType === 'consumption' && change < 0) {
-    change = 0;
+  if (movementType === 'consumption' && change < 0) {
+    if (product.product_type === 'equipment') {
+      const err = new Error('Equipment products cannot be consumed.');
+      err.status = 400;
+      throw err;
+    }
+    if (product.product_type !== 'consumable') {
+      const err = new Error('Only Consumable products can be consumed.');
+      err.status = 400;
+      throw err;
+    }
   }
 
   const closing = opening + change;

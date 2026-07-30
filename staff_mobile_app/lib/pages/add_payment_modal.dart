@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 
 import '../models/customer.dart';
+import '../models/recurring_template_option.dart';
 import '../services/mobile_api.dart';
 import 'helapay_qr_screen.dart';
 import '../models/salon_service.dart';
 import '../models/staff_member.dart';
+import '../widgets/recurring_booking_section.dart';
 import '../widgets/walk_in_service_dropdown_section.dart';
 
 // ── Sentinel id used to represent "Register new customer" option ──────────────
@@ -30,6 +32,9 @@ class AddPaymentModalResult {
     required this.paidAmount,
     required this.customerName,
     this.discountId = '',
+    this.isRecurring = false,
+    this.recurringNextDate = '',
+    this.recurringMessageTemplateIds = const [],
   });
 
   final String branchId;
@@ -44,6 +49,9 @@ class AddPaymentModalResult {
   final String customerName;
   /// Promo catalog discount id (optional).
   final String discountId;
+  final bool isRecurring;
+  final String recurringNextDate;
+  final List<String> recurringMessageTemplateIds;
 }
 
 class AddPaymentModal extends StatefulWidget {
@@ -57,6 +65,7 @@ class AddPaymentModal extends StatefulWidget {
     this.onRegisterNewCustomer,
     this.mobileApi,
     this.token = '',
+    this.recurringAllowed = false,
     super.key,
   });
 
@@ -72,6 +81,7 @@ class AddPaymentModal extends StatefulWidget {
   final Future<Customer?> Function(String name, String phone, String? branchId)? onRegisterNewCustomer;
   final MobileApi? mobileApi;
   final String token;
+  final bool recurringAllowed;
 
   static Future<AddPaymentModalResult?> show(
     BuildContext context, {
@@ -84,6 +94,7 @@ class AddPaymentModal extends StatefulWidget {
     Future<Customer?> Function(String name, String phone, String? branchId)? onRegisterNewCustomer,
     MobileApi? mobileApi,
     String token = '',
+    bool recurringAllowed = false,
   }) {
     return showModalBottomSheet<AddPaymentModalResult>(
       context: context,
@@ -99,6 +110,7 @@ class AddPaymentModal extends StatefulWidget {
         onRegisterNewCustomer: onRegisterNewCustomer,
         mobileApi: mobileApi,
         token: token,
+        recurringAllowed: recurringAllowed,
       ),
     );
   }
@@ -139,11 +151,39 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
   final List<String> _extraServiceIds = [];
   String _method = _methods.first;
   String _discountId = '';
+  bool _isRecurring = false;
+  String _recurringNextDate = defaultRecurringNextDate();
+  List<String> _recurringTemplateIds = [];
+  List<RecurringTemplateOption> _recurringTemplates = const [];
+  bool _loadingTemplates = false;
 
   @override
   void initState() {
     super.initState();
     _branchId = widget.initialBranchId;
+    if (widget.recurringAllowed) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _loadRecurringTemplates());
+    }
+  }
+
+  Future<void> _loadRecurringTemplates() async {
+    final api = widget.mobileApi;
+    if (api == null || widget.token.isEmpty) return;
+    setState(() => _loadingTemplates = true);
+    try {
+      final options = await api.fetchRecurringTemplateOptions(token: widget.token);
+      if (!mounted) return;
+      setState(() {
+        _recurringTemplates = options;
+        _loadingTemplates = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _recurringTemplates = const [];
+        _loadingTemplates = false;
+      });
+    }
   }
 
   @override
@@ -247,6 +287,15 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
       );
       return;
     }
+    if (widget.recurringAllowed && _isRecurring && _recurringNextDate.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Select the next recurring visit date.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
     final allCusts = [
       ?_newlyRegistered,
       ...widget.customers,
@@ -270,6 +319,9 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
       customerName:   _customerNameCtrl.text.trim().isEmpty
                           ? cust.name
                           : _customerNameCtrl.text.trim(),
+      isRecurring: widget.recurringAllowed && _isRecurring,
+      recurringNextDate: _recurringNextDate,
+      recurringMessageTemplateIds: List<String>.from(_recurringTemplateIds),
     );
 
     if (_method == 'LankaQR') {
@@ -940,6 +992,22 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
                   );
                 }).toList(),
               ),
+
+              if (widget.recurringAllowed) ...[
+                const SizedBox(height: 14),
+                RecurringBookingSection(
+                  enabled: _isRecurring,
+                  nextDate: _recurringNextDate,
+                  selectedTemplateIds: _recurringTemplateIds,
+                  templates: _recurringTemplates,
+                  loadingTemplates: _loadingTemplates,
+                  accentColor: _pGreen,
+                  onEnabledChanged: (v) => setState(() => _isRecurring = v),
+                  onNextDateChanged: (v) => setState(() => _recurringNextDate = v),
+                  onTemplateIdsChanged: (ids) =>
+                      setState(() => _recurringTemplateIds = ids),
+                ),
+              ],
 
               const SizedBox(height: 20),
 

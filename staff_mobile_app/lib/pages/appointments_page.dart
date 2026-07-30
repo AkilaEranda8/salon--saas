@@ -4,11 +4,14 @@ import 'package:flutter/services.dart';
 import 'add_appointment_modal.dart';
 import 'edit_appointment_modal.dart';
 import '../models/appointment.dart';
+import '../models/recurring_template_option.dart';
 import '../models/salon_service.dart';
 import '../models/staff_member.dart';
 import '../models/staff_user.dart';
+import '../services/mobile_api.dart';
 import '../state/app_state.dart';
 import '../utils/appointment_notes.dart';
+import '../widgets/recurring_booking_section.dart';
 import '../widgets/walk_in_service_dropdown_section.dart';
 
 // ── Palette — mirrors dashboard tokens ───────────────────────────────────────
@@ -408,6 +411,9 @@ class _ApptState extends State<AppointmentsPage> with SingleTickerProviderStateM
         preSelected: ids,
         initialAmount: initialAmt,
         discounts: discounts,
+        recurringAllowed: true,
+        token: app.currentUser?.authToken ?? '',
+        mobileApi: app.api,
       ),
     );
 
@@ -421,6 +427,10 @@ class _ApptState extends State<AppointmentsPage> with SingleTickerProviderStateM
       discountId: result.discountId.isNotEmpty ? result.discountId : null,
       promoDiscount: result.promoDiscount,
       phone: a.phone.trim().isEmpty ? null : a.phone.trim(),
+      isRecurring: result.isRecurring,
+      recurringNextDate: result.isRecurring ? result.recurringNextDate : null,
+      recurringMessageTemplateIds:
+          result.isRecurring ? result.recurringMessageTemplateIds : null,
     );
     if (!mounted) return;
     if (!success) { _toast(app.lastError ?? 'Payment failed'); return; }
@@ -960,16 +970,27 @@ class _ApptCard extends StatelessWidget {
                     style: const TextStyle(
                         color: Color(0xFF6B7280),
                         fontSize: 12, fontWeight: FontWeight.w500)),
-                const Spacer(),
-                if (appt.createdBy.isNotEmpty) ...[
-                  const Icon(Icons.person_outline_rounded,
-                      size: 11, color: Color(0xFFCBD5E1)),
-                  const SizedBox(width: 3),
-                  Text(appt.createdBy,
-                      style: const TextStyle(
-                          color: Color(0xFFADB5BD), fontSize: 11)),
-                  const SizedBox(width: 10),
-                ],
+                const SizedBox(width: 10),
+                Expanded(
+                  child: appt.createdBy.isEmpty
+                      ? const SizedBox.shrink()
+                      : Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            const Icon(Icons.person_outline_rounded,
+                                size: 11, color: Color(0xFFCBD5E1)),
+                            const SizedBox(width: 3),
+                            Flexible(
+                              child: Text(appt.createdBy,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                      color: Color(0xFFADB5BD), fontSize: 11)),
+                            ),
+                            const SizedBox(width: 10),
+                          ],
+                        ),
+                ),
                 // Amount
                 Text('LKR ${amt.toStringAsFixed(0)}',
                     style: const TextStyle(
@@ -1613,6 +1634,9 @@ class _PayResult {
     required this.subtotal,
     this.discountId = '',
     this.promoDiscount = '0',
+    this.isRecurring = false,
+    this.recurringNextDate = '',
+    this.recurringMessageTemplateIds = const [],
   });
   /// Net collected (after promo).
   final String amount;
@@ -1622,6 +1646,9 @@ class _PayResult {
   final String subtotal;
   final String discountId;
   final String promoDiscount;
+  final bool isRecurring;
+  final String recurringNextDate;
+  final List<String> recurringMessageTemplateIds;
 }
 
 class _PaySheet extends StatefulWidget {
@@ -1631,12 +1658,18 @@ class _PaySheet extends StatefulWidget {
     required this.preSelected,
     required this.initialAmount,
     this.discounts = const [],
+    this.recurringAllowed = false,
+    this.token = '',
+    this.mobileApi,
   });
   final Appointment appointment;
   final List<SalonService> services;
   final List<int> preSelected;
   final String initialAmount;
   final List<Map<String, dynamic>> discounts;
+  final bool recurringAllowed;
+  final String token;
+  final MobileApi? mobileApi;
 
   @override
   State<_PaySheet> createState() => _PaySheetState();
@@ -1667,6 +1700,11 @@ class _PaySheetState extends State<_PaySheet> {
   String _method = 'Cash';
   String _calcTotal = '';
   String _discountId = '';
+  bool _isRecurring = false;
+  String _recurringNextDate = defaultRecurringNextDate();
+  List<String> _recurringTemplateIds = [];
+  List<RecurringTemplateOption> _recurringTemplates = const [];
+  bool _loadingTemplates = false;
 
   @override
   void initState() {
@@ -1676,9 +1714,40 @@ class _PaySheetState extends State<_PaySheet> {
     if (preStrs.length > 1) _extraServiceIds.addAll(preStrs.sublist(1));
     _calcTotal = widget.initialAmount;
     _amtCtrl = TextEditingController(text: widget.initialAmount);
+    final a = widget.appointment;
+    _isRecurring = a.isRecurring;
+    if (a.recurringNextDate.isNotEmpty) {
+      _recurringNextDate = a.recurringNextDate.length >= 10
+          ? a.recurringNextDate.substring(0, 10)
+          : a.recurringNextDate;
+    } else {
+      _recurringNextDate = defaultRecurringNextDate(a.date);
+    }
+    _recurringTemplateIds = List<String>.from(a.recurringMessageTemplateIds);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _recalc();
+      if (widget.recurringAllowed) _loadRecurringTemplates();
     });
+  }
+
+  Future<void> _loadRecurringTemplates() async {
+    final api = widget.mobileApi;
+    if (api == null || widget.token.isEmpty) return;
+    setState(() => _loadingTemplates = true);
+    try {
+      final options = await api.fetchRecurringTemplateOptions(token: widget.token);
+      if (!mounted) return;
+      setState(() {
+        _recurringTemplates = options;
+        _loadingTemplates = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _recurringTemplates = const [];
+        _loadingTemplates = false;
+      });
+    }
   }
 
   @override
@@ -1761,6 +1830,12 @@ class _PaySheetState extends State<_PaySheet> {
       );
       return;
     }
+    if (widget.recurringAllowed && _isRecurring && _recurringNextDate.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Select the next recurring visit date')),
+      );
+      return;
+    }
     final gross = _grossFromSelection();
     final promo = _computedPromo();
     Navigator.of(context).pop(_PayResult(
@@ -1770,6 +1845,9 @@ class _PaySheetState extends State<_PaySheet> {
       subtotal: gross > 0 ? gross.toStringAsFixed(0) : _calcTotal,
       discountId: _discountId,
       promoDiscount: promo.toStringAsFixed(2),
+      isRecurring: widget.recurringAllowed && _isRecurring,
+      recurringNextDate: _recurringNextDate,
+      recurringMessageTemplateIds: List<String>.from(_recurringTemplateIds),
     ));
   }
 
@@ -2097,6 +2175,23 @@ class _PaySheetState extends State<_PaySheet> {
                 );
               }).toList(),
             ),
+
+            if (widget.recurringAllowed) ...[
+              const SizedBox(height: 14),
+              RecurringBookingSection(
+                enabled: _isRecurring,
+                nextDate: _recurringNextDate,
+                selectedTemplateIds: _recurringTemplateIds,
+                templates: _recurringTemplates,
+                loadingTemplates: _loadingTemplates,
+                accentColor: _pGreen,
+                minDate: DateTime.tryParse(widget.appointment.date) ?? DateTime.now(),
+                onEnabledChanged: (v) => setState(() => _isRecurring = v),
+                onNextDateChanged: (v) => setState(() => _recurringNextDate = v),
+                onTemplateIdsChanged: (ids) =>
+                    setState(() => _recurringTemplateIds = ids),
+              ),
+            ],
 
             const SizedBox(height: 22),
 

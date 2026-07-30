@@ -51,73 +51,35 @@ const createConsumption = async (req, res) => {
     }
     const product = await InvProduct.findOne({ where: { id: req.body.product_id, ...tenantWhere(req) } });
     if (!product) return res.status(404).json({ message: 'Product not found.' });
+    if (Number(product.branch_id) !== Number(branchId)) {
+      return res.status(400).json({ message: 'Product does not belong to the selected branch.' });
+    }
     if (product.product_type === 'equipment') {
-      return res.status(400).json({ message: 'Equipment stock is not consumed.' });
+      return res.status(400).json({ message: 'Equipment products cannot be consumed.' });
+    }
+    if (product.product_type !== 'consumable') {
+      return res.status(400).json({ message: 'Only Consumable products can be consumed.' });
     }
 
-    const settings = await getSettings(req, branchId);
     const qty = toDec(req.body.quantity_used);
     if (qty <= 0) return res.status(400).json({ message: 'Quantity must be positive.' });
 
-    // Day-end mode: save as pending (no stock change)
-    if (settings.enable_day_end_consumption && !settings.enable_auto_deduction) {
-      const row = await InvConsumption.create({
-        tenant_id: resolveTenantId(req),
-        branch_id: Number(branchId),
-        product_id: product.id,
-        staff_id: req.body.staff_id || null,
-        appointment_id: req.body.appointment_id || null,
-        service_id: req.body.service_id || null,
-        consumption_date: req.body.consumption_date || new Date().toISOString().slice(0, 10),
-        quantity_used: qty,
-        unit: req.body.unit || product.unit,
-        reason: req.body.reason || null,
-        status: 'pending',
-        created_by: req.user?.id,
-      });
-      return res.status(201).json(row);
-    }
-
-    // Auto deduction mode
-    const t = await sequelize.transaction();
-    try {
-      const locked = await InvProduct.findOne({
-        where: { id: product.id },
-        transaction: t,
-        lock: t.LOCK.UPDATE,
-      });
-      await applyStockChange({
-        product: locked,
-        delta: -qty,
-        movementType: 'consumption',
-        tenantId: resolveTenantId(req),
-        branchId: Number(branchId),
-        userId: req.user?.id,
-        referenceType: 'consumption',
-        remarks: req.body.reason || 'Auto consumption',
-        transaction: t,
-        allowNegative: !!settings.allow_negative_stock,
-      });
-      const row = await InvConsumption.create({
-        tenant_id: resolveTenantId(req),
-        branch_id: Number(branchId),
-        product_id: product.id,
-        staff_id: req.body.staff_id || null,
-        appointment_id: req.body.appointment_id || null,
-        service_id: req.body.service_id || null,
-        consumption_date: req.body.consumption_date || new Date().toISOString().slice(0, 10),
-        quantity_used: qty,
-        unit: req.body.unit || product.unit,
-        reason: req.body.reason || null,
-        status: 'processed',
-        created_by: req.user?.id,
-      }, { transaction: t });
-      await t.commit();
-      return res.status(201).json(row);
-    } catch (e) {
-      await t.rollback();
-      throw e;
-    }
+    // Always pending — stock is deducted only when Day End Closing is completed.
+    const row = await InvConsumption.create({
+      tenant_id: resolveTenantId(req),
+      branch_id: Number(branchId),
+      product_id: product.id,
+      staff_id: req.body.staff_id || null,
+      appointment_id: req.body.appointment_id || null,
+      service_id: req.body.service_id || null,
+      consumption_date: req.body.consumption_date || new Date().toISOString().slice(0, 10),
+      quantity_used: qty,
+      unit: req.body.unit || product.unit,
+      reason: req.body.reason || null,
+      status: 'pending',
+      created_by: req.user?.id,
+    });
+    return res.status(201).json(row);
   } catch (err) {
     console.error('inv.createConsumption', err.message);
     return res.status(err.status || 500).json({ message: err.message || 'Server error.' });
@@ -171,6 +133,7 @@ const dayEndPreview = async (req, res) => {
 
     const map = new Map();
     for (const c of pending) {
+      if (c.product?.product_type && c.product.product_type !== 'consumable') continue;
       const key = c.product_id;
       if (!map.has(key)) {
         map.set(key, {
@@ -285,7 +248,7 @@ const dayEndConfirm = async (req, res) => {
         transaction: t,
         lock: t.LOCK.UPDATE,
       });
-      if (!product || product.product_type === 'equipment') continue;
+      if (!product || product.product_type !== 'consumable') continue;
 
       await applyStockChange({
         product,
@@ -378,6 +341,10 @@ const createAdjustment = async (req, res) => {
       await t.rollback();
       return res.status(400).json({ message: 'branch_id, product_id, direction, quantity and reason are required.' });
     }
+    if (!['add', 'remove'].includes(direction)) {
+      await t.rollback();
+      return res.status(400).json({ message: 'direction must be add or remove.' });
+    }
     const settings = await getSettings(req, branchId);
     const qty = Math.abs(toDec(quantity));
     if (qty <= 0) {
@@ -385,9 +352,7 @@ const createAdjustment = async (req, res) => {
       return res.status(400).json({ message: 'Quantity must be positive.' });
     }
 
-    const needsApproval = !!settings.manager_approval_required
-      && !['superadmin', 'admin'].includes(req.user?.role);
-
+    // No approval workflow — adjustments apply immediately.
     const adj = await InvStockAdjustment.create({
       tenant_id: resolveTenantId(req),
       branch_id: Number(branchId),
@@ -395,34 +360,35 @@ const createAdjustment = async (req, res) => {
       direction,
       quantity: qty,
       reason: String(reason).trim(),
-      status: needsApproval ? 'pending' : 'applied',
+      status: 'applied',
       created_by: req.user?.id,
-      approved_by: needsApproval ? null : req.user?.id,
-      approved_at: needsApproval ? null : new Date(),
+      approved_by: req.user?.id,
+      approved_at: new Date(),
     }, { transaction: t });
 
-    if (!needsApproval) {
-      const product = await InvProduct.findOne({
-        where: { id: product_id, ...tenantWhere(req) },
-        transaction: t,
-        lock: t.LOCK.UPDATE,
-      });
-      if (!product) throw Object.assign(new Error('Product not found'), { status: 404 });
-      const delta = direction === 'add' ? qty : -qty;
-      await applyStockChange({
-        product,
-        delta,
-        movementType: 'adjustment',
-        tenantId: resolveTenantId(req),
-        branchId: Number(branchId),
-        userId: req.user?.id,
-        referenceType: 'stock_adjustment',
-        referenceId: adj.id,
-        remarks: reason,
-        transaction: t,
-        allowNegative: !!settings.allow_negative_stock,
-      });
+    const product = await InvProduct.findOne({
+      where: { id: product_id, ...tenantWhere(req) },
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
+    if (!product) throw Object.assign(new Error('Product not found'), { status: 404 });
+    if (Number(product.branch_id) !== Number(branchId)) {
+      throw Object.assign(new Error('Product does not belong to the selected branch.'), { status: 400 });
     }
+    const delta = direction === 'add' ? qty : -qty;
+    await applyStockChange({
+      product,
+      delta,
+      movementType: 'adjustment',
+      tenantId: resolveTenantId(req),
+      branchId: Number(branchId),
+      userId: req.user?.id,
+      referenceType: 'stock_adjustment',
+      referenceId: adj.id,
+      remarks: reason,
+      transaction: t,
+      allowNegative: !!settings.allow_negative_stock,
+    });
 
     await t.commit();
     return res.status(201).json(adj);
@@ -740,10 +706,14 @@ const updateInvSettings = async (req, res) => {
     const branchId = resolveBranchId(req, req.body.branch_id);
     const row = await getSettings(req, branchId);
     const allowed = [
-      'enable_day_end_consumption', 'enable_auto_deduction',
-      'allow_negative_stock', 'manager_approval_required', 'low_stock_notification',
+      'allow_negative_stock', 'low_stock_notification',
     ];
-    const updates = {};
+    const updates = {
+      // Locked salon inventory rules — consumption is always deferred to Day End.
+      enable_day_end_consumption: true,
+      enable_auto_deduction: false,
+      manager_approval_required: false,
+    };
     for (const f of allowed) if (req.body[f] !== undefined) updates[f] = !!req.body[f];
     await row.update(updates);
     return res.json(row);

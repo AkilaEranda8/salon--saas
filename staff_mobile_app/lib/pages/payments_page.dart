@@ -152,6 +152,7 @@ class _PaymentsPageState extends State<PaymentsPage> {
       initialBranchId: uid,
       mobileApi: app.api,
       token: app.currentUser?.authToken ?? '',
+      recurringAllowed: true,
       onRegisterNewCustomer: (name, phone, branchId) =>
           AppStateScope.of(context).registerCustomer(
             name: name,
@@ -174,6 +175,11 @@ class _PaymentsPageState extends State<PaymentsPage> {
       method:         payload.method,
       paidAmount:     payload.paidAmount,
       discountId:     payload.discountId.isEmpty ? null : payload.discountId,
+      isRecurring:    payload.isRecurring,
+      recurringNextDate: payload.isRecurring ? payload.recurringNextDate : null,
+      appointmentTime: payload.isRecurring ? '10:00' : null,
+      recurringMessageTemplateIds:
+          payload.isRecurring ? payload.recurringMessageTemplateIds : null,
     );
     if (!mounted) return;
     _toast(ok ? 'Payment recorded!' : (app.lastError ?? 'Failed to add payment'));

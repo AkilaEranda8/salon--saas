@@ -39,6 +39,20 @@ async function getSettings(req, branchId) {
     row = await InvSettings.create({
       tenant_id: tenantId,
       branch_id: branchId || null,
+      enable_day_end_consumption: true,
+      enable_auto_deduction: false,
+      manager_approval_required: false,
+    });
+  } else if (
+    row.enable_day_end_consumption !== true
+    || row.enable_auto_deduction !== false
+    || row.manager_approval_required !== false
+  ) {
+    // Keep existing tenants aligned with the deferred Day End consumption flow.
+    await row.update({
+      enable_day_end_consumption: true,
+      enable_auto_deduction: false,
+      manager_approval_required: false,
     });
   }
   return row;
@@ -502,6 +516,9 @@ const createGoodsReceipt = async (req, res) => {
           lock: t.LOCK.UPDATE,
         });
         if (!product) throw Object.assign(new Error('Product not found'), { status: 404 });
+        if (Number(product.branch_id) !== Number(branchId)) {
+          throw Object.assign(new Error('Product does not belong to the selected branch.'), { status: 400 });
+        }
         await applyStockChange({
           product,
           delta: qty,

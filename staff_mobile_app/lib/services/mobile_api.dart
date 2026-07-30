@@ -7,6 +7,7 @@ import '../models/commission_record.dart';
 import '../models/staff_commission_summary.dart';
 import '../models/customer.dart';
 import '../models/payment_record.dart';
+import '../models/recurring_template_option.dart';
 import '../models/salon_service.dart';
 import '../models/staff_member.dart';
 import '../models/walkin_entry.dart';
@@ -86,10 +87,10 @@ class MobileApi {
       throw Exception(meBody['message'] ?? 'Failed to load user');
     }
     return {
-      'token':         accessToken,
+      'token': accessToken,
       'refresh_token': kcBody['refresh_token'] ?? '',
-      'expires_in':    kcBody['expires_in'] ?? 300,
-      'user':          meBody['user'] ?? {},
+      'expires_in': kcBody['expires_in'] ?? 300,
+      'user': meBody['user'] ?? {},
     };
   }
 
@@ -131,7 +132,8 @@ class MobileApi {
         headers: _authHeaders(token),
         body: jsonEncode({
           'fcm_token': fcmToken,
-          if (deviceInfo != null && deviceInfo.isNotEmpty) 'device_info': deviceInfo,
+          if (deviceInfo != null && deviceInfo.isNotEmpty)
+            'device_info': deviceInfo,
         }),
       );
     } catch (_) {}
@@ -152,9 +154,9 @@ class MobileApi {
     required String token,
     required String branchId,
   }) async {
-    final uri = Uri.parse('$baseUrl/api/discounts/payment').replace(
-      queryParameters: {'branchId': branchId},
-    );
+    final uri = Uri.parse(
+      '$baseUrl/api/discounts/payment',
+    ).replace(queryParameters: {'branchId': branchId});
     final response = await http.get(uri, headers: _authHeaders(token));
     final body = _decode(response.body);
     if (response.statusCode >= 400) {
@@ -181,7 +183,10 @@ class MobileApi {
       throw Exception(body['message'] ?? 'Customers load failed');
     }
     final list = (body['data'] as List? ?? const []);
-    return list.whereType<Map>().map((e) => Customer.fromJson(Map<String, dynamic>.from(e))).toList();
+    return list
+        .whereType<Map>()
+        .map((e) => Customer.fromJson(Map<String, dynamic>.from(e)))
+        .toList();
   }
 
   Future<Customer> createCustomer({
@@ -222,7 +227,10 @@ class MobileApi {
     final List<dynamic> list = body is List
         ? List<dynamic>.from(body as List)
         : List<dynamic>.from((body as Map?)?['data'] as List? ?? const []);
-    return list.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+    return list
+        .whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
   }
 
   Future<List<SalonService>> fetchServices({required String token}) async {
@@ -235,10 +243,15 @@ class MobileApi {
       throw Exception(body['message'] ?? 'Services load failed');
     }
     final list = (body['data'] as List? ?? const []);
-    return list.whereType<Map>().map((e) => SalonService.fromJson(Map<String, dynamic>.from(e))).toList();
+    return list
+        .whereType<Map>()
+        .map((e) => SalonService.fromJson(Map<String, dynamic>.from(e)))
+        .toList();
   }
 
-  Future<List<Map<String, dynamic>>> fetchBranches({required String token}) async {
+  Future<List<Map<String, dynamic>>> fetchBranches({
+    required String token,
+  }) async {
     final response = await http.get(
       Uri.parse('$baseUrl/api/branches?limit=200'),
       headers: _authHeaders(token),
@@ -248,7 +261,10 @@ class MobileApi {
       throw Exception(body['message'] ?? 'Branches load failed');
     }
     final list = (body['data'] as List? ?? body as List? ?? const []);
-    return list.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+    return list
+        .whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
   }
 
   Future<List<StaffMember>> fetchStaff({
@@ -264,7 +280,10 @@ class MobileApi {
       throw Exception(body['message'] ?? 'Staff load failed');
     }
     final list = (body['data'] as List? ?? body as List? ?? const []);
-    return list.whereType<Map>().map((e) => StaffMember.fromJson(Map<String, dynamic>.from(e))).toList();
+    return list
+        .whereType<Map>()
+        .map((e) => StaffMember.fromJson(Map<String, dynamic>.from(e)))
+        .toList();
   }
 
   Future<StaffMember> createSalonStaff({
@@ -348,14 +367,19 @@ class MobileApi {
       if (status != null && status.isNotEmpty) 'status': status,
       if (date != null && date.isNotEmpty) 'date': date,
     };
-    final uri = Uri.parse('$baseUrl/api/appointments').replace(queryParameters: qp);
+    final uri = Uri.parse(
+      '$baseUrl/api/appointments',
+    ).replace(queryParameters: qp);
     final response = await http.get(uri, headers: _authHeaders(token));
     final body = _decode(response.body);
     if (response.statusCode >= 400) {
       throw Exception(body['message'] ?? 'Appointments load failed');
     }
     final list = (body['data'] as List? ?? const []);
-    final items = list.whereType<Map>().map((e) => Appointment.fromJson(Map<String, dynamic>.from(e))).toList();
+    final items = list
+        .whereType<Map>()
+        .map((e) => Appointment.fromJson(Map<String, dynamic>.from(e)))
+        .toList();
     return AppointmentListResult(
       total: int.tryParse('${body['total'] ?? items.length}') ?? items.length,
       page: int.tryParse('${body['page'] ?? page}') ?? page,
@@ -377,6 +401,9 @@ class MobileApi {
     String? staffId,
     String? amount,
     String? notes,
+    bool isRecurring = false,
+    String? recurringNextDate,
+    List<String>? recurringMessageTemplateIds,
   }) async {
     final bodyMap = <String, dynamic>{
       'branch_id': int.tryParse(branchId) ?? branchId,
@@ -386,11 +413,25 @@ class MobileApi {
         'service_ids': serviceIds.map((id) => int.tryParse(id) ?? id).toList(),
       'date': date.trim(),
       'time': time.trim(),
-      if (customerId != null && customerId.isNotEmpty) 'customer_id': int.tryParse(customerId) ?? customerId,
+      if (customerId != null && customerId.isNotEmpty)
+        'customer_id': int.tryParse(customerId) ?? customerId,
       if (phone != null && phone.trim().isNotEmpty) 'phone': phone.trim(),
-      if (staffId != null && staffId.isNotEmpty) 'staff_id': int.tryParse(staffId) ?? staffId,
-      if (amount != null && amount.trim().isNotEmpty) 'amount': double.tryParse(amount.trim()) ?? amount,
+      if (staffId != null && staffId.isNotEmpty)
+        'staff_id': int.tryParse(staffId) ?? staffId,
+      if (amount != null && amount.trim().isNotEmpty)
+        'amount': double.tryParse(amount.trim()) ?? amount,
       if (notes != null && notes.trim().isNotEmpty) 'notes': notes.trim(),
+      'is_recurring': isRecurring,
+      if (isRecurring) 'recurrence_frequency': 'weekly',
+      if (isRecurring &&
+          recurringNextDate != null &&
+          recurringNextDate.trim().isNotEmpty)
+        'recurring_next_date': recurringNextDate.trim(),
+      'recurring_message_template_ids': isRecurring
+          ? (recurringMessageTemplateIds ?? const <String>[])
+                .map((id) => int.tryParse(id) ?? id)
+                .toList()
+          : null,
     };
     final response = await http.post(
       Uri.parse('$baseUrl/api/appointments'),
@@ -417,6 +458,9 @@ class MobileApi {
     String? amount,
     String? notes,
     String? status,
+    bool? isRecurring,
+    String? recurringNextDate,
+    List<String>? recurringMessageTemplateIds,
   }) async {
     final bodyMap = <String, dynamic>{
       'customer_name': customerName.trim(),
@@ -425,12 +469,27 @@ class MobileApi {
         'service_ids': serviceIds.map((id) => int.tryParse(id) ?? id).toList(),
       'date': date.trim(),
       'time': time.trim(),
-      if (customerId != null && customerId.isNotEmpty) 'customer_id': int.tryParse(customerId) ?? customerId,
+      if (customerId != null && customerId.isNotEmpty)
+        'customer_id': int.tryParse(customerId) ?? customerId,
       if (phone != null) 'phone': phone.trim(),
-      if (staffId != null && staffId.isNotEmpty) 'staff_id': int.tryParse(staffId) ?? staffId,
-      if (amount != null && amount.trim().isNotEmpty) 'amount': double.tryParse(amount.trim()) ?? amount,
+      if (staffId != null && staffId.isNotEmpty)
+        'staff_id': int.tryParse(staffId) ?? staffId,
+      if (amount != null && amount.trim().isNotEmpty)
+        'amount': double.tryParse(amount.trim()) ?? amount,
       'notes': notes ?? '',
       if (status != null && status.isNotEmpty) 'status': status,
+      if (isRecurring != null) 'is_recurring': isRecurring,
+      if (isRecurring == true) 'recurrence_frequency': 'weekly',
+      if (isRecurring == true &&
+          recurringNextDate != null &&
+          recurringNextDate.trim().isNotEmpty)
+        'recurring_next_date': recurringNextDate.trim(),
+      if (isRecurring != null)
+        'recurring_message_template_ids': isRecurring
+            ? (recurringMessageTemplateIds ?? const <String>[])
+                  .map((id) => int.tryParse(id) ?? id)
+                  .toList()
+            : null,
     };
     final response = await http.put(
       Uri.parse('$baseUrl/api/appointments/$appointmentId'),
@@ -489,6 +548,9 @@ class MobileApi {
     String promoDiscount = '0',
     String? discountId,
     String? phone,
+    bool? isRecurring,
+    String? recurringNextDate,
+    List<String>? recurringMessageTemplateIds,
   }) async {
     final parsedAmount = double.tryParse(amount.trim()) ?? 0;
     final sub = double.tryParse(subtotal.trim()) ?? 0;
@@ -506,10 +568,22 @@ class MobileApi {
       if (discountId != null && discountId.trim().isNotEmpty)
         'discount_id': int.tryParse(discountId.trim()) ?? discountId.trim(),
       'splits': [
-        {'method': method, 'amount': parsedAmount}
+        {'method': method, 'amount': parsedAmount},
       ],
-      if (staffId != null && staffId.isNotEmpty) 'staff_id': int.tryParse(staffId) ?? staffId,
-      if (customerId != null && customerId.isNotEmpty) 'customer_id': int.tryParse(customerId) ?? customerId,
+      if (staffId != null && staffId.isNotEmpty)
+        'staff_id': int.tryParse(staffId) ?? staffId,
+      if (customerId != null && customerId.isNotEmpty)
+        'customer_id': int.tryParse(customerId) ?? customerId,
+      if (isRecurring != null) 'is_recurring': isRecurring,
+      if (isRecurring == true &&
+          recurringNextDate != null &&
+          recurringNextDate.trim().isNotEmpty)
+        'recurring_next_date': recurringNextDate.trim(),
+      if (isRecurring == true)
+        'recurring_message_template_ids':
+            (recurringMessageTemplateIds ?? const <String>[])
+                .map((id) => int.tryParse(id) ?? id)
+                .toList(),
     };
     final response = await http.post(
       Uri.parse('$baseUrl/api/payments'),
@@ -564,6 +638,10 @@ class MobileApi {
     required String paidAmount,
     String? discountId,
     String? walkinToken,
+    bool isRecurring = false,
+    String? recurringNextDate,
+    String? appointmentTime,
+    List<String>? recurringMessageTemplateIds,
   }) async {
     final subtotal = double.tryParse(totalAmount.trim()) ?? 0;
     final paid = double.tryParse(paidAmount.trim()) ?? 0;
@@ -574,23 +652,40 @@ class MobileApi {
         'branch_id': int.tryParse(branchId) ?? branchId,
         'service_id': int.tryParse(serviceId) ?? serviceId,
         if (serviceIds != null && serviceIds.isNotEmpty)
-          'service_ids': serviceIds.map((id) => int.tryParse(id) ?? id).toList(),
-        if (staffId != null && staffId.isNotEmpty) 'staff_id': int.tryParse(staffId) ?? staffId,
-        if (customerId != null && customerId.isNotEmpty) 'customer_id': int.tryParse(customerId) ?? customerId,
-        if (customerName != null && customerName.trim().isNotEmpty) 'customer_name': customerName.trim(),
+          'service_ids': serviceIds
+              .map((id) => int.tryParse(id) ?? id)
+              .toList(),
+        if (staffId != null && staffId.isNotEmpty)
+          'staff_id': int.tryParse(staffId) ?? staffId,
+        if (customerId != null && customerId.isNotEmpty)
+          'customer_id': int.tryParse(customerId) ?? customerId,
+        if (customerName != null && customerName.trim().isNotEmpty)
+          'customer_name': customerName.trim(),
         if (phone != null && phone.trim().isNotEmpty) 'phone': phone.trim(),
-        if (walkinToken != null && walkinToken.trim().isNotEmpty) 'walkin_token': walkinToken.trim(),
+        if (walkinToken != null && walkinToken.trim().isNotEmpty)
+          'walkin_token': walkinToken.trim(),
         'subtotal': subtotal,
         if (discountId != null && discountId.trim().isNotEmpty)
           'discount_id': int.tryParse(discountId.trim()) ?? discountId.trim(),
         'loyalty_discount': double.tryParse(loyaltyDiscount.trim()) ?? 0,
         'promo_discount': double.tryParse(promoDiscount.trim()) ?? 0,
         'splits': [
-          {
-            'method': method,
-            'amount': paid,
-          },
+          {'method': method, 'amount': paid},
         ],
+        if (isRecurring) 'is_recurring': true,
+        if (isRecurring &&
+            recurringNextDate != null &&
+            recurringNextDate.trim().isNotEmpty)
+          'recurring_next_date': recurringNextDate.trim(),
+        if (isRecurring &&
+            appointmentTime != null &&
+            appointmentTime.trim().isNotEmpty)
+          'appointment_time': appointmentTime.trim(),
+        if (isRecurring)
+          'recurring_message_template_ids':
+              (recurringMessageTemplateIds ?? const <String>[])
+                  .map((id) => int.tryParse(id) ?? id)
+                  .toList(),
       }),
     );
     final body = _decode(response.body);
@@ -637,18 +732,19 @@ class MobileApi {
       body: jsonEncode({
         'service_id': int.tryParse(serviceId) ?? serviceId,
         if (serviceIds != null && serviceIds.isNotEmpty)
-          'service_ids': serviceIds.map((id) => int.tryParse(id) ?? id).toList(),
-        if (staffId != null && staffId.isNotEmpty) 'staff_id': int.tryParse(staffId) ?? staffId,
-        if (customerId != null && customerId.isNotEmpty) 'customer_id': int.tryParse(customerId) ?? customerId,
+          'service_ids': serviceIds
+              .map((id) => int.tryParse(id) ?? id)
+              .toList(),
+        if (staffId != null && staffId.isNotEmpty)
+          'staff_id': int.tryParse(staffId) ?? staffId,
+        if (customerId != null && customerId.isNotEmpty)
+          'customer_id': int.tryParse(customerId) ?? customerId,
         'subtotal': subtotal,
         if (discountId != null && discountId.trim().isNotEmpty)
           'discount_id': int.tryParse(discountId.trim()) ?? discountId.trim(),
         'loyalty_discount': double.tryParse(loyaltyDiscount.trim()) ?? 0,
         'splits': [
-          {
-            'method': method,
-            'amount': paid,
-          },
+          {'method': method, 'amount': paid},
         ],
       }),
     );
@@ -687,9 +783,9 @@ class MobileApi {
     final qp = <String, String>{
       if (month != null && month.isNotEmpty) 'month': month,
     };
-    final uri = Uri.parse('$baseUrl/api/staff/me/commission').replace(
-      queryParameters: qp.isEmpty ? null : qp,
-    );
+    final uri = Uri.parse(
+      '$baseUrl/api/staff/me/commission',
+    ).replace(queryParameters: qp.isEmpty ? null : qp);
     final response = await http.get(uri, headers: _authHeaders(token));
     final body = _decode(response.body);
     if (response.statusCode >= 400) {
@@ -704,30 +800,41 @@ class MobileApi {
     for (final item in list) {
       if (item is! Map) continue;
       try {
-        records.add(CommissionRecord.fromJson(
-            Map<String, dynamic>.from(item)));
+        records.add(CommissionRecord.fromJson(Map<String, dynamic>.from(item)));
       } catch (_) {
         // Skip malformed rows instead of failing the whole response.
       }
     }
-    final advRaw  = body['totalAdvances'];
-    final netRaw  = body['netCommission'];
+    final advRaw = body['totalAdvances'];
+    final netRaw = body['netCommission'];
     final paidRaw = body['totalPaid'];
-    final balRaw  = body['balanceDue'];
-    final totalComm = totalRaw is num ? totalRaw.toDouble() : double.tryParse('$totalRaw') ?? 0;
-    final totalAdv  = advRaw  is num ? advRaw.toDouble()  : double.tryParse('$advRaw')  ?? 0;
-    final netComm   = netRaw  is num ? netRaw.toDouble()  : double.tryParse('$netRaw')  ?? (totalComm - totalAdv).clamp(0, double.infinity);
-    final tPaid     = paidRaw is num ? paidRaw.toDouble() : double.tryParse('$paidRaw') ?? 0;
+    final balRaw = body['balanceDue'];
+    final totalComm = totalRaw is num
+        ? totalRaw.toDouble()
+        : double.tryParse('$totalRaw') ?? 0;
+    final totalAdv = advRaw is num
+        ? advRaw.toDouble()
+        : double.tryParse('$advRaw') ?? 0;
+    final netComm = netRaw is num
+        ? netRaw.toDouble()
+        : double.tryParse('$netRaw') ??
+              (totalComm - totalAdv).clamp(0, double.infinity);
+    final tPaid = paidRaw is num
+        ? paidRaw.toDouble()
+        : double.tryParse('$paidRaw') ?? 0;
     final staffIdRaw = '${staffMap['id'] ?? ''}'.trim();
     final staffNameRaw = '${staffMap['name'] ?? ''}'.trim();
     return MyCommissionResult(
-      total:         totalComm,
+      total: totalComm,
       totalAdvances: totalAdv,
       netCommission: netComm,
-      totalPaid:     tPaid,
-      balanceDue:    balRaw is num ? balRaw.toDouble() : double.tryParse('$balRaw') ?? (netComm - tPaid).clamp(0, double.infinity),
-      records:       records,
-      staffId:   staffIdRaw.isEmpty ? null : staffIdRaw,
+      totalPaid: tPaid,
+      balanceDue: balRaw is num
+          ? balRaw.toDouble()
+          : double.tryParse('$balRaw') ??
+                (netComm - tPaid).clamp(0, double.infinity),
+      records: records,
+      staffId: staffIdRaw.isEmpty ? null : staffIdRaw,
       staffName: staffNameRaw.isEmpty ? null : staffNameRaw,
     );
   }
@@ -749,8 +856,9 @@ class MobileApi {
       'year': year,
       if (branchId != null && branchId.isNotEmpty) 'branchId': branchId,
     };
-    final uri = Uri.parse('$baseUrl/api/staff/commission')
-        .replace(queryParameters: qp);
+    final uri = Uri.parse(
+      '$baseUrl/api/staff/commission',
+    ).replace(queryParameters: qp);
     final response = await http.get(uri, headers: _authHeaders(token));
     if (response.statusCode >= 400) {
       final body = _decode(response.body);
@@ -767,8 +875,9 @@ class MobileApi {
     }
     return list
         .whereType<Map>()
-        .map((e) => StaffCommissionSummary.fromJson(
-            Map<String, dynamic>.from(e)))
+        .map(
+          (e) => StaffCommissionSummary.fromJson(Map<String, dynamic>.from(e)),
+        )
         .toList();
   }
 
@@ -781,9 +890,9 @@ class MobileApi {
     final qp = <String, String>{
       if (month != null && month.isNotEmpty) 'month': month,
     };
-    final uri = Uri.parse('$baseUrl/api/staff/$staffId/commission').replace(
-      queryParameters: qp.isEmpty ? null : qp,
-    );
+    final uri = Uri.parse(
+      '$baseUrl/api/staff/$staffId/commission',
+    ).replace(queryParameters: qp.isEmpty ? null : qp);
     final response = await http.get(uri, headers: _authHeaders(token));
     final body = _decode(response.body);
     if (response.statusCode >= 400) {
@@ -798,28 +907,39 @@ class MobileApi {
     for (final item in list) {
       if (item is! Map) continue;
       try {
-        records.add(CommissionRecord.fromJson(
-            Map<String, dynamic>.from(item)));
+        records.add(CommissionRecord.fromJson(Map<String, dynamic>.from(item)));
       } catch (_) {}
     }
-    final advRaw2  = body['totalAdvances'];
-    final netRaw2  = body['netCommission'];
+    final advRaw2 = body['totalAdvances'];
+    final netRaw2 = body['netCommission'];
     final paidRaw2 = body['totalPaid'];
-    final balRaw2  = body['balanceDue'];
-    final totalComm2 = totalRaw is num ? totalRaw.toDouble() : double.tryParse('$totalRaw') ?? 0;
-    final totalAdv2  = advRaw2  is num ? advRaw2.toDouble()  : double.tryParse('$advRaw2')  ?? 0;
-    final netComm2   = netRaw2  is num ? netRaw2.toDouble()  : double.tryParse('$netRaw2')  ?? (totalComm2 - totalAdv2).clamp(0, double.infinity);
-    final tPaid2     = paidRaw2 is num ? paidRaw2.toDouble() : double.tryParse('$paidRaw2') ?? 0;
+    final balRaw2 = body['balanceDue'];
+    final totalComm2 = totalRaw is num
+        ? totalRaw.toDouble()
+        : double.tryParse('$totalRaw') ?? 0;
+    final totalAdv2 = advRaw2 is num
+        ? advRaw2.toDouble()
+        : double.tryParse('$advRaw2') ?? 0;
+    final netComm2 = netRaw2 is num
+        ? netRaw2.toDouble()
+        : double.tryParse('$netRaw2') ??
+              (totalComm2 - totalAdv2).clamp(0, double.infinity);
+    final tPaid2 = paidRaw2 is num
+        ? paidRaw2.toDouble()
+        : double.tryParse('$paidRaw2') ?? 0;
     final staffIdRaw2 = '${staffMap['id'] ?? staffId}'.trim();
     final staffNameRaw2 = '${staffMap['name'] ?? ''}'.trim();
     return MyCommissionResult(
-      total:         totalComm2,
+      total: totalComm2,
       totalAdvances: totalAdv2,
       netCommission: netComm2,
-      totalPaid:     tPaid2,
-      balanceDue:    balRaw2 is num ? balRaw2.toDouble() : double.tryParse('$balRaw2') ?? (netComm2 - tPaid2).clamp(0, double.infinity),
-      records:       records,
-      staffId:   staffIdRaw2.isEmpty ? null : staffIdRaw2,
+      totalPaid: tPaid2,
+      balanceDue: balRaw2 is num
+          ? balRaw2.toDouble()
+          : double.tryParse('$balRaw2') ??
+                (netComm2 - tPaid2).clamp(0, double.infinity),
+      records: records,
+      staffId: staffIdRaw2.isEmpty ? null : staffIdRaw2,
       staffName: staffNameRaw2.isEmpty ? null : staffNameRaw2,
     );
   }
@@ -848,9 +968,9 @@ class MobileApi {
     var ids = serviceIds == null || serviceIds.isEmpty
         ? <int>[]
         : serviceIds
-            .map((id) => int.tryParse(id.trim()) ?? 0)
-            .where((n) => n > 0)
-            .toList();
+              .map((id) => int.tryParse(id.trim()) ?? 0)
+              .where((n) => n > 0)
+              .toList();
     // Ensure junction + totals always get at least primary when serviceId is set
     if (ids.isEmpty && primaryNum > 0) {
       ids = [primaryNum];
@@ -858,7 +978,9 @@ class MobileApi {
     final reqBody = <String, dynamic>{
       'customerName': customerName.trim(),
       'branchId': int.tryParse(branchId) ?? branchId,
-      'serviceId': primaryNum > 0 ? primaryNum : int.tryParse(serviceId) ?? serviceId,
+      'serviceId': primaryNum > 0
+          ? primaryNum
+          : int.tryParse(serviceId) ?? serviceId,
       if (ids.isNotEmpty) 'serviceIds': ids,
       if (ids.isNotEmpty) 'service_ids': ids,
       if (phone != null && phone.trim().isNotEmpty) 'phone': phone.trim(),
@@ -889,9 +1011,7 @@ class MobileApi {
     final response = await http.patch(
       Uri.parse('$baseUrl/api/walkin/$walkInId/assign'),
       headers: _authHeaders(token),
-      body: jsonEncode({
-        'staffId': int.tryParse(staffId) ?? staffId,
-      }),
+      body: jsonEncode({'staffId': int.tryParse(staffId) ?? staffId}),
     );
     final body = _decode(response.body);
     if (response.statusCode >= 400) {
@@ -935,7 +1055,9 @@ class MobileApi {
     final reqBody = <String, dynamic>{
       'customerName': customerName.trim(),
       'phone': phone?.trim() ?? '',
-      'serviceId': primaryNum > 0 ? primaryNum : int.tryParse(serviceId) ?? serviceId,
+      'serviceId': primaryNum > 0
+          ? primaryNum
+          : int.tryParse(serviceId) ?? serviceId,
       if (ids.isNotEmpty) 'serviceIds': ids,
       if (ids.isNotEmpty) 'service_ids': ids,
       'note': note?.trim() ?? '',
@@ -999,13 +1121,16 @@ class MobileApi {
     String? branchId,
   }) async {
     final qp = <String, String>{};
-    if (staffId  != null && staffId.isNotEmpty)  qp['staffId']  = staffId;
-    if (month    != null && month.isNotEmpty)    qp['month']    = month;
+    if (staffId != null && staffId.isNotEmpty) qp['staffId'] = staffId;
+    if (month != null && month.isNotEmpty) qp['month'] = month;
     if (branchId != null && branchId.isNotEmpty) qp['branchId'] = branchId;
-    final uri = Uri.parse('$baseUrl/api/commission-payouts').replace(queryParameters: qp);
+    final uri = Uri.parse(
+      '$baseUrl/api/commission-payouts',
+    ).replace(queryParameters: qp);
     final response = await http.get(uri, headers: _authHeaders(token));
     final body = _decode(response.body);
-    if (response.statusCode >= 400) throw Exception(body['message'] ?? 'Payouts load failed');
+    if (response.statusCode >= 400)
+      throw Exception(body['message'] ?? 'Payouts load failed');
     return body;
   }
 
@@ -1023,21 +1148,25 @@ class MobileApi {
       Uri.parse('$baseUrl/api/commission-payouts'),
       headers: _authHeaders(token),
       body: jsonEncode({
-        'staff_id':  staffId,
+        'staff_id': staffId,
         'branch_id': branchId,
-        'amount':    amount,
-        'date':      date,
-        'month':     month,
+        'amount': amount,
+        'date': date,
+        'month': month,
         if (notes != null && notes.isNotEmpty) 'notes': notes,
       }),
     );
     final body = _decode(response.body);
-    if (response.statusCode >= 400) throw Exception(body['message'] ?? 'Create payout failed');
+    if (response.statusCode >= 400)
+      throw Exception(body['message'] ?? 'Create payout failed');
     return body;
   }
 
   /// DELETE /api/commission-payouts/:id
-  Future<void> deleteCommissionPayout({required String token, required String payoutId}) async {
+  Future<void> deleteCommissionPayout({
+    required String token,
+    required String payoutId,
+  }) async {
     final response = await http.delete(
       Uri.parse('$baseUrl/api/commission-payouts/$payoutId'),
       headers: _authHeaders(token),
@@ -1057,14 +1186,15 @@ class MobileApi {
     String? status,
   }) async {
     final qp = <String, String>{};
-    if (staffId  != null && staffId.isNotEmpty)  qp['staffId']  = staffId;
-    if (month    != null && month.isNotEmpty)    qp['month']    = month;
+    if (staffId != null && staffId.isNotEmpty) qp['staffId'] = staffId;
+    if (month != null && month.isNotEmpty) qp['month'] = month;
     if (branchId != null && branchId.isNotEmpty) qp['branchId'] = branchId;
-    if (status   != null && status.isNotEmpty)   qp['status']   = status;
+    if (status != null && status.isNotEmpty) qp['status'] = status;
     final uri = Uri.parse('$baseUrl/api/advances').replace(queryParameters: qp);
     final response = await http.get(uri, headers: _authHeaders(token));
     final body = _decode(response.body);
-    if (response.statusCode >= 400) throw Exception(body['message'] ?? 'Advances load failed');
+    if (response.statusCode >= 400)
+      throw Exception(body['message'] ?? 'Advances load failed');
     return body;
   }
 
@@ -1082,21 +1212,25 @@ class MobileApi {
       Uri.parse('$baseUrl/api/advances'),
       headers: _authHeaders(token),
       body: jsonEncode({
-        'staff_id':  staffId,
+        'staff_id': staffId,
         'branch_id': branchId,
-        'amount':    amount,
-        'date':      date,
-        'month':     month,
+        'amount': amount,
+        'date': date,
+        'month': month,
         if (reason != null && reason.isNotEmpty) 'reason': reason,
       }),
     );
     final body = _decode(response.body);
-    if (response.statusCode >= 400) throw Exception(body['message'] ?? 'Create advance failed');
+    if (response.statusCode >= 400)
+      throw Exception(body['message'] ?? 'Create advance failed');
     return body;
   }
 
   /// PATCH /api/advances/:id/deduct — mark advance as deducted.
-  Future<void> markAdvanceDeducted({required String token, required String advanceId}) async {
+  Future<void> markAdvanceDeducted({
+    required String token,
+    required String advanceId,
+  }) async {
     final response = await http.patch(
       Uri.parse('$baseUrl/api/advances/$advanceId/deduct'),
       headers: _authHeaders(token),
@@ -1108,7 +1242,10 @@ class MobileApi {
   }
 
   /// PATCH /api/advances/:id/revert — revert advance back to pending.
-  Future<void> revertAdvanceToPending({required String token, required String advanceId}) async {
+  Future<void> revertAdvanceToPending({
+    required String token,
+    required String advanceId,
+  }) async {
     final response = await http.patch(
       Uri.parse('$baseUrl/api/advances/$advanceId/revert'),
       headers: _authHeaders(token),
@@ -1120,7 +1257,10 @@ class MobileApi {
   }
 
   /// DELETE /api/advances/:id
-  Future<void> deleteAdvance({required String token, required String advanceId}) async {
+  Future<void> deleteAdvance({
+    required String token,
+    required String advanceId,
+  }) async {
     final response = await http.delete(
       Uri.parse('$baseUrl/api/advances/$advanceId'),
       headers: _authHeaders(token),
@@ -1129,6 +1269,28 @@ class MobileApi {
       final body = _decode(response.body);
       throw Exception(body['message'] ?? 'Delete advance failed');
     }
+  }
+
+  /// GET /api/notifications/templates/options?event_type=recurring_reminder
+  Future<List<RecurringTemplateOption>> fetchRecurringTemplateOptions({
+    required String token,
+  }) async {
+    final uri = Uri.parse(
+      '$baseUrl/api/notifications/templates/options',
+    ).replace(queryParameters: {'event_type': 'recurring_reminder'});
+    final response = await http.get(uri, headers: _authHeaders(token));
+    final body = _decode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['message'] ?? 'Template options load failed');
+    }
+    final list = body['options'] as List? ?? const [];
+    return list
+        .whereType<Map>()
+        .map(
+          (row) =>
+              RecurringTemplateOption.fromJson(Map<String, dynamic>.from(row)),
+        )
+        .toList();
   }
 
   /// GET /api/customers/:id — full customer profile with loyalty_points + last 10 appointments.
@@ -1149,14 +1311,20 @@ class MobileApi {
 
   /// GET /api/users — list all users (superadmin/admin only).
   Future<List<Map<String, dynamic>>> fetchUsers({required String token}) async {
-    final uri = Uri.parse('$baseUrl/api/users').replace(queryParameters: {'limit': '100'});
+    final uri = Uri.parse(
+      '$baseUrl/api/users',
+    ).replace(queryParameters: {'limit': '100'});
     final response = await http.get(uri, headers: _authHeaders(token));
     final body = _decode(response.body);
     if (response.statusCode >= 400) {
       throw Exception(body['message'] ?? 'Users load failed');
     }
-    final list = body['data'] as List? ?? (body is List ? body as List : const []);
-    return list.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+    final list =
+        body['data'] as List? ?? (body is List ? body as List : const []);
+    return list
+        .whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
   }
 
   /// PUT /api/users/:id — update role or is_active (superadmin only for role changes).
@@ -1198,7 +1366,9 @@ class MobileApi {
   }
 
   /// GET /api/users/mobile-features/role-defaults — tenant role default access (superadmin).
-  Future<Map<String, dynamic>> fetchMobileRoleDefaults({required String token}) async {
+  Future<Map<String, dynamic>> fetchMobileRoleDefaults({
+    required String token,
+  }) async {
     final response = await http.get(
       Uri.parse('$baseUrl/api/users/mobile-features/role-defaults'),
       headers: _authHeaders(token),
@@ -1280,14 +1450,16 @@ class MobileApi {
       Uri.parse('$baseUrl/api/expenses'),
       headers: _authHeaders(token),
       body: jsonEncode({
-        'branch_id':      branchId,
-        'category':       category,
-        'title':          title,
-        'amount':         amount,
-        'date':           date,
+        'branch_id': branchId,
+        'category': category,
+        'title': title,
+        'amount': amount,
+        'date': date,
         if (paidTo != null && paidTo.isNotEmpty) 'paid_to': paidTo,
-        if (paymentMethod != null && paymentMethod.isNotEmpty) 'payment_method': paymentMethod,
-        if (receiptNumber != null && receiptNumber.isNotEmpty) 'receipt_number': receiptNumber,
+        if (paymentMethod != null && paymentMethod.isNotEmpty)
+          'payment_method': paymentMethod,
+        if (receiptNumber != null && receiptNumber.isNotEmpty)
+          'receipt_number': receiptNumber,
         if (notes != null && notes.isNotEmpty) 'notes': notes,
       }),
     );
@@ -1307,16 +1479,17 @@ class MobileApi {
     final qp = <String, String>{};
     if (branchId != null && branchId.isNotEmpty) qp['branchId'] = branchId;
     if (done != null) qp['done'] = done.toString();
-    final uri = Uri.parse('$baseUrl/api/reminders').replace(queryParameters: qp);
+    final uri = Uri.parse(
+      '$baseUrl/api/reminders',
+    ).replace(queryParameters: qp);
     final response = await http.get(uri, headers: _authHeaders(token));
     if (response.statusCode >= 400) {
       final body = _decode(response.body);
       throw Exception(body['message'] ?? 'Reminders load failed');
     }
-    return _decodeList(response.body)
-        .whereType<Map>()
-        .map((e) => Map<String, dynamic>.from(e))
-        .toList();
+    return _decodeList(
+      response.body,
+    ).whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
   }
 
   /// POST /api/reminders — creates reminder and pushes to branch staff devices.
@@ -1375,6 +1548,279 @@ class MobileApi {
       final body = _decode(response.body);
       throw Exception(body['message'] ?? 'Reminder delete failed');
     }
+  }
+
+  Future<List<Map<String, dynamic>>> fetchInventoryProducts({
+    required String token,
+    String? branchId,
+    bool consumableOnly = true,
+  }) async {
+    final uri = Uri.parse('$baseUrl/api/salon-inventory/products').replace(
+      queryParameters: {
+        'limit': '200',
+        'status': 'active',
+        if (consumableOnly) 'product_type': 'consumable',
+        if (branchId != null && branchId.isNotEmpty) 'branchId': branchId,
+      },
+    );
+    final response = await http.get(uri, headers: _authHeaders(token));
+    final body = _decode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['message'] ?? 'Inventory products load failed');
+    }
+    final list = body['data'] as List? ?? const [];
+    return list
+        .whereType<Map>()
+        .map((row) => Map<String, dynamic>.from(row))
+        .toList();
+  }
+
+  Future<Map<String, dynamic>> createInventoryProduct({
+    required String token,
+    required String branchId,
+    required String name,
+    required String productType,
+    required String unit,
+    required double openingStock,
+    double minStock = 0,
+    double maxStock = 0,
+    double costPrice = 0,
+    String? sku,
+  }) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/api/salon-inventory/products'),
+      headers: _authHeaders(token),
+      body: jsonEncode({
+        'branch_id': int.tryParse(branchId) ?? branchId,
+        'name': name.trim(),
+        'product_type': productType,
+        'unit': unit,
+        'opening_stock': openingStock,
+        'min_stock': minStock,
+        'max_stock': maxStock,
+        'cost_price': costPrice,
+        if (sku != null && sku.trim().isNotEmpty) 'sku': sku.trim(),
+      }),
+    );
+    final body = _decode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['message'] ?? 'Product create failed');
+    }
+    return body;
+  }
+
+  Future<List<Map<String, dynamic>>> fetchInventoryGoodsReceipts({
+    required String token,
+    String? branchId,
+  }) async {
+    final uri = Uri.parse('$baseUrl/api/salon-inventory/goods-receipts')
+        .replace(
+          queryParameters: {
+            if (branchId != null && branchId.isNotEmpty) 'branchId': branchId,
+          },
+        );
+    final response = await http.get(uri, headers: _authHeaders(token));
+    if (response.statusCode >= 400) {
+      final body = _decode(response.body);
+      throw Exception(body['message'] ?? 'Goods receipts load failed');
+    }
+    return _decodeList(
+      response.body,
+    ).whereType<Map>().map((row) => Map<String, dynamic>.from(row)).toList();
+  }
+
+  Future<Map<String, dynamic>> createInventoryGoodsReceipt({
+    required String token,
+    required String branchId,
+    required String receivedDate,
+    required List<Map<String, dynamic>> items,
+    String? notes,
+  }) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/api/salon-inventory/goods-receipts'),
+      headers: _authHeaders(token),
+      body: jsonEncode({
+        'branch_id': int.tryParse(branchId) ?? branchId,
+        'received_date': receivedDate,
+        'confirm': true,
+        'items': items,
+        if (notes != null && notes.trim().isNotEmpty) 'notes': notes.trim(),
+      }),
+    );
+    final body = _decode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['message'] ?? 'Goods receipt failed');
+    }
+    return body;
+  }
+
+  Future<List<Map<String, dynamic>>> fetchInventoryAdjustments({
+    required String token,
+    String? branchId,
+  }) async {
+    final uri = Uri.parse('$baseUrl/api/salon-inventory/adjustments').replace(
+      queryParameters: {
+        if (branchId != null && branchId.isNotEmpty) 'branchId': branchId,
+      },
+    );
+    final response = await http.get(uri, headers: _authHeaders(token));
+    if (response.statusCode >= 400) {
+      final body = _decode(response.body);
+      throw Exception(body['message'] ?? 'Adjustments load failed');
+    }
+    return _decodeList(
+      response.body,
+    ).whereType<Map>().map((row) => Map<String, dynamic>.from(row)).toList();
+  }
+
+  Future<Map<String, dynamic>> createInventoryAdjustment({
+    required String token,
+    required String branchId,
+    required String productId,
+    required String direction,
+    required double quantity,
+    required String reason,
+  }) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/api/salon-inventory/adjustments'),
+      headers: _authHeaders(token),
+      body: jsonEncode({
+        'branch_id': int.tryParse(branchId) ?? branchId,
+        'product_id': int.tryParse(productId) ?? productId,
+        'direction': direction,
+        'quantity': quantity,
+        'reason': reason.trim(),
+      }),
+    );
+    final body = _decode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['message'] ?? 'Stock adjustment failed');
+    }
+    return body;
+  }
+
+  Future<List<Map<String, dynamic>>> fetchInventoryConsumptions({
+    required String token,
+    String? branchId,
+    String? status,
+    String? date,
+  }) async {
+    final uri = Uri.parse('$baseUrl/api/salon-inventory/consumptions').replace(
+      queryParameters: {
+        if (branchId != null && branchId.isNotEmpty) 'branchId': branchId,
+        if (status != null && status.isNotEmpty) 'status': status,
+        if (date != null && date.isNotEmpty) 'date': date,
+      },
+    );
+    final response = await http.get(uri, headers: _authHeaders(token));
+    if (response.statusCode >= 400) {
+      final body = _decode(response.body);
+      throw Exception(body['message'] ?? 'Consumption records load failed');
+    }
+    return _decodeList(
+      response.body,
+    ).whereType<Map>().map((row) => Map<String, dynamic>.from(row)).toList();
+  }
+
+  Future<Map<String, dynamic>> createInventoryConsumption({
+    required String token,
+    required String branchId,
+    required String productId,
+    required double quantity,
+    required String date,
+    required String unit,
+    String? staffId,
+    String? serviceId,
+    String? reason,
+  }) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/api/salon-inventory/consumptions'),
+      headers: _authHeaders(token),
+      body: jsonEncode({
+        'branch_id': int.tryParse(branchId) ?? branchId,
+        'product_id': int.tryParse(productId) ?? productId,
+        'quantity_used': quantity,
+        'consumption_date': date,
+        'unit': unit,
+        if (staffId != null && staffId.isNotEmpty)
+          'staff_id': int.tryParse(staffId) ?? staffId,
+        if (serviceId != null && serviceId.isNotEmpty)
+          'service_id': int.tryParse(serviceId) ?? serviceId,
+        if (reason != null && reason.trim().isNotEmpty) 'reason': reason.trim(),
+      }),
+    );
+    final body = _decode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['message'] ?? 'Consumption record failed');
+    }
+    return body;
+  }
+
+  Future<Map<String, dynamic>> fetchInventoryDayEndPreview({
+    required String token,
+    required String branchId,
+    required String date,
+  }) async {
+    final uri = Uri.parse(
+      '$baseUrl/api/salon-inventory/day-end/preview',
+    ).replace(queryParameters: {'branchId': branchId, 'date': date});
+    final response = await http.get(uri, headers: _authHeaders(token));
+    final body = _decode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['message'] ?? 'Day End preview failed');
+    }
+    return body;
+  }
+
+  Future<Map<String, dynamic>> confirmInventoryDayEnd({
+    required String token,
+    required String branchId,
+    required String date,
+    required List<Map<String, dynamic>> items,
+    String? notes,
+  }) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/api/salon-inventory/day-end/confirm'),
+      headers: _authHeaders(token),
+      body: jsonEncode({
+        'branch_id': int.tryParse(branchId) ?? branchId,
+        'date': date,
+        'items': items,
+        if (notes != null && notes.trim().isNotEmpty) 'notes': notes.trim(),
+      }),
+    );
+    final body = _decode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['message'] ?? 'Day End Closing failed');
+    }
+    return body;
+  }
+
+  Future<List<Map<String, dynamic>>> fetchInventoryHistory({
+    required String token,
+    String? branchId,
+    String? movementType,
+    String? from,
+    String? to,
+  }) async {
+    final uri = Uri.parse('$baseUrl/api/salon-inventory/history').replace(
+      queryParameters: {
+        'limit': '200',
+        if (branchId != null && branchId.isNotEmpty) 'branchId': branchId,
+        if (movementType != null && movementType.isNotEmpty)
+          'movement_type': movementType,
+        if (from != null && from.isNotEmpty) 'from': from,
+        if (to != null && to.isNotEmpty) 'to': to,
+      },
+    );
+    final response = await http.get(uri, headers: _authHeaders(token));
+    if (response.statusCode >= 400) {
+      final body = _decode(response.body);
+      throw Exception(body['message'] ?? 'Stock history load failed');
+    }
+    return _decodeList(
+      response.body,
+    ).whereType<Map>().map((row) => Map<String, dynamic>.from(row)).toList();
   }
 
   Map<String, String> _baseHeaders() => {

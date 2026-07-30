@@ -77,7 +77,7 @@ export default function InvConsumptionPage() {
         ]}
         data={rows}
         emptyMessage="No consumption records"
-        emptySub="Record shampoo/color usage during appointments — stock deducts at Day End"
+        emptySub="Record consumable usage during the day — stock deducts only at Day End Closing"
       />
       <Modal open={show} onClose={() => setShow(false)} title="Record Stock Consumption"
         footer={<><Button variant="secondary" onClick={() => setShow(false)}>Cancel</Button><Button variant="primary" loading={saving} onClick={save}>Save Pending</Button></>}>
@@ -92,7 +92,7 @@ export default function InvConsumptionPage() {
               setForm((f) => ({ ...f, product_id: e.target.value, unit: p?.unit || f.unit }));
             }}>
               <option value="">Select product</option>
-              {products.filter((p) => p.product_type !== 'equipment').map((p) => (
+              {products.filter((p) => p.product_type === 'consumable').map((p) => (
                 <option key={p.id} value={p.id}>{p.name} ({p.unit})</option>
               ))}
             </Select>
@@ -101,6 +101,9 @@ export default function InvConsumptionPage() {
           <FormGroup label="Stylist"><Select value={form.staff_id} onChange={(e) => setForm((f) => ({ ...f, staff_id: e.target.value }))}><option value="">Optional</option>{staff.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</Select></FormGroup>
           <FormGroup label="Service"><Select value={form.service_id} onChange={(e) => setForm((f) => ({ ...f, service_id: e.target.value }))}><option value="">Optional</option>{services.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</Select></FormGroup>
           <FormGroup label="Reason"><Input value={form.reason} onChange={(e) => setForm((f) => ({ ...f, reason: e.target.value }))} placeholder="e.g. Hair wash" /></FormGroup>
+          <div style={{ fontSize: 12, color: 'var(--app-text-muted, #98A2B3)' }}>
+            Only Consumable products can be recorded. Stock is deducted when Day End Closing is completed — not when an appointment or payment finishes.
+          </div>
         </div>
       </Modal>
     </div>

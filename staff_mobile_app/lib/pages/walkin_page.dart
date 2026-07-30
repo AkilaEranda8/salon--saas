@@ -451,6 +451,7 @@ class _WalkInPageState extends State<WalkInPage> {
       discounts: discounts,
       mobileApi: app.api,
       token: app.currentUser?.authToken ?? '',
+      recurringAllowed: true,
     );
     if (payload == null || !mounted) return;
 
@@ -470,6 +471,11 @@ class _WalkInPageState extends State<WalkInPage> {
       paidAmount:     payload.amount,
       discountId:
           payload.discountId.isNotEmpty ? payload.discountId : null,
+      isRecurring: payload.isRecurring,
+      recurringNextDate: payload.isRecurring ? payload.recurringNextDate : null,
+      appointmentTime: payload.isRecurring ? '10:00' : null,
+      recurringMessageTemplateIds:
+          payload.isRecurring ? payload.recurringMessageTemplateIds : null,
     );
     if (!mounted) return;
     if (!ok) { _toast(app.lastError ?? 'Payment failed'); return; }

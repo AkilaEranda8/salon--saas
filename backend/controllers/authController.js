@@ -712,9 +712,16 @@ const kcRefresh = async (req, res) => {
     const status = err.response?.status;
     const errorCode = err.response?.data?.error;
     if (status === 400 && errorCode === 'invalid_grant') {
-      return res.status(401).json({ message: 'Session expired. Please log in again.' });
+      return res.status(401).json({
+        message: 'Session expired. Please log in again.',
+        code: 'INVALID_GRANT',
+      });
     }
-    return res.status(401).json({ message: 'Session expired. Please log in again.' });
+    console.error('[KC] kcRefresh error:', err.response?.data || err.message);
+    return res.status(502).json({
+      message: 'Authentication service temporarily unavailable.',
+      code: 'KEYCLOAK_UNAVAILABLE',
+    });
   }
 };
 

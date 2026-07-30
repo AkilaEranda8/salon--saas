@@ -89,10 +89,13 @@ const create = async (req, res) => {
       customer_name, phone, walkin_token, splits = [], subtotal: bodySubtotal,
       loyalty_discount = 0, promo_discount = 0, usePoints = false,
       is_recurring = false, recurring_next_date, appointment_time,
-      recurring_message_template_id,
+      recurring_message_template_id, recurring_message_template_ids,
     } = req.body;
     const recurringSpecified = req.body.is_recurring !== undefined;
     const recurringTemplateId = parseInt(recurring_message_template_id, 10);
+    const recurringTemplateIds = Array.isArray(recurring_message_template_ids)
+      ? [...new Set(recurring_message_template_ids.map(Number).filter((id) => Number.isInteger(id) && id > 0))]
+      : null;
 
     if (!branch_id) {
       await t.rollback();
@@ -265,6 +268,9 @@ const create = async (req, res) => {
           recurring_message_template_id: is_recurring && Number.isInteger(recurringTemplateId) && recurringTemplateId > 0
             ? recurringTemplateId
             : null,
+          recurring_message_template_ids: is_recurring && recurringTemplateIds?.length
+            ? recurringTemplateIds
+            : null,
         }, { transaction: t });
       }
     } else if (is_recurring && !resolvedAppointmentId) {
@@ -297,6 +303,7 @@ const create = async (req, res) => {
         messageTemplateId: Number.isInteger(recurringTemplateId) && recurringTemplateId > 0
           ? recurringTemplateId
           : null,
+        messageTemplateIds: recurringTemplateIds?.length ? recurringTemplateIds : null,
         notes: walkin_token ? `Walk-in recurring seed (${walkin_token})` : 'Payment recurring seed',
       };
     }

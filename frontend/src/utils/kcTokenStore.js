@@ -16,9 +16,11 @@ let _refreshing   = null;    // shared Promise<string|null> while refresh is in 
 
 export function setKcTokens({ access_token, refresh_token, expires_in }) {
   _accessToken  = access_token;
-  _refreshToken = refresh_token;
-  _expiresAt    = Date.now() + (expires_in - 15) * 1000; // 15-second buffer
-  if (refresh_token) localStorage.setItem(STORAGE_KEY, refresh_token);
+  if (refresh_token) {
+    _refreshToken = refresh_token;
+    localStorage.setItem(STORAGE_KEY, refresh_token);
+  }
+  _expiresAt = Date.now() + Math.max(0, (Number(expires_in) || 0) - 15) * 1000;
 }
 
 export function clearKcTokens() {
@@ -32,7 +34,8 @@ export function clearKcTokens() {
 // ── Getters ───────────────────────────────────────────────────────────────────
 
 export const getKcAccessToken  = () => _accessToken;
-export const getKcRefreshToken = () => _refreshToken ?? localStorage.getItem(STORAGE_KEY);
+// localStorage is authoritative so every tab uses the latest rotated refresh token.
+export const getKcRefreshToken = () => localStorage.getItem(STORAGE_KEY) ?? _refreshToken;
 export const isKcTokenExpiring  = () => !_accessToken || Date.now() >= _expiresAt;
 
 // ── Refresh helper ────────────────────────────────────────────────────────────
@@ -51,12 +54,19 @@ export async function refreshKcToken() {
     body:    JSON.stringify({ refresh_token: rt }),
   })
     .then(async (res) => {
-      if (!res.ok) { clearKcTokens(); return null; }
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        if (res.status === 401 && data?.code === 'INVALID_GRANT') {
+          clearKcTokens();
+        }
+        return null;
+      }
       const data = await res.json();
       setKcTokens(data);
       return data.access_token;
     })
-    .catch(() => { clearKcTokens(); return null; })
+    // Keep the refresh token on network/Keycloak outages; this is not a logout.
+    .catch(() => null)
     .finally(() => { _refreshing = null; });
 
   return _refreshing;

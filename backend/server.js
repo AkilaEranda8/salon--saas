@@ -29,6 +29,7 @@ const ensureUserMobileFeaturesColumn = require('./services/ensureUserMobileFeatu
 const ensureUsersSessionsRevokedColumn = require('./services/ensureUsersSessionsRevokedColumn');
 const ensureAppointmentRecurringSmsColumn = require('./services/ensureAppointmentRecurringSmsColumn');
 const ensureAppointmentRecurringTemplateColumn = require('./services/ensureAppointmentRecurringTemplateColumn');
+const ensureAppointmentRecurringTemplateIdsColumn = require('./services/ensureAppointmentRecurringTemplateIdsColumn');
 const ensureSmsProviderColumn = require('./services/ensureSmsProviderColumn');
 const ensureMultipleMessageTemplates = require('./services/ensureMultipleMessageTemplates');
 const ensureTenantMobileRoleDefaultsColumn = require('./services/ensureTenantMobileRoleDefaultsColumn');
@@ -351,6 +352,7 @@ connectWithRetry().then(async () => {
   await ensureServiceDurationDefaults();
   await ensureAppointmentRecurringSmsColumn();
   await ensureAppointmentRecurringTemplateColumn();
+  await ensureAppointmentRecurringTemplateIdsColumn();
   await ensureSmsProviderColumn();
   await ensureMultipleMessageTemplates();
 

@@ -57,6 +57,16 @@ function KeycloakAuthProvider({ children }) {
   // ── On mount: restore session from saved refresh token ──────────────────────
   useEffect(() => {
     let cancelled = false;
+    let retryTimer = null;
+
+    const retryRestore = () => {
+      if (!cancelled && !retryTimer) {
+        retryTimer = setTimeout(() => {
+          retryTimer = null;
+          init();
+        }, 5000);
+      }
+    };
 
     async function init() {
       const rt = getKcRefreshToken();
@@ -66,11 +76,18 @@ function KeycloakAuthProvider({ children }) {
           if (newToken && !cancelled) {
             const res = await api.get('/auth/me');
             if (!cancelled) setUser(res.data.user);
-          } else if (!cancelled) {
+          } else if (!getKcRefreshToken()) {
             setUser(null);
+          } else {
+            // Keycloak/network is temporarily unavailable; keep restoring instead of logging out.
+            retryRestore();
+            return;
           }
-        } catch {
-          clearKcTokens();
+        } catch (err) {
+          if (getKcRefreshToken() && (!err.response || err.response.status >= 500)) {
+            retryRestore();
+            return;
+          }
           if (!cancelled) setUser(null);
         }
       } else {
@@ -80,21 +97,32 @@ function KeycloakAuthProvider({ children }) {
     }
 
     init();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      if (retryTimer) clearTimeout(retryTimer);
+    };
   }, []);
 
-  // ── Proactive token refresh every 4 minutes ──────────────────────────────────
+  // ── Proactive refresh, including wake-from-sleep and reconnect ───────────────
   useEffect(() => {
-    const timer = setInterval(async () => {
+    const refreshSession = async () => {
       if (!getKcRefreshToken()) return;
-      try {
-        await refreshKcToken();
-      } catch {
-        clearKcTokens();
+      const token = await refreshKcToken().catch(() => null);
+      if (!token && !getKcRefreshToken()) {
         setUser(null);
       }
-    }, 4 * 60 * 1000);
-    return () => clearInterval(timer);
+    };
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') refreshSession();
+    };
+    const timer = setInterval(refreshSession, 4 * 60 * 1000);
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('online', refreshSession);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('online', refreshSession);
+    };
   }, []);
 
   // ── Force logout when maintenance kicks in for non-platform admins ───────────

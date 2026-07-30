@@ -13,7 +13,8 @@ function getModels() {
 /**
  * Send day-of recurring visit reminders (SMS / WhatsApp) for appointments today.
  * Channel toggles: Notifications → Recurring Visit Reminder.
- * If recurring_message_template_id is set, only that selected template is sent.
+ * If recurring_message_template_ids is set, every selected channel template is sent.
+ * The legacy recurring_message_template_id remains supported for older bookings.
  * Idempotent via appointments.recurring_sms_sent_at.
  */
 async function runRecurringDaySms(dateOverride) {
@@ -80,7 +81,41 @@ async function runRecurringDaySms(dateOverride) {
 
     let anyOk = false;
 
-    // Staff picked a specific recurring template when booking — send only that message.
+    const selectedIds = Array.isArray(appt.recurring_message_template_ids)
+      ? [...new Set(appt.recurring_message_template_ids.map(Number).filter((id) => Number.isInteger(id) && id > 0))]
+      : [];
+
+    // Staff picked recurring templates at booking time — send each selected channel.
+    if (selectedIds.length) {
+      const sentChannels = new Set();
+      for (const templateId of selectedIds) {
+        const chosen = await resolveChosenTemplate(templateId, 'recurring_reminder', tid);
+        if (!chosen || sentChannels.has(chosen.channel)) continue;
+
+        const msg = interpolate(chosen.body, vars);
+        try {
+          if (chosen.channel === 'sms' && smsOn) {
+            await sendSMS({ to: phone, message: msg, meta, tenantId: tid });
+            sentChannels.add(chosen.channel);
+            anyOk = true;
+          } else if (chosen.channel === 'whatsapp' && waOn) {
+            await sendWhatsApp({ to: phone, message: msg, meta, tenantId: tid });
+            sentChannels.add(chosen.channel);
+            anyOk = true;
+          }
+        } catch (err) {
+          console.error('[recurringSmsCron] selected template failed', appt.id, templateId, err.message);
+        }
+      }
+
+      if (anyOk) {
+        await appt.update({ recurring_sms_sent_at: new Date() });
+        sent += 1;
+      }
+      continue;
+    }
+
+    // Backward compatibility for appointments saved before multi-channel selection.
     const chosen = await resolveChosenTemplate(
       appt.recurring_message_template_id,
       'recurring_reminder',
@@ -95,8 +130,6 @@ async function runRecurringDaySms(dateOverride) {
         } else if (chosen.channel === 'whatsapp' && waOn) {
           await sendWhatsApp({ to: phone, message: msg, meta, tenantId: tid });
           anyOk = true;
-        } else if (chosen.channel === 'email') {
-          // Recurring reminders are SMS/WhatsApp only in settings; skip email templates.
         }
       } catch (err) {
         console.error('[recurringSmsCron] chosen template failed', appt.id, err.message);

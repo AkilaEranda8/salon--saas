@@ -5,6 +5,7 @@ import {
   isKcTokenExpiring,
   refreshKcToken,
   clearKcTokens,
+  getKcRefreshToken,
 } from '../utils/kcTokenStore';
 import { getBranchFilterId } from '../utils/branchFilterStore';
 
@@ -48,7 +49,7 @@ api.interceptors.request.use(async (config) => {
     if (!isPublic) {
       try {
         let token = getKcAccessToken();
-        if (token && isKcTokenExpiring()) {
+        if (isKcTokenExpiring()) {
           token = await refreshKcToken();
         }
         if (token) config.headers['Authorization'] = `Bearer ${token}`;
@@ -85,8 +86,24 @@ api.interceptors.response.use(
 
     if (status === 401 && !isLoginPath) {
       if (USE_KEYCLOAK) {
-        clearKcTokens();
-        window.location.href = path.startsWith('/platform') ? '/platform/login' : '/login';
+        const original = error.config || {};
+        const isPublic = KC_PUBLIC_PATHS.some((p) => original.url?.includes(p));
+        if (!original._kcRetried && !isPublic && getKcRefreshToken()) {
+          original._kcRetried = true;
+          const token = await refreshKcToken();
+          if (token) {
+            original.headers = original.headers || {};
+            original.headers.Authorization = `Bearer ${token}`;
+            return api.request(original);
+          }
+        }
+
+        // Redirect only when Keycloak confirmed the refresh token is invalid.
+        // Transient network/Keycloak failures retain the session for a later retry.
+        if (!getKcRefreshToken()) {
+          clearKcTokens();
+          window.location.href = path.startsWith('/platform') ? '/platform/login' : '/login';
+        }
       } else {
         localStorage.removeItem('zanesalon_user');
         window.location.href = '/login';

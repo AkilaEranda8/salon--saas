@@ -26,6 +26,7 @@ import {
 } from '../utils/packageHelpers';
 import { useFeatureGate } from '../hooks/useFeatureGate';
 import RecurringDateCalendar, { defaultRecurringNextDate } from '../components/ui/RecurringDateCalendar';
+import RecurringTemplateCheckboxes from '../components/ui/RecurringTemplateCheckboxes';
 
 const METHODS = ['Cash','Card','Online Transfer','Loyalty Points','Package','LankaQR'];
 const METHOD_LABEL = { 'Cash':'Cash', 'Card':'Card', 'Online Transfer':'Bank Transfer', 'Loyalty Points':'Loyalty Pts', 'Package':'Package', 'LankaQR':'LankaQR' };
@@ -35,10 +36,8 @@ const EMPTY_FORM = {
   is_recurring: true,
   recurring_next_date: '',
   appointment_time: '10:00',
-  recurring_message_template_id: '',
+  recurring_message_template_ids: [],
 };
-
-const CHANNEL_LABELS = { email: 'Email', whatsapp: 'WhatsApp', sms: 'SMS' };
 
 // ── HelaPay QR Modal ─────────────────────────────────────────────────────────
 function HelaPayQRModal({ amount, reference, onClose, onSuccess }) {
@@ -872,7 +871,7 @@ export default function PaymentsPage() {
       return setFormErr(`Package split must equal bundle price (Rs. ${packageBundle.toLocaleString()})`);
     setSaving(true);
     try {
-      const { service_ids, is_recurring, recurring_next_date, appointment_time, recurring_message_template_id, ...rest } = form;
+      const { service_ids, is_recurring, recurring_next_date, appointment_time, recurring_message_template_ids, ...rest } = form;
       const payload = {
         ...rest,
         service_id: service_ids[0] || null,
@@ -885,9 +884,7 @@ export default function PaymentsPage() {
         payload.is_recurring = true;
         payload.recurring_next_date = recurring_next_date || defaultRecurringNextDate();
         payload.appointment_time = appointment_time || '10:00';
-        if (recurring_message_template_id) {
-          payload.recurring_message_template_id = recurring_message_template_id;
-        }
+        payload.recurring_message_template_ids = recurring_message_template_ids;
       }
       if (editId) {
         await api.put(`/payments/${editId}`, payload);
@@ -1200,23 +1197,13 @@ export default function PaymentsPage() {
                         onChange={(d) => setForm((f) => ({ ...f, recurring_next_date: d }))}
                       />
                       <div style={{ marginTop: 10 }}>
-                        <FormGroup label="Reminder message">
-                          <Select
-                            value={form.recurring_message_template_id || ''}
-                            onChange={e => setForm(f => ({ ...f, recurring_message_template_id: e.target.value }))}
-                          >
-                            <option value="">Use default recurring template</option>
-                            {receiptTemplates.map(t => (
-                              <option key={t.id} value={t.id}>
-                                {CHANNEL_LABELS[t.channel] || t.channel} — {t.name}{t.is_default ? ' (default)' : ''}
-                              </option>
-                            ))}
-                          </Select>
-                          <div style={{ fontSize: 12, color: isDark ? '#94A3B8' : '#667085', marginTop: 6 }}>
-                            {receiptTemplates.length
-                              ? 'Sent on the visit day for this recurring booking.'
-                              : 'No saved templates yet — add them in Notifications → Message Templates → Recurring Visit Reminder.'}
-                          </div>
+                        <FormGroup label="Reminder messages">
+                          <RecurringTemplateCheckboxes
+                            templates={receiptTemplates}
+                            value={form.recurring_message_template_ids}
+                            onChange={(ids) => setForm((f) => ({ ...f, recurring_message_template_ids: ids }))}
+                            isDark={isDark}
+                          />
                         </FormGroup>
                       </div>
                     </>

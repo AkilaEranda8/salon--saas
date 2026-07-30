@@ -230,7 +230,7 @@ function LowStockCard({ items, loading, onClick }) {
         <div style={{ marginTop:4, display:'flex', flexDirection:'column', gap:3 }}>
           {items.slice(0,3).map(it => (
             <div key={it.id} style={{ fontSize:11, color:'#6B7280', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
-              · {it.name} ({it.quantity} {it.unit || 'units'})
+              · {it.name} ({it.current_stock} {it.unit || 'units'})
             </div>
           ))}
           {count > 3 && <div style={{ fontSize:11, color:'#9CA3AF' }}>+{count - 3} more items</div>}
@@ -326,7 +326,7 @@ export default function DashboardPage() {
       /* secondary: low-stock, expenses, attendance — non-blocking */
       const expQ = reportParams.toString() ? `?${reportParams.toString()}&limit=1` : `?month=${month || thisMonth()}&limit=1`;
       const [invRes, expRes, attRes] = await Promise.all([
-        api.get('/inventory/low-stock').catch(() => ({ data: [] })),
+        api.get('/salon-inventory/low-stock').catch(() => ({ data: [] })),
         api.get(`/expenses${expQ}`).catch(() => ({ data: {} })),
         api.get(`/attendance/summary?month=${month || thisMonth()}`).catch(() => ({ data: [] })),
       ]);

@@ -63,14 +63,13 @@ class InventoryPage extends StatelessWidget {
         colors: [Color(0xFF0F766E), Color(0xFF14B8A6)],
         page: InvConsumptionPage(),
       ),
-      if (app.canManageSalonStaff)
-        const _InventoryAction(
-          title: 'Day End Closing',
-          subtitle: 'Confirm usage and deduct stock',
-          icon: Icons.task_alt_rounded,
-          colors: [Color(0xFF1D4ED8), Color(0xFF3B82F6)],
-          page: InvDayEndPage(),
-        ),
+      const _InventoryAction(
+        title: 'Day End Closing',
+        subtitle: 'Confirm usage and deduct stock',
+        icon: Icons.task_alt_rounded,
+        colors: [Color(0xFF1D4ED8), Color(0xFF3B82F6)],
+        page: InvDayEndPage(),
+      ),
       const _InventoryAction(
         title: 'Stock History',
         subtitle: 'View every stock movement',

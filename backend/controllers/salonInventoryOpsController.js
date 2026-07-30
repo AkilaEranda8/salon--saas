@@ -5,17 +5,17 @@ const base = require('./salonInventoryController');
 const {
   InvProduct, InvStockMovement,
   InvConsumption, InvDayEndBatch, InvDayEndBatchItem,
-  InvStockAdjustment, InvStockCount, InvStockCountItem,
-  InvSettings, Branch, Staff, Service, Appointment, User,
+  InvStockAdjustment, Branch, Staff, Service, User,
 } = require('../models');
 const { applyStockChange, sequelize } = require('../services/invStockService');
 
 const {
-  toDec, branchScope, resolveBranchId, getSettings, nextDocNo,
+  toDec, branchScope, requireBranchId, localToday,
+  ALLOW_NEGATIVE_ON_DAY_END, ALLOW_NEGATIVE_ON_ADJUSTMENT,
   tenantWhere, byIdWhere, resolveTenantId,
 } = base;
 
-// ── Stock Consumption (pending until day-end) ────────────────────────────────
+// ── Stock Consumption (pending until Day End) ────────────────────────────────
 const listConsumptions = async (req, res) => {
   try {
     const where = branchScope(req);
@@ -31,7 +31,6 @@ const listConsumptions = async (req, res) => {
         { model: Branch, as: 'branch', attributes: ['id', 'name'] },
         { model: Staff, as: 'staff', attributes: ['id', 'name'], required: false },
         { model: Service, as: 'service', attributes: ['id', 'name'], required: false },
-        { model: Appointment, as: 'appointment', attributes: ['id', 'appointment_date'], required: false },
       ],
       order: [['consumption_date', 'DESC'], ['id', 'DESC']],
       limit: 500,
@@ -45,34 +44,31 @@ const listConsumptions = async (req, res) => {
 
 const createConsumption = async (req, res) => {
   try {
-    const branchId = resolveBranchId(req, req.body.branch_id);
+    const branchId = await requireBranchId(req, req.body.branch_id);
     if (!branchId || !req.body.product_id || !req.body.quantity_used) {
-      return res.status(400).json({ message: 'branch_id, product_id and quantity_used are required.' });
+      return res.status(400).json({ message: 'A branch, product and quantity are required.' });
     }
     const product = await InvProduct.findOne({ where: { id: req.body.product_id, ...tenantWhere(req) } });
     if (!product) return res.status(404).json({ message: 'Product not found.' });
-    if (Number(product.branch_id) !== Number(branchId)) {
+    if (Number(product.branch_id) !== branchId) {
       return res.status(400).json({ message: 'Product does not belong to the selected branch.' });
     }
-    if (product.product_type === 'equipment') {
-      return res.status(400).json({ message: 'Equipment products cannot be consumed.' });
-    }
     if (product.product_type !== 'consumable') {
-      return res.status(400).json({ message: 'Only Consumable products can be consumed.' });
+      return res.status(400).json({ message: 'Equipment cannot be consumed. Only consumable products can be recorded.' });
     }
 
     const qty = toDec(req.body.quantity_used);
-    if (qty <= 0) return res.status(400).json({ message: 'Quantity must be positive.' });
+    if (qty <= 0) return res.status(400).json({ message: 'Quantity must be greater than zero.' });
 
     // Always pending — stock is deducted only when Day End Closing is completed.
     const row = await InvConsumption.create({
       tenant_id: resolveTenantId(req),
-      branch_id: Number(branchId),
+      branch_id: branchId,
       product_id: product.id,
       staff_id: req.body.staff_id || null,
       appointment_id: req.body.appointment_id || null,
       service_id: req.body.service_id || null,
-      consumption_date: req.body.consumption_date || new Date().toISOString().slice(0, 10),
+      consumption_date: req.body.consumption_date || localToday(),
       quantity_used: qty,
       unit: req.body.unit || product.unit,
       reason: req.body.reason || null,
@@ -86,45 +82,44 @@ const createConsumption = async (req, res) => {
   }
 };
 
-const updateConsumption = async (req, res) => {
-  try {
-    const row = await InvConsumption.findOne({ where: byIdWhere(req, req.params.id) });
-    if (!row) return res.status(404).json({ message: 'Not found.' });
-    if (row.status !== 'pending') return res.status(400).json({ message: 'Only pending records can be edited.' });
-    const allowed = ['quantity_used', 'reason', 'staff_id', 'service_id', 'appointment_id', 'consumption_date'];
-    const updates = {};
-    for (const f of allowed) if (req.body[f] !== undefined) updates[f] = req.body[f];
-    if (updates.quantity_used != null) updates.quantity_used = toDec(updates.quantity_used);
-    await row.update(updates);
-    return res.json(row);
-  } catch (err) {
-    return res.status(500).json({ message: 'Server error.' });
-  }
-};
-
 const cancelConsumption = async (req, res) => {
   try {
     const row = await InvConsumption.findOne({ where: byIdWhere(req, req.params.id) });
     if (!row) return res.status(404).json({ message: 'Not found.' });
-    if (row.status !== 'pending') return res.status(400).json({ message: 'Only pending can be cancelled.' });
+    if (row.status !== 'pending') {
+      return res.status(400).json({ message: 'Only pending usage can be removed. Use a stock adjustment instead.' });
+    }
     await row.update({ status: 'cancelled' });
     return res.json(row);
   } catch (err) {
+    console.error('inv.cancelConsumption', err.message);
     return res.status(500).json({ message: 'Server error.' });
   }
 };
 
-// ── Day End Stock Consumption ────────────────────────────────────────────────
+// ── Day End Closing ──────────────────────────────────────────────────────────
+async function findConfirmedBatch(req, branchId, date, transaction) {
+  return InvDayEndBatch.findOne({
+    where: {
+      ...tenantWhere(req),
+      branch_id: branchId,
+      batch_date: date,
+      status: 'confirmed',
+    },
+    transaction,
+  });
+}
+
 const dayEndPreview = async (req, res) => {
   try {
-    const branchId = resolveBranchId(req, req.query.branchId);
-    const date = req.query.date || new Date().toISOString().slice(0, 10);
-    if (!branchId) return res.status(400).json({ message: 'branchId required.' });
+    const branchId = await requireBranchId(req, req.query.branchId);
+    const date = req.query.date || localToday();
+    if (!branchId) return res.status(400).json({ message: 'No branch found for this salon.' });
 
     const pending = await InvConsumption.findAll({
       where: {
         ...tenantWhere(req),
-        branch_id: Number(branchId),
+        branch_id: branchId,
         consumption_date: date,
         status: 'pending',
       },
@@ -133,26 +128,28 @@ const dayEndPreview = async (req, res) => {
 
     const map = new Map();
     for (const c of pending) {
-      if (c.product?.product_type && c.product.product_type !== 'consumable') continue;
       const key = c.product_id;
       if (!map.has(key)) {
         map.set(key, {
           product_id: c.product_id,
           product: c.product,
-          unit: c.unit,
+          unit: c.unit || c.product?.unit,
           quantity_used: 0,
-          consumption_ids: [],
+          entries: 0,
         });
       }
-      const g = map.get(key);
-      g.quantity_used += toDec(c.quantity_used);
-      g.consumption_ids.push(c.id);
+      const group = map.get(key);
+      group.quantity_used += toDec(c.quantity_used);
+      group.entries += 1;
     }
 
+    const closedBatch = await findConfirmedBatch(req, branchId, date);
     return res.json({
       date,
-      branch_id: Number(branchId),
+      branch_id: branchId,
       pendingCount: pending.length,
+      alreadyClosed: !!closedBatch,
+      closedAt: closedBatch?.confirmed_at || null,
       items: [...map.values()],
     });
   } catch (err) {
@@ -161,69 +158,53 @@ const dayEndPreview = async (req, res) => {
   }
 };
 
-const dayEndSaveDraft = async (req, res) => {
-  try {
-    const branchId = resolveBranchId(req, req.body.branch_id);
-    const date = req.body.date || new Date().toISOString().slice(0, 10);
-    const items = Array.isArray(req.body.items) ? req.body.items : [];
-    if (!branchId) return res.status(400).json({ message: 'branch_id required.' });
-
-    let batch = await InvDayEndBatch.findOne({
-      where: {
-        ...tenantWhere(req),
-        branch_id: Number(branchId),
-        batch_date: date,
-        status: 'draft',
-      },
-    });
-    if (!batch) {
-      batch = await InvDayEndBatch.create({
-        tenant_id: resolveTenantId(req),
-        branch_id: Number(branchId),
-        batch_date: date,
-        status: 'draft',
-        notes: req.body.notes || null,
-        created_by: req.user?.id,
-      });
-    } else {
-      await InvDayEndBatchItem.destroy({ where: { day_end_batch_id: batch.id } });
-      if (req.body.notes !== undefined) await batch.update({ notes: req.body.notes });
-    }
-
-    for (const it of items) {
-      await InvDayEndBatchItem.create({
-        day_end_batch_id: batch.id,
-        product_id: it.product_id,
-        quantity_used: toDec(it.quantity_used),
-        unit: it.unit || 'pcs',
-      });
-    }
-
-    const full = await InvDayEndBatch.findByPk(batch.id, {
-      include: [{ model: InvDayEndBatchItem, as: 'items', include: [{ model: InvProduct, as: 'product' }] }],
-    });
-    return res.json(full);
-  } catch (err) {
-    console.error('inv.dayEndDraft', err.message);
-    return res.status(500).json({ message: 'Server error.' });
-  }
-};
-
+/**
+ * Totals are recomputed from the pending records inside the transaction rather
+ * than trusting the request body, so a stale preview or a double click can never
+ * deduct the wrong amount or deduct twice.
+ */
 const dayEndConfirm = async (req, res) => {
   const t = await sequelize.transaction();
   try {
-    const branchId = resolveBranchId(req, req.body.branch_id);
-    const date = req.body.date || new Date().toISOString().slice(0, 10);
-    const items = Array.isArray(req.body.items) ? req.body.items : [];
-    if (!branchId || !items.length) {
+    const branchId = await requireBranchId(req, req.body.branch_id);
+    const date = req.body.date || localToday();
+    if (!branchId) {
       await t.rollback();
-      return res.status(400).json({ message: 'branch_id and items required.' });
+      return res.status(400).json({ message: 'No branch found for this salon.' });
     }
 
-    const settings = await getSettings(req, branchId);
+    if (await findConfirmedBatch(req, branchId, date, t)) {
+      await t.rollback();
+      return res.status(409).json({ message: `Day End for ${date} is already completed.` });
+    }
+
+    const pending = await InvConsumption.findAll({
+      where: {
+        ...tenantWhere(req),
+        branch_id: branchId,
+        consumption_date: date,
+        status: 'pending',
+      },
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
+    if (!pending.length) {
+      await t.rollback();
+      return res.status(400).json({ message: 'No pending usage to close for this date.' });
+    }
+
+    const totals = new Map();
+    for (const c of pending) {
+      const qty = toDec(c.quantity_used);
+      if (qty <= 0) continue;
+      const current = totals.get(c.product_id) || { quantity: 0, unit: c.unit };
+      current.quantity += qty;
+      totals.set(c.product_id, current);
+    }
+
     const batch = await InvDayEndBatch.create({
       tenant_id: resolveTenantId(req),
-      branch_id: Number(branchId),
+      branch_id: branchId,
       batch_date: date,
       status: 'confirmed',
       notes: req.body.notes || null,
@@ -232,72 +213,39 @@ const dayEndConfirm = async (req, res) => {
       confirmed_at: new Date(),
     }, { transaction: t });
 
-    const consumptionIds = [];
-    for (const it of items) {
-      const qty = toDec(it.quantity_used);
-      await InvDayEndBatchItem.create({
-        day_end_batch_id: batch.id,
-        product_id: it.product_id,
-        quantity_used: qty,
-        unit: it.unit || 'pcs',
-      }, { transaction: t });
-
-      if (qty <= 0) continue;
+    for (const [productId, { quantity, unit }] of totals) {
       const product = await InvProduct.findOne({
-        where: { id: it.product_id, ...tenantWhere(req) },
+        where: { id: productId, ...tenantWhere(req) },
         transaction: t,
         lock: t.LOCK.UPDATE,
       });
       if (!product || product.product_type !== 'consumable') continue;
 
+      await InvDayEndBatchItem.create({
+        day_end_batch_id: batch.id,
+        product_id: productId,
+        quantity_used: quantity,
+        unit: unit || product.unit || 'pcs',
+      }, { transaction: t });
+
       await applyStockChange({
         product,
-        delta: -qty,
+        delta: -quantity,
         movementType: 'consumption',
         tenantId: resolveTenantId(req),
-        branchId: Number(branchId),
+        branchId,
         userId: req.user?.id,
         referenceType: 'day_end_batch',
         referenceId: batch.id,
         remarks: `Day-end consumption ${date}`,
         transaction: t,
-        allowNegative: !!settings.allow_negative_stock,
+        allowNegative: ALLOW_NEGATIVE_ON_DAY_END,
       });
-
-      if (Array.isArray(it.consumption_ids)) consumptionIds.push(...it.consumption_ids);
     }
 
-    const pendingWhere = {
-      ...tenantWhere(req),
-      branch_id: Number(branchId),
-      consumption_date: date,
-      status: 'pending',
-    };
-    if (consumptionIds.length) {
-      await InvConsumption.update(
-        { status: 'processed', day_end_batch_id: batch.id },
-        { where: { ...pendingWhere, id: { [Op.in]: consumptionIds } }, transaction: t },
-      );
-    } else {
-      await InvConsumption.update(
-        { status: 'processed', day_end_batch_id: batch.id },
-        { where: pendingWhere, transaction: t },
-      );
-    }
-
-    // Cancel leftover draft batches for same day
-    await InvDayEndBatch.update(
-      { status: 'cancelled' },
-      {
-        where: {
-          ...tenantWhere(req),
-          branch_id: Number(branchId),
-          batch_date: date,
-          status: 'draft',
-          id: { [Op.ne]: batch.id },
-        },
-        transaction: t,
-      },
+    await InvConsumption.update(
+      { status: 'processed', day_end_batch_id: batch.id },
+      { where: { id: { [Op.in]: pending.map((c) => c.id) } }, transaction: t },
     );
 
     await t.commit();
@@ -312,13 +260,11 @@ const dayEndConfirm = async (req, res) => {
   }
 };
 
-// ── Stock Adjustments ────────────────────────────────────────────────────────
+// ── Stock Adjustments (applied immediately, no approval) ─────────────────────
 const listAdjustments = async (req, res) => {
   try {
-    const where = branchScope(req);
-    if (req.query.status) where.status = req.query.status;
     const rows = await InvStockAdjustment.findAll({
-      where,
+      where: branchScope(req),
       include: [
         { model: InvProduct, as: 'product', attributes: ['id', 'name', 'unit'] },
         { model: Branch, as: 'branch', attributes: ['id', 'name'] },
@@ -328,6 +274,7 @@ const listAdjustments = async (req, res) => {
     });
     return res.json(rows);
   } catch (err) {
+    console.error('inv.listAdjustments', err.message);
     return res.status(500).json({ message: 'Server error.' });
   }
 };
@@ -335,28 +282,36 @@ const listAdjustments = async (req, res) => {
 const createAdjustment = async (req, res) => {
   const t = await sequelize.transaction();
   try {
-    const branchId = resolveBranchId(req, req.body.branch_id);
+    const branchId = await requireBranchId(req, req.body.branch_id);
     const { product_id, direction, quantity, reason } = req.body;
     if (!branchId || !product_id || !direction || !quantity || !reason) {
       await t.rollback();
-      return res.status(400).json({ message: 'branch_id, product_id, direction, quantity and reason are required.' });
+      return res.status(400).json({ message: 'Product, direction, quantity and reason are required.' });
     }
     if (!['add', 'remove'].includes(direction)) {
       await t.rollback();
-      return res.status(400).json({ message: 'direction must be add or remove.' });
+      return res.status(400).json({ message: 'Direction must be add or remove.' });
     }
-    const settings = await getSettings(req, branchId);
     const qty = Math.abs(toDec(quantity));
     if (qty <= 0) {
       await t.rollback();
-      return res.status(400).json({ message: 'Quantity must be positive.' });
+      return res.status(400).json({ message: 'Quantity must be greater than zero.' });
     }
 
-    // No approval workflow — adjustments apply immediately.
+    const product = await InvProduct.findOne({
+      where: { id: product_id, ...tenantWhere(req) },
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
+    if (!product) throw Object.assign(new Error('Product not found.'), { status: 404 });
+    if (Number(product.branch_id) !== branchId) {
+      throw Object.assign(new Error('Product does not belong to the selected branch.'), { status: 400 });
+    }
+
     const adj = await InvStockAdjustment.create({
       tenant_id: resolveTenantId(req),
-      branch_id: Number(branchId),
-      product_id,
+      branch_id: branchId,
+      product_id: product.id,
       direction,
       quantity: qty,
       reason: String(reason).trim(),
@@ -366,218 +321,25 @@ const createAdjustment = async (req, res) => {
       approved_at: new Date(),
     }, { transaction: t });
 
-    const product = await InvProduct.findOne({
-      where: { id: product_id, ...tenantWhere(req) },
-      transaction: t,
-      lock: t.LOCK.UPDATE,
-    });
-    if (!product) throw Object.assign(new Error('Product not found'), { status: 404 });
-    if (Number(product.branch_id) !== Number(branchId)) {
-      throw Object.assign(new Error('Product does not belong to the selected branch.'), { status: 400 });
-    }
-    const delta = direction === 'add' ? qty : -qty;
     await applyStockChange({
       product,
-      delta,
+      delta: direction === 'add' ? qty : -qty,
       movementType: 'adjustment',
       tenantId: resolveTenantId(req),
-      branchId: Number(branchId),
+      branchId,
       userId: req.user?.id,
       referenceType: 'stock_adjustment',
       referenceId: adj.id,
-      remarks: reason,
+      remarks: adj.reason,
       transaction: t,
-      allowNegative: !!settings.allow_negative_stock,
+      allowNegative: ALLOW_NEGATIVE_ON_ADJUSTMENT,
     });
 
     await t.commit();
     return res.status(201).json(adj);
   } catch (err) {
     await t.rollback();
-    return res.status(err.status || 500).json({ message: err.message || 'Server error.' });
-  }
-};
-
-const approveAdjustment = async (req, res) => {
-  const t = await sequelize.transaction();
-  try {
-    const adj = await InvStockAdjustment.findOne({
-      where: byIdWhere(req, req.params.id),
-      transaction: t,
-      lock: t.LOCK.UPDATE,
-    });
-    if (!adj) { await t.rollback(); return res.status(404).json({ message: 'Not found.' }); }
-    if (adj.status !== 'pending') { await t.rollback(); return res.status(400).json({ message: 'Not pending.' }); }
-
-    const settings = await getSettings(req, adj.branch_id);
-    const product = await InvProduct.findOne({
-      where: { id: adj.product_id, ...tenantWhere(req) },
-      transaction: t,
-      lock: t.LOCK.UPDATE,
-    });
-    const delta = adj.direction === 'add' ? toDec(adj.quantity) : -toDec(adj.quantity);
-    await applyStockChange({
-      product,
-      delta,
-      movementType: 'adjustment',
-      tenantId: resolveTenantId(req),
-      branchId: adj.branch_id,
-      userId: req.user?.id,
-      referenceType: 'stock_adjustment',
-      referenceId: adj.id,
-      remarks: adj.reason,
-      transaction: t,
-      allowNegative: !!settings.allow_negative_stock,
-    });
-    await adj.update({
-      status: 'applied',
-      approved_by: req.user?.id,
-      approved_at: new Date(),
-    }, { transaction: t });
-    await t.commit();
-    return res.json(adj);
-  } catch (err) {
-    await t.rollback();
-    return res.status(err.status || 500).json({ message: err.message || 'Server error.' });
-  }
-};
-
-// ── Stock Count ──────────────────────────────────────────────────────────────
-const listStockCounts = async (req, res) => {
-  try {
-    const rows = await InvStockCount.findAll({
-      where: branchScope(req),
-      include: [
-        { model: Branch, as: 'branch', attributes: ['id', 'name'] },
-        { model: InvStockCountItem, as: 'items', include: [{ model: InvProduct, as: 'product', attributes: ['id', 'name', 'unit'] }] },
-      ],
-      order: [['createdAt', 'DESC']],
-      limit: 100,
-    });
-    return res.json(rows);
-  } catch (err) {
-    return res.status(500).json({ message: 'Server error.' });
-  }
-};
-
-const createStockCount = async (req, res) => {
-  const t = await sequelize.transaction();
-  try {
-    const branchId = resolveBranchId(req, req.body.branch_id);
-    if (!branchId) { await t.rollback(); return res.status(400).json({ message: 'branch_id required.' }); }
-
-    const products = await InvProduct.findAll({
-      where: { ...tenantWhere(req), branch_id: Number(branchId), status: 'active' },
-      transaction: t,
-    });
-
-    const count = await InvStockCount.create({
-      tenant_id: resolveTenantId(req),
-      branch_id: Number(branchId),
-      count_date: req.body.count_date || new Date().toISOString().slice(0, 10),
-      status: 'draft',
-      notes: req.body.notes || null,
-      created_by: req.user?.id,
-    }, { transaction: t });
-
-    const bodyItems = Array.isArray(req.body.items) ? req.body.items : null;
-    for (const p of products) {
-      const override = bodyItems?.find((i) => Number(i.product_id) === p.id);
-      const expected = toDec(p.current_stock);
-      const actual = override ? toDec(override.actual_qty, expected) : expected;
-      await InvStockCountItem.create({
-        stock_count_id: count.id,
-        product_id: p.id,
-        expected_qty: expected,
-        actual_qty: actual,
-        variance: actual - expected,
-      }, { transaction: t });
-    }
-
-    await t.commit();
-    const full = await InvStockCount.findByPk(count.id, {
-      include: [{ model: InvStockCountItem, as: 'items', include: [{ model: InvProduct, as: 'product' }] }],
-    });
-    return res.status(201).json(full);
-  } catch (err) {
-    await t.rollback();
-    console.error('inv.createStockCount', err.message);
-    return res.status(500).json({ message: 'Server error.' });
-  }
-};
-
-const updateStockCount = async (req, res) => {
-  try {
-    const count = await InvStockCount.findOne({ where: byIdWhere(req, req.params.id) });
-    if (!count) return res.status(404).json({ message: 'Not found.' });
-    if (count.status !== 'draft') return res.status(400).json({ message: 'Only draft counts can be edited.' });
-    const items = Array.isArray(req.body.items) ? req.body.items : [];
-    for (const it of items) {
-      const row = await InvStockCountItem.findOne({
-        where: { stock_count_id: count.id, product_id: it.product_id },
-      });
-      if (!row) continue;
-      const actual = toDec(it.actual_qty);
-      await row.update({
-        actual_qty: actual,
-        variance: actual - toDec(row.expected_qty),
-      });
-    }
-    if (req.body.notes !== undefined) await count.update({ notes: req.body.notes });
-    const full = await InvStockCount.findByPk(count.id, {
-      include: [{ model: InvStockCountItem, as: 'items', include: [{ model: InvProduct, as: 'product' }] }],
-    });
-    return res.json(full);
-  } catch (err) {
-    return res.status(500).json({ message: 'Server error.' });
-  }
-};
-
-const completeStockCount = async (req, res) => {
-  const t = await sequelize.transaction();
-  try {
-    const count = await InvStockCount.findOne({
-      where: byIdWhere(req, req.params.id),
-      include: [{ model: InvStockCountItem, as: 'items' }],
-      transaction: t,
-      lock: t.LOCK.UPDATE,
-    });
-    if (!count) { await t.rollback(); return res.status(404).json({ message: 'Not found.' }); }
-    if (count.status !== 'draft') { await t.rollback(); return res.status(400).json({ message: 'Already completed.' }); }
-
-    const settings = await getSettings(req, count.branch_id);
-    for (const it of count.items) {
-      const variance = toDec(it.variance);
-      if (Math.abs(variance) < 0.0001) continue;
-      const product = await InvProduct.findOne({
-        where: { id: it.product_id, ...tenantWhere(req) },
-        transaction: t,
-        lock: t.LOCK.UPDATE,
-      });
-      if (!product) continue;
-      await applyStockChange({
-        product,
-        delta: variance,
-        movementType: 'stock_count',
-        tenantId: resolveTenantId(req),
-        branchId: count.branch_id,
-        userId: req.user?.id,
-        referenceType: 'stock_count',
-        referenceId: count.id,
-        remarks: `Stock count variance`,
-        transaction: t,
-        allowNegative: !!settings.allow_negative_stock,
-      });
-    }
-    await count.update({
-      status: 'completed',
-      completed_by: req.user?.id,
-      completed_at: new Date(),
-    }, { transaction: t });
-    await t.commit();
-    return res.json(count);
-  } catch (err) {
-    await t.rollback();
+    console.error('inv.createAdjustment', err.message);
     return res.status(err.status || 500).json({ message: err.message || 'Server error.' });
   }
 };
@@ -610,123 +372,10 @@ const listHistory = async (req, res) => {
   }
 };
 
-// ── Reports ──────────────────────────────────────────────────────────────────
-const reports = async (req, res) => {
-  try {
-    const type = req.query.type || 'daily_consumption';
-    const where = branchScope(req);
-    const from = req.query.from || new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10);
-    const to = req.query.to || new Date().toISOString().slice(0, 10);
-
-    if (type === 'low_stock') {
-      return lowStockProxy(req, res);
-    }
-
-    if (type === 'inventory_ledger') {
-      where.moved_at = { [Op.between]: [new Date(from), new Date(`${to}T23:59:59`)] };
-      const rows = await InvStockMovement.findAll({
-        where,
-        include: [{ model: InvProduct, as: 'product', attributes: ['id', 'name', 'unit'] }],
-        order: [['moved_at', 'ASC']],
-        limit: 1000,
-      });
-      return res.json({ type, from, to, data: rows });
-    }
-
-    if (type === 'daily_consumption' || type === 'monthly_consumption' || type === 'product_usage'
-      || type === 'branch_consumption' || type === 'stylist_consumption') {
-      const cWhere = {
-        ...tenantWhere(req),
-        status: 'processed',
-        consumption_date: { [Op.between]: [from, to] },
-      };
-      if (req.userBranchId) cWhere.branch_id = req.userBranchId;
-      else if (req.query.branchId) cWhere.branch_id = Number(req.query.branchId);
-
-      const rows = await InvConsumption.findAll({
-        where: cWhere,
-        include: [
-          { model: InvProduct, as: 'product', attributes: ['id', 'name', 'unit'] },
-          { model: Staff, as: 'staff', attributes: ['id', 'name'], required: false },
-          { model: Branch, as: 'branch', attributes: ['id', 'name'] },
-        ],
-        order: [['consumption_date', 'ASC']],
-        limit: 2000,
-      });
-      return res.json({ type, from, to, data: rows });
-    }
-
-    if (type === 'adjustment_report') {
-      const rows = await InvStockAdjustment.findAll({
-        where: { ...branchScope(req), createdAt: { [Op.between]: [new Date(from), new Date(`${to}T23:59:59`)] } },
-        include: [{ model: InvProduct, as: 'product', attributes: ['id', 'name', 'unit'] }],
-        order: [['createdAt', 'DESC']],
-      });
-      return res.json({ type, from, to, data: rows });
-    }
-
-    if (type === 'purchase_report') {
-      const { InvGoodsReceipt, InvGoodsReceiptItem } = require('../models');
-      const rows = await InvGoodsReceipt.findAll({
-        where: {
-          ...branchScope(req),
-          status: 'confirmed',
-          received_date: { [Op.between]: [from, to] },
-        },
-        include: [{ model: InvGoodsReceiptItem, as: 'items', include: [{ model: InvProduct, as: 'product' }] }],
-        order: [['received_date', 'DESC']],
-      });
-      return res.json({ type, from, to, data: rows });
-    }
-
-    return res.status(400).json({ message: 'Unknown report type.' });
-  } catch (err) {
-    console.error('inv.reports', err.message);
-    return res.status(500).json({ message: 'Server error.' });
-  }
-};
-
-async function lowStockProxy(req, res) {
-  return base.lowStock(req, res);
-}
-
-// ── Settings ─────────────────────────────────────────────────────────────────
-const getInvSettings = async (req, res) => {
-  try {
-    const branchId = resolveBranchId(req, req.query.branchId);
-    const row = await getSettings(req, branchId);
-    return res.json(row);
-  } catch (err) {
-    return res.status(500).json({ message: 'Server error.' });
-  }
-};
-
-const updateInvSettings = async (req, res) => {
-  try {
-    const branchId = resolveBranchId(req, req.body.branch_id);
-    const row = await getSettings(req, branchId);
-    const allowed = [
-      'allow_negative_stock', 'low_stock_notification',
-    ];
-    const updates = {
-      // Locked salon inventory rules — consumption is always deferred to Day End.
-      enable_day_end_consumption: true,
-      enable_auto_deduction: false,
-      manager_approval_required: false,
-    };
-    for (const f of allowed) if (req.body[f] !== undefined) updates[f] = !!req.body[f];
-    await row.update(updates);
-    return res.json(row);
-  } catch (err) {
-    return res.status(500).json({ message: 'Server error.' });
-  }
-};
-
 module.exports = {
   ...base,
-  listConsumptions, createConsumption, updateConsumption, cancelConsumption,
-  dayEndPreview, dayEndSaveDraft, dayEndConfirm,
-  listAdjustments, createAdjustment, approveAdjustment,
-  listStockCounts, createStockCount, updateStockCount, completeStockCount,
-  listHistory, reports, getInvSettings, updateInvSettings,
+  listConsumptions, createConsumption, cancelConsumption,
+  dayEndPreview, dayEndConfirm,
+  listAdjustments, createAdjustment,
+  listHistory,
 };

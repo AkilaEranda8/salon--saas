@@ -38,20 +38,12 @@ import CustomersPage   from './pages/CustomersPage';
 import CommissionPage  from './pages/CommissionPage';
 import PaymentsPage    from './pages/PaymentsPage';
 import InventoryLayout from './pages/inventory/InventoryLayout';
-import InvDashboardPage from './pages/inventory/InvDashboardPage';
 import InvProductsPage from './pages/inventory/InvProductsPage';
-import InvCategoriesPage from './pages/inventory/InvCategoriesPage';
-import InvSuppliersPage from './pages/inventory/InvSuppliersPage';
-import InvPurchaseOrdersPage from './pages/inventory/InvPurchaseOrdersPage';
 import InvGoodsReceivedPage from './pages/inventory/InvGoodsReceivedPage';
 import InvConsumptionPage from './pages/inventory/InvConsumptionPage';
 import InvDayEndPage from './pages/inventory/InvDayEndPage';
 import InvAdjustmentsPage from './pages/inventory/InvAdjustmentsPage';
-import InvStockCountPage from './pages/inventory/InvStockCountPage';
-import InvLowStockPage from './pages/inventory/InvLowStockPage';
 import InvHistoryPage from './pages/inventory/InvHistoryPage';
-import InvReportsPage from './pages/inventory/InvReportsPage';
-import InvSettingsPage from './pages/inventory/InvSettingsPage';
 import AttendancePage  from './pages/AttendancePage';
 import RemindersPage   from './pages/RemindersPage';
 import ReportsPage     from './pages/ReportsPage';
@@ -358,22 +350,17 @@ function AppShellRoutes() {
                 <InventoryLayout />
               </RoleRoute>
             }>
-              <Route index element={<InvDashboardPage />} />
-              <Route path="products" element={<InvProductsPage />} />
-              <Route path="categories" element={<InvCategoriesPage />} />
-              <Route path="suppliers" element={<InvSuppliersPage />} />
-              <Route path="purchase-orders" element={<InvPurchaseOrdersPage />} />
+              <Route index element={<InvProductsPage />} />
               <Route path="goods-received" element={<InvGoodsReceivedPage />} />
               <Route path="consumption" element={<InvConsumptionPage />} />
               <Route path="day-end" element={<InvDayEndPage />} />
               <Route path="adjustments" element={<InvAdjustmentsPage />} />
-              <Route path="stock-count" element={<InvStockCountPage />} />
-              <Route path="low-stock" element={<InvLowStockPage />} />
               <Route path="history" element={<InvHistoryPage />} />
-              <Route path="reports" element={<InvReportsPage />} />
-              <Route path="settings" element={<InvSettingsPage />} />
+              <Route path="products" element={<Navigate to="/inventory" replace />} />
+              <Route path="low-stock" element={<Navigate to="/inventory" replace />} />
+              <Route path="*" element={<Navigate to="/inventory" replace />} />
             </Route>
-            <Route path="/inventory-reorder" element={<Navigate to="/inventory/purchase-orders" replace />} />
+            <Route path="/inventory-reorder" element={<Navigate to="/inventory" replace />} />
 
             {/* ── TEAM ────────────────────────────────────── */}
             <Route path="/staff"        element={<StaffPage />} />

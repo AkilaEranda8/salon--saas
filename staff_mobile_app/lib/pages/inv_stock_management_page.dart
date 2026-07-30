@@ -477,13 +477,7 @@ class _AddProductSheetState extends State<_AddProductSheet> {
                   value: 'consumable',
                   child: Text('Consumable'),
                 ),
-                DropdownMenuItem(value: 'retail', child: Text('Retail')),
                 DropdownMenuItem(value: 'equipment', child: Text('Equipment')),
-                DropdownMenuItem(value: 'chemical', child: Text('Chemical')),
-                DropdownMenuItem(
-                  value: 'accessories',
-                  child: Text('Accessories'),
-                ),
               ],
               onChanged: (v) => setState(() => _type = v ?? 'consumable'),
             ),

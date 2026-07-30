@@ -42,10 +42,6 @@ class _InvDayEndPageState extends State<InvDayEndPage> {
 
   Future<void> _loadInitial() async {
     final app = AppStateScope.of(context);
-    if (!app.canManageSalonStaff) {
-      if (mounted) setState(() => _loading = false);
-      return;
-    }
     try {
       if (_branchId.isEmpty) {
         _branches = await app.loadBranches();
@@ -164,21 +160,6 @@ class _InvDayEndPageState extends State<InvDayEndPage> {
   @override
   Widget build(BuildContext context) {
     final app = AppStateScope.of(context);
-    if (!app.canManageSalonStaff) {
-      return Scaffold(
-        appBar: AppBar(
-          backgroundColor: _forest,
-          foregroundColor: Colors.white,
-          title: const Text('Day End Closing'),
-        ),
-        body: const Center(
-          child: Text(
-            'Only managers and administrators can complete Day End Closing.',
-          ),
-        ),
-      );
-    }
-
     final assignedBranch = app.currentUser?.branchId?.trim() ?? '';
     return Scaffold(
       backgroundColor: _canvas,

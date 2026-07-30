@@ -1,6 +1,6 @@
 const { Op, fn, col, literal } = require('sequelize');
 const { sequelize } = require('../config/database');
-const { Appointment, Payment, PaymentSplit, Branch, Staff, Service, Inventory, Reminder, Customer, Expense, WalkIn } = require('../models');
+const { Appointment, Payment, PaymentSplit, Branch, Staff, Service, InvProduct, Reminder, Customer, Expense, WalkIn } = require('../models');
 const XLSX = require('xlsx');
 const { tenantWhere } = require('../utils/tenantScope');
 
@@ -220,7 +220,13 @@ const dashboard = async (req, res) => {
       Payment.sum('total_amount',    { where: { ...branchWhere, date: { [Op.between]: [monthStart, monthEnd] } } }),
       Payment.sum('commission_amount', { where: { ...branchWhere, date: { [Op.between]: [monthStart, monthEnd] } } }),
       Customer.count({ where: branchWhere }),
-      Inventory.count({ where: { ...branchWhere, quantity: { [Op.lte]: sequelize.col('min_quantity') } } }),
+      InvProduct.count({
+        where: {
+          ...branchWhere,
+          status: 'active',
+          current_stock: { [Op.lte]: sequelize.col('min_stock') },
+        },
+      }),
       Reminder.count({ where: { ...branchWhere, is_done: false } }),
       // Per-branch stats for admin/superadmin
       !req.userBranchId

@@ -93,8 +93,10 @@
         message: '',
         otp: '',
         busy: false,
+        busyAction: '', // send | verify | check
         checkedPhone: '',
         otpSentFor: '',
+        otpRequestInFlight: false,
         lookupSeq: 0,
       },
       phoneTimer: null,
@@ -120,10 +122,22 @@
         message: keepMessage || '',
         otp: '',
         busy: false,
+        busyAction: '',
         checkedPhone: '',
         otpSentFor: '',
+        otpRequestInFlight: false,
         lookupSeq: state.phoneCheck.lookupSeq || 0,
       };
+    }
+
+    function phoneLookupSettled(digits) {
+      if (!digits) return false;
+      // Any in-flight request must block duplicate OTP / lookup
+      if (state.phoneCheck.busy || state.phoneCheck.otpRequestInFlight) return true;
+      if (state.phoneCheck.otpSentFor === digits) return true;
+      if (digits !== state.phoneCheck.checkedPhone) return false;
+      var st = state.phoneCheck.status;
+      return phoneReady() || st === 'otp_sent' || st === 'checking' || st === 'needs_otp';
     }
 
     function phoneReady() {
@@ -330,7 +344,7 @@
       }
 
       var selectedIds = state.form.services.map(function (s) {
-        return s.id;
+        return Number(s.id);
       });
 
       bodyEl.innerHTML =
@@ -350,7 +364,7 @@
         '<div class="hsb-grid">' +
         list
           .map(function (s) {
-            var sel = selectedIds.indexOf(s.id) >= 0 ? ' is-selected' : '';
+            var sel = selectedIds.indexOf(Number(s.id)) >= 0 ? ' is-selected' : '';
             return (
               '<button type="button" class="hsb-option' +
               sel +
@@ -510,6 +524,8 @@
       var pc = state.phoneCheck;
       if (pc.status !== 'needs_otp' && pc.status !== 'otp_sent') return '';
       var sendLabel = pc.status === 'otp_sent' ? 'Resend OTP' : 'Send OTP';
+      if (pc.busy && pc.busyAction === 'send') sendLabel = 'Sending…';
+      var verifyLabel = pc.busy && pc.busyAction === 'verify' ? 'Verifying…' : 'Verify';
       return (
         '<div class="hsb-otp-box">' +
         '<div class="hsb-otp-row">' +
@@ -521,12 +537,12 @@
         '<button type="button" class="hsb-btn hsb-btn-ghost" data-hsb="send-otp"' +
         (pc.busy ? ' disabled' : '') +
         '>' +
-        (pc.busy && pc.status !== 'otp_sent' ? 'Sending…' : sendLabel) +
+        sendLabel +
         '</button>' +
         '<button type="button" class="hsb-btn hsb-btn-primary" data-hsb="verify-otp"' +
         (pc.busy || !String(pc.otp || '').trim() ? ' disabled' : '') +
         '>' +
-        (pc.busy && pc.status === 'otp_sent' ? 'Verifying…' : 'Verify') +
+        verifyLabel +
         '</button>' +
         '</div></div></div>'
       );
@@ -617,22 +633,16 @@
         return;
       }
 
-      // Already handled this exact number — do not re-check / re-send OTP
-      if (digits === state.phoneCheck.checkedPhone) {
-        if (
-          phoneReady() ||
-          state.phoneCheck.status === 'otp_sent' ||
-          state.phoneCheck.status === 'checking' ||
-          state.phoneCheck.otpSentFor === digits
-        ) {
-          return;
-        }
+      // Already handled / in-flight for this exact number — never re-send OTP
+      if (phoneLookupSettled(digits)) {
+        return;
       }
 
       var seq = ++state.phoneCheck.lookupSeq;
       state.phoneCheck.status = 'checking';
       state.phoneCheck.message = '';
       state.phoneCheck.busy = true;
+      state.phoneCheck.busyAction = 'check';
       renderDetails({ keepFocusId: 'hsb-phone' });
       renderFooter();
 
@@ -642,6 +652,7 @@
           if (digitsOnly(state.form.phone) !== digits) return;
 
           state.phoneCheck.busy = false;
+          state.phoneCheck.busyAction = '';
           state.phoneCheck.checkedPhone = digits;
           if (data && data.exists && !data.needs_otp) {
             state.phoneCheck.status = 'known';
@@ -654,7 +665,7 @@
           }
 
           // New number: send OTP once only
-          if (state.phoneCheck.otpSentFor === digits) {
+          if (state.phoneCheck.otpSentFor === digits || state.phoneCheck.otpRequestInFlight) {
             state.phoneCheck.status = 'otp_sent';
             state.phoneCheck.message = 'OTP already sent. Enter the code, or tap Resend.';
             renderDetails();
@@ -671,6 +682,7 @@
         .catch(function (err) {
           if (seq !== state.phoneCheck.lookupSeq) return;
           state.phoneCheck.busy = false;
+          state.phoneCheck.busyAction = '';
           state.phoneCheck.status = 'error';
           state.phoneCheck.message = err.message || 'Could not check phone number.';
           renderDetails();
@@ -690,6 +702,9 @@
         showError('Enter a complete phone number first.');
         return;
       }
+      if (state.phoneCheck.busy || state.phoneCheck.otpRequestInFlight) {
+        return;
+      }
       if (!forceResend && state.phoneCheck.otpSentFor === digits) {
         state.phoneCheck.status = 'otp_sent';
         state.phoneCheck.message = 'OTP already sent. Enter the code, or tap Resend.';
@@ -697,12 +712,17 @@
         renderFooter();
         return;
       }
+
+      state.phoneCheck.otpRequestInFlight = true;
       state.phoneCheck.busy = true;
+      state.phoneCheck.busyAction = 'send';
       renderDetails();
       renderFooter();
       api('request_otp', { phone: phone }, { method: 'POST' })
         .then(function (data) {
+          state.phoneCheck.otpRequestInFlight = false;
           state.phoneCheck.busy = false;
+          state.phoneCheck.busyAction = '';
           if (data && data.exists && !data.needs_otp) {
             state.phoneCheck.status = 'known';
             state.phoneCheck.checkedPhone = digits;
@@ -726,7 +746,9 @@
           renderFooter();
         })
         .catch(function (err) {
+          state.phoneCheck.otpRequestInFlight = false;
           state.phoneCheck.busy = false;
+          state.phoneCheck.busyAction = '';
           state.phoneCheck.status = 'error';
           state.phoneCheck.message = err.message || 'Failed to send OTP.';
           renderDetails();
@@ -742,12 +764,15 @@
         showError('Enter the OTP code.');
         return;
       }
+      if (state.phoneCheck.busy) return;
       state.phoneCheck.busy = true;
+      state.phoneCheck.busyAction = 'verify';
       renderDetails();
       renderFooter();
       api('verify_otp', { phone: phone, otp: otp }, { method: 'POST' })
         .then(function (data) {
           state.phoneCheck.busy = false;
+          state.phoneCheck.busyAction = '';
           state.phoneCheck.status = 'verified';
           state.phoneCheck.checkedPhone = digitsOnly(phone);
           state.phoneCheck.message = (data && data.message) || 'Phone verified successfully.';
@@ -756,21 +781,32 @@
         })
         .catch(function (err) {
           state.phoneCheck.busy = false;
+          state.phoneCheck.busyAction = '';
           showError(err.message || 'Invalid OTP.');
-          renderDetails();
+          renderDetails({ keepFocusId: 'hsb-otp' });
           renderFooter();
         });
     }
 
     function renderDone() {
+      var lines = state.form.services
+        .map(function (s) {
+          var a = getAssignment(s.id);
+          return (
+            esc(s.name) +
+            ' — ' +
+            esc(a.staff && a.staff.name) +
+            ', ' +
+            esc(a.date) +
+            ' ' +
+            esc(a.time)
+          );
+        })
+        .join('<br />');
       bodyEl.innerHTML =
         '<div class="hsb-success"><div class="hsb-success-icon" aria-hidden="true">✓</div><h3>Booking requested</h3>' +
         '<p>We received your request. The salon will confirm shortly.</p>' +
-        '<p><strong>' +
-        esc(state.form.date) +
-        ' at ' +
-        esc(state.form.time) +
-        '</strong></p>' +
+        (lines ? '<p><strong>' + lines + '</strong></p>' : '') +
         '<button type="button" class="hsb-btn hsb-btn-primary" style="margin-top:1.2rem" data-hsb="restart">Book another</button></div>';
     }
 
@@ -833,6 +869,30 @@
     }
 
     function submitBooking() {
+      if (state.submitting) return;
+      if (!phoneReady()) {
+        showError('Please verify your phone number first.');
+        return;
+      }
+      var items = [];
+      for (var i = 0; i < state.form.services.length; i += 1) {
+        var s = state.form.services[i];
+        var a = getAssignment(s.id);
+        if (!a.staff || !a.date || !a.time) {
+          showError('Please complete staff and time for each service.');
+          return;
+        }
+        items.push({
+          service_id: s.id,
+          staff_id: a.staff.id,
+          date: a.date,
+          time: a.time,
+        });
+      }
+      if (!items.length) {
+        showError('Please select a service.');
+        return;
+      }
       state.submitting = true;
       renderFooter();
       var payload = {
@@ -841,15 +901,7 @@
         phone: state.form.phone.trim(),
         email: state.form.email.trim(),
         notes: state.form.notes.trim(),
-        items: state.form.services.map(function (s) {
-          var a = getAssignment(s.id);
-          return {
-            service_id: s.id,
-            staff_id: a.staff.id,
-            date: a.date,
-            time: a.time,
-          };
-        }),
+        items: items,
       };
       api('book', payload, { method: 'POST' })
         .then(function (data) {
@@ -883,11 +935,11 @@
       if (act === 'toggle-service') {
         var sid = Number(btn.getAttribute('data-id'));
         var svc = state.services.find(function (s) {
-          return s.id === sid;
+          return Number(s.id) === sid;
         });
         if (!svc) return;
         var idx = state.form.services.findIndex(function (s) {
-          return s.id === sid;
+          return Number(s.id) === sid;
         });
         if (state.multiBooking) {
           if (idx >= 0) state.form.services.splice(idx, 1);
@@ -1090,6 +1142,8 @@
 
     root.addEventListener('blur', function (e) {
       if (e.target && e.target.id === 'hsb-phone' && state.step === 3) {
+        var digits = digitsOnly(state.form.phone);
+        if (phoneLookupSettled(digits)) return;
         if (state.phoneTimer) clearTimeout(state.phoneTimer);
         checkPhoneLookup();
       }

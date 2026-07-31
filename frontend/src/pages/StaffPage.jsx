@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
@@ -28,6 +28,204 @@ const WEEKDAYS = [
   { key: '5', label: 'Friday' },
   { key: '6', label: 'Saturday' },
 ];
+
+/** Searchable multi-select with checkboxes for assignable services. */
+function AssignableServicesSelect({ services, selected, onChange, dark = false }) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const rootRef = useRef(null);
+  const searchRef = useRef(null);
+  const [menuPos, setMenuPos] = useState({ top: 0, left: 0, width: 0 });
+
+  const selectedIds = useMemo(
+    () => Array.from(new Set((selected || []).map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0))),
+    [selected],
+  );
+  const selSvcs = services.filter((s) => selectedIds.includes(Number(s.id)));
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return services;
+    return services.filter((s) => {
+      const hay = `${s.name || ''} ${s.category || ''} ${s.subcategory || ''}`.toLowerCase();
+      return hay.includes(q);
+    });
+  }, [services, search]);
+
+  const toggle = (id) => {
+    const n = Number(id);
+    onChange(selectedIds.includes(n) ? selectedIds.filter((x) => x !== n) : [...selectedIds, n]);
+  };
+
+  const setOpenState = (next) => {
+    const value = typeof next === 'function' ? next(open) : next;
+    setOpen(value);
+    if (!value) setSearch('');
+  };
+
+  useLayoutEffect(() => {
+    if (!open || !rootRef.current) return;
+    const update = () => {
+      const rect = rootRef.current.getBoundingClientRect();
+      setMenuPos({ top: rect.bottom + 4, left: rect.left, width: rect.width });
+    };
+    update();
+    window.addEventListener('resize', update);
+    window.addEventListener('scroll', update, true);
+    return () => {
+      window.removeEventListener('resize', update);
+      window.removeEventListener('scroll', update, true);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const t = setTimeout(() => searchRef.current?.focus?.(), 0);
+    return () => clearTimeout(t);
+  }, [open]);
+
+  return (
+    <div ref={rootRef} style={{ position: 'relative', minWidth: 0 }}>
+      <div
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpenState((o) => !o); } }}
+        onClick={() => setOpenState((o) => !o)}
+        style={{
+          minHeight: 40, padding: '7px 10px', borderRadius: 10,
+          border: `1.5px solid ${open ? '#2563EB' : (dark ? '#334155' : '#D0D5DD')}`,
+          background: dark ? '#0B1220' : '#fff', cursor: 'pointer',
+          display: 'flex', flexWrap: 'wrap', gap: 5, alignItems: 'center', minWidth: 0,
+        }}
+      >
+        {selSvcs.length === 0
+          ? <span style={{ color: dark ? '#64748B' : '#98A2B3', fontSize: 13, userSelect: 'none' }}>Select services…</span>
+          : selSvcs.map((s) => (
+            <span key={s.id} style={{
+              display: 'inline-flex', alignItems: 'center', gap: 3,
+              padding: '2px 8px 2px 10px', borderRadius: 99,
+              background: dark ? 'rgba(37,99,235,0.2)' : '#EFF6FF',
+              color: dark ? '#93C5FD' : '#2563EB', fontSize: 12, fontWeight: 600, maxWidth: '100%',
+            }}>
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</span>
+              <span
+                onMouseDown={(e) => { e.stopPropagation(); toggle(s.id); }}
+                style={{ cursor: 'pointer', color: dark ? '#93C5FD' : '#60A5FA', fontWeight: 700, fontSize: 14, lineHeight: 1, marginLeft: 3 }}
+              >
+                ×
+              </span>
+            </span>
+          ))}
+        <span style={{ marginLeft: 'auto', fontSize: 11, color: '#98A2B3', userSelect: 'none', paddingLeft: 4, flexShrink: 0 }}>
+          {selSvcs.length > 0 ? `${selSvcs.length} · ` : ''}{open ? '▴' : '▾'}
+        </span>
+      </div>
+      {open && createPortal(
+        <>
+          <div onClick={() => setOpenState(false)} style={{ position: 'fixed', inset: 0, zIndex: 9998 }} />
+          <div style={{
+            position: 'fixed',
+            top: menuPos.top,
+            left: menuPos.left,
+            width: Math.max(menuPos.width, 260),
+            zIndex: 9999,
+            background: dark ? '#1E293B' : '#fff',
+            border: `1.5px solid ${dark ? '#334155' : '#E4E7EC'}`,
+            borderRadius: 10,
+            boxShadow: dark ? '0 8px 24px rgba(2,6,23,0.45)' : '0 8px 24px rgba(16,24,40,0.12)',
+            maxHeight: 320,
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden',
+          }}>
+            <div style={{ padding: '8px 10px', borderBottom: `1px solid ${dark ? '#334155' : '#F2F4F7'}`, flexShrink: 0 }}>
+              <input
+                ref={searchRef}
+                type="search"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                onClick={(e) => e.stopPropagation()}
+                onKeyDown={(e) => e.stopPropagation()}
+                placeholder="Search services…"
+                style={{
+                  width: '100%', boxSizing: 'border-box',
+                  padding: '8px 10px', borderRadius: 8, fontSize: 13,
+                  border: `1px solid ${dark ? '#475569' : '#D0D5DD'}`,
+                  background: dark ? '#0B1220' : '#F9FAFB',
+                  color: dark ? '#E2E8F0' : '#101828',
+                  outline: 'none',
+                }}
+              />
+            </div>
+            <div style={{
+              display: 'flex', gap: 8, padding: '6px 10px', flexShrink: 0,
+              borderBottom: `1px solid ${dark ? '#334155' : '#F2F4F7'}`,
+            }}>
+              <button
+                type="button"
+                onClick={() => onChange(services.map((s) => Number(s.id)))}
+                style={{
+                  border: 'none', background: 'transparent', cursor: 'pointer',
+                  fontSize: 12, fontWeight: 700, color: '#2563EB', padding: 0,
+                }}
+              >
+                Select all
+              </button>
+              <button
+                type="button"
+                onClick={() => onChange([])}
+                style={{
+                  border: 'none', background: 'transparent', cursor: 'pointer',
+                  fontSize: 12, fontWeight: 700, color: dark ? '#94A3B8' : '#64748B', padding: 0,
+                }}
+              >
+                Clear
+              </button>
+            </div>
+            <div style={{ overflowY: 'auto', flex: 1, maxHeight: 220 }}>
+              {services.length === 0 && (
+                <div style={{ padding: '12px 14px', fontSize: 13, color: dark ? '#64748B' : '#98A2B3' }}>No services found</div>
+              )}
+              {services.length > 0 && filtered.length === 0 && (
+                <div style={{ padding: '12px 14px', fontSize: 13, color: dark ? '#64748B' : '#98A2B3' }}>
+                  No services match “{search.trim()}”
+                </div>
+              )}
+              {filtered.map((s) => {
+                const checked = selectedIds.includes(Number(s.id));
+                return (
+                  <label
+                    key={s.id}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 10, padding: '9px 14px', cursor: 'pointer',
+                      background: checked ? (dark ? 'rgba(37,99,235,0.15)' : '#F0F9FF') : 'transparent',
+                      borderBottom: `1px solid ${dark ? '#334155' : '#F8FAFC'}`,
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => toggle(s.id)}
+                      style={{ accentColor: '#2563EB', width: 15, height: 15, flexShrink: 0, cursor: 'pointer' }}
+                    />
+                    <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: dark ? '#E2E8F0' : '#344054', fontWeight: checked ? 600 : 400 }}>
+                      <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</span>
+                      {(s.category || s.subcategory) ? (
+                        <span style={{ display: 'block', fontSize: 11, fontWeight: 500, color: dark ? '#64748B' : '#98A2B3', marginTop: 1 }}>
+                          {[s.category, s.subcategory].filter(Boolean).join(' · ')}
+                        </span>
+                      ) : null}
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+        </>,
+        document.body,
+      )}
+    </div>
+  );
+}
 
 function defaultWorkingHours() {
   const day = { closed: false, start: '09:00', end: '18:00' };
@@ -343,20 +541,6 @@ export default function StaffPage() {
       setProfileItem(row);
     }
     setShowProfile(true);
-  };
-  const toggleSpec = (id) => {
-    const nid = Number(id);
-    setSpecs((sp) => {
-      if (sp.includes(nid) || sp.includes(id)) {
-        setSpecRates((prev) => {
-          const copy = { ...prev };
-          delete copy[String(id)];
-          return copy;
-        });
-        return sp.filter((x) => Number(x) !== nid);
-      }
-      return [...sp, nid];
-    });
   };
   const toggleBranch = (id) => {
     const s = String(id);
@@ -851,52 +1035,22 @@ export default function StaffPage() {
 
             {activeServices.length > 0 && (
               <StaffSection title="Assignable services" desc="Services this staff can perform for online booking" dark={isDark}>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 4 }}>
-                  <button
-                    type="button"
-                    onClick={linkAllSpecs}
-                    style={{
-                      padding: '6px 12px', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer',
-                      border: `1.5px solid ${isDark ? '#334155' : '#E4E7EC'}`,
-                      background: isDark ? '#0F172A' : '#fff',
-                      color: C.label,
-                    }}
-                  >
-                    Select all
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => { setSpecs([]); setSpecRates({}); }}
-                    style={{
-                      padding: '6px 12px', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer',
-                      border: `1.5px solid ${isDark ? '#334155' : '#E4E7EC'}`,
-                      background: isDark ? '#0F172A' : '#fff',
-                      color: C.label,
-                    }}
-                  >
-                    Clear
-                  </button>
-                </div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                  {activeServices.map((sv) => {
-                    const active = specs.some((id) => Number(id) === Number(sv.id));
-                    return (
-                      <button
-                        key={sv.id}
-                        type="button"
-                        onClick={() => toggleSpec(sv.id)}
-                        style={{
-                          padding: '6px 12px', borderRadius: 8, fontSize: 12, fontWeight: active ? 700 : 500, cursor: 'pointer',
-                          border: `1.5px solid ${active ? '#2563EB' : (isDark ? '#334155' : '#E4E7EC')}`,
-                          background: active ? (isDark ? 'rgba(37,99,235,0.2)' : '#EFF6FF') : (isDark ? '#0F172A' : '#fff'),
-                          color: active ? '#2563EB' : C.label,
-                        }}
-                      >
-                        {sv.name}
-                      </button>
-                    );
-                  })}
-                </div>
+                <AssignableServicesSelect
+                  services={activeServices}
+                  selected={specs}
+                  dark={isDark}
+                  onChange={(ids) => {
+                    const next = (ids || []).map((id) => Number(id)).filter((n) => Number.isFinite(n) && n > 0);
+                    setSpecs(next);
+                    setSpecRates((prev) => {
+                      const keep = {};
+                      next.forEach((id) => {
+                        if (prev[String(id)]) keep[String(id)] = prev[String(id)];
+                      });
+                      return keep;
+                    });
+                  }}
+                />
               </StaffSection>
             )}
           </div>

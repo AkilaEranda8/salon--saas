@@ -81,6 +81,10 @@ function StaffSection({ title, desc, children, dark = false }) {
       border: `1px solid ${dark ? '#334155' : '#E4E7EC'}`,
       borderRadius: 14,
       background: dark ? '#0F172A' : '#fff',
+      minWidth: 0,
+      maxWidth: '100%',
+      overflow: 'hidden',
+      boxSizing: 'border-box',
     }}>
       <div style={{
         padding: '12px 16px',
@@ -91,7 +95,7 @@ function StaffSection({ title, desc, children, dark = false }) {
         <div style={{ fontSize: 13, fontWeight: 700, color: dark ? '#E2E8F0' : '#101828' }}>{title}</div>
         {desc && <div style={{ fontSize: 11, color: dark ? '#94A3B8' : '#64748B', marginTop: 2 }}>{desc}</div>}
       </div>
-      <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 14 }}>{children}</div>
+      <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 14, minWidth: 0 }}>{children}</div>
     </div>
   );
 }
@@ -103,7 +107,7 @@ function StaffModal({ open, onClose, title, subtitle, children, footer, size = '
     return () => { document.body.style.overflow = ''; };
   }, [open]);
   if (!open) return null;
-  const widths = { sm: 420, md: 560, lg: 720, xl: 900 };
+  const widths = { sm: 420, md: 560, lg: 720, xl: 980 };
   return createPortal(
     <div style={{ position: 'fixed', inset: 0, zIndex: 900, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
       <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'rgba(16,24,40,0.5)', backdropFilter: 'blur(4px)' }} />
@@ -114,7 +118,12 @@ function StaffModal({ open, onClose, title, subtitle, children, footer, size = '
         maxHeight: '92vh', animation: 'staff-modal-pop 0.2s ease',
         border: dark ? '1px solid #334155' : '1px solid #E4E7EC',
       }}>
-        <style>{'@keyframes staff-modal-pop { from { opacity:0; transform:scale(0.97) translateY(10px); } to { opacity:1; transform:scale(1) translateY(0); } }'}</style>
+        <style>{`
+          @keyframes staff-modal-pop { from { opacity:0; transform:scale(0.97) translateY(10px); } to { opacity:1; transform:scale(1) translateY(0); } }
+          @media (max-width: 820px) {
+            .staff-form-grid { grid-template-columns: 1fr !important; }
+          }
+        `}</style>
         <div style={{
           padding: '18px 22px',
           background: dark
@@ -616,8 +625,16 @@ export default function StaffPage() {
           </div>
         )}
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 16 }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div
+          className="staff-form-grid"
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)',
+            gap: 16,
+            alignItems: 'start',
+          }}
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0, maxWidth: '100%' }}>
             <StaffSection title="Profile" desc="Photo and contact details" dark={isDark}>
               <div style={{
                 display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap',
@@ -695,9 +712,9 @@ export default function StaffPage() {
                   type="checkbox"
                   checked={form.available_online !== false}
                   onChange={(e) => setForm((f) => ({ ...f, available_online: e.target.checked }))}
-                  style={{ marginTop: 3, width: 16, height: 16, accentColor: '#2563EB' }}
+                  style={{ marginTop: 3, width: 16, height: 16, accentColor: '#2563EB', flexShrink: 0 }}
                 />
-                <span>
+                <span style={{ minWidth: 0 }}>
                   <span style={{ display: 'block', fontSize: 13.5, fontWeight: 700, color: isDark ? '#E2E8F0' : '#101828' }}>
                     Available for online booking
                   </span>
@@ -706,32 +723,44 @@ export default function StaffPage() {
                   </span>
                 </span>
               </label>
-              <StaffSection title="Working hours" desc="Weekly schedule used for online booking slots" dark={isDark}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {WEEKDAYS.map(({ key, label }) => {
-                    const day = workingHours[key] || { closed: false, start: '09:00', end: '18:00' };
-                    return (
-                      <div
-                        key={key}
-                        style={{
-                          display: 'grid',
-                          gridTemplateColumns: '110px 70px 1fr 1fr',
-                          gap: 8,
-                          alignItems: 'center',
-                        }}
-                      >
-                        <span style={{ fontSize: 13, fontWeight: 600, color: isDark ? '#E2E8F0' : '#344054' }}>{label}</span>
-                        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: C.muted, cursor: 'pointer' }}>
-                          <input
-                            type="checkbox"
-                            checked={!!day.closed}
-                            onChange={(e) => setWorkingHours((prev) => ({
-                              ...prev,
-                              [key]: { ...prev[key], closed: e.target.checked },
-                            }))}
-                          />
-                          Off
-                        </label>
+            </StaffSection>
+
+            <StaffSection title="Working hours" desc="Weekly schedule used for online booking slots" dark={isDark}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0 }}>
+                {WEEKDAYS.map(({ key, label }) => {
+                  const day = workingHours[key] || { closed: false, start: '09:00', end: '18:00' };
+                  return (
+                    <div
+                      key={key}
+                      style={{
+                        display: 'flex',
+                        flexWrap: 'wrap',
+                        alignItems: 'center',
+                        gap: 8,
+                        minWidth: 0,
+                      }}
+                    >
+                      <span style={{
+                        width: 88, flexShrink: 0, fontSize: 13, fontWeight: 600,
+                        color: isDark ? '#E2E8F0' : '#344054',
+                      }}>
+                        {label}
+                      </span>
+                      <label style={{
+                        display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0,
+                        fontSize: 12, color: C.muted, cursor: 'pointer',
+                      }}>
+                        <input
+                          type="checkbox"
+                          checked={!!day.closed}
+                          onChange={(e) => setWorkingHours((prev) => ({
+                            ...prev,
+                            [key]: { ...prev[key], closed: e.target.checked },
+                          }))}
+                        />
+                        Off
+                      </label>
+                      <div style={{ display: 'flex', gap: 6, flex: '1 1 160px', minWidth: 0 }}>
                         <Input
                           type="time"
                           disabled={!!day.closed}
@@ -740,6 +769,7 @@ export default function StaffPage() {
                             ...prev,
                             [key]: { ...prev[key], closed: false, start: e.target.value },
                           }))}
+                          style={{ minWidth: 0, flex: 1 }}
                         />
                         <Input
                           type="time"
@@ -749,122 +779,129 @@ export default function StaffPage() {
                             ...prev,
                             [key]: { ...prev[key], closed: false, end: e.target.value },
                           }))}
+                          style={{ minWidth: 0, flex: 1 }}
                         />
                       </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </StaffSection>
+
+            <StaffSection title="Off days" desc="Mark specific dates when this staff is unavailable" dark={isDark}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'end' }}>
+                <div style={{ flex: '1 1 120px', minWidth: 0 }}>
+                  <FormGroup label="Date">
+                    <Input type="date" value={offDateDraft} onChange={(e) => setOffDateDraft(e.target.value)} />
+                  </FormGroup>
+                </div>
+                <div style={{ flex: '1 1 140px', minWidth: 0 }}>
+                  <FormGroup label="Reason (optional)">
+                    <Input value={offReasonDraft} onChange={(e) => setOffReasonDraft(e.target.value)} placeholder="Leave / holiday" />
+                  </FormGroup>
+                </div>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => {
+                    if (!offDateDraft) return;
+                    setOffDays((prev) => {
+                      if (prev.some((d) => d.date === offDateDraft)) return prev;
+                      return [...prev, { date: offDateDraft, reason: offReasonDraft.trim() }].sort((a, b) => a.date.localeCompare(b.date));
+                    });
+                    setOffDateDraft('');
+                    setOffReasonDraft('');
+                  }}
+                >
+                  Add
+                </Button>
+              </div>
+              {offDays.length === 0 ? (
+                <div style={{ fontSize: 12, color: C.muted }}>No off days marked.</div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {offDays.map((d) => (
+                    <div
+                      key={d.date}
+                      style={{
+                        display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8,
+                        padding: '8px 10px', borderRadius: 8, minWidth: 0,
+                        background: isDark ? '#0B1220' : '#F8FAFC',
+                        border: `1px solid ${isDark ? '#1E293B' : '#EEF2F7'}`,
+                      }}
+                    >
+                      <span style={{
+                        fontSize: 13, fontWeight: 600, color: isDark ? '#E2E8F0' : '#344054',
+                        minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis',
+                      }}>
+                        {d.date}{d.reason ? ` · ${d.reason}` : ''}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setOffDays((prev) => prev.filter((x) => x.date !== d.date))}
+                        style={{ border: 'none', background: 'transparent', color: '#EF4444', cursor: 'pointer', fontWeight: 700, fontSize: 12, flexShrink: 0 }}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </StaffSection>
+
+            {activeServices.length > 0 && (
+              <StaffSection title="Assignable services" desc="Services this staff can perform for online booking" dark={isDark}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 4 }}>
+                  <button
+                    type="button"
+                    onClick={linkAllSpecs}
+                    style={{
+                      padding: '6px 12px', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                      border: `1.5px solid ${isDark ? '#334155' : '#E4E7EC'}`,
+                      background: isDark ? '#0F172A' : '#fff',
+                      color: C.label,
+                    }}
+                  >
+                    Select all
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setSpecs([]); setSpecRates({}); }}
+                    style={{
+                      padding: '6px 12px', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                      border: `1.5px solid ${isDark ? '#334155' : '#E4E7EC'}`,
+                      background: isDark ? '#0F172A' : '#fff',
+                      color: C.label,
+                    }}
+                  >
+                    Clear
+                  </button>
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                  {activeServices.map((sv) => {
+                    const active = specs.some((id) => Number(id) === Number(sv.id));
+                    return (
+                      <button
+                        key={sv.id}
+                        type="button"
+                        onClick={() => toggleSpec(sv.id)}
+                        style={{
+                          padding: '6px 12px', borderRadius: 8, fontSize: 12, fontWeight: active ? 700 : 500, cursor: 'pointer',
+                          border: `1.5px solid ${active ? '#2563EB' : (isDark ? '#334155' : '#E4E7EC')}`,
+                          background: active ? (isDark ? 'rgba(37,99,235,0.2)' : '#EFF6FF') : (isDark ? '#0F172A' : '#fff'),
+                          color: active ? '#2563EB' : C.label,
+                        }}
+                      >
+                        {sv.name}
+                      </button>
                     );
                   })}
                 </div>
               </StaffSection>
-              <StaffSection title="Off days" desc="Mark specific dates when this staff is unavailable" dark={isDark}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 8, alignItems: 'end' }}>
-                  <FormGroup label="Date">
-                    <Input type="date" value={offDateDraft} onChange={(e) => setOffDateDraft(e.target.value)} />
-                  </FormGroup>
-                  <FormGroup label="Reason (optional)">
-                    <Input value={offReasonDraft} onChange={(e) => setOffReasonDraft(e.target.value)} placeholder="Leave / holiday" />
-                  </FormGroup>
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    onClick={() => {
-                      if (!offDateDraft) return;
-                      setOffDays((prev) => {
-                        if (prev.some((d) => d.date === offDateDraft)) return prev;
-                        return [...prev, { date: offDateDraft, reason: offReasonDraft.trim() }].sort((a, b) => a.date.localeCompare(b.date));
-                      });
-                      setOffDateDraft('');
-                      setOffReasonDraft('');
-                    }}
-                  >
-                    Add
-                  </Button>
-                </div>
-                {offDays.length === 0 ? (
-                  <div style={{ fontSize: 12, color: C.muted }}>No off days marked.</div>
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    {offDays.map((d) => (
-                      <div
-                        key={d.date}
-                        style={{
-                          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                          padding: '8px 10px', borderRadius: 8,
-                          background: isDark ? '#0B1220' : '#F8FAFC',
-                          border: `1px solid ${isDark ? '#1E293B' : '#EEF2F7'}`,
-                        }}
-                      >
-                        <span style={{ fontSize: 13, fontWeight: 600, color: isDark ? '#E2E8F0' : '#344054' }}>
-                          {d.date}{d.reason ? ` · ${d.reason}` : ''}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => setOffDays((prev) => prev.filter((x) => x.date !== d.date))}
-                          style={{ border: 'none', background: 'transparent', color: '#EF4444', cursor: 'pointer', fontWeight: 700, fontSize: 12 }}
-                        >
-                          Remove
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </StaffSection>
-              {activeServices.length > 0 && (
-                <FormGroup label="Assignable services">
-                  <div style={{ fontSize: 12, color: C.muted, marginBottom: 8, lineHeight: 1.45 }}>
-                    Choose which services this staff member can perform. Online booking only shows matching staff.
-                  </div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
-                    <button
-                      type="button"
-                      onClick={linkAllSpecs}
-                      style={{
-                        padding: '6px 12px', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer',
-                        border: `1.5px solid ${isDark ? '#334155' : '#E4E7EC'}`,
-                        background: isDark ? '#0F172A' : '#fff',
-                        color: C.label,
-                      }}
-                    >
-                      Select all
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => { setSpecs([]); setSpecRates({}); }}
-                      style={{
-                        padding: '6px 12px', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer',
-                        border: `1.5px solid ${isDark ? '#334155' : '#E4E7EC'}`,
-                        background: isDark ? '#0F172A' : '#fff',
-                        color: C.label,
-                      }}
-                    >
-                      Clear
-                    </button>
-                  </div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                    {activeServices.map((sv) => {
-                      const active = specs.some((id) => Number(id) === Number(sv.id));
-                      return (
-                        <button
-                          key={sv.id}
-                          type="button"
-                          onClick={() => toggleSpec(sv.id)}
-                          style={{
-                            padding: '6px 12px', borderRadius: 8, fontSize: 12, fontWeight: active ? 700 : 500, cursor: 'pointer',
-                            border: `1.5px solid ${active ? '#2563EB' : (isDark ? '#334155' : '#E4E7EC')}`,
-                            background: active ? (isDark ? 'rgba(37,99,235,0.2)' : '#EFF6FF') : (isDark ? '#0F172A' : '#fff'),
-                            color: active ? '#2563EB' : C.label,
-                          }}
-                        >
-                          {sv.name}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </FormGroup>
-              )}
-            </StaffSection>
+            )}
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0, maxWidth: '100%' }}>
             <StaffSection title="Role & Branches" desc="Job title and assigned locations" dark={isDark}>
               <FormGroup label="Role" required>
                 {franchiseCommission ? (
@@ -976,7 +1013,7 @@ export default function StaffPage() {
                 </FormGroup>
               )}
               {form.salary_type !== 'salary_only' && (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: 14 }}>
                   <FormGroup label="Commission Type">
                     <Select value={form.commission_type || 'percentage'} onChange={e => setForm(f => ({ ...f, commission_type: e.target.value }))}>
                       <option value="percentage">Percentage %</option>
@@ -1052,6 +1089,7 @@ export default function StaffPage() {
                           maxHeight: 280,
                           overflowY: 'auto',
                           background: isDark ? '#0B1220' : '#fff',
+                          minWidth: 0,
                         }}>
                           {activeServices
                             .filter((sv) => specs.some((id) => Number(id) === Number(sv.id)))
@@ -1068,40 +1106,46 @@ export default function StaffPage() {
                                 <div
                                   key={sv.id}
                                   style={{
-                                    display: 'grid',
-                                    gridTemplateColumns: 'minmax(0, 1.2fr) 110px 100px',
+                                    display: 'flex',
+                                    flexWrap: 'wrap',
                                     gap: 8,
                                     alignItems: 'center',
                                     padding: '10px 12px',
                                     borderBottom: idx !== list.length - 1 ? `1px solid ${isDark ? '#1E293B' : '#F1F5F9'}` : 'none',
                                     background: isDark ? 'rgba(37,99,235,0.08)' : '#F8FBFF',
+                                    minWidth: 0,
                                   }}
                                 >
-                                  <div style={{ minWidth: 0 }}>
-                                    <div style={{ fontSize: 13, fontWeight: 700, color: isDark ? '#E2E8F0' : '#0F172A', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                  <div style={{ flex: '1 1 120px', minWidth: 0 }}>
+                                    <div style={{
+                                      fontSize: 13, fontWeight: 700, color: isDark ? '#E2E8F0' : '#0F172A',
+                                      whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                                    }}>
                                       {sv.name}
                                     </div>
                                     <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>
                                       {value !== '' ? `Custom ${formatCommission(type, value)}` : `Fallback ${fallback}`}
                                     </div>
                                   </div>
-                                  <Select
-                                    value={type}
-                                    onChange={(e) => setSpecRate(sv.id, { commission_type: e.target.value })}
-                                    style={{ fontSize: 12, padding: '6px 8px' }}
-                                  >
-                                    <option value="percentage">%</option>
-                                    <option value="fixed">Fixed Rs.</option>
-                                  </Select>
-                                  <Input
-                                    type="number"
-                                    min="0"
-                                    step="0.01"
-                                    value={value}
-                                    onChange={(e) => setSpecRate(sv.id, { commission_value: e.target.value })}
-                                    placeholder="Rate"
-                                    style={{ fontSize: 12, padding: '6px 8px' }}
-                                  />
+                                  <div style={{ display: 'flex', gap: 6, flex: '0 1 auto', minWidth: 0 }}>
+                                    <Select
+                                      value={type}
+                                      onChange={(e) => setSpecRate(sv.id, { commission_type: e.target.value })}
+                                      style={{ fontSize: 12, padding: '6px 8px', width: 92, flexShrink: 0 }}
+                                    >
+                                      <option value="percentage">%</option>
+                                      <option value="fixed">Fixed Rs.</option>
+                                    </Select>
+                                    <Input
+                                      type="number"
+                                      min="0"
+                                      step="0.01"
+                                      value={value}
+                                      onChange={(e) => setSpecRate(sv.id, { commission_value: e.target.value })}
+                                      placeholder="Rate"
+                                      style={{ fontSize: 12, padding: '6px 8px', width: 88, flexShrink: 0 }}
+                                    />
+                                  </div>
                                 </div>
                               );
                             })}

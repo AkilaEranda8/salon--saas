@@ -13,9 +13,14 @@ const CustomerPackage = require('../models/CustomerPackage');
 const Payment = require('../models/Payment');
 const PaymentSplit = require('../models/PaymentSplit');
 const StaffSpecialization = require('../models/StaffSpecialization');
+const StaffOffDay = require('../models/StaffOffDay');
 const { sendSMS } = require('../services/notificationService');
 const { getMaintenanceMode } = require('../services/systemSettings');
 const Tenant = require('../models/Tenant');
+const {
+  resolveStaffDayWindow,
+  toHHMM: scheduleToHHMM,
+} = require('../utils/staffSchedule');
 const WEB_BOOKING_BRANCH_NAME = 'HEXAONE (VIP)';
 
 async function resolveTenantSmsName(tenantId) {
@@ -189,8 +194,7 @@ router.get('/staff', async (req, res) => {
 });
 
 // ── GET /api/public/availability?staffId=&date=&duration= ────────────────────
-// Returns available HH:MM time slots considering existing appointment durations.
-// duration = new booking's service duration in minutes (default 30).
+// Returns available HH:MM time slots considering staff hours, off days, and appointments.
 router.get('/availability', async (req, res) => {
   try {
     const { staffId, date, duration, branchId, tenantId } = req.query;
@@ -207,6 +211,23 @@ router.get('/availability', async (req, res) => {
     const tenantIdNum = tenantId ? parseInt(tenantId, 10) : null;
     const effectiveBranchId = await resolveWebBookingBranchId(branchId, tenantIdNum);
 
+    const staffWhere = { id: staffIdNum, is_active: true, available_online: true };
+    if (tenantIdNum) staffWhere.tenant_id = tenantIdNum;
+    const staff = await Staff.findOne({
+      where: staffWhere,
+      attributes: ['id', 'working_hours', 'tenant_id'],
+    });
+    if (!staff) return res.json([]);
+
+    const offDay = await StaffOffDay.findOne({
+      where: { staff_id: staffIdNum, date: String(date).slice(0, 10) },
+      attributes: ['id'],
+    });
+    if (offDay) return res.json([]);
+
+    const window = resolveStaffDayWindow(staff.working_hours, String(date).slice(0, 10));
+    if (window.closed) return res.json([]);
+
     // Fetch existing appointments with their service duration
     const appointments = await Appointment.findAll({
       where: buildBookingConflictWhere({ staffId: staffIdNum, date, branchId: effectiveBranchId }),
@@ -222,29 +243,18 @@ router.get('/availability', async (req, res) => {
       return [startMin, startMin + dur];
     });
 
-    // Generate slots using service duration as interval: 09:00 → 18:00
     const slotInterval = newDuration;
     const allSlots = [];
-    for (let min = 9 * 60; min < 18 * 60; min += slotInterval) {
+    for (let min = window.startMin; min + newDuration <= window.endMin; min += slotInterval) {
       allSlots.push(min);
     }
 
-    // A slot is available if [slotStart, slotStart + newDuration] does NOT overlap any blocked range
     const available = allSlots.filter((slotStart) => {
       const slotEnd = slotStart + newDuration;
-      // Also ensure the appointment ends by 18:30 (1110 min)
-      if (slotEnd > 18 * 60 + 30) return false;
       return !blockedRanges.some(([bStart, bEnd]) => slotStart < bEnd && slotEnd > bStart);
     });
 
-    // Convert back to "HH:MM"
-    const result = available.map((min) => {
-      const h = Math.floor(min / 60);
-      const m = min % 60;
-      return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-    });
-
-    res.json(result);
+    res.json(available.map((min) => scheduleToHHMM(min)));
   } catch (err) {
     console.error('Public availability error:', err);
     res.status(500).json({ message: 'Server error' });
@@ -935,7 +945,7 @@ router.post('/bookings', async (req, res) => {
       }),
       Staff.findAll({
         where: { id: staffIds, tenant_id: bookingTenantId, is_active: true, available_online: true },
-        attributes: ['id', 'name'],
+        attributes: ['id', 'name', 'working_hours'],
       }),
     ]);
 
@@ -968,6 +978,13 @@ router.post('/bookings', async (req, res) => {
       }
     }
 
+    const datesNeeded = [...new Set(items.map((i) => String(i.date).slice(0, 10)))];
+    const offRows = await StaffOffDay.findAll({
+      where: { staff_id: staffIds, date: datesNeeded },
+      attributes: ['staff_id', 'date'],
+    });
+    const offSet = new Set(offRows.map((r) => `${r.staff_id}|${r.date}`));
+
     const serviceMap = new Map(services.map((s) => [s.id, s]));
     const staffMap = new Map(staffRows.map((s) => [s.id, s]));
 
@@ -976,7 +993,20 @@ router.post('/bookings', async (req, res) => {
     const requested = [];
     for (const item of items) {
       const service = serviceMap.get(item.service_id);
+      const staffRow = staffMap.get(item.staff_id);
       const duration = service.duration_minutes || 30;
+      const dateKey = String(item.date).slice(0, 10);
+      if (offSet.has(`${item.staff_id}|${dateKey}`)) {
+        return res.status(400).json({
+          message: `${staffRow?.name || 'Selected staff'} is marked off on ${dateKey}.`,
+        });
+      }
+      const dayWindow = resolveStaffDayWindow(staffRow?.working_hours, dateKey);
+      if (dayWindow.closed) {
+        return res.status(400).json({
+          message: `${staffRow?.name || 'Selected staff'} is not working on ${dateKey}.`,
+        });
+      }
       let start;
       if (item._legacyChain && legacyCursor != null) {
         start = legacyCursor;
@@ -985,13 +1015,15 @@ router.post('/bookings', async (req, res) => {
         start = toMinutes(item.time);
       }
       const end = start + duration;
-      if (end > 18 * 60 + 30) {
-        return res.status(400).json({ message: 'Selected services exceed salon working hours' });
+      if (start < dayWindow.startMin || end > dayWindow.endMin) {
+        return res.status(400).json({
+          message: `Selected time is outside ${staffRow?.name || 'staff'} working hours on ${dateKey}.`,
+        });
       }
       requested.push({
         service,
         staff_id: item.staff_id,
-        staff: staffMap.get(item.staff_id),
+        staff: staffRow,
         date: item.date,
         start,
         end,

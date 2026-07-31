@@ -5,6 +5,7 @@ const User = require('./User');
 const Service = require('./Service');
 const Staff = require('./Staff');
 const StaffSpecialization = require('./StaffSpecialization');
+const StaffOffDay = require('./StaffOffDay');
 const Customer = require('./Customer');
 const Appointment = require('./Appointment');
 const AppointmentService = require('./AppointmentService');
@@ -109,6 +110,7 @@ User.belongsTo(Branch, { foreignKey: 'branch_id', as: 'branch' });
 // Staff
 Staff.belongsTo(Branch, { foreignKey: 'branch_id', as: 'branch' });
 Staff.hasMany(StaffSpecialization, { foreignKey: 'staff_id', as: 'specializations' });
+Staff.hasMany(StaffOffDay, { foreignKey: 'staff_id', as: 'offDays' });
 Staff.hasMany(Appointment, { foreignKey: 'staff_id', as: 'appointments' });
 Staff.hasMany(Attendance, { foreignKey: 'staff_id', as: 'attendances' });
 Staff.hasMany(Payment, { foreignKey: 'staff_id', as: 'payments' });
@@ -125,6 +127,7 @@ Service.hasMany(Payment, { foreignKey: 'service_id', as: 'payments' });
 // StaffSpecialization
 StaffSpecialization.belongsTo(Staff, { foreignKey: 'staff_id', as: 'staff' });
 StaffSpecialization.belongsTo(Service, { foreignKey: 'service_id', as: 'service' });
+StaffOffDay.belongsTo(Staff, { foreignKey: 'staff_id', as: 'staff' });
 
 // Customer
 Customer.belongsTo(Branch, { foreignKey: 'branch_id', as: 'branch' });
@@ -330,6 +333,7 @@ module.exports = {
   Service,
   Staff,
   StaffSpecialization,
+  StaffOffDay,
   Customer,
   Appointment,
   AppointmentService,

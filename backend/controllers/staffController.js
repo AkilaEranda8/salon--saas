@@ -1,7 +1,7 @@
 const fs = require('fs').promises;
 const path = require('path');
 const { Op, fn, col, literal } = require('sequelize');
-const { Staff, Branch, StaffBranch, StaffSpecialization, Service, Appointment, Payment, User, StaffAdvance, CommissionPayout } = require('../models');
+const { Staff, Branch, StaffBranch, StaffSpecialization, StaffOffDay, Service, Appointment, Payment, User, StaffAdvance, CommissionPayout } = require('../models');
 const { tenantWhere, byIdWhere, resolveTenantId } = require('../utils/tenantScope');
 const { normalizeStaffSpecializations } = require('../utils/commissionCalculator');
 const {
@@ -12,6 +12,11 @@ const {
 } = require('../utils/tenantFeatures');
 const { breakdownForPayment } = require('../services/paymentCommissionBreakdown');
 const { hasFranchiseCommission } = require('../utils/tenantFeatures');
+const {
+  defaultWorkingHours,
+  normalizeWorkingHours,
+  normalizeOffDayDates,
+} = require('../utils/staffSchedule');
 
 function staffPhotoLocalPath(photoUrl) {
   if (!photoUrl || typeof photoUrl !== 'string') return null;
@@ -169,6 +174,37 @@ async function replaceStaffSpecializations(staffId, items) {
   await StaffSpecialization.bulkCreate(rows, { ignoreDuplicates: true });
 }
 
+async function replaceStaffOffDays(staffId, tenantId, items) {
+  await StaffOffDay.destroy({ where: { staff_id: staffId } });
+  if (!items.length) return;
+  await StaffOffDay.bulkCreate(
+    items.map((item) => ({
+      staff_id: staffId,
+      date: item.date,
+      reason: item.reason || null,
+      tenant_id: tenantId || null,
+    })),
+    { ignoreDuplicates: true },
+  );
+}
+
+const staffDetailInclude = [
+  { model: Branch, as: 'branch', attributes: ['id', 'name', 'color'] },
+  { model: Branch, as: 'branches', attributes: ['id', 'name', 'color'], through: { attributes: [] } },
+  {
+    model: StaffSpecialization,
+    as: 'specializations',
+    include: [{ model: Service, as: 'service', attributes: ['id', 'name', 'category'] }],
+  },
+  {
+    model: StaffOffDay,
+    as: 'offDays',
+    attributes: ['id', 'date', 'reason'],
+    required: false,
+  },
+  { model: User, as: 'user', attributes: ['id', 'username', 'name', 'role'], required: false },
+];
+
 async function syncStaffSpecializations(staffId, items) {
   const existing = await StaffSpecialization.findAll({ where: { staff_id: staffId } });
   const existingByService = new Map(existing.map((row) => [Number(row.service_id), row]));
@@ -210,6 +246,8 @@ const getBranchWhere = async (req) => {
   return buildStaffBranchWhere(req, branchId);
 };
 
+const staffListInclude = staffDetailInclude.filter((inc) => inc.as !== 'offDays');
+
 const list = async (req, res) => {
   try {
     const page   = Math.max(parseInt(req.query.page)  || 1, 1);
@@ -224,23 +262,19 @@ const list = async (req, res) => {
       limit,
       offset,
       order: [['name', 'ASC']],
-      include: [
-        { model: Branch, as: 'branch',   attributes: ['id', 'name', 'color'] },
-        { model: Branch, as: 'branches', attributes: ['id', 'name', 'color'], through: { attributes: [] } },
-        {
-          model: StaffSpecialization,
-          as: 'specializations',
-          include: [{ model: Service, as: 'service', attributes: ['id', 'name', 'category'] }],
-        },
-        { model: User, as: 'user', attributes: ['id', 'username', 'name', 'role'], required: false },
-      ],
+      distinct: true,
+      include: staffListInclude,
     });
 
     return res.json({
       total: count,
       page,
       limit,
-      data: rows.map((row) => mapStaff(row, req.tenant)),
+      data: rows.map((row) => {
+        const mapped = mapStaff(row, req.tenant);
+        if (!mapped.working_hours) mapped.working_hours = defaultWorkingHours();
+        return mapped;
+      }),
     });
   } catch (err) {
     console.error(err);
@@ -252,16 +286,7 @@ const getOne = async (req, res) => {
   try {
     const staff = await Staff.findOne({
       where: byIdWhere(req, req.params.id),
-      include: [
-        { model: Branch, as: 'branch',   attributes: ['id', 'name', 'color'] },
-        { model: Branch, as: 'branches', attributes: ['id', 'name', 'color'], through: { attributes: [] } },
-        {
-          model: StaffSpecialization,
-          as: 'specializations',
-          include: [{ model: Service, as: 'service', attributes: ['id', 'name', 'category'] }],
-        },
-        { model: User, as: 'user', attributes: ['id', 'username', 'name', 'role'], required: false },
-      ],
+      include: staffDetailInclude,
     });
 
     if (!staff) return res.status(404).json({ message: 'Staff not found.' });
@@ -271,8 +296,11 @@ const getOne = async (req, res) => {
     const apptCount = await Appointment.count({ where: { staff_id: staff.id, ...scope } });
     const commSum   = await Payment.sum('commission_amount', { where: { staff_id: staff.id, ...scope } });
 
+    const mapped = mapStaff(staff, req.tenant);
+    if (!mapped.working_hours) mapped.working_hours = defaultWorkingHours();
+
     return res.json({
-      ...mapStaff(staff, req.tenant),
+      ...mapped,
       apptCount,
       totalCommission: commSum || 0,
     });
@@ -318,6 +346,11 @@ const create = async (req, res) => {
 
     const tenantId = resolveTenantId(req);
     const available_online = parseBoolFlag(req.body.available_online, false);
+    const working_hours = req.body.working_hours !== undefined
+      ? normalizeWorkingHours(req.body.working_hours)
+      : defaultWorkingHours();
+    const offDayItems = normalizeOffDayDates(req.body.off_days ?? req.body.offDays);
+
     const staff = await Staff.create({
       name,
       phone,
@@ -330,6 +363,7 @@ const create = async (req, res) => {
       base_salary,
       join_date,
       available_online,
+      working_hours,
       user_id: user_id || null,
       tenant_id: tenantId,
     });
@@ -343,20 +377,17 @@ const create = async (req, res) => {
     }
 
     await replaceStaffSpecializations(staff.id, specItems);
+    await replaceStaffOffDays(staff.id, tenantId, offDayItems);
     await syncLinkedUserBranch(staff, tenantId);
 
     const created = await Staff.findOne({
       where: { id: staff.id },
-      include: [
-        {
-          model: StaffSpecialization,
-          as: 'specializations',
-          include: [{ model: Service, as: 'service', attributes: ['id', 'name', 'category'] }],
-        },
-      ],
+      include: staffDetailInclude,
     });
 
-    return res.status(201).json(mapStaff(created || staff, req.tenant));
+    const mapped = mapStaff(created || staff, req.tenant);
+    if (!mapped.working_hours) mapped.working_hours = defaultWorkingHours();
+    return res.status(201).json(mapped);
   } catch (err) {
     console.error('Staff create error:', err);
     return res.status(500).json({ message: err.message || 'Server error.' });
@@ -380,6 +411,9 @@ const update = async (req, res) => {
     }
     if (req.body.available_online !== undefined) {
       updates.available_online = parseBoolFlag(req.body.available_online, true);
+    }
+    if (req.body.working_hours !== undefined) {
+      updates.working_hours = normalizeWorkingHours(req.body.working_hours);
     }
     const parsed = parseStaffCommission(req.body);
     for (const [key, value] of Object.entries(parsed)) {
@@ -432,20 +466,21 @@ const update = async (req, res) => {
       await syncStaffSpecializations(staff.id, specItems);
     }
 
+    if (req.body.off_days !== undefined || req.body.offDays !== undefined) {
+      const offDayItems = normalizeOffDayDates(req.body.off_days ?? req.body.offDays);
+      await replaceStaffOffDays(staff.id, resolveTenantId(req), offDayItems);
+    }
+
     const refreshed = await Staff.findOne({
       where: { id: staff.id },
-      include: [
-        {
-          model: StaffSpecialization,
-          as: 'specializations',
-          include: [{ model: Service, as: 'service', attributes: ['id', 'name', 'category'] }],
-        },
-      ],
+      include: staffDetailInclude,
     });
 
     await syncLinkedUserBranch(refreshedStaff || staff, resolveTenantId(req));
 
-    return res.json(mapStaff(refreshed || staff, req.tenant));
+    const mapped = mapStaff(refreshed || staff, req.tenant);
+    if (!mapped.working_hours) mapped.working_hours = defaultWorkingHours();
+    return res.json(mapped);
   } catch (err) {
     return res.status(500).json({ message: 'Server error.' });
   }

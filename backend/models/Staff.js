@@ -63,6 +63,11 @@ const Staff = sequelize.define('Staff', {
     defaultValue: true,
     comment: 'When true, staff can be selected in public / WordPress online booking',
   },
+  working_hours: {
+    type: DataTypes.JSON,
+    allowNull: true,
+    comment: 'Weekly hours keyed 0=Sun..6=Sat: { closed, start, end }',
+  },
   user_id: {
     type: DataTypes.INTEGER,
     allowNull: true,

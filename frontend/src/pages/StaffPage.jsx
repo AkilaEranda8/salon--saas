@@ -19,6 +19,43 @@ import {
 
 const EMPTY = { name:'', phone:'', email:'', role_title:'', branch_ids:[], commission_type:'percentage', commission_value:'', salary_type:'commission_only', base_salary:'', join_date:'', is_active:true, available_online:false };
 
+const WEEKDAYS = [
+  { key: '0', label: 'Sunday' },
+  { key: '1', label: 'Monday' },
+  { key: '2', label: 'Tuesday' },
+  { key: '3', label: 'Wednesday' },
+  { key: '4', label: 'Thursday' },
+  { key: '5', label: 'Friday' },
+  { key: '6', label: 'Saturday' },
+];
+
+function defaultWorkingHours() {
+  const day = { closed: false, start: '09:00', end: '18:00' };
+  return WEEKDAYS.reduce((acc, d) => {
+    acc[d.key] = { ...day };
+    return acc;
+  }, {});
+}
+
+function normalizeWorkingHours(input) {
+  const base = defaultWorkingHours();
+  if (!input || typeof input !== 'object') return base;
+  WEEKDAYS.forEach(({ key }) => {
+    const raw = input[key] ?? input[Number(key)];
+    if (!raw || typeof raw !== 'object') return;
+    if (raw.closed) {
+      base[key] = { closed: true, start: '09:00', end: '18:00' };
+    } else {
+      base[key] = {
+        closed: false,
+        start: raw.start || '09:00',
+        end: raw.end || '18:00',
+      };
+    }
+  });
+  return base;
+}
+
 function formatCommission(type, value) {
   if (value == null || value === '') return '—';
   return type === 'fixed'
@@ -152,6 +189,10 @@ export default function StaffPage() {
   const [profileItem, setProfileItem]   = useState(null);
   const [form, setForm]                 = useState(EMPTY);
   const [specs, setSpecs]               = useState([]);
+  const [workingHours, setWorkingHours] = useState(() => defaultWorkingHours());
+  const [offDays, setOffDays]           = useState([]);
+  const [offDateDraft, setOffDateDraft] = useState('');
+  const [offReasonDraft, setOffReasonDraft] = useState('');
   /** Per-service override rates keyed by service_id. Empty value = catalogue/default fallback. */
   const [specRates, setSpecRates]       = useState({});
   const [saving, setSaving]             = useState(false);
@@ -228,6 +269,10 @@ export default function StaffPage() {
     const initial = { ...EMPTY, branch_ids: myBranchId != null ? [String(myBranchId)] : [], join_date: new Date().toISOString().slice(0,10) };
     setForm(initial);
     setSpecRates({});
+    setWorkingHours(defaultWorkingHours());
+    setOffDays([]);
+    setOffDateDraft('');
+    setOffReasonDraft('');
     // Default new staff to all services; admin can uncheck what they don't perform.
     if (initial.salary_type === 'salary_only') {
       setSpecs([]);
@@ -240,31 +285,53 @@ export default function StaffPage() {
     setFormErr('');
     setShowForm(true);
   };
-  const openEdit = row => {
-    const fromM2m = (row.branches && row.branches.length)
-      ? row.branches.map((b) => String(b.id))
-      : (row.branch_id != null || row.branch?.id != null ? [String(row.branch_id ?? row.branch?.id)] : []);
-    setEditItem(row);
-    setForm({ ...row, branch_ids: fromM2m, join_date: row.join_date?.slice(0,10)||'' });
-    const specsList = row.specializations || [];
-    setSpecs(specsList.map((s) => s.service_id));
-    const rates = {};
-    specsList.forEach((s) => {
-      if (s.commission_value != null && s.commission_value !== '') {
-        rates[String(s.service_id)] = {
-          commission_type: s.commission_type || 'percentage',
-          commission_value: String(s.commission_value),
-        };
-      }
-    });
-    setSpecRates(rates);
-    setPhotoFile(null);
-    setPhotoPreview(row.photo_url || '');
-    setRemovePhoto(false);
-    setFormErr('');
-    setShowForm(true);
+  const openEdit = async (row) => {
+    try {
+      const { data } = await api.get(`/staff/${row.id}`);
+      const full = data || row;
+      const fromM2m = (full.branches && full.branches.length)
+        ? full.branches.map((b) => String(b.id))
+        : (full.branch_id != null || full.branch?.id != null ? [String(full.branch_id ?? full.branch?.id)] : []);
+      setEditItem(full);
+      setForm({ ...full, branch_ids: fromM2m, join_date: full.join_date?.slice(0,10)||'', available_online: full.available_online !== false });
+      const specsList = full.specializations || [];
+      setSpecs(specsList.map((s) => s.service_id));
+      const rates = {};
+      specsList.forEach((s) => {
+        if (s.commission_value != null && s.commission_value !== '') {
+          rates[String(s.service_id)] = {
+            commission_type: s.commission_type || 'percentage',
+            commission_value: String(s.commission_value),
+          };
+        }
+      });
+      setSpecRates(rates);
+      setWorkingHours(normalizeWorkingHours(full.working_hours));
+      setOffDays(
+        Array.isArray(full.offDays)
+          ? full.offDays.map((d) => ({ date: d.date, reason: d.reason || '' }))
+          : []
+      );
+      setOffDateDraft('');
+      setOffReasonDraft('');
+      setPhotoFile(null);
+      setPhotoPreview(full.photo_url || '');
+      setRemovePhoto(false);
+      setFormErr('');
+      setShowForm(true);
+    } catch (err) {
+      setFormErr(err?.response?.data?.message || 'Failed to load staff profile.');
+    }
   };
-  const openProfile = row => { setProfileItem(row); setShowProfile(true); };
+  const openProfile = async (row) => {
+    try {
+      const { data } = await api.get(`/staff/${row.id}`);
+      setProfileItem(data || row);
+    } catch {
+      setProfileItem(row);
+    }
+    setShowProfile(true);
+  };
   const toggleSpec = (id) => {
     const nid = Number(id);
     setSpecs((sp) => {
@@ -314,6 +381,8 @@ export default function StaffPage() {
         join_date: form.join_date || null,
         is_active: form.is_active !== false,
         available_online: form.available_online !== false,
+        working_hours: workingHours,
+        off_days: offDays.map((d) => ({ date: d.date, reason: d.reason || null })),
         specializations: effectiveSpecs.map((id) => {
           const rate = specRates[String(id)];
           const hasOverride = serviceWiseForUser && rate && rate.commission_value !== '' && rate.commission_value != null;
@@ -634,6 +703,108 @@ export default function StaffPage() {
                   </span>
                 </span>
               </label>
+              <StaffSection title="Working hours" desc="Weekly schedule used for online booking slots" dark={isDark}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {WEEKDAYS.map(({ key, label }) => {
+                    const day = workingHours[key] || { closed: false, start: '09:00', end: '18:00' };
+                    return (
+                      <div
+                        key={key}
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: '110px 70px 1fr 1fr',
+                          gap: 8,
+                          alignItems: 'center',
+                        }}
+                      >
+                        <span style={{ fontSize: 13, fontWeight: 600, color: isDark ? '#E2E8F0' : '#344054' }}>{label}</span>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: C.muted, cursor: 'pointer' }}>
+                          <input
+                            type="checkbox"
+                            checked={!!day.closed}
+                            onChange={(e) => setWorkingHours((prev) => ({
+                              ...prev,
+                              [key]: { ...prev[key], closed: e.target.checked },
+                            }))}
+                          />
+                          Off
+                        </label>
+                        <Input
+                          type="time"
+                          disabled={!!day.closed}
+                          value={day.start || '09:00'}
+                          onChange={(e) => setWorkingHours((prev) => ({
+                            ...prev,
+                            [key]: { ...prev[key], closed: false, start: e.target.value },
+                          }))}
+                        />
+                        <Input
+                          type="time"
+                          disabled={!!day.closed}
+                          value={day.end || '18:00'}
+                          onChange={(e) => setWorkingHours((prev) => ({
+                            ...prev,
+                            [key]: { ...prev[key], closed: false, end: e.target.value },
+                          }))}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              </StaffSection>
+              <StaffSection title="Off days" desc="Mark specific dates when this staff is unavailable" dark={isDark}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 8, alignItems: 'end' }}>
+                  <FormGroup label="Date">
+                    <Input type="date" value={offDateDraft} onChange={(e) => setOffDateDraft(e.target.value)} />
+                  </FormGroup>
+                  <FormGroup label="Reason (optional)">
+                    <Input value={offReasonDraft} onChange={(e) => setOffReasonDraft(e.target.value)} placeholder="Leave / holiday" />
+                  </FormGroup>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={() => {
+                      if (!offDateDraft) return;
+                      setOffDays((prev) => {
+                        if (prev.some((d) => d.date === offDateDraft)) return prev;
+                        return [...prev, { date: offDateDraft, reason: offReasonDraft.trim() }].sort((a, b) => a.date.localeCompare(b.date));
+                      });
+                      setOffDateDraft('');
+                      setOffReasonDraft('');
+                    }}
+                  >
+                    Add
+                  </Button>
+                </div>
+                {offDays.length === 0 ? (
+                  <div style={{ fontSize: 12, color: C.muted }}>No off days marked.</div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {offDays.map((d) => (
+                      <div
+                        key={d.date}
+                        style={{
+                          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                          padding: '8px 10px', borderRadius: 8,
+                          background: isDark ? '#0B1220' : '#F8FAFC',
+                          border: `1px solid ${isDark ? '#1E293B' : '#EEF2F7'}`,
+                        }}
+                      >
+                        <span style={{ fontSize: 13, fontWeight: 600, color: isDark ? '#E2E8F0' : '#344054' }}>
+                          {d.date}{d.reason ? ` · ${d.reason}` : ''}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setOffDays((prev) => prev.filter((x) => x.date !== d.date))}
+                          style={{ border: 'none', background: 'transparent', color: '#EF4444', cursor: 'pointer', fontWeight: 700, fontSize: 12 }}
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </StaffSection>
               {activeServices.length > 0 && (
                 <FormGroup label="Assignable services">
                   <div style={{ fontSize: 12, color: C.muted, marginBottom: 8, lineHeight: 1.45 }}>
@@ -960,6 +1131,7 @@ export default function StaffPage() {
                 { label:'Email',   value: p.email||'' },
                 { label:'Joined',  value: p.join_date ? new Date(p.join_date).toLocaleDateString() : '' },
                 { label:'Status',  value: p.is_active!==false ? 'Active' : 'Inactive' },
+                { label:'Online booking', value: p.available_online !== false ? 'Available' : 'Off' },
               ].map(({ label, value }) => (
                 <div key={label} style={{ background:'#F9FAFB', borderRadius:10, padding:'12px 14px' }}>
                   <div style={{ fontSize:11, fontWeight:700, color:'#98A2B3', textTransform:'uppercase', marginBottom:4 }}>{label}</div>
@@ -967,6 +1139,39 @@ export default function StaffPage() {
                 </div>
               ))}
             </div>
+            <div style={{ marginBottom: 20 }}>
+              <h4 style={{ margin:'0 0 10px', fontSize:13, fontWeight:700, color:'#475467', textTransform:'uppercase' }}>
+                Working Hours
+              </h4>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {WEEKDAYS.map(({ key, label }) => {
+                  const hours = normalizeWorkingHours(p.working_hours);
+                  const day = hours[key];
+                  return (
+                    <div key={key} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', background: '#F9FAFB', borderRadius: 8, fontSize: 13 }}>
+                      <span style={{ fontWeight: 600, color: '#344054' }}>{label}</span>
+                      <span style={{ color: day.closed ? '#EF4444' : '#059669', fontWeight: 600 }}>
+                        {day.closed ? 'Off' : `${day.start} – ${day.end}`}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+            {Array.isArray(p.offDays) && p.offDays.length > 0 && (
+              <div style={{ marginBottom: 20 }}>
+                <h4 style={{ margin:'0 0 10px', fontSize:13, fontWeight:700, color:'#475467', textTransform:'uppercase' }}>
+                  Off Days
+                </h4>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {p.offDays.map((d) => (
+                    <div key={d.id || d.date} style={{ padding: '8px 12px', background: '#FEF2F2', borderRadius: 8, fontSize: 13, color: '#B91C1C', fontWeight: 600 }}>
+                      {d.date}{d.reason ? ` · ${d.reason}` : ''}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             {(p.specializations || []).length > 0 && (
               <div>
                 <h4 style={{ margin:'0 0 10px', fontSize:13, fontWeight:700, color:'#475467', textTransform:'uppercase' }}>

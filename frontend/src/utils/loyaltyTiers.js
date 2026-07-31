@@ -1,9 +1,10 @@
-/** Shared loyalty tier thresholds — keep Customers + Loyalty pages in sync. */
+/** Shared loyalty tier thresholds — keep Customers + Loyalty + Offer SMS in sync. */
 export const LOYALTY_TIERS = [
-  { name: 'Bronze',   min: 0,    color: '#CD7F32', bg: '#FDF6EC', gradient: 'linear-gradient(135deg, #92400E 0%, #CD7F32 100%)' },
-  { name: 'Silver',   min: 500,  color: '#94A3B8', bg: '#F8FAFC', gradient: 'linear-gradient(135deg, #475569 0%, #94A3B8 100%)' },
-  { name: 'Gold',     min: 1500, color: '#D97706', bg: '#FFFBEB', gradient: 'linear-gradient(135deg, #92400E 0%, #F59E0B 100%)' },
-  { name: 'Platinum', min: 5000, color: '#7C3AED', bg: '#FAF5FF', gradient: 'linear-gradient(135deg, #4C1D95 0%, #7C3AED 100%)' },
+  { name: 'Entry',    min: 0,    max: 49,   color: '#64748B', bg: '#F1F5F9', gradient: 'linear-gradient(135deg, #334155 0%, #64748B 100%)', range: '0–49 pts' },
+  { name: 'Bronze',   min: 50,   max: 499,  color: '#CD7F32', bg: '#FDF6EC', gradient: 'linear-gradient(135deg, #92400E 0%, #CD7F32 100%)', range: '50+ pts' },
+  { name: 'Silver',   min: 500,  max: 1499, color: '#94A3B8', bg: '#F8FAFC', gradient: 'linear-gradient(135deg, #475569 0%, #94A3B8 100%)', range: '500+ pts' },
+  { name: 'Gold',     min: 1500, max: 4999, color: '#D97706', bg: '#FFFBEB', gradient: 'linear-gradient(135deg, #92400E 0%, #F59E0B 100%)', range: '1500+ pts' },
+  { name: 'Platinum', min: 5000, max: null, color: '#7C3AED', bg: '#FAF5FF', gradient: 'linear-gradient(135deg, #4C1D95 0%, #7C3AED 100%)', range: '5000+ pts' },
 ];
 
 export function getTier(pts = 0) {
@@ -19,7 +20,7 @@ export function getNextTier(pts = 0) {
 }
 
 export function loyaltyTierCounts(customers = []) {
-  const counts = { Bronze: 0, Silver: 0, Gold: 0, Platinum: 0 };
+  const counts = Object.fromEntries(LOYALTY_TIERS.map((t) => [t.name, 0]));
   customers.forEach((c) => {
     counts[getTier(c.loyalty_points || 0).name]++;
   });

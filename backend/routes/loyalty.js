@@ -243,7 +243,7 @@ router.get('/transactions/:customerId', async (req, res) => {
   }
 });
 
-// ─── GET /api/loyalty/leaderboard — top 20 customers by points ───────────────
+// ─── GET /api/loyalty/leaderboard — customers by points (filterable list) ─────
 router.get('/leaderboard', async (req, res) => {
   try {
     const { Customer } = require('../models');
@@ -253,11 +253,16 @@ router.get('/leaderboard', async (req, res) => {
     if (tenantId) where.tenant_id = tenantId;
     if (req.userBranchId) where.branch_id = req.userBranchId;
 
+    const rawLimit = Number(req.query.limit);
+    const limit = Number.isFinite(rawLimit) && rawLimit > 0
+      ? Math.min(Math.floor(rawLimit), 500)
+      : 200;
+
     const top = await Customer.findAll({
       where,
-      attributes: ['id', 'name', 'phone', 'loyalty_points', 'total_spent', 'visits'],
+      attributes: ['id', 'name', 'phone', 'loyalty_points', 'loyalty_mark', 'total_spent', 'visits'],
       order: [['loyalty_points', 'DESC']],
-      limit: 20,
+      limit,
     });
     return res.json(top);
   } catch (err) {

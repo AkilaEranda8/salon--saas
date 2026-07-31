@@ -4,7 +4,7 @@ import Button from '../components/ui/Button';
 import api from '../api/axios';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/ui/Toast';
-import { LOYALTY_TIERS, getTier } from '../utils/loyaltyTiers';
+import { LOYALTY_TIERS, getTier, loyaltyTierCounts } from '../utils/loyaltyTiers';
 
 export default function OfferSmsPage({ kind = 'offer' }) {
   const isOffice = kind === 'office';
@@ -127,13 +127,7 @@ export default function OfferSmsPage({ kind = 'offer' }) {
     [reduced50Ids]
   );
 
-  const tierCounts = useMemo(() => {
-    const counts = { Bronze: 0, Silver: 0, Gold: 0, Platinum: 0 };
-    customers.forEach((c) => {
-      counts[getTier(c.loyalty_points || 0).name]++;
-    });
-    return counts;
-  }, [customers]);
+  const tierCounts = useMemo(() => loyaltyTierCounts(customers), [customers]);
 
   const visibleCustomers = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -242,7 +236,7 @@ export default function OfferSmsPage({ kind = 'offer' }) {
               key={t.name}
               type="button"
               onClick={() => selectTier(t.name)}
-              title={`Select all ${t.name} customers (${t.min}+ pts)`}
+              title={`Select all ${t.name} customers (${t.range})`}
               style={{
                 minWidth: 120, padding: '12px 14px', borderRadius: 12, textAlign: 'left', cursor: 'pointer',
                 border: `1.5px solid ${active ? t.color : '#E4E7EC'}`,
@@ -252,7 +246,7 @@ export default function OfferSmsPage({ kind = 'offer' }) {
             >
               <div style={{ fontSize: 20, fontWeight: 800, color: t.color }}>{tierCounts[t.name]}</div>
               <div style={{ fontSize: 11, fontWeight: 700, color: t.color, marginTop: 2 }}>{t.name.toUpperCase()}</div>
-              <div style={{ fontSize: 10, color: '#98A2B3', marginTop: 2 }}>{t.min}+ pts · tap to select</div>
+              <div style={{ fontSize: 10, color: '#98A2B3', marginTop: 2 }}>{t.range} · tap to select</div>
             </button>
           );
         })}

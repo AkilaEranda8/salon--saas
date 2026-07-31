@@ -68,6 +68,8 @@ export default function LoyaltyPage() {
   const [adjustCustLoading, setAdjustCustLoading] = useState(false);
   const [reduced50Ids, setReduced50Ids] = useState(() => new Set());
   const [reduced50Count, setReduced50Count] = useState(0);
+  const [lbTier, setLbTier] = useState('All'); // All | Bronze | Silver | Gold | Platinum | Reduced50
+  const REDUCED_50 = 'Reduced50';
 
   const loadRules = useCallback(() => {
     api.get('/loyalty/rules').then((r) => {
@@ -77,7 +79,9 @@ export default function LoyaltyPage() {
   }, []);
 
   const loadLeaderboard = useCallback(() => {
-    api.get('/loyalty/leaderboard').then((r) => setLeaderboard(Array.isArray(r.data) ? r.data : [])).catch(() => {});
+    api.get('/loyalty/leaderboard', { params: { limit: 500 } })
+      .then((r) => setLeaderboard(Array.isArray(r.data) ? r.data : []))
+      .catch(() => {});
   }, []);
 
   useEffect(() => { loadRules(); loadLeaderboard(); }, [loadRules, loadLeaderboard]);
@@ -215,9 +219,24 @@ export default function LoyaltyPage() {
   const topPts   = leaderboard[0]?.loyalty_points || 0;
   const tierCounts = tierDistribution(leaderboard);
 
+  const isReduced50Customer = useCallback(
+    (c) => reduced50Ids.has(Number(c.id)) || c.loyalty_mark === 'reduced_50',
+    [reduced50Ids],
+  );
+
+  const filteredLeaderboard = useMemo(() => {
+    if (lbTier === REDUCED_50) {
+      return leaderboard.filter(isReduced50Customer);
+    }
+    if (lbTier !== 'All') {
+      return leaderboard.filter((c) => getTier(c.loyalty_points || 0).name === lbTier);
+    }
+    return leaderboard;
+  }, [leaderboard, lbTier, isReduced50Customer]);
+
   const leaderboardRows = useMemo(
-    () => leaderboard.map((c, i) => ({ ...c, _rank: i + 1 })),
-    [leaderboard],
+    () => filteredLeaderboard.map((c, i) => ({ ...c, _rank: i + 1 })),
+    [filteredLeaderboard],
   );
 
   const leaderboardColumns = useMemo(() => [
@@ -241,7 +260,15 @@ export default function LoyaltyPage() {
       accessorFn: (row) => row.name || '',
       meta: { width: '22%' },
       cell: ({ row: { original: c } }) => (
-        <span style={{ fontWeight: 600, color: '#101828' }}>{c.name}</span>
+        <span style={{ fontWeight: 600, color: '#101828', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          {c.name}
+          {(reduced50Ids.has(Number(c.id)) || c.loyalty_mark === 'reduced_50') && (
+            <span style={{
+              fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 4,
+              background: '#FEE2E2', color: '#DC2626', border: '1px solid #FECACA',
+            }}>−50</span>
+          )}
+        </span>
       ),
     },
     {
@@ -297,7 +324,7 @@ export default function LoyaltyPage() {
         <span style={{ color: '#344054' }}>{c.visits}</span>
       ),
     },
-  ], []);
+  ], [reduced50Ids]);
 
   const inp = {
     padding: '10px 14px', borderRadius: 10, border: '1.5px solid #E5E7EB', fontSize: 13.5,
@@ -368,8 +395,34 @@ export default function LoyaltyPage() {
         </div>
       </motion.div>
 
-      {/* ── Tier Distribution ── */}
+      {/* ── Tier Distribution (also filters leaderboard) ── */}
       <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.02 }}
+            whileHover={{ translateY: -3 }}
+            onClick={() => setLbTier('All')}
+            style={{
+              flex: 1, minWidth: 120, cursor: 'pointer',
+              background: lbTier === 'All' ? '#EFF6FF' : '#F8FAFC',
+              border: `1.5px solid ${lbTier === 'All' ? '#2563EB' : '#E4E7EC'}`,
+              borderRadius: 14, padding: '18px 16px',
+              textAlign: 'center',
+              boxShadow: '0 2px 8px rgba(16,24,40,0.04)',
+            }}
+            title="Show all members on leaderboard"
+          >
+            <div style={{ fontSize: 28, fontWeight: 900, color: '#2563EB', fontFamily: "'Sora', sans-serif" }}>
+              {leaderboard.length}
+            </div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: '#2563EB', textTransform: 'uppercase', letterSpacing: '0.06em', marginTop: 2, fontFamily: "'Inter', sans-serif" }}>
+              All
+            </div>
+            <div style={{ fontSize: 11, color: '#98A2B3', marginTop: 4, fontFamily: "'Inter', sans-serif" }}>
+              with points
+            </div>
+          </motion.div>
           {TIERS.map((tier, i) => (
             <motion.div
               key={tier.name}
@@ -377,14 +430,17 @@ export default function LoyaltyPage() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.05 + i * 0.07 }}
               whileHover={{ translateY: -3 }}
+              onClick={() => setLbTier(tier.name)}
               style={{
-                flex: 1, minWidth: 120,
-                background: tier.bg, border: `1.5px solid ${tier.color}30`,
+                flex: 1, minWidth: 120, cursor: 'pointer',
+                background: lbTier === tier.name ? tier.bg : '#fff',
+                border: `1.5px solid ${lbTier === tier.name ? tier.color : `${tier.color}30`}`,
                 borderRadius: 14, padding: '18px 16px',
                 textAlign: 'center',
                 boxShadow: '0 2px 8px rgba(16,24,40,0.04)',
                 transition: 'box-shadow 0.18s',
               }}
+              title={`Filter leaderboard: ${tier.name}`}
             >
               <div style={{ fontSize: 28, fontWeight: 900, color: tier.color, fontFamily: "'Sora', sans-serif" }}>
                 {tierCounts[tier.name] || 0}
@@ -393,7 +449,7 @@ export default function LoyaltyPage() {
                 {tier.name}
               </div>
               <div style={{ fontSize: 11, color: '#98A2B3', marginTop: 4, fontFamily: "'Inter', sans-serif" }}>
-                {tier.min.toLocaleString()}+ pts
+                {tier.range}
               </div>
             </motion.div>
           ))}
@@ -402,14 +458,16 @@ export default function LoyaltyPage() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.35 }}
             whileHover={{ translateY: -3 }}
+            onClick={() => setLbTier(REDUCED_50)}
             style={{
-              flex: 1, minWidth: 120,
-              background: '#FEF2F2', border: '1.5px solid #FECACA',
+              flex: 1, minWidth: 120, cursor: 'pointer',
+              background: lbTier === REDUCED_50 ? '#FEF2F2' : '#fff',
+              border: `1.5px solid ${lbTier === REDUCED_50 ? '#DC2626' : '#FECACA'}`,
               borderRadius: 14, padding: '18px 16px',
               textAlign: 'center',
               boxShadow: '0 2px 8px rgba(16,24,40,0.04)',
             }}
-            title="Customers who had 50 loyalty points reduced"
+            title="Filter leaderboard: −50 pts group"
           >
             <div style={{ fontSize: 28, fontWeight: 900, color: '#DC2626', fontFamily: "'Sora', sans-serif" }}>
               {reduced50Count}
@@ -774,7 +832,7 @@ export default function LoyaltyPage() {
         transition={{ delay: 0.25 }}
         style={{ background: '#fff', border: '1.5px solid #EAECF0', borderRadius: 16, padding: 24, boxShadow: '0 2px 8px rgba(16,24,40,0.06)' }}
       >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, flexWrap: 'wrap', gap: 10 }}>
           <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: '#101828', fontFamily: "'Sora', 'Manrope', sans-serif" }}>
             Points Leaderboard
           </h3>
@@ -782,7 +840,58 @@ export default function LoyaltyPage() {
             background: '#F9FAFB', border: '1px solid #EAECF0', borderRadius: 99,
             padding: '4px 12px', fontSize: 11, fontWeight: 700, color: '#667085',
             fontFamily: "'Inter', sans-serif",
-          }}>Top 20</span>
+          }}>
+            {filteredLeaderboard.length}
+            {lbTier !== 'All' ? ` · ${lbTier === REDUCED_50 ? '−50 pts' : lbTier}` : ' members'}
+          </span>
+        </div>
+
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
+          <button
+            type="button"
+            onClick={() => setLbTier('All')}
+            style={{
+              padding: '7px 12px', borderRadius: 99, cursor: 'pointer', fontSize: 12, fontWeight: 700,
+              fontFamily: "'Inter', sans-serif",
+              border: `1.5px solid ${lbTier === 'All' ? '#2563EB' : '#E4E7EC'}`,
+              background: lbTier === 'All' ? '#EFF6FF' : '#fff',
+              color: lbTier === 'All' ? '#2563EB' : '#667085',
+            }}
+          >
+            All ({leaderboard.length})
+          </button>
+          {TIERS.map((t) => {
+            const active = lbTier === t.name;
+            return (
+              <button
+                key={t.name}
+                type="button"
+                onClick={() => setLbTier(t.name)}
+                style={{
+                  padding: '7px 12px', borderRadius: 99, cursor: 'pointer', fontSize: 12, fontWeight: 700,
+                  fontFamily: "'Inter', sans-serif",
+                  border: `1.5px solid ${active ? t.color : '#E4E7EC'}`,
+                  background: active ? t.bg : '#fff',
+                  color: active ? t.color : '#667085',
+                }}
+              >
+                {t.name} ({tierCounts[t.name] || 0})
+              </button>
+            );
+          })}
+          <button
+            type="button"
+            onClick={() => setLbTier(REDUCED_50)}
+            style={{
+              padding: '7px 12px', borderRadius: 99, cursor: 'pointer', fontSize: 12, fontWeight: 700,
+              fontFamily: "'Inter', sans-serif",
+              border: `1.5px solid ${lbTier === REDUCED_50 ? '#DC2626' : '#E4E7EC'}`,
+              background: lbTier === REDUCED_50 ? '#FEF2F2' : '#fff',
+              color: lbTier === REDUCED_50 ? '#DC2626' : '#667085',
+            }}
+          >
+            −50 pts ({reduced50Count})
+          </button>
         </div>
 
         {leaderboard.length === 0 ? (
@@ -793,12 +902,30 @@ export default function LoyaltyPage() {
           }}>
             No loyalty members yet
           </div>
+        ) : filteredLeaderboard.length === 0 ? (
+          <div style={{
+            textAlign: 'center', padding: 40, color: '#98A2B3',
+            border: '2px dashed #E5E7EB', borderRadius: 12,
+            fontFamily: "'Inter', sans-serif", fontSize: 14,
+          }}>
+            No members in this filter
+          </div>
         ) : (
           <DataTable
             columns={leaderboardColumns}
             data={leaderboardRows}
             showRowNumbers={false}
-            searchableColumns={[{ id: 'name', title: 'Name' }]}
+            searchableColumns={[
+              { id: 'name', title: 'Name' },
+              { id: 'phone', title: 'Phone' },
+            ]}
+            filterableColumns={[
+              {
+                id: 'tier',
+                title: 'Tier',
+                options: TIERS.map((t) => ({ label: t.name, value: t.name })),
+              },
+            ]}
             emptyMessage="No loyalty members yet"
             pageSize={20}
           />

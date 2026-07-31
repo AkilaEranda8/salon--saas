@@ -45,6 +45,11 @@ const Service = sequelize.define('Service', {
     type: DataTypes.BOOLEAN,
     defaultValue: true,
   },
+  available_online: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: true,
+    comment: 'When false, service is hidden from public / WordPress online booking',
+  },
   tenant_id: {
     type: DataTypes.INTEGER,
     allowNull: true,

@@ -1379,6 +1379,9 @@ class AppState extends ChangeNotifier {
   Future<List<Map<String, dynamic>>> loadInventoryProducts({
     String? branchId,
     bool consumableOnly = true,
+    String? q,
+    String? productType,
+    bool lowStockOnly = false,
   }) async {
     final token = _currentUser?.authToken;
     if (token == null || token.isEmpty) throw Exception('Missing auth token.');
@@ -1386,6 +1389,9 @@ class AppState extends ChangeNotifier {
       token: token,
       branchId: branchId ?? _currentUser?.branchId,
       consumableOnly: consumableOnly,
+      q: q,
+      productType: productType,
+      lowStockOnly: lowStockOnly,
     );
   }
 
@@ -1399,6 +1405,7 @@ class AppState extends ChangeNotifier {
     double maxStock = 0,
     double costPrice = 0,
     String? sku,
+    String? brand,
   }) async {
     final token = _currentUser?.authToken;
     if (token == null || token.isEmpty) {
@@ -1417,7 +1424,59 @@ class AppState extends ChangeNotifier {
         maxStock: maxStock,
         costPrice: costPrice,
         sku: sku,
+        brand: brand,
       );
+      return true;
+    } catch (e) {
+      _lastError = e.toString().replaceFirst('Exception: ', '');
+      return false;
+    }
+  }
+
+  Future<bool> updateInventoryProduct({
+    required String productId,
+    required String name,
+    required String productType,
+    required String unit,
+    double minStock = 0,
+    double maxStock = 0,
+    double costPrice = 0,
+    String? sku,
+    String? brand,
+  }) async {
+    final token = _currentUser?.authToken;
+    if (token == null || token.isEmpty) {
+      _lastError = 'Missing auth token.';
+      return false;
+    }
+    try {
+      await _api.updateInventoryProduct(
+        token: token,
+        productId: productId,
+        name: name,
+        productType: productType,
+        unit: unit,
+        minStock: minStock,
+        maxStock: maxStock,
+        costPrice: costPrice,
+        sku: sku,
+        brand: brand,
+      );
+      return true;
+    } catch (e) {
+      _lastError = e.toString().replaceFirst('Exception: ', '');
+      return false;
+    }
+  }
+
+  Future<bool> deactivateInventoryProduct({required String productId}) async {
+    final token = _currentUser?.authToken;
+    if (token == null || token.isEmpty) {
+      _lastError = 'Missing auth token.';
+      return false;
+    }
+    try {
+      await _api.deactivateInventoryProduct(token: token, productId: productId);
       return true;
     } catch (e) {
       _lastError = e.toString().replaceFirst('Exception: ', '');
@@ -1542,6 +1601,24 @@ class AppState extends ChangeNotifier {
         staffId: staffId,
         serviceId: serviceId,
         reason: reason,
+      );
+      return true;
+    } catch (e) {
+      _lastError = e.toString().replaceFirst('Exception: ', '');
+      return false;
+    }
+  }
+
+  Future<bool> cancelInventoryConsumption({required String consumptionId}) async {
+    final token = _currentUser?.authToken;
+    if (token == null || token.isEmpty) {
+      _lastError = 'Missing auth token.';
+      return false;
+    }
+    try {
+      await _api.cancelInventoryConsumption(
+        token: token,
+        consumptionId: consumptionId,
       );
       return true;
     } catch (e) {

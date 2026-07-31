@@ -136,6 +136,36 @@ class _InvConsumptionPageState extends State<InvConsumptionPage> {
     if (saved == true) await _refresh();
   }
 
+  Future<void> _cancelRow(Map<String, dynamic> row) async {
+    if ('${row['status']}' != 'pending') return;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Cancel this usage?'),
+        content: const Text('Pending usage will be cancelled. Stock is unchanged.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Keep')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(foregroundColor: const Color(0xFFDC2626)),
+            child: const Text('Cancel usage'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    final success = await AppStateScope.of(context).cancelInventoryConsumption(
+      consumptionId: '${row['id']}',
+    );
+    if (!mounted) return;
+    if (success) {
+      _toast('Usage cancelled.');
+      await _refresh();
+    } else {
+      _toast(AppStateScope.of(context).lastError ?? 'Cancel failed');
+    }
+  }
+
   void _toast(String message) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -275,8 +305,10 @@ class _InvConsumptionPageState extends State<InvConsumptionPage> {
                       padding: const EdgeInsets.fromLTRB(12, 12, 12, 90),
                       itemCount: _rows.length,
                       separatorBuilder: (_, _) => const SizedBox(height: 9),
-                      itemBuilder: (_, index) =>
-                          _ConsumptionCard(row: _rows[index]),
+                      itemBuilder: (_, index) => _ConsumptionCard(
+                        row: _rows[index],
+                        onCancel: () => _cancelRow(_rows[index]),
+                      ),
                     ),
                   ),
           ),
@@ -287,8 +319,9 @@ class _InvConsumptionPageState extends State<InvConsumptionPage> {
 }
 
 class _ConsumptionCard extends StatelessWidget {
-  const _ConsumptionCard({required this.row});
+  const _ConsumptionCard({required this.row, required this.onCancel});
   final Map<String, dynamic> row;
+  final VoidCallback onCancel;
 
   @override
   Widget build(BuildContext context) {
@@ -325,7 +358,9 @@ class _ConsumptionCard extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: pending
                       ? const Color(0xFFFEF3C7)
-                      : const Color(0xFFDCFCE7),
+                      : status == 'cancelled'
+                          ? const Color(0xFFFEE2E2)
+                          : const Color(0xFFDCFCE7),
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Text(
@@ -333,7 +368,9 @@ class _ConsumptionCard extends StatelessWidget {
                   style: TextStyle(
                     color: pending
                         ? const Color(0xFF92400E)
-                        : const Color(0xFF166534),
+                        : status == 'cancelled'
+                            ? const Color(0xFFDC2626)
+                            : const Color(0xFF166534),
                     fontSize: 11,
                     fontWeight: FontWeight.w700,
                   ),
@@ -362,6 +399,20 @@ class _ConsumptionCard extends StatelessWidget {
             Text(
               '${row['reason']}',
               style: const TextStyle(color: Color(0xFF6B7280), fontSize: 12),
+            ),
+          ],
+          if (pending) ...[
+            const SizedBox(height: 10),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(
+                onPressed: onCancel,
+                style: TextButton.styleFrom(
+                  foregroundColor: const Color(0xFFDC2626),
+                  visualDensity: VisualDensity.compact,
+                ),
+                child: const Text('Cancel usage'),
+              ),
             ),
           ],
         ],

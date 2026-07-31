@@ -34,44 +34,44 @@ class InventoryPage extends StatelessWidget {
     final actions = <_InventoryAction>[
       if (app.canManageSalonStaff)
         const _InventoryAction(
-          title: 'Products & Opening Stock',
-          subtitle: 'Create products with starting stock',
+          title: 'Products',
+          subtitle: 'Catalog, opening stock, edit & deactivate',
           icon: Icons.inventory_rounded,
           colors: [Color(0xFFB45309), Color(0xFFF59E0B)],
           page: InvStockManagementPage(initialTab: 0),
         ),
       if (app.canManageSalonStaff)
         const _InventoryAction(
-          title: 'Goods Received (GRN)',
-          subtitle: 'Receive goods and increase stock',
+          title: 'Goods Received',
+          subtitle: 'GRN — receive goods and increase stock',
           icon: Icons.local_shipping_rounded,
           colors: [Color(0xFF047857), Color(0xFF10B981)],
           page: InvStockManagementPage(initialTab: 1),
         ),
-      if (app.canManageSalonStaff)
-        const _InventoryAction(
-          title: 'Stock Adjustment',
-          subtitle: 'Apply immediate stock + or −',
-          icon: Icons.tune_rounded,
-          colors: [Color(0xFF9333EA), Color(0xFFC084FC)],
-          page: InvStockManagementPage(initialTab: 2),
-        ),
       const _InventoryAction(
-        title: 'Product Consumption',
-        subtitle: 'Record consumable usage as pending',
+        title: 'Usage',
+        subtitle: 'Record consumable usage (pending until day end)',
         icon: Icons.science_rounded,
         colors: [Color(0xFF0F766E), Color(0xFF14B8A6)],
         page: InvConsumptionPage(),
       ),
       const _InventoryAction(
-        title: 'Day End Closing',
+        title: 'Day End',
         subtitle: 'Confirm usage and deduct stock',
         icon: Icons.task_alt_rounded,
         colors: [Color(0xFF1D4ED8), Color(0xFF3B82F6)],
         page: InvDayEndPage(),
       ),
+      if (app.canManageSalonStaff)
+        const _InventoryAction(
+          title: 'Adjustments',
+          subtitle: 'Immediate stock + or − with reason',
+          icon: Icons.tune_rounded,
+          colors: [Color(0xFF9333EA), Color(0xFFC084FC)],
+          page: InvStockManagementPage(initialTab: 2),
+        ),
       const _InventoryAction(
-        title: 'Stock History',
+        title: 'History',
         subtitle: 'View every stock movement',
         icon: Icons.history_rounded,
         colors: [Color(0xFF7C3AED), Color(0xFFA855F7)],

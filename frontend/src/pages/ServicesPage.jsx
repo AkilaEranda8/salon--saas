@@ -16,7 +16,8 @@ const CAT_COLOR = { Hair: '#2563EB', Beard: '#7C3AED', Skin: '#EA580C', Nail: '#
 const CAT_BG    = { Hair: '#EFF6FF', Beard: '#F5F3FF', Skin: '#FFF7ED', Nail: '#FFFBEB', Massage: '#ECFDF5', Other: '#F8FAFC' };
 const EMPTY = {
   name: '', category: '', subcategory: '', duration_minutes: 30, price: '',
-  description: '', is_active: true, commission_type: 'percentage', commission_value: '',
+  description: '', is_active: true, available_online: true,
+  commission_type: 'percentage', commission_value: '',
 };
 
 function formatCommission(type, value) {
@@ -146,6 +147,7 @@ export default function ServicesPage() {
     setForm({
       ...row,
       subcategory: row.subcategory || '',
+      available_online: row.available_online !== false,
       commission_type: row.commission_type || 'percentage',
       commission_value: row.commission_value ?? '',
     });
@@ -163,6 +165,7 @@ export default function ServicesPage() {
       price: form.price,
       description: form.description || '',
       is_active: form.is_active !== false,
+      available_online: form.available_online !== false,
     };
     if (showServiceCommission) {
       payload.commission_type = form.commission_type || 'percentage';
@@ -243,8 +246,28 @@ export default function ServicesPage() {
       id: 'description',
       header: 'Description',
       accessorFn: (row) => row.description,
-      meta: { width: showServiceCommission ? '16%' : '28%' },
+      meta: { width: showServiceCommission ? '12%' : '20%' },
       cell: ({ row: { original: row } }) => <span style={{ color: '#475467', fontSize: 13 }}>{String(row.description || '').slice(0, 60)}</span>,
+    },
+    {
+      id: 'available_online',
+      header: 'Online',
+      accessorFn: (row) => row.available_online !== false ? 'Yes' : 'No',
+      meta: { width: '10%', align: 'center' },
+      cell: ({ row: { original: row } }) => {
+        const on = row.available_online !== false;
+        return (
+          <span style={{
+            display: 'inline-block', padding: '3px 10px', borderRadius: 99,
+            fontSize: 11, fontWeight: 700,
+            background: on ? '#ECFDF5' : '#F2F4F7',
+            color: on ? '#059669' : '#667085',
+            border: `1px solid ${on ? '#A7F3D0' : '#E4E7EC'}`,
+          }}>
+            {on ? 'Online' : 'Salon only'}
+          </span>
+        );
+      },
     },
     {
       id: 'actions',
@@ -400,6 +423,25 @@ export default function ServicesPage() {
             </p>
           )}
           <FormGroup label="Description"><Input value={form.description || ''} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} placeholder="Brief description" /></FormGroup>
+          <label style={{
+            display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer',
+            padding: '12px 14px', borderRadius: 10, border: '1.5px solid #E4E7EC', background: '#F9FAFB',
+          }}>
+            <input
+              type="checkbox"
+              checked={form.available_online !== false}
+              onChange={(e) => setForm((f) => ({ ...f, available_online: e.target.checked }))}
+              style={{ marginTop: 3, width: 16, height: 16, accentColor: '#2563EB' }}
+            />
+            <span>
+              <span style={{ display: 'block', fontSize: 13.5, fontWeight: 700, color: '#101828' }}>
+                Available for online booking
+              </span>
+              <span style={{ display: 'block', fontSize: 12, color: '#667085', marginTop: 3, lineHeight: 1.4 }}>
+                Show this service on the website / WordPress booking form. Turn off for salon-only services.
+              </span>
+            </span>
+          </label>
         </div>
       </Modal>
 
@@ -418,6 +460,12 @@ export default function ServicesPage() {
               </div>
             )}
             {viewItem.description && <p style={{ fontSize: 13, color: '#475467', lineHeight: 1.5 }}>{viewItem.description}</p>}
+            <div style={{ marginTop: 14, fontSize: 13, color: '#667085' }}>
+              Online booking:{' '}
+              <strong style={{ color: viewItem.available_online !== false ? '#059669' : '#667085' }}>
+                {viewItem.available_online !== false ? 'Available' : 'Salon only'}
+              </strong>
+            </div>
           </div>
         )}
       </Modal>

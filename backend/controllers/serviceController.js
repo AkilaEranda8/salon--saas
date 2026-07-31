@@ -40,6 +40,12 @@ function buildServicePayload(body = {}, tenant) {
   if (body.price !== undefined) payload.price = body.price;
   if (body.description !== undefined) payload.description = body.description;
   if (body.is_active !== undefined) payload.is_active = body.is_active;
+  if (body.available_online !== undefined) {
+    payload.available_online = body.available_online === true
+      || body.available_online === 'true'
+      || body.available_online === 1
+      || body.available_online === '1';
+  }
 
   const commission = parseServiceCommissionFields(body, tenant);
   if (body.commission_type !== undefined || body.commission_value !== undefined) {

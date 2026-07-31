@@ -1626,12 +1626,20 @@ class MobileApi {
     required String token,
     String? branchId,
     bool consumableOnly = true,
+    String? q,
+    String? productType,
+    bool lowStockOnly = false,
   }) async {
     final uri = Uri.parse('$baseUrl/api/salon-inventory/products').replace(
       queryParameters: {
         'limit': '200',
         'status': 'active',
-        if (consumableOnly) 'product_type': 'consumable',
+        if (consumableOnly && (productType == null || productType.isEmpty))
+          'product_type': 'consumable',
+        if (!consumableOnly && productType != null && productType.isNotEmpty)
+          'product_type': productType,
+        if (q != null && q.trim().isNotEmpty) 'q': q.trim(),
+        if (lowStockOnly) 'lowStock': 'true',
         if (branchId != null && branchId.isNotEmpty) 'branchId': branchId,
       },
     );
@@ -1658,6 +1666,7 @@ class MobileApi {
     double maxStock = 0,
     double costPrice = 0,
     String? sku,
+    String? brand,
   }) async {
     final response = await http.post(
       Uri.parse('$baseUrl/api/salon-inventory/products'),
@@ -1672,6 +1681,7 @@ class MobileApi {
         'max_stock': maxStock,
         'cost_price': costPrice,
         if (sku != null && sku.trim().isNotEmpty) 'sku': sku.trim(),
+        if (brand != null && brand.trim().isNotEmpty) 'brand': brand.trim(),
       }),
     );
     final body = _decode(response.body);
@@ -1679,6 +1689,55 @@ class MobileApi {
       throw Exception(body['message'] ?? 'Product create failed');
     }
     return body;
+  }
+
+  Future<Map<String, dynamic>> updateInventoryProduct({
+    required String token,
+    required String productId,
+    required String name,
+    required String productType,
+    required String unit,
+    double minStock = 0,
+    double maxStock = 0,
+    double costPrice = 0,
+    String? sku,
+    String? brand,
+    String status = 'active',
+  }) async {
+    final response = await http.put(
+      Uri.parse('$baseUrl/api/salon-inventory/products/$productId'),
+      headers: _authHeaders(token),
+      body: jsonEncode({
+        'name': name.trim(),
+        'product_type': productType,
+        'unit': unit,
+        'min_stock': minStock,
+        'max_stock': maxStock,
+        'cost_price': costPrice,
+        'status': status,
+        'sku': (sku == null || sku.trim().isEmpty) ? null : sku.trim(),
+        'brand': (brand == null || brand.trim().isEmpty) ? null : brand.trim(),
+      }),
+    );
+    final body = _decode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['message'] ?? 'Product update failed');
+    }
+    return Map<String, dynamic>.from(body as Map);
+  }
+
+  Future<void> deactivateInventoryProduct({
+    required String token,
+    required String productId,
+  }) async {
+    final response = await http.delete(
+      Uri.parse('$baseUrl/api/salon-inventory/products/$productId'),
+      headers: _authHeaders(token),
+    );
+    if (response.statusCode >= 400) {
+      final body = _decode(response.body);
+      throw Exception(body['message'] ?? 'Product deactivate failed');
+    }
   }
 
   Future<List<Map<String, dynamic>>> fetchInventoryGoodsReceipts({
@@ -1826,6 +1885,23 @@ class MobileApi {
       throw Exception(body['message'] ?? 'Consumption record failed');
     }
     return body;
+  }
+
+  Future<void> cancelInventoryConsumption({
+    required String token,
+    required String consumptionId,
+  }) async {
+    final response = await http.post(
+      Uri.parse(
+        '$baseUrl/api/salon-inventory/consumptions/$consumptionId/cancel',
+      ),
+      headers: _authHeaders(token),
+      body: jsonEncode(const {}),
+    );
+    if (response.statusCode >= 400) {
+      final body = _decode(response.body);
+      throw Exception(body['message'] ?? 'Cancel usage failed');
+    }
   }
 
   Future<Map<String, dynamic>> fetchInventoryDayEndPreview({

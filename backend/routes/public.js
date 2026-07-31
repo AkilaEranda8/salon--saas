@@ -112,7 +112,7 @@ router.get('/services', async (req, res) => {
     const tenantWhr = tenantId ? { tenant_id: tenantId } : {};
 
     const services = await Service.findAll({
-      where: { is_active: true, ...tenantWhr },
+      where: { is_active: true, available_online: true, ...tenantWhr },
       attributes: ['id', 'name', 'category', 'duration_minutes', 'description'],
       order: [['category', 'ASC'], ['name', 'ASC']],
     });
@@ -733,7 +733,7 @@ router.post('/bookings', async (req, res) => {
 
     const [services, staffRows] = await Promise.all([
       Service.findAll({
-        where: { id: serviceIds, is_active: true, tenant_id: bookingTenantId },
+        where: { id: serviceIds, is_active: true, available_online: true, tenant_id: bookingTenantId },
         attributes: ['id', 'name', 'price', 'duration_minutes'],
       }),
       Staff.findAll({

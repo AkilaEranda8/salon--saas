@@ -12,6 +12,7 @@ const Package = require('../models/Package');
 const CustomerPackage = require('../models/CustomerPackage');
 const Payment = require('../models/Payment');
 const PaymentSplit = require('../models/PaymentSplit');
+const StaffSpecialization = require('../models/StaffSpecialization');
 const { sendSMS } = require('../services/notificationService');
 const { getMaintenanceMode } = require('../services/systemSettings');
 const Tenant = require('../models/Tenant');
@@ -137,10 +138,12 @@ router.get('/services', async (req, res) => {
   }
 });
 
-// ── GET /api/public/staff?branchId=&tenantId= — active staff, limited fields ──────────
+// ── GET /api/public/staff?branchId=&tenantId=&serviceId= — active staff, limited fields ──────────
 router.get('/staff', async (req, res) => {
   try {
     const tenantId = req.query.tenantId ? parseInt(req.query.tenantId, 10) : null;
+    const serviceIdRaw = req.query.serviceId ?? req.query.service_id;
+    const serviceId = serviceIdRaw ? parseInt(serviceIdRaw, 10) : null;
     const where = { is_active: true };
     if (tenantId) where.tenant_id = tenantId;
     if (req.query.branchId) {
@@ -148,18 +151,38 @@ router.get('/staff', async (req, res) => {
       const branchPart = await staffWhereForBranch(bid);
       Object.assign(where, branchPart);
     }
+
     const staff = await Staff.findAll({
       where,
       attributes: ['id', 'name', 'role_title', 'photo_url'],
+      include: [{
+        model: StaffSpecialization,
+        as: 'specializations',
+        attributes: ['service_id'],
+        required: false,
+      }],
       order: [['name', 'ASC']],
     });
-    res.json(
-      staff.map((s) => {
+
+    const mapped = staff
+      .map((s) => {
         const out = s.toJSON();
+        const serviceIds = Array.isArray(out.specializations)
+          ? out.specializations.map((sp) => Number(sp.service_id)).filter((id) => id > 0)
+          : [];
+        delete out.specializations;
+        out.service_ids = serviceIds;
         if (out.photo_url) out.photo_url = toPublicUrl(req, out.photo_url);
         return out;
-      }),
-    );
+      })
+      .filter((s) => {
+        if (!serviceId) return true;
+        // Unconfigured staff (no linked services) stay bookable for all — backward compatible.
+        if (!s.service_ids.length) return true;
+        return s.service_ids.includes(serviceId);
+      });
+
+    res.json(mapped);
   } catch (err) {
     console.error('Public staff error:', err);
     res.status(500).json({ message: 'Server error' });
@@ -922,6 +945,28 @@ router.post('/bookings', async (req, res) => {
     }
     if (staffRows.length !== staffIds.length) {
       return res.status(404).json({ message: 'One or more selected staff were not found for this salon' });
+    }
+
+    // Staff must be linked to the booked service when they have any service assignments.
+    const specRows = await StaffSpecialization.findAll({
+      where: { staff_id: staffIds },
+      attributes: ['staff_id', 'service_id'],
+    });
+    const specsByStaff = new Map();
+    for (const row of specRows) {
+      const sid = Number(row.staff_id);
+      if (!specsByStaff.has(sid)) specsByStaff.set(sid, new Set());
+      specsByStaff.get(sid).add(Number(row.service_id));
+    }
+    for (const item of items) {
+      const linked = specsByStaff.get(Number(item.staff_id));
+      if (linked && linked.size > 0 && !linked.has(Number(item.service_id))) {
+        const staffName = staffRows.find((s) => Number(s.id) === Number(item.staff_id))?.name || 'Selected staff';
+        const serviceName = services.find((s) => Number(s.id) === Number(item.service_id))?.name || 'this service';
+        return res.status(400).json({
+          message: `${staffName} is not assigned to ${serviceName}. Please choose another staff member.`,
+        });
+      }
     }
 
     const serviceMap = new Map(services.map((s) => [s.id, s]));

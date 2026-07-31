@@ -228,10 +228,11 @@ export default function StaffPage() {
     const initial = { ...EMPTY, branch_ids: myBranchId != null ? [String(myBranchId)] : [], join_date: new Date().toISOString().slice(0,10) };
     setForm(initial);
     setSpecRates({});
-    if (serviceWiseForUser && initial.salary_type !== 'salary_only') {
-      linkAllSpecs();
-    } else {
+    // Default new staff to all services; admin can uncheck what they don't perform.
+    if (initial.salary_type === 'salary_only') {
       setSpecs([]);
+    } else {
+      linkAllSpecs();
     }
     setPhotoFile(null);
     setPhotoPreview('');
@@ -312,21 +313,17 @@ export default function StaffPage() {
         salary_type: form.salary_type || 'commission_only',
         join_date: form.join_date || null,
         is_active: form.is_active !== false,
-        ...(serviceWiseForUser || form.salary_type === 'salary_only'
-          ? {
-            specializations: effectiveSpecs.map((id) => {
-              const rate = specRates[String(id)];
-              const hasOverride = rate && rate.commission_value !== '' && rate.commission_value != null;
-              return {
-                service_id: Number(id),
-                ...(hasOverride ? {
-                  commission_type: rate.commission_type || 'percentage',
-                  commission_value: parseFloat(rate.commission_value),
-                } : {}),
-              };
-            }),
-          }
-          : { specializations: [] }),
+        specializations: effectiveSpecs.map((id) => {
+          const rate = specRates[String(id)];
+          const hasOverride = serviceWiseForUser && rate && rate.commission_value !== '' && rate.commission_value != null;
+          return {
+            service_id: Number(id),
+            ...(hasOverride ? {
+              commission_type: rate.commission_type || 'percentage',
+              commission_value: parseFloat(rate.commission_value),
+            } : {}),
+          };
+        }),
       };
       if (form.salary_type !== 'salary_only') {
         payload.commission_type = form.commission_type || 'percentage';
@@ -420,15 +417,15 @@ export default function StaffPage() {
       meta: { width: '14%' },
       cell: ({ row: { original: row } }) => <CommBadge type={row.commission_type} value={row.commission_value} />,
     },
-    ...(serviceWiseForUser ? [{
+    {
       id: 'services',
       header: 'Services',
       accessorFn: row => (row.specializations||[]).length,
       meta: { width: '13%' },
       cell: ({ row: { original: row } }) => (row.specializations||[]).length > 0
         ? <span style={{ fontSize:13, color:'#475467' }}>{row.specializations.length} service{row.specializations.length!==1?'s':''}</span>
-        : <span style={{ color:'#D0D5DD', fontSize:13 }}></span>,
-    }] : []),
+        : <span style={{ color:'#D0D5DD', fontSize:13 }}>All</span>,
+    },
     {
       id: 'status',
       header: 'Status',
@@ -601,28 +598,60 @@ export default function StaffPage() {
                   </Select>
                 </FormGroup>
               </div>
-              {form.salary_type === 'salary_only' && services.length > 0 && (
-                <FormGroup label="Specializations">
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                    {services.map(sv => {
-                      const active = specs.includes(sv.id);
-                      return (
-                        <button
-                          key={sv.id}
-                          type="button"
-                          onClick={() => toggleSpec(sv.id)}
-                          style={{
-                            padding: '6px 12px', borderRadius: 8, fontSize: 12, fontWeight: active ? 700 : 500, cursor: 'pointer',
-                            border: `1.5px solid ${active ? '#7C3AED' : (isDark ? '#334155' : '#E4E7EC')}`,
-                            background: active ? (isDark ? 'rgba(124,58,237,0.2)' : '#F5F3FF') : (isDark ? '#0F172A' : '#fff'),
-                            color: active ? '#7C3AED' : C.label,
-                          }}
-                        >
-                          {sv.name}
-                        </button>
-                      );
-                    })}
+              {activeServices.length > 0 && (
+                <FormGroup label="Assignable services">
+                  <div style={{ fontSize: 12, color: C.muted, marginBottom: 8, lineHeight: 1.45 }}>
+                    Choose which services this staff member can perform. Online booking only shows matching staff.
+                    {serviceWiseForUser && form.salary_type !== 'salary_only' ? ' Commission rates for linked services are below.' : ''}
                   </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: serviceWiseForUser && form.salary_type !== 'salary_only' ? 10 : 0 }}>
+                    <button
+                      type="button"
+                      onClick={linkAllSpecs}
+                      style={{
+                        padding: '6px 12px', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                        border: `1.5px solid ${isDark ? '#334155' : '#E4E7EC'}`,
+                        background: isDark ? '#0F172A' : '#fff',
+                        color: C.label,
+                      }}
+                    >
+                      Select all
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setSpecs([]); setSpecRates({}); }}
+                      style={{
+                        padding: '6px 12px', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                        border: `1.5px solid ${isDark ? '#334155' : '#E4E7EC'}`,
+                        background: isDark ? '#0F172A' : '#fff',
+                        color: C.label,
+                      }}
+                    >
+                      Clear
+                    </button>
+                  </div>
+                  {!(serviceWiseForUser && form.salary_type !== 'salary_only') && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                      {activeServices.map((sv) => {
+                        const active = specs.some((id) => Number(id) === Number(sv.id));
+                        return (
+                          <button
+                            key={sv.id}
+                            type="button"
+                            onClick={() => toggleSpec(sv.id)}
+                            style={{
+                              padding: '6px 12px', borderRadius: 8, fontSize: 12, fontWeight: active ? 700 : 500, cursor: 'pointer',
+                              border: `1.5px solid ${active ? '#2563EB' : (isDark ? '#334155' : '#E4E7EC')}`,
+                              background: active ? (isDark ? 'rgba(37,99,235,0.2)' : '#EFF6FF') : (isDark ? '#0F172A' : '#fff'),
+                              color: active ? '#2563EB' : C.label,
+                            }}
+                          >
+                            {sv.name}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                 </FormGroup>
               )}
             </StaffSection>
@@ -775,7 +804,7 @@ export default function StaffPage() {
               {serviceWiseForUser && form.salary_type !== 'salary_only' && activeServices.length > 0 && (
                 <FormGroup label="Service Rates (optional)">
                   <div style={{ fontSize: 12, color: C.muted, marginBottom: 8, lineHeight: 1.45 }}>
-                    Set a different rate for each service. Leave blank to use the service catalogue rate or this staff member&apos;s default.
+                    Tick services above (or here) and optionally set a different rate. Leave blank to use the catalogue rate or this staff default.
                   </div>
                   <div style={{
                     border: `1px solid ${isDark ? '#334155' : '#E4E7EC'}`,
@@ -902,11 +931,10 @@ export default function StaffPage() {
                 </div>
               ))}
             </div>
-            {((serviceWiseForUser && p.salary_type !== 'salary_only') || p.salary_type === 'salary_only')
-              && (p.specializations||[]).length > 0 && (
+            {(p.specializations || []).length > 0 && (
               <div>
                 <h4 style={{ margin:'0 0 10px', fontSize:13, fontWeight:700, color:'#475467', textTransform:'uppercase' }}>
-                  {serviceWiseForUser && p.salary_type !== 'salary_only' ? 'Linked Services' : 'Specializations'}
+                  {serviceWiseForUser && p.salary_type !== 'salary_only' ? 'Linked Services' : 'Assignable Services'}
                 </h4>
                 <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
                   {p.specializations.map((s) => {

@@ -91,19 +91,15 @@ function sanitizeServiceRecord(service, tenant) {
   return json;
 }
 
-/** Hide per-service staff commission data when the flag is off. */
+/** Keep service links on staff; only hide per-service commission amounts when the flag is off. */
 function sanitizeStaffRecord(staff, tenant) {
   const json = staff && typeof staff.toJSON === 'function' ? staff.toJSON() : { ...(staff || {}) };
   if (!hasTenantFeature(tenant, 'service_wise_commission') && !hasFranchiseCommission(tenant) && Array.isArray(json.specializations)) {
-    if (json.salary_type === 'salary_only') {
-      json.specializations = json.specializations.map((s) => ({
-        ...s,
-        commission_type: null,
-        commission_value: null,
-      }));
-    } else {
-      json.specializations = [];
-    }
+    json.specializations = json.specializations.map((s) => ({
+      ...s,
+      commission_type: null,
+      commission_value: null,
+    }));
   }
   return json;
 }

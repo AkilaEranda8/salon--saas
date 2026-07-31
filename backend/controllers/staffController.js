@@ -295,13 +295,16 @@ const create = async (req, res) => {
     const commission_type = parsed.commission_type || 'percentage';
     const commission_value = parsed.commission_value;
     const base_salary = parsed.base_salary ?? 0;
+    const hasServicePayload = Array.isArray(req.body.specializations) || Array.isArray(req.body.service_ids);
     let specItems = resolveSpecItems(req, extractSpecializationItems(req.body), salary_type);
 
     if (staffRequiresCommission(salary_type) && (commission_value == null || commission_value <= 0)) {
       return res.status(400).json({ message: 'Default commission rate is required for commission-based staff.' });
     }
 
-    if (!hasServiceWiseCommissionForUser(req.tenant, req) && staffRequiresCommission(salary_type)) {
+    // If caller did not send services, link all active services (backward compatible default).
+    // When they do send a list (even empty), honor it so staff can be limited per service.
+    if (!hasServicePayload) {
       specItems = await managerDefaultServiceSpecs(req);
     } else if (hasServiceWiseCommissionForUser(req.tenant, req)
       && salary_type !== 'salary_only' && specItems.length && (commission_value == null || commission_value <= 0)) {
@@ -409,10 +412,7 @@ const update = async (req, res) => {
       }
     }
 
-    if (!hasServiceWiseCommissionForUser(req.tenant, req) && staffRequiresCommission(effectiveSalaryType)) {
-      const defaultSpecs = await managerDefaultServiceSpecs(req);
-      await replaceStaffSpecializations(staff.id, defaultSpecs);
-    } else if (hasServicePayload) {
+    if (hasServicePayload) {
       const specItems = resolveSpecItems(req, extractSpecializationItems(req.body), effectiveSalaryType);
       const effectiveCommission = refreshedStaff.commission_value;
       if (hasServiceWiseCommissionForUser(req.tenant, req)

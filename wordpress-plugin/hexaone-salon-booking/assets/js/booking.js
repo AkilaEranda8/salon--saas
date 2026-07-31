@@ -381,6 +381,16 @@
         '</div>';
     }
 
+    function staffForService(serviceId) {
+      var sid = Number(serviceId);
+      return state.staff.filter(function (st) {
+        var ids = Array.isArray(st.service_ids) ? st.service_ids.map(Number) : [];
+        // No linked services configured → bookable for all (legacy)
+        if (!ids.length) return true;
+        return ids.indexOf(sid) >= 0;
+      });
+    }
+
     function renderStaffTime() {
       if (!state.form.services.length) {
         bodyEl.innerHTML = emptyState('No services selected', 'Go back and choose at least one service.');
@@ -390,8 +400,9 @@
       var cards = state.form.services
         .map(function (svc) {
           var a = getAssignment(svc.id);
-          var staffHtml = state.staff.length
-            ? state.staff
+          var eligibleStaff = staffForService(svc.id);
+          var staffHtml = eligibleStaff.length
+            ? eligibleStaff
                 .map(function (st) {
                   var sel = a.staff && a.staff.id === st.id ? ' is-selected' : '';
                   return (
@@ -411,7 +422,14 @@
                   );
                 })
                 .join('')
-            : emptyState('No staff available', 'No active staff are assigned to this branch.');
+            : emptyState('No staff for this service', 'No active staff are assigned to this service at this branch.');
+
+          // Drop selected staff if they are no longer eligible for this service
+          if (a.staff && !eligibleStaff.some(function (st) { return Number(st.id) === Number(a.staff.id); })) {
+            a.staff = null;
+            a.time = '';
+            a.slots = [];
+          }
 
           var slotsHtml = !a.staff
             ? emptyState('Choose staff first', 'Pick a stylist for this service.')
@@ -964,8 +982,9 @@
         var serviceId = Number(btn.getAttribute('data-service'));
         var stid = Number(btn.getAttribute('data-id'));
         var assignment = getAssignment(serviceId);
-        assignment.staff = state.staff.find(function (s) {
-          return s.id === stid;
+        var eligible = staffForService(serviceId);
+        assignment.staff = eligible.find(function (s) {
+          return Number(s.id) === stid;
         }) || null;
         assignment.time = '';
         loadSlotsForService(serviceId).then(render).catch(function (err) {

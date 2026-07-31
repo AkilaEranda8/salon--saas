@@ -14,7 +14,21 @@ const Payment = require('../models/Payment');
 const PaymentSplit = require('../models/PaymentSplit');
 const { sendSMS } = require('../services/notificationService');
 const { getMaintenanceMode } = require('../services/systemSettings');
+const Tenant = require('../models/Tenant');
 const WEB_BOOKING_BRANCH_NAME = 'HEXAONE (VIP)';
+
+async function resolveTenantSmsName(tenantId) {
+  if (!tenantId) return 'Salon';
+  try {
+    const tenant = await Tenant.findByPk(tenantId, {
+      attributes: ['id', 'name', 'brand_name'],
+    });
+    const label = String(tenant?.brand_name || tenant?.name || '').trim();
+    return label || 'Salon';
+  } catch {
+    return 'Salon';
+  }
+}
 
 function toPublicUrl(req, relPath = '') {
   if (!relPath || typeof relPath !== 'string') return relPath;
@@ -344,9 +358,10 @@ router.post('/booking/request-otp', async (req, res) => {
       sentAt: Date.now(),
     });
 
+    const salonName = await resolveTenantSmsName(tenantId);
     await sendSMS({
       to: normalized,
-      message: `HEXAONE booking OTP: ${code}. Valid for 5 minutes.`,
+      message: `${salonName} booking OTP: ${code}. Valid for 5 minutes.`,
       tenantId,
       meta: { event_type: 'booking_otp', tenant_id: tenantId },
     });
@@ -1072,14 +1087,15 @@ router.post('/bookings', async (req, res) => {
       setImmediate(async () => {
         try {
           const branch = await Branch.findByPk(effectiveBranchId, { attributes: ['id', 'name'] });
+          const salonName = await resolveTenantSmsName(bookingTenantId);
           const lines = requested.map((r) =>
             `${r.date} ${r.time} · ${r.service.name} · ${r.staff?.name || 'Staff'}`);
           const totalAmount = requested.reduce((sum, r) => sum + (parseFloat(r.service.price) || 0), 0);
           const summaryMsg =
-            `HEXAONE - Booking Received\n` +
+            `${salonName} - Booking Received\n` +
             `Hi ${bookingName}, your booking is pending confirmation.\n` +
             `${lines.join('\n')}\n` +
-            `Branch: ${branch?.name || 'HEXAONE'}\n` +
+            `Branch: ${branch?.name || salonName}\n` +
             `Total: Rs. ${totalAmount.toFixed(2)}`;
 
           await sendSMS({

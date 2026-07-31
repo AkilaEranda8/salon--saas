@@ -193,6 +193,7 @@ export default function StaffPage() {
   const [offDays, setOffDays]           = useState([]);
   const [offDateDraft, setOffDateDraft] = useState('');
   const [offReasonDraft, setOffReasonDraft] = useState('');
+  const [showServiceRates, setShowServiceRates] = useState(false);
   /** Per-service override rates keyed by service_id. Empty value = catalogue/default fallback. */
   const [specRates, setSpecRates]       = useState({});
   const [saving, setSaving]             = useState(false);
@@ -273,6 +274,7 @@ export default function StaffPage() {
     setOffDays([]);
     setOffDateDraft('');
     setOffReasonDraft('');
+    setShowServiceRates(false);
     // Default new staff to all services; admin can uncheck what they don't perform.
     if (initial.salary_type === 'salary_only') {
       setSpecs([]);
@@ -312,6 +314,7 @@ export default function StaffPage() {
           ? full.offDays.map((d) => ({ date: d.date, reason: d.reason || '' }))
           : []
       );
+      setShowServiceRates(Object.keys(rates).length > 0);
       setOffDateDraft('');
       setOffReasonDraft('');
       setPhotoFile(null);
@@ -809,9 +812,8 @@ export default function StaffPage() {
                 <FormGroup label="Assignable services">
                   <div style={{ fontSize: 12, color: C.muted, marginBottom: 8, lineHeight: 1.45 }}>
                     Choose which services this staff member can perform. Online booking only shows matching staff.
-                    {serviceWiseForUser && form.salary_type !== 'salary_only' ? ' Commission rates for linked services are below.' : ''}
                   </div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: serviceWiseForUser && form.salary_type !== 'salary_only' ? 10 : 0 }}>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
                     <button
                       type="button"
                       onClick={linkAllSpecs}
@@ -837,28 +839,26 @@ export default function StaffPage() {
                       Clear
                     </button>
                   </div>
-                  {!(serviceWiseForUser && form.salary_type !== 'salary_only') && (
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                      {activeServices.map((sv) => {
-                        const active = specs.some((id) => Number(id) === Number(sv.id));
-                        return (
-                          <button
-                            key={sv.id}
-                            type="button"
-                            onClick={() => toggleSpec(sv.id)}
-                            style={{
-                              padding: '6px 12px', borderRadius: 8, fontSize: 12, fontWeight: active ? 700 : 500, cursor: 'pointer',
-                              border: `1.5px solid ${active ? '#2563EB' : (isDark ? '#334155' : '#E4E7EC')}`,
-                              background: active ? (isDark ? 'rgba(37,99,235,0.2)' : '#EFF6FF') : (isDark ? '#0F172A' : '#fff'),
-                              color: active ? '#2563EB' : C.label,
-                            }}
-                          >
-                            {sv.name}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                    {activeServices.map((sv) => {
+                      const active = specs.some((id) => Number(id) === Number(sv.id));
+                      return (
+                        <button
+                          key={sv.id}
+                          type="button"
+                          onClick={() => toggleSpec(sv.id)}
+                          style={{
+                            padding: '6px 12px', borderRadius: 8, fontSize: 12, fontWeight: active ? 700 : 500, cursor: 'pointer',
+                            border: `1.5px solid ${active ? '#2563EB' : (isDark ? '#334155' : '#E4E7EC')}`,
+                            background: active ? (isDark ? 'rgba(37,99,235,0.2)' : '#EFF6FF') : (isDark ? '#0F172A' : '#fff'),
+                            color: active ? '#2563EB' : C.label,
+                          }}
+                        >
+                          {sv.name}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </FormGroup>
               )}
             </StaffSection>
@@ -1009,80 +1009,107 @@ export default function StaffPage() {
                 </div>
               )}
               {serviceWiseForUser && form.salary_type !== 'salary_only' && activeServices.length > 0 && (
-                <FormGroup label="Service Rates (optional)">
-                  <div style={{ fontSize: 12, color: C.muted, marginBottom: 8, lineHeight: 1.45 }}>
-                    Tick services above (or here) and optionally set a different rate. Leave blank to use the catalogue rate or this staff default.
-                  </div>
-                  <div style={{
-                    border: `1px solid ${isDark ? '#334155' : '#E4E7EC'}`,
-                    borderRadius: 12,
-                    overflow: 'hidden',
-                    maxHeight: 280,
-                    overflowY: 'auto',
-                    background: isDark ? '#0B1220' : '#fff',
+                <div>
+                  <label style={{
+                    display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer',
+                    padding: '12px 14px', borderRadius: 10, marginBottom: showServiceRates ? 10 : 0,
+                    border: `1.5px solid ${isDark ? '#334155' : '#E4E7EC'}`,
+                    background: isDark ? '#0B1220' : '#F9FAFB',
                   }}>
-                    {activeServices.map((sv, idx) => {
-                      const linked = specs.some((id) => Number(id) === Number(sv.id));
-                      const rate = specRates[String(sv.id)] || {};
-                      const type = rate.commission_type || form.commission_type || 'percentage';
-                      const value = rate.commission_value ?? '';
-                      const catalogue = sv.commission_value != null && sv.commission_value !== ''
-                        ? formatCommission(sv.commission_type, sv.commission_value)
-                        : null;
-                      const fallback = catalogue
-                        || formatCommission(form.commission_type || 'percentage', form.commission_value);
-                      return (
-                        <div
-                          key={sv.id}
-                          style={{
-                            display: 'grid',
-                            gridTemplateColumns: '22px minmax(0, 1.2fr) 110px 100px',
-                            gap: 8,
-                            alignItems: 'center',
-                            padding: '10px 12px',
-                            borderBottom: idx !== activeServices.length - 1 ? `1px solid ${isDark ? '#1E293B' : '#F1F5F9'}` : 'none',
-                            background: linked ? (isDark ? 'rgba(37,99,235,0.08)' : '#F8FBFF') : 'transparent',
-                            opacity: linked ? 1 : 0.55,
-                          }}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={linked}
-                            onChange={() => toggleSpec(sv.id)}
-                            style={{ width: 16, height: 16, accentColor: '#2563EB' }}
-                          />
-                          <div style={{ minWidth: 0 }}>
-                            <div style={{ fontSize: 13, fontWeight: 700, color: isDark ? '#E2E8F0' : '#0F172A', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                              {sv.name}
-                            </div>
-                            <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>
-                              {value !== '' ? `Custom ${formatCommission(type, value)}` : `Fallback ${fallback}`}
-                            </div>
-                          </div>
-                          <Select
-                            value={type}
-                            disabled={!linked}
-                            onChange={(e) => setSpecRate(sv.id, { commission_type: e.target.value })}
-                            style={{ fontSize: 12, padding: '6px 8px' }}
-                          >
-                            <option value="percentage">%</option>
-                            <option value="fixed">Fixed Rs.</option>
-                          </Select>
-                          <Input
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            disabled={!linked}
-                            value={value}
-                            onChange={(e) => setSpecRate(sv.id, { commission_value: e.target.value })}
-                            placeholder="Rate"
-                            style={{ fontSize: 12, padding: '6px 8px' }}
-                          />
+                    <input
+                      type="checkbox"
+                      checked={showServiceRates}
+                      onChange={(e) => {
+                        const on = e.target.checked;
+                        setShowServiceRates(on);
+                        if (!on) setSpecRates({});
+                      }}
+                      style={{ marginTop: 3, width: 16, height: 16, accentColor: '#2563EB' }}
+                    />
+                    <span>
+                      <span style={{ display: 'block', fontSize: 13.5, fontWeight: 700, color: isDark ? '#E2E8F0' : '#101828' }}>
+                        Service Rates (optional)
+                      </span>
+                      <span style={{ display: 'block', fontSize: 12, color: C.muted, marginTop: 3, lineHeight: 1.4 }}>
+                        Tick to set a different commission rate per assigned service. Leave off to use the catalogue / default rate.
+                      </span>
+                    </span>
+                  </label>
+                  {showServiceRates && (
+                    <FormGroup label="Custom rates for assigned services">
+                      <div style={{ fontSize: 12, color: C.muted, marginBottom: 8, lineHeight: 1.45 }}>
+                        Only services selected under Assignable services appear here. Blank rate = fallback to catalogue or staff default.
+                      </div>
+                      {!specs.length ? (
+                        <div style={{ fontSize: 12, color: C.muted, padding: '10px 0' }}>
+                          Select at least one assignable service first.
                         </div>
-                      );
-                    })}
-                  </div>
-                </FormGroup>
+                      ) : (
+                        <div style={{
+                          border: `1px solid ${isDark ? '#334155' : '#E4E7EC'}`,
+                          borderRadius: 12,
+                          overflow: 'hidden',
+                          maxHeight: 280,
+                          overflowY: 'auto',
+                          background: isDark ? '#0B1220' : '#fff',
+                        }}>
+                          {activeServices
+                            .filter((sv) => specs.some((id) => Number(id) === Number(sv.id)))
+                            .map((sv, idx, list) => {
+                              const rate = specRates[String(sv.id)] || {};
+                              const type = rate.commission_type || form.commission_type || 'percentage';
+                              const value = rate.commission_value ?? '';
+                              const catalogue = sv.commission_value != null && sv.commission_value !== ''
+                                ? formatCommission(sv.commission_type, sv.commission_value)
+                                : null;
+                              const fallback = catalogue
+                                || formatCommission(form.commission_type || 'percentage', form.commission_value);
+                              return (
+                                <div
+                                  key={sv.id}
+                                  style={{
+                                    display: 'grid',
+                                    gridTemplateColumns: 'minmax(0, 1.2fr) 110px 100px',
+                                    gap: 8,
+                                    alignItems: 'center',
+                                    padding: '10px 12px',
+                                    borderBottom: idx !== list.length - 1 ? `1px solid ${isDark ? '#1E293B' : '#F1F5F9'}` : 'none',
+                                    background: isDark ? 'rgba(37,99,235,0.08)' : '#F8FBFF',
+                                  }}
+                                >
+                                  <div style={{ minWidth: 0 }}>
+                                    <div style={{ fontSize: 13, fontWeight: 700, color: isDark ? '#E2E8F0' : '#0F172A', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                      {sv.name}
+                                    </div>
+                                    <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>
+                                      {value !== '' ? `Custom ${formatCommission(type, value)}` : `Fallback ${fallback}`}
+                                    </div>
+                                  </div>
+                                  <Select
+                                    value={type}
+                                    onChange={(e) => setSpecRate(sv.id, { commission_type: e.target.value })}
+                                    style={{ fontSize: 12, padding: '6px 8px' }}
+                                  >
+                                    <option value="percentage">%</option>
+                                    <option value="fixed">Fixed Rs.</option>
+                                  </Select>
+                                  <Input
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    value={value}
+                                    onChange={(e) => setSpecRate(sv.id, { commission_value: e.target.value })}
+                                    placeholder="Rate"
+                                    style={{ fontSize: 12, padding: '6px 8px' }}
+                                  />
+                                </div>
+                              );
+                            })}
+                        </div>
+                      )}
+                    </FormGroup>
+                  )}
+                </div>
               )}
               {form.salary_type !== 'salary_only' && (
                 <div style={{
@@ -1097,7 +1124,7 @@ export default function StaffPage() {
                     </>
                   ) : serviceWiseForUser ? (
                     <>
-                      Use <strong>Service Rates</strong> above for staff-specific amounts. Blank rows fall back to the service catalogue rate, then this staff default.
+                      Tick <strong>Service Rates (optional)</strong> only if this staff needs custom per-service commission. Otherwise the default / catalogue rate is used.
                     </>
                   ) : (
                     <>

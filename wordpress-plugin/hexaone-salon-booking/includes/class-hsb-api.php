@@ -50,6 +50,10 @@ class HSB_API {
                     self::fail('branch_id is required.');
                 }
                 $query['branchId'] = $branch_id;
+                $service_id = absint($_REQUEST['service_id'] ?? 0);
+                if ($service_id) {
+                    $query['serviceId'] = $service_id;
+                }
             }
 
             if ($action === 'availability') {

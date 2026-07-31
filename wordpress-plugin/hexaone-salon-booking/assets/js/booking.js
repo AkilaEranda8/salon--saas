@@ -75,6 +75,8 @@
       branches: [],
       services: [],
       staff: [],
+      // Per-service eligible staff: { [serviceId]: Staff[] }
+      staffByService: {},
       category: '',
       multiBooking: false,
       form: {
@@ -382,11 +384,14 @@
     }
 
     function staffForService(serviceId) {
+      var key = String(serviceId);
+      if (Array.isArray(state.staffByService[key])) {
+        return state.staffByService[key];
+      }
+      // Fallback: client-side filter (strict — only linked services)
       var sid = Number(serviceId);
       return state.staff.filter(function (st) {
         var ids = Array.isArray(st.service_ids) ? st.service_ids.map(Number) : [];
-        // No linked services configured → bookable for all (legacy)
-        if (!ids.length) return true;
         return ids.indexOf(sid) >= 0;
       });
     }
@@ -404,7 +409,7 @@
           var staffHtml = eligibleStaff.length
             ? eligibleStaff
                 .map(function (st) {
-                  var sel = a.staff && a.staff.id === st.id ? ' is-selected' : '';
+                  var sel = a.staff && Number(a.staff.id) === Number(st.id) ? ' is-selected' : '';
                   return (
                     '<button type="button" class="hsb-option hsb-staff-option' +
                     sel +
@@ -422,7 +427,10 @@
                   );
                 })
                 .join('')
-            : emptyState('No staff for this service', 'No active staff are assigned to this service at this branch.');
+            : emptyState(
+              'No staff for this service',
+              'Assign this service to staff in the salon admin (Staff → Assignable services).'
+            );
 
           // Drop selected staff if they are no longer eligible for this service
           if (a.staff && !eligibleStaff.some(function (st) { return Number(st.id) === Number(a.staff.id); })) {
@@ -859,8 +867,32 @@
 
     function loadStaff() {
       if (!state.form.branch) return Promise.resolve();
-      return api('staff', { branch_id: state.form.branch.id }).then(function (data) {
-        state.staff = Array.isArray(data) ? data : [];
+      state.staffByService = {};
+      var branchId = state.form.branch.id;
+      var services = state.form.services.slice();
+      if (!services.length) {
+        return api('staff', { branch_id: branchId }).then(function (data) {
+          state.staff = Array.isArray(data) ? data : [];
+        });
+      }
+      return Promise.all(
+        services.map(function (svc) {
+          return api('staff', { branch_id: branchId, service_id: svc.id }).then(function (data) {
+            var list = Array.isArray(data) ? data : [];
+            state.staffByService[String(svc.id)] = list;
+            return list;
+          });
+        })
+      ).then(function (lists) {
+        var byId = {};
+        lists.forEach(function (list) {
+          list.forEach(function (st) {
+            byId[String(st.id)] = st;
+          });
+        });
+        state.staff = Object.keys(byId).map(function (k) {
+          return byId[k];
+        });
       });
     }
 
@@ -946,6 +978,7 @@
         }) || null;
         state.form.assignments = {};
         state.staff = [];
+        state.staffByService = {};
         render();
         return;
       }

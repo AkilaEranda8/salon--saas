@@ -159,28 +159,27 @@ router.get('/staff', async (req, res) => {
         model: StaffSpecialization,
         as: 'specializations',
         attributes: ['service_id'],
-        required: false,
+        required: Boolean(serviceId),
+        ...(serviceId
+          ? { where: { service_id: serviceId } }
+          : {}),
       }],
       order: [['name', 'ASC']],
     });
 
-    const mapped = staff
-      .map((s) => {
-        const out = s.toJSON();
-        const serviceIds = Array.isArray(out.specializations)
-          ? out.specializations.map((sp) => Number(sp.service_id)).filter((id) => id > 0)
-          : [];
-        delete out.specializations;
-        out.service_ids = serviceIds;
-        if (out.photo_url) out.photo_url = toPublicUrl(req, out.photo_url);
-        return out;
-      })
-      .filter((s) => {
-        if (!serviceId) return true;
-        // Unconfigured staff (no linked services) stay bookable for all — backward compatible.
-        if (!s.service_ids.length) return true;
-        return s.service_ids.includes(serviceId);
-      });
+    const mapped = staff.map((s) => {
+      const out = s.toJSON();
+      const serviceIds = Array.isArray(out.specializations)
+        ? out.specializations.map((sp) => Number(sp.service_id)).filter((id) => id > 0)
+        : [];
+      delete out.specializations;
+      // When filtered by serviceId, this staff is already known to have that service.
+      out.service_ids = serviceId
+        ? Array.from(new Set([...serviceIds, serviceId]))
+        : serviceIds;
+      if (out.photo_url) out.photo_url = toPublicUrl(req, out.photo_url);
+      return out;
+    });
 
     res.json(mapped);
   } catch (err) {

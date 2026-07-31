@@ -76,6 +76,7 @@
       services: [],
       staff: [],
       category: '',
+      multiBooking: false,
       form: {
         branch: null,
         services: [],
@@ -86,9 +87,37 @@
         email: '',
         notes: '',
       },
+      // Phone gate: known clients skip OTP; new numbers must verify
+      phoneCheck: {
+        status: 'idle', // idle | checking | known | needs_otp | otp_sent | verified | error
+        message: '',
+        otp: '',
+        busy: false,
+        checkedPhone: '',
+      },
+      phoneTimer: null,
       submitting: false,
       result: null,
     };
+
+    function digitsOnly(phone) {
+      return String(phone || '').replace(/\D/g, '');
+    }
+
+    function resetPhoneCheck(keepMessage) {
+      state.phoneCheck = {
+        status: 'idle',
+        message: keepMessage || '',
+        otp: '',
+        busy: false,
+        checkedPhone: '',
+      };
+    }
+
+    function phoneReady() {
+      var st = state.phoneCheck.status;
+      return st === 'known' || st === 'verified';
+    }
 
     function emptyAssignment() {
       return { staff: null, date: '', time: '', slots: [] };
@@ -184,7 +213,12 @@
       if (state.step === 1) return state.form.services.length > 0;
       if (state.step === 2) return assignmentsReady();
       if (state.step === 3) {
-        return state.form.customer_name.trim() && state.form.phone.trim();
+        return (
+          phoneReady() &&
+          state.form.customer_name.trim() &&
+          digitsOnly(state.form.phone).length >= 9 &&
+          !state.phoneCheck.busy
+        );
       }
       return false;
     }
@@ -289,7 +323,17 @@
 
       bodyEl.innerHTML =
         '<div class="hsb-section-title">Select services</div>' +
-        '<p class="hsb-section-copy">Choose one or more treatments for this visit.</p>' +
+        '<p class="hsb-section-copy">' +
+        (state.multiBooking
+          ? 'Choose one or more treatments for this visit.'
+          : 'Choose a treatment for this visit.') +
+        '</p>' +
+        '<label class="hsb-multi-toggle">' +
+        '<input type="checkbox" id="hsb-multi-booking"' +
+        (state.multiBooking ? ' checked' : '') +
+        ' />' +
+        '<span>Book multiple services</span>' +
+        '</label>' +
         filters +
         '<div class="hsb-grid">' +
         list
@@ -408,13 +452,83 @@
 
       bodyEl.innerHTML =
         '<div class="hsb-section-title">Staff &amp; schedule</div>' +
-        '<p class="hsb-section-copy">Each service can use a different stylist and time.</p>' +
+        '<p class="hsb-section-copy">' +
+        (state.form.services.length > 1
+          ? 'Each service can use a different stylist and time.'
+          : 'Pick a stylist and time for your service.') +
+        '</p>' +
         '<div class="hsb-assign-list">' +
         cards +
         '</div>';
     }
 
-    function renderDetails() {
+    function phoneStatusHtml() {
+      var pc = state.phoneCheck;
+      if (pc.status === 'checking') {
+        return '<p class="hsb-phone-status is-muted">Checking number…</p>';
+      }
+      if (pc.status === 'known') {
+        return (
+          '<p class="hsb-phone-status is-ok">' +
+          esc(pc.message || 'Welcome back — your details were filled in. No OTP needed.') +
+          '</p>'
+        );
+      }
+      if (pc.status === 'verified') {
+        return (
+          '<p class="hsb-phone-status is-ok">' +
+          esc(pc.message || 'Phone verified. You can complete your booking.') +
+          '</p>'
+        );
+      }
+      if (pc.status === 'error' && pc.message) {
+        return '<p class="hsb-phone-status is-err">' + esc(pc.message) + '</p>';
+      }
+      if (pc.status === 'needs_otp' || pc.status === 'otp_sent') {
+        return (
+          '<p class="hsb-phone-status is-muted">' +
+          esc(pc.message || 'New number — verify with the OTP sent to your phone.') +
+          '</p>'
+        );
+      }
+      return '';
+    }
+
+    function otpBlockHtml() {
+      var pc = state.phoneCheck;
+      if (pc.status !== 'needs_otp' && pc.status !== 'otp_sent') return '';
+      var sendLabel = pc.status === 'otp_sent' ? 'Resend OTP' : 'Send OTP';
+      return (
+        '<div class="hsb-otp-box">' +
+        '<div class="hsb-otp-row">' +
+        '<div class="hsb-field hsb-otp-code"><label for="hsb-otp">OTP code</label>' +
+        '<input id="hsb-otp" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="6-digit code" value="' +
+        esc(pc.otp) +
+        '" /></div>' +
+        '<div class="hsb-otp-actions">' +
+        '<button type="button" class="hsb-btn hsb-btn-ghost" data-hsb="send-otp"' +
+        (pc.busy ? ' disabled' : '') +
+        '>' +
+        (pc.busy && pc.status !== 'otp_sent' ? 'Sending…' : sendLabel) +
+        '</button>' +
+        '<button type="button" class="hsb-btn hsb-btn-primary" data-hsb="verify-otp"' +
+        (pc.busy || !String(pc.otp || '').trim() ? ' disabled' : '') +
+        '>' +
+        (pc.busy && pc.status === 'otp_sent' ? 'Verifying…' : 'Verify') +
+        '</button>' +
+        '</div></div></div>'
+      );
+    }
+
+    function renderDetails(opts) {
+      opts = opts || {};
+      var activeId = document.activeElement && document.activeElement.id;
+      var keepFocusId = opts.keepFocusId || (activeId === 'hsb-phone' || activeId === 'hsb-otp' ? activeId : '');
+      var selStart =
+        keepFocusId && document.activeElement && typeof document.activeElement.selectionStart === 'number'
+          ? document.activeElement.selectionStart
+          : null;
+
       var summary = state.form.services
         .map(function (s) {
           var a = getAssignment(s.id);
@@ -433,9 +547,10 @@
           );
         })
         .join('');
+      var showRest = phoneReady();
       bodyEl.innerHTML =
         '<div class="hsb-section-title">Your details</div>' +
-        '<p class="hsb-section-copy">Review each booking, then leave your contact details.</p>' +
+        '<p class="hsb-section-copy">Enter your phone first. Returning clients are recognised automatically; new numbers need a one-time code.</p>' +
         '<dl class="hsb-summary">' +
         '<div><dt>Branch</dt><dd>' +
         esc(state.form.branch && state.form.branch.name) +
@@ -443,22 +558,156 @@
         summary +
         '</dl>' +
         '<div class="hsb-row" style="margin-top:1rem">' +
-        '<div class="hsb-field"><label for="hsb-name">Your name *</label>' +
-        '<input id="hsb-name" type="text" autocomplete="name" value="' +
-        esc(state.form.customer_name) +
-        '" /></div>' +
         '<div class="hsb-field"><label for="hsb-phone">Phone *</label>' +
         '<input id="hsb-phone" type="tel" autocomplete="tel" value="' +
         esc(state.form.phone) +
         '" /></div>' +
-        '<div class="hsb-field"><label for="hsb-email">Email</label>' +
-        '<input id="hsb-email" type="email" autocomplete="email" value="' +
-        esc(state.form.email) +
-        '" /></div>' +
-        '<div class="hsb-field"><label for="hsb-notes">Notes</label>' +
-        '<textarea id="hsb-notes" rows="3" placeholder="Anything we should know before your visit?">' +
-        esc(state.form.notes) +
-        '</textarea></div></div>';
+        phoneStatusHtml() +
+        otpBlockHtml() +
+        (showRest
+          ? '<div class="hsb-field"><label for="hsb-name">Your name *</label>' +
+            '<input id="hsb-name" type="text" autocomplete="name" value="' +
+            esc(state.form.customer_name) +
+            '" /></div>' +
+            '<div class="hsb-field"><label for="hsb-email">Email</label>' +
+            '<input id="hsb-email" type="email" autocomplete="email" value="' +
+            esc(state.form.email) +
+            '" /></div>' +
+            '<div class="hsb-field"><label for="hsb-notes">Notes</label>' +
+            '<textarea id="hsb-notes" rows="3" placeholder="Anything we should know before your visit?">' +
+            esc(state.form.notes) +
+            '</textarea></div>'
+          : '') +
+        '</div>';
+
+      if (keepFocusId) {
+        var focusEl = document.getElementById(keepFocusId);
+        if (focusEl) {
+          focusEl.focus();
+          if (selStart != null && typeof focusEl.setSelectionRange === 'function') {
+            try {
+              focusEl.setSelectionRange(selStart, selStart);
+            } catch (e) { /* ignore */ }
+          }
+        }
+      }
+    }
+
+    function checkPhoneLookup() {
+      var phone = state.form.phone.trim();
+      var digits = digitsOnly(phone);
+      if (digits.length < 9) {
+        resetPhoneCheck();
+        renderDetails();
+        renderFooter();
+        return;
+      }
+      if (digits === state.phoneCheck.checkedPhone && phoneReady()) {
+        return;
+      }
+      state.phoneCheck.status = 'checking';
+      state.phoneCheck.message = '';
+      state.phoneCheck.otp = '';
+      state.phoneCheck.busy = true;
+      renderDetails();
+      renderFooter();
+
+      api('check_phone', { phone: phone }, { method: 'POST' })
+        .then(function (data) {
+          state.phoneCheck.busy = false;
+          state.phoneCheck.checkedPhone = digits;
+          if (data && data.exists && !data.needs_otp) {
+            state.phoneCheck.status = 'known';
+            state.phoneCheck.message = 'Welcome back' + (data.name ? ', ' + data.name : '') + '. No OTP needed.';
+            if (data.name) state.form.customer_name = data.name;
+            if (data.email) state.form.email = data.email;
+            renderDetails();
+            renderFooter();
+            return;
+          }
+          state.phoneCheck.status = 'needs_otp';
+          state.phoneCheck.message = 'New number — sending OTP…';
+          renderDetails();
+          renderFooter();
+          sendBookingOtp();
+        })
+        .catch(function (err) {
+          state.phoneCheck.busy = false;
+          state.phoneCheck.status = 'error';
+          state.phoneCheck.message = err.message || 'Could not check phone number.';
+          renderDetails();
+          renderFooter();
+        });
+    }
+
+    function schedulePhoneLookup() {
+      if (state.phoneTimer) clearTimeout(state.phoneTimer);
+      state.phoneTimer = setTimeout(checkPhoneLookup, 550);
+    }
+
+    function sendBookingOtp() {
+      var phone = state.form.phone.trim();
+      if (digitsOnly(phone).length < 9) {
+        showError('Enter a valid phone number first.');
+        return;
+      }
+      state.phoneCheck.busy = true;
+      renderDetails();
+      renderFooter();
+      api('request_otp', { phone: phone }, { method: 'POST' })
+        .then(function (data) {
+          state.phoneCheck.busy = false;
+          if (data && data.exists && !data.needs_otp) {
+            state.phoneCheck.status = 'known';
+            state.phoneCheck.checkedPhone = digitsOnly(phone);
+            state.phoneCheck.message = data.message || 'This number is already registered. No OTP needed.';
+            if (data.name) state.form.customer_name = data.name;
+            if (data.email) state.form.email = data.email;
+          } else {
+            state.phoneCheck.status = 'otp_sent';
+            state.phoneCheck.message = data && data.message ? data.message : 'OTP sent. Enter the code below.';
+            if (data && data.debug_otp) {
+              state.phoneCheck.message += ' (dev: ' + data.debug_otp + ')';
+            }
+          }
+          renderDetails();
+          renderFooter();
+        })
+        .catch(function (err) {
+          state.phoneCheck.busy = false;
+          state.phoneCheck.status = 'error';
+          state.phoneCheck.message = err.message || 'Failed to send OTP.';
+          renderDetails();
+          renderFooter();
+          showError(err.message || 'Failed to send OTP.');
+        });
+    }
+
+    function verifyBookingOtp() {
+      var phone = state.form.phone.trim();
+      var otp = String(state.phoneCheck.otp || '').trim();
+      if (!otp) {
+        showError('Enter the OTP code.');
+        return;
+      }
+      state.phoneCheck.busy = true;
+      renderDetails();
+      renderFooter();
+      api('verify_otp', { phone: phone, otp: otp }, { method: 'POST' })
+        .then(function (data) {
+          state.phoneCheck.busy = false;
+          state.phoneCheck.status = 'verified';
+          state.phoneCheck.checkedPhone = digitsOnly(phone);
+          state.phoneCheck.message = (data && data.message) || 'Phone verified successfully.';
+          renderDetails();
+          renderFooter();
+        })
+        .catch(function (err) {
+          state.phoneCheck.busy = false;
+          showError(err.message || 'Invalid OTP.');
+          renderDetails();
+          renderFooter();
+        });
     }
 
     function renderDone() {
@@ -588,8 +837,14 @@
         var idx = state.form.services.findIndex(function (s) {
           return s.id === sid;
         });
-        if (idx >= 0) state.form.services.splice(idx, 1);
-        else state.form.services.push(svc);
+        if (state.multiBooking) {
+          if (idx >= 0) state.form.services.splice(idx, 1);
+          else state.form.services.push(svc);
+        } else {
+          // Single booking: selecting another service replaces the current one
+          if (idx >= 0) state.form.services = [];
+          else state.form.services = [svc];
+        }
         syncAssignments();
         render();
         return;
@@ -628,6 +883,16 @@
         return;
       }
 
+      if (act === 'send-otp') {
+        sendBookingOtp();
+        return;
+      }
+
+      if (act === 'verify-otp') {
+        verifyBookingOtp();
+        return;
+      }
+
       if (act === 'next') {
         if (!canContinue()) return;
         if (state.step === 0) {
@@ -656,10 +921,15 @@
           return;
         }
         if (state.step === 2) {
+          resetPhoneCheck();
           setStep(3);
           return;
         }
         if (state.step === 3) {
+          if (!phoneReady()) {
+            showError('Please verify your phone number first.');
+            return;
+          }
           submitBooking();
         }
         return;
@@ -675,6 +945,8 @@
           email: '',
           notes: '',
         };
+        state.multiBooking = false;
+        resetPhoneCheck();
         state.result = null;
         setStep(1);
       }
@@ -685,6 +957,17 @@
         e.target.remove();
       }
     }, true);
+
+    root.addEventListener('change', function (e) {
+      var t = e.target;
+      if (!t || t.id !== 'hsb-multi-booking') return;
+      state.multiBooking = !!t.checked;
+      if (!state.multiBooking && state.form.services.length > 1) {
+        state.form.services = [state.form.services[0]];
+        syncAssignments();
+      }
+      render();
+    });
 
     root.addEventListener('input', function (e) {
       var t = e.target;
@@ -702,11 +985,51 @@
         return;
       }
       if (t.id === 'hsb-name') state.form.customer_name = t.value;
-      if (t.id === 'hsb-phone') state.form.phone = t.value;
       if (t.id === 'hsb-email') state.form.email = t.value;
       if (t.id === 'hsb-notes') state.form.notes = t.value;
+      if (t.id === 'hsb-otp') {
+        state.phoneCheck.otp = t.value;
+        renderFooter();
+        var actions = root.querySelector('.hsb-otp-actions');
+        if (actions) {
+          var verifyBtn = actions.querySelector('[data-hsb="verify-otp"]');
+          if (verifyBtn) {
+            verifyBtn.disabled = state.phoneCheck.busy || !String(state.phoneCheck.otp || '').trim();
+          }
+        }
+        return;
+      }
+      if (t.id === 'hsb-phone') {
+        var nextPhone = t.value;
+        var prevDigits = digitsOnly(state.form.phone);
+        var nextDigits = digitsOnly(nextPhone);
+        state.form.phone = nextPhone;
+        if (nextDigits !== prevDigits || nextDigits !== state.phoneCheck.checkedPhone) {
+          if (phoneReady() || state.phoneCheck.status === 'otp_sent' || state.phoneCheck.status === 'needs_otp') {
+            resetPhoneCheck();
+            // Keep phone field value; re-render status/OTP only when needed
+            var nameEl = document.getElementById('hsb-name');
+            var emailEl = document.getElementById('hsb-email');
+            var notesEl = document.getElementById('hsb-notes');
+            if (nameEl) state.form.customer_name = nameEl.value;
+            if (emailEl) state.form.email = emailEl.value;
+            if (notesEl) state.form.notes = notesEl.value;
+            renderDetails();
+          }
+          schedulePhoneLookup();
+        }
+        renderFooter();
+        return;
+      }
       if (state.step === 3) renderFooter();
     });
+
+    root.addEventListener('blur', function (e) {
+      if (e.target && e.target.id === 'hsb-phone' && state.step === 3) {
+        if (state.phoneTimer) clearTimeout(state.phoneTimer);
+        checkPhoneLookup();
+      }
+    }, true);
 
     loadBranches();
   });

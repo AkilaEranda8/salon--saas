@@ -4,7 +4,7 @@ import api from '../api/axios';
 import './DocumentationPage.css';
 
 const API_BASE = 'https://api.salon.hexalyte.com/api/public';
-const PLUGIN_VERSION = '1.0.8';
+const PLUGIN_VERSION = '1.0.10';
 
 const ENDPOINTS = [
   {

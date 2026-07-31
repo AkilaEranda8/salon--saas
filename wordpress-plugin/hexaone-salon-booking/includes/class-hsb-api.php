@@ -27,13 +27,18 @@ class HSB_API {
             }
 
             $action = sanitize_key(wp_unslash($_REQUEST['hsb_action'] ?? ''));
-            $allowed = ['branches', 'services', 'staff', 'availability', 'book'];
+            $allowed = ['branches', 'services', 'staff', 'availability', 'book', 'check_phone', 'request_otp', 'verify_otp'];
             if (!in_array($action, $allowed, true)) {
                 self::fail('Invalid action.');
             }
 
             if ($action === 'book') {
                 self::proxy_book($api_base, $tenant_id);
+                return;
+            }
+
+            if (in_array($action, ['check_phone', 'request_otp', 'verify_otp'], true)) {
+                self::proxy_booking_otp($api_base, $tenant_id, $action);
                 return;
             }
 
@@ -75,6 +80,50 @@ class HSB_API {
             error_log('[HSB] ajax_proxy fatal: ' . $e->getMessage());
             self::fail('Booking proxy failed. Please try again.', 400);
         }
+    }
+
+    private static function proxy_booking_otp($api_base, $tenant_id, $action) {
+        $raw = file_get_contents('php://input');
+        $body = json_decode(is_string($raw) ? $raw : '', true);
+        if (!is_array($body)) {
+            $body = [
+                'phone' => sanitize_text_field(wp_unslash($_POST['phone'] ?? '')),
+                'otp'   => sanitize_text_field(wp_unslash($_POST['otp'] ?? '')),
+            ];
+        }
+
+        $path_map = [
+            'check_phone'  => 'booking/check-phone',
+            'request_otp'  => 'booking/request-otp',
+            'verify_otp'   => 'booking/verify-otp',
+        ];
+        $path = $path_map[$action] ?? '';
+        if ($path === '') {
+            self::fail('Invalid OTP action.');
+        }
+
+        $payload = [
+            'tenantId' => absint($tenant_id),
+            'phone'    => sanitize_text_field((string) ($body['phone'] ?? '')),
+        ];
+        if ($action === 'verify_otp') {
+            $payload['otp'] = sanitize_text_field((string) ($body['otp'] ?? ''));
+        }
+        if ($payload['phone'] === '') {
+            self::fail('Phone number is required.');
+        }
+
+        $response = wp_remote_post(untrailingslashit($api_base) . '/' . $path, [
+            'timeout'   => 30,
+            'sslverify' => true,
+            'headers'   => [
+                'Content-Type' => 'application/json',
+                'Accept'       => 'application/json',
+            ],
+            'body' => wp_json_encode($payload),
+        ]);
+
+        self::relay($response);
     }
 
     private static function proxy_book($api_base, $tenant_id) {

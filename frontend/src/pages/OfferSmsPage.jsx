@@ -13,13 +13,11 @@ export default function OfferSmsPage({ kind = 'offer' }) {
   const pageTitle = isOffice ? 'Office SMS' : 'Offer SMS';
   const pageSubtitle = isOffice
     ? 'Send office / operational SMS to selected customers'
-    : 'Group by loyalty tier or −50 pts and send promotional SMS';
+    : 'Group by loyalty tier and send promotional SMS';
   const sendButtonLabel = isOffice ? 'Send Office SMS' : 'Send Offer SMS';
   const messagePlaceholder = isOffice
     ? 'Type your office message here... (supports Sinhala / සිංහල / emojis 😊)'
     : 'Type your offer message here... (supports Sinhala / සිංහල / emojis 😊)';
-
-  const REDUCED_50 = 'Reduced50';
 
   const { user } = useAuth();
   const { toast } = useToast();
@@ -29,9 +27,7 @@ export default function OfferSmsPage({ kind = 'offer' }) {
   const [branches, setBranches] = useState([]);
   const [branchId, setBranchId] = useState(isSuperAdmin ? '' : String(user?.branch_id || ''));
   const [search, setSearch] = useState('');
-  const [tierFilter, setTierFilter] = useState('All'); // All | Bronze | Silver | Gold | Platinum | Reduced50
-  const [reduced50Ids, setReduced50Ids] = useState(() => new Set());
-  const [reduced50Count, setReduced50Count] = useState(0);
+  const [tierFilter, setTierFilter] = useState('All'); // All | Entry | Bronze | Silver | Gold | Platinum
   const [selectedIds, setSelectedIds] = useState([]);
   const [message, setMessage] = useState('');
 
@@ -73,18 +69,6 @@ export default function OfferSmsPage({ kind = 'offer' }) {
     loadDeliveryReport();
   }, [loadDeliveryReport]);
 
-  const loadReduced50 = useCallback(async () => {
-    try {
-      const { data } = await api.get('/loyalty/marked', { params: { mark: 'reduced_50' } });
-      const rows = Array.isArray(data?.data) ? data.data : [];
-      setReduced50Ids(new Set(rows.map((r) => Number(r.id))));
-      setReduced50Count(typeof data?.total === 'number' ? data.total : rows.length);
-    } catch {
-      setReduced50Ids(new Set());
-      setReduced50Count(0);
-    }
-  }, []);
-
   const loadCustomers = useCallback(async () => {
     setLoading(true);
     try {
@@ -110,31 +94,23 @@ export default function OfferSmsPage({ kind = 'offer' }) {
       setCustomers(all);
       setBranches(branchList);
       setSelectedIds([]);
-      await loadReduced50();
     } catch {
       toast('Failed to load customers.', 'error');
     } finally {
       setLoading(false);
     }
-  }, [branchId, loadReduced50, toast]);
+  }, [branchId, toast]);
 
   useEffect(() => {
     loadCustomers();
   }, [loadCustomers]);
-
-  const isReduced50Customer = useCallback(
-    (c) => reduced50Ids.has(Number(c.id)) || c.loyalty_mark === 'reduced_50',
-    [reduced50Ids]
-  );
 
   const tierCounts = useMemo(() => loyaltyTierCounts(customers), [customers]);
 
   const visibleCustomers = useMemo(() => {
     const q = search.trim().toLowerCase();
     return customers.filter((c) => {
-      if (tierFilter === REDUCED_50) {
-        if (!isReduced50Customer(c)) return false;
-      } else if (tierFilter !== 'All') {
+      if (tierFilter !== 'All') {
         if (getTier(c.loyalty_points || 0).name !== tierFilter) return false;
       }
       if (!q) return true;
@@ -144,7 +120,7 @@ export default function OfferSmsPage({ kind = 'offer' }) {
         String(c.email || '').toLowerCase().includes(q)
       );
     });
-  }, [customers, search, tierFilter, isReduced50Customer]);
+  }, [customers, search, tierFilter]);
 
   const visibleIds = visibleCustomers.map((c) => c.id);
   const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedIds.includes(id));
@@ -162,10 +138,6 @@ export default function OfferSmsPage({ kind = 'offer' }) {
 
   const selectTier = (tierName) => {
     setTierFilter(tierName);
-    if (tierName === REDUCED_50) {
-      setSelectedIds(customers.filter(isReduced50Customer).map((c) => c.id));
-      return;
-    }
     const ids = customers
       .filter((c) => getTier(c.loyalty_points || 0).name === tierName)
       .map((c) => c.id);
@@ -250,21 +222,6 @@ export default function OfferSmsPage({ kind = 'offer' }) {
             </button>
           );
         })}
-        <button
-          type="button"
-          onClick={() => selectTier(REDUCED_50)}
-          title="Customers marked after −50 points reduction — tap to select all"
-          style={{
-            minWidth: 120, padding: '12px 14px', borderRadius: 12, textAlign: 'left', cursor: 'pointer',
-            border: `1.5px solid ${tierFilter === REDUCED_50 ? '#DC2626' : '#E4E7EC'}`,
-            background: tierFilter === REDUCED_50 ? '#FEF2F2' : '#fff',
-            fontFamily: "'Inter',sans-serif",
-          }}
-        >
-          <div style={{ fontSize: 20, fontWeight: 800, color: '#DC2626' }}>{reduced50Count}</div>
-          <div style={{ fontSize: 11, fontWeight: 700, color: '#DC2626', marginTop: 2 }}>−50 PTS</div>
-          <div style={{ fontSize: 10, color: '#98A2B3', marginTop: 2 }}>marked · tap to select</div>
-        </button>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1.1fr 1fr', gap: 16 }}>
@@ -301,7 +258,6 @@ export default function OfferSmsPage({ kind = 'offer' }) {
             ) : (
               visibleCustomers.map((c) => {
                 const tier = getTier(c.loyalty_points || 0);
-                const isReduced50 = isReduced50Customer(c);
                 return (
                   <label
                     key={c.id}
@@ -321,15 +277,7 @@ export default function OfferSmsPage({ kind = 'offer' }) {
                       onChange={() => toggleOne(c.id)}
                     />
                     <div style={{ minWidth: 0, flex: 1 }}>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: '#101828', display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</span>
-                        {isReduced50 && (
-                          <span style={{
-                            flexShrink: 0, fontSize: 10, fontWeight: 700, color: '#DC2626',
-                            background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 4, padding: '1px 5px',
-                          }}>−50</span>
-                        )}
-                      </div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: '#101828' }}>{c.name}</div>
                       <div style={{ fontSize: 12, color: '#667085' }}>{c.phone || 'No phone number'}</div>
                     </div>
                     <div style={{ textAlign: 'right', flexShrink: 0 }}>

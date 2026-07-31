@@ -227,8 +227,9 @@ const toHHMM = (minutes) => {
 };
 
 // ── Customer Self-Service Portal (Phone OTP + JWT) ───────────────────────────
-const otpStore = new Map(); // key: normalized phone, value: { code, expiresAt, attempts }
+const otpStore = new Map(); // key: normalized phone OR booking:<phone>, value: { code, expiresAt, attempts, verified? }
 const OTP_TTL_MS = 5 * 60 * 1000;
+const BOOKING_VERIFIED_TTL_MS = 30 * 60 * 1000;
 
 const normalizePhoneDigits = (phone = '') => String(phone).replace(/\D/g, '');
 const buildPhoneVariants = (phone = '') => {
@@ -239,6 +240,146 @@ const buildPhoneVariants = (phone = '') => {
   if (digits.startsWith('94')) set.add(`0${digits.slice(2)}`);
   return Array.from(set);
 };
+
+const bookingOtpKey = (normalized) => `booking:${normalized}`;
+
+const isBookingPhoneVerified = (phone = '') => {
+  const normalized = normalizePhoneDigits(phone);
+  if (!normalized) return false;
+  const row = otpStore.get(bookingOtpKey(normalized));
+  if (!row || !row.verified) return false;
+  if (Date.now() > (row.verifiedUntil || 0)) {
+    otpStore.delete(bookingOtpKey(normalized));
+    return false;
+  }
+  return true;
+};
+
+const findTenantCustomerByPhone = async (phone, tenantId) => {
+  const variants = buildPhoneVariants(phone);
+  if (!variants.length || !tenantId) return null;
+  return Customer.findOne({
+    where: {
+      tenant_id: tenantId,
+      phone: { [Op.or]: variants },
+    },
+    attributes: ['id', 'name', 'phone', 'email'],
+  });
+};
+
+// ── POST /api/public/booking/check-phone — returning customer? autofill, no OTP ─
+router.post('/booking/check-phone', async (req, res) => {
+  try {
+    const tenantId = parseInt(req.body?.tenantId ?? req.query?.tenantId, 10);
+    const normalized = normalizePhoneDigits(req.body?.phone);
+    if (!tenantId) return res.status(400).json({ message: 'tenantId is required.' });
+    if (!normalized || normalized.length < 9) {
+      return res.status(400).json({ message: 'Enter a valid phone number.' });
+    }
+
+    const customer = await findTenantCustomerByPhone(normalized, tenantId);
+    if (customer) {
+      return res.json({
+        exists: true,
+        needs_otp: false,
+        name: customer.name || '',
+        email: customer.email || '',
+        phone: customer.phone || normalized,
+      });
+    }
+    return res.json({ exists: false, needs_otp: true });
+  } catch (err) {
+    console.error('booking.checkPhone error:', err);
+    return res.status(500).json({ message: 'Failed to check phone number.' });
+  }
+});
+
+// ── POST /api/public/booking/request-otp — new booker phone verification ───────
+router.post('/booking/request-otp', async (req, res) => {
+  try {
+    const tenantId = parseInt(req.body?.tenantId ?? req.query?.tenantId, 10);
+    const normalized = normalizePhoneDigits(req.body?.phone);
+    if (!tenantId) return res.status(400).json({ message: 'tenantId is required.' });
+    if (!normalized || normalized.length < 9) {
+      return res.status(400).json({ message: 'Enter a valid phone number.' });
+    }
+
+    // Existing customers do not need OTP for booking
+    const existing = await findTenantCustomerByPhone(normalized, tenantId);
+    if (existing) {
+      return res.json({
+        exists: true,
+        needs_otp: false,
+        name: existing.name || '',
+        email: existing.email || '',
+        message: 'This number is already registered. OTP is not required.',
+      });
+    }
+
+    const code = String(Math.floor(100000 + Math.random() * 900000));
+    otpStore.set(bookingOtpKey(normalized), {
+      code,
+      expiresAt: Date.now() + OTP_TTL_MS,
+      attempts: 0,
+      tenantId,
+      verified: false,
+    });
+
+    await sendSMS({
+      to: normalized,
+      message: `HEXAONE booking OTP: ${code}. Valid for 5 minutes.`,
+      tenantId,
+      meta: { event_type: 'booking_otp', tenant_id: tenantId },
+    });
+
+    const response = { exists: false, needs_otp: true, message: 'OTP sent to your phone.' };
+    if (process.env.NODE_ENV !== 'production') response.debug_otp = code;
+    return res.json(response);
+  } catch (err) {
+    console.error('booking.requestOtp error:', err);
+    return res.status(500).json({ message: 'Failed to send OTP.' });
+  }
+});
+
+// ── POST /api/public/booking/verify-otp ───────────────────────────────────────
+router.post('/booking/verify-otp', async (req, res) => {
+  try {
+    const tenantId = parseInt(req.body?.tenantId ?? req.query?.tenantId, 10);
+    const normalized = normalizePhoneDigits(req.body?.phone);
+    const otp = String(req.body?.otp || '').trim();
+    if (!tenantId) return res.status(400).json({ message: 'tenantId is required.' });
+    if (!normalized || !otp) return res.status(400).json({ message: 'Phone and OTP are required.' });
+
+    const key = bookingOtpKey(normalized);
+    const row = otpStore.get(key);
+    if (!row || Date.now() > row.expiresAt) {
+      otpStore.delete(key);
+      return res.status(400).json({ message: 'OTP expired. Please request a new code.' });
+    }
+    if (row.tenantId && Number(row.tenantId) !== tenantId) {
+      return res.status(400).json({ message: 'OTP does not match this salon.' });
+    }
+    if (row.attempts >= 5) {
+      otpStore.delete(key);
+      return res.status(429).json({ message: 'Too many invalid attempts. Request a new OTP.' });
+    }
+    if (String(otp) !== String(row.code)) {
+      row.attempts += 1;
+      otpStore.set(key, row);
+      return res.status(401).json({ message: 'Invalid OTP.' });
+    }
+
+    otpStore.set(key, {
+      verified: true,
+      verifiedUntil: Date.now() + BOOKING_VERIFIED_TTL_MS,
+      tenantId,
+    });
+    return res.json({ verified: true, message: 'Phone verified successfully.' });
+  } catch (err) {
+    console.error('booking.verifyOtp error:', err);
+    return res.status(500).json({ message: 'Failed to verify OTP.' });
+  }
+});
 
 const portalAuth = (req, res, next) => {
   try {
@@ -847,6 +988,12 @@ router.post('/bookings', async (req, res) => {
         });
       }
       if (!linkedCustomer) {
+        if (!isBookingPhoneVerified(bookingPhone)) {
+          await tx.rollback();
+          return res.status(400).json({
+            message: 'Please verify your phone number with the OTP sent to you.',
+          });
+        }
         try {
           linkedCustomer = await Customer.create({
             name: bookingName,

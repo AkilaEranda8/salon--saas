@@ -174,19 +174,38 @@ class MobileApi {
     String? branchId,
     int limit = 500,
   }) async {
-    final uri = Uri.parse(
-      '$baseUrl/api/customers?limit=$limit${branchId != null && branchId.isNotEmpty ? '&branchId=$branchId' : ''}',
-    );
-    final response = await http.get(uri, headers: _authHeaders(token));
-    final body = _decode(response.body);
-    if (response.statusCode >= 400) {
-      throw Exception(body['message'] ?? 'Customers load failed');
+    final all = <Customer>[];
+    var page = 1;
+    var total = 1 << 30;
+
+    while (all.length < total) {
+      final branchQ = branchId != null && branchId.isNotEmpty
+          ? '&branchId=$branchId'
+          : '';
+      final uri = Uri.parse(
+        '$baseUrl/api/customers?limit=$limit&page=$page$branchQ',
+      );
+      final response = await http.get(uri, headers: _authHeaders(token));
+      final body = _decode(response.body);
+      if (response.statusCode >= 400) {
+        throw Exception(body['message'] ?? 'Customers load failed');
+      }
+      final list = (body['data'] as List? ?? const []);
+      final rows = list
+          .whereType<Map>()
+          .map((e) => Customer.fromJson(Map<String, dynamic>.from(e)))
+          .toList();
+      final rawTotal = body['total'];
+      if (rawTotal is num) {
+        total = rawTotal.toInt();
+      } else {
+        total = all.length + rows.length;
+      }
+      all.addAll(rows);
+      if (rows.isEmpty || rows.length < limit) break;
+      page += 1;
     }
-    final list = (body['data'] as List? ?? const []);
-    return list
-        .whereType<Map>()
-        .map((e) => Customer.fromJson(Map<String, dynamic>.from(e)))
-        .toList();
+    return all;
   }
 
   Future<Customer> createCustomer({
@@ -392,10 +411,10 @@ class MobileApi {
     required String token,
     required String branchId,
     required String customerName,
-    required String primaryServiceId,
+    String primaryServiceId = '',
     List<String>? serviceIds,
-    required String date,
-    required String time,
+    String date = '',
+    String time = '',
     String? customerId,
     String? phone,
     String? staffId,
@@ -404,22 +423,19 @@ class MobileApi {
     bool isRecurring = false,
     String? recurringNextDate,
     List<String>? recurringMessageTemplateIds,
+    /// Multi-booking: one appointment per item (own staff/date/time).
+    /// Each map: `service_id`, optional `staff_id`, `date`, `time`.
+    List<Map<String, dynamic>>? items,
+    double? advanceAmount,
+    String? advanceMethod,
   }) async {
+    final useItems = items != null && items.isNotEmpty;
     final bodyMap = <String, dynamic>{
       'branch_id': int.tryParse(branchId) ?? branchId,
       'customer_name': customerName.trim(),
-      'service_id': int.tryParse(primaryServiceId) ?? primaryServiceId,
-      if (serviceIds != null && serviceIds.isNotEmpty)
-        'service_ids': serviceIds.map((id) => int.tryParse(id) ?? id).toList(),
-      'date': date.trim(),
-      'time': time.trim(),
       if (customerId != null && customerId.isNotEmpty)
         'customer_id': int.tryParse(customerId) ?? customerId,
       if (phone != null && phone.trim().isNotEmpty) 'phone': phone.trim(),
-      if (staffId != null && staffId.isNotEmpty)
-        'staff_id': int.tryParse(staffId) ?? staffId,
-      if (amount != null && amount.trim().isNotEmpty)
-        'amount': double.tryParse(amount.trim()) ?? amount,
       if (notes != null && notes.trim().isNotEmpty) 'notes': notes.trim(),
       'is_recurring': isRecurring,
       if (isRecurring) 'recurrence_frequency': 'weekly',
@@ -432,7 +448,46 @@ class MobileApi {
                 .map((id) => int.tryParse(id) ?? id)
                 .toList()
           : null,
+      if (advanceAmount != null && advanceAmount > 0) ...{
+        'advance_amount': advanceAmount,
+        'advance_method': (advanceMethod != null && advanceMethod.trim().isNotEmpty)
+            ? advanceMethod.trim()
+            : 'Cash',
+      },
     };
+
+    if (useItems) {
+      bodyMap['items'] = items.map((raw) {
+        final sid = raw['service_id'];
+        final staff = raw['staff_id'];
+        return <String, dynamic>{
+          'service_id': sid is int ? sid : (int.tryParse('$sid') ?? sid),
+          'date': '${raw['date'] ?? ''}'.trim(),
+          'time': '${raw['time'] ?? ''}'.trim(),
+          if (staff != null && '$staff'.trim().isNotEmpty)
+            'staff_id': staff is int ? staff : (int.tryParse('$staff') ?? staff),
+        };
+      }).toList();
+      if (amount != null && amount.trim().isNotEmpty) {
+        bodyMap['amount'] = double.tryParse(amount.trim()) ?? amount;
+      }
+    } else {
+      bodyMap['service_id'] =
+          int.tryParse(primaryServiceId) ?? primaryServiceId;
+      if (serviceIds != null && serviceIds.isNotEmpty) {
+        bodyMap['service_ids'] =
+            serviceIds.map((id) => int.tryParse(id) ?? id).toList();
+      }
+      bodyMap['date'] = date.trim();
+      bodyMap['time'] = time.trim();
+      if (staffId != null && staffId.isNotEmpty) {
+        bodyMap['staff_id'] = int.tryParse(staffId) ?? staffId;
+      }
+      if (amount != null && amount.trim().isNotEmpty) {
+        bodyMap['amount'] = double.tryParse(amount.trim()) ?? amount;
+      }
+    }
+
     final response = await http.post(
       Uri.parse('$baseUrl/api/appointments'),
       headers: _authHeaders(token),
@@ -551,9 +606,27 @@ class MobileApi {
     bool? isRecurring,
     String? recurringNextDate,
     List<String>? recurringMessageTemplateIds,
+    /// When settling an advance, pass combined splits (advance + remaining).
+    List<Map<String, dynamic>>? splits,
+    bool replaceAppointmentPayments = false,
   }) async {
     final parsedAmount = double.tryParse(amount.trim()) ?? 0;
     final sub = double.tryParse(subtotal.trim()) ?? 0;
+    final resolvedSplits = (splits != null && splits.isNotEmpty)
+        ? splits
+            .map((s) => <String, dynamic>{
+                  'method': '${s['method'] ?? method}',
+                  'amount': s['amount'] is num
+                      ? s['amount']
+                      : (double.tryParse('${s['amount']}') ?? 0),
+                  if (s['customer_package_id'] != null)
+                    'customer_package_id': s['customer_package_id'],
+                })
+            .where((s) => (s['amount'] as num) > 0 || '${s['method']}' == 'Package')
+            .toList()
+        : [
+            {'method': method, 'amount': parsedAmount},
+          ];
     final bodyMap = <String, dynamic>{
       'branch_id': int.tryParse(branchId) ?? branchId,
       'appointment_id': int.tryParse(appointmentId) ?? appointmentId,
@@ -567,9 +640,8 @@ class MobileApi {
       if (phone != null && phone.trim().isNotEmpty) 'phone': phone.trim(),
       if (discountId != null && discountId.trim().isNotEmpty)
         'discount_id': int.tryParse(discountId.trim()) ?? discountId.trim(),
-      'splits': [
-        {'method': method, 'amount': parsedAmount},
-      ],
+      'splits': resolvedSplits,
+      if (replaceAppointmentPayments) 'replace_appointment_payments': true,
       if (staffId != null && staffId.isNotEmpty)
         'staff_id': int.tryParse(staffId) ?? staffId,
       if (customerId != null && customerId.isNotEmpty)

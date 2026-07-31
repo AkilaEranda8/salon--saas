@@ -1,8 +1,43 @@
 const { Router } = require('express');
+const path = require('path');
+const fs = require('fs');
+const multer = require('multer');
 const ctrl = require('../controllers/staffController');
 const { verifyToken, requireRole } = require('../middleware/auth');
 const { branchAccess } = require('../middleware/branchAccess');
 const { checkLimit } = require('../middleware/planLimits');
+
+const ALLOWED_MIME = new Set(['image/jpeg', 'image/png', 'image/webp']);
+const MAX_PHOTO_SIZE = 5 * 1024 * 1024;
+
+const photoUpload = multer({
+  storage: multer.diskStorage({
+    destination: (req, _file, cb) => {
+      const tenantId = req.userTenantId ?? req.user?.tenantId ?? req.tenant?.id ?? 'shared';
+      const dir = path.join(__dirname, '..', 'uploads', 'staff', String(tenantId));
+      try {
+        fs.mkdirSync(dir, { recursive: true });
+        cb(null, dir);
+      } catch (err) {
+        cb(err);
+      }
+    },
+    filename: (req, file, cb) => {
+      const ext = file.mimetype === 'image/png' ? 'png'
+        : file.mimetype === 'image/webp' ? 'webp'
+          : 'jpg';
+      const unique = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+      cb(null, `staff-${req.params.id}-${unique}.${ext}`);
+    },
+  }),
+  limits: { fileSize: MAX_PHOTO_SIZE },
+  fileFilter: (_req, file, cb) => {
+    if (!ALLOWED_MIME.has(file.mimetype)) {
+      return cb(new Error('Invalid file type. Use JPG, PNG, or WEBP.'));
+    }
+    return cb(null, true);
+  },
+});
 
 const router = Router();
 router.use(verifyToken, branchAccess);
@@ -16,5 +51,16 @@ router.put('/:id',                      requireRole('superadmin', 'admin', 'mana
 router.delete('/:id',                   requireRole('superadmin', 'admin'), ctrl.remove);
 router.get('/:id/commission',           ctrl.commissionReport);
 router.post('/:id/specializations',     requireRole('superadmin', 'admin', 'manager'), ctrl.setSpecializations);
+
+router.post('/:id/photo', requireRole('superadmin', 'admin', 'manager'), (req, res) => {
+  photoUpload.single('photo')(req, res, (err) => {
+    if (err) {
+      const status = err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE' ? 400 : 400;
+      return res.status(status).json({ message: err.message || 'Photo upload failed.' });
+    }
+    return ctrl.uploadPhoto(req, res);
+  });
+});
+router.delete('/:id/photo', requireRole('superadmin', 'admin', 'manager'), ctrl.deletePhoto);
 
 module.exports = router;

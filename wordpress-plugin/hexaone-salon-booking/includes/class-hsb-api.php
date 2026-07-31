@@ -92,6 +92,7 @@ class HSB_API {
                 'date'          => sanitize_text_field(wp_unslash($_POST['date'] ?? '')),
                 'time'          => sanitize_text_field(wp_unslash($_POST['time'] ?? '')),
                 'notes'         => sanitize_textarea_field(wp_unslash($_POST['notes'] ?? '')),
+                'items'         => isset($_POST['items']) ? (array) $_POST['items'] : [],
             ];
         }
 
@@ -99,31 +100,61 @@ class HSB_API {
         $payload = [
             'tenantId'      => absint($tenant_id),
             'branch_id'     => absint($body['branch_id'] ?? 0),
-            'staff_id'      => absint($body['staff_id'] ?? 0),
             'customer_name' => sanitize_text_field((string) ($body['customer_name'] ?? '')),
             'phone'         => sanitize_text_field((string) ($body['phone'] ?? '')),
-            'date'          => sanitize_text_field((string) ($body['date'] ?? '')),
-            'time'          => sanitize_text_field((string) ($body['time'] ?? '')),
             'notes'         => sanitize_textarea_field((string) ($body['notes'] ?? '')),
         ];
         if ($email !== '') {
             $payload['email'] = $email;
         }
 
-        if (!empty($body['service_ids']) && is_array($body['service_ids'])) {
-            $payload['service_ids'] = array_values(array_filter(array_map('absint', $body['service_ids'])));
+        if (!empty($body['items']) && is_array($body['items'])) {
+            $items = [];
+            foreach ($body['items'] as $item) {
+                if (!is_array($item)) {
+                    continue;
+                }
+                $service_id = absint($item['service_id'] ?? 0);
+                $staff_id = absint($item['staff_id'] ?? 0);
+                $date = sanitize_text_field((string) ($item['date'] ?? ''));
+                $time = sanitize_text_field((string) ($item['time'] ?? ''));
+                if (!$service_id || !$staff_id || $date === '' || $time === '') {
+                    self::fail('Each booking item needs service, staff, date, and time.');
+                }
+                $items[] = [
+                    'service_id' => $service_id,
+                    'staff_id'   => $staff_id,
+                    'date'       => $date,
+                    'time'       => $time,
+                ];
+            }
+            if (!$items) {
+                self::fail('Please select at least one service booking.');
+            }
+            $payload['items'] = $items;
         } else {
-            $payload['service_id'] = absint($body['service_id'] ?? 0);
+            // Legacy single staff/time payload.
+            $payload['staff_id'] = absint($body['staff_id'] ?? 0);
+            $payload['date'] = sanitize_text_field((string) ($body['date'] ?? ''));
+            $payload['time'] = sanitize_text_field((string) ($body['time'] ?? ''));
+            if (!empty($body['service_ids']) && is_array($body['service_ids'])) {
+                $payload['service_ids'] = array_values(array_filter(array_map('absint', $body['service_ids'])));
+            } else {
+                $payload['service_id'] = absint($body['service_id'] ?? 0);
+            }
+            if (!$payload['staff_id'] || $payload['date'] === '' || $payload['time'] === '') {
+                self::fail('Missing required booking fields.');
+            }
+            if (empty($payload['service_ids']) && empty($payload['service_id'])) {
+                self::fail('Please select a service.');
+            }
         }
 
         if (!$payload['tenantId']) {
             self::fail('Tenant ID is missing in plugin settings.');
         }
-        if (!$payload['branch_id'] || !$payload['staff_id'] || $payload['customer_name'] === '' || $payload['phone'] === '' || $payload['date'] === '' || $payload['time'] === '') {
+        if (!$payload['branch_id'] || $payload['customer_name'] === '' || $payload['phone'] === '') {
             self::fail('Missing required booking fields.');
-        }
-        if (empty($payload['service_ids']) && empty($payload['service_id'])) {
-            self::fail('Please select a service.');
         }
 
         $response = wp_remote_post(untrailingslashit($api_base) . '/bookings', [

@@ -1,5 +1,5 @@
 const { Op } = require('sequelize');
-const { Appointment, Branch, Customer, Staff, Service } = require('../models');
+const { Appointment, Branch, Customer, Staff, Service, Payment, PaymentSplit } = require('../models');
 const AppointmentService = require('../models/AppointmentService');
 const { sequelize } = require('../config/database');
 const { notifyAppointmentConfirmed, notifyAppointmentCompleted, notifyWaitlistSlotAvailable } = require('../services/notificationService');
@@ -7,6 +7,9 @@ const { createNextRecurring } = require('../services/recurringService');
 const { notifyBranch, notifyStaffUser } = require('../services/fcmService');
 const { tenantWhere, byIdWhere, resolveTenantId } = require('../utils/tenantScope');
 const { notesUsesPackage, usesPackageBooking, parsePackageIdFromNotes, resolvePackageBundlePrice } = require('../utils/packageNotes');
+
+const ADVANCE_METHODS = new Set(['Cash', 'Card', 'Online Transfer']);
+const ADVANCE_NOTE_PREFIX = 'Advance paid:';
 
 let appointmentServicesTableReadyPromise = null;
 
@@ -118,6 +121,112 @@ const attachServiceIdsToAppointments = async (appointments) => {
   }
 };
 
+const attachAdvancePaidToAppointments = async (appointments) => {
+  const list = Array.isArray(appointments) ? appointments.filter(Boolean) : (appointments ? [appointments] : []);
+  if (!list.length) return;
+
+  const apptIds = list.map((a) => Number(a.id)).filter(Boolean);
+  if (!apptIds.length) return;
+
+  const payments = await Payment.findAll({
+    where: {
+      appointment_id: { [Op.in]: apptIds },
+      status: 'paid',
+    },
+    attributes: ['id', 'appointment_id', 'total_amount', 'is_advance', 'commission_amount'],
+    include: [{ model: PaymentSplit, as: 'splits', attributes: ['method', 'amount', 'customer_package_id'] }],
+    order: [['id', 'ASC']],
+  });
+
+  const byAppt = new Map();
+  for (const p of payments) {
+    const key = Number(p.appointment_id);
+    if (!byAppt.has(key)) byAppt.set(key, []);
+    byAppt.get(key).push(p);
+  }
+
+  for (const appt of list) {
+    const rows = byAppt.get(Number(appt.id)) || [];
+    const amountPaid = rows.reduce((s, p) => s + (parseFloat(p.total_amount) || 0), 0);
+    let advanceRows = rows.filter((p) => p.is_advance);
+    // Legacy deposits (before is_advance): treat as advance while appointment still open
+    if (!advanceRows.length && rows.length && String(appt.status || '') !== 'completed') {
+      advanceRows = rows;
+    }
+    const advancePaid = advanceRows.reduce((s, p) => s + (parseFloat(p.total_amount) || 0), 0);
+    const advanceSplits = [];
+    for (const p of advanceRows) {
+      for (const sp of (p.splits || [])) {
+        advanceSplits.push({
+          method: sp.method,
+          amount: parseFloat(sp.amount) || 0,
+          customer_package_id: sp.customer_package_id || null,
+        });
+      }
+    }
+
+    if (typeof appt.setDataValue === 'function') {
+      appt.setDataValue('advance_paid', advancePaid);
+      appt.setDataValue('amount_paid', amountPaid);
+      appt.setDataValue('advance_splits', advanceSplits);
+    } else {
+      appt.advance_paid = advancePaid;
+      appt.amount_paid = amountPaid;
+      appt.advance_splits = advanceSplits;
+    }
+  }
+};
+
+const buildAdvanceNote = (amount, method) =>
+  `${ADVANCE_NOTE_PREFIX} Rs. ${Number(amount).toLocaleString('en-LK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (${method})`;
+
+const recordAdvancePayment = async ({
+  req, appointment, amount, method, customer_id, customer_name, branch_id, staff_id, service_id,
+}) => {
+  const advanceAmount = Number(amount);
+  const advanceMethod = String(method || 'Cash');
+  if (!(advanceAmount > 0) || !ADVANCE_METHODS.has(advanceMethod)) {
+    return null;
+  }
+
+  const today = new Date().toISOString().slice(0, 10);
+  const payment = await Payment.create({
+    branch_id,
+    staff_id: staff_id || null,
+    customer_id: customer_id || null,
+    service_id: service_id || null,
+    appointment_id: appointment.id,
+    customer_name: customer_name || appointment.customer_name || null,
+    total_amount: advanceAmount,
+    loyalty_discount: 0,
+    promo_discount: 0,
+    points_earned: 0,
+    commission_amount: 0, // settle commission on final payment
+    date: today,
+    status: 'paid',
+    tenant_id: resolveTenantId(req),
+    is_advance: true,
+  });
+
+  await PaymentSplit.create({
+    payment_id: payment.id,
+    method: advanceMethod,
+    amount: advanceAmount,
+    customer_package_id: null,
+    tenant_id: resolveTenantId(req),
+  });
+
+  const noteLine = buildAdvanceNote(advanceAmount, advanceMethod);
+  const existingNotes = String(appointment.notes || '').trim();
+  if (!existingNotes.includes(ADVANCE_NOTE_PREFIX)) {
+    await appointment.update({
+      notes: [existingNotes, noteLine].filter(Boolean).join('\n'),
+    });
+  }
+
+  return payment;
+};
+
 const getBranchWhere = (req) => {
   const where = tenantWhere(req);
   if (req.userBranchId) {
@@ -155,6 +264,7 @@ const list = async (req, res) => {
     });
 
     await attachServiceIdsToAppointments(rows);
+    await attachAdvancePaidToAppointments(rows);
 
     return res.json({ total: count, page, limit, data: rows });
   } catch (err) {
@@ -190,6 +300,7 @@ const calendar = async (req, res) => {
     });
 
     await attachServiceIdsToAppointments(appts);
+    await attachAdvancePaidToAppointments(appts);
 
     // Group by date
     const grouped = {};
@@ -219,6 +330,7 @@ const getOne = async (req, res) => {
     if (!appt) return res.status(404).json({ message: 'Appointment not found.' });
 
     await attachServiceIdsToAppointments(appt);
+    await attachAdvancePaidToAppointments(appt);
     return res.json(appt);
   } catch (err) {
     console.error('[appointments][getOne]', err);
@@ -232,8 +344,193 @@ const create = async (req, res) => {
       branch_id, customer_id, staff_id, service_id, service_ids, customer_name,
       phone, date, time, amount, notes, is_recurring, recurrence_frequency,
       recurring_next_date, recurring_message_template_id, recurring_message_template_ids,
+      items, advance_amount, advance_method,
     } = req.body;
 
+    const parsedAdvance = Number(advance_amount);
+    const hasAdvance = Number.isFinite(parsedAdvance) && parsedAdvance > 0;
+    const advanceMethod = ADVANCE_METHODS.has(String(advance_method || ''))
+      ? String(advance_method)
+      : 'Cash';
+    if (hasAdvance && !ADVANCE_METHODS.has(advanceMethod)) {
+      return res.status(400).json({ message: 'advance_method must be Cash, Card, or Online Transfer.' });
+    }
+
+    if (!customer_name) {
+      return res.status(400).json({ message: 'customer_name is required.' });
+    }
+    if (!branch_id) {
+      return res.status(400).json({ message: 'branch_id is required.' });
+    }
+
+    const recurringTplId = parseInt(recurring_message_template_id, 10);
+    const recurringTplIds = Array.isArray(recurring_message_template_ids)
+      ? [...new Set(recurring_message_template_ids.map(Number).filter((id) => Number.isInteger(id) && id > 0))]
+      : null;
+    const recurringFields = {
+      is_recurring: is_recurring || false,
+      recurrence_frequency: is_recurring ? (recurrence_frequency || 'weekly') : null,
+      recurring_next_date: is_recurring ? (recurring_next_date || null) : null,
+      recurring_message_template_id: is_recurring && Number.isInteger(recurringTplId) && recurringTplId > 0
+        ? recurringTplId
+        : null,
+      recurring_message_template_ids: is_recurring && recurringTplIds?.length ? recurringTplIds : null,
+    };
+
+    // ── Multi-booking: one appointment per item (own staff + date + time) ──
+    if (Array.isArray(items) && items.length > 0) {
+      const normalizedItems = [];
+      for (let i = 0; i < items.length; i += 1) {
+        const raw = items[i] || {};
+        const sid = Number(raw.service_id ?? raw.serviceId);
+        const itemStaff = raw.staff_id != null && raw.staff_id !== ''
+          ? Number(raw.staff_id)
+          : null;
+        const itemDate = String(raw.date || '').trim();
+        const itemTime = String(raw.time || '').trim();
+        if (!Number.isInteger(sid) || sid <= 0) {
+          return res.status(400).json({ message: `items[${i}].service_id is required.` });
+        }
+        if (!itemDate || !itemTime) {
+          return res.status(400).json({ message: `items[${i}] needs date and time.` });
+        }
+        if (itemStaff != null && (!Number.isInteger(itemStaff) || itemStaff <= 0)) {
+          return res.status(400).json({ message: `items[${i}].staff_id is invalid.` });
+        }
+        normalizedItems.push({
+          service_id: sid,
+          staff_id: itemStaff,
+          date: itemDate,
+          time: itemTime,
+        });
+      }
+
+      const allServiceIds = [...new Set(normalizedItems.map((i) => i.service_id))];
+      const validServiceIds = await resolveValidServiceIds(req, allServiceIds);
+      if (validServiceIds.length !== allServiceIds.length) {
+        return res.status(400).json({ message: 'One or more selected services are invalid.' });
+      }
+
+      const serviceRows = await Service.findAll({
+        where: { id: allServiceIds, ...tenantWhere(req) },
+        attributes: ['id', 'name', 'price'],
+        raw: true,
+      });
+      const serviceMap = new Map(serviceRows.map((s) => [Number(s.id), s]));
+
+      const usesPackage = usesPackageBooking({
+        notes,
+        customer_package_id: req.body.customer_package_id,
+      });
+      let packageAmount = 0;
+      if (usesPackage) {
+        const pkgId = req.body.customer_package_id || parsePackageIdFromNotes(notes);
+        if (amount !== undefined && amount !== null && amount !== '') {
+          packageAmount = Number(amount);
+        } else {
+          packageAmount = pkgId ? await resolvePackageBundlePrice(req, pkgId) : 0;
+        }
+      }
+
+      const created = [];
+      for (let i = 0; i < normalizedItems.length; i += 1) {
+        const item = normalizedItems[i];
+        const svc = serviceMap.get(item.service_id);
+        let itemAmount;
+        if (usesPackage) {
+          itemAmount = i === 0 ? packageAmount : 0;
+        } else if (amount !== undefined && amount !== null && amount !== '' && normalizedItems.length === 1) {
+          itemAmount = Number(amount);
+        } else {
+          itemAmount = Number(svc?.price || 0);
+        }
+
+        const appt = await Appointment.create({
+          branch_id,
+          customer_id: customer_id || null,
+          staff_id: item.staff_id,
+          service_id: item.service_id,
+          customer_name,
+          phone: phone || null,
+          date: item.date,
+          time: item.time,
+          amount: itemAmount,
+          notes: notes || null,
+          status: req.body.status || 'pending',
+          ...recurringFields,
+          tenant_id: resolveTenantId(req),
+        });
+        await replaceAppointmentServiceMappings(appt.id, [item.service_id]);
+        created.push(appt);
+
+        const timeLabel = item.time ? String(item.time).slice(0, 5) : '';
+        if (item.staff_id) {
+          notifyStaffUser(item.staff_id, '📅 New Appointment', `${customer_name} — ${timeLabel}`, {
+            type: 'appointment_assigned',
+            appointment_id: String(appt.id),
+            branch_id: String(branch_id),
+          });
+        } else {
+          notifyBranch(branch_id, '📅 New Appointment', `${customer_name} — ${timeLabel}`, {
+            type: 'new_appointment',
+            appointment_id: String(appt.id),
+            branch_id: String(branch_id),
+          });
+        }
+      }
+
+      let advancePayment = null;
+      if (hasAdvance && created[0]) {
+        advancePayment = await recordAdvancePayment({
+          req,
+          appointment: created[0],
+          amount: parsedAdvance,
+          method: advanceMethod,
+          customer_id: customer_id || null,
+          customer_name,
+          branch_id,
+          staff_id: created[0].staff_id || null,
+          service_id: created[0].service_id || null,
+        });
+        await created[0].reload();
+      }
+
+      // SMS once for the batch
+      const notifyPhone = phone || (customer_id
+        ? await (async () => {
+            const { Customer: CustModel } = require('../models');
+            const c = await CustModel.findOne({ where: byIdWhere(req, customer_id), attributes: ['phone'] });
+            return c?.phone || null;
+          })()
+        : null);
+      if (notifyPhone && created[0]) {
+        const [branch, service] = await Promise.all([
+          Branch.findOne({ where: byIdWhere(req, branch_id), attributes: ['id', 'name', 'phone'] }),
+          Service.findOne({ where: byIdWhere(req, created[0].service_id), attributes: ['id', 'name'] }),
+        ]);
+        notifyAppointmentConfirmed({ ...created[0].toJSON(), phone: notifyPhone }, branch, service, resolveTenantId(req));
+      }
+
+      const createdJson = created.map((a) => ({ ...a.toJSON(), service_ids: [a.service_id] }));
+      if (hasAdvance && createdJson[0]) {
+        createdJson[0].advance_paid = parsedAdvance;
+        createdJson[0].amount_paid = parsedAdvance;
+      }
+
+      return res.status(201).json({
+        message: 'Bookings created successfully',
+        count: createdJson.length,
+        ids: createdJson.map((a) => a.id),
+        appointments: createdJson,
+        advance_payment_id: advancePayment?.id || null,
+        advance_paid: hasAdvance ? parsedAdvance : 0,
+        // Keep first appointment shape for older clients that expect a single row
+        ...createdJson[0],
+        service_ids: createdJson.map((a) => a.service_id),
+      });
+    }
+
+    // ── Legacy single appointment (multi-service on one staff/time) ──
     const requestedServiceIds = normalizeServiceIds(service_ids, service_id);
     const validServiceIds = await resolveValidServiceIds(req, requestedServiceIds);
     if (requestedServiceIds.length && validServiceIds.length !== requestedServiceIds.length) {
@@ -241,7 +538,7 @@ const create = async (req, res) => {
     }
     const primaryServiceId = validServiceIds[0] || null;
 
-    if (!branch_id || !primaryServiceId || !customer_name || !date || !time) {
+    if (!primaryServiceId || !date || !time) {
       return res.status(400).json({ message: 'branch_id, service_id, customer_name, date and time are required.' });
     }
 
@@ -250,7 +547,6 @@ const create = async (req, res) => {
       customer_package_id: req.body.customer_package_id,
     });
 
-    // Package bookings use bundle price as final amount; otherwise auto-fetch list price when omitted
     let finalAmount = amount;
     if (usesPackage) {
       const pkgId = req.body.customer_package_id || parsePackageIdFromNotes(notes);
@@ -270,25 +566,31 @@ const create = async (req, res) => {
       finalAmount = Number(finalAmount);
     }
 
-    const recurringTplId = parseInt(recurring_message_template_id, 10);
-    const recurringTplIds = Array.isArray(recurring_message_template_ids)
-      ? [...new Set(recurring_message_template_ids.map(Number).filter((id) => Number.isInteger(id) && id > 0))]
-      : null;
     const appt = await Appointment.create({
       branch_id, customer_id, staff_id, service_id: primaryServiceId, customer_name, phone, date, time, amount: finalAmount, notes,
-      is_recurring: is_recurring || false,
-      recurrence_frequency: is_recurring ? (recurrence_frequency || 'weekly') : null,
-      recurring_next_date: is_recurring ? (recurring_next_date || null) : null,
-      recurring_message_template_id: is_recurring && Number.isInteger(recurringTplId) && recurringTplId > 0
-        ? recurringTplId
-        : null,
-      recurring_message_template_ids: is_recurring && recurringTplIds?.length ? recurringTplIds : null,
+      status: req.body.status || 'pending',
+      ...recurringFields,
       tenant_id: resolveTenantId(req),
     });
 
     await replaceAppointmentServiceMappings(appt.id, validServiceIds);
 
-    // Fire-and-forget notification — use request phone or fall back to customer record
+    let advancePayment = null;
+    if (hasAdvance) {
+      advancePayment = await recordAdvancePayment({
+        req,
+        appointment: appt,
+        amount: parsedAdvance,
+        method: advanceMethod,
+        customer_id: customer_id || null,
+        customer_name,
+        branch_id,
+        staff_id: staff_id || null,
+        service_id: primaryServiceId,
+      });
+      await appt.reload();
+    }
+
     const notifyPhone = phone || (customer_id
       ? await (async () => {
           const { Customer: CustModel } = require('../models');
@@ -306,14 +608,12 @@ const create = async (req, res) => {
 
     const timeLabel = appt.time ? appt.time.slice(0, 5) : '';
     if (staff_id) {
-      // Assigned to a specific staff — notify only them
       notifyStaffUser(staff_id, '📅 New Appointment', `${appt.customer_name} — ${timeLabel}`, {
         type: 'appointment_assigned',
         appointment_id: String(appt.id),
         branch_id: String(branch_id),
       });
     } else {
-      // No staff assigned yet — notify the whole branch
       notifyBranch(branch_id, '📅 New Appointment', `${appt.customer_name} — ${timeLabel}`, {
         type: 'new_appointment',
         appointment_id: String(appt.id),
@@ -321,7 +621,13 @@ const create = async (req, res) => {
       });
     }
 
-    return res.status(201).json({ ...appt.toJSON(), service_ids: validServiceIds });
+    return res.status(201).json({
+      ...appt.toJSON(),
+      service_ids: validServiceIds,
+      advance_payment_id: advancePayment?.id || null,
+      advance_paid: hasAdvance ? parsedAdvance : 0,
+      amount_paid: hasAdvance ? parsedAdvance : 0,
+    });
   } catch (err) {
     console.error('[appointments][create]', err);
     return res.status(500).json({ message: 'Server error.' });

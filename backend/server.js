@@ -22,6 +22,7 @@ const { ensureInventorySupplierColumns } = require('./services/ensureInventorySu
 const ensureStaffSalaryColumns = require('./services/ensureStaffSalaryColumns');
 const ensureStaffSpecCommissionColumns = require('./services/ensureStaffSpecCommissionColumns');
 const ensureServiceCommissionColumns = require('./services/ensureServiceCommissionColumns');
+const ensureServiceSubcategoryColumn = require('./services/ensureServiceSubcategoryColumn');
 const ensurePaymentCommissionBreakdownColumn = require('./services/ensurePaymentCommissionBreakdownColumn');
 const ensurePaymentManagerCommissionColumns = require('./services/ensurePaymentManagerCommissionColumns');
 const ensureFranchiseCommissionSchema = require('./services/ensureFranchiseCommissionSchema');
@@ -36,6 +37,8 @@ const ensureTenantMobileRoleDefaultsColumn = require('./services/ensureTenantMob
 const { ensureTenantEnabledFeaturesColumn } = require('./services/ensureTenantEnabledFeaturesColumn');
 const { ensureTenantDocsPageColumn } = require('./services/ensureTenantDocsPageColumn');
 const { ensureStaffPhotoColumn } = require('./services/ensureStaffPhotoColumn');
+const { ensurePaymentIsAdvanceColumn } = require('./services/ensurePaymentIsAdvanceColumn');
+const { ensureCustomerLoyaltyMarkColumn } = require('./services/ensureCustomerLoyaltyMarkColumn');
 const ensureAppointmentReminderColumn = require('./services/ensureAppointmentReminderColumn');
 const ensureWalkInReminderColumns = require('./services/ensureWalkInReminderColumns');
 const ensureWalkInNotificationColumns = require('./services/ensureWalkInNotificationColumns');
@@ -147,8 +150,13 @@ app.use(apiMonitorMiddleware);
 // ── Tenant scope (MUST be before all route handlers) ─────────────────────────
 app.use('/api/', tenantScope);
 
-// Static uploads folder
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+// Static uploads folder — public assets (logos, staff photos) must stay embeddable
+// from tenant websites, so relax helmet's same-origin resource policy here.
+app.use('/uploads', (req, res, next) => {
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  next();
+}, express.static(path.join(__dirname, 'uploads')));
 
 // ── Routes ────────────────────────────────────────────────────────────────────
 app.get('/api/health', async (_req, res) => {
@@ -367,6 +375,7 @@ connectWithRetry().then(async () => {
   await ensureStaffSalaryColumns();
   await ensureStaffSpecCommissionColumns();
   await ensureServiceCommissionColumns();
+  await ensureServiceSubcategoryColumn();
   await ensurePaymentCommissionBreakdownColumn();
   await ensurePaymentManagerCommissionColumns();
   await ensureFranchiseCommissionSchema();
@@ -378,6 +387,8 @@ connectWithRetry().then(async () => {
   await ensureWalkInNotificationColumns();
   await ensureWalkInCustomerIdColumn();
   await ensureWalkInTotalAmountColumn();
+  await ensurePaymentIsAdvanceColumn();
+  await ensureCustomerLoyaltyMarkColumn();
   await ensureFcmTokenTenantIds();
   await runWalkInQueueServicesMigration();
   await ensureWhatsAppSchema();

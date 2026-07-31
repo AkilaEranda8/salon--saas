@@ -465,8 +465,11 @@ const testPush = async (req, res) => {
   }
 };
 
-// ── POST /api/notifications/offer-sms ──────────────────────────────────────────
-const sendOfferSms = async (req, res) => {
+// ── POST /api/notifications/offer-sms | office-sms ─────────────────────────────
+const sendBulkCustomerSms = async (req, res, {
+  eventType = 'offer_sms',
+  label = 'Offer SMS',
+}) => {
   try {
     const ids = Array.isArray(req.body.customerIds) ? req.body.customerIds : [];
     const customerIds = ids
@@ -490,7 +493,8 @@ const sendOfferSms = async (req, res) => {
       });
     }
 
-    const where = { id: customerIds };
+    const tenantId = resolveTenantId(req);
+    const where = { ...tenantWhere(req), id: customerIds };
     if (req.userBranchId) where.branch_id = req.userBranchId;
     const customers = await Customer.findAll({
       where,
@@ -504,12 +508,19 @@ const sendOfferSms = async (req, res) => {
     let sent = 0;
     let failed = 0;
     let skipped = 0;
-    const tenantId = resolveTenantId(req);
+    const results = [];
+    const sentAt = new Date().toISOString();
 
     for (const customer of customers) {
       const phone = String(customer.phone || '').trim();
+      const base = {
+        customerId: customer.id,
+        name: customer.name,
+        phone: phone || null,
+      };
       if (!phone) {
         skipped++;
+        results.push({ ...base, status: 'skipped', error: 'No phone number' });
         continue;
       }
       const result = await sendSMS({
@@ -517,19 +528,28 @@ const sendOfferSms = async (req, res) => {
         message,
         meta: {
           customer_name: customer.name,
-          event_type: 'test',
+          event_type: eventType,
           branch_id: customer.branch_id || req.userBranchId || null,
           tenant_id: tenantId,
         },
         tenantId,
       });
-      if (!result) skipped++;
-      else if (result.status === 'failed') failed++;
-      else sent++;
+      if (!result) {
+        skipped++;
+        results.push({ ...base, status: 'skipped', error: 'SMS not configured or not sent' });
+      } else if (result.status === 'failed') {
+        failed++;
+        results.push({ ...base, status: 'failed', error: result.error || 'Send failed' });
+      } else {
+        sent++;
+        results.push({ ...base, status: 'sent', error: null });
+      }
     }
 
     return res.json({
-      message: `Offer SMS processed. Sent: ${sent}, Failed: ${failed}, Skipped: ${skipped}.`,
+      message: `${label} processed. Sent: ${sent}, Failed: ${failed}, Skipped: ${skipped}.`,
+      sentAt,
+      event_type: eventType,
       totals: {
         requested: customerIds.length,
         matched: customers.length,
@@ -537,12 +557,19 @@ const sendOfferSms = async (req, res) => {
         failed,
         skipped,
       },
+      results,
     });
   } catch (err) {
-    console.error('[sendOfferSms]', err);
+    console.error(`[sendBulkCustomerSms:${eventType}]`, err);
     return res.status(500).json({ message: 'Server error.' });
   }
 };
+
+const sendOfferSms = (req, res) =>
+  sendBulkCustomerSms(req, res, { eventType: 'offer_sms', label: 'Offer SMS' });
+
+const sendOfficeSms = (req, res) =>
+  sendBulkCustomerSms(req, res, { eventType: 'office_sms', label: 'Office SMS' });
 
 /**
  * POST /api/notifications/staff-monthly-earnings
@@ -977,6 +1004,7 @@ module.exports = {
   testProvider,
   testPush,
   sendOfferSms,
+  sendOfficeSms,
   sendStaffMonthlyEarnings,
   testStaffEarningsPdf,
   listTemplates,

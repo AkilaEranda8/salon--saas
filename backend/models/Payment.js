@@ -83,6 +83,12 @@ const Payment = sequelize.define('Payment', {
     type: DataTypes.INTEGER,
     allowNull: true,
   },
+  is_advance: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: false,
+    comment: 'Booking deposit; merged into final sale on settle',
+  },
 }, {
   tableName: 'payments',
   timestamps: true,

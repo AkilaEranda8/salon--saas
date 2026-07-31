@@ -31,6 +31,34 @@
     );
   }
 
+  function staffInitials(name) {
+    return String(name || '')
+      .trim()
+      .split(/\s+/)
+      .slice(0, 2)
+      .map(function (part) {
+        return part.charAt(0).toUpperCase();
+      })
+      .join('');
+  }
+
+  function staffAvatar(st) {
+    var initials = esc(staffInitials(st.name) || '?');
+    var photoUrl = String(st.photo_url || '').trim();
+    if (!/^https?:\/\//i.test(photoUrl)) {
+      return '<span class="hsb-staff-avatar hsb-staff-avatar-fallback" aria-hidden="true">' + initials + '</span>';
+    }
+
+    return (
+      '<span class="hsb-staff-avatar hsb-staff-avatar-fallback" aria-hidden="true">' +
+      initials +
+      '<img src="' +
+      esc(photoUrl) +
+      '" alt="" loading="lazy" referrerpolicy="no-referrer" />' +
+      '</span>'
+    );
+  }
+
   ready(function () {
     var root = document.getElementById('hsb-root');
     if (!root) return;
@@ -47,14 +75,12 @@
       branches: [],
       services: [],
       staff: [],
-      slots: [],
       category: '',
       form: {
         branch: null,
         services: [],
-        staff: null,
-        date: '',
-        time: '',
+        // Per-service booking: { [serviceId]: { staff, date, time, slots } }
+        assignments: {},
         customer_name: '',
         phone: '',
         email: '',
@@ -63,6 +89,35 @@
       submitting: false,
       result: null,
     };
+
+    function emptyAssignment() {
+      return { staff: null, date: '', time: '', slots: [] };
+    }
+
+    function getAssignment(serviceId) {
+      var key = String(serviceId);
+      if (!state.form.assignments[key]) {
+        state.form.assignments[key] = emptyAssignment();
+      }
+      return state.form.assignments[key];
+    }
+
+    function syncAssignments() {
+      var next = {};
+      state.form.services.forEach(function (s) {
+        var key = String(s.id);
+        next[key] = state.form.assignments[key] || emptyAssignment();
+      });
+      state.form.assignments = next;
+    }
+
+    function assignmentsReady() {
+      if (!state.form.services.length) return false;
+      return state.form.services.every(function (s) {
+        var a = getAssignment(s.id);
+        return !!(a.staff && a.date && a.time);
+      });
+    }
 
     function showError(msg) {
       if (!msg) {
@@ -114,12 +169,6 @@
       });
     }
 
-    function durationTotal() {
-      return state.form.services.reduce(function (sum, s) {
-        return sum + (Number(s.duration_minutes) || 30);
-      }, 0);
-    }
-
     function setStep(n) {
       state.step = n;
       stepEls.forEach(function (li) {
@@ -133,7 +182,7 @@
     function canContinue() {
       if (state.step === 0) return !!state.form.branch;
       if (state.step === 1) return state.form.services.length > 0;
-      if (state.step === 2) return !!state.form.staff && !!state.form.date && !!state.form.time;
+      if (state.step === 2) return assignmentsReady();
       if (state.step === 3) {
         return state.form.customer_name.trim() && state.form.phone.trim();
       }
@@ -263,92 +312,136 @@
     }
 
     function renderStaffTime() {
-      var staffHtml = state.staff.length
-        ? state.staff
-            .map(function (st) {
-              var sel = state.form.staff && state.form.staff.id === st.id ? ' is-selected' : '';
-              return (
-                '<button type="button" class="hsb-option' +
-                sel +
-                '" data-hsb="pick-staff" data-id="' +
-                st.id +
-                '"><strong>' +
-                esc(st.name) +
-                '</strong><span>' +
-                esc(st.role_title || 'Stylist') +
-                '</span></button>'
-              );
-            })
-            .join('')
-        : emptyState('No staff available', 'No active staff are assigned to this branch.');
+      if (!state.form.services.length) {
+        bodyEl.innerHTML = emptyState('No services selected', 'Go back and choose at least one service.');
+        return;
+      }
 
-      var slotsHtml = !state.form.staff
-        ? emptyState('Choose staff first', 'Pick a stylist to unlock available times.')
-        : !state.form.date
-          ? emptyState('Choose a date', 'Select a date to see open appointment times.')
-          : !state.slots.length
-            ? emptyState('No times available', 'Try another date or staff member.')
-            : '<div class="hsb-slots">' +
-              state.slots
-                .map(function (t) {
-                  var sel = state.form.time === t ? ' is-selected' : '';
+      var cards = state.form.services
+        .map(function (svc) {
+          var a = getAssignment(svc.id);
+          var staffHtml = state.staff.length
+            ? state.staff
+                .map(function (st) {
+                  var sel = a.staff && a.staff.id === st.id ? ' is-selected' : '';
                   return (
-                    '<button type="button" class="hsb-slot' +
+                    '<button type="button" class="hsb-option hsb-staff-option' +
                     sel +
-                    '" data-hsb="pick-time" data-time="' +
-                    esc(t) +
+                    '" data-hsb="pick-staff" data-service="' +
+                    svc.id +
+                    '" data-id="' +
+                    st.id +
                     '">' +
-                    esc(t) +
-                    '</button>'
+                    staffAvatar(st) +
+                    '<span class="hsb-staff-copy"><strong>' +
+                    esc(st.name) +
+                    '</strong><span>' +
+                    esc(st.role_title || 'Stylist') +
+                    '</span></span></button>'
                   );
                 })
-                .join('') +
-              '</div>';
+                .join('')
+            : emptyState('No staff available', 'No active staff are assigned to this branch.');
+
+          var slotsHtml = !a.staff
+            ? emptyState('Choose staff first', 'Pick a stylist for this service.')
+            : !a.date
+              ? emptyState('Choose a date', 'Select a date to see open times.')
+              : !a.slots.length
+                ? emptyState('No times available', 'Try another date or staff member.')
+                : '<div class="hsb-slots">' +
+                  a.slots
+                    .map(function (t) {
+                      var sel = a.time === t ? ' is-selected' : '';
+                      return (
+                        '<button type="button" class="hsb-slot' +
+                        sel +
+                        '" data-hsb="pick-time" data-service="' +
+                        svc.id +
+                        '" data-time="' +
+                        esc(t) +
+                        '">' +
+                        esc(t) +
+                        '</button>'
+                      );
+                    })
+                    .join('') +
+                  '</div>';
+
+          var done = a.staff && a.date && a.time;
+          return (
+            '<div class="hsb-assign-card' +
+            (done ? ' is-ready' : '') +
+            '">' +
+            '<div class="hsb-assign-head">' +
+            '<div><strong>' +
+            esc(svc.name) +
+            '</strong><span>' +
+            esc(svc.duration_minutes || 30) +
+            ' min</span></div>' +
+            (done
+              ? '<em>' + esc(a.staff.name) + ' · ' + esc(a.date) + ' ' + esc(a.time) + '</em>'
+              : '<em>Pick staff &amp; time</em>') +
+            '</div>' +
+            '<div class="hsb-panel-title">Staff</div>' +
+            '<div class="hsb-grid hsb-staff-grid">' +
+            staffHtml +
+            '</div>' +
+            '<div class="hsb-field" style="margin:1rem 0 0.85rem"><label for="hsb-date-' +
+            svc.id +
+            '">Date</label>' +
+            '<input type="date" id="hsb-date-' +
+            svc.id +
+            '" data-hsb-date="' +
+            svc.id +
+            '" min="' +
+            todayISO() +
+            '" value="' +
+            esc(a.date) +
+            '" /></div>' +
+            '<div class="hsb-panel-title">Available times</div>' +
+            slotsHtml +
+            '</div>'
+          );
+        })
+        .join('');
 
       bodyEl.innerHTML =
         '<div class="hsb-section-title">Staff &amp; schedule</div>' +
-        '<p class="hsb-section-copy">Pick your stylist, then choose a date and time.</p>' +
-        '<div class="hsb-row hsb-row-2">' +
-        '<div><div class="hsb-panel-title">Staff</div><div class="hsb-grid">' +
-        staffHtml +
-        '</div></div>' +
-        '<div>' +
-        '<div class="hsb-field" style="margin-bottom:1rem"><label for="hsb-date">Date</label>' +
-        '<input type="date" id="hsb-date" min="' +
-        todayISO() +
-        '" value="' +
-        esc(state.form.date) +
-        '" /></div>' +
-        '<div class="hsb-panel-title">Available times</div>' +
-        slotsHtml +
-        '</div></div>';
+        '<p class="hsb-section-copy">Each service can use a different stylist and time.</p>' +
+        '<div class="hsb-assign-list">' +
+        cards +
+        '</div>';
     }
 
     function renderDetails() {
-      var names = state.form.services
+      var summary = state.form.services
         .map(function (s) {
-          return s.name;
+          var a = getAssignment(s.id);
+          return (
+            '<div><dt>' +
+            esc(s.name) +
+            '</dt><dd>' +
+            esc(a.staff && a.staff.name) +
+            ' · ' +
+            esc(a.date) +
+            ' ' +
+            esc(a.time) +
+            ' · ' +
+            esc(s.duration_minutes || 30) +
+            ' min</dd></div>'
+          );
         })
-        .join(', ');
+        .join('');
       bodyEl.innerHTML =
         '<div class="hsb-section-title">Your details</div>' +
-        '<p class="hsb-section-copy">Review the visit, then leave your contact details.</p>' +
+        '<p class="hsb-section-copy">Review each booking, then leave your contact details.</p>' +
         '<dl class="hsb-summary">' +
         '<div><dt>Branch</dt><dd>' +
         esc(state.form.branch && state.form.branch.name) +
         '</dd></div>' +
-        '<div><dt>Services</dt><dd>' +
-        esc(names) +
-        ' · ' +
-        durationTotal() +
-        ' min</dd></div>' +
-        '<div><dt>Staff / when</dt><dd>' +
-        esc(state.form.staff && state.form.staff.name) +
-        ' · ' +
-        esc(state.form.date) +
-        ' ' +
-        esc(state.form.time) +
-        '</dd></div></dl>' +
+        summary +
+        '</dl>' +
         '<div class="hsb-row" style="margin-top:1rem">' +
         '<div class="hsb-field"><label for="hsb-name">Your name *</label>' +
         '<input id="hsb-name" type="text" autocomplete="name" value="' +
@@ -416,20 +509,24 @@
       });
     }
 
-    function loadSlots() {
-      if (!state.form.staff || !state.form.date) {
-        state.slots = [];
+    function loadSlotsForService(serviceId) {
+      var svc = state.form.services.find(function (s) {
+        return s.id === Number(serviceId);
+      });
+      var a = getAssignment(serviceId);
+      if (!svc || !a.staff || !a.date) {
+        a.slots = [];
         return Promise.resolve();
       }
       return api('availability', {
-        staff_id: state.form.staff.id,
-        date: state.form.date,
-        duration: Math.max(30, durationTotal() || 30),
+        staff_id: a.staff.id,
+        date: a.date,
+        duration: Math.max(30, Number(svc.duration_minutes) || 30),
         branch_id: state.form.branch && state.form.branch.id,
       }).then(function (data) {
-        state.slots = Array.isArray(data) ? data : [];
-        if (state.form.time && state.slots.indexOf(state.form.time) < 0) {
-          state.form.time = '';
+        a.slots = Array.isArray(data) ? data : [];
+        if (a.time && a.slots.indexOf(a.time) < 0) {
+          a.time = '';
         }
       });
     }
@@ -439,16 +536,19 @@
       renderFooter();
       var payload = {
         branch_id: state.form.branch.id,
-        service_ids: state.form.services.map(function (s) {
-          return s.id;
-        }),
-        staff_id: state.form.staff.id,
         customer_name: state.form.customer_name.trim(),
         phone: state.form.phone.trim(),
         email: state.form.email.trim(),
-        date: state.form.date,
-        time: state.form.time,
         notes: state.form.notes.trim(),
+        items: state.form.services.map(function (s) {
+          var a = getAssignment(s.id);
+          return {
+            service_id: s.id,
+            staff_id: a.staff.id,
+            date: a.date,
+            time: a.time,
+          };
+        }),
       };
       api('book', payload, { method: 'POST' })
         .then(function (data) {
@@ -473,11 +573,8 @@
         state.form.branch = state.branches.find(function (b) {
           return b.id === bid;
         }) || null;
-        state.form.staff = null;
-        state.form.date = '';
-        state.form.time = '';
+        state.form.assignments = {};
         state.staff = [];
-        state.slots = [];
         render();
         return;
       }
@@ -493,8 +590,7 @@
         });
         if (idx >= 0) state.form.services.splice(idx, 1);
         else state.form.services.push(svc);
-        state.form.time = '';
-        state.slots = [];
+        syncAssignments();
         render();
         return;
       }
@@ -506,12 +602,14 @@
       }
 
       if (act === 'pick-staff') {
+        var serviceId = Number(btn.getAttribute('data-service'));
         var stid = Number(btn.getAttribute('data-id'));
-        state.form.staff = state.staff.find(function (s) {
+        var assignment = getAssignment(serviceId);
+        assignment.staff = state.staff.find(function (s) {
           return s.id === stid;
         }) || null;
-        state.form.time = '';
-        loadSlots().then(render).catch(function (err) {
+        assignment.time = '';
+        loadSlotsForService(serviceId).then(render).catch(function (err) {
           showError(err.message);
         });
         render();
@@ -519,7 +617,8 @@
       }
 
       if (act === 'pick-time') {
-        state.form.time = btn.getAttribute('data-time') || '';
+        var serviceForTime = Number(btn.getAttribute('data-service'));
+        getAssignment(serviceForTime).time = btn.getAttribute('data-time') || '';
         render();
         return;
       }
@@ -545,6 +644,7 @@
         }
         if (state.step === 1) {
           bodyEl.innerHTML = '<p class="hsb-loading">Loading staff…</p>';
+          syncAssignments();
           loadStaff()
             .then(function () {
               setStep(2);
@@ -569,26 +669,31 @@
         state.form = {
           branch: state.form.branch,
           services: [],
-          staff: null,
-          date: '',
-          time: '',
+          assignments: {},
           customer_name: '',
           phone: '',
           email: '',
           notes: '',
         };
-        state.slots = [];
         state.result = null;
         setStep(1);
       }
     });
 
+    root.addEventListener('error', function (e) {
+      if (e.target && e.target.matches('.hsb-staff-avatar img')) {
+        e.target.remove();
+      }
+    }, true);
+
     root.addEventListener('input', function (e) {
       var t = e.target;
-      if (t.id === 'hsb-date') {
-        state.form.date = t.value;
-        state.form.time = '';
-        loadSlots()
+      var dateServiceId = t.getAttribute && t.getAttribute('data-hsb-date');
+      if (dateServiceId) {
+        var a = getAssignment(dateServiceId);
+        a.date = t.value;
+        a.time = '';
+        loadSlotsForService(dateServiceId)
           .then(render)
           .catch(function (err) {
             showError(err.message);

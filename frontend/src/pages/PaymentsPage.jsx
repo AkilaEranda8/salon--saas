@@ -504,7 +504,9 @@ function PayModal({ open, onClose, title, subtitle, children, footer, size = 'lg
 
 function ServiceMultiSelect({ services, selected, onChange, dark = false }) {
   const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
   const rootRef = useRef(null);
+  const searchRef = useRef(null);
   const [menuPos, setMenuPos] = useState({ top: 0, left: 0, width: 0 });
 
   const selectedIds = useMemo(
@@ -512,9 +514,24 @@ function ServiceMultiSelect({ services, selected, onChange, dark = false }) {
     [selected],
   );
   const selSvcs = services.filter((s) => selectedIds.includes(Number(s.id)));
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return services;
+    return services.filter((s) => {
+      const hay = `${s.name || ''} ${s.category || ''} ${s.subcategory || ''}`.toLowerCase();
+      return hay.includes(q);
+    });
+  }, [services, search]);
+
   const toggle = (id) => {
     const n = Number(id);
     onChange(selectedIds.includes(n) ? selectedIds.filter((x) => x !== n) : [...selectedIds, n]);
+  };
+
+  const setOpenState = (next) => {
+    const value = typeof next === 'function' ? next(open) : next;
+    setOpen(value);
+    if (!value) setSearch('');
   };
 
   useLayoutEffect(() => {
@@ -532,13 +549,19 @@ function ServiceMultiSelect({ services, selected, onChange, dark = false }) {
     };
   }, [open]);
 
+  useEffect(() => {
+    if (!open) return;
+    const t = setTimeout(() => searchRef.current?.focus?.(), 0);
+    return () => clearTimeout(t);
+  }, [open]);
+
   return (
     <div ref={rootRef} style={{ position: 'relative' }}>
       <div
         role="button"
         tabIndex={0}
-        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpen((o) => !o); } }}
-        onClick={() => setOpen((o) => !o)}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpenState((o) => !o); } }}
+        onClick={() => setOpenState((o) => !o)}
         style={{
           minHeight: 38, padding: '6px 10px', borderRadius: 10,
           border: `1.5px solid ${open ? '#2563EB' : (dark ? '#334155' : '#D0D5DD')}`,
@@ -557,7 +580,7 @@ function ServiceMultiSelect({ services, selected, onChange, dark = false }) {
       </div>
       {open && createPortal(
         <>
-          <div onClick={() => setOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 9998 }} />
+          <div onClick={() => setOpenState(false)} style={{ position: 'fixed', inset: 0, zIndex: 9998 }} />
           <div style={{
             position: 'fixed',
             top: menuPos.top,
@@ -568,25 +591,62 @@ function ServiceMultiSelect({ services, selected, onChange, dark = false }) {
             border: `1.5px solid ${dark ? '#334155' : '#E4E7EC'}`,
             borderRadius: 10,
             boxShadow: dark ? '0 8px 24px rgba(2,6,23,0.45)' : '0 8px 24px rgba(16,24,40,0.12)',
-            maxHeight: 230,
-            overflowY: 'auto',
+            maxHeight: 280,
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden',
           }}>
-            {services.length === 0 && <div style={{ padding: '12px 14px', fontSize: 13, color: dark ? '#64748B' : '#98A2B3' }}>No services found</div>}
-            {services.map((s) => {
-              const checked = selectedIds.includes(Number(s.id));
-              return (
-                <label key={s.id} style={{
-                  display: 'flex', alignItems: 'center', gap: 10, padding: '9px 14px', cursor: 'pointer',
-                  background: checked ? (dark ? 'rgba(37,99,235,0.15)' : '#F0F9FF') : 'transparent',
-                  borderBottom: `1px solid ${dark ? '#334155' : '#F8FAFC'}`,
-                }}>
-                  <input type="checkbox" checked={checked} onChange={() => toggle(s.id)}
-                    style={{ accentColor: '#2563EB', width: 15, height: 15, flexShrink: 0, cursor: 'pointer' }} />
-                  <span style={{ flex: 1, fontSize: 13, color: dark ? '#E2E8F0' : '#344054', fontWeight: checked ? 600 : 400 }}>{s.name}</span>
-                  <span style={{ fontSize: 12, color: '#059669', fontWeight: 700, fontFamily: "'Outfit',sans-serif" }}>Rs. {Number(s.price || 0).toLocaleString()}</span>
-                </label>
-              );
-            })}
+            <div style={{ padding: '8px 10px', borderBottom: `1px solid ${dark ? '#334155' : '#F2F4F7'}`, flexShrink: 0 }}>
+              <input
+                ref={searchRef}
+                type="search"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                onClick={(e) => e.stopPropagation()}
+                onKeyDown={(e) => e.stopPropagation()}
+                placeholder="Search by name or category…"
+                style={{
+                  width: '100%', boxSizing: 'border-box',
+                  padding: '8px 10px', borderRadius: 8, fontSize: 13,
+                  border: `1px solid ${dark ? '#475569' : '#D0D5DD'}`,
+                  background: dark ? '#0B1220' : '#F9FAFB',
+                  color: dark ? '#E2E8F0' : '#101828',
+                  outline: 'none',
+                }}
+              />
+            </div>
+            <div style={{ overflowY: 'auto', flex: 1, maxHeight: 220 }}>
+              {services.length === 0 && (
+                <div style={{ padding: '12px 14px', fontSize: 13, color: dark ? '#64748B' : '#98A2B3' }}>No services found</div>
+              )}
+              {services.length > 0 && filtered.length === 0 && (
+                <div style={{ padding: '12px 14px', fontSize: 13, color: dark ? '#64748B' : '#98A2B3' }}>
+                  No services match “{search.trim()}”
+                </div>
+              )}
+              {filtered.map((s) => {
+                const checked = selectedIds.includes(Number(s.id));
+                return (
+                  <label key={s.id} style={{
+                    display: 'flex', alignItems: 'center', gap: 10, padding: '9px 14px', cursor: 'pointer',
+                    background: checked ? (dark ? 'rgba(37,99,235,0.15)' : '#F0F9FF') : 'transparent',
+                    borderBottom: `1px solid ${dark ? '#334155' : '#F8FAFC'}`,
+                  }}>
+                    <input type="checkbox" checked={checked} onChange={() => toggle(s.id)}
+                      style={{ accentColor: '#2563EB', width: 15, height: 15, flexShrink: 0, cursor: 'pointer' }} />
+                    <span style={{ flex: 1, fontSize: 13, color: dark ? '#E2E8F0' : '#344054', fontWeight: checked ? 600 : 400 }}>
+                      {s.name}
+                      {(s.category || s.subcategory) ? (
+                        <span style={{ display: 'block', fontSize: 11, fontWeight: 500, color: dark ? '#64748B' : '#98A2B3', marginTop: 1 }}>
+                          {[s.category, s.subcategory].filter(Boolean).join(' · ')}
+                        </span>
+                      ) : null}
+                    </span>
+                    <span style={{ fontSize: 12, color: '#059669', fontWeight: 700, fontFamily: "'Outfit',sans-serif" }}>Rs. {Number(s.price || 0).toLocaleString()}</span>
+                  </label>
+                );
+              })}
+            </div>
           </div>
         </>,
         document.body,
@@ -987,7 +1047,12 @@ export default function PaymentsPage() {
           },
           { id:'payment', header:'Payment', meta:{ width:'20%' },
             cell: ({ row }) => (
-              <div style={{ display:'flex', gap:4, flexWrap:'wrap' }}>
+              <div style={{ display:'flex', gap:4, flexWrap:'wrap', alignItems:'center' }}>
+                {row.original.is_advance ? (
+                  <span style={{ padding:'2px 7px', borderRadius:5, background:'#EFF8FF', border:'1px solid #B2DDFF', fontSize:11, color:'#175CD3', fontWeight:600 }}>
+                    Advance
+                  </span>
+                ) : null}
                 {(row.original.splits||[]).map((sp, i) => (
                   <span key={i} style={{ padding:'2px 7px', borderRadius:5, background:'#F9FAFB', border:'1px solid #E4E7EC', fontSize:11, color:'#475467' }}>
                     {sp.method === 'Package'

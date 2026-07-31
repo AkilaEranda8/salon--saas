@@ -133,6 +133,97 @@ router.post('/redeem', async (req, res) => {
   }
 });
 
+// ─── POST /api/loyalty/adjust — manual add/subtract points ───────────────────
+// { customer_id, points, description?, branch_id? }
+// points: positive = add, negative = subtract (or pass direction: 'add'|'subtract' + amount)
+router.post('/adjust', requireRole('superadmin', 'admin', 'manager'), async (req, res) => {
+  try {
+    const { LoyaltyTransaction, Customer } = require('../models');
+    const { customer_id, branch_id, description } = req.body;
+    if (!customer_id) return res.status(400).json({ message: 'customer_id is required.' });
+
+    let delta = Number(req.body.points);
+    if (!Number.isFinite(delta) || delta === 0) {
+      const amount = Math.abs(Number(req.body.amount));
+      const direction = String(req.body.direction || 'subtract').toLowerCase();
+      if (!(amount > 0)) {
+        return res.status(400).json({ message: 'points (non-zero) or amount is required.' });
+      }
+      delta = direction === 'add' ? amount : -amount;
+    }
+    delta = Math.trunc(delta);
+    if (delta === 0) return res.status(400).json({ message: 'Adjustment cannot be zero.' });
+
+    const tenantId = resolveTenantId(req);
+    const customer = await Customer.findOne({
+      where: byIdWhere(req, customer_id),
+    });
+    if (!customer) return res.status(404).json({ message: 'Customer not found.' });
+
+    const currentPoints = Number(customer.loyalty_points) || 0;
+    if (delta < 0 && currentPoints + delta < 0) {
+      return res.status(400).json({
+        message: `Not enough points. Balance is ${currentPoints}; cannot subtract ${Math.abs(delta)}.`,
+      });
+    }
+
+    const newBalance = currentPoints + delta;
+    const updates = { loyalty_points: newBalance };
+    // Keep −50 reductions in a separate group (loyalty_mark)
+    if (delta === -50) {
+      updates.loyalty_mark = 'reduced_50';
+    }
+    await customer.update(updates);
+
+    const absPts = Math.abs(delta);
+    const defaultDesc = delta < 0
+      ? `Loyalty points reduced by ${absPts}`
+      : `Loyalty points increased by ${absPts}`;
+    const note = String(description || '').trim() || defaultDesc;
+
+    const tx = await LoyaltyTransaction.create({
+      tenant_id: tenantId,
+      customer_id: customer.id,
+      branch_id: branch_id || req.userBranchId || customer.branch_id || null,
+      type: 'adjust',
+      points: delta,
+      balance_after: newBalance,
+      description: note.slice(0, 255),
+    });
+
+    return res.json({
+      balance: newBalance,
+      points_adjusted: delta,
+      loyalty_mark: updates.loyalty_mark || customer.loyalty_mark || null,
+      transaction: tx,
+    });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: 'Server error.' });
+  }
+});
+
+// ─── GET /api/loyalty/marked — customers in a special group (e.g. reduced_50) ─
+router.get('/marked', async (req, res) => {
+  try {
+    const { Customer } = require('../models');
+    const mark = String(req.query.mark || 'reduced_50').trim() || 'reduced_50';
+    const where = { ...tenantWhere(req), loyalty_mark: mark };
+    if (req.userBranchId) where.branch_id = req.userBranchId;
+
+    const rows = await Customer.findAll({
+      where,
+      attributes: ['id', 'name', 'phone', 'loyalty_points', 'loyalty_mark', 'total_spent', 'visits'],
+      order: [['updatedAt', 'DESC']],
+      limit: 500,
+    });
+    return res.json({ mark, total: rows.length, data: rows });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: 'Server error.' });
+  }
+});
+
 // ─── GET /api/loyalty/transactions/:customerId ─────────────────────────────
 router.get('/transactions/:customerId', async (req, res) => {
   try {

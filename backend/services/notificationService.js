@@ -75,19 +75,20 @@ function loyaltyTier(points) {
 }
 
 // ── Log writer ────────────────────────────────────────────────────────────────
-async function writeLog({ customer_name, phone, email, event_type, channel, message_preview, status, error_message, branch_id }) {
+async function writeLog({ customer_name, phone, email, event_type, channel, message_preview, status, error_message, branch_id, tenant_id }) {
   try {
     const { NotificationLog } = getModels();
     await NotificationLog.create({
       customer_name:   customer_name  || null,
-      phone:           channel === 'whatsapp' ? (phone  || null) : null,
-      email:           channel === 'email'    ? (email  || null) : null,
+      phone:           (channel === 'whatsapp' || channel === 'sms') ? (phone || null) : null,
+      email:           channel === 'email' ? (email || null) : null,
       event_type,
       channel,
       message_preview: String(message_preview || '').slice(0, 255),
       status,
       error_message:   error_message || null,
       branch_id:       branch_id     || null,
+      tenant_id:       tenant_id     || null,
     });
   } catch (err) {
     console.error('[Notifications] Log write failed:', err.message);

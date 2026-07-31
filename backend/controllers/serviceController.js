@@ -27,6 +27,12 @@ function buildServicePayload(body = {}, tenant) {
   const payload = {};
   if (body.name !== undefined) payload.name = body.name;
   if (body.category !== undefined) payload.category = body.category;
+  if (body.subcategory !== undefined) {
+    const raw = body.subcategory;
+    payload.subcategory = raw == null || String(raw).trim() === ''
+      ? null
+      : String(raw).trim().slice(0, 100);
+  }
   if (body.duration_minutes !== undefined) {
     const mins = parseInt(body.duration_minutes, 10);
     payload.duration_minutes = Number.isFinite(mins) && mins > 0 ? mins : 30;
@@ -51,13 +57,14 @@ const list = async (req, res) => {
 
     const where = tenantWhere(req);
     if (req.query.category) where.category = req.query.category;
+    if (req.query.subcategory) where.subcategory = req.query.subcategory;
     if (req.query.active !== undefined) where.is_active = req.query.active !== 'false';
 
     const { count, rows } = await Service.findAndCountAll({
       where,
       limit,
       offset,
-      order: [['category', 'ASC'], ['name', 'ASC']],
+      order: [['category', 'ASC'], ['subcategory', 'ASC'], ['name', 'ASC']],
     });
 
     return res.json({ total: count, page, limit, data: rows.map((row) => mapService(row, req.tenant)) });
@@ -135,14 +142,31 @@ const categories = async (req, res) => {
     const rows = await Service.findAll({
       attributes: [
         'category',
+        'subcategory',
         [fn('COUNT', col('id')), 'count'],
       ],
       where,
-      group: ['category'],
-      order: [['category', 'ASC']],
+      group: ['category', 'subcategory'],
+      order: [['category', 'ASC'], ['subcategory', 'ASC']],
       raw: true,
     });
-    return res.json(rows);
+
+    const byCat = new Map();
+    for (const row of rows) {
+      const cat = row.category;
+      if (!cat) continue;
+      if (!byCat.has(cat)) {
+        byCat.set(cat, { category: cat, count: 0, subcategories: [] });
+      }
+      const entry = byCat.get(cat);
+      const n = Number(row.count) || 0;
+      entry.count += n;
+      if (row.subcategory) {
+        entry.subcategories.push({ name: row.subcategory, count: n });
+      }
+    }
+
+    return res.json([...byCat.values()]);
   } catch (err) {
     console.error(err);
     return res.status(500).json({ message: 'Server error.' });

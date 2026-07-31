@@ -274,6 +274,112 @@
   font-weight: 700;
 }
 
+.hsb-staff-option {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+}
+
+.hsb-staff-avatar {
+  position: relative;
+  display: grid;
+  place-items: center;
+  flex: 0 0 3.25rem;
+  width: 3.25rem;
+  height: 3.25rem;
+  overflow: hidden;
+  border: 2px solid #fff;
+  border-radius: 999px;
+  background: var(--hsb-accent-soft);
+  box-shadow: 0 2px 10px rgba(23, 20, 18, 0.12);
+}
+
+.hsb-staff-avatar-fallback {
+  color: var(--hsb-accent);
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.hsb-staff-avatar img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.hsb-staff-copy {
+  display: block;
+  min-width: 0;
+}
+
+.hsb-staff-copy > span {
+  display: block;
+  margin-top: 0.2rem;
+  color: var(--hsb-muted);
+  font-size: 0.85rem;
+}
+
+.hsb-assign-list {
+  display: grid;
+  gap: 1rem;
+}
+
+.hsb-assign-card {
+  border: 1px solid var(--hsb-border);
+  border-radius: 16px;
+  padding: 1rem 1.05rem 1.1rem;
+  background: rgba(255, 255, 255, 0.94);
+}
+
+.hsb-assign-card.is-ready {
+  border-color: color-mix(in srgb, var(--hsb-ok) 45%, var(--hsb-border));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--hsb-ok) 10%, transparent);
+}
+
+.hsb-assign-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: flex-start;
+  margin-bottom: 0.9rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--hsb-border);
+}
+
+.hsb-assign-head strong {
+  display: block;
+  color: var(--hsb-ink);
+  font-size: 1rem;
+}
+
+.hsb-assign-head span {
+  color: var(--hsb-muted);
+  font-size: 0.82rem;
+}
+
+.hsb-assign-head em {
+  color: var(--hsb-muted);
+  font-style: normal;
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-align: right;
+}
+
+.hsb-assign-card.is-ready .hsb-assign-head em {
+  color: var(--hsb-ok);
+}
+
+.hsb-staff-grid {
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 700px) {
+  .hsb-staff-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
 .hsb-filters {
   display: flex;
   flex-wrap: wrap;

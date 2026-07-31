@@ -1078,6 +1078,10 @@ class AppState extends ChangeNotifier {
     bool isRecurring = false,
     String? recurringNextDate,
     List<String>? recurringMessageTemplateIds,
+    /// When set, creates one appointment per item via API `items[]`.
+    List<Map<String, dynamic>>? bookingItems,
+    double? advanceAmount,
+    String? advanceMethod,
   }) async {
     if (!hasPermission(StaffPermission.canAddAppointments) ||
         _currentUser == null) {
@@ -1093,31 +1097,31 @@ class AppState extends ChangeNotifier {
       _lastError = 'Branch is missing.';
       return false;
     }
-    if (orderedServiceIds.isEmpty) {
+    final useItems = bookingItems != null && bookingItems.isNotEmpty;
+    if (!useItems && orderedServiceIds.isEmpty) {
       _lastError = 'Select at least one service.';
       return false;
     }
     try {
       await loadServices();
-      final primary = orderedServiceIds.first;
-      final extraNames = orderedServiceIds
-          .skip(1)
-          .map((id) {
-            for (final s in _services) {
-              if (s.id == id) return s.name;
-            }
-            return '';
-          })
-          .where((n) => n.isNotEmpty)
-          .toList();
-      final notes = AppointmentNotes.combineNotes(baseNotes, extraNames);
-      final autoTotal = _sumServicePrices(orderedServiceIds);
-      final amountStr =
-          (amountOverride != null && amountOverride.trim().isNotEmpty)
-          ? amountOverride.trim()
-          : (autoTotal > 0 ? autoTotal.toString() : null);
-
       if (appointmentId != null && appointmentId.isNotEmpty) {
+        final primary = orderedServiceIds.first;
+        final extraNames = orderedServiceIds
+            .skip(1)
+            .map((id) {
+              for (final s in _services) {
+                if (s.id == id) return s.name;
+              }
+              return '';
+            })
+            .where((n) => n.isNotEmpty)
+            .toList();
+        final notes = AppointmentNotes.combineNotes(baseNotes, extraNames);
+        final autoTotal = _sumServicePrices(orderedServiceIds);
+        final amountStr =
+            (amountOverride != null && amountOverride.trim().isNotEmpty)
+            ? amountOverride.trim()
+            : (autoTotal > 0 ? autoTotal.toString() : null);
         await _api.updateAppointment(
           token: token,
           appointmentId: appointmentId,
@@ -1136,7 +1140,41 @@ class AppState extends ChangeNotifier {
           recurringNextDate: recurringNextDate,
           recurringMessageTemplateIds: recurringMessageTemplateIds,
         );
+      } else if (useItems) {
+        final notes = baseNotes.trim();
+        await _api.createAppointment(
+          token: token,
+          branchId: effectiveBranchId,
+          customerName: customerName,
+          customerId: customerId.isNotEmpty ? customerId : null,
+          phone: phone,
+          notes: notes.isNotEmpty ? notes : null,
+          amount: amountOverride,
+          isRecurring: isRecurring,
+          recurringNextDate: recurringNextDate,
+          recurringMessageTemplateIds: recurringMessageTemplateIds,
+          items: bookingItems,
+          advanceAmount: advanceAmount,
+          advanceMethod: advanceMethod,
+        );
       } else {
+        final primary = orderedServiceIds.first;
+        final extraNames = orderedServiceIds
+            .skip(1)
+            .map((id) {
+              for (final s in _services) {
+                if (s.id == id) return s.name;
+              }
+              return '';
+            })
+            .where((n) => n.isNotEmpty)
+            .toList();
+        final notes = AppointmentNotes.combineNotes(baseNotes, extraNames);
+        final autoTotal = _sumServicePrices(orderedServiceIds);
+        final amountStr =
+            (amountOverride != null && amountOverride.trim().isNotEmpty)
+            ? amountOverride.trim()
+            : (autoTotal > 0 ? autoTotal.toString() : null);
         await _api.createAppointment(
           token: token,
           branchId: effectiveBranchId,
@@ -1153,6 +1191,8 @@ class AppState extends ChangeNotifier {
           isRecurring: isRecurring,
           recurringNextDate: recurringNextDate,
           recurringMessageTemplateIds: recurringMessageTemplateIds,
+          advanceAmount: advanceAmount,
+          advanceMethod: advanceMethod,
         );
       }
       await reloadAppointments();
@@ -1240,6 +1280,59 @@ class AppState extends ChangeNotifier {
       return false;
     }
     try {
+      final advancePaid = appointment.advancePaid > 0
+          ? appointment.advancePaid
+          : 0.0;
+      final collectNow = double.tryParse(amount.trim()) ?? 0;
+      final settleAdvance = advancePaid > 0;
+      final sub = double.tryParse(subtotal.trim()) ?? 0;
+      final gross = sub > 0
+          ? sub
+          : (appointment.displayAmount > 0
+                ? appointment.displayAmount
+                : collectNow + advancePaid);
+
+      final merged = <String, Map<String, dynamic>>{};
+      void pushSplit(String method, double amt, {dynamic packageId}) {
+        if (!(amt > 0) && method != 'Package') return;
+        final key = '$method:${packageId ?? ''}';
+        if (merged.containsKey(key)) {
+          merged[key]!['amount'] =
+              (merged[key]!['amount'] as num).toDouble() + amt;
+        } else {
+          merged[key] = {
+            'method': method,
+            'amount': amt,
+            if (packageId != null) 'customer_package_id': packageId,
+          };
+        }
+      }
+
+      List<Map<String, dynamic>>? splitsPayload;
+      if (settleAdvance) {
+        for (final sp in appointment.advanceSplits) {
+          pushSplit(
+            '${sp['method'] ?? 'Cash'}',
+            sp['amount'] is num
+                ? (sp['amount'] as num).toDouble()
+                : (double.tryParse('${sp['amount']}') ?? 0),
+            packageId: sp['customer_package_id'],
+          );
+        }
+        if (appointment.advanceSplits.isEmpty && advancePaid > 0) {
+          pushSplit('Cash', advancePaid);
+        }
+        if (collectNow > 0) pushSplit(method, collectNow);
+        splitsPayload = merged.values.toList();
+        if (splitsPayload.isEmpty) {
+          _lastError = 'Nothing to collect.';
+          return false;
+        }
+      } else if (collectNow <= 0 && method != 'Package') {
+        _lastError = 'Enter a valid amount.';
+        return false;
+      }
+
       await _api.createPayment(
         token: token,
         branchId: effectiveBranchId,
@@ -1251,9 +1344,11 @@ class AppState extends ChangeNotifier {
         customerId: appointment.customerId.isNotEmpty
             ? appointment.customerId
             : null,
-        amount: amount,
+        amount: settleAdvance
+            ? (collectNow > 0 ? amount : advancePaid.toString())
+            : amount,
         method: method,
-        subtotal: subtotal,
+        subtotal: gross > 0 ? gross.toStringAsFixed(2) : subtotal,
         loyaltyDiscount: loyaltyDiscount,
         promoDiscount: promoDiscount,
         phone:
@@ -1265,6 +1360,8 @@ class AppState extends ChangeNotifier {
         isRecurring: isRecurring,
         recurringNextDate: recurringNextDate,
         recurringMessageTemplateIds: recurringMessageTemplateIds,
+        splits: splitsPayload,
+        replaceAppointmentPayments: settleAdvance,
       );
       await _api.updateAppointmentStatus(
         token: token,

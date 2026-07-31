@@ -22,6 +22,9 @@ class Appointment {
     this.isRecurring = false,
     this.recurringNextDate = '',
     this.recurringMessageTemplateIds = const [],
+    this.advancePaid = 0,
+    this.amountPaid = 0,
+    this.advanceSplits = const [],
   });
 
   final String id;
@@ -44,6 +47,11 @@ class Appointment {
   final bool isRecurring;
   final String recurringNextDate;
   final List<String> recurringMessageTemplateIds;
+  /// Booking deposit already collected (commission settled on final pay).
+  final double advancePaid;
+  final double amountPaid;
+  /// Advance payment method splits from API (`advance_splits`).
+  final List<Map<String, dynamic>> advanceSplits;
 
   /// Primary + additional service names (from notes), de-duplicated, order preserved.
   String get servicesDisplay {
@@ -79,6 +87,11 @@ class Appointment {
     return 0;
   }
 
+  double get remainingDue {
+    final paid = advancePaid > 0 ? advancePaid : amountPaid;
+    return (displayAmount - paid).clamp(0, double.infinity);
+  }
+
   factory Appointment.fromJson(Map<String, dynamic> json) {
     final service = json['service'];
     final staff = json['staff'];
@@ -107,6 +120,19 @@ class Appointment {
       final legacy = '${json['recurring_message_template_id'] ?? ''}'.trim();
       if (legacy.isNotEmpty && legacy != 'null') parsedTplIds.add(legacy);
     }
+    double parseMoney(dynamic v) {
+      if (v is num) return v.toDouble();
+      return double.tryParse('$v') ?? 0;
+    }
+    final advanceSplits = <Map<String, dynamic>>[];
+    final rawSplits = json['advance_splits'];
+    if (rawSplits is List) {
+      for (final e in rawSplits) {
+        if (e is Map) {
+          advanceSplits.add(Map<String, dynamic>.from(e));
+        }
+      }
+    }
     return Appointment(
       id: '${json['id']}',
       customerName: '${json['customer_name'] ?? ''}',
@@ -127,6 +153,9 @@ class Appointment {
       isRecurring: json['is_recurring'] == true,
       recurringNextDate: '${json['recurring_next_date'] ?? ''}'.trim(),
       recurringMessageTemplateIds: parsedTplIds,
+      advancePaid: parseMoney(json['advance_paid']),
+      amountPaid: parseMoney(json['amount_paid']),
+      advanceSplits: advanceSplits,
     );
   }
 }

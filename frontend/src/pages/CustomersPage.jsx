@@ -10,10 +10,8 @@ import {
   StaffAvatar, ActionBtn, StatCard, Drawer, PKModal as Modal,
   FilterBar, DataTable,
 } from '../components/ui/PageKit';
+import { LOYALTY_TIERS, getTier, getNextTier, loyaltyTierCounts } from '../utils/loyaltyTiers';
 
-const TIER       = pts => pts >= 500 ? 'Gold' : pts >= 200 ? 'Silver' : 'Bronze';
-const TIER_COLOR = { Gold: '#D97706', Silver: '#64748B', Bronze: '#92400E' };
-const TIER_BG    = { Gold: '#FFFBEB', Silver: '#F8FAFC', Bronze: '#FEF9F0' };
 const EMPTY      = { name: '', phone: '', email: '', branch_id: '' };
 const DEFAULT_LOYALTY_RULES = {
   earn_per_amount: 100,
@@ -26,18 +24,19 @@ const DEFAULT_LOYALTY_RULES = {
 };
 
 function LoyaltyBar({ pts }) {
-  const tier = TIER(pts);
-  const next = tier === 'Bronze' ? 200 : tier === 'Silver' ? 500 : null;
-  const prev = tier === 'Bronze' ? 0   : tier === 'Silver' ? 200 : 500;
-  const pct  = next ? Math.min(100, ((pts - prev) / (next - prev)) * 100) : 100;
+  const tier = getTier(pts);
+  const next = getNextTier(pts);
+  const pct = next
+    ? Math.min(100, ((pts - tier.min) / (next.min - tier.min)) * 100)
+    : 100;
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-        <span style={{ padding: '2px 8px', borderRadius: 6, background: TIER_BG[tier], color: TIER_COLOR[tier], fontWeight: 700, fontSize: 11 }}>{tier}</span>
-        <span style={{ fontSize: 11, color: '#98A2B3' }}>{pts} pts{next ? ` / ${next}` : ''}</span>
+        <span style={{ padding: '2px 8px', borderRadius: 6, background: tier.bg, color: tier.color, fontWeight: 700, fontSize: 11 }}>{tier.name}</span>
+        <span style={{ fontSize: 11, color: '#98A2B3' }}>{pts} pts{next ? ` / ${next.min}` : ''}</span>
       </div>
       <div style={{ height: 5, background: '#F1F5F9', borderRadius: 6 }}>
-        <div style={{ width: `${pct}%`, height: '100%', background: TIER_COLOR[tier], borderRadius: 6, transition: 'width 0.4s' }} />
+        <div style={{ width: `${pct}%`, height: '100%', background: tier.color, borderRadius: 6, transition: 'width 0.4s' }} />
       </div>
     </div>
   );
@@ -72,12 +71,26 @@ export default function CustomersPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [cuR, brR] = await Promise.all([
-        api.get('/customers', { params: { limit: 200, ...(filterBranch ? { branchId: filterBranch } : {}) } }),
-        api.get('/branches',  { params: { limit: 100 } }),
-      ]);
-      setCustomers(Array.isArray(cuR.data) ? cuR.data : (cuR.data?.data ?? []));
-      setBranches(Array.isArray(brR.data)  ? brR.data  : (brR.data?.data  ?? []));
+      const branchParams = filterBranch ? { branchId: filterBranch } : {};
+      const pageLimit = 500;
+      let page = 1;
+      let all = [];
+      let total = Infinity;
+
+      while (all.length < total) {
+        const { data } = await api.get('/customers', {
+          params: { limit: pageLimit, page, ...branchParams },
+        });
+        const rows = Array.isArray(data) ? data : (data?.data ?? []);
+        total = typeof data?.total === 'number' ? data.total : rows.length;
+        all = all.concat(rows);
+        if (!rows.length || rows.length < pageLimit) break;
+        page += 1;
+      }
+
+      const brR = await api.get('/branches', { params: { limit: 100 } });
+      setCustomers(all);
+      setBranches(Array.isArray(brR.data) ? brR.data : (brR.data?.data ?? []));
     } catch { }
     setLoading(false);
   }, [filterBranch]);
@@ -160,8 +173,7 @@ export default function CustomersPage() {
     }
   };
 
-  const tierCounts = { Gold: 0, Silver: 0, Bronze: 0 };
-  customers.forEach(c => { tierCounts[TIER(c.loyalty_points || 0)]++; });
+  const tierCounts = loyaltyTierCounts(customers);
 
   const p = profileItem;
 
@@ -172,10 +184,10 @@ export default function CustomersPage() {
       accessorFn: row => `${row.name || ''} ${row.phone || ''} ${row.email || ''}`.trim(),
       meta: { width: '22%' },
       cell: ({ row: { original: row } }) => {
-        const tier = TIER(row.loyalty_points || 0);
+        const tier = getTier(row.loyalty_points || 0);
         return (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div style={{ width: 36, height: 36, borderRadius: '50%', background: TIER_COLOR[tier], display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: 13, flexShrink: 0 }}>
+            <div style={{ width: 36, height: 36, borderRadius: '50%', background: tier.color, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: 13, flexShrink: 0 }}>
               {row.name.charAt(0).toUpperCase()}
             </div>
             <div>
@@ -258,12 +270,18 @@ export default function CustomersPage() {
         </div>
       )}>
 
-      {/* Stat Cards */}
+      {/* Stat Cards — same tiers as Loyalty page */}
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
         <StatCard label="Total Customers" value={customers.length} color="#2563EB" icon={<IconUsers />} />
-        <StatCard label="Gold Members"   value={tierCounts.Gold}   color="#D97706" icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>} />
-        <StatCard label="Silver Members" value={tierCounts.Silver} color="#64748B" icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>} />
-        <StatCard label="Bronze Members" value={tierCounts.Bronze} color="#92400E" icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>} />
+        {LOYALTY_TIERS.map((t) => (
+          <StatCard
+            key={t.name}
+            label={`${t.name} Members`}
+            value={tierCounts[t.name]}
+            color={t.color}
+            icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>}
+          />
+        ))}
       </div>
 
       {/* Filter Bar */}
@@ -374,7 +392,7 @@ export default function CustomersPage() {
         {p && (
           <div style={{ fontFamily: "'Inter',sans-serif" }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 24, padding: 16, background: '#F9FAFB', borderRadius: 12 }}>
-              <div style={{ width: 52, height: 52, borderRadius: '50%', background: TIER_COLOR[TIER(p.loyalty_points || 0)], display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: 20, flexShrink: 0 }}>
+              <div style={{ width: 52, height: 52, borderRadius: '50%', background: getTier(p.loyalty_points || 0).color, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: 20, flexShrink: 0 }}>
                 {p.name.charAt(0).toUpperCase()}
               </div>
               <div>

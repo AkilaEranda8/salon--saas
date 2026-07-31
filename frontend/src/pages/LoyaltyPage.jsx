@@ -7,22 +7,12 @@ import Button from '../components/ui/Button';
 import { useToast } from '../components/ui/Toast';
 import { useAuth } from '../context/AuthContext';
 
+import { LOYALTY_TIERS, getTier, loyaltyTierCounts } from '../utils/loyaltyTiers';
+
 const Rs = (n) => `Rs. ${Number(n || 0).toLocaleString()}`;
 
-/* ── Tier helpers ─────────────────────────────────────────────────────────── */
-const TIERS = [
-  { name: 'Bronze',   min: 0,    color: '#CD7F32', bg: '#FDF6EC', gradient: 'linear-gradient(135deg, #92400E 0%, #CD7F32 100%)' },
-  { name: 'Silver',   min: 500,  color: '#94A3B8', bg: '#F8FAFC', gradient: 'linear-gradient(135deg, #475569 0%, #94A3B8 100%)' },
-  { name: 'Gold',     min: 1500, color: '#D97706', bg: '#FFFBEB', gradient: 'linear-gradient(135deg, #92400E 0%, #F59E0B 100%)' },
-  { name: 'Platinum', min: 5000, color: '#7C3AED', bg: '#FAF5FF', gradient: 'linear-gradient(135deg, #4C1D95 0%, #7C3AED 100%)' },
-];
-const getTier = (pts) => [...TIERS].reverse().find(t => pts >= t.min) || TIERS[0];
-
-const tierDistribution = (lb) => {
-  const counts = { Bronze: 0, Silver: 0, Gold: 0, Platinum: 0 };
-  lb.forEach(c => { counts[getTier(c.loyalty_points || 0).name]++; });
-  return counts;
-};
+const TIERS = LOYALTY_TIERS;
+const tierDistribution = loyaltyTierCounts;
 
 /* ── Points bar (hero) ────────────────────────────────────────────────────── */
 const PointsBar = ({ total, top }) => {
@@ -53,6 +43,7 @@ export default function LoyaltyPage() {
   const { user } = useAuth();
   const { addToast } = useToast();
   const canAdmin = ['superadmin', 'admin'].includes(user?.role);
+  const canAdjust = ['superadmin', 'admin', 'manager'].includes(user?.role);
 
   const [rules, setRules]             = useState(null);
   const [leaderboard, setLeaderboard] = useState([]);
@@ -64,6 +55,19 @@ export default function LoyaltyPage() {
   const [saving, setSaving]           = useState(false);
   const [redeemForm, setRedeemForm]   = useState({ customer_id: '', points_to_redeem: '' });
   const [redeemResult, setRedeemResult] = useState(null);
+  const [adjustForm, setAdjustForm] = useState({
+    customer_id: '',
+    direction: 'subtract',
+    amount: '50',
+    description: '',
+  });
+  const [adjustResult, setAdjustResult] = useState(null);
+  const [adjustSaving, setAdjustSaving] = useState(false);
+  const [adjustCustomers, setAdjustCustomers] = useState([]);
+  const [adjustSearch, setAdjustSearch] = useState('');
+  const [adjustCustLoading, setAdjustCustLoading] = useState(false);
+  const [reduced50Ids, setReduced50Ids] = useState(() => new Set());
+  const [reduced50Count, setReduced50Count] = useState(0);
 
   const loadRules = useCallback(() => {
     api.get('/loyalty/rules').then((r) => {
@@ -77,6 +81,62 @@ export default function LoyaltyPage() {
   }, []);
 
   useEffect(() => { loadRules(); loadLeaderboard(); }, [loadRules, loadLeaderboard]);
+
+  const loadReduced50 = useCallback(async () => {
+    try {
+      const { data } = await api.get('/loyalty/marked', { params: { mark: 'reduced_50' } });
+      const rows = Array.isArray(data?.data) ? data.data : [];
+      setReduced50Ids(new Set(rows.map((r) => Number(r.id))));
+      setReduced50Count(typeof data?.total === 'number' ? data.total : rows.length);
+    } catch {
+      setReduced50Ids(new Set());
+      setReduced50Count(0);
+    }
+  }, []);
+
+  const loadAdjustCustomers = useCallback(async () => {
+    if (!canAdjust) return;
+    setAdjustCustLoading(true);
+    try {
+      const pageLimit = 500;
+      let page = 1;
+      let all = [];
+      let total = Infinity;
+      while (all.length < total) {
+        const { data } = await api.get('/customers', { params: { limit: pageLimit, page } });
+        const rows = Array.isArray(data) ? data : (data?.data || []);
+        total = typeof data?.total === 'number' ? data.total : rows.length;
+        all = all.concat(rows);
+        if (!rows.length || rows.length < pageLimit) break;
+        page += 1;
+      }
+      setAdjustCustomers(all);
+    } catch {
+      setAdjustCustomers([]);
+    } finally {
+      setAdjustCustLoading(false);
+    }
+  }, [canAdjust]);
+
+  useEffect(() => {
+    loadAdjustCustomers();
+    loadReduced50();
+  }, [loadAdjustCustomers, loadReduced50]);
+
+  const adjustVisibleCustomers = useMemo(() => {
+    const q = adjustSearch.trim().toLowerCase();
+    if (!q) return adjustCustomers;
+    return adjustCustomers.filter((c) => (
+      String(c.name || '').toLowerCase().includes(q)
+      || String(c.phone || '').includes(q)
+      || String(c.id || '').includes(q)
+    ));
+  }, [adjustCustomers, adjustSearch]);
+
+  const selectedAdjustCustomer = useMemo(
+    () => adjustCustomers.find((c) => String(c.id) === String(adjustForm.customer_id)) || null,
+    [adjustCustomers, adjustForm.customer_id],
+  );
 
   const saveRules = async (e) => {
     e.preventDefault();
@@ -111,6 +171,43 @@ export default function LoyaltyPage() {
       addToast(`Redeemed! Discount: ${Rs(r.data.discount_amount)}`, 'success');
       loadLeaderboard();
     } catch (err) { addToast(err.response?.data?.message || 'Error', 'error'); }
+  };
+
+  const handleAdjust = async (e) => {
+    e.preventDefault();
+    const amount = Number(adjustForm.amount);
+    if (!(amount > 0)) {
+      addToast('Enter points greater than 0', 'error');
+      return;
+    }
+    setAdjustSaving(true);
+    setAdjustResult(null);
+    try {
+      const desc = String(adjustForm.description || '').trim()
+        || (adjustForm.direction === 'subtract'
+          ? `Loyalty points reduced by ${amount}`
+          : `Loyalty points increased by ${amount}`);
+      const r = await api.post('/loyalty/adjust', {
+        customer_id: Number(adjustForm.customer_id),
+        direction: adjustForm.direction,
+        amount,
+        description: desc,
+      });
+      setAdjustResult(r.data);
+      addToast(
+        adjustForm.direction === 'subtract'
+          ? `Reduced ${amount} pts — balance ${r.data.balance}`
+          : `Added ${amount} pts — balance ${r.data.balance}`,
+        'success',
+      );
+      loadLeaderboard();
+      loadAdjustCustomers();
+      loadReduced50();
+      if (String(txCustId) === String(adjustForm.customer_id)) loadTx();
+    } catch (err) {
+      addToast(err.response?.data?.message || 'Adjust failed', 'error');
+    }
+    setAdjustSaving(false);
   };
 
   /* ── Computed ── */
@@ -272,8 +369,7 @@ export default function LoyaltyPage() {
       </motion.div>
 
       {/* ── Tier Distribution ── */}
-      {leaderboard.length > 0 && (
-        <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
           {TIERS.map((tier, i) => (
             <motion.div
               key={tier.name}
@@ -282,7 +378,7 @@ export default function LoyaltyPage() {
               transition={{ delay: 0.05 + i * 0.07 }}
               whileHover={{ translateY: -3 }}
               style={{
-                flex: 1, minWidth: 140,
+                flex: 1, minWidth: 120,
                 background: tier.bg, border: `1.5px solid ${tier.color}30`,
                 borderRadius: 14, padding: '18px 16px',
                 textAlign: 'center',
@@ -291,7 +387,7 @@ export default function LoyaltyPage() {
               }}
             >
               <div style={{ fontSize: 28, fontWeight: 900, color: tier.color, fontFamily: "'Sora', sans-serif" }}>
-                {tierCounts[tier.name]}
+                {tierCounts[tier.name] || 0}
               </div>
               <div style={{ fontSize: 12, fontWeight: 700, color: tier.color, textTransform: 'uppercase', letterSpacing: '0.06em', marginTop: 2, fontFamily: "'Inter', sans-serif" }}>
                 {tier.name}
@@ -301,8 +397,31 @@ export default function LoyaltyPage() {
               </div>
             </motion.div>
           ))}
-        </div>
-      )}
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.35 }}
+            whileHover={{ translateY: -3 }}
+            style={{
+              flex: 1, minWidth: 120,
+              background: '#FEF2F2', border: '1.5px solid #FECACA',
+              borderRadius: 14, padding: '18px 16px',
+              textAlign: 'center',
+              boxShadow: '0 2px 8px rgba(16,24,40,0.04)',
+            }}
+            title="Customers who had 50 loyalty points reduced"
+          >
+            <div style={{ fontSize: 28, fontWeight: 900, color: '#DC2626', fontFamily: "'Sora', sans-serif" }}>
+              {reduced50Count}
+            </div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: '#DC2626', textTransform: 'uppercase', letterSpacing: '0.06em', marginTop: 2, fontFamily: "'Inter', sans-serif" }}>
+              −50 pts
+            </div>
+            <div style={{ fontSize: 11, color: '#98A2B3', marginTop: 4, fontFamily: "'Inter', sans-serif" }}>
+              reduced group
+            </div>
+          </motion.div>
+      </div>
 
       {/* ── Cards Grid ── */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: 20 }}>
@@ -421,6 +540,170 @@ export default function LoyaltyPage() {
           </form>
         </motion.div>
 
+        {/* Manual Adjust */}
+        <motion.div
+          initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.17 }}
+          style={{ background: '#fff', border: '1.5px solid #EAECF0', borderRadius: 16, padding: 24, boxShadow: '0 2px 8px rgba(16,24,40,0.06)' }}
+        >
+          <h3 style={{ margin: '0 0 6px', fontSize: 16, fontWeight: 800, color: '#101828', fontFamily: "'Sora', 'Manrope', sans-serif" }}>
+            Adjust Points
+          </h3>
+          <p style={{ margin: '0 0 14px', fontSize: 12.5, color: '#667085', fontFamily: "'Inter', sans-serif" }}>
+            Search and select a customer, then create a points entry (e.g. reduce 50).
+          </p>
+
+          <form onSubmit={handleAdjust} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div>
+              <label style={lbl}>Search customer</label>
+              <input
+                type="search"
+                style={inp}
+                value={adjustSearch}
+                onChange={(e) => setAdjustSearch(e.target.value)}
+                placeholder="Name, phone, or ID…"
+              />
+            </div>
+
+            <div style={{
+              maxHeight: 200, overflowY: 'auto', border: '1.5px solid #E5E7EB', borderRadius: 12,
+              background: '#F9FAFB',
+            }}>
+              {adjustCustLoading ? (
+                <div style={{ padding: 14, fontSize: 13, color: '#98A2B3' }}>Loading customers…</div>
+              ) : adjustVisibleCustomers.length === 0 ? (
+                <div style={{ padding: 14, fontSize: 13, color: '#98A2B3' }}>No customers found</div>
+              ) : (
+                adjustVisibleCustomers.slice(0, 80).map((c) => {
+                  const tier = getTier(c.loyalty_points || 0);
+                  const selected = String(c.id) === String(adjustForm.customer_id);
+                  const isReduced50 = reduced50Ids.has(Number(c.id)) || c.loyalty_mark === 'reduced_50';
+                  return (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => setAdjustForm((p) => ({ ...p, customer_id: String(c.id) }))}
+                      style={{
+                        width: '100%', display: 'flex', alignItems: 'center', gap: 10,
+                        padding: '10px 12px', border: 'none', borderBottom: '1px solid #EEF2F6',
+                        background: selected ? '#EEF2FF' : 'transparent',
+                        cursor: 'pointer', textAlign: 'left', fontFamily: "'Inter', sans-serif",
+                      }}
+                    >
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: '#101828' }}>{c.name}</div>
+                        <div style={{ fontSize: 11, color: '#98A2B3' }}>
+                          ID {c.id}{c.phone ? ` · ${c.phone}` : ''}
+                        </div>
+                      </div>
+                      {isReduced50 && (
+                        <span style={{
+                          fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 6,
+                          background: '#FEE2E2', color: '#DC2626', flexShrink: 0,
+                        }}>−50</span>
+                      )}
+                      <span style={{
+                        fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 6,
+                        background: tier.bg, color: tier.color, flexShrink: 0,
+                      }}>{tier.name}</span>
+                      <span style={{ fontSize: 12, fontWeight: 800, color: '#7C3AED', flexShrink: 0 }}>
+                        {Number(c.loyalty_points || 0).toLocaleString()} pts
+                      </span>
+                    </button>
+                  );
+                })
+              )}
+            </div>
+
+            {selectedAdjustCustomer && (
+              <div style={{
+                padding: '10px 12px', borderRadius: 10, background: '#F5F3FF',
+                border: '1px solid #DDD6FE', fontSize: 13, fontFamily: "'Inter', sans-serif",
+              }}>
+                Selected: <strong>{selectedAdjustCustomer.name}</strong>
+                {' · '}
+                <span style={{ color: getTier(selectedAdjustCustomer.loyalty_points || 0).color, fontWeight: 700 }}>
+                  {getTier(selectedAdjustCustomer.loyalty_points || 0).name}
+                </span>
+                {' · '}
+                {Number(selectedAdjustCustomer.loyalty_points || 0).toLocaleString()} pts
+              </div>
+            )}
+
+            <input type="hidden" value={adjustForm.customer_id} required readOnly />
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <div>
+                <label style={lbl}>Action</label>
+                <select
+                  style={{ ...inp, cursor: 'pointer' }}
+                  value={adjustForm.direction}
+                  onChange={(e) => setAdjustForm((p) => ({ ...p, direction: e.target.value }))}
+                >
+                  <option value="subtract">Reduce (−)</option>
+                  <option value="add">Add (+)</option>
+                </select>
+              </div>
+              <div>
+                <label style={lbl}>Points</label>
+                <input
+                  type="number"
+                  style={inp}
+                  value={adjustForm.amount}
+                  onChange={(e) => setAdjustForm((p) => ({ ...p, amount: e.target.value }))}
+                  required
+                  min="1"
+                  step="1"
+                  placeholder="50"
+                />
+              </div>
+            </div>
+            <div>
+              <label style={lbl}>Entry note (optional)</label>
+              <input
+                type="text"
+                style={inp}
+                value={adjustForm.description}
+                onChange={(e) => setAdjustForm((p) => ({ ...p, description: e.target.value }))}
+                placeholder={
+                  adjustForm.direction === 'subtract'
+                    ? `Loyalty points reduced by ${adjustForm.amount || 50}`
+                    : `Loyalty points increased by ${adjustForm.amount || 50}`
+                }
+              />
+            </div>
+            {adjustResult && (
+              <div style={{
+                background: adjustResult.points_adjusted < 0 ? '#FEF2F2' : '#ECFDF5',
+                border: `1px solid ${adjustResult.points_adjusted < 0 ? '#FECACA' : '#A7F3D0'}`,
+                borderRadius: 10, padding: '12px 16px', fontSize: 13.5,
+                fontFamily: "'Inter', sans-serif",
+                color: adjustResult.points_adjusted < 0 ? '#991B1B' : '#065F46',
+              }}>
+                Entry: <strong>{adjustResult.points_adjusted > 0 ? '+' : ''}{adjustResult.points_adjusted} pts</strong>
+                {' '}· Balance: <strong>{adjustResult.balance} pts</strong>
+                {adjustResult.transaction?.description ? (
+                  <div style={{ marginTop: 4, fontSize: 12, opacity: 0.9 }}>
+                    {adjustResult.transaction.description}
+                  </div>
+                ) : null}
+              </div>
+            )}
+            <Button
+              type="submit"
+              disabled={adjustSaving || !canAdjust || !adjustForm.customer_id}
+              onClick={(e) => {
+                if (!adjustForm.customer_id) {
+                  e.preventDefault();
+                  addToast('Select a customer from a tier category', 'error');
+                }
+              }}
+            >
+              {adjustSaving ? 'Saving…' : 'Create entry'}
+            </Button>
+          </form>
+        </motion.div>
+
         {/* Transaction Lookup */}
         <motion.div
           initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }}
@@ -463,10 +746,16 @@ export default function LoyaltyPage() {
                       <span style={{
                         display: 'inline-block', padding: '2px 8px', borderRadius: 6,
                         fontSize: 12, fontWeight: 700,
-                        background: t.type === 'earn' ? '#D1FAE5' : '#FEE2E2',
-                        color: t.type === 'earn' ? '#065F46' : '#991B1B',
+                        background: t.points > 0 ? '#D1FAE5' : '#FEE2E2',
+                        color: t.points > 0 ? '#065F46' : '#991B1B',
                       }}>
-                        {t.type === 'earn' ? '+' : ''}{t.points} pts
+                        {t.points > 0 ? '+' : ''}{t.points} pts
+                      </span>
+                      <span style={{
+                        marginLeft: 6, fontSize: 10, fontWeight: 700, textTransform: 'uppercase',
+                        color: t.type === 'adjust' ? '#B45309' : '#98A2B3',
+                      }}>
+                        {t.type}
                       </span>
                       <span style={{ color: '#98A2B3', marginLeft: 8, fontSize: 12 }}>{t.description}</span>
                     </div>

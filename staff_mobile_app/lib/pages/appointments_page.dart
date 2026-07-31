@@ -390,7 +390,14 @@ class _ApptState extends State<AppointmentsPage> with SingleTickerProviderStateM
         }
       }
     }
-    final initialAmt = a.displayAmount > 0 ? a.displayAmount.toStringAsFixed(0) : '';
+    final initialAmt = () {
+      final gross = a.displayAmount > 0 ? a.displayAmount : 0.0;
+      final paid = a.advancePaid > 0 ? a.advancePaid : 0.0;
+      final due = (gross - paid).clamp(0, double.infinity);
+      if (due > 0) return due.toStringAsFixed(0);
+      if (paid > 0) return '0';
+      return gross > 0 ? gross.toStringAsFixed(0) : '';
+    }();
 
     final branchKey = a.branchId.trim().isNotEmpty
         ? a.branchId
@@ -992,10 +999,21 @@ class _ApptCard extends StatelessWidget {
                         ),
                 ),
                 // Amount
-                Text('LKR ${amt.toStringAsFixed(0)}',
-                    style: const TextStyle(
-                        color: _forest,
-                        fontSize: 14, fontWeight: FontWeight.w800)),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text('LKR ${amt.toStringAsFixed(0)}',
+                        style: const TextStyle(
+                            color: _forest,
+                            fontSize: 14, fontWeight: FontWeight.w800)),
+                    if (appt.advancePaid > 0)
+                      Text('Adv LKR ${appt.advancePaid.toStringAsFixed(0)}',
+                          style: const TextStyle(
+                              color: Color(0xFF2563EB),
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.w700)),
+                  ],
+                ),
               ]),
             ),
           ]),
@@ -1317,6 +1335,16 @@ class _DetailSheet extends StatelessWidget {
                       valueColor: const Color(0xFF059669),
                     )),
                   ]),
+                  if (appt.advancePaid > 0) ...[
+                    const SizedBox(height: 10),
+                    _InfoTile(
+                      icon: Icons.savings_outlined,
+                      label: 'Advance paid',
+                      value: 'LKR ${appt.advancePaid.toStringAsFixed(0)}'
+                          '${appt.displayAmount > 0 ? ' · Remaining LKR ${appt.remainingDue.toStringAsFixed(0)}' : ''}',
+                      valueColor: const Color(0xFF1D4ED8),
+                    ),
+                  ],
                   const SizedBox(height: 10),
                   Row(children: [
                     Expanded(child: _InfoTile(
@@ -1804,11 +1832,12 @@ class _PaySheetState extends State<_PaySheet> {
     final sum = _grossFromSelection();
     final val = sum > 0 ? sum.toStringAsFixed(0) : '';
     final promo = _computedPromo();
-    final net = (sum - promo).clamp(0, double.infinity);
+    final advance = widget.appointment.advancePaid;
+    final net = (sum - promo - advance).clamp(0, double.infinity);
     setState(() {
       _calcTotal = val;
-      if (val.isNotEmpty) {
-        _amtCtrl.text = net > 0 ? net.toStringAsFixed(0) : '';
+      if (sum > 0 || advance > 0) {
+        _amtCtrl.text = net > 0 ? net.toStringAsFixed(0) : '0';
       } else {
         _amtCtrl.text = '';
       }
@@ -1824,7 +1853,8 @@ class _PaySheetState extends State<_PaySheet> {
       return;
     }
     final paid = double.tryParse(_amtCtrl.text.trim()) ?? 0;
-    if (paid <= 0) {
+    final advance = widget.appointment.advancePaid;
+    if (paid < 0 || (paid == 0 && !(advance > 0) && _method != 'Package')) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Enter a valid amount')),
       );
@@ -1839,7 +1869,7 @@ class _PaySheetState extends State<_PaySheet> {
     final gross = _grossFromSelection();
     final promo = _computedPromo();
     Navigator.of(context).pop(_PayResult(
-      amount: _amtCtrl.text.trim(),
+      amount: _amtCtrl.text.trim().isEmpty ? '0' : _amtCtrl.text.trim(),
       method: _method,
       serviceIds: ids,
       subtotal: gross > 0 ? gross.toStringAsFixed(0) : _calcTotal,
@@ -2023,6 +2053,41 @@ class _PaySheetState extends State<_PaySheet> {
             ),
 
             const SizedBox(height: 16),
+
+            if (widget.appointment.advancePaid > 0) ...[
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEFF6FF),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFBFDBFE)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Advance already paid: LKR ${widget.appointment.advancePaid.toStringAsFixed(0)}',
+                      style: const TextStyle(
+                        color: Color(0xFF1D4ED8),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Collect remaining balance below. Commission uses full total on settle.',
+                      style: TextStyle(
+                        color: const Color(0xFF1D4ED8).withValues(alpha: 0.85),
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 14),
+            ],
 
             // ── Services ───────────────────────────────────────────────
             WalkInServiceDropdownSection(

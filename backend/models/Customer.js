@@ -36,6 +36,11 @@ const Customer = sequelize.define('Customer', {
     type: DataTypes.INTEGER,
     defaultValue: 0,
   },
+  loyalty_mark: {
+    type: DataTypes.STRING(40),
+    allowNull: true,
+    comment: 'Special group e.g. reduced_50 — kept separate from Bronze/Silver tiers',
+  },
   last_visit: {
     type: DataTypes.DATEONLY,
     allowNull: true,

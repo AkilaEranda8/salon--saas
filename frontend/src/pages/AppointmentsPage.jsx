@@ -244,6 +244,13 @@ export default function AppointmentsPage() {
   const [paymentRecurringTemplateIds, setPaymentRecurringTemplateIds] = useState([]);
   const [recurringTemplates, setRecurringTemplates] = useState([]);
   const [apptServiceIds, setApptServiceIds] = useState([]);
+  /** Per-service staff/date/time for multi-booking (new appointment only). */
+  const [serviceAssignments, setServiceAssignments] = useState({});
+  const [serviceSearch, setServiceSearch] = useState('');
+  const [multiBooking, setMultiBooking] = useState(false);
+  const [collectAdvance, setCollectAdvance] = useState(false);
+  const [advanceAmount, setAdvanceAmount] = useState('');
+  const [advanceMethod, setAdvanceMethod] = useState('Cash');
   const [customerSearch, setCustomerSearch] = useState('');
   const [customerLoading, setCustomerLoading] = useState(false);
   const [showCustomerDrop, setShowCustomerDrop] = useState(false);
@@ -271,7 +278,7 @@ export default function AppointmentsPage() {
       const [apR, brR, svR, stR, cuR] = await Promise.all([
         api.get('/appointments', { params:{ page, limit:LIMIT, ...(filterBranch?{branchId:filterBranch}:{}), ...(filterStatus?{status:filterStatus}:{}), ...(filterDate?{date:filterDate}:{}) } }),
         api.get('/branches',     { params:{ limit:100 } }),
-        api.get('/services',     { params:{ limit:200 } }),
+        api.get('/services',     { params:{ limit:1000 } }),
         api.get('/staff',        { params:{ limit:200, ...(filterBranch?{branchId:filterBranch}:{}) } }),
         api.get('/customers',    { params:{ limit:500, ...(filterBranch?{branchId:filterBranch}:{}) } }),
       ]);
@@ -415,7 +422,9 @@ export default function AppointmentsPage() {
     if (paymentMethod === 'Package' && paymentCustPackageId) {
       const cp = paymentCustPackages.find((p) => String(p.id) === String(paymentCustPackageId));
       const bundle = getPackageBundlePrice(cp);
-      setPaymentAmt(bundle > 0 ? String(bundle) : '0');
+      const alreadyPaid = Number(paymentAppt.advance_paid || paymentAppt.amount_paid || 0);
+      const due = Math.max(0, (bundle > 0 ? bundle : 0) - alreadyPaid);
+      setPaymentAmt(String(due));
       return;
     }
     const gross = calcServiceTotal(paymentServices);
@@ -423,8 +432,9 @@ export default function AppointmentsPage() {
       ? paymentDiscounts.find((d) => String(d.id) === String(paymentDiscountId))
       : null;
     const promo = sel ? computePromoFromDiscount(sel, gross) : 0;
-    const net = Math.max(0, gross - promo);
-    setPaymentAmt(net > 0 ? String(net) : '');
+    const alreadyPaid = Number(paymentAppt.advance_paid || paymentAppt.amount_paid || 0);
+    const net = Math.max(0, gross - promo - alreadyPaid);
+    setPaymentAmt(net > 0 ? String(net) : (alreadyPaid > 0 ? '0' : ''));
   }, [showPayment, paymentAppt, paymentServices, paymentDiscountId, paymentDiscounts, services, paymentMethod, paymentCustPackageId]);
   const handlePayment = async () => {
     if (paymentAppt?.status !== 'in_service') {
@@ -437,7 +447,11 @@ export default function AppointmentsPage() {
       if (!packageCoversAllServices(paymentServices, cp)) {
         return setPaymentErr('All selected services must be included in the package.');
       }
-    } else if (!paymentAmt || Number(paymentAmt) <= 0) {
+    } else if (Number(paymentAmt) < 0 || paymentAmt === '' || paymentAmt == null) {
+      return setPaymentErr('Amount is required');
+    }
+    const alreadyPaid = Number(paymentAppt.advance_paid || paymentAppt.amount_paid || 0);
+    if (Number(paymentAmt) === 0 && !(alreadyPaid > 0) && paymentMethod !== 'Package') {
       return setPaymentErr('Amount is required');
     }
     if (!paymentServices.length) return setPaymentErr('At least one service is required');
@@ -449,22 +463,74 @@ export default function AppointmentsPage() {
       const subtotal = paymentMethod === 'Package' && paymentCustPackageId
         ? getPackageBundlePrice(paymentCustPackages.find((p) => String(p.id) === String(paymentCustPackageId)))
         : calcServiceTotal(paymentServices);
-      await api.post('/payments', {
-        branch_id: paymentAppt.branch_id || paymentAppt.branch?.id || user?.branch_id,
-        staff_id: paymentAppt.staff_id || paymentAppt.staff?.id || null,
-        customer_id: paymentAppt.customer_id || null,
-        service_id: paymentServices[0] || null,
-        service_ids: paymentServices,
-        appointment_id: paymentAppt.id,
-        customer_name: paymentAppt.customer_name,
-        subtotal,
-        loyalty_discount: 0,
-        is_recurring: paymentRecurring,
-        recurring_next_date: paymentRecurring ? paymentRecurringDate : null,
-        recurring_message_template_ids: paymentRecurring ? paymentRecurringTemplateIds : [],
-        ...(paymentDiscountId ? { discount_id: Number(paymentDiscountId) } : {}),
-        splits: [{ method: paymentMethod, amount: Number(paymentAmt), ...(paymentMethod === 'Package' && paymentCustPackageId ? { customer_package_id: Number(paymentCustPackageId) } : {}) }],
-      });
+      const collectNow = Number(paymentAmt) || 0;
+      const alreadyPaidAmt = Number(paymentAppt.advance_paid || 0);
+      const settleAdvance = alreadyPaidAmt > 0;
+
+      const mergePaymentSplits = (extras = []) => {
+        const map = new Map();
+        const push = (method, amount, extraFields = {}) => {
+          const amt = Number(amount) || 0;
+          if (!(amt > 0) && method !== 'Package') return;
+          const key = `${method}:${extraFields.customer_package_id || ''}`;
+          if (map.has(key)) map.get(key).amount += amt;
+          else map.set(key, { method, amount: amt, ...extraFields });
+        };
+        for (const sp of (paymentAppt.advance_splits || [])) {
+          push(
+            sp.method,
+            sp.amount,
+            sp.customer_package_id ? { customer_package_id: Number(sp.customer_package_id) } : {},
+          );
+        }
+        if (!(paymentAppt.advance_splits || []).length && alreadyPaidAmt > 0) {
+          push('Cash', alreadyPaidAmt);
+        }
+        for (const sp of extras) {
+          push(
+            sp.method,
+            sp.amount,
+            sp.customer_package_id ? { customer_package_id: Number(sp.customer_package_id) } : {},
+          );
+        }
+        return [...map.values()];
+      };
+
+      let splits = [];
+      if (paymentMethod === 'Package' && paymentCustPackageId) {
+        const pkgSplit = {
+          method: 'Package',
+          amount: collectNow || subtotal,
+          customer_package_id: Number(paymentCustPackageId),
+        };
+        splits = settleAdvance ? mergePaymentSplits([pkgSplit]) : [pkgSplit];
+      } else if (settleAdvance) {
+        splits = mergePaymentSplits(collectNow > 0 ? [{ method: paymentMethod, amount: collectNow }] : []);
+      } else if (collectNow > 0) {
+        splits = [{ method: paymentMethod, amount: collectNow }];
+      }
+
+      if (splits.length) {
+        await api.post('/payments', {
+          branch_id: paymentAppt.branch_id || paymentAppt.branch?.id || user?.branch_id,
+          staff_id: paymentAppt.staff_id || paymentAppt.staff?.id || null,
+          customer_id: paymentAppt.customer_id || null,
+          service_id: paymentServices[0] || null,
+          service_ids: paymentServices,
+          appointment_id: paymentAppt.id,
+          customer_name: paymentAppt.customer_name,
+          subtotal,
+          loyalty_discount: 0,
+          is_recurring: paymentRecurring,
+          recurring_next_date: paymentRecurring ? paymentRecurringDate : null,
+          recurring_message_template_ids: paymentRecurring ? paymentRecurringTemplateIds : [],
+          replace_appointment_payments: settleAdvance,
+          ...(paymentDiscountId ? { discount_id: Number(paymentDiscountId) } : {}),
+          splits,
+        });
+      } else if (paymentRecurring) {
+        // Advance already covers total — still allow completing + optional recurring seed via appointment update.
+      }
       if (paymentAppt?.id) {
         const primaryId = Number(paymentServices[0] || 0);
         const extraNames = paymentServices
@@ -475,17 +541,21 @@ export default function AppointmentsPage() {
           stripAdditionalServicesLine(paymentAppt.notes || ''),
           extraNames.length ? `${APPT_EXTRA_SERVICES_PREFIX} ${extraNames.join(', ')}` : '',
         ].filter(Boolean).join('\n');
-        // Persist service selection back to appointment so future collect/edit screens match.
         await api.put(`/appointments/${paymentAppt.id}`, {
           service_id: primaryId || paymentAppt.service_id,
           service_ids: paymentServices,
           amount: paymentMethod === 'Package' && paymentCustPackageId
             ? getPackageBundlePrice(paymentCustPackages.find((p) => String(p.id) === String(paymentCustPackageId)))
-            : Number(paymentAmt),
+            : (subtotal || Number(paymentAppt.amount) || collectNow),
           customer_package_id: paymentMethod === 'Package' && paymentCustPackageId
             ? Number(paymentCustPackageId)
             : undefined,
           notes: updatedNotes,
+          ...(paymentRecurring ? {
+            is_recurring: true,
+            recurring_next_date: paymentRecurringDate,
+            recurring_message_template_ids: paymentRecurringTemplateIds,
+          } : {}),
         });
         await api.patch(`/appointments/${paymentAppt.id}/status`, { status: 'completed' });
       }
@@ -500,6 +570,12 @@ export default function AppointmentsPage() {
     setEditItem(null);
     setForm({ ...EMPTY, branch_id: user?.branch_id || '', date: today });
     setApptServiceIds([]);
+    setServiceAssignments({});
+    setServiceSearch('');
+    setMultiBooking(false);
+    setCollectAdvance(false);
+    setAdvanceAmount('');
+    setAdvanceMethod('Cash');
     setCustomerSearch('');
     setShowCustomerDrop(false);
     setFormErr('');
@@ -539,6 +615,7 @@ export default function AppointmentsPage() {
     });
     setApptServiceIds(selectedIds);
     setCustomerSearch(row.customer_name || '');
+    setServiceSearch('');
     setBookingCustPackageId(pkgSel.id ? String(pkgSel.id) : '');
     setBookingPackageTemplateId('');
     setBookingCustPackages([]);
@@ -566,7 +643,132 @@ export default function AppointmentsPage() {
   const openDetail = row => { setDetailItem(row); setShowDetail(true); };
 
   const handleSave = async () => {
-    if (!form.customer_name||!apptServiceIds.length||!form.date||!form.time) return setFormErr('Customer, service, date and time are required');
+    if (!form.customer_name || !apptServiceIds.length) {
+      return setFormErr('Customer and at least one service are required');
+    }
+
+    // New booking
+    if (!editItem) {
+      const advanceNum = Number(advanceAmount);
+      if (collectAdvance && (!(advanceNum > 0) || !Number.isFinite(advanceNum))) {
+        return setFormErr('Enter a valid advance payment amount');
+      }
+      const bookingTotal = Number(bookingUsesPackage ? getBookingBundlePrice() : calcServiceTotal(apptServiceIds)) || 0;
+      if (collectAdvance && bookingTotal > 0 && advanceNum > bookingTotal) {
+        return setFormErr(`Advance cannot exceed booking total (Rs. ${bookingTotal.toLocaleString()})`);
+      }
+
+      const usesPackage = !!(bookingPackageTemplateId || bookingCustPackageId);
+      const pkgLine = bookingCustPackageId
+        ? buildPackageNoteLine(
+          bookingCustPackageId,
+          bookingCustPackages.find((cp) => String(cp.id) === String(bookingCustPackageId))?.package?.name,
+        )
+        : '';
+
+      // Multi-booking: each service has its own staff + time
+      if (multiBooking) {
+        const missing = apptServiceIds.find((id) => {
+          const a = serviceAssignments[String(id)] || {};
+          return !a.date || !a.time;
+        });
+        if (missing) {
+          const svc = services.find((s) => Number(s.id) === Number(missing));
+          return setFormErr(`Set date and time for ${svc?.name || 'each service'}`);
+        }
+        setSaving(true);
+        try {
+          const notes = [
+            stripPackageLine(stripAdditionalServicesLine(form.notes || '')),
+            pkgLine,
+          ].filter(Boolean).join('\n');
+          const items = apptServiceIds.map((id) => {
+            const a = serviceAssignments[String(id)] || {};
+            return {
+              service_id: Number(id),
+              staff_id: a.staff_id || null,
+              date: a.date,
+              time: a.time,
+            };
+          });
+          const payload = {
+            branch_id: form.branch_id || user?.branch_id,
+            customer_id: form.customer_id || null,
+            customer_name: form.customer_name,
+            phone: form.phone || '',
+            notes,
+            status: form.status || 'pending',
+            customer_package_id: usesPackage ? Number(bookingCustPackageId) || undefined : undefined,
+            amount: Number(usesPackage ? getBookingBundlePrice() : 0) || undefined,
+            is_recurring: !!form.is_recurring,
+            recurrence_frequency: form.is_recurring ? (form.recurrence_frequency || 'weekly') : null,
+            recurring_next_date: form.is_recurring ? (form.recurring_next_date || null) : null,
+            recurring_message_template_ids: form.is_recurring
+              ? (form.recurring_message_template_ids || [])
+              : null,
+            recurring_message_template_id: null,
+            items,
+            ...(collectAdvance && advanceNum > 0
+              ? { advance_amount: advanceNum, advance_method: advanceMethod }
+              : {}),
+          };
+          await api.post('/appointments', payload);
+          setShowForm(false);
+          load();
+        } catch (e) {
+          setFormErr(e.response?.data?.message || 'Save failed');
+        }
+        setSaving(false);
+        return;
+      }
+
+      // Default single booking: one staff + one time for all selected services
+      if (!form.date || !form.time) return setFormErr('Customer, service, date and time are required');
+      setSaving(true);
+      try {
+        const selectedSvcs = services.filter((s) => apptServiceIds.includes(Number(s.id)));
+        const [primary, ...extras] = selectedSvcs;
+        const extraNote = extras.length ? `${APPT_EXTRA_SERVICES_PREFIX} ${extras.map((s) => s.name).join(', ')}` : '';
+        const payload = {
+          branch_id: form.branch_id || user?.branch_id,
+          customer_id: form.customer_id || null,
+          customer_name: form.customer_name,
+          phone: form.phone || '',
+          staff_id: form.staff_id || null,
+          date: form.date,
+          time: form.time,
+          status: form.status || 'pending',
+          service_id: primary?.id || form.service_id,
+          service_ids: apptServiceIds,
+          customer_package_id: usesPackage ? Number(bookingCustPackageId) || undefined : undefined,
+          amount: Number(usesPackage ? getBookingBundlePrice() : (selectedSvcs.reduce((sum, s) => sum + Number(s.price || 0), 0) || form.amount || 0)),
+          notes: [
+            stripPackageLine(stripAdditionalServicesLine(form.notes || '')),
+            pkgLine,
+            extraNote,
+          ].filter(Boolean).join('\n'),
+          is_recurring: !!form.is_recurring,
+          recurrence_frequency: form.is_recurring ? (form.recurrence_frequency || 'weekly') : null,
+          recurring_next_date: form.is_recurring ? (form.recurring_next_date || null) : null,
+          recurring_message_template_ids: form.is_recurring
+            ? (form.recurring_message_template_ids || [])
+            : null,
+          recurring_message_template_id: null,
+          ...(collectAdvance && advanceNum > 0
+            ? { advance_amount: advanceNum, advance_method: advanceMethod }
+            : {}),
+        };
+        await api.post('/appointments', payload);
+        setShowForm(false);
+        load();
+      } catch (e) {
+        setFormErr(e.response?.data?.message || 'Save failed');
+      }
+      setSaving(false);
+      return;
+    }
+
+    if (!form.date || !form.time) return setFormErr('Customer, service, date and time are required');
     setSaving(true);
     try {
       const selectedSvcs = services.filter(s => apptServiceIds.includes(Number(s.id)));
@@ -598,7 +800,7 @@ export default function AppointmentsPage() {
       } else {
         payload.recurring_message_template_id = null;
       }
-      editItem ? await api.put(`/appointments/${editItem.id}`, payload) : await api.post('/appointments', payload);
+      await api.put(`/appointments/${editItem.id}`, payload);
       setShowForm(false); load();
     } catch (e) { setFormErr(e.response?.data?.message||'Save failed'); }
     setSaving(false);
@@ -611,6 +813,14 @@ export default function AppointmentsPage() {
     setDeleteId(null); load();
   };
 
+  const updateServiceAssignment = (serviceId, patch) => {
+    const key = String(serviceId);
+    setServiceAssignments((prev) => ({
+      ...prev,
+      [key]: { staff_id: '', date: form.date || today, time: '', ...(prev[key] || {}), ...patch },
+    }));
+  };
+
   const toggleApptService = (id) => {
     const nid = Number(id);
     setApptServiceIds(prev => {
@@ -620,6 +830,23 @@ export default function AppointmentsPage() {
         service_id: next[0] || '',
         amount: resolveBookingAmount(next),
       }));
+      setServiceAssignments((prevAssign) => {
+        const out = { ...prevAssign };
+        if (!next.includes(nid)) {
+          delete out[String(nid)];
+        } else if (!out[String(nid)]) {
+          out[String(nid)] = {
+            staff_id: form.staff_id || '',
+            date: form.date || today,
+            time: form.time || '',
+          };
+        }
+        // Drop removed services
+        Object.keys(out).forEach((k) => {
+          if (!next.includes(Number(k))) delete out[k];
+        });
+        return out;
+      });
       return next;
     });
   };
@@ -655,6 +882,17 @@ export default function AppointmentsPage() {
     const nextIds = resolveTemplateServiceIds(tpl, services);
     if (nextIds.length) {
       setApptServiceIds(nextIds);
+      setServiceAssignments((prev) => {
+        const out = {};
+        nextIds.forEach((id) => {
+          out[String(id)] = prev[String(id)] || {
+            staff_id: form.staff_id || '',
+            date: form.date || today,
+            time: form.time || '',
+          };
+        });
+        return out;
+      });
       setForm((f) => ({
         ...f,
         service_id: nextIds[0] || '',
@@ -787,6 +1025,7 @@ export default function AppointmentsPage() {
       cell: ({ row }) => {
         const pkgs = apptPackageCache[row.original.customer_id] || [];
         const bill = resolveAppointmentAmountDisplay(row.original, { services, customerPackages: pkgs });
+        const paid = Number(row.original.advance_paid || row.original.amount_paid || 0);
         return (
           <div style={{ textAlign: 'right' }}>
             {bill.listTotal != null && bill.isPackage && (
@@ -799,6 +1038,11 @@ export default function AppointmentsPage() {
             </span>
             {bill.isPackage && (
               <div style={{ fontSize: 10, fontWeight: 700, color: '#047857', marginTop: 2 }}>Package</div>
+            )}
+            {paid > 0 && row.original.status !== 'completed' && (
+              <div style={{ fontSize: 10, fontWeight: 700, color: '#2563EB', marginTop: 2 }}>
+                Advance Rs. {paid.toLocaleString()}
+              </div>
             )}
           </div>
         );
@@ -991,13 +1235,31 @@ export default function AppointmentsPage() {
             <div style={{ fontSize: 13, color: isDark ? '#94A3B8' : '#64748B' }}>
               {apptServiceIds.length > 0 ? (
                 <span style={{ fontWeight: 800, color: bookingUsesPackage ? '#047857' : '#059669' }}>
-                  {bookingUsesPackage
-                    ? formatPackageBillAmount(bookingBundlePrice)
-                    : `Rs. ${Number(form.amount || 0).toLocaleString()}`}
+                  {(() => {
+                    const total = bookingUsesPackage
+                      ? Number(bookingBundlePrice || 0)
+                      : Number(form.amount || 0);
+                    const adv = (!editItem && collectAdvance && Number(advanceAmount) > 0) ? Number(advanceAmount) : 0;
+                    const remain = Math.max(0, total - adv);
+                    if (adv > 0) {
+                      return `Remain Rs. ${remain.toLocaleString()}`;
+                    }
+                    return bookingUsesPackage
+                      ? formatPackageBillAmount(bookingBundlePrice)
+                      : `Rs. ${total.toLocaleString()}`;
+                  })()}
                   <span style={{ fontWeight: 500, color: isDark ? '#94A3B8' : '#64748B', marginLeft: 8 }}>
                     · {apptServiceIds.length} service{apptServiceIds.length !== 1 ? 's' : ''}
                     {bookingUsesPackage ? ' · Package' : ''}
-                    {form.date && form.time ? ` · ${form.date} ${form.time}` : ''}
+                    {!editItem && collectAdvance && Number(advanceAmount) > 0
+                      ? ` · Advance Rs. ${Number(advanceAmount).toLocaleString()}`
+                      : ''}
+                    {!editItem && multiBooking && apptServiceIds.length > 1 ? ' · separate bookings' : ''}
+                    {editItem && form.date && form.time ? ` · ${form.date} ${form.time}` : ''}
+                    {!editItem && !multiBooking && form.date && form.time ? ` · ${form.date} ${form.time}` : ''}
+                    {!editItem && multiBooking && apptServiceIds.length === 1 && serviceAssignments[String(apptServiceIds[0])]?.date
+                      ? ` · ${serviceAssignments[String(apptServiceIds[0])].date} ${serviceAssignments[String(apptServiceIds[0])].time || ''}`
+                      : ''}
                   </span>
                 </span>
               ) : (
@@ -1007,7 +1269,11 @@ export default function AppointmentsPage() {
             <div style={{ display: 'flex', gap: 8, marginLeft: 'auto' }}>
               <Button variant="secondary" onClick={() => setShowForm(false)}>Cancel</Button>
               <Button variant="primary" loading={saving} onClick={handleSave}>
-                {editItem ? 'Save Changes' : 'Create Appointment'}
+                {editItem
+                  ? 'Save Changes'
+                  : (multiBooking && apptServiceIds.length > 1
+                    ? `Create ${apptServiceIds.length} Bookings`
+                    : 'Create Appointment')}
               </Button>
             </div>
           </div>
@@ -1022,7 +1288,9 @@ export default function AppointmentsPage() {
           </div>
         )}
         <p style={{ margin: '0 0 16px', fontSize: 13, color: C.muted, lineHeight: 1.45 }}>
-          {editItem ? 'Update booking details, services, and schedule.' : 'Book a customer — select services, staff, and time slot.'}
+          {editItem
+            ? 'Update booking details, services, and schedule.'
+            : 'Book a customer — select services, staff, and time. Tick Multiple bookings to assign different staff/time per service.'}
         </p>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 16 }}>
@@ -1167,32 +1435,101 @@ export default function AppointmentsPage() {
               )}
             </ApptSection>
 
-            <ApptSection title="Services" desc="Select one or more — first service is primary" dark={isDark}>
+            <ApptSection title="Services" desc={editItem ? 'Select one or more — first service is primary' : 'Select one or more services'} dark={isDark}>
+              {!editItem && (
+                <label style={{
+                  display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer',
+                  padding: '10px 12px', borderRadius: 12,
+                  border: `1px solid ${multiBooking ? '#86EFAC' : (isDark ? '#334155' : '#E2E8F0')}`,
+                  background: multiBooking ? (isDark ? '#052e16' : '#F0FDF4') : (isDark ? '#0F172A' : '#F8FAFC'),
+                }}>
+                  <input
+                    type="checkbox"
+                    checked={multiBooking}
+                    onChange={(e) => {
+                      const on = e.target.checked;
+                      setMultiBooking(on);
+                      if (on) {
+                        setServiceAssignments((prev) => {
+                          const out = { ...prev };
+                          apptServiceIds.forEach((id) => {
+                            if (!out[String(id)]) {
+                              out[String(id)] = {
+                                staff_id: form.staff_id || '',
+                                date: form.date || today,
+                                time: form.time || '',
+                              };
+                            }
+                          });
+                          return out;
+                        });
+                      }
+                    }}
+                    style={{ width: 16, height: 16, marginTop: 2, accentColor: '#059669' }}
+                  />
+                  <span>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: isDark ? '#E2E8F0' : '#0F172A' }}>
+                      Multiple bookings
+                    </div>
+                    <div style={{ fontSize: 12, color: isDark ? '#94A3B8' : '#64748B', marginTop: 2 }}>
+                      Tick to assign a different staff member and time for each service
+                    </div>
+                  </span>
+                </label>
+              )}
+              <Input
+                value={serviceSearch}
+                onChange={(e) => setServiceSearch(e.target.value)}
+                placeholder="Search services by name or category…"
+              />
               <div style={{
                 border: `1px solid ${isDark ? '#334155' : '#DCE6F3'}`,
                 borderRadius: 12, overflow: 'hidden', maxHeight: 220, overflowY: 'auto',
                 background: isDark ? '#0F172A' : '#fff',
               }}>
-                {services.filter((s) => s.is_active !== false).map((s, idx, arr) => {
-                  const active = apptServiceIds.includes(Number(s.id));
-                  return (
-                    <label
-                      key={s.id}
-                      style={{
-                        display: 'grid', gridTemplateColumns: '24px 1fr auto auto', alignItems: 'center', gap: 10,
-                        padding: '10px 14px',
-                        borderBottom: idx !== arr.length - 1 ? `1px solid ${isDark ? '#334155' : '#EEF2F6'}` : 'none',
-                        background: active ? (isDark ? '#1e3a5f' : '#F0F9FF') : 'transparent',
-                        cursor: 'pointer',
-                      }}
-                    >
-                      <input type="checkbox" checked={active} onChange={() => toggleApptService(s.id)} style={{ width: 16, height: 16, accentColor: '#2563EB' }} />
-                      <span style={{ fontSize: 14, color: isDark ? '#E2E8F0' : '#0F172A', fontWeight: active ? 700 : 500 }}>{s.name}</span>
-                      <span style={{ fontSize: 12, color: '#94A3B8', fontWeight: 600 }}>{s.duration_minutes || 30} min</span>
-                      <span style={{ fontSize: 14, color: '#059669', fontWeight: 800 }}>Rs.{Number(s.price || 0).toLocaleString()}</span>
-                    </label>
-                  );
-                })}
+                {(() => {
+                  const q = serviceSearch.trim().toLowerCase();
+                  const filtered = services.filter((s) => {
+                    if (s.is_active === false) return false;
+                    if (!q) return true;
+                    const hay = `${s.name || ''} ${s.category || ''} ${s.subcategory || ''}`.toLowerCase();
+                    return hay.includes(q);
+                  });
+                  if (!filtered.length) {
+                    return (
+                      <div style={{ padding: '14px', fontSize: 12, color: '#98A2B3', textAlign: 'center' }}>
+                        {q ? `No services match “${serviceSearch.trim()}”` : 'No active services'}
+                      </div>
+                    );
+                  }
+                  return filtered.map((s, idx, arr) => {
+                    const active = apptServiceIds.includes(Number(s.id));
+                    return (
+                      <label
+                        key={s.id}
+                        style={{
+                          display: 'grid', gridTemplateColumns: '24px 1fr auto auto', alignItems: 'center', gap: 10,
+                          padding: '10px 14px',
+                          borderBottom: idx !== arr.length - 1 ? `1px solid ${isDark ? '#334155' : '#EEF2F6'}` : 'none',
+                          background: active ? (isDark ? '#1e3a5f' : '#F0F9FF') : 'transparent',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <input type="checkbox" checked={active} onChange={() => toggleApptService(s.id)} style={{ width: 16, height: 16, accentColor: '#2563EB' }} />
+                        <span style={{ minWidth: 0 }}>
+                          <span style={{ display: 'block', fontSize: 14, color: isDark ? '#E2E8F0' : '#0F172A', fontWeight: active ? 700 : 500 }}>{s.name}</span>
+                          {(s.category || s.subcategory) && (
+                            <span style={{ display: 'block', fontSize: 11, color: '#94A3B8', marginTop: 2 }}>
+                              {[s.category, s.subcategory].filter(Boolean).join(' · ')}
+                            </span>
+                          )}
+                        </span>
+                        <span style={{ fontSize: 12, color: '#94A3B8', fontWeight: 600 }}>{s.duration_minutes || 30} min</span>
+                        <span style={{ fontSize: 14, color: '#059669', fontWeight: 800 }}>Rs.{Number(s.price || 0).toLocaleString()}</span>
+                      </label>
+                    );
+                  });
+                })()}
               </div>
               {apptServiceIds.length > 0 && (
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
@@ -1205,55 +1542,198 @@ export default function AppointmentsPage() {
               )}
             </ApptSection>
 
-            <ApptSection title="Staff & Notes" dark={isDark}>
-              <FormGroup label="Assign Staff">
-                <Select value={form.staff_id || ''} onChange={(e) => setForm((f) => ({ ...f, staff_id: e.target.value }))}>
-                  <option value="">Any available staff</option>
-                  {filteredStaff.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                </Select>
-              </FormGroup>
+            <ApptSection title="Notes" dark={isDark}>
               <FormGroup label="Notes">
                 <Textarea value={form.notes || ''} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} placeholder="Special requests, allergies, preferences…" rows={2} />
               </FormGroup>
             </ApptSection>
+
+            {!editItem && (
+              <ApptSection title="Advance payment" desc="Optional — collect a deposit when booking" dark={isDark}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={collectAdvance}
+                    onChange={(e) => {
+                      setCollectAdvance(e.target.checked);
+                      if (!e.target.checked) setAdvanceAmount('');
+                    }}
+                    style={{ width: 16, height: 16, accentColor: '#2563EB' }}
+                  />
+                  <span style={{ fontSize: 13, fontWeight: 600, color: isDark ? '#E2E8F0' : '#0F172A' }}>
+                    Collect advance payment now
+                  </span>
+                </label>
+                {collectAdvance && (
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                    <FormGroup label="Advance amount (Rs.)" required>
+                      <Input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={advanceAmount}
+                        onChange={(e) => setAdvanceAmount(e.target.value)}
+                        placeholder="e.g. 1000"
+                      />
+                    </FormGroup>
+                    <FormGroup label="Payment method" required>
+                      <Select value={advanceMethod} onChange={(e) => setAdvanceMethod(e.target.value)}>
+                        <option value="Cash">Cash</option>
+                        <option value="Card">Card</option>
+                        <option value="Online Transfer">Online Transfer</option>
+                      </Select>
+                    </FormGroup>
+                  </div>
+                )}
+                {collectAdvance && (() => {
+                  const total = Number(bookingUsesPackage ? getBookingBundlePrice() : calcServiceTotal(apptServiceIds)) || 0;
+                  const adv = Number(advanceAmount) || 0;
+                  if (!(total > 0)) return null;
+                  return (
+                    <div style={{ fontSize: 12, color: isDark ? '#94A3B8' : '#64748B' }}>
+                      Booking total Rs. {total.toLocaleString()}
+                      {adv > 0 && (
+                        <> · Remaining Rs. {Math.max(0, total - adv).toLocaleString()}</>
+                      )}
+                    </div>
+                  );
+                })()}
+              </ApptSection>
+            )}
           </div>
 
           {/* Right column */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            <ApptSection title="Schedule" desc="Date, time, and booking status" dark={isDark}>
-              {isSuperAdmin && (
+            {isSuperAdmin && (
+              <ApptSection title="Branch" dark={isDark}>
                 <FormGroup label="Branch">
                   <Select value={form.branch_id || ''} onChange={(e) => setForm((f) => ({ ...f, branch_id: e.target.value, staff_id: '' }))}>
                     <option value="">Select branch</option>
                     {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
                   </Select>
                 </FormGroup>
-              )}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <FormGroup label="Date" required>
-                  <Input type="date" value={form.date || ''} onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))} />
-                </FormGroup>
-                <FormGroup label="Time" required>
-                  <Input type="time" value={form.time || ''} onChange={(e) => setForm((f) => ({ ...f, time: e.target.value }))} />
-                </FormGroup>
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <FormGroup label="Status">
-                  <Select value={form.status || 'pending'} onChange={(e) => setForm((f) => ({ ...f, status: e.target.value }))}>
-                    {APPT_STATUSES.filter((s) => s !== 'completed').map((s) => <option key={s} value={s}>{STATUS_META[s].label}</option>)}
-                  </Select>
-                </FormGroup>
-                <FormGroup label={bookingUsesPackage ? 'Bundle price (Rs.)' : 'Amount (Rs.)'}>
-                  <Input
-                    type="number"
-                    value={bookingUsesPackage ? String(bookingBundlePrice || form.amount || '0') : (form.amount || '')}
-                    onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))}
-                    placeholder={bookingUsesPackage ? 'Package bundle' : 'Auto from services'}
-                    disabled={!!bookingUsesPackage}
-                  />
-                </FormGroup>
-              </div>
-            </ApptSection>
+              </ApptSection>
+            )}
+
+            {!editItem && multiBooking ? (
+              <ApptSection
+                title="Staff & schedule"
+                desc="Assign a stylist and time for each service — creates separate bookings"
+                dark={isDark}
+              >
+                {!apptServiceIds.length ? (
+                  <div style={{ fontSize: 13, color: isDark ? '#94A3B8' : '#64748B' }}>
+                    Select services first.
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    {services.filter((s) => apptServiceIds.includes(Number(s.id))).map((s) => {
+                      const a = serviceAssignments[String(s.id)] || { staff_id: '', date: form.date || today, time: '' };
+                      const ready = !!(a.date && a.time);
+                      return (
+                        <div
+                          key={s.id}
+                          style={{
+                            border: `1px solid ${ready ? '#86EFAC' : (isDark ? '#334155' : '#E2E8F0')}`,
+                            borderRadius: 12,
+                            padding: 12,
+                            background: ready ? (isDark ? '#052e16' : '#F0FDF4') : (isDark ? '#0F172A' : '#F8FAFC'),
+                          }}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginBottom: 10 }}>
+                            <div>
+                              <div style={{ fontSize: 14, fontWeight: 700, color: isDark ? '#E2E8F0' : '#0F172A' }}>{s.name}</div>
+                              <div style={{ fontSize: 11, color: isDark ? '#94A3B8' : '#64748B' }}>{s.duration_minutes || 30} min · Rs.{Number(s.price || 0).toLocaleString()}</div>
+                            </div>
+                            {ready && (
+                              <span style={{ fontSize: 11, fontWeight: 700, color: '#047857' }}>Ready</span>
+                            )}
+                          </div>
+                          <FormGroup label="Staff">
+                            <Select
+                              value={a.staff_id || ''}
+                              onChange={(e) => updateServiceAssignment(s.id, { staff_id: e.target.value })}
+                            >
+                              <option value="">Any available staff</option>
+                              {filteredStaff.map((st) => <option key={st.id} value={st.id}>{st.name}</option>)}
+                            </Select>
+                          </FormGroup>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 10 }}>
+                            <FormGroup label="Date" required>
+                              <Input
+                                type="date"
+                                value={a.date || ''}
+                                onChange={(e) => updateServiceAssignment(s.id, { date: e.target.value })}
+                              />
+                            </FormGroup>
+                            <FormGroup label="Time" required>
+                              <Input
+                                type="time"
+                                value={a.time || ''}
+                                onChange={(e) => updateServiceAssignment(s.id, { time: e.target.value })}
+                              />
+                            </FormGroup>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 4 }}>
+                  <FormGroup label="Status">
+                    <Select value={form.status || 'pending'} onChange={(e) => setForm((f) => ({ ...f, status: e.target.value }))}>
+                      {APPT_STATUSES.filter((s) => s !== 'completed').map((s) => <option key={s} value={s}>{STATUS_META[s].label}</option>)}
+                    </Select>
+                  </FormGroup>
+                  <FormGroup label={bookingUsesPackage ? 'Bundle price (Rs.)' : 'Amount (Rs.)'}>
+                    <Input
+                      type="number"
+                      value={bookingUsesPackage ? String(bookingBundlePrice || form.amount || '0') : (form.amount || '')}
+                      onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))}
+                      placeholder={bookingUsesPackage ? 'Package bundle' : 'Auto per service'}
+                      disabled={!!bookingUsesPackage}
+                    />
+                  </FormGroup>
+                </div>
+              </ApptSection>
+            ) : (
+              <>
+                <ApptSection title="Staff & Notes" dark={isDark}>
+                  <FormGroup label="Assign Staff">
+                    <Select value={form.staff_id || ''} onChange={(e) => setForm((f) => ({ ...f, staff_id: e.target.value }))}>
+                      <option value="">Any available staff</option>
+                      {filteredStaff.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                    </Select>
+                  </FormGroup>
+                </ApptSection>
+                <ApptSection title="Schedule" desc="Date, time, and booking status" dark={isDark}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                    <FormGroup label="Date" required>
+                      <Input type="date" value={form.date || ''} onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))} />
+                    </FormGroup>
+                    <FormGroup label="Time" required>
+                      <Input type="time" value={form.time || ''} onChange={(e) => setForm((f) => ({ ...f, time: e.target.value }))} />
+                    </FormGroup>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                    <FormGroup label="Status">
+                      <Select value={form.status || 'pending'} onChange={(e) => setForm((f) => ({ ...f, status: e.target.value }))}>
+                        {APPT_STATUSES.filter((s) => s !== 'completed').map((s) => <option key={s} value={s}>{STATUS_META[s].label}</option>)}
+                      </Select>
+                    </FormGroup>
+                    <FormGroup label={bookingUsesPackage ? 'Bundle price (Rs.)' : 'Amount (Rs.)'}>
+                      <Input
+                        type="number"
+                        value={bookingUsesPackage ? String(bookingBundlePrice || form.amount || '0') : (form.amount || '')}
+                        onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))}
+                        placeholder={bookingUsesPackage ? 'Package bundle' : 'Auto from services'}
+                        disabled={!!bookingUsesPackage}
+                      />
+                    </FormGroup>
+                  </div>
+                </ApptSection>
+              </>
+            )}
 
             <ApptSection title="Recurring" desc="Auto-book next visit when completed" dark={isDark}>
               <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
@@ -1312,26 +1792,64 @@ export default function AppointmentsPage() {
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: isDark ? '#D1FAE5' : '#065F46' }}>
                   <span>Date & Time</span>
-                  <span style={{ fontWeight: 700 }}>{form.date && form.time ? `${form.date} · ${form.time}` : '—'}</span>
+                  <span style={{ fontWeight: 700, textAlign: 'right', maxWidth: '60%' }}>
+                    {!editItem && multiBooking
+                      ? (apptServiceIds.length
+                        ? `${apptServiceIds.filter((id) => {
+                          const a = serviceAssignments[String(id)];
+                          return a?.date && a?.time;
+                        }).length}/${apptServiceIds.length} scheduled`
+                        : '—')
+                      : (form.date && form.time ? `${form.date} · ${form.time}` : '—')}
+                  </span>
                 </div>
                 <div style={{ height: 1, background: isDark ? 'rgba(255,255,255,0.15)' : 'rgba(5,150,105,0.2)', margin: '4px 0' }} />
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: 14, fontWeight: 700, color: isDark ? '#BBF7D0' : '#064E3B' }}>
-                    {bookingUsesPackage ? 'Bundle price (final)' : 'Estimated Total'}
-                  </span>
-                  <div style={{ textAlign: 'right' }}>
-                    {bookingUsesPackage && apptServiceIds.length > 0 && (
-                      <div style={{ fontSize: 11, color: isDark ? '#94A3B8' : '#64748B', fontWeight: 600, marginBottom: 2, textDecoration: 'line-through' }}>
-                        List Rs. {calcServiceTotal(apptServiceIds).toLocaleString()}
+                {(() => {
+                  const summaryTotal = bookingUsesPackage
+                    ? Number(bookingBundlePrice || 0)
+                    : Number(form.amount || calcServiceTotal(apptServiceIds) || 0);
+                  const summaryAdvance = (!editItem && collectAdvance && Number(advanceAmount) > 0)
+                    ? Number(advanceAmount)
+                    : 0;
+                  const summaryRemaining = Math.max(0, summaryTotal - summaryAdvance);
+                  return (
+                    <>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontSize: 14, fontWeight: 700, color: isDark ? '#BBF7D0' : '#064E3B' }}>
+                          {bookingUsesPackage ? 'Bundle price' : 'Estimated Total'}
+                        </span>
+                        <div style={{ textAlign: 'right' }}>
+                          {bookingUsesPackage && apptServiceIds.length > 0 && (
+                            <div style={{ fontSize: 11, color: isDark ? '#94A3B8' : '#64748B', fontWeight: 600, marginBottom: 2, textDecoration: 'line-through' }}>
+                              List Rs. {calcServiceTotal(apptServiceIds).toLocaleString()}
+                            </div>
+                          )}
+                          <span style={{ fontSize: 18, fontWeight: 800, color: isDark ? '#fff' : '#047857', letterSpacing: '-0.02em' }}>
+                            {bookingUsesPackage
+                              ? formatPackageBillAmount(bookingBundlePrice)
+                              : `Rs. ${summaryTotal.toLocaleString()}`}
+                          </span>
+                        </div>
                       </div>
-                    )}
-                    <span style={{ fontSize: 22, fontWeight: 800, color: isDark ? '#fff' : '#047857', letterSpacing: '-0.02em' }}>
-                      {bookingUsesPackage
-                        ? formatPackageBillAmount(bookingBundlePrice)
-                        : `Rs. ${Number(form.amount || 0).toLocaleString()}`}
-                    </span>
-                  </div>
-                </div>
+                      {summaryAdvance > 0 && (
+                        <>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: isDark ? '#93C5FD' : '#1D4ED8' }}>
+                            <span>Advance payment ({advanceMethod})</span>
+                            <span style={{ fontWeight: 700 }}>- Rs. {summaryAdvance.toLocaleString()}</span>
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 2 }}>
+                            <span style={{ fontSize: 14, fontWeight: 800, color: isDark ? '#BBF7D0' : '#064E3B' }}>
+                              Remaining to pay
+                            </span>
+                            <span style={{ fontSize: 22, fontWeight: 800, color: isDark ? '#fff' : '#047857', letterSpacing: '-0.02em' }}>
+                              Rs. {summaryRemaining.toLocaleString()}
+                            </span>
+                          </div>
+                        </>
+                      )}
+                    </>
+                  );
+                })()}
               </div>
             </div>
           </div>
@@ -1375,6 +1893,19 @@ export default function AppointmentsPage() {
                   </div>
                   {paymentAppt.staff?.name && <span style={{ background:isDark?'#334155':'#F3F4F6', color:isDark?'#CBD5E1':'#475467', padding:'4px 12px', borderRadius:8, fontSize:12, fontWeight:500 }}>{paymentAppt.staff.name}</span>}
                 </div>
+                {Number(paymentAppt.advance_paid || paymentAppt.amount_paid || 0) > 0 && (
+                  <div style={{
+                    marginTop: 12, padding: '10px 12px', borderRadius: 10,
+                    background: isDark ? '#1e3a5f' : '#EFF6FF',
+                    border: `1px solid ${isDark ? '#1d4ed8' : '#BFDBFE'}`,
+                    fontSize: 13, color: isDark ? '#93C5FD' : '#1D4ED8', fontWeight: 600,
+                  }}>
+                    Advance already paid: Rs. {Number(paymentAppt.advance_paid || paymentAppt.amount_paid || 0).toLocaleString()}
+                    <div style={{ fontSize: 12, fontWeight: 500, marginTop: 2, opacity: 0.9 }}>
+                      Collect the remaining balance below.
+                    </div>
+                  </div>
+                )}
               </div>
               <div style={{
                 border: `1px solid ${isDark ? '#334155' : '#E5EAF0'}`,

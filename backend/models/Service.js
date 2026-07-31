@@ -15,6 +15,10 @@ const Service = sequelize.define('Service', {
     type: DataTypes.STRING(100),
     allowNull: true,
   },
+  subcategory: {
+    type: DataTypes.STRING(100),
+    allowNull: true,
+  },
   duration_minutes: {
     type: DataTypes.INTEGER,
     defaultValue: 30,

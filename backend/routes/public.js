@@ -609,21 +609,111 @@ router.post('/customer-portal/purchase', portalAuth, async (req, res) => {
   }
 });
 
+function rangesOverlap(aStart, aEnd, bStart, bEnd) {
+  return aStart < bEnd && aEnd > bStart;
+}
+
+/**
+ * Normalize public booking payload into discrete appointment items.
+ * Supports:
+ *  - items: [{ service_id, staff_id, date, time }, ...]  (preferred — own staff/time each)
+ *  - legacy: one staff_id/date/time + service_id or service_ids (back-to-back on same staff)
+ */
+function normalizePublicBookingItems(body = {}) {
+  const bookingName = String(body.customer_name || '').trim();
+  const bookingPhone = String(body.phone || '').trim();
+  const bookingEmail = body.email ? String(body.email).trim() : null;
+  const notes = body.notes ? String(body.notes).trim() : null;
+
+  if (Array.isArray(body.items) && body.items.length > 0) {
+    const items = body.items.map((raw, idx) => {
+      const service_id = Number(raw?.service_id ?? raw?.serviceId);
+      const staff_id = Number(raw?.staff_id ?? raw?.staffId);
+      const date = String(raw?.date || '').trim();
+      const time = String(raw?.time || '').trim();
+      if (!Number.isInteger(service_id) || service_id <= 0) {
+        throw Object.assign(new Error(`items[${idx}].service_id is required`), { status: 400 });
+      }
+      if (!Number.isInteger(staff_id) || staff_id <= 0) {
+        throw Object.assign(new Error(`items[${idx}].staff_id is required`), { status: 400 });
+      }
+      if (!date || !time) {
+        throw Object.assign(new Error(`items[${idx}] needs date and time`), { status: 400 });
+      }
+      return { service_id, staff_id, date, time };
+    });
+    return { items, bookingName, bookingPhone, bookingEmail, notes };
+  }
+
+  const staffIdNum = Number(body.staff_id);
+  const date = String(body.date || '').trim();
+  const time = String(body.time || '').trim();
+  if (!Number.isInteger(staffIdNum) || staffIdNum <= 0 || !date || !time) {
+    throw Object.assign(new Error('Missing required fields'), { status: 400 });
+  }
+
+  const rawServiceIds = Array.isArray(body.service_ids) && body.service_ids.length > 0
+    ? body.service_ids
+    : (body.service_id ? [body.service_id] : []);
+  const selectedServiceIds = rawServiceIds
+    .map((id) => Number(id))
+    .filter((id) => Number.isInteger(id) && id > 0);
+  if (selectedServiceIds.length === 0 || selectedServiceIds.length !== rawServiceIds.length) {
+    throw Object.assign(new Error('At least one service is required'), { status: 400 });
+  }
+
+  // Legacy: consecutive slots on the same staff/date starting at `time`.
+  // Durations are filled in after services are loaded.
+  return {
+    items: selectedServiceIds.map((service_id) => ({
+      service_id,
+      staff_id: staffIdNum,
+      date,
+      time,
+      _legacyChain: true,
+    })),
+    bookingName,
+    bookingPhone,
+    bookingEmail,
+    notes,
+    legacyStartTime: time,
+  };
+}
+
+async function loadExistingRanges({ staffId, date, branchId, transaction = null }) {
+  const rows = await Appointment.findAll({
+    where: buildBookingConflictWhere({ staffId, date, branchId }),
+    attributes: ['time'],
+    include: [{ model: Service, as: 'service', attributes: ['duration_minutes'] }],
+    ...(transaction ? { transaction, lock: transaction.LOCK.UPDATE } : {}),
+  });
+  return rows.map((a) => {
+    const start = toMinutes(a.time);
+    const duration = (a.service && a.service.duration_minutes) ? a.service.duration_minutes : 30;
+    return [start, start + duration];
+  });
+}
+
 // ── POST /api/public/bookings — create one or many appointments (pending) ────
 router.post('/bookings', async (req, res) => {
   try {
     const {
-      branch_id, service_id, service_ids, staff_id, customer_name, phone, email, date, time, notes,
+      branch_id, customer_name, phone, email, notes,
       tenantId, tenant_id,
     } = req.body;
 
-    if (!staff_id || !customer_name || !phone || !date || !time) {
+    if (!customer_name || !phone) {
       return res.status(400).json({ message: 'Missing required fields' });
     }
-    const staffIdNum = Number(staff_id);
-    if (!Number.isInteger(staffIdNum) || staffIdNum <= 0) {
-      return res.status(400).json({ message: 'staff_id must be a valid number' });
+
+    let normalized;
+    try {
+      normalized = normalizePublicBookingItems(req.body);
+    } catch (normErr) {
+      return res.status(normErr.status || 400).json({ message: normErr.message || 'Invalid booking payload' });
     }
+
+    const { items, bookingName, bookingPhone, bookingEmail, notes: bookingNotes, legacyStartTime } = normalized;
 
     const rawTenantId = tenantId ?? tenant_id ?? req.query.tenantId ?? req.tenant?.id;
     const bookingTenantId = rawTenantId != null && rawTenantId !== ''
@@ -638,98 +728,112 @@ router.post('/bookings', async (req, res) => {
       return res.status(400).json({ message: 'No active booking branch is configured for this salon.' });
     }
 
-    const staffRow = await Staff.findOne({
-      where: { id: staffIdNum, tenant_id: bookingTenantId, is_active: true },
-      attributes: ['id'],
-    });
-    if (!staffRow) {
-      return res.status(404).json({ message: 'Selected staff was not found for this salon' });
-    }
+    const serviceIds = [...new Set(items.map((i) => i.service_id))];
+    const staffIds = [...new Set(items.map((i) => i.staff_id))];
 
-    const rawServiceIds = Array.isArray(service_ids) && service_ids.length > 0
-      ? service_ids
-      : (service_id ? [service_id] : []);
-    const selectedServiceIds = rawServiceIds
-      .map((id) => Number(id))
-      .filter((id) => Number.isInteger(id) && id > 0);
-    const bookingName = String(customer_name || '').trim();
-    const bookingPhone = String(phone || '').trim();
-    const bookingEmail = email ? String(email).trim() : null;
+    const [services, staffRows] = await Promise.all([
+      Service.findAll({
+        where: { id: serviceIds, is_active: true, tenant_id: bookingTenantId },
+        attributes: ['id', 'name', 'price', 'duration_minutes'],
+      }),
+      Staff.findAll({
+        where: { id: staffIds, tenant_id: bookingTenantId, is_active: true },
+        attributes: ['id', 'name'],
+      }),
+    ]);
 
-    if (selectedServiceIds.length === 0 || selectedServiceIds.length !== rawServiceIds.length) {
-      return res.status(400).json({ message: 'At least one service is required' });
-    }
-
-    const services = await Service.findAll({
-      where: { id: selectedServiceIds, is_active: true, tenant_id: bookingTenantId },
-      attributes: ['id', 'price', 'duration_minutes'],
-    });
-    if (services.length !== selectedServiceIds.length) {
+    if (services.length !== serviceIds.length) {
       return res.status(404).json({ message: 'One or more selected services were not found' });
+    }
+    if (staffRows.length !== staffIds.length) {
+      return res.status(404).json({ message: 'One or more selected staff were not found for this salon' });
     }
 
     const serviceMap = new Map(services.map((s) => [s.id, s]));
-    const orderedServices = selectedServiceIds.map((id) => serviceMap.get(id));
+    const staffMap = new Map(staffRows.map((s) => [s.id, s]));
 
-    const startMin = toMinutes(time);
-    let cursor = startMin;
-    const requestedRanges = orderedServices.map((s) => {
-      const duration = s.duration_minutes || 30;
-      const range = { start: cursor, end: cursor + duration, service: s };
-      cursor += duration;
-      return range;
-    });
-
-    if (requestedRanges[requestedRanges.length - 1].end > 18 * 60 + 30) {
-      return res.status(400).json({ message: 'Selected services exceed salon working hours' });
+    // Build concrete time ranges per item.
+    let legacyCursor = legacyStartTime ? toMinutes(legacyStartTime) : null;
+    const requested = [];
+    for (const item of items) {
+      const service = serviceMap.get(item.service_id);
+      const duration = service.duration_minutes || 30;
+      let start;
+      if (item._legacyChain && legacyCursor != null) {
+        start = legacyCursor;
+        legacyCursor += duration;
+      } else {
+        start = toMinutes(item.time);
+      }
+      const end = start + duration;
+      if (end > 18 * 60 + 30) {
+        return res.status(400).json({ message: 'Selected services exceed salon working hours' });
+      }
+      requested.push({
+        service,
+        staff_id: item.staff_id,
+        staff: staffMap.get(item.staff_id),
+        date: item.date,
+        start,
+        end,
+        time: toHHMM(start),
+      });
     }
 
-    const existingAppointments = await Appointment.findAll({
-      where: buildBookingConflictWhere({ staffId: staffIdNum, date, branchId: effectiveBranchId }),
-      attributes: ['time'],
-      include: [{ model: Service, as: 'service', attributes: ['duration_minutes'] }],
-    });
+    // Conflict within the same request (same staff + same date overlapping).
+    for (let i = 0; i < requested.length; i += 1) {
+      for (let j = i + 1; j < requested.length; j += 1) {
+        const a = requested[i];
+        const b = requested[j];
+        if (a.staff_id === b.staff_id && a.date === b.date && rangesOverlap(a.start, a.end, b.start, b.end)) {
+          return res.status(409).json({
+            message: `${a.staff?.name || 'Staff'} is already selected for overlapping times on ${a.date}.`,
+          });
+        }
+      }
+    }
 
-    const existingRanges = existingAppointments.map((a) => {
-      const s = toMinutes(a.time);
-      const d = (a.service && a.service.duration_minutes) ? a.service.duration_minutes : 30;
-      return [s, s + d];
-    });
-
-    const hasOverlap = requestedRanges.some(({ start, end }) =>
-      existingRanges.some(([bStart, bEnd]) => start < bEnd && end > bStart));
-    if (hasOverlap) {
-      return res.status(409).json({ message: 'Selected time is not available for all chosen services' });
+    // Conflict against existing appointments (group by staff+date).
+    const groups = new Map();
+    for (const r of requested) {
+      const key = `${r.staff_id}|${r.date}`;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(r);
+    }
+    for (const [key, group] of groups.entries()) {
+      const [staffIdStr, date] = key.split('|');
+      const existing = await loadExistingRanges({
+        staffId: Number(staffIdStr),
+        date,
+        branchId: effectiveBranchId,
+      });
+      const clash = group.some(({ start, end }) =>
+        existing.some(([bStart, bEnd]) => rangesOverlap(start, end, bStart, bEnd)));
+      if (clash) {
+        return res.status(409).json({ message: 'Selected time is not available for all chosen services' });
+      }
     }
 
     const tx = await Appointment.sequelize.transaction({
       isolationLevel: Transaction.ISOLATION_LEVELS.SERIALIZABLE,
     });
     try {
-      // Re-check slot availability inside transaction to reduce race-condition double bookings.
-      const existingAppointmentsTx = await Appointment.findAll({
-        where: buildBookingConflictWhere({ staffId: staffIdNum, date, branchId: effectiveBranchId }),
-        attributes: ['time'],
-        include: [{ model: Service, as: 'service', attributes: ['duration_minutes'] }],
-        transaction: tx,
-        lock: tx.LOCK.UPDATE,
-      });
-
-      const existingRangesTx = existingAppointmentsTx.map((a) => {
-        const s = toMinutes(a.time);
-        const d = (a.service && a.service.duration_minutes) ? a.service.duration_minutes : 30;
-        return [s, s + d];
-      });
-
-      const hasOverlapTx = requestedRanges.some(({ start, end }) =>
-        existingRangesTx.some(([bStart, bEnd]) => start < bEnd && end > bStart));
-      if (hasOverlapTx) {
-        await tx.rollback();
-        return res.status(409).json({ message: 'Selected time is no longer available. Please choose another slot.' });
+      for (const [key, group] of groups.entries()) {
+        const [staffIdStr, date] = key.split('|');
+        const existingTx = await loadExistingRanges({
+          staffId: Number(staffIdStr),
+          date,
+          branchId: effectiveBranchId,
+          transaction: tx,
+        });
+        const clashTx = group.some(({ start, end }) =>
+          existingTx.some(([bStart, bEnd]) => rangesOverlap(start, end, bStart, bEnd)));
+        if (clashTx) {
+          await tx.rollback();
+          return res.status(409).json({ message: 'Selected time is no longer available. Please choose another slot.' });
+        }
       }
 
-      // Link web bookings to existing customer profiles by phone
-      // so appointment history appears under the same customer.
       const phoneVariants = buildPhoneVariants(bookingPhone);
       let linkedCustomer = null;
       if (phoneVariants.length) {
@@ -752,7 +856,6 @@ router.post('/bookings', async (req, res) => {
             tenant_id: bookingTenantId,
           }, { transaction: tx });
         } catch (createErr) {
-          // Concurrent booking with the same phone can hit the unique index.
           if (createErr?.name === 'SequelizeUniqueConstraintError' && phoneVariants.length) {
             linkedCustomer = await Customer.findOne({
               where: {
@@ -775,20 +878,20 @@ router.post('/bookings', async (req, res) => {
       }
 
       const created = [];
-      for (const r of requestedRanges) {
+      for (const r of requested) {
         const appointment = await Appointment.create({
           tenant_id: bookingTenantId,
           branch_id: effectiveBranchId,
           customer_id: linkedCustomer?.id || null,
           service_id: r.service.id,
-          staff_id: staffIdNum,
+          staff_id: r.staff_id,
           customer_name: bookingName,
           phone: bookingPhone,
-          date,
-          time: toHHMM(r.start),
+          date: r.date,
+          time: r.time,
           amount: parseFloat(r.service.price) || 0,
           status: 'pending',
-          notes: notes ? notes.trim() : null,
+          notes: bookingNotes || null,
         }, { transaction: tx });
         created.push(appointment);
       }
@@ -800,18 +903,16 @@ router.post('/bookings', async (req, res) => {
         count: created.length,
       });
 
-      // Send SMS in background so web booking response is immediate.
       setImmediate(async () => {
         try {
           const branch = await Branch.findByPk(effectiveBranchId, { attributes: ['id', 'name'] });
-          const firstTime = created[0] ? created[0].time : time;
-          const endTime = toHHMM(requestedRanges[requestedRanges.length - 1].end);
-          const totalAmount = orderedServices.reduce((sum, s) => sum + (parseFloat(s.price) || 0), 0);
+          const lines = requested.map((r) =>
+            `${r.date} ${r.time} · ${r.service.name} · ${r.staff?.name || 'Staff'}`);
+          const totalAmount = requested.reduce((sum, r) => sum + (parseFloat(r.service.price) || 0), 0);
           const summaryMsg =
             `HEXAONE - Booking Received\n` +
             `Hi ${bookingName}, your booking is pending confirmation.\n` +
-            `Date: ${date} ${firstTime}-${endTime}\n` +
-            `Services: ${orderedServices.length} item(s)\n` +
+            `${lines.join('\n')}\n` +
             `Branch: ${branch?.name || 'HEXAONE'}\n` +
             `Total: Rs. ${totalAmount.toFixed(2)}`;
 

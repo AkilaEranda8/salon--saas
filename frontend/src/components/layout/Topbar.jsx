@@ -30,6 +30,7 @@ const PAGE_LABELS = {
   '/expenses':      'Expenses',
   '/reminders':     'Reminders',
   '/notifications': 'Notifications',
+  '/offer-sms':     'Offer SMS',
   '/branding':      'Branding Settings',
   '/themes':        'Theme Options',
   '/branches':      'Branches',

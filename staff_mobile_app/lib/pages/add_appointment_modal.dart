@@ -42,6 +42,7 @@ class _AddApptSheetState extends State<_AddApptSheet> {
   final _namCtrl      = TextEditingController();
   final _phCtrl       = TextEditingController();
   final _amtCtrl      = TextEditingController();
+  final _advAmtCtrl   = TextEditingController();
 
   bool   _loading       = true;
   bool   _saving        = false;
@@ -62,6 +63,12 @@ class _AddApptSheetState extends State<_AddApptSheet> {
   String _time     = '';
   String? _primaryServiceId;
   final List<String> _extraServiceIds = [];
+
+  /// Per-service staff/date/time when multiple bookings is on.
+  final Map<String, Map<String, String>> _serviceAssignments = {};
+  bool _multiBooking = false;
+  bool _collectAdvance = false;
+  String _advanceMethod = 'Cash';
 
   List<Map<String, dynamic>> _customerPackages = [];
   String  _selectedPkgId   = '';
@@ -151,6 +158,64 @@ class _AddApptSheetState extends State<_AddApptSheet> {
     return [p, ..._extraServiceIds];
   }
 
+  void _syncAssignments() {
+    final ids = _orderedServiceIds();
+    for (final id in ids) {
+      _serviceAssignments.putIfAbsent(id, () => {
+            'staff_id': _staffId,
+            'date': _date,
+            'time': _time,
+          });
+      final a = _serviceAssignments[id]!;
+      if ((a['date'] ?? '').isEmpty) a['date'] = _date;
+      if ((a['time'] ?? '').isEmpty) a['time'] = _time;
+    }
+    _serviceAssignments.removeWhere((k, _) => !ids.contains(k));
+  }
+
+  Future<void> _pickAssignmentDate(String serviceId) async {
+    final cur = _serviceAssignments[serviceId]?['date'] ?? _date;
+    final p = await showDatePicker(
+      context: context,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2035),
+      initialDate: DateTime.tryParse(cur) ?? DateTime.now(),
+      builder: (ctx, child) => Theme(
+        data: Theme.of(ctx).copyWith(
+          colorScheme: const ColorScheme.light(
+              primary: _cDark, onPrimary: Colors.white, surface: Colors.white),
+        ),
+        child: child!,
+      ),
+    );
+    if (p == null) return;
+    setState(() {
+      _serviceAssignments.putIfAbsent(serviceId, () => {});
+      _serviceAssignments[serviceId]!['date'] =
+          '${p.year}-${p.month.toString().padLeft(2, '0')}-${p.day.toString().padLeft(2, '0')}';
+    });
+  }
+
+  Future<void> _pickAssignmentTime(String serviceId) async {
+    final p = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.now(),
+      builder: (ctx, child) => Theme(
+        data: Theme.of(ctx).copyWith(
+          colorScheme: const ColorScheme.light(
+              primary: _cDark, onPrimary: Colors.white),
+        ),
+        child: child!,
+      ),
+    );
+    if (p == null) return;
+    setState(() {
+      _serviceAssignments.putIfAbsent(serviceId, () => {});
+      _serviceAssignments[serviceId]!['time'] =
+          '${p.hour.toString().padLeft(2, '0')}:${p.minute.toString().padLeft(2, '0')}';
+    });
+  }
+
   double get _calcTotal {
     var sum = 0.0;
     for (final id in _orderedServiceIds()) {
@@ -167,11 +232,12 @@ class _AddApptSheetState extends State<_AddApptSheet> {
   void _onPrimaryChanged(String? v) {
     setState(() {
       final prev = _primaryServiceId;
-      if (v == null) { _primaryServiceId = null; _updateTotal(); return; }
+      if (v == null) { _primaryServiceId = null; _syncAssignments(); _updateTotal(); return; }
       if (prev != null && prev.isNotEmpty && prev != v) {
         _extraServiceIds.insert(0, prev);
       }
       _primaryServiceId = v;
+      _syncAssignments();
       _updateTotal();
     });
   }
@@ -184,6 +250,7 @@ class _AddApptSheetState extends State<_AddApptSheet> {
       } else {
         _extraServiceIds.add(id);
       }
+      _syncAssignments();
       _updateTotal();
     });
   }
@@ -193,6 +260,7 @@ class _AddApptSheetState extends State<_AddApptSheet> {
       if (index >= 0 && index < _extraServiceIds.length) {
         _extraServiceIds.removeAt(index);
       }
+      _syncAssignments();
       _updateTotal();
     });
   }
@@ -211,13 +279,52 @@ class _AddApptSheetState extends State<_AddApptSheet> {
     if (_orderedServiceIds().isEmpty) {
       _snack('Select at least one service'); return;
     }
-    if (_date.isEmpty) { _snack('Pick a date'); return; }
-    if (_time.isEmpty) { _snack('Pick a time'); return; }
 
     final app    = AppStateScope.of(context);
     final branch = (_isSuper || (app.currentUser?.branchId ?? '').isEmpty)
         ? _branchId : (app.currentUser?.branchId ?? '');
     if (branch.trim().isEmpty) { _snack('Branch required'); return; }
+
+    final advanceNum = double.tryParse(_advAmtCtrl.text.trim()) ?? 0;
+    if (_collectAdvance) {
+      if (!(advanceNum > 0)) {
+        _snack('Enter a valid advance amount');
+        return;
+      }
+      if (_calcTotal > 0 && advanceNum > _calcTotal) {
+        _snack('Advance cannot exceed total');
+        return;
+      }
+    }
+
+    List<Map<String, dynamic>>? items;
+    if (_multiBooking) {
+      _syncAssignments();
+      for (final id in _orderedServiceIds()) {
+        final a = _serviceAssignments[id] ?? {};
+        if ((a['date'] ?? '').isEmpty || (a['time'] ?? '').isEmpty) {
+          String label = 'each service';
+          for (final s in _services) {
+            if (s.id == id) { label = s.name; break; }
+          }
+          _snack('Set date and time for $label');
+          return;
+        }
+      }
+      items = _orderedServiceIds().map((id) {
+        final a = _serviceAssignments[id] ?? {};
+        final staff = (a['staff_id'] ?? '').trim();
+        return <String, dynamic>{
+          'service_id': id,
+          'date': a['date'],
+          'time': a['time'],
+          if (staff.isNotEmpty) 'staff_id': staff,
+        };
+      }).toList();
+    } else {
+      if (_date.isEmpty) { _snack('Pick a date'); return; }
+      if (_time.isEmpty) { _snack('Pick a time'); return; }
+    }
 
     final pkgNote = _selectedPkgId.isNotEmpty
         ? '${AppointmentNotes.packagePrefix} #$_selectedPkgId - $_selectedPkgName'
@@ -236,6 +343,9 @@ class _AddApptSheetState extends State<_AddApptSheet> {
       baseNotes: pkgNote,
       status: '',
       amountOverride: _amtCtrl.text.trim(),
+      bookingItems: items,
+      advanceAmount: _collectAdvance && advanceNum > 0 ? advanceNum : null,
+      advanceMethod: _collectAdvance ? _advanceMethod : null,
     );
     if (!mounted) return;
     setState(() => _saving = false);
@@ -276,7 +386,7 @@ class _AddApptSheetState extends State<_AddApptSheet> {
 
   @override
   void dispose() {
-    _namCtrl.dispose(); _phCtrl.dispose(); _amtCtrl.dispose();
+    _namCtrl.dispose(); _phCtrl.dispose(); _amtCtrl.dispose(); _advAmtCtrl.dispose();
     super.dispose();
   }
 
@@ -761,6 +871,130 @@ class _AddApptSheetState extends State<_AddApptSheet> {
 
                   const SizedBox(height: 10),
 
+                  // Multiple bookings toggle
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: _multiBooking ? const Color(0xFFF0FDF4) : _cBg,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: _multiBooking ? const Color(0xFF86EFAC) : _cBorder,
+                      ),
+                    ),
+                    child: Row(children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('Multiple bookings',
+                                style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w800,
+                                    color: Color(0xFF111827))),
+                            const SizedBox(height: 2),
+                            Text(
+                              _multiBooking
+                                  ? 'Each service gets its own staff, date & time'
+                                  : 'One staff and time for all services',
+                              style: const TextStyle(
+                                  fontSize: 11, color: Color(0xFF6B7280)),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Switch.adaptive(
+                        value: _multiBooking,
+                        activeThumbColor: _cMid,
+                        onChanged: (v) => setState(() {
+                          _multiBooking = v;
+                          if (v) _syncAssignments();
+                        }),
+                      ),
+                    ]),
+                  ),
+
+                  if (_multiBooking && _orderedServiceIds().isNotEmpty) ...[
+                    const SizedBox(height: 10),
+                    ..._orderedServiceIds().map((id) {
+                      SalonService? svc;
+                      for (final s in _services) {
+                        if (s.id == id) { svc = s; break; }
+                      }
+                      final a = _serviceAssignments[id] ??
+                          {'staff_id': _staffId, 'date': _date, 'time': _time};
+                      final staffVal = (a['staff_id'] ?? '').isEmpty
+                          ? null
+                          : a['staff_id'];
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: _cLightB),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(svc?.name ?? 'Service',
+                                style: const TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w800,
+                                    color: Color(0xFF111827))),
+                            if (svc != null)
+                              Text('LKR ${svc.price.toStringAsFixed(0)}',
+                                  style: const TextStyle(
+                                      fontSize: 11,
+                                      color: Color(0xFF059669),
+                                      fontWeight: FontWeight.w700)),
+                            const SizedBox(height: 8),
+                            DropdownButtonFormField<String>(
+                              initialValue: staffVal,
+                              isExpanded: true,
+                              decoration: _deco('Staff', Icons.badge_outlined),
+                              items: [
+                                const DropdownMenuItem(
+                                    value: '', child: Text('Any')),
+                                ..._staff.map((s) => DropdownMenuItem(
+                                      value: s.id,
+                                      child: Text(s.name,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(fontSize: 13)),
+                                    )),
+                              ],
+                              onChanged: (v) => setState(() {
+                                _serviceAssignments.putIfAbsent(id, () => {});
+                                _serviceAssignments[id]!['staff_id'] = v ?? '';
+                              }),
+                            ),
+                            const SizedBox(height: 8),
+                            Row(children: [
+                              Expanded(
+                                child: _pickPill(
+                                  value: a['date'] ?? '',
+                                  hint: 'Date',
+                                  icon: Icons.calendar_today_rounded,
+                                  onTap: () => _pickAssignmentDate(id),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: _pickPill(
+                                  value: a['time'] ?? '',
+                                  hint: 'Time',
+                                  icon: Icons.access_time_rounded,
+                                  onTap: () => _pickAssignmentTime(id),
+                                ),
+                              ),
+                            ]),
+                          ],
+                        ),
+                      );
+                    }),
+                  ],
+
+                  const SizedBox(height: 10),
+
                   // Total + Amount row
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -827,7 +1061,90 @@ class _AddApptSheetState extends State<_AddApptSheet> {
 
                   const SizedBox(height: 12),
 
-                  // Date + Time row
+                  // Advance payment
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: _collectAdvance ? const Color(0xFFEFF6FF) : _cBg,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: _collectAdvance ? _cLightB : _cBorder,
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text('Collect advance now',
+                                    style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w800,
+                                        color: Color(0xFF111827))),
+                                const SizedBox(height: 2),
+                                Text(
+                                  _collectAdvance
+                                      ? 'Deposit recorded; commission on final settle'
+                                      : 'Optional booking deposit',
+                                  style: const TextStyle(
+                                      fontSize: 11, color: Color(0xFF6B7280)),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Switch.adaptive(
+                            value: _collectAdvance,
+                            activeThumbColor: _cMid,
+                            onChanged: (v) => setState(() => _collectAdvance = v),
+                          ),
+                        ]),
+                        if (_collectAdvance) ...[
+                          const SizedBox(height: 10),
+                          TextFormField(
+                            controller: _advAmtCtrl,
+                            keyboardType: TextInputType.number,
+                            decoration: _deco(
+                                'Advance amount', Icons.payments_outlined),
+                          ),
+                          const SizedBox(height: 8),
+                          DropdownButtonFormField<String>(
+                            initialValue: _advanceMethod,
+                            isExpanded: true,
+                            decoration: _deco('Method', Icons.credit_card_outlined),
+                            items: const [
+                              DropdownMenuItem(value: 'Cash', child: Text('Cash')),
+                              DropdownMenuItem(value: 'Card', child: Text('Card')),
+                              DropdownMenuItem(
+                                  value: 'Online Transfer',
+                                  child: Text('Online Transfer')),
+                            ],
+                            onChanged: (v) => setState(
+                                () => _advanceMethod = v ?? 'Cash'),
+                          ),
+                          if (_calcTotal > 0 &&
+                              (double.tryParse(_advAmtCtrl.text) ?? 0) > 0)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 8),
+                              child: Text(
+                                'Remaining after advance: LKR ${(_calcTotal - (double.tryParse(_advAmtCtrl.text) ?? 0)).clamp(0, double.infinity).toStringAsFixed(0)}',
+                                style: const TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                    color: Color(0xFF1D4ED8)),
+                              ),
+                            ),
+                        ],
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 12),
+
+                  // Date + Time row (hidden when multi — set per service)
+                  if (!_multiBooking)
                   Row(children: [
                     // Date
                     Expanded(
@@ -862,13 +1179,15 @@ class _AddApptSheetState extends State<_AddApptSheet> {
                     ),
                   ]),
 
-                  const SizedBox(height: 12),
+                  if (!_multiBooking) const SizedBox(height: 12),
 
                   // Staff + Branch row
+                  if (!_multiBooking || (_isSuper && _branches.isNotEmpty))
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Staff
+                      // Staff (shared when not multi)
+                      if (!_multiBooking)
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -897,7 +1216,7 @@ class _AddApptSheetState extends State<_AddApptSheet> {
                       ),
                       // Branch (superadmin only)
                       if (_isSuper && _branches.isNotEmpty) ...[
-                        const SizedBox(width: 10),
+                        if (!_multiBooking) const SizedBox(width: 10),
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -970,7 +1289,11 @@ class _AddApptSheetState extends State<_AddApptSheet> {
                                   color: Colors.white, size: 18),
                             const SizedBox(width: 9),
                             Text(
-                              _saving ? 'Booking...' : 'Book Appointment',
+                              _saving
+                                  ? 'Booking...'
+                                  : (_multiBooking
+                                      ? 'Book Appointments'
+                                      : 'Book Appointment'),
                               style: TextStyle(
                                   color: _saving
                                       ? const Color(0xFF9CA3AF)

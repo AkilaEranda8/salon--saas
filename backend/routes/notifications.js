@@ -17,6 +17,7 @@ router.post('/test',                    requireRole('superadmin', 'admin'), ctrl
 router.post('/test-provider',           requireRole('superadmin', 'admin'), ctrl.testProvider);
 router.post('/test-push',               requireRole('superadmin', 'admin', 'manager'), ctrl.testPush);
 router.post('/offer-sms',               requireRole('superadmin', 'admin', 'manager'), ctrl.sendOfferSms);
+router.post('/office-sms',              requireRole('superadmin', 'admin', 'manager'), ctrl.sendOfficeSms);
 router.post('/staff-monthly-earnings',  requireRole('superadmin', 'admin'), ctrl.sendStaffMonthlyEarnings);
 router.post('/test-staff-earnings-pdf', requireRole('superadmin', 'admin'), ctrl.testStaffEarningsPdf);
 

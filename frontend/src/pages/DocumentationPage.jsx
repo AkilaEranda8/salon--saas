@@ -4,7 +4,7 @@ import api from '../api/axios';
 import './DocumentationPage.css';
 
 const API_BASE = 'https://api.salon.hexalyte.com/api/public';
-const PLUGIN_VERSION = '1.0.6';
+const PLUGIN_VERSION = '1.0.8';
 
 const ENDPOINTS = [
   {
@@ -41,13 +41,13 @@ const ENDPOINTS = [
     method: 'GET',
     path: '/staff?branchId={branchId}&tenantId={tenantId}',
     title: 'List available staff',
-    description: 'Returns active staff assigned to a selected branch.',
+    description: 'Returns active staff assigned to a selected branch. When a staff member has a profile photo, photo_url is an absolute URL you can render directly; otherwise it is null.',
     response: `[
   {
     "id": 5,
     "name": "Nimali Perera",
     "role_title": "Senior Stylist",
-    "photo_url": "https://api.salon.hexalyte.com/uploads/staff/photo.jpg"
+    "photo_url": "https://api.salon.hexalyte.com/uploads/staff/28/staff-5-1785439863979.jpg"
   }
 ]`,
   },
@@ -62,17 +62,28 @@ const ENDPOINTS = [
     method: 'POST',
     path: '/bookings',
     title: 'Create a booking',
-    description: 'Creates one pending appointment per selected service. Multiple services are scheduled back-to-back.',
+    description: 'Creates one pending appointment per item. Prefer items[] so each service can use its own staff member and time. The legacy single staff_id/date/time + service_ids payload still works and schedules services back-to-back on one staff member.',
     request: `{
+  "tenantId": 28,
   "branch_id": 12,
-  "service_ids": [8, 11],
-  "staff_id": 5,
   "customer_name": "Kasun Perera",
   "phone": "0771234567",
   "email": "kasun@example.com",
-  "date": "2026-08-01",
-  "time": "10:30",
-  "notes": "First visit"
+  "notes": "First visit",
+  "items": [
+    {
+      "service_id": 8,
+      "staff_id": 5,
+      "date": "2026-08-01",
+      "time": "10:30"
+    },
+    {
+      "service_id": 11,
+      "staff_id": 9,
+      "date": "2026-08-01",
+      "time": "14:00"
+    }
+  ]
 }`,
     response: `{
   "message": "Booking created successfully",
@@ -356,9 +367,9 @@ export default function DocumentationPage() {
               <li>Availability starts at 09:00. A booking must finish no later than 18:30.</li>
               <li>The minimum availability duration is 30 minutes; duration also determines the slot interval.</li>
               <li>Pending, confirmed, and in-service appointments block overlapping slots.</li>
-              <li>Use <code>service_ids</code> for multiple services or <code>service_id</code> for one service.</li>
-              <li>Multiple services create separate pending appointments scheduled consecutively.</li>
-              <li>Name, phone, date, time, staff, and at least one service are required.</li>
+              <li>Use <code>items[]</code> to book multiple services with different staff and times in one request.</li>
+              <li>Legacy payloads may still send <code>service_ids</code> with one <code>staff_id</code>/<code>date</code>/<code>time</code>; those services are scheduled consecutively.</li>
+              <li>Name, phone, and at least one fully assigned service item are required.</li>
               <li>The server checks availability again inside a transaction to reduce double booking.</li>
               <li>When configured, the salon sends the customer an SMS after the booking is created.</li>
             </ul>
@@ -438,8 +449,9 @@ export default function DocumentationPage() {
               <span>Branch</span><i>→</i><span>Services</span><i>→</i><span>Staff &amp; time</span><i>→</i><span>Details</span><i>→</i><span>Done</span>
             </div>
             <p>
-              The service step supports multiple selections and category filters. Name and phone are required;
-              email and notes are optional.
+              The service step supports multiple selections and category filters. On the staff step, each
+              selected service gets its own stylist, date, and time — so customers can book with different
+              staff in one visit. Name and phone are required; email and notes are optional.
             </p>
           </section>
 

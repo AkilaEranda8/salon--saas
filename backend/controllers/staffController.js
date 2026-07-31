@@ -1,3 +1,5 @@
+const fs = require('fs').promises;
+const path = require('path');
 const { Op, fn, col, literal } = require('sequelize');
 const { Staff, Branch, StaffBranch, StaffSpecialization, Service, Appointment, Payment, User, StaffAdvance, CommissionPayout } = require('../models');
 const { tenantWhere, byIdWhere, resolveTenantId } = require('../utils/tenantScope');
@@ -10,6 +12,19 @@ const {
 } = require('../utils/tenantFeatures');
 const { breakdownForPayment } = require('../services/paymentCommissionBreakdown');
 const { hasFranchiseCommission } = require('../utils/tenantFeatures');
+
+function staffPhotoLocalPath(photoUrl) {
+  if (!photoUrl || typeof photoUrl !== 'string') return null;
+  const rel = photoUrl.replace(/^https?:\/\/[^/]+/i, '');
+  if (!rel.startsWith('/uploads/staff/')) return null;
+  return path.join(__dirname, '..', rel.replace(/^\//, ''));
+}
+
+async function unlinkStaffPhotoFile(photoUrl) {
+  const abs = staffPhotoLocalPath(photoUrl);
+  if (!abs) return;
+  try { await fs.unlink(abs); } catch { /* ignore missing file */ }
+}
 
 function parseJsonField(raw) {
   if (!raw) return null;
@@ -792,4 +807,46 @@ const setSpecializations = async (req, res) => {
   }
 };
 
-module.exports = { list, getOne, create, update, remove, myCommission, commissionSummary, commissionReport, setSpecializations };
+const uploadPhoto = async (req, res) => {
+  try {
+    const staff = await Staff.findOne({ where: byIdWhere(req, req.params.id) });
+    if (!staff) {
+      if (req.file?.path) {
+        try { await fs.unlink(req.file.path); } catch { /* ignore */ }
+      }
+      return res.status(404).json({ message: 'Staff not found.' });
+    }
+    if (!req.file) return res.status(400).json({ message: 'No photo uploaded.' });
+
+    const tenantId = resolveTenantId(req) || staff.tenant_id || 'shared';
+    const photo_url = `/uploads/staff/${tenantId}/${req.file.filename}`;
+    await unlinkStaffPhotoFile(staff.photo_url);
+    await staff.update({ photo_url });
+
+    return res.json(mapStaff(staff, req.tenant));
+  } catch (err) {
+    console.error('staff.uploadPhoto error:', err);
+    return res.status(500).json({ message: err.message || 'Failed to upload photo.' });
+  }
+};
+
+const deletePhoto = async (req, res) => {
+  try {
+    const staff = await Staff.findOne({ where: byIdWhere(req, req.params.id) });
+    if (!staff) return res.status(404).json({ message: 'Staff not found.' });
+
+    await unlinkStaffPhotoFile(staff.photo_url);
+    await staff.update({ photo_url: null });
+
+    return res.json(mapStaff(staff, req.tenant));
+  } catch (err) {
+    console.error('staff.deletePhoto error:', err);
+    return res.status(500).json({ message: err.message || 'Failed to remove photo.' });
+  }
+};
+
+module.exports = {
+  list, getOne, create, update, remove,
+  myCommission, commissionSummary, commissionReport, setSpecializations,
+  uploadPhoto, deletePhoto,
+};

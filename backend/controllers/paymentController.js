@@ -1,6 +1,6 @@
 const { Op, fn, col, literal } = require('sequelize');
 const { sequelize } = require('../config/database');
-const { Payment, PaymentSplit, Branch, Staff, StaffSpecialization, Customer, Service, Appointment, AppointmentService, CustomerPackage, Package: PkgModel, PackageRedemption, LoyaltyRule } = require('../models');
+const { Payment, PaymentSplit, Branch, Staff, StaffSpecialization, Customer, Service, Appointment, AppointmentService, CustomerPackage, Package: PkgModel, PackageRedemption, LoyaltyRule, CommissionTransaction } = require('../models');
 const { computeCommissionDetails } = require('../utils/commissionCalculator');
 const {
   resolveBranchManagerStaff,
@@ -90,6 +90,7 @@ const create = async (req, res) => {
       loyalty_discount = 0, promo_discount = 0, usePoints = false,
       is_recurring = false, recurring_next_date, appointment_time,
       recurring_message_template_id, recurring_message_template_ids,
+      replace_appointment_payments = false,
     } = req.body;
     const recurringSpecified = req.body.is_recurring !== undefined;
     const recurringTemplateId = parseInt(recurring_message_template_id, 10);
@@ -253,6 +254,33 @@ const create = async (req, res) => {
     let resolvedAppointmentId = appointment_id ? Number(appointment_id) : null;
     let pendingRecurringSeed = null;
 
+    // Merge advance + balance into one sale row (remove prior deposit payments)
+    if (replace_appointment_payments && resolvedAppointmentId) {
+      const prior = await Payment.findAll({
+        where: {
+          appointment_id: resolvedAppointmentId,
+          ...tenantWhere(req),
+        },
+        attributes: ['id'],
+        transaction: t,
+      });
+      const priorIds = prior.map((p) => p.id).filter(Boolean);
+      if (priorIds.length) {
+        await CommissionTransaction.destroy({
+          where: { payment_id: { [Op.in]: priorIds } },
+          transaction: t,
+        });
+        await PaymentSplit.destroy({
+          where: { payment_id: { [Op.in]: priorIds } },
+          transaction: t,
+        });
+        await Payment.destroy({
+          where: { id: { [Op.in]: priorIds } },
+          transaction: t,
+        });
+      }
+    }
+
     if (recurringSpecified && resolvedAppointmentId) {
       const appt = await Appointment.findOne({
         where: byIdWhere(req, resolvedAppointmentId),
@@ -319,6 +347,7 @@ const create = async (req, res) => {
       manager_staff_id, manager_commission_amount, manager_commission_breakdown,
       date: today, status: 'paid',
       tenant_id: resolveTenantId(req),
+      is_advance: false,
     }, { transaction: t });
 
     if (hasFranchiseCommission(req.tenant)) {

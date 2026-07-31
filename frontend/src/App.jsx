@@ -403,7 +403,7 @@ function AppShellRoutes() {
             } />
             <Route path="/offer-sms" element={
               <RoleRoute roles={['superadmin', 'admin', 'manager']}>
-                <OfferSmsPage />
+                <OfferSmsPage kind="offer" />
               </RoleRoute>
             } />
 

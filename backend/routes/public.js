@@ -144,7 +144,7 @@ router.get('/staff', async (req, res) => {
     const tenantId = req.query.tenantId ? parseInt(req.query.tenantId, 10) : null;
     const serviceIdRaw = req.query.serviceId ?? req.query.service_id;
     const serviceId = serviceIdRaw ? parseInt(serviceIdRaw, 10) : null;
-    const where = { is_active: true };
+    const where = { is_active: true, available_online: true };
     if (tenantId) where.tenant_id = tenantId;
     if (req.query.branchId) {
       const bid = parseInt(req.query.branchId, 10);
@@ -934,7 +934,7 @@ router.post('/bookings', async (req, res) => {
         attributes: ['id', 'name', 'price', 'duration_minutes'],
       }),
       Staff.findAll({
-        where: { id: staffIds, tenant_id: bookingTenantId, is_active: true },
+        where: { id: staffIds, tenant_id: bookingTenantId, is_active: true, available_online: true },
         attributes: ['id', 'name'],
       }),
     ]);
@@ -943,7 +943,7 @@ router.post('/bookings', async (req, res) => {
       return res.status(404).json({ message: 'One or more selected services were not found' });
     }
     if (staffRows.length !== staffIds.length) {
-      return res.status(404).json({ message: 'One or more selected staff were not found for this salon' });
+      return res.status(404).json({ message: 'One or more selected staff were not found or are not available for online booking' });
     }
 
     // Staff must be linked to the booked service when they have any service assignments.

@@ -57,6 +57,12 @@ const Staff = sequelize.define('Staff', {
     type: DataTypes.BOOLEAN,
     defaultValue: true,
   },
+  available_online: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: true,
+    comment: 'When true, staff can be selected in public / WordPress online booking',
+  },
   user_id: {
     type: DataTypes.INTEGER,
     allowNull: true,

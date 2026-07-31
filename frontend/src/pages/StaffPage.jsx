@@ -17,7 +17,7 @@ import {
   STAFF_ROLE_TITLES, STAFF_ROLE_OTHER, staffRoleSelectValue, MANAGEMENT_STAFF_ROLES,
 } from '../constants/staffRoleTitles';
 
-const EMPTY = { name:'', phone:'', email:'', role_title:'', branch_ids:[], commission_type:'percentage', commission_value:'', salary_type:'commission_only', base_salary:'', join_date:'', is_active:true };
+const EMPTY = { name:'', phone:'', email:'', role_title:'', branch_ids:[], commission_type:'percentage', commission_value:'', salary_type:'commission_only', base_salary:'', join_date:'', is_active:true, available_online:false };
 
 function formatCommission(type, value) {
   if (value == null || value === '') return '—';
@@ -313,6 +313,7 @@ export default function StaffPage() {
         salary_type: form.salary_type || 'commission_only',
         join_date: form.join_date || null,
         is_active: form.is_active !== false,
+        available_online: form.available_online !== false,
         specializations: effectiveSpecs.map((id) => {
           const rate = specRates[String(id)];
           const hasOverride = serviceWiseForUser && rate && rate.commission_value !== '' && rate.commission_value != null;
@@ -425,6 +426,20 @@ export default function StaffPage() {
       cell: ({ row: { original: row } }) => (row.specializations||[]).length > 0
         ? <span style={{ fontSize:13, color:'#475467' }}>{row.specializations.length} service{row.specializations.length!==1?'s':''}</span>
         : <span style={{ color:'#D0D5DD', fontSize:13 }}>All</span>,
+    },
+    {
+      id: 'online',
+      header: 'Online',
+      accessorFn: row => row.available_online !== false,
+      meta: { width: '10%' },
+      cell: ({ row: { original: row } }) => {
+        const on = row.available_online !== false;
+        return (
+          <span style={{ display:'inline-flex', alignItems:'center', gap:5, padding:'4px 10px', borderRadius:20, fontSize:12, fontWeight:600, background:on?'#EFF6FF':'#F8FAFC', color:on?'#2563EB':'#64748B' }}>
+            {on ? 'Booking' : 'Off'}
+          </span>
+        );
+      },
     },
     {
       id: 'status',
@@ -598,6 +613,27 @@ export default function StaffPage() {
                   </Select>
                 </FormGroup>
               </div>
+              <label style={{
+                display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer',
+                padding: '12px 14px', borderRadius: 10,
+                border: `1.5px solid ${isDark ? '#334155' : '#E4E7EC'}`,
+                background: isDark ? '#0B1220' : '#F9FAFB',
+              }}>
+                <input
+                  type="checkbox"
+                  checked={form.available_online !== false}
+                  onChange={(e) => setForm((f) => ({ ...f, available_online: e.target.checked }))}
+                  style={{ marginTop: 3, width: 16, height: 16, accentColor: '#2563EB' }}
+                />
+                <span>
+                  <span style={{ display: 'block', fontSize: 13.5, fontWeight: 700, color: isDark ? '#E2E8F0' : '#101828' }}>
+                    Available for online booking
+                  </span>
+                  <span style={{ display: 'block', fontSize: 12, color: C.muted, marginTop: 3, lineHeight: 1.4 }}>
+                    Show this staff member on the website / WordPress booking form. Turn off for salon-only staff.
+                  </span>
+                </span>
+              </label>
               {activeServices.length > 0 && (
                 <FormGroup label="Assignable services">
                   <div style={{ fontSize: 12, color: C.muted, marginBottom: 8, lineHeight: 1.45 }}>

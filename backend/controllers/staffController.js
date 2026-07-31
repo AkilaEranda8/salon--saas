@@ -71,6 +71,11 @@ function resolveSpecItems(req, rawItems, salaryType = 'commission_only') {
   return applyServiceWiseCommissionPolicy(rawItems, req.tenant);
 }
 
+function parseBoolFlag(raw, fallback = true) {
+  if (raw === undefined || raw === null || raw === '') return fallback;
+  return raw === true || raw === 'true' || raw === 1 || raw === '1';
+}
+
 function staffRequiresCommission(salaryType) {
   return salaryType === 'commission_only' || salaryType === 'salary_plus_commission';
 }
@@ -312,6 +317,7 @@ const create = async (req, res) => {
     }
 
     const tenantId = resolveTenantId(req);
+    const available_online = parseBoolFlag(req.body.available_online, false);
     const staff = await Staff.create({
       name,
       phone,
@@ -323,6 +329,7 @@ const create = async (req, res) => {
       salary_type,
       base_salary,
       join_date,
+      available_online,
       user_id: user_id || null,
       tenant_id: tenantId,
     });
@@ -370,6 +377,9 @@ const update = async (req, res) => {
     const updates = {};
     for (const field of allowed) {
       if (req.body[field] !== undefined) updates[field] = req.body[field];
+    }
+    if (req.body.available_online !== undefined) {
+      updates.available_online = parseBoolFlag(req.body.available_online, true);
     }
     const parsed = parseStaffCommission(req.body);
     for (const [key, value] of Object.entries(parsed)) {

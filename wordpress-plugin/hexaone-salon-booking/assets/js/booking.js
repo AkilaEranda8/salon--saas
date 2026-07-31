@@ -94,6 +94,8 @@
         otp: '',
         busy: false,
         checkedPhone: '',
+        otpSentFor: '',
+        lookupSeq: 0,
       },
       phoneTimer: null,
       submitting: false,
@@ -104,6 +106,14 @@
       return String(phone || '').replace(/\D/g, '');
     }
 
+    /** Wait until number looks complete so OTP is not sent mid-typing (e.g. at 9 digits then again at 10). */
+    function phoneDigitsComplete(digits) {
+      if (!digits || digits.length < 9) return false;
+      if (digits.charAt(0) === '0') return digits.length >= 10;
+      if (digits.indexOf('94') === 0) return digits.length >= 11;
+      return digits.length >= 10;
+    }
+
     function resetPhoneCheck(keepMessage) {
       state.phoneCheck = {
         status: 'idle',
@@ -111,6 +121,8 @@
         otp: '',
         busy: false,
         checkedPhone: '',
+        otpSentFor: '',
+        lookupSeq: state.phoneCheck.lookupSeq || 0,
       };
     }
 
@@ -216,7 +228,7 @@
         return (
           phoneReady() &&
           state.form.customer_name.trim() &&
-          digitsOnly(state.form.phone).length >= 9 &&
+          phoneDigitsComplete(digitsOnly(state.form.phone)) &&
           !state.phoneCheck.busy
         );
       }
@@ -596,24 +608,39 @@
     function checkPhoneLookup() {
       var phone = state.form.phone.trim();
       var digits = digitsOnly(phone);
-      if (digits.length < 9) {
-        resetPhoneCheck();
-        renderDetails();
-        renderFooter();
+      if (!phoneDigitsComplete(digits)) {
+        if (digits.length > 0 && state.phoneCheck.status !== 'idle') {
+          resetPhoneCheck();
+          renderDetails();
+          renderFooter();
+        }
         return;
       }
-      if (digits === state.phoneCheck.checkedPhone && phoneReady()) {
-        return;
+
+      // Already handled this exact number — do not re-check / re-send OTP
+      if (digits === state.phoneCheck.checkedPhone) {
+        if (
+          phoneReady() ||
+          state.phoneCheck.status === 'otp_sent' ||
+          state.phoneCheck.status === 'checking' ||
+          state.phoneCheck.otpSentFor === digits
+        ) {
+          return;
+        }
       }
+
+      var seq = ++state.phoneCheck.lookupSeq;
       state.phoneCheck.status = 'checking';
       state.phoneCheck.message = '';
-      state.phoneCheck.otp = '';
       state.phoneCheck.busy = true;
-      renderDetails();
+      renderDetails({ keepFocusId: 'hsb-phone' });
       renderFooter();
 
       api('check_phone', { phone: phone }, { method: 'POST' })
         .then(function (data) {
+          if (seq !== state.phoneCheck.lookupSeq) return; // stale response
+          if (digitsOnly(state.form.phone) !== digits) return;
+
           state.phoneCheck.busy = false;
           state.phoneCheck.checkedPhone = digits;
           if (data && data.exists && !data.needs_otp) {
@@ -625,13 +652,24 @@
             renderFooter();
             return;
           }
+
+          // New number: send OTP once only
+          if (state.phoneCheck.otpSentFor === digits) {
+            state.phoneCheck.status = 'otp_sent';
+            state.phoneCheck.message = 'OTP already sent. Enter the code, or tap Resend.';
+            renderDetails();
+            renderFooter();
+            return;
+          }
+
           state.phoneCheck.status = 'needs_otp';
           state.phoneCheck.message = 'New number — sending OTP…';
           renderDetails();
           renderFooter();
-          sendBookingOtp();
+          sendBookingOtp(false);
         })
         .catch(function (err) {
+          if (seq !== state.phoneCheck.lookupSeq) return;
           state.phoneCheck.busy = false;
           state.phoneCheck.status = 'error';
           state.phoneCheck.message = err.message || 'Could not check phone number.';
@@ -642,13 +680,21 @@
 
     function schedulePhoneLookup() {
       if (state.phoneTimer) clearTimeout(state.phoneTimer);
-      state.phoneTimer = setTimeout(checkPhoneLookup, 550);
+      state.phoneTimer = setTimeout(checkPhoneLookup, 900);
     }
 
-    function sendBookingOtp() {
+    function sendBookingOtp(forceResend) {
       var phone = state.form.phone.trim();
-      if (digitsOnly(phone).length < 9) {
-        showError('Enter a valid phone number first.');
+      var digits = digitsOnly(phone);
+      if (!phoneDigitsComplete(digits)) {
+        showError('Enter a complete phone number first.');
+        return;
+      }
+      if (!forceResend && state.phoneCheck.otpSentFor === digits) {
+        state.phoneCheck.status = 'otp_sent';
+        state.phoneCheck.message = 'OTP already sent. Enter the code, or tap Resend.';
+        renderDetails();
+        renderFooter();
         return;
       }
       state.phoneCheck.busy = true;
@@ -659,13 +705,19 @@
           state.phoneCheck.busy = false;
           if (data && data.exists && !data.needs_otp) {
             state.phoneCheck.status = 'known';
-            state.phoneCheck.checkedPhone = digitsOnly(phone);
+            state.phoneCheck.checkedPhone = digits;
             state.phoneCheck.message = data.message || 'This number is already registered. No OTP needed.';
             if (data.name) state.form.customer_name = data.name;
             if (data.email) state.form.email = data.email;
           } else {
             state.phoneCheck.status = 'otp_sent';
-            state.phoneCheck.message = data && data.message ? data.message : 'OTP sent. Enter the code below.';
+            state.phoneCheck.checkedPhone = digits;
+            state.phoneCheck.otpSentFor = digits;
+            if (data && data.cooldown) {
+              state.phoneCheck.message = data.message || 'OTP already sent. Please wait before requesting again.';
+            } else {
+              state.phoneCheck.message = data && data.message ? data.message : 'OTP sent. Enter the code below.';
+            }
             if (data && data.debug_otp) {
               state.phoneCheck.message += ' (dev: ' + data.debug_otp + ')';
             }
@@ -884,7 +936,7 @@
       }
 
       if (act === 'send-otp') {
-        sendBookingOtp();
+        sendBookingOtp(true);
         return;
       }
 
@@ -1004,17 +1056,29 @@
         var prevDigits = digitsOnly(state.form.phone);
         var nextDigits = digitsOnly(nextPhone);
         state.form.phone = nextPhone;
-        if (nextDigits !== prevDigits || nextDigits !== state.phoneCheck.checkedPhone) {
-          if (phoneReady() || state.phoneCheck.status === 'otp_sent' || state.phoneCheck.status === 'needs_otp') {
-            resetPhoneCheck();
-            // Keep phone field value; re-render status/OTP only when needed
-            var nameEl = document.getElementById('hsb-name');
-            var emailEl = document.getElementById('hsb-email');
-            var notesEl = document.getElementById('hsb-notes');
-            if (nameEl) state.form.customer_name = nameEl.value;
-            if (emailEl) state.form.email = emailEl.value;
-            if (notesEl) state.form.notes = notesEl.value;
-            renderDetails();
+        if (nextDigits !== prevDigits) {
+          // Invalidate prior OTP / lookup only when the number actually changed
+          if (
+            nextDigits !== state.phoneCheck.checkedPhone ||
+            nextDigits !== state.phoneCheck.otpSentFor
+          ) {
+            state.phoneCheck.lookupSeq += 1;
+            if (
+              phoneReady() ||
+              state.phoneCheck.status === 'otp_sent' ||
+              state.phoneCheck.status === 'needs_otp' ||
+              state.phoneCheck.status === 'checking' ||
+              state.phoneCheck.otpSentFor
+            ) {
+              resetPhoneCheck();
+              var nameEl = document.getElementById('hsb-name');
+              var emailEl = document.getElementById('hsb-email');
+              var notesEl = document.getElementById('hsb-notes');
+              if (nameEl) state.form.customer_name = nameEl.value;
+              if (emailEl) state.form.email = emailEl.value;
+              if (notesEl) state.form.notes = notesEl.value;
+              renderDetails({ keepFocusId: 'hsb-phone' });
+            }
           }
           schedulePhoneLookup();
         }

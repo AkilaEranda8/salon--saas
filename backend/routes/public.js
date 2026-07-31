@@ -316,13 +316,32 @@ router.post('/booking/request-otp', async (req, res) => {
       });
     }
 
+    const key = bookingOtpKey(normalized);
+    const prior = otpStore.get(key);
+    const RESEND_COOLDOWN_MS = 60 * 1000;
+    if (
+      prior &&
+      !prior.verified &&
+      prior.sentAt &&
+      Date.now() - prior.sentAt < RESEND_COOLDOWN_MS &&
+      Date.now() <= (prior.expiresAt || 0)
+    ) {
+      return res.json({
+        exists: false,
+        needs_otp: true,
+        cooldown: true,
+        message: 'OTP already sent. Please wait about a minute before requesting again.',
+      });
+    }
+
     const code = String(Math.floor(100000 + Math.random() * 900000));
-    otpStore.set(bookingOtpKey(normalized), {
+    otpStore.set(key, {
       code,
       expiresAt: Date.now() + OTP_TTL_MS,
       attempts: 0,
       tenantId,
       verified: false,
+      sentAt: Date.now(),
     });
 
     await sendSMS({

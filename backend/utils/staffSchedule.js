@@ -49,12 +49,20 @@ function normalizeDayHours(raw) {
 }
 
 function normalizeWorkingHours(input) {
+  let raw = input;
+  if (typeof raw === 'string') {
+    try {
+      raw = JSON.parse(raw);
+    } catch {
+      raw = null;
+    }
+  }
   const defaults = defaultWorkingHours();
-  if (!input || typeof input !== 'object') return defaults;
+  if (!raw || typeof raw !== 'object') return defaults;
   const out = {};
   for (let d = 0; d <= 6; d += 1) {
     const key = String(d);
-    out[key] = normalizeDayHours(input[key] ?? input[d] ?? defaults[key]);
+    out[key] = normalizeDayHours(raw[key] ?? raw[d] ?? defaults[key]);
   }
   return out;
 }

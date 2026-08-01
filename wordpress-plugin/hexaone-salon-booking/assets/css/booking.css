@@ -453,6 +453,14 @@
   text-transform: uppercase;
 }
 
+.hsb-hours-hint {
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 600;
+  color: var(--hsb-muted, #64748b);
+  font-size: 0.78rem;
+}
+
 .hsb-field label {
   display: block;
   margin-bottom: 0.4rem;

@@ -92,7 +92,11 @@ export default function BookingPage() {
     setSlotsLoading(true);
     axios
       .get(`/api/public/availability?${q.toString()}`)
-      .then((r) => setAvailableSlots(Array.isArray(r.data) ? r.data : []))
+      .then((r) => {
+        const data = r.data;
+        if (Array.isArray(data)) setAvailableSlots(data);
+        else setAvailableSlots(Array.isArray(data?.slots) ? data.slots : []);
+      })
       .catch(() => setAvailableSlots([]))
       .finally(() => setSlotsLoading(false));
   }, [form.staff, form.date, form.service?.id, form.service?.duration_minutes, form.branch?.id]);
@@ -270,10 +274,21 @@ export default function BookingPage() {
     </div>
   );
 
+  const hoursLabelForDate = (workingHours, dateStr) => {
+    if (!dateStr || !workingHours) return '';
+    const d = new Date(`${dateStr}T12:00:00`);
+    if (Number.isNaN(d.getTime())) return '';
+    const day = workingHours[String(d.getDay())] || workingHours[d.getDay()];
+    if (!day || day.closed) return 'Off this day';
+    return `${day.start || '09:00'} – ${day.end || '18:00'}`;
+  };
+
   const renderStaffTime = () => (
     <div>
       <h2 style={{ fontSize: 20, color: colors.dark, marginBottom: 4 }}>Select Staff & Time</h2>
-      <p style={{ color: colors.muted, fontSize: 13, marginBottom: 20 }}>Pick your preferred stylist and available time slot</p>
+      <p style={{ color: colors.muted, fontSize: 13, marginBottom: 20 }}>
+        Slots follow each stylist&apos;s working hours for the selected day
+      </p>
 
       {/* Staff selection */}
       <label style={S.label}>Stylist</label>
@@ -295,11 +310,18 @@ export default function BookingPage() {
             </div>
             <div>
               <div style={{ fontSize: 14, fontWeight: 600, color: colors.dark }}>{s.name}</div>
-              {s.role_title && <div style={{ fontSize: 11, color: colors.muted }}>{s.role_title}</div>}
+              <div style={{ fontSize: 11, color: colors.muted }}>
+                {s.role_title || 'Stylist'}
+                {form.date ? ` · ${hoursLabelForDate(s.working_hours, form.date)}` : ''}
+              </div>
             </div>
           </div>
         ))}
-        {staffList.length === 0 && <p style={{ color: colors.muted }}>No staff available for this branch.</p>}
+        {staffList.length === 0 && (
+          <p style={{ color: colors.muted }}>
+            {form.date ? 'No staff available for this date.' : 'No staff available for this service.'}
+          </p>
+        )}
       </div>
 
       {/* Date picker */}
@@ -320,12 +342,15 @@ export default function BookingPage() {
           <label style={S.label}>
             Available Time Slots
             {form.service?.duration_minutes ? ` · ${form.service.duration_minutes} min` : ''}
+            {form.staff?.working_hours
+              ? ` · Hours ${hoursLabelForDate(form.staff.working_hours, form.date)}`
+              : ''}
           </label>
           {slotsLoading ? (
             <p style={{ color: colors.muted, fontSize: 13 }}>Loading slots…</p>
           ) : availableSlots.length === 0 ? (
             <p style={{ color: colors.muted, fontSize: 13 }}>
-              No free slots for this staff on the selected date. Try another day or stylist.
+              No free slots within this staff&apos;s working hours. Try another day or stylist.
             </p>
           ) : (
             <div style={S.timeGrid}>

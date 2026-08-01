@@ -204,9 +204,11 @@ async function listAvailableSlots({
   branchId = null,
   scopeBranchConflicts = false,
 }) {
+  const empty = (window = null) => ({ slots: [], window: window || { closed: true, start: null, end: null } });
+
   const staffIdNum = Number(staffId);
   const dateKey = String(date || '').slice(0, 10);
-  if (!Number.isInteger(staffIdNum) || staffIdNum <= 0 || !dateKey) return [];
+  if (!Number.isInteger(staffIdNum) || staffIdNum <= 0 || !dateKey) return empty();
 
   const staffWhere = { id: staffIdNum, is_active: true };
   if (requireOnline) staffWhere.available_online = true;
@@ -216,7 +218,7 @@ async function listAvailableSlots({
     where: staffWhere,
     attributes: ['id', 'working_hours', 'tenant_id'],
   });
-  if (!staff) return [];
+  if (!staff) return empty();
 
   const blockReason = await getStaffDateBlockReason({
     StaffOffDay,
@@ -225,10 +227,19 @@ async function listAvailableSlots({
     date: dateKey,
     workingHours: staff.working_hours,
   });
-  if (blockReason) return [];
+  if (blockReason) {
+    return empty({
+      closed: true,
+      start: null,
+      end: null,
+      reason: blockReason,
+    });
+  }
 
   const dayWindow = resolveStaffDayWindow(staff.working_hours, dateKey);
-  if (dayWindow.closed) return [];
+  if (dayWindow.closed) {
+    return empty({ closed: true, start: null, end: null, reason: 'weekly_off' });
+  }
 
   const blockedRanges = await loadBlockedRanges({
     Appointment,
@@ -238,11 +249,20 @@ async function listAvailableSlots({
     branchId: scopeBranchConflicts ? branchId : null,
   });
 
-  return generateAvailableSlots({
+  const slots = generateAvailableSlots({
     dayWindow,
     durationMinutes,
     blockedRanges,
   });
+
+  return {
+    slots,
+    window: {
+      closed: false,
+      start: toHHMM(dayWindow.startMin),
+      end: toHHMM(dayWindow.endMin),
+    },
+  };
 }
 
 module.exports = {

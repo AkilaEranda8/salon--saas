@@ -305,7 +305,7 @@ const availability = async (req, res) => {
     if (!durationMinutes || durationMinutes <= 0) durationMinutes = 30;
 
     const tenantId = resolveTenantId(req);
-    const slots = await listAvailableSlots({
+    const result = await listAvailableSlots({
       Staff,
       StaffOffDay,
       Attendance,
@@ -319,7 +319,11 @@ const availability = async (req, res) => {
       scopeBranchConflicts: false,
     });
 
-    return res.json({ duration_minutes: durationMinutes, slots });
+    return res.json({
+      duration_minutes: durationMinutes,
+      slots: Array.isArray(result?.slots) ? result.slots : (Array.isArray(result) ? result : []),
+      window: result?.window || null,
+    });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ message: 'Server error.' });

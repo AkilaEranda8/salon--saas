@@ -148,7 +148,7 @@
     }
 
     function emptyAssignment() {
-      return { staff: null, date: '', time: '', slots: [] };
+      return { staff: null, date: '', time: '', slots: [], hoursWindow: null };
     }
 
     function getAssignment(serviceId) {
@@ -383,7 +383,27 @@
         '</div>';
     }
 
-    function staffForService(serviceId) {
+    function hoursLabelForDate(workingHours, dateStr) {
+      if (!dateStr) return '';
+      var d = new Date(dateStr + 'T12:00:00');
+      if (isNaN(d.getTime())) return '';
+      var key = String(d.getDay());
+      var day = workingHours && (workingHours[key] || workingHours[d.getDay()]);
+      if (!day || day.closed) return 'Off this day';
+      return (day.start || '09:00') + ' – ' + (day.end || '18:00');
+    }
+
+    function parseSlotsPayload(data) {
+      if (Array.isArray(data)) return { slots: data, window: null };
+      if (data && typeof data === 'object') {
+        return {
+          slots: Array.isArray(data.slots) ? data.slots : [],
+          window: data.window || null,
+        };
+      }
+      return { slots: [], window: null };
+    }
+
       var key = String(serviceId);
       var sid = Number(serviceId);
       // Prefer per-service API result (already filtered to assigned staff only).
@@ -424,6 +444,9 @@
                     esc(st.name) +
                     '</strong><span>' +
                     esc(st.role_title || 'Stylist') +
+                    (a.date
+                      ? ' · ' + esc(hoursLabelForDate(st.working_hours, a.date))
+                      : '') +
                     '</span></span></button>'
                   );
                 })
@@ -498,7 +521,13 @@
             '" value="' +
             esc(a.date) +
             '" /></div>' +
-            '<div class="hsb-panel-title">Available times</div>' +
+            '<div class="hsb-panel-title">Available times' +
+            (a.hoursWindow && !a.hoursWindow.closed && a.hoursWindow.start && a.hoursWindow.end
+              ? ' <span class="hsb-hours-hint">(' + esc(a.hoursWindow.start) + ' – ' + esc(a.hoursWindow.end) + ')</span>'
+              : a.staff && a.date
+                ? ' <span class="hsb-hours-hint">(' + esc(hoursLabelForDate(a.staff.working_hours, a.date)) + ')</span>'
+                : '') +
+            '</div>' +
             slotsHtml +
             '</div>'
           );
@@ -922,7 +951,9 @@
         duration: Math.max(5, Number(svc.duration_minutes) || 30),
         branch_id: state.form.branch && state.form.branch.id,
       }).then(function (data) {
-        a.slots = Array.isArray(data) ? data : [];
+        var parsed = parseSlotsPayload(data);
+        a.slots = parsed.slots;
+        a.hoursWindow = parsed.window;
         if (a.time && a.slots.indexOf(a.time) < 0) {
           a.time = '';
         }

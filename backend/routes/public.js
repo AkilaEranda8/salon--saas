@@ -20,6 +20,7 @@ const { getMaintenanceMode } = require('../services/systemSettings');
 const Tenant = require('../models/Tenant');
 const {
   resolveStaffDayWindow,
+  normalizeWorkingHours,
 } = require('../utils/staffSchedule');
 const {
   parseDurationMinutes,
@@ -212,7 +213,8 @@ router.get('/staff', async (req, res) => {
         ? out.specializations.map((sp) => Number(sp.service_id)).filter((id) => id > 0)
         : [];
       delete out.specializations;
-      delete out.working_hours;
+      // Expose normalized weekly hours so online booking can show them.
+      out.working_hours = normalizeWorkingHours(out.working_hours);
       out.service_ids = serviceId
         ? [serviceId]
         : Array.from(new Set(serviceIds));
@@ -246,7 +248,7 @@ router.get('/availability', async (req, res) => {
     const durationMinutes = parseDurationMinutes(duration, 30);
     const tenantIdNum = tenantId ? parseInt(tenantId, 10) : null;
 
-    const slots = await listAvailableSlots({
+    const result = await listAvailableSlots({
       Staff,
       StaffOffDay,
       Attendance,
@@ -261,7 +263,12 @@ router.get('/availability', async (req, res) => {
       scopeBranchConflicts: false,
     });
 
-    res.json(slots);
+    // Prefer object with slots + working window; keep array fallback for older clients.
+    res.json({
+      slots: Array.isArray(result?.slots) ? result.slots : (Array.isArray(result) ? result : []),
+      window: result?.window || null,
+      duration_minutes: durationMinutes,
+    });
   } catch (err) {
     console.error('Public availability error:', err);
     res.status(500).json({ message: 'Server error' });
@@ -640,16 +647,31 @@ router.post('/customer-portal/rebook', portalAuth, async (req, res) => {
     }
     const durationMinutes = source.service?.duration_minutes || 30;
     const endMin = startMin + durationMinutes;
-    if (endMin > 18 * 60 + 30) {
-      return res.status(400).json({ message: 'Selected time exceeds salon working hours.' });
-    }
 
     if (source.staff_id) {
+      const staffRow = await Staff.findByPk(source.staff_id, {
+        attributes: ['id', 'name', 'working_hours', 'is_active', 'available_online'],
+      });
+      if (!staffRow || staffRow.is_active === false) {
+        return res.status(400).json({ message: 'Selected staff is not available.' });
+      }
+      const dayWindow = resolveStaffDayWindow(staffRow.working_hours, String(date).slice(0, 10));
+      if (dayWindow.closed) {
+        return res.status(400).json({ message: 'Selected staff is not working on this date.' });
+      }
+      if (startMin < dayWindow.startMin || endMin > dayWindow.endMin) {
+        const startLabel = `${String(Math.floor(dayWindow.startMin / 60)).padStart(2, '0')}:${String(dayWindow.startMin % 60).padStart(2, '0')}`;
+        const endLabel = `${String(Math.floor(dayWindow.endMin / 60)).padStart(2, '0')}:${String(dayWindow.endMin % 60).padStart(2, '0')}`;
+        return res.status(400).json({
+          message: `Selected time is outside staff working hours (${startLabel}–${endLabel}).`,
+        });
+      }
+
       const existingAppointments = await Appointment.findAll({
         where: buildBookingConflictWhere({
           staffId: source.staff_id,
           date,
-          branchId: source.branch_id,
+          branchId: null,
         }),
         attributes: ['time'],
         include: [{ model: Service, as: 'service', attributes: ['duration_minutes'] }],
@@ -665,6 +687,8 @@ router.post('/customer-portal/rebook', portalAuth, async (req, res) => {
       if (hasOverlap) {
         return res.status(409).json({ message: 'Selected time is not available for this booking.' });
       }
+    } else if (endMin > 18 * 60 + 30) {
+      return res.status(400).json({ message: 'Selected time exceeds salon working hours.' });
     }
 
     const created = await Appointment.create({

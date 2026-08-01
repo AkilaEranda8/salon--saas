@@ -1037,26 +1037,6 @@ export default function StaffPage() {
               )}
             </StaffSection>
 
-            {activeServices.length > 0 && (
-              <StaffSection title="Assignable services" desc="Services this staff can perform for online booking" dark={isDark}>
-                <AssignableServicesSelect
-                  services={activeServices}
-                  selected={specs}
-                  dark={isDark}
-                  onChange={(ids) => {
-                    const next = (ids || []).map((id) => Number(id)).filter((n) => Number.isFinite(n) && n > 0);
-                    setSpecs(next);
-                    setSpecRates((prev) => {
-                      const keep = {};
-                      next.forEach((id) => {
-                        if (prev[String(id)]) keep[String(id)] = prev[String(id)];
-                      });
-                      return keep;
-                    });
-                  }}
-                />
-              </StaffSection>
-            )}
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0, maxWidth: '100%' }}>

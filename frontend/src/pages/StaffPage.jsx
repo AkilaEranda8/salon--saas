@@ -425,7 +425,11 @@ export default function StaffPage() {
       ]);
       setStaff(Array.isArray(stR.data) ? stR.data : (stR.data?.data ?? []));
       setBranches(Array.isArray(brR.data) ? brR.data : (brR.data?.data ?? []));
-      setServices(Array.isArray(svR.data) ? svR.data : (svR.data?.data ?? []));
+      const svcPayload = svR.data;
+      const svcRows = Array.isArray(svcPayload)
+        ? svcPayload
+        : (Array.isArray(svcPayload?.data) ? svcPayload.data : (Array.isArray(svcPayload?.rows) ? svcPayload.rows : []));
+      setServices(svcRows);
     } catch (e) {
       const msg = e.response?.data?.message || e.message || 'Failed to load data';
       setLoadErr(msg);
@@ -434,6 +438,19 @@ export default function StaffPage() {
     setLoading(false);
   }, []);
   useEffect(() => { load(); }, [load]);
+
+  const refreshServices = useCallback(async () => {
+    try {
+      const svR = await api.get('/services', { params: { limit: 200 } });
+      const svcPayload = svR.data;
+      const svcRows = Array.isArray(svcPayload)
+        ? svcPayload
+        : (Array.isArray(svcPayload?.data) ? svcPayload.data : (Array.isArray(svcPayload?.rows) ? svcPayload.rows : []));
+      setServices(svcRows);
+    } catch {
+      /* keep existing list */
+    }
+  }, []);
 
   const myBranchId = user?.branch_id ?? user?.branchId;
   const branchChoices = (isSuperAdmin || user?.role === 'admin')
@@ -1029,6 +1046,45 @@ export default function StaffPage() {
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0, maxWidth: '100%' }}>
+            <StaffSection
+              title="Assignable services"
+              desc="Choose which services this staff can do. Online booking only shows this staff for these services."
+              dark={isDark}
+            >
+              {activeServices.length > 0 ? (
+                <AssignableServicesSelect
+                  services={activeServices}
+                  selected={specs}
+                  dark={isDark}
+                  onChange={(ids) => {
+                    const next = (ids || []).map((id) => Number(id)).filter((n) => Number.isFinite(n) && n > 0);
+                    setSpecs(next);
+                    setSpecRates((prev) => {
+                      const keep = {};
+                      next.forEach((id) => {
+                        if (prev[String(id)]) keep[String(id)] = prev[String(id)];
+                      });
+                      return keep;
+                    });
+                  }}
+                />
+              ) : (
+                <div style={{
+                  padding: '12px 14px', borderRadius: 10, fontSize: 13, lineHeight: 1.45,
+                  background: isDark ? '#0B1220' : '#FFF7ED',
+                  border: `1px solid ${isDark ? '#334155' : '#FED7AA'}`,
+                  color: isDark ? '#CBD5E1' : '#9A3412',
+                }}>
+                  No active services found. Add services under <strong>Services</strong> first, then assign them here.
+                </div>
+              )}
+              {form.available_online !== false && specs.length === 0 && (
+                <div style={{ fontSize: 12, color: '#D97706', fontWeight: 600 }}>
+                  Online booking is on, but no services are assigned — this staff will not appear for any service online.
+                </div>
+              )}
+            </StaffSection>
+
             <StaffSection title="Role & Branches" desc="Job title and assigned locations" dark={isDark}>
               <FormGroup label="Role" required>
                 {franchiseCommission ? (
@@ -1125,27 +1181,6 @@ export default function StaffPage() {
                 </div>
               </FormGroup>
             </StaffSection>
-
-            {activeServices.length > 0 && (
-              <StaffSection title="Assignable services" desc="Services this staff can perform for online booking" dark={isDark}>
-                <AssignableServicesSelect
-                  services={activeServices}
-                  selected={specs}
-                  dark={isDark}
-                  onChange={(ids) => {
-                    const next = (ids || []).map((id) => Number(id)).filter((n) => Number.isFinite(n) && n > 0);
-                    setSpecs(next);
-                    setSpecRates((prev) => {
-                      const keep = {};
-                      next.forEach((id) => {
-                        if (prev[String(id)]) keep[String(id)] = prev[String(id)];
-                      });
-                      return keep;
-                    });
-                  }}
-                />
-              </StaffSection>
-            )}
 
             <StaffSection title="Pay & Commission" desc="Salary type, default rate, and optional per-service rates" dark={isDark}>
               <FormGroup label="Salary Type">

@@ -161,21 +161,33 @@ function interpolate(tpl, vars) {
 
 /**
  * Fetch template for event + channel + tenantId.
- * The selected active DB variant wins; otherwise use the built-in system default.
+ * Prefer the selected default custom; else any active custom; else built-in system default.
  */
 async function getTemplate(event_type, channel, tenantId) {
   try {
     const { MessageTemplate } = getModels();
-    const row = await MessageTemplate.findOne({
-      where: {
-        event_type,
-        channel,
-        tenant_id: tenantId || null,
-        is_active: true,
-        is_default: true,
-      },
+    const tid = tenantId || null;
+    const baseWhere = {
+      event_type,
+      channel,
+      tenant_id: tid,
+      is_active: true,
+    };
+
+    // 1) Explicitly selected custom template
+    let row = await MessageTemplate.findOne({
+      where: { ...baseWhere, is_default: true },
       order: [['id', 'ASC']],
     });
+
+    // 2) Any active custom for this event/channel (covers save-without-select)
+    if (!row) {
+      row = await MessageTemplate.findOne({
+        where: baseWhere,
+        order: [['updatedAt', 'DESC'], ['id', 'DESC']],
+      });
+    }
+
     if (row) return { subject: row.subject, body: row.body };
     return getDefaultTemplate(event_type, channel);
   } catch {

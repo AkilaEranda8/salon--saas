@@ -345,7 +345,8 @@ export default function NotificationsPage() {
       id: null,
       name: '',
       is_custom: true,
-      is_default: false,
+      // New custom templates become the live send template on save.
+      is_default: true,
     });
   };
 
@@ -362,11 +363,12 @@ export default function NotificationsPage() {
         name:       editName.trim(),
         subject:    editSubject.trim() || null,
         body:       editBody.trim(),
-        is_default: editTpl.is_default === true,
+        // Always activate the template being saved so SMS/WhatsApp/Email use it.
+        is_default: true,
       });
       await loadTemplates();
       setTplOpen(false);
-      toast(editTpl.id ? 'Template updated!' : 'Template created!', 'success');
+      toast(editTpl.id ? 'Template updated and set as active!' : 'Template created and set as active!', 'success');
     } catch (err) {
       toast(err?.response?.data?.message || 'Failed to save template.', 'error');
     } finally { setTplBusy(false); }
@@ -1037,7 +1039,7 @@ export default function NotificationsPage() {
                             ) : (
                               <button type="button" onClick={() => createTplVariant(tpl)}
                                 style={{ padding:'5px 14px', borderRadius:7, border:'none', background:'#2563EB', fontSize:12, fontWeight:700, color:'#fff', cursor:'pointer', fontFamily:"'Inter',sans-serif" }}>
-                                + New template
+                                Edit / customize
                               </button>
                             )}
                           </div>

@@ -846,6 +846,10 @@ const saveTemplate = async (req, res) => {
       return res.status(400).json({ message: 'Template name is required.' });
     }
 
+    // Editing/creating a custom template should become the live send template unless
+    // the client explicitly passes is_default: false.
+    const makeDefault = is_default !== false;
+
     let row;
     await sequelize.transaction(async (transaction) => {
       if (id) {
@@ -868,7 +872,7 @@ const saveTemplate = async (req, res) => {
           subject: subject || null,
           body: String(body).trim(),
           is_active: is_active !== false,
-          ...(is_default === true ? { is_default: true } : {}),
+          is_default: makeDefault ? true : row.is_default,
         }, { transaction });
       } else {
         row = await MessageTemplate.create({
@@ -878,12 +882,12 @@ const saveTemplate = async (req, res) => {
           subject: subject || null,
           body: String(body).trim(),
           is_active: is_active !== false,
-          is_default: is_default === true,
+          is_default: makeDefault,
           tenant_id: tenantId || null,
         }, { transaction });
       }
 
-      if (is_default === true) {
+      if (makeDefault) {
         await MessageTemplate.update(
           { is_default: false },
           {
@@ -896,6 +900,9 @@ const saveTemplate = async (req, res) => {
             transaction,
           }
         );
+        if (!row.is_default) {
+          await row.update({ is_default: true }, { transaction });
+        }
       }
     });
 

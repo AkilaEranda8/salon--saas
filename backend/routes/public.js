@@ -15,7 +15,7 @@ const PaymentSplit = require('../models/PaymentSplit');
 const StaffSpecialization = require('../models/StaffSpecialization');
 const StaffOffDay = require('../models/StaffOffDay');
 const Attendance = require('../models/Attendance');
-const { sendSMS, getChannelFlags } = require('../services/notificationService');
+const { sendSMS, getChannelFlags, getTemplate, interpolate } = require('../services/notificationService');
 const { getMaintenanceMode } = require('../services/systemSettings');
 const Tenant = require('../models/Tenant');
 const {
@@ -1215,13 +1215,21 @@ router.post('/bookings', async (req, res) => {
 
           const branch = await Branch.findByPk(effectiveBranchId, { attributes: ['id', 'name'] });
           const salonName = await resolveTenantSmsName(bookingTenantId);
-          // Keep under ~1 GSM segment when possible (avoid multi-part billing).
           const first = requested[0];
-          const extra = requested.length > 1 ? ` +${requested.length - 1} more` : '';
-          const summaryMsg =
-            `${salonName}: Hi ${bookingName}, booking received ` +
-            `${first.date} ${first.time}${extra}. ` +
-            `${branch?.name || salonName}. Pending confirmation.`;
+          const vars = {
+            customer_name: bookingName,
+            date: first.date,
+            time: first.time,
+            service_name: first.service?.name || 'Service',
+            branch_name: branch?.name || salonName,
+            amount: `Rs. ${requested.reduce((sum, r) => sum + (parseFloat(r.service.price) || 0), 0).toFixed(2)}`,
+          };
+          const tpl = await getTemplate('appointment_confirmed', 'sms', bookingTenantId);
+          const summaryMsg = tpl?.body
+            ? interpolate(tpl.body, vars)
+            : `${salonName}: Hi ${bookingName}, booking received ${first.date} ${first.time}` +
+              `${requested.length > 1 ? ` +${requested.length - 1} more` : ''}. ` +
+              `${branch?.name || salonName}. Pending confirmation.`;
 
           await sendSMS({
             to: bookingPhone,

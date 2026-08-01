@@ -41,7 +41,6 @@ function AssignableServicesSelect({ services, selected, onChange, dark = false }
     () => Array.from(new Set((selected || []).map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0))),
     [selected],
   );
-  const selSvcs = services.filter((s) => selectedIds.includes(Number(s.id)));
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return services;
@@ -91,32 +90,35 @@ function AssignableServicesSelect({ services, selected, onChange, dark = false }
         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpenState((o) => !o); } }}
         onClick={() => setOpenState((o) => !o)}
         style={{
-          minHeight: 40, padding: '7px 10px', borderRadius: 10,
+          height: 42, padding: '0 12px', borderRadius: 10,
           border: `1.5px solid ${open ? '#2563EB' : (dark ? '#334155' : '#D0D5DD')}`,
           background: dark ? '#0B1220' : '#fff', cursor: 'pointer',
-          display: 'flex', flexWrap: 'wrap', gap: 5, alignItems: 'center', minWidth: 0,
+          display: 'flex', alignItems: 'center', gap: 10, minWidth: 0,
+          boxShadow: open ? '0 0 0 3px rgba(37,99,235,0.12)' : 'none',
         }}
       >
-        {selSvcs.length === 0
-          ? <span style={{ color: dark ? '#64748B' : '#98A2B3', fontSize: 13, userSelect: 'none' }}>Select services…</span>
-          : selSvcs.map((s) => (
-            <span key={s.id} style={{
-              display: 'inline-flex', alignItems: 'center', gap: 3,
-              padding: '2px 8px 2px 10px', borderRadius: 99,
-              background: dark ? 'rgba(37,99,235,0.2)' : '#EFF6FF',
-              color: dark ? '#93C5FD' : '#2563EB', fontSize: 12, fontWeight: 600, maxWidth: '100%',
-            }}>
-              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</span>
-              <span
-                onMouseDown={(e) => { e.stopPropagation(); toggle(s.id); }}
-                style={{ cursor: 'pointer', color: dark ? '#93C5FD' : '#60A5FA', fontWeight: 700, fontSize: 14, lineHeight: 1, marginLeft: 3 }}
-              >
-                ×
-              </span>
-            </span>
-          ))}
-        <span style={{ marginLeft: 'auto', fontSize: 11, color: '#98A2B3', userSelect: 'none', paddingLeft: 4, flexShrink: 0 }}>
-          {selSvcs.length > 0 ? `${selSvcs.length} · ` : ''}{open ? '▴' : '▾'}
+        <span style={{
+          width: 22, height: 22, borderRadius: 6, flexShrink: 0,
+          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+          background: selectedIds.length ? (dark ? 'rgba(37,99,235,0.25)' : '#EFF6FF') : (dark ? '#1E293B' : '#F2F4F7'),
+          color: selectedIds.length ? '#2563EB' : (dark ? '#64748B' : '#98A2B3'),
+          fontSize: 11, fontWeight: 800,
+        }}>
+          {selectedIds.length || '0'}
+        </span>
+        <span style={{
+          flex: 1, minWidth: 0, fontSize: 13.5, fontWeight: selectedIds.length ? 600 : 500,
+          color: selectedIds.length ? (dark ? '#E2E8F0' : '#101828') : (dark ? '#64748B' : '#98A2B3'),
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', userSelect: 'none',
+        }}>
+          {selectedIds.length === 0
+            ? 'Select services…'
+            : selectedIds.length === services.length
+              ? `All ${services.length} services selected`
+              : `${selectedIds.length} of ${services.length} services selected`}
+        </span>
+        <span style={{ fontSize: 12, color: '#98A2B3', userSelect: 'none', flexShrink: 0 }}>
+          {open ? '▴' : '▾'}
         </span>
       </div>
       {open && createPortal(
@@ -126,18 +128,18 @@ function AssignableServicesSelect({ services, selected, onChange, dark = false }
             position: 'fixed',
             top: menuPos.top,
             left: menuPos.left,
-            width: Math.max(menuPos.width, 260),
+            width: Math.max(menuPos.width, 280),
             zIndex: 9999,
             background: dark ? '#1E293B' : '#fff',
             border: `1.5px solid ${dark ? '#334155' : '#E4E7EC'}`,
-            borderRadius: 10,
-            boxShadow: dark ? '0 8px 24px rgba(2,6,23,0.45)' : '0 8px 24px rgba(16,24,40,0.12)',
-            maxHeight: 320,
+            borderRadius: 12,
+            boxShadow: dark ? '0 12px 32px rgba(2,6,23,0.5)' : '0 12px 32px rgba(16,24,40,0.14)',
+            maxHeight: 360,
             display: 'flex',
             flexDirection: 'column',
             overflow: 'hidden',
           }}>
-            <div style={{ padding: '8px 10px', borderBottom: `1px solid ${dark ? '#334155' : '#F2F4F7'}`, flexShrink: 0 }}>
+            <div style={{ padding: '10px 12px 8px', borderBottom: `1px solid ${dark ? '#334155' : '#F2F4F7'}`, flexShrink: 0 }}>
               <input
                 ref={searchRef}
                 type="search"
@@ -148,45 +150,47 @@ function AssignableServicesSelect({ services, selected, onChange, dark = false }
                 placeholder="Search services…"
                 style={{
                   width: '100%', boxSizing: 'border-box',
-                  padding: '8px 10px', borderRadius: 8, fontSize: 13,
+                  padding: '9px 12px', borderRadius: 8, fontSize: 13,
                   border: `1px solid ${dark ? '#475569' : '#D0D5DD'}`,
                   background: dark ? '#0B1220' : '#F9FAFB',
                   color: dark ? '#E2E8F0' : '#101828',
                   outline: 'none',
                 }}
               />
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 8, gap: 8 }}>
+                <span style={{ fontSize: 11, fontWeight: 600, color: dark ? '#64748B' : '#98A2B3' }}>
+                  {selectedIds.length} selected
+                </span>
+                <div style={{ display: 'flex', gap: 12 }}>
+                  <button
+                    type="button"
+                    onClick={() => onChange(services.map((s) => Number(s.id)))}
+                    style={{
+                      border: 'none', background: 'transparent', cursor: 'pointer',
+                      fontSize: 12, fontWeight: 700, color: '#2563EB', padding: 0,
+                    }}
+                  >
+                    Select all
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onChange([])}
+                    style={{
+                      border: 'none', background: 'transparent', cursor: 'pointer',
+                      fontSize: 12, fontWeight: 700, color: dark ? '#94A3B8' : '#64748B', padding: 0,
+                    }}
+                  >
+                    Clear
+                  </button>
+                </div>
+              </div>
             </div>
-            <div style={{
-              display: 'flex', gap: 8, padding: '6px 10px', flexShrink: 0,
-              borderBottom: `1px solid ${dark ? '#334155' : '#F2F4F7'}`,
-            }}>
-              <button
-                type="button"
-                onClick={() => onChange(services.map((s) => Number(s.id)))}
-                style={{
-                  border: 'none', background: 'transparent', cursor: 'pointer',
-                  fontSize: 12, fontWeight: 700, color: '#2563EB', padding: 0,
-                }}
-              >
-                Select all
-              </button>
-              <button
-                type="button"
-                onClick={() => onChange([])}
-                style={{
-                  border: 'none', background: 'transparent', cursor: 'pointer',
-                  fontSize: 12, fontWeight: 700, color: dark ? '#94A3B8' : '#64748B', padding: 0,
-                }}
-              >
-                Clear
-              </button>
-            </div>
-            <div style={{ overflowY: 'auto', flex: 1, maxHeight: 220 }}>
+            <div style={{ overflowY: 'auto', flex: 1, maxHeight: 260 }}>
               {services.length === 0 && (
-                <div style={{ padding: '12px 14px', fontSize: 13, color: dark ? '#64748B' : '#98A2B3' }}>No services found</div>
+                <div style={{ padding: '14px 14px', fontSize: 13, color: dark ? '#64748B' : '#98A2B3' }}>No services found</div>
               )}
               {services.length > 0 && filtered.length === 0 && (
-                <div style={{ padding: '12px 14px', fontSize: 13, color: dark ? '#64748B' : '#98A2B3' }}>
+                <div style={{ padding: '14px 14px', fontSize: 13, color: dark ? '#64748B' : '#98A2B3' }}>
                   No services match “{search.trim()}”
                 </div>
               )}
@@ -198,7 +202,7 @@ function AssignableServicesSelect({ services, selected, onChange, dark = false }
                     style={{
                       display: 'flex', alignItems: 'center', gap: 10, padding: '9px 14px', cursor: 'pointer',
                       background: checked ? (dark ? 'rgba(37,99,235,0.15)' : '#F0F9FF') : 'transparent',
-                      borderBottom: `1px solid ${dark ? '#334155' : '#F8FAFC'}`,
+                      borderBottom: `1px solid ${dark ? '#1E293B' : '#F8FAFC'}`,
                     }}
                   >
                     <input

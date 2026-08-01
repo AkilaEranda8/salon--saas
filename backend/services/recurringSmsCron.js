@@ -16,17 +16,12 @@ function getModels() {
  * Returns true if this worker claimed it.
  */
 async function claimRecurringSms(appointmentId) {
-  const [affected] = await sequelize.query(
-    `UPDATE appointments
-     SET recurring_sms_sent_at = NOW()
-     WHERE id = :id AND recurring_sms_sent_at IS NULL`,
-    { replacements: { id: appointmentId } }
+  const { Appointment } = getModels();
+  const [affected] = await Appointment.update(
+    { recurring_sms_sent_at: new Date() },
+    { where: { id: appointmentId, recurring_sms_sent_at: null } }
   );
-  // mysql2 returns ResultSetHeader; Sequelize may return metadata differently by dialect.
-  const changed = typeof affected === 'number'
-    ? affected
-    : (affected?.affectedRows ?? affected?.rowCount ?? 0);
-  return Number(changed) > 0;
+  return Number(affected) > 0;
 }
 
 /**

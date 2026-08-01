@@ -57,17 +57,24 @@ export default function BookingPage() {
     }
   }, [step]);
 
-  // Fetch staff when branch selected and step = 2 (filter by selected service)
+  // Fetch staff when branch selected and step = 2 (filter by selected service + date)
   useEffect(() => {
     if (step === 2 && form.branch) {
       const q = new URLSearchParams({ branchId: String(form.branch.id) });
       if (form.service?.id) q.set('serviceId', String(form.service.id));
+      if (form.date) q.set('date', form.date);
       axios
         .get(`/api/public/staff?${q.toString()}`)
-        .then((r) => setStaffList(Array.isArray(r.data) ? r.data : []))
+        .then((r) => {
+          const list = Array.isArray(r.data) ? r.data : [];
+          setStaffList(list);
+          if (form.staff && !list.some((s) => Number(s.id) === Number(form.staff.id))) {
+            setForm((p) => ({ ...p, staff: null, time: '' }));
+          }
+        })
         .catch(() => setStaffList([]));
     }
-  }, [step, form.branch, form.service]);
+  }, [step, form.branch, form.service, form.date]);
 
   // Fetch available slots when staff + date + service selected (uses service duration)
   useEffect(() => {

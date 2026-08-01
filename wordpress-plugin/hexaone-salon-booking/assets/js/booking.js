@@ -429,8 +429,10 @@
                 })
                 .join('')
             : emptyState(
-              'No staff for this service',
-              'Assign this service to staff in the salon admin (Staff → Assignable services).'
+              a.date ? 'No staff available this day' : 'No staff for this service',
+              a.date
+                ? 'Staff on leave, off, or weekly off are hidden for this date. Try another day.'
+                : 'Assign this service to staff in the salon admin (Staff → Assignable services).'
             );
 
           // Drop selected staff if they are no longer eligible for this service
@@ -878,22 +880,30 @@
       }
       return Promise.all(
         services.map(function (svc) {
-          return api('staff', { branch_id: branchId, service_id: svc.id }).then(function (data) {
-            var list = Array.isArray(data) ? data : [];
-            state.staffByService[String(svc.id)] = list;
-            return list;
-          });
+          var a = getAssignment(svc.id);
+          return loadStaffForService(svc, a && a.date);
         })
-      ).then(function (lists) {
+      ).then(function () {
         var byId = {};
-        lists.forEach(function (list) {
-          list.forEach(function (st) {
+        Object.keys(state.staffByService).forEach(function (key) {
+          (state.staffByService[key] || []).forEach(function (st) {
             byId[String(st.id)] = st;
           });
         });
         state.staff = Object.keys(byId).map(function (k) {
           return byId[k];
         });
+      });
+    }
+
+    function loadStaffForService(svc, date) {
+      if (!state.form.branch || !svc) return Promise.resolve([]);
+      var params = { branch_id: state.form.branch.id, service_id: svc.id };
+      if (date) params.date = date;
+      return api('staff', params).then(function (data) {
+        var list = Array.isArray(data) ? data : [];
+        state.staffByService[String(svc.id)] = list;
+        return list;
       });
     }
 
@@ -1133,7 +1143,18 @@
         var a = getAssignment(dateServiceId);
         a.date = t.value;
         a.time = '';
-        loadSlotsForService(dateServiceId)
+        var svc = state.form.services.find(function (s) {
+          return Number(s.id) === Number(dateServiceId);
+        });
+        // Reload staff for this date — hide leave / off / weekly-off staff.
+        loadStaffForService(svc, a.date)
+          .then(function (list) {
+            if (a.staff && !(list || []).some(function (st) { return Number(st.id) === Number(a.staff.id); })) {
+              a.staff = null;
+              a.slots = [];
+            }
+            return loadSlotsForService(dateServiceId);
+          })
           .then(render)
           .catch(function (err) {
             showError(err.message);

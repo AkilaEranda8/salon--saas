@@ -54,6 +54,10 @@ class HSB_API {
                 if ($service_id) {
                     $query['serviceId'] = $service_id;
                 }
+                $date = sanitize_text_field(wp_unslash($_REQUEST['date'] ?? ''));
+                if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
+                    $query['date'] = $date;
+                }
             }
 
             if ($action === 'availability') {
@@ -66,7 +70,7 @@ class HSB_API {
                 }
                 $query['staffId'] = $staff_id;
                 $query['date'] = $date;
-                $query['duration'] = max(30, $duration);
+                $query['duration'] = max(5, $duration);
                 if ($branch_id) {
                     $query['branchId'] = $branch_id;
                 }

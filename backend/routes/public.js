@@ -14,6 +14,7 @@ const Payment = require('../models/Payment');
 const PaymentSplit = require('../models/PaymentSplit');
 const StaffSpecialization = require('../models/StaffSpecialization');
 const StaffOffDay = require('../models/StaffOffDay');
+const Attendance = require('../models/Attendance');
 const { sendSMS } = require('../services/notificationService');
 const { getMaintenanceMode } = require('../services/systemSettings');
 const Tenant = require('../models/Tenant');
@@ -24,6 +25,8 @@ const {
   parseDurationMinutes,
   listAvailableSlots,
   loadBlockedRanges,
+  findUnavailableStaffIdsOnDate,
+  BLOCKING_ATTENDANCE_STATUSES,
 } = require('../utils/staffAvailability');
 const WEB_BOOKING_BRANCH_NAME = 'HEXAONE (VIP)';
 
@@ -147,14 +150,17 @@ router.get('/services', async (req, res) => {
   }
 });
 
-// ── GET /api/public/staff?branchId=&tenantId=&serviceId= — active staff, limited fields ──────────
-// When serviceId is set: ONLY staff with that service in staff_specializations (assignable services).
+// ── GET /api/public/staff?branchId=&tenantId=&serviceId=&date= ───────────────
+// When serviceId is set: ONLY staff with that service in staff_specializations.
+// When date is set: hide staff on weekly off, staff off-days, or attendance leave/absent.
 router.get('/staff', async (req, res) => {
   try {
     const tenantId = req.query.tenantId ? parseInt(req.query.tenantId, 10) : null;
     const serviceIdRaw = req.query.serviceId ?? req.query.service_id;
     const parsedServiceId = parseInt(serviceIdRaw, 10);
     const serviceId = Number.isInteger(parsedServiceId) && parsedServiceId > 0 ? parsedServiceId : null;
+    const dateKey = String(req.query.date || '').slice(0, 10);
+    const filterDate = /^\d{4}-\d{2}-\d{2}$/.test(dateKey) ? dateKey : null;
     const where = { is_active: true, available_online: true };
     if (tenantId) where.tenant_id = tenantId;
     if (req.query.branchId) {
@@ -179,7 +185,7 @@ router.get('/staff', async (req, res) => {
 
     const staff = await Staff.findAll({
       where,
-      attributes: ['id', 'name', 'role_title', 'photo_url'],
+      attributes: ['id', 'name', 'role_title', 'photo_url', 'working_hours'],
       include: [{
         model: StaffSpecialization,
         as: 'specializations',
@@ -189,12 +195,24 @@ router.get('/staff', async (req, res) => {
       order: [['name', 'ASC']],
     });
 
-    const mapped = staff.map((s) => {
+    let visible = staff;
+    if (filterDate && staff.length) {
+      const unavailable = await findUnavailableStaffIdsOnDate({
+        StaffOffDay,
+        Attendance,
+        staffRows: staff,
+        date: filterDate,
+      });
+      visible = staff.filter((s) => !unavailable.has(Number(s.id)));
+    }
+
+    const mapped = visible.map((s) => {
       const out = s.toJSON();
       const serviceIds = Array.isArray(out.specializations)
         ? out.specializations.map((sp) => Number(sp.service_id)).filter((id) => id > 0)
         : [];
       delete out.specializations;
+      delete out.working_hours;
       out.service_ids = serviceId
         ? [serviceId]
         : Array.from(new Set(serviceIds));
@@ -231,6 +249,7 @@ router.get('/availability', async (req, res) => {
     const slots = await listAvailableSlots({
       Staff,
       StaffOffDay,
+      Attendance,
       Appointment,
       Service,
       staffId: staffIdNum,
@@ -967,11 +986,22 @@ router.post('/bookings', async (req, res) => {
     }
 
     const datesNeeded = [...new Set(items.map((i) => String(i.date).slice(0, 10)))];
-    const offRows = await StaffOffDay.findAll({
-      where: { staff_id: staffIds, date: datesNeeded },
-      attributes: ['staff_id', 'date'],
-    });
+    const [offRows, leaveRows] = await Promise.all([
+      StaffOffDay.findAll({
+        where: { staff_id: staffIds, date: datesNeeded },
+        attributes: ['staff_id', 'date'],
+      }),
+      Attendance.findAll({
+        where: {
+          staff_id: staffIds,
+          date: datesNeeded,
+          status: { [Op.in]: BLOCKING_ATTENDANCE_STATUSES },
+        },
+        attributes: ['staff_id', 'date', 'status'],
+      }),
+    ]);
     const offSet = new Set(offRows.map((r) => `${r.staff_id}|${r.date}`));
+    const leaveMap = new Map(leaveRows.map((r) => [`${r.staff_id}|${r.date}`, r.status]));
 
     const serviceMap = new Map(services.map((s) => [s.id, s]));
     const staffMap = new Map(staffRows.map((s) => [s.id, s]));
@@ -987,6 +1017,12 @@ router.post('/bookings', async (req, res) => {
       if (offSet.has(`${item.staff_id}|${dateKey}`)) {
         return res.status(400).json({
           message: `${staffRow?.name || 'Selected staff'} is marked off on ${dateKey}.`,
+        });
+      }
+      const leaveStatus = leaveMap.get(`${item.staff_id}|${dateKey}`);
+      if (leaveStatus) {
+        return res.status(400).json({
+          message: `${staffRow?.name || 'Selected staff'} is on ${leaveStatus} on ${dateKey}. Please choose another staff member.`,
         });
       }
       const dayWindow = resolveStaffDayWindow(staffRow?.working_hours, dateKey);

@@ -4,6 +4,9 @@ const { resolveStaffDayWindow, toHHMM } = require('./staffSchedule');
 /** Grid step for candidate start times (minutes). Duration still controls how long a booking occupies. */
 const SLOT_INTERVAL_MIN = 15;
 
+/** Attendance statuses that mean staff cannot take online bookings that day. */
+const BLOCKING_ATTENDANCE_STATUSES = ['leave', 'absent'];
+
 function parseDurationMinutes(raw, fallback = 30) {
   const n = Number.parseInt(raw, 10);
   return Number.isFinite(n) && n > 0 ? n : fallback;
@@ -92,15 +95,105 @@ function generateAvailableSlots({
 }
 
 /**
+ * Why staff cannot work on a date: off day, weekly closed, or attendance leave/absent.
+ * Returns null if available, else a short reason code.
+ */
+async function getStaffDateBlockReason({
+  StaffOffDay,
+  Attendance,
+  staffId,
+  date,
+  workingHours = null,
+}) {
+  const staffIdNum = Number(staffId);
+  const dateKey = String(date || '').slice(0, 10);
+  if (!Number.isInteger(staffIdNum) || staffIdNum <= 0 || !dateKey) return 'invalid';
+
+  if (StaffOffDay) {
+    const offDay = await StaffOffDay.findOne({
+      where: { staff_id: staffIdNum, date: dateKey },
+      attributes: ['id'],
+    });
+    if (offDay) return 'off_day';
+  }
+
+  if (workingHours != null) {
+    const dayWindow = resolveStaffDayWindow(workingHours, dateKey);
+    if (dayWindow.closed) return 'weekly_off';
+  }
+
+  if (Attendance) {
+    const row = await Attendance.findOne({
+      where: {
+        staff_id: staffIdNum,
+        date: dateKey,
+        status: { [Op.in]: BLOCKING_ATTENDANCE_STATUSES },
+      },
+      attributes: ['id', 'status'],
+    });
+    if (row) return row.status === 'absent' ? 'absent' : 'leave';
+  }
+
+  return null;
+}
+
+/**
+ * Staff IDs that are unavailable on `date` (off day, weekly closed, leave/absent).
+ * Pass staff rows with id + working_hours for weekly-off checks.
+ */
+async function findUnavailableStaffIdsOnDate({
+  StaffOffDay,
+  Attendance,
+  staffRows = [],
+  date,
+}) {
+  const dateKey = String(date || '').slice(0, 10);
+  if (!dateKey || !staffRows.length) return new Set();
+
+  const ids = staffRows.map((s) => Number(s.id)).filter((id) => Number.isInteger(id) && id > 0);
+  if (!ids.length) return new Set();
+
+  const unavailable = new Set();
+
+  staffRows.forEach((s) => {
+    const dayWindow = resolveStaffDayWindow(s.working_hours, dateKey);
+    if (dayWindow.closed) unavailable.add(Number(s.id));
+  });
+
+  const [offRows, leaveRows] = await Promise.all([
+    StaffOffDay
+      ? StaffOffDay.findAll({
+        where: { staff_id: ids, date: dateKey },
+        attributes: ['staff_id'],
+        raw: true,
+      })
+      : Promise.resolve([]),
+    Attendance
+      ? Attendance.findAll({
+        where: {
+          staff_id: ids,
+          date: dateKey,
+          status: { [Op.in]: BLOCKING_ATTENDANCE_STATUSES },
+        },
+        attributes: ['staff_id'],
+        raw: true,
+      })
+      : Promise.resolve([]),
+  ]);
+
+  offRows.forEach((r) => unavailable.add(Number(r.staff_id)));
+  leaveRows.forEach((r) => unavailable.add(Number(r.staff_id)));
+
+  return unavailable;
+}
+
+/**
  * Full availability for a staff member on a date for a booking of `durationMinutes`.
- * @param {object} opts
- * @param {boolean} [opts.requireOnline=false] — public booking only shows available_online staff
- * @param {number|null} [opts.branchId] — only used if opts.scopeBranchConflicts is true
- * @param {boolean} [opts.scopeBranchConflicts=false]
  */
 async function listAvailableSlots({
   Staff,
   StaffOffDay,
+  Attendance,
   Appointment,
   Service,
   staffId,
@@ -125,11 +218,14 @@ async function listAvailableSlots({
   });
   if (!staff) return [];
 
-  const offDay = await StaffOffDay.findOne({
-    where: { staff_id: staffIdNum, date: dateKey },
-    attributes: ['id'],
+  const blockReason = await getStaffDateBlockReason({
+    StaffOffDay,
+    Attendance,
+    staffId: staffIdNum,
+    date: dateKey,
+    workingHours: staff.working_hours,
   });
-  if (offDay) return [];
+  if (blockReason) return [];
 
   const dayWindow = resolveStaffDayWindow(staff.working_hours, dateKey);
   if (dayWindow.closed) return [];
@@ -151,11 +247,14 @@ async function listAvailableSlots({
 
 module.exports = {
   SLOT_INTERVAL_MIN,
+  BLOCKING_ATTENDANCE_STATUSES,
   parseDurationMinutes,
   timeToMinutes,
   appointmentBlockDuration,
   buildConflictWhere,
   loadBlockedRanges,
   generateAvailableSlots,
+  getStaffDateBlockReason,
+  findUnavailableStaffIdsOnDate,
   listAvailableSlots,
 };

@@ -3,7 +3,7 @@
  * Plugin Name: Hexaone Salon Booking
  * Plugin URI: https://salon.hexalyte.com/documentation
  * Description: Embed an online salon booking form on any WordPress page. Connects to the Hexaone / salon SaaS public booking API.
- * Version: 1.0.17
+ * Version: 1.0.18
  * Author: Hexaone
  * Requires at least: 5.8
  * Requires PHP: 7.4

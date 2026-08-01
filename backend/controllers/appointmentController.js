@@ -1,5 +1,5 @@
 const { Op } = require('sequelize');
-const { Appointment, Branch, Customer, Staff, Service, Payment, PaymentSplit, StaffOffDay } = require('../models');
+const { Appointment, Branch, Customer, Staff, Service, Payment, PaymentSplit, StaffOffDay, Attendance } = require('../models');
 const AppointmentService = require('../models/AppointmentService');
 const { sequelize } = require('../config/database');
 const { notifyAppointmentConfirmed, notifyAppointmentCompleted, notifyWaitlistSlotAvailable } = require('../services/notificationService');
@@ -308,6 +308,7 @@ const availability = async (req, res) => {
     const slots = await listAvailableSlots({
       Staff,
       StaffOffDay,
+      Attendance,
       Appointment,
       Service,
       staffId,

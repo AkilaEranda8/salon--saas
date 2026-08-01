@@ -21,6 +21,7 @@ export default function InvConsumptionPage() {
   const [saving, setSaving] = useState(false);
   const [productSearch, setProductSearch] = useState('');
   const [customerSearch, setCustomerSearch] = useState('');
+  const [serviceSearch, setServiceSearch] = useState('');
   const [form, setForm] = useState({
     staff_id: '',
     customer_id: '',
@@ -69,6 +70,7 @@ export default function InvConsumptionPage() {
     setLineMap(next);
     setProductSearch('');
     setCustomerSearch('');
+    setServiceSearch('');
     setForm({
       staff_id: '',
       customer_id: '',
@@ -94,6 +96,16 @@ export default function InvConsumptionPage() {
       return name.includes(q) || phone.includes(q);
     });
   }, [customers, customerSearch]);
+
+  const filteredServices = useMemo(() => {
+    const q = serviceSearch.trim().toLowerCase();
+    if (!q) return services;
+    return services.filter((s) => {
+      const name = String(s.name || '').toLowerCase();
+      const cat = String(s.category || '').toLowerCase();
+      return name.includes(q) || cat.includes(q);
+    });
+  }, [services, serviceSearch]);
 
   const selectedCount = useMemo(
     () => Object.values(lineMap).filter((l) => l.selected).length,
@@ -278,10 +290,18 @@ export default function InvConsumptionPage() {
               </Select>
             </FormGroup>
             <FormGroup label="Service">
+              <Input
+                value={serviceSearch}
+                onChange={(e) => setServiceSearch(e.target.value)}
+                placeholder="Search service…"
+                style={{ marginBottom: 6 }}
+              />
               <Select value={form.service_id} onChange={(e) => setForm((f) => ({ ...f, service_id: e.target.value }))}>
                 <option value="">Select service (optional)</option>
-                {services.map((s) => (
-                  <option key={s.id} value={s.id}>{s.name}</option>
+                {filteredServices.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}{s.category ? ` — ${s.category}` : ''}
+                  </option>
                 ))}
               </Select>
             </FormGroup>

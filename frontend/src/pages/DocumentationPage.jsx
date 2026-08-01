@@ -234,7 +234,7 @@ export default function DocumentationPage() {
       const url = URL.createObjectURL(response.data);
       const link = document.createElement('a');
       link.href = url;
-      link.download = 'hexaone-booking.zip';
+      link.download = `hexaone-salon-booking-${version}.zip`;
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -406,15 +406,15 @@ export default function DocumentationPage() {
               <div><small>Plugin version</small><code>{PLUGIN_VERSION}</code></div>
               <div><small>WordPress</small><code>5.8 or newer</code></div>
               <div><small>PHP</small><code>7.4 or newer</code></div>
-              <div><small>Package</small><code>hexaone-booking.zip</code></div>
+              <div><small>Package</small><code>hexaone-salon-booking-{PLUGIN_VERSION}.zip</code></div>
             </div>
 
             <h3>Installation</h3>
             <ol className="docs-numbered">
-              <li>If an older Hexaone Salon Booking entry is listed, click <strong>Delete</strong>. Also remove leftover folders via File Manager if activation previously failed: <code>hexaone-salon-booking-*</code> or nested <code>hexaone-booking</code>.</li>
+              <li>If an older Hexaone Salon Booking entry is listed, click <strong>Delete</strong>. Also remove leftover folders via File Manager if activation previously failed: <code>hexaone-booking</code> or nested <code>hexaone-salon-booking-*</code>.</li>
               <li>Download the ZIP from this page (do not extract it on your computer).</li>
               <li>Open WordPress Admin → <strong>Plugins → Add New → Upload Plugin</strong>.</li>
-              <li>Select <code>hexaone-booking.zip</code>, install it, and click <strong>Activate</strong>.</li>
+              <li>Select <code>hexaone-salon-booking-{PLUGIN_VERSION}.zip</code>, install it, and click <strong>Activate</strong>.</li>
               <li>Open <strong>Settings → Salon Booking</strong>.</li>
               <li>Set the API base URL to <code>{API_BASE}</code>.</li>
               <li>Set Tenant ID to <code>{tenantId}</code>, then save the settings.</li>
@@ -422,7 +422,7 @@ export default function DocumentationPage() {
             </ol>
             <div className="docs-note">
               File Manager / FTP is not required for a normal install. Upload the ZIP only through WordPress Admin.
-              Version {PLUGIN_VERSION} installs into <code>wp-content/plugins/hexaone-booking/</code>.
+              Version {PLUGIN_VERSION} installs into <code>wp-content/plugins/hexaone-salon-booking-{PLUGIN_VERSION}/</code>.
             </div>
 
             <h3>Values for Settings → Salon Booking</h3>

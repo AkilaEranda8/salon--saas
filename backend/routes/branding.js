@@ -178,8 +178,8 @@ router.get('/plugin-download', async (req, res) => {
     res.setHeader('Expires', '0');
     res.setHeader('X-Plugin-Version', PLUGIN_VERSION);
 
-    // Stable name so hosts that nest by archive basename install to hexaone-booking/.
-    return res.download(pluginPath, 'hexaone-booking.zip', (err) => {
+    // Flat zip + versioned filename → WP installs to hexaone-salon-booking-{version}/.
+    return res.download(pluginPath, `hexaone-salon-booking-${PLUGIN_VERSION}.zip`, (err) => {
       if (err && !res.headersSent) {
         console.error('branding plugin download error:', err);
         res.status(500).json({ message: 'Plugin download failed.' });

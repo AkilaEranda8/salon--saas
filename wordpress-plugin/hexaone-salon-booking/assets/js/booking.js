@@ -404,6 +404,7 @@
       return { slots: [], window: null };
     }
 
+    function staffForService(serviceId) {
       var key = String(serviceId);
       var sid = Number(serviceId);
       // Prefer per-service API result (already filtered to assigned staff only).

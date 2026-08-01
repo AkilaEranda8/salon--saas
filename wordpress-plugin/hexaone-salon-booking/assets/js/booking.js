@@ -385,11 +385,12 @@
 
     function staffForService(serviceId) {
       var key = String(serviceId);
+      var sid = Number(serviceId);
+      // Prefer per-service API result (already filtered to assigned staff only).
       if (Array.isArray(state.staffByService[key])) {
         return state.staffByService[key];
       }
       // Fallback: client-side filter (strict — only linked services)
-      var sid = Number(serviceId);
       return state.staff.filter(function (st) {
         var ids = Array.isArray(st.service_ids) ? st.service_ids.map(Number) : [];
         return ids.indexOf(sid) >= 0;

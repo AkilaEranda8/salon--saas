@@ -466,15 +466,11 @@ export default function StaffPage() {
     }
     if ((form.salary_type || 'commission_only') === prevSalaryTypeRef.current) return;
     prevSalaryTypeRef.current = form.salary_type || 'commission_only';
-    if (!serviceWiseForUser || form.salary_type === 'salary_only') {
-      if (form.salary_type === 'salary_only') {
-        setSpecs([]);
-        setSpecRates({});
-      }
-      return;
+    if (form.salary_type === 'salary_only') {
+      setSpecs([]);
+      setSpecRates({});
     }
-    linkAllSpecs();
-  }, [showForm, form.salary_type, serviceWiseForUser, linkAllSpecs]);
+  }, [showForm, form.salary_type]);
 
   const openAdd  = () => {
     setEditItem(null);
@@ -486,12 +482,8 @@ export default function StaffPage() {
     setOffDateDraft('');
     setOffReasonDraft('');
     setShowServiceRates(false);
-    // Default new staff to all services; admin can uncheck what they don't perform.
-    if (initial.salary_type === 'salary_only') {
-      setSpecs([]);
-    } else {
-      linkAllSpecs();
-    }
+    // Start with no services — admin assigns only what this staff performs (drives online booking).
+    setSpecs([]);
     setPhotoFile(null);
     setPhotoPreview('');
     setRemovePhoto(false);
@@ -562,10 +554,7 @@ export default function StaffPage() {
     if (!form.name || !form.branch_ids?.length) return setFormErr('Name and at least one branch are required');
     if (!String(form.role_title || '').trim()) return setFormErr('Select a role for this staff member.');
     const paysCommission = form.salary_type !== 'salary_only';
-    let effectiveSpecs = specs;
-    if (serviceWiseForUser && paysCommission && !effectiveSpecs.length && activeServices.length) {
-      effectiveSpecs = activeServices.map((sv) => sv.id);
-    }
+    const effectiveSpecs = specs;
     if (paysCommission && (form.commission_value === '' || form.commission_value == null)) {
       return setFormErr('Set a default commission rate for this staff member.');
     }
@@ -1136,6 +1125,27 @@ export default function StaffPage() {
                 </div>
               </FormGroup>
             </StaffSection>
+
+            {activeServices.length > 0 && (
+              <StaffSection title="Assignable services" desc="Services this staff can perform for online booking" dark={isDark}>
+                <AssignableServicesSelect
+                  services={activeServices}
+                  selected={specs}
+                  dark={isDark}
+                  onChange={(ids) => {
+                    const next = (ids || []).map((id) => Number(id)).filter((n) => Number.isFinite(n) && n > 0);
+                    setSpecs(next);
+                    setSpecRates((prev) => {
+                      const keep = {};
+                      next.forEach((id) => {
+                        if (prev[String(id)]) keep[String(id)] = prev[String(id)];
+                      });
+                      return keep;
+                    });
+                  }}
+                />
+              </StaffSection>
+            )}
 
             <StaffSection title="Pay & Commission" desc="Salary type, default rate, and optional per-service rates" dark={isDark}>
               <FormGroup label="Salary Type">

@@ -39,7 +39,7 @@ const BRANDING_ATTRIBUTES = [
 ];
 
 // Keep in sync with wordpress-plugin/hexaone-salon-booking/salon-booking.php
-const PLUGIN_VERSION = '1.0.15';
+const PLUGIN_VERSION = '1.0.16';
 
 const MAX_LOGO_SIZE = 5 * 1024 * 1024; // 5MB
 const ALLOWED_MIME_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml']);

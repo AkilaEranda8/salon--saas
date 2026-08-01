@@ -335,10 +335,10 @@ const create = async (req, res) => {
       return res.status(400).json({ message: 'Default commission rate is required for commission-based staff.' });
     }
 
-    // If caller did not send services, link all active services (backward compatible default).
-    // When they do send a list (even empty), honor it so staff can be limited per service.
+    // Only link services the caller sent. Empty / omitted = no assignable services
+    // (online booking shows staff only for explicitly assigned services).
     if (!hasServicePayload) {
-      specItems = await managerDefaultServiceSpecs(req);
+      specItems = [];
     } else if (hasServiceWiseCommissionForUser(req.tenant, req)
       && salary_type !== 'salary_only' && specItems.length && (commission_value == null || commission_value <= 0)) {
       return res.status(400).json({ message: 'Default commission rate is required when services are selected.' });

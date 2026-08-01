@@ -144,17 +144,33 @@ router.get('/services', async (req, res) => {
 });
 
 // ── GET /api/public/staff?branchId=&tenantId=&serviceId= — active staff, limited fields ──────────
+// When serviceId is set: ONLY staff with that service in staff_specializations (assignable services).
 router.get('/staff', async (req, res) => {
   try {
     const tenantId = req.query.tenantId ? parseInt(req.query.tenantId, 10) : null;
     const serviceIdRaw = req.query.serviceId ?? req.query.service_id;
-    const serviceId = serviceIdRaw ? parseInt(serviceIdRaw, 10) : null;
+    const parsedServiceId = parseInt(serviceIdRaw, 10);
+    const serviceId = Number.isInteger(parsedServiceId) && parsedServiceId > 0 ? parsedServiceId : null;
     const where = { is_active: true, available_online: true };
     if (tenantId) where.tenant_id = tenantId;
     if (req.query.branchId) {
       const bid = parseInt(req.query.branchId, 10);
       const branchPart = await staffWhereForBranch(bid);
       Object.assign(where, branchPart);
+    }
+
+    // Strict: only staff explicitly assigned to this service appear in online booking.
+    if (serviceId) {
+      const links = await StaffSpecialization.findAll({
+        where: { service_id: serviceId },
+        attributes: ['staff_id'],
+        raw: true,
+      });
+      const staffIds = [...new Set(
+        links.map((r) => Number(r.staff_id)).filter((id) => Number.isInteger(id) && id > 0)
+      )];
+      if (!staffIds.length) return res.json([]);
+      where.id = { [Op.in]: staffIds };
     }
 
     const staff = await Staff.findAll({
@@ -164,10 +180,7 @@ router.get('/staff', async (req, res) => {
         model: StaffSpecialization,
         as: 'specializations',
         attributes: ['service_id'],
-        required: Boolean(serviceId),
-        ...(serviceId
-          ? { where: { service_id: serviceId } }
-          : {}),
+        required: false,
       }],
       order: [['name', 'ASC']],
     });
@@ -178,10 +191,9 @@ router.get('/staff', async (req, res) => {
         ? out.specializations.map((sp) => Number(sp.service_id)).filter((id) => id > 0)
         : [];
       delete out.specializations;
-      // When filtered by serviceId, this staff is already known to have that service.
       out.service_ids = serviceId
-        ? Array.from(new Set([...serviceIds, serviceId]))
-        : serviceIds;
+        ? [serviceId]
+        : Array.from(new Set(serviceIds));
       if (out.photo_url) out.photo_url = toPublicUrl(req, out.photo_url);
       return out;
     });
@@ -969,7 +981,8 @@ router.post('/bookings', async (req, res) => {
     }
     for (const item of items) {
       const linked = specsByStaff.get(Number(item.staff_id));
-      if (linked && linked.size > 0 && !linked.has(Number(item.service_id))) {
+      // Strict: staff must be explicitly assigned to the booked service (Assignable services).
+      if (!linked || !linked.has(Number(item.service_id))) {
         const staffName = staffRows.find((s) => Number(s.id) === Number(item.staff_id))?.name || 'Selected staff';
         const serviceName = services.find((s) => Number(s.id) === Number(item.service_id))?.name || 'this service';
         return res.status(400).json({

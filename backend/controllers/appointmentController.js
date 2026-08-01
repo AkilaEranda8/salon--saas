@@ -1,5 +1,5 @@
 const { Op } = require('sequelize');
-const { Appointment, Branch, Customer, Staff, Service, Payment, PaymentSplit } = require('../models');
+const { Appointment, Branch, Customer, Staff, Service, Payment, PaymentSplit, StaffOffDay } = require('../models');
 const AppointmentService = require('../models/AppointmentService');
 const { sequelize } = require('../config/database');
 const { notifyAppointmentConfirmed, notifyAppointmentCompleted, notifyWaitlistSlotAvailable } = require('../services/notificationService');
@@ -7,6 +7,7 @@ const { createNextRecurring } = require('../services/recurringService');
 const { notifyBranch, notifyStaffUser } = require('../services/fcmService');
 const { tenantWhere, byIdWhere, resolveTenantId } = require('../utils/tenantScope');
 const { notesUsesPackage, usesPackageBooking, parsePackageIdFromNotes, resolvePackageBundlePrice } = require('../utils/packageNotes');
+const { parseDurationMinutes, listAvailableSlots } = require('../utils/staffAvailability');
 
 const ADVANCE_METHODS = new Set(['Cash', 'Card', 'Online Transfer']);
 const ADVANCE_NOTE_PREFIX = 'Advance paid:';
@@ -267,6 +268,57 @@ const list = async (req, res) => {
     await attachAdvancePaidToAppointments(rows);
 
     return res.json({ total: count, page, limit, data: rows });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+/**
+ * GET /api/appointments/availability?staffId=&date=&duration=
+ * Admin slot picker — same rules as public booking but allows any active staff
+ * (not only available_online).
+ */
+const availability = async (req, res) => {
+  try {
+    const staffId = Number(req.query.staffId ?? req.query.staff_id);
+    const date = String(req.query.date || '').slice(0, 10);
+    if (!Number.isInteger(staffId) || staffId <= 0 || !date) {
+      return res.status(400).json({ message: 'staffId and date are required' });
+    }
+
+    let durationMinutes = parseDurationMinutes(req.query.duration, 0);
+    const serviceIdsRaw = req.query.serviceIds ?? req.query.service_ids;
+    if ((!durationMinutes || durationMinutes <= 0) && serviceIdsRaw) {
+      const ids = String(serviceIdsRaw)
+        .split(',')
+        .map((x) => Number(x))
+        .filter((n) => Number.isInteger(n) && n > 0);
+      if (ids.length) {
+        const svcs = await Service.findAll({
+          where: { ...tenantWhere(req), id: ids },
+          attributes: ['duration_minutes'],
+        });
+        durationMinutes = svcs.reduce((acc, s) => acc + (Number(s.duration_minutes) || 0), 0);
+      }
+    }
+    if (!durationMinutes || durationMinutes <= 0) durationMinutes = 30;
+
+    const tenantId = resolveTenantId(req);
+    const slots = await listAvailableSlots({
+      Staff,
+      StaffOffDay,
+      Appointment,
+      Service,
+      staffId,
+      date,
+      durationMinutes,
+      tenantId,
+      requireOnline: false,
+      scopeBranchConflicts: false,
+    });
+
+    return res.json({ duration_minutes: durationMinutes, slots });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ message: 'Server error.' });
@@ -942,4 +994,4 @@ const stopRecurring = async (req, res) => {
   }
 };
 
-module.exports = { list, calendar, getOne, create, update, changeStatus, remove, listRecurring, stopRecurring };
+module.exports = { list, calendar, availability, getOne, create, update, changeStatus, remove, listRecurring, stopRecurring };

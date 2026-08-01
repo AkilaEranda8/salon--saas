@@ -264,6 +264,11 @@ export default function AppointmentsPage() {
   const [paymentCustPackageId, setPaymentCustPackageId] = useState('');
   const [loadingPaymentPkgs, setLoadingPaymentPkgs] = useState(false);
   const [apptPackageCache, setApptPackageCache] = useState({});
+  const [availableSlots, setAvailableSlots] = useState([]);
+  const [slotsLoading, setSlotsLoading] = useState(false);
+  /** Per-service slots for multi-booking: { [serviceId]: string[] } */
+  const [multiSlots, setMultiSlots] = useState({});
+  const [multiSlotsLoading, setMultiSlotsLoading] = useState({});
 
   useEffect(() => {
     if (!canEdit) return;
@@ -820,6 +825,137 @@ export default function AppointmentsPage() {
       [key]: { staff_id: '', date: form.date || today, time: '', ...(prev[key] || {}), ...patch },
     }));
   };
+
+  const bookingDurationMinutes = useMemo(() => {
+    const selected = services.filter((s) => apptServiceIds.includes(Number(s.id)));
+    const sum = selected.reduce((acc, s) => acc + (Number(s.duration_minutes) || 0), 0);
+    return sum > 0 ? sum : 30;
+  }, [services, apptServiceIds]);
+
+  const fetchSlots = useCallback(async ({ staffId, date, duration }) => {
+    if (!staffId || !date) return [];
+    try {
+      const { data } = await api.get('/appointments/availability', {
+        params: {
+          staffId,
+          date,
+          duration: Math.max(5, Number(duration) || 30),
+        },
+      });
+      if (Array.isArray(data?.slots)) return data.slots;
+      if (Array.isArray(data)) return data;
+      return [];
+    } catch {
+      return [];
+    }
+  }, []);
+
+  // Single-booking available slots (sum of selected service durations)
+  useEffect(() => {
+    if (!showForm || multiBooking) {
+      setAvailableSlots([]);
+      return;
+    }
+    if (!form.staff_id || !form.date) {
+      setAvailableSlots([]);
+      return;
+    }
+    let cancelled = false;
+    setSlotsLoading(true);
+    fetchSlots({ staffId: form.staff_id, date: form.date, duration: bookingDurationMinutes })
+      .then((slots) => {
+        if (cancelled) return;
+        setAvailableSlots(slots);
+        if (form.time && !slots.includes(form.time)) {
+          setForm((f) => ({ ...f, time: '' }));
+        }
+      })
+      .finally(() => { if (!cancelled) setSlotsLoading(false); });
+    return () => { cancelled = true; };
+  }, [showForm, multiBooking, form.staff_id, form.date, bookingDurationMinutes, fetchSlots]);
+
+  // Multi-booking: load slots per service when staff/date change
+  const multiSlotDeps = useMemo(
+    () => Object.entries(serviceAssignments)
+      .map(([sid, a]) => `${sid}:${a?.staff_id || ''}:${a?.date || ''}`)
+      .sort()
+      .join('|'),
+    [serviceAssignments],
+  );
+
+  useEffect(() => {
+    if (!showForm || !multiBooking) {
+      setMultiSlots({});
+      setMultiSlotsLoading({});
+      return;
+    }
+    let cancelled = false;
+    const run = async () => {
+      const nextSlots = {};
+      const nextLoading = {};
+      const entries = Object.entries(serviceAssignments);
+      await Promise.all(entries.map(async ([sid, a]) => {
+        if (!a?.staff_id || !a?.date) return;
+        nextLoading[sid] = true;
+        const svc = services.find((s) => Number(s.id) === Number(sid));
+        const duration = Number(svc?.duration_minutes) || 30;
+        nextSlots[sid] = await fetchSlots({ staffId: a.staff_id, date: a.date, duration });
+        nextLoading[sid] = false;
+      }));
+      if (cancelled) return;
+      setMultiSlots(nextSlots);
+      setMultiSlotsLoading(nextLoading);
+      setServiceAssignments((prev) => {
+        let changed = false;
+        const out = { ...prev };
+        Object.entries(nextSlots).forEach(([sid, slots]) => {
+          if (out[sid]?.time && Array.isArray(slots) && !slots.includes(out[sid].time)) {
+            out[sid] = { ...out[sid], time: '' };
+            changed = true;
+          }
+        });
+        return changed ? out : prev;
+      });
+    };
+    run();
+    return () => { cancelled = true; };
+  }, [showForm, multiBooking, multiSlotDeps, services, fetchSlots]);
+
+  const renderSlotChips = ({ slots, loading, value, onPick, durationLabel, isDarkMode }) => (
+    <div style={{ marginTop: 8 }}>
+      <div style={{ fontSize: 12, fontWeight: 600, color: isDarkMode ? '#94A3B8' : '#64748B', marginBottom: 6 }}>
+        Available slots{durationLabel ? ` · ${durationLabel}` : ''}
+      </div>
+      {loading ? (
+        <div style={{ fontSize: 12, color: isDarkMode ? '#94A3B8' : '#64748B' }}>Loading slots…</div>
+      ) : !slots.length ? (
+        <div style={{ fontSize: 12, color: '#D97706' }}>
+          No free slots for this staff/date. Pick another staff or day, or enter a time manually below.
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+          {slots.map((t) => {
+            const active = value === t;
+            return (
+              <button
+                key={t}
+                type="button"
+                onClick={() => onPick(t)}
+                style={{
+                  padding: '6px 10px', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                  border: `1.5px solid ${active ? '#2563EB' : (isDarkMode ? '#334155' : '#E4E7EC')}`,
+                  background: active ? (isDarkMode ? 'rgba(37,99,235,0.25)' : '#EFF6FF') : (isDarkMode ? '#0B1220' : '#fff'),
+                  color: active ? '#2563EB' : (isDarkMode ? '#E2E8F0' : '#344054'),
+                }}
+              >
+                {t}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
 
   const toggleApptService = (id) => {
     const nid = Number(id);
@@ -1652,7 +1788,7 @@ export default function AppointmentsPage() {
                           <FormGroup label="Staff">
                             <Select
                               value={a.staff_id || ''}
-                              onChange={(e) => updateServiceAssignment(s.id, { staff_id: e.target.value })}
+                              onChange={(e) => updateServiceAssignment(s.id, { staff_id: e.target.value, time: '' })}
                             >
                               <option value="">Any available staff</option>
                               {filteredStaff.map((st) => <option key={st.id} value={st.id}>{st.name}</option>)}
@@ -1663,7 +1799,7 @@ export default function AppointmentsPage() {
                               <Input
                                 type="date"
                                 value={a.date || ''}
-                                onChange={(e) => updateServiceAssignment(s.id, { date: e.target.value })}
+                                onChange={(e) => updateServiceAssignment(s.id, { date: e.target.value, time: '' })}
                               />
                             </FormGroup>
                             <FormGroup label="Time" required>
@@ -1674,6 +1810,14 @@ export default function AppointmentsPage() {
                               />
                             </FormGroup>
                           </div>
+                          {!!a.staff_id && !!a.date && renderSlotChips({
+                            slots: multiSlots[String(s.id)] || [],
+                            loading: !!multiSlotsLoading[String(s.id)],
+                            value: a.time || '',
+                            onPick: (t) => updateServiceAssignment(s.id, { time: t }),
+                            durationLabel: `${s.duration_minutes || 30} min`,
+                            isDarkMode: isDark,
+                          })}
                         </div>
                       );
                     })}
@@ -1700,21 +1844,36 @@ export default function AppointmentsPage() {
               <>
                 <ApptSection title="Staff & Notes" dark={isDark}>
                   <FormGroup label="Assign Staff">
-                    <Select value={form.staff_id || ''} onChange={(e) => setForm((f) => ({ ...f, staff_id: e.target.value }))}>
+                    <Select
+                      value={form.staff_id || ''}
+                      onChange={(e) => setForm((f) => ({ ...f, staff_id: e.target.value, time: '' }))}
+                    >
                       <option value="">Any available staff</option>
                       {filteredStaff.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
                     </Select>
                   </FormGroup>
                 </ApptSection>
-                <ApptSection title="Schedule" desc="Date, time, and booking status" dark={isDark}>
+                <ApptSection title="Schedule" desc={`Date, time, and booking status · ${bookingDurationMinutes} min total`} dark={isDark}>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                     <FormGroup label="Date" required>
-                      <Input type="date" value={form.date || ''} onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))} />
+                      <Input
+                        type="date"
+                        value={form.date || ''}
+                        onChange={(e) => setForm((f) => ({ ...f, date: e.target.value, time: '' }))}
+                      />
                     </FormGroup>
                     <FormGroup label="Time" required>
                       <Input type="time" value={form.time || ''} onChange={(e) => setForm((f) => ({ ...f, time: e.target.value }))} />
                     </FormGroup>
                   </div>
+                  {!!form.staff_id && !!form.date && renderSlotChips({
+                    slots: availableSlots,
+                    loading: slotsLoading,
+                    value: form.time || '',
+                    onPick: (t) => setForm((f) => ({ ...f, time: t })),
+                    durationLabel: `${bookingDurationMinutes} min`,
+                    isDarkMode: isDark,
+                  })}
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                     <FormGroup label="Status">
                       <Select value={form.status || 'pending'} onChange={(e) => setForm((f) => ({ ...f, status: e.target.value }))}>

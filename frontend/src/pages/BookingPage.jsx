@@ -20,25 +20,14 @@ const colors = {
 
 const STEPS = ['Branch', 'Service', 'Staff & Time', 'Your Details', 'Confirmation'];
 
-const generateTimeSlots = (start = 9, end = 18, interval = 30) => {
-  const slots = [];
-  for (let h = start; h < end; h++) {
-    for (let m = 0; m < 60; m += interval) {
-      slots.push(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`);
-    }
-  }
-  return slots;
-};
-
-const TIME_SLOTS = generateTimeSlots();
-
 export default function BookingPage() {
   const [step, setStep] = useState(0);
   const [branding, setBranding] = useState({});
   const [branches, setBranches] = useState([]);
   const [services, setServices] = useState([]);
   const [staffList, setStaffList] = useState([]);
-  const [bookedSlots, setBookedSlots] = useState([]);
+  const [availableSlots, setAvailableSlots] = useState([]);
+  const [slotsLoading, setSlotsLoading] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [bookingResult, setBookingResult] = useState(null);
@@ -80,15 +69,26 @@ export default function BookingPage() {
     }
   }, [step, form.branch, form.service]);
 
-  // Fetch availability when staff + date selected
+  // Fetch available slots when staff + date + service selected (uses service duration)
   useEffect(() => {
-    if (form.staff && form.date) {
-      axios
-        .get(`/api/public/availability?staffId=${form.staff.id}&date=${form.date}`)
-        .then((r) => setBookedSlots(r.data))
-        .catch(() => {});
+    if (!(form.staff && form.date)) {
+      setAvailableSlots([]);
+      return;
     }
-  }, [form.staff, form.date]);
+    const duration = Math.max(5, Number(form.service?.duration_minutes) || 30);
+    const q = new URLSearchParams({
+      staffId: String(form.staff.id),
+      date: form.date,
+      duration: String(duration),
+    });
+    if (form.branch?.id) q.set('branchId', String(form.branch.id));
+    setSlotsLoading(true);
+    axios
+      .get(`/api/public/availability?${q.toString()}`)
+      .then((r) => setAvailableSlots(Array.isArray(r.data) ? r.data : []))
+      .catch(() => setAvailableSlots([]))
+      .finally(() => setSlotsLoading(false));
+  }, [form.staff, form.date, form.service?.id, form.service?.duration_minutes, form.branch?.id]);
 
   const canContinue = () => {
     switch (step) {
@@ -307,24 +307,32 @@ export default function BookingPage() {
         />
       </div>
 
-      {/* Time slots */}
+      {/* Time slots — API returns AVAILABLE starts for this service duration */}
       {form.staff && form.date && (
         <div>
-          <label style={S.label}>Available Time Slots</label>
-          <div style={S.timeGrid}>
-            {TIME_SLOTS.map((t) => {
-              const booked = bookedSlots.includes(t);
-              return (
+          <label style={S.label}>
+            Available Time Slots
+            {form.service?.duration_minutes ? ` · ${form.service.duration_minutes} min` : ''}
+          </label>
+          {slotsLoading ? (
+            <p style={{ color: colors.muted, fontSize: 13 }}>Loading slots…</p>
+          ) : availableSlots.length === 0 ? (
+            <p style={{ color: colors.muted, fontSize: 13 }}>
+              No free slots for this staff on the selected date. Try another day or stylist.
+            </p>
+          ) : (
+            <div style={S.timeGrid}>
+              {availableSlots.map((t) => (
                 <div
                   key={t}
-                  style={S.timeSlot(form.time === t, booked)}
-                  onClick={() => !booked && setForm((p) => ({ ...p, time: t }))}
+                  style={S.timeSlot(form.time === t, false)}
+                  onClick={() => setForm((p) => ({ ...p, time: t }))}
                 >
                   {t}
                 </div>
-              );
-            })}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>

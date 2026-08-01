@@ -2,7 +2,7 @@
 Contributors: hexaone
 Requires at least: 5.8
 Requires PHP: 7.4
-Stable tag: 1.0.16
+Stable tag: 1.0.17
 License: GPLv2 or later
 
 Embed online salon booking on WordPress. Talks to the Hexaone public booking API via a server-side proxy (no CORS setup needed).
@@ -23,6 +23,9 @@ This package installs into `wp-content/plugins/hexaone-booking/` (main file: `sa
 Optional shortcode attrs: `[salon_booking title="Book now" accent="#8B2942"]`
 
 == Changelog ==
+
+= 1.0.17 =
+* Pass real service duration for availability slots (15-minute grid on API).
 
 = 1.0.16 =
 * Online booking shows only staff assigned to the customer-selected service.

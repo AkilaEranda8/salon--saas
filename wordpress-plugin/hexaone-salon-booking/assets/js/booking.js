@@ -909,7 +909,7 @@
       return api('availability', {
         staff_id: a.staff.id,
         date: a.date,
-        duration: Math.max(30, Number(svc.duration_minutes) || 30),
+        duration: Math.max(5, Number(svc.duration_minutes) || 30),
         branch_id: state.form.branch && state.form.branch.id,
       }).then(function (data) {
         a.slots = Array.isArray(data) ? data : [];

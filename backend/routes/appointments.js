@@ -7,6 +7,7 @@ const router = Router();
 router.use(verifyToken, branchAccess);
 
 router.get('/calendar',       ctrl.calendar);
+router.get('/availability',   ctrl.availability);
 router.get('/recurring',      ctrl.listRecurring);
 router.get('/',               ctrl.list);
 router.get('/:id',            ctrl.getOne);

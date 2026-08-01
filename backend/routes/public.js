@@ -19,8 +19,12 @@ const { getMaintenanceMode } = require('../services/systemSettings');
 const Tenant = require('../models/Tenant');
 const {
   resolveStaffDayWindow,
-  toHHMM: scheduleToHHMM,
 } = require('../utils/staffSchedule');
+const {
+  parseDurationMinutes,
+  listAvailableSlots,
+  loadBlockedRanges,
+} = require('../utils/staffAvailability');
 const WEB_BOOKING_BRANCH_NAME = 'HEXAONE (VIP)';
 
 async function resolveTenantSmsName(tenantId) {
@@ -206,10 +210,12 @@ router.get('/staff', async (req, res) => {
 });
 
 // ── GET /api/public/availability?staffId=&date=&duration= ────────────────────
-// Returns available HH:MM time slots considering staff hours, off days, and appointments.
+// Returns available HH:MM start times for a booking of `duration` minutes.
+// Uses staff working hours + off days, and blocks by existing appointment durations
+// (sum of linked services when present). Slot grid step is 15 minutes.
 router.get('/availability', async (req, res) => {
   try {
-    const { staffId, date, duration, branchId, tenantId } = req.query;
+    const { staffId, date, duration, tenantId } = req.query;
     if (!staffId || !date) {
       return res.status(400).json({ message: 'staffId and date are required' });
     }
@@ -219,54 +225,24 @@ router.get('/availability', async (req, res) => {
       return res.status(400).json({ message: 'staffId must be a valid number' });
     }
 
-    const newDuration = Math.max(30, parseInt(duration, 10) || 30);
+    const durationMinutes = parseDurationMinutes(duration, 30);
     const tenantIdNum = tenantId ? parseInt(tenantId, 10) : null;
-    const effectiveBranchId = await resolveWebBookingBranchId(branchId, tenantIdNum);
 
-    const staffWhere = { id: staffIdNum, is_active: true, available_online: true };
-    if (tenantIdNum) staffWhere.tenant_id = tenantIdNum;
-    const staff = await Staff.findOne({
-      where: staffWhere,
-      attributes: ['id', 'working_hours', 'tenant_id'],
-    });
-    if (!staff) return res.json([]);
-
-    const offDay = await StaffOffDay.findOne({
-      where: { staff_id: staffIdNum, date: String(date).slice(0, 10) },
-      attributes: ['id'],
-    });
-    if (offDay) return res.json([]);
-
-    const window = resolveStaffDayWindow(staff.working_hours, String(date).slice(0, 10));
-    if (window.closed) return res.json([]);
-
-    // Fetch existing appointments with their service duration
-    const appointments = await Appointment.findAll({
-      where: buildBookingConflictWhere({ staffId: staffIdNum, date, branchId: effectiveBranchId }),
-      attributes: ['time', 'service_id'],
-      include: [{ model: Service, as: 'service', attributes: ['duration_minutes'] }],
+    const slots = await listAvailableSlots({
+      Staff,
+      StaffOffDay,
+      Appointment,
+      Service,
+      staffId: staffIdNum,
+      date,
+      durationMinutes,
+      tenantId: tenantIdNum,
+      requireOnline: true,
+      // Staff has one calendar across branches — do not scope conflicts to VIP/branch only.
+      scopeBranchConflicts: false,
     });
 
-    // Build blocked ranges as [startMin, endMin] in minutes-since-midnight
-    const blockedRanges = appointments.map((a) => {
-      const [h, m] = a.time.substring(0, 5).split(':').map(Number);
-      const startMin = h * 60 + m;
-      const dur = (a.service && a.service.duration_minutes) ? a.service.duration_minutes : 30;
-      return [startMin, startMin + dur];
-    });
-
-    const slotInterval = newDuration;
-    const allSlots = [];
-    for (let min = window.startMin; min + newDuration <= window.endMin; min += slotInterval) {
-      allSlots.push(min);
-    }
-
-    const available = allSlots.filter((slotStart) => {
-      const slotEnd = slotStart + newDuration;
-      return !blockedRanges.some(([bStart, bEnd]) => slotStart < bEnd && slotEnd > bStart);
-    });
-
-    res.json(available.map((min) => scheduleToHHMM(min)));
+    res.json(slots);
   } catch (err) {
     console.error('Public availability error:', err);
     res.status(500).json({ message: 'Server error' });
@@ -900,16 +876,15 @@ function normalizePublicBookingItems(body = {}) {
 }
 
 async function loadExistingRanges({ staffId, date, branchId, transaction = null }) {
-  const rows = await Appointment.findAll({
-    where: buildBookingConflictWhere({ staffId, date, branchId }),
-    attributes: ['time'],
-    include: [{ model: Service, as: 'service', attributes: ['duration_minutes'] }],
-    ...(transaction ? { transaction, lock: transaction.LOCK.UPDATE } : {}),
-  });
-  return rows.map((a) => {
-    const start = toMinutes(a.time);
-    const duration = (a.service && a.service.duration_minutes) ? a.service.duration_minutes : 30;
-    return [start, start + duration];
+  // Ignore branchId for conflict ranges — staff calendar is shared.
+  void branchId;
+  return loadBlockedRanges({
+    Appointment,
+    Service,
+    staffId,
+    date,
+    branchId: null,
+    transaction,
   });
 }
 

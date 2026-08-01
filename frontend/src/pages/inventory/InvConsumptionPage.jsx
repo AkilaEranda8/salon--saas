@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import api from '../../api/axios';
 import Button from '../../components/ui/Button';
 import { Input, Select, FormGroup } from '../../components/ui/FormElements';
 import { useToast } from '../../components/ui/Toast';
 import { ActionBtn, DataTable, FilterBar, IconPlus, IconTrash, PKModal as Modal } from '../../components/ui/PageKit';
-import { INV_API, fmtQty, loadStaff, todayStr, useInvBranch } from './invApi';
+import { INV_API, UNITS, fmtQty, loadStaff, todayStr, useInvBranch } from './invApi';
 
 export default function InvConsumptionPage() {
   const { toast } = useToast();
@@ -17,10 +17,14 @@ export default function InvConsumptionPage() {
   const [status, setStatus] = useState('pending');
   const [show, setShow] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [productSearch, setProductSearch] = useState('');
   const [form, setForm] = useState({
-    product_id: '', quantity_used: '', staff_id: '', reason: '',
+    staff_id: '',
+    reason: '',
     consumption_date: todayStr(),
   });
+  /** { [productId]: { selected, quantity_used, unit } } */
+  const [lineMap, setLineMap] = useState({});
 
   const load = useCallback(async () => {
     if (!ready) return;
@@ -43,28 +47,96 @@ export default function InvConsumptionPage() {
   useEffect(() => { load(); }, [load]);
 
   const openAdd = () => {
-    setForm({ product_id: '', quantity_used: '', staff_id: '', reason: '', consumption_date: todayStr() });
+    const next = {};
+    products.forEach((p) => {
+      next[String(p.id)] = {
+        selected: false,
+        quantity_used: '',
+        unit: UNITS.includes(p.unit) ? p.unit : 'pcs',
+      };
+    });
+    setLineMap(next);
+    setProductSearch('');
+    setForm({ staff_id: '', reason: '', consumption_date: todayStr() });
     setShow(true);
   };
 
+  const filteredProducts = useMemo(() => {
+    const q = productSearch.trim().toLowerCase();
+    if (!q) return products;
+    return products.filter((p) => String(p.name || '').toLowerCase().includes(q));
+  }, [products, productSearch]);
+
+  const selectedCount = useMemo(
+    () => Object.values(lineMap).filter((l) => l.selected).length,
+    [lineMap]
+  );
+
+  const toggleProduct = (productId, checked) => {
+    const key = String(productId);
+    setLineMap((prev) => {
+      const cur = prev[key] || { selected: false, quantity_used: '', unit: 'pcs' };
+      return {
+        ...prev,
+        [key]: { ...cur, selected: checked },
+      };
+    });
+  };
+
+  const setLineField = (productId, patch) => {
+    const key = String(productId);
+    setLineMap((prev) => ({
+      ...prev,
+      [key]: { ...(prev[key] || { selected: false, quantity_used: '', unit: 'pcs' }), ...patch },
+    }));
+  };
+
   const save = async () => {
-    if (!form.product_id || !form.quantity_used) return toast.error('Product and quantity are required');
+    const lines = products
+      .map((p) => {
+        const line = lineMap[String(p.id)];
+        if (!line?.selected) return null;
+        return {
+          product_id: Number(p.id),
+          quantity_used: Number(line.quantity_used),
+          unit: UNITS.includes(line.unit) ? line.unit : (p.unit || 'pcs'),
+          name: p.name,
+        };
+      })
+      .filter(Boolean);
+
+    if (!lines.length) return toast.error('Tick at least one product');
+    const invalid = lines.find((l) => !Number.isFinite(l.quantity_used) || l.quantity_used <= 0);
+    if (invalid) return toast.error(`Enter a valid quantity for ${invalid.name}`);
+
     setSaving(true);
     try {
-      const product = products.find((p) => String(p.id) === String(form.product_id));
-      await api.post(`${INV_API}/consumptions`, {
+      const shared = {
         branch_id: branchId || undefined,
-        product_id: Number(form.product_id),
-        quantity_used: Number(form.quantity_used),
-        unit: product?.unit,
         staff_id: form.staff_id || null,
         reason: form.reason || null,
         consumption_date: form.consumption_date,
-      });
+      };
+      const results = await Promise.allSettled(
+        lines.map((l) =>
+          api.post(`${INV_API}/consumptions`, {
+            ...shared,
+            product_id: l.product_id,
+            quantity_used: l.quantity_used,
+            unit: l.unit,
+          })
+        )
+      );
+      const ok = results.filter((r) => r.status === 'fulfilled').length;
+      const fail = results.length - ok;
       setShow(false);
-      toast.success('Usage recorded — stock reduces at Day End Closing');
+      if (ok && !fail) toast.success(`${ok} usage line(s) recorded — stock reduces at Day End Closing`);
+      else if (ok && fail) toast.error(`${ok} saved, ${fail} failed`);
+      else toast.error(results[0]?.reason?.response?.data?.message || 'Failed to record usage');
       load();
-    } catch (e) { toast.error(e.response?.data?.message || 'Failed'); }
+    } catch (e) {
+      toast.error(e.response?.data?.message || 'Failed');
+    }
     setSaving(false);
   };
 
@@ -126,46 +198,135 @@ export default function InvConsumptionPage() {
         open={show}
         onClose={() => setShow(false)}
         title="Record Product Usage"
-        footer={<><Button variant="secondary" onClick={() => setShow(false)}>Cancel</Button><Button variant="primary" loading={saving} onClick={save}>Save</Button></>}
+        size="lg"
+        footer={(
+          <>
+            <Button variant="secondary" onClick={() => setShow(false)}>Cancel</Button>
+            <Button variant="primary" loading={saving} onClick={save}>
+              Save{selectedCount ? ` (${selectedCount})` : ''}
+            </Button>
+          </>
+        )}
       >
-        <div style={{ display: 'grid', gap: 10 }}>
-          {multiBranch && (
-            <FormGroup label="Branch">
-              <Select value={branchId} onChange={(e) => setBranchId(e.target.value)}>
-                {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+        <div style={{ display: 'grid', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: multiBranch ? '1fr 1fr 1fr' : '1fr 1fr', gap: 10 }}>
+            {multiBranch && (
+              <FormGroup label="Branch">
+                <Select value={branchId} onChange={(e) => setBranchId(e.target.value)}>
+                  {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                </Select>
+              </FormGroup>
+            )}
+            <FormGroup label="Date">
+              <Input type="date" value={form.consumption_date} onChange={(e) => setForm((f) => ({ ...f, consumption_date: e.target.value }))} />
+            </FormGroup>
+            <FormGroup label="Stylist">
+              <Select value={form.staff_id} onChange={(e) => setForm((f) => ({ ...f, staff_id: e.target.value }))}>
+                <option value="">Optional</option>
+                {staff.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
               </Select>
             </FormGroup>
-          )}
-          <FormGroup label="Date">
-            <Input type="date" value={form.consumption_date} onChange={(e) => setForm((f) => ({ ...f, consumption_date: e.target.value }))} />
-          </FormGroup>
-          <FormGroup label="Product" required>
-            <Select value={form.product_id} onChange={(e) => setForm((f) => ({ ...f, product_id: e.target.value }))}>
-              <option value="">Select product</option>
-              {products.map((p) => (
-                <option key={p.id} value={p.id}>{p.name} — {fmtQty(p.current_stock, p.unit)} left</option>
-              ))}
-            </Select>
-          </FormGroup>
-          <FormGroup label="Quantity Used" required>
-            <Input type="number" value={form.quantity_used} onChange={(e) => setForm((f) => ({ ...f, quantity_used: e.target.value }))} />
-          </FormGroup>
-          <FormGroup label="Stylist">
-            <Select value={form.staff_id} onChange={(e) => setForm((f) => ({ ...f, staff_id: e.target.value }))}>
-              <option value="">Optional</option>
-              {staff.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-            </Select>
-          </FormGroup>
+          </div>
+
           <FormGroup label="Reason">
             <Input value={form.reason} onChange={(e) => setForm((f) => ({ ...f, reason: e.target.value }))} placeholder="e.g. Hair wash" />
           </FormGroup>
-          {!products.length && (
-            <div style={{ fontSize: 12, color: '#DC2626' }}>
-              No consumable products in this branch — add one on the Products tab first.
+
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 8 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--app-text-muted, #667085)', letterSpacing: '0.04em' }}>
+                PRODUCTS — tick, enter qty, select unit
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--app-text-muted, #98A2B3)' }}>
+                {selectedCount} selected
+              </div>
             </div>
-          )}
+            <Input
+              value={productSearch}
+              onChange={(e) => setProductSearch(e.target.value)}
+              placeholder="Search products…"
+              style={{ marginBottom: 8 }}
+            />
+            <div
+              style={{
+                maxHeight: 340,
+                overflow: 'auto',
+                border: '1px solid var(--app-border, #E4E7EC)',
+                borderRadius: 10,
+                background: 'var(--app-panel, #fff)',
+              }}
+            >
+              {filteredProducts.length === 0 ? (
+                <div style={{ padding: 16, fontSize: 13, color: 'var(--app-text-muted, #98A2B3)' }}>
+                  {products.length ? 'No products match your search.' : 'No consumable products in this branch — add one on the Products tab first.'}
+                </div>
+              ) : filteredProducts.map((p) => {
+                const key = String(p.id);
+                const line = lineMap[key] || {
+                  selected: false,
+                  quantity_used: '',
+                  unit: UNITS.includes(p.unit) ? p.unit : 'pcs',
+                };
+                return (
+                  <div
+                    key={p.id}
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'auto 1fr 110px 100px',
+                      gap: 10,
+                      alignItems: 'center',
+                      padding: '10px 12px',
+                      borderBottom: '1px solid var(--app-border, #F2F4F7)',
+                      background: line.selected ? 'rgba(37, 99, 235, 0.04)' : 'transparent',
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={!!line.selected}
+                      onChange={(e) => toggleProduct(p.id, e.target.checked)}
+                      aria-label={`Select ${p.name}`}
+                      style={{ width: 16, height: 16, cursor: 'pointer' }}
+                    />
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontWeight: 600, fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {p.name}
+                      </div>
+                      <div style={{ fontSize: 11, color: 'var(--app-text-muted, #98A2B3)' }}>
+                        Stock {fmtQty(p.current_stock, p.unit)}
+                      </div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--app-text-muted, #667085)', marginBottom: 4, letterSpacing: '0.04em' }}>QTY</div>
+                      <Input
+                        type="number"
+                        min="0"
+                        step="any"
+                        disabled={!line.selected}
+                        value={line.quantity_used}
+                        onChange={(e) => setLineField(p.id, { quantity_used: e.target.value, selected: true })}
+                        placeholder="0"
+                      />
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--app-text-muted, #667085)', marginBottom: 4, letterSpacing: '0.04em' }}>UNIT</div>
+                      <Select
+                        disabled={!line.selected}
+                        value={line.unit}
+                        onChange={(e) => setLineField(p.id, { unit: e.target.value, selected: true })}
+                      >
+                        {UNITS.map((u) => (
+                          <option key={u} value={u}>{u}</option>
+                        ))}
+                      </Select>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
           <div style={{ fontSize: 12, color: 'var(--app-text-muted, #98A2B3)' }}>
-            Appointments and payments never change stock. Only Day End Closing deducts what is recorded here.
+            Tick every product used, type the quantity, and pick the unit (ml, g, kg, L, pcs). Stock only drops at Day End Closing.
           </div>
         </div>
       </Modal>

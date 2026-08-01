@@ -307,6 +307,7 @@ InvGoodsReceiptItem.belongsTo(InvProduct, { foreignKey: 'product_id', as: 'produ
 InvConsumption.belongsTo(InvProduct, { foreignKey: 'product_id', as: 'product' });
 InvConsumption.belongsTo(Branch, { foreignKey: 'branch_id', as: 'branch' });
 InvConsumption.belongsTo(Staff, { foreignKey: 'staff_id', as: 'staff', constraints: false });
+InvConsumption.belongsTo(Customer, { foreignKey: 'customer_id', as: 'customer', constraints: false });
 InvConsumption.belongsTo(Appointment, { foreignKey: 'appointment_id', as: 'appointment', constraints: false });
 InvConsumption.belongsTo(Service, { foreignKey: 'service_id', as: 'service', constraints: false });
 InvConsumption.belongsTo(InvDayEndBatch, { foreignKey: 'day_end_batch_id', as: 'dayEndBatch', constraints: false });

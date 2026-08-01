@@ -5,7 +5,7 @@ const base = require('./salonInventoryController');
 const {
   InvProduct, InvStockMovement,
   InvConsumption, InvDayEndBatch, InvDayEndBatchItem,
-  InvStockAdjustment, Branch, Staff, Service, User,
+  InvStockAdjustment, Branch, Staff, Service, Customer, User,
 } = require('../models');
 const { applyStockChange, sequelize } = require('../services/invStockService');
 
@@ -30,6 +30,7 @@ const listConsumptions = async (req, res) => {
         { model: InvProduct, as: 'product', attributes: ['id', 'name', 'unit', 'product_type'] },
         { model: Branch, as: 'branch', attributes: ['id', 'name'] },
         { model: Staff, as: 'staff', attributes: ['id', 'name'], required: false },
+        { model: Customer, as: 'customer', attributes: ['id', 'name', 'phone'], required: false },
         { model: Service, as: 'service', attributes: ['id', 'name'], required: false },
       ],
       order: [['consumption_date', 'DESC'], ['id', 'DESC']],
@@ -66,6 +67,7 @@ const createConsumption = async (req, res) => {
       branch_id: branchId,
       product_id: product.id,
       staff_id: req.body.staff_id || null,
+      customer_id: req.body.customer_id || null,
       appointment_id: req.body.appointment_id || null,
       service_id: req.body.service_id || null,
       consumption_date: req.body.consumption_date || localToday(),

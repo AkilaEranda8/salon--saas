@@ -4,7 +4,7 @@ import Button from '../../components/ui/Button';
 import { Input, Select, FormGroup } from '../../components/ui/FormElements';
 import { useToast } from '../../components/ui/Toast';
 import { ActionBtn, DataTable, FilterBar, IconPlus, IconTrash, PKModal as Modal } from '../../components/ui/PageKit';
-import { INV_API, UNITS, fmtQty, loadStaff, todayStr, useInvBranch } from './invApi';
+import { INV_API, UNITS, fmtQty, loadStaff, loadServices, todayStr, useInvBranch } from './invApi';
 
 export default function InvConsumptionPage() {
   const { toast } = useToast();
@@ -13,13 +13,18 @@ export default function InvConsumptionPage() {
   const [rows, setRows] = useState([]);
   const [products, setProducts] = useState([]);
   const [staff, setStaff] = useState([]);
+  const [customers, setCustomers] = useState([]);
+  const [services, setServices] = useState([]);
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState('pending');
   const [show, setShow] = useState(false);
   const [saving, setSaving] = useState(false);
   const [productSearch, setProductSearch] = useState('');
+  const [customerSearch, setCustomerSearch] = useState('');
   const [form, setForm] = useState({
     staff_id: '',
+    customer_id: '',
+    service_id: '',
     reason: '',
     consumption_date: todayStr(),
   });
@@ -30,14 +35,20 @@ export default function InvConsumptionPage() {
     if (!ready) return;
     setLoading(true);
     try {
-      const [c, p, s] = await Promise.all([
+      const [c, p, s, cust, svc] = await Promise.all([
         api.get(`${INV_API}/consumptions`, { params: { status: status || undefined, branchId: branchId || undefined } }),
         api.get(`${INV_API}/products`, { params: { limit: 200, status: 'active', product_type: 'consumable', branchId: branchId || undefined } }),
         loadStaff().catch(() => []),
+        api.get('/customers', { params: { limit: 500, ...(branchId ? { branchId } : {}) } }).then((r) => (
+          Array.isArray(r.data) ? r.data : (r.data?.data ?? [])
+        )).catch(() => []),
+        loadServices().catch(() => []),
       ]);
       setRows(c.data ?? []);
       setProducts(p.data?.data ?? []);
       setStaff(s);
+      setCustomers(cust);
+      setServices(Array.isArray(svc) ? svc : []);
     } catch (e) {
       toast.error(e.response?.data?.message || 'Failed to load usage records');
     }
@@ -57,7 +68,14 @@ export default function InvConsumptionPage() {
     });
     setLineMap(next);
     setProductSearch('');
-    setForm({ staff_id: '', reason: '', consumption_date: todayStr() });
+    setCustomerSearch('');
+    setForm({
+      staff_id: '',
+      customer_id: '',
+      service_id: '',
+      reason: '',
+      consumption_date: todayStr(),
+    });
     setShow(true);
   };
 
@@ -66,6 +84,16 @@ export default function InvConsumptionPage() {
     if (!q) return products;
     return products.filter((p) => String(p.name || '').toLowerCase().includes(q));
   }, [products, productSearch]);
+
+  const filteredCustomers = useMemo(() => {
+    const q = customerSearch.trim().toLowerCase();
+    if (!q) return customers;
+    return customers.filter((c) => {
+      const name = String(c.name || '').toLowerCase();
+      const phone = String(c.phone || '').toLowerCase();
+      return name.includes(q) || phone.includes(q);
+    });
+  }, [customers, customerSearch]);
 
   const selectedCount = useMemo(
     () => Object.values(lineMap).filter((l) => l.selected).length,
@@ -114,6 +142,8 @@ export default function InvConsumptionPage() {
       const shared = {
         branch_id: branchId || undefined,
         staff_id: form.staff_id || null,
+        customer_id: form.customer_id || null,
+        service_id: form.service_id || null,
         reason: form.reason || null,
         consumption_date: form.consumption_date,
       };
@@ -171,6 +201,8 @@ export default function InvConsumptionPage() {
           { id: 'date', header: 'Date', accessorFn: (r) => r.consumption_date },
           { id: 'product', header: 'Product', accessorFn: (r) => r.product?.name },
           { id: 'qty', header: 'Qty Used', accessorFn: (r) => fmtQty(r.quantity_used, r.unit) },
+          { id: 'customer', header: 'Customer', accessorFn: (r) => r.customer?.name || '—' },
+          { id: 'service', header: 'Service', accessorFn: (r) => r.service?.name || '—' },
           { id: 'stylist', header: 'Stylist', accessorFn: (r) => r.staff?.name || '—' },
           { id: 'reason', header: 'Reason', accessorFn: (r) => r.reason || '—' },
           {
@@ -209,7 +241,7 @@ export default function InvConsumptionPage() {
         )}
       >
         <div style={{ display: 'grid', gap: 12 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: multiBranch ? '1fr 1fr 1fr' : '1fr 1fr', gap: 10 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: multiBranch ? '1fr 1fr' : '1fr 1fr', gap: 10 }}>
             {multiBranch && (
               <FormGroup label="Branch">
                 <Select value={branchId} onChange={(e) => setBranchId(e.target.value)}>
@@ -224,6 +256,33 @@ export default function InvConsumptionPage() {
               <Select value={form.staff_id} onChange={(e) => setForm((f) => ({ ...f, staff_id: e.target.value }))}>
                 <option value="">Optional</option>
                 {staff.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </Select>
+            </FormGroup>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <FormGroup label="Customer">
+              <Input
+                value={customerSearch}
+                onChange={(e) => setCustomerSearch(e.target.value)}
+                placeholder="Search name or phone…"
+                style={{ marginBottom: 6 }}
+              />
+              <Select value={form.customer_id} onChange={(e) => setForm((f) => ({ ...f, customer_id: e.target.value }))}>
+                <option value="">Select customer (optional)</option>
+                {filteredCustomers.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}{c.phone ? ` — ${c.phone}` : ''}
+                  </option>
+                ))}
+              </Select>
+            </FormGroup>
+            <FormGroup label="Service">
+              <Select value={form.service_id} onChange={(e) => setForm((f) => ({ ...f, service_id: e.target.value }))}>
+                <option value="">Select service (optional)</option>
+                {services.map((s) => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))}
               </Select>
             </FormGroup>
           </div>

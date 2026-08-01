@@ -47,6 +47,7 @@ const ensureWalkInReminderColumns = require('./services/ensureWalkInReminderColu
 const ensureWalkInNotificationColumns = require('./services/ensureWalkInNotificationColumns');
 const { ensureWalkInCustomerIdColumn } = require('./services/ensureWalkInCustomerIdColumn');
 const { ensureWalkInTotalAmountColumn } = require('./services/ensureWalkInTotalAmountColumn');
+const { ensureInvConsumptionCustomerColumn } = require('./services/ensureInvConsumptionCustomerColumn');
 const { ensureFcmTokenTenantIds } = require('./services/ensureFcmTokenTenantIds');
 const { runWalkInQueueServicesMigration } = require('./services/walkInQueueServicesMigration');
 const ensureWhatsAppSchema = require('./services/ensureWhatsAppSchema');
@@ -393,6 +394,7 @@ connectWithRetry().then(async () => {
   await ensureWalkInNotificationColumns();
   await ensureWalkInCustomerIdColumn();
   await ensureWalkInTotalAmountColumn();
+  await ensureInvConsumptionCustomerColumn();
   await ensurePaymentIsAdvanceColumn();
   await ensureCustomerLoyaltyMarkColumn();
   await ensureFcmTokenTenantIds();

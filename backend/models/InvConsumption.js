@@ -7,6 +7,7 @@ const InvConsumption = sequelize.define('InvConsumption', {
   branch_id: { type: DataTypes.INTEGER, allowNull: false },
   product_id: { type: DataTypes.INTEGER, allowNull: false },
   staff_id: { type: DataTypes.INTEGER, allowNull: true },
+  customer_id: { type: DataTypes.INTEGER, allowNull: true },
   appointment_id: { type: DataTypes.INTEGER, allowNull: true },
   service_id: { type: DataTypes.INTEGER, allowNull: true },
   consumption_date: { type: DataTypes.DATEONLY, allowNull: false },

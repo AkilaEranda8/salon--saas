@@ -2,7 +2,7 @@
 Contributors: hexaone
 Requires at least: 5.8
 Requires PHP: 7.4
-Stable tag: 1.0.19
+Stable tag: 1.0.20
 License: GPLv2 or later
 
 Embed online salon booking on WordPress. Talks to the Hexaone public booking API via a server-side proxy (no CORS setup needed).
@@ -12,17 +12,24 @@ Embed online salon booking on WordPress. Talks to the Hexaone public booking API
 IMPORTANT: Install only through WordPress Admin. Do not extract the ZIP on your computer and upload folders by FTP/File Manager.
 
 1. In Plugins, if an older Hexaone Salon Booking entry exists, click Delete.
-2. Download `hexaone-salon-booking.zip` from the salon documentation page.
+2. Download `hexaone-booking.zip` from the salon documentation page.
 3. Go to Plugins → Add New → Upload Plugin.
 4. Choose the ZIP file and click Install Now, then Activate.
 5. Open Settings → Salon Booking and set API URL + Tenant ID.
 6. Add shortcode `[salon_booking]` to any page.
+
+If activation says "Plugin file does not exist", delete any leftover folders under
+`wp-content/plugins/` named `hexaone-salon-booking-*` or nested `hexaone-booking`,
+then upload this ZIP again (do not extract it first).
 
 This package installs into `wp-content/plugins/hexaone-booking/` (main file: `salon-booking.php`).
 
 Optional shortcode attrs: `[salon_booking title="Book now" accent="#8B2942"]`
 
 == Changelog ==
+
+= 1.0.20 =
+* Fix WordPress "Plugin file does not exist" from double-nested ZIP installs.
 
 = 1.0.19 =
 * Show each staff member's working hours for the selected day; slots only inside that window.

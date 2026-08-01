@@ -505,10 +505,12 @@ export default function StaffPage() {
     setPhotoPreview('');
     setRemovePhoto(false);
     setFormErr('');
+    refreshServices();
     setShowForm(true);
   };
   const openEdit = async (row) => {
     try {
+      await refreshServices();
       const { data } = await api.get(`/staff/${row.id}`);
       const full = data || row;
       const fromM2m = (full.branches && full.branches.length)

@@ -1582,6 +1582,7 @@ class AppState extends ChangeNotifier {
     required String date,
     required String unit,
     String? staffId,
+    String? customerId,
     String? serviceId,
     String? reason,
   }) async {
@@ -1599,6 +1600,7 @@ class AppState extends ChangeNotifier {
         date: date,
         unit: unit,
         staffId: staffId,
+        customerId: customerId,
         serviceId: serviceId,
         reason: reason,
       );

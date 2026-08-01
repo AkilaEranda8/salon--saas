@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../models/customer.dart';
 import '../models/salon_service.dart';
 import '../models/staff_member.dart';
 import '../state/app_state.dart';
@@ -8,6 +9,7 @@ const _forest = Color(0xFF1B3A2D);
 const _emerald = Color(0xFF2D6A4F);
 const _canvas = Color(0xFFF2F5F2);
 const _border = Color(0xFFE5E7EB);
+const _units = ['ml', 'g', 'kg', 'L', 'pcs'];
 
 String _today() {
   final n = DateTime.now();
@@ -15,6 +17,11 @@ String _today() {
 }
 
 double _number(dynamic value) => double.tryParse('$value') ?? 0;
+
+String _unitOf(Map<String, dynamic> product) {
+  final u = '${product['unit'] ?? 'pcs'}';
+  return _units.contains(u) ? u : 'pcs';
+}
 
 class InvConsumptionPage extends StatefulWidget {
   const InvConsumptionPage({super.key});
@@ -34,6 +41,7 @@ class _InvConsumptionPageState extends State<InvConsumptionPage> {
   List<Map<String, dynamic>> _products = [];
   List<StaffMember> _staff = [];
   List<SalonService> _services = [];
+  List<Customer> _customers = [];
 
   @override
   void didChangeDependencies() {
@@ -74,6 +82,7 @@ class _InvConsumptionPageState extends State<InvConsumptionPage> {
       app.loadInventoryProducts(branchId: _branchId),
       app.loadStaffList(branchId: _branchId),
       app.loadServices(),
+      app.loadCustomers(),
     ]);
     if (!mounted) return;
     setState(() {
@@ -83,6 +92,7 @@ class _InvConsumptionPageState extends State<InvConsumptionPage> {
       ).where((p) => p['product_type'] == 'consumable').toList();
       _staff = List<StaffMember>.from(results[2] as List);
       _services = List<SalonService>.from(results[3] as List);
+      _customers = List<Customer>.from(results[4] as List);
     });
   }
 
@@ -131,6 +141,7 @@ class _InvConsumptionPageState extends State<InvConsumptionPage> {
         products: _products,
         staff: _staff,
         services: _services,
+        customers: _customers,
       ),
     );
     if (saved == true) await _refresh();
@@ -328,6 +339,7 @@ class _ConsumptionCard extends StatelessWidget {
     final product = row['product'] is Map ? row['product'] as Map : const {};
     final staff = row['staff'] is Map ? row['staff'] as Map : const {};
     final service = row['service'] is Map ? row['service'] as Map : const {};
+    final customer = row['customer'] is Map ? row['customer'] as Map : const {};
     final status = '${row['status'] ?? 'pending'}';
     final pending = status == 'pending';
 
@@ -390,8 +402,9 @@ class _ConsumptionCard extends StatelessWidget {
           const SizedBox(height: 5),
           Text(
             '${row['consumption_date'] ?? ''}'
-            '${staff['name'] != null ? ' · ${staff['name']}' : ''}'
-            '${service['name'] != null ? ' · ${service['name']}' : ''}',
+            '${customer['name'] != null ? ' · ${customer['name']}' : ''}'
+            '${service['name'] != null ? ' · ${service['name']}' : ''}'
+            '${staff['name'] != null ? ' · ${staff['name']}' : ''}',
             style: const TextStyle(color: Color(0xFF6B7280), fontSize: 12),
           ),
           if ('${row['reason'] ?? ''}'.trim().isNotEmpty) ...[
@@ -421,6 +434,24 @@ class _ConsumptionCard extends StatelessWidget {
   }
 }
 
+class _ProductLine {
+  _ProductLine({
+    required this.productId,
+    required this.name,
+    required this.stockLabel,
+    required this.unit,
+  });
+
+  final String productId;
+  final String name;
+  final String stockLabel;
+  bool selected = false;
+  String unit;
+  final TextEditingController qty = TextEditingController();
+
+  void dispose() => qty.dispose();
+}
+
 class _RecordConsumptionSheet extends StatefulWidget {
   const _RecordConsumptionSheet({
     required this.branchId,
@@ -428,6 +459,7 @@ class _RecordConsumptionSheet extends StatefulWidget {
     required this.products,
     required this.staff,
     required this.services,
+    required this.customers,
   });
 
   final String branchId;
@@ -435,6 +467,7 @@ class _RecordConsumptionSheet extends StatefulWidget {
   final List<Map<String, dynamic>> products;
   final List<StaffMember> staff;
   final List<SalonService> services;
+  final List<Customer> customers;
 
   @override
   State<_RecordConsumptionSheet> createState() =>
@@ -442,171 +475,436 @@ class _RecordConsumptionSheet extends StatefulWidget {
 }
 
 class _RecordConsumptionSheetState extends State<_RecordConsumptionSheet> {
-  final _formKey = GlobalKey<FormState>();
-  final _quantity = TextEditingController();
   final _reason = TextEditingController();
-  String _productId = '';
+  final _productSearch = TextEditingController();
+  final _customerSearch = TextEditingController();
+  final _serviceSearch = TextEditingController();
+  late final List<_ProductLine> _lines;
   String _staffId = '';
+  String _customerId = '';
   String _serviceId = '';
   bool _saving = false;
 
   @override
+  void initState() {
+    super.initState();
+    _lines = widget.products.map((p) {
+      final stock = _number(p['current_stock']).toStringAsFixed(2);
+      final unit = _unitOf(p);
+      return _ProductLine(
+        productId: '${p['id']}',
+        name: '${p['name'] ?? 'Product'}',
+        stockLabel: '$stock $unit left',
+        unit: unit,
+      );
+    }).toList();
+  }
+
+  @override
   void dispose() {
-    _quantity.dispose();
     _reason.dispose();
+    _productSearch.dispose();
+    _customerSearch.dispose();
+    _serviceSearch.dispose();
+    for (final line in _lines) {
+      line.dispose();
+    }
     super.dispose();
   }
 
+  List<_ProductLine> get _filteredLines {
+    final q = _productSearch.text.trim().toLowerCase();
+    if (q.isEmpty) return _lines;
+    return _lines.where((l) => l.name.toLowerCase().contains(q)).toList();
+  }
+
+  List<Customer> get _filteredCustomers {
+    final q = _customerSearch.text.trim().toLowerCase();
+    if (q.isEmpty) return widget.customers;
+    return widget.customers.where((c) {
+      return c.name.toLowerCase().contains(q) ||
+          c.phone.toLowerCase().contains(q);
+    }).toList();
+  }
+
+  List<SalonService> get _filteredServices {
+    final q = _serviceSearch.text.trim().toLowerCase();
+    if (q.isEmpty) return widget.services;
+    return widget.services.where((s) {
+      return s.name.toLowerCase().contains(q) ||
+          s.category.toLowerCase().contains(q);
+    }).toList();
+  }
+
+  int get _selectedCount => _lines.where((l) => l.selected).length;
+
   Future<void> _save() async {
-    if (!_formKey.currentState!.validate()) return;
-    final product = widget.products.firstWhere(
-      (p) => '${p['id']}' == _productId,
-      orElse: () => <String, dynamic>{},
-    );
-    final quantity = double.tryParse(_quantity.text.trim()) ?? 0;
-    setState(() => _saving = true);
-    final ok = await AppStateScope.of(context).recordInventoryConsumption(
-      branchId: widget.branchId,
-      productId: _productId,
-      quantity: quantity,
-      date: widget.date,
-      unit: '${product['unit'] ?? 'pcs'}',
-      staffId: _staffId.isEmpty ? null : _staffId,
-      serviceId: _serviceId.isEmpty ? null : _serviceId,
-      reason: _reason.text,
-    );
-    if (!mounted) return;
-    setState(() => _saving = false);
-    if (!ok) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(AppStateScope.of(context).lastError ?? 'Failed'),
-        ),
-      );
+    final selected = _lines.where((l) => l.selected).toList();
+    if (selected.isEmpty) {
+      _toast('Tick at least one product');
       return;
     }
-    Navigator.of(context).pop(true);
+    for (final line in selected) {
+      final qty = double.tryParse(line.qty.text.trim()) ?? 0;
+      if (qty <= 0) {
+        _toast('Enter a valid quantity for ${line.name}');
+        return;
+      }
+    }
+
+    setState(() => _saving = true);
+    final app = AppStateScope.of(context);
+    var okCount = 0;
+    String? lastError;
+    for (final line in selected) {
+      final qty = double.tryParse(line.qty.text.trim()) ?? 0;
+      final ok = await app.recordInventoryConsumption(
+        branchId: widget.branchId,
+        productId: line.productId,
+        quantity: qty,
+        date: widget.date,
+        unit: line.unit,
+        staffId: _staffId.isEmpty ? null : _staffId,
+        customerId: _customerId.isEmpty ? null : _customerId,
+        serviceId: _serviceId.isEmpty ? null : _serviceId,
+        reason: _reason.text,
+      );
+      if (ok) {
+        okCount += 1;
+      } else {
+        lastError = app.lastError;
+      }
+    }
+    if (!mounted) return;
+    setState(() => _saving = false);
+
+    if (okCount == selected.length) {
+      Navigator.of(context).pop(true);
+      return;
+    }
+    if (okCount > 0) {
+      _toast('$okCount saved, ${selected.length - okCount} failed');
+      Navigator.of(context).pop(true);
+      return;
+    }
+    _toast(lastError ?? 'Failed to record usage');
+  }
+
+  void _toast(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final bottom = MediaQuery.of(context).viewInsets.bottom;
+    final height = MediaQuery.of(context).size.height * 0.92;
+    final filteredCustomers = _filteredCustomers;
+    final filteredServices = _filteredServices;
+    final filteredLines = _filteredLines;
+
     return Container(
+      height: height,
       decoration: const BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      padding: EdgeInsets.fromLTRB(18, 18, 18, bottom + 22),
-      child: SingleChildScrollView(
-        child: Form(
-          key: _formKey,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Record Product Usage',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
-              ),
-              const SizedBox(height: 5),
-              const Text(
-                'Only Consumable products are available. Stock will not change yet.',
-                style: TextStyle(color: Color(0xFF6B7280), fontSize: 12),
-              ),
-              const SizedBox(height: 16),
-              DropdownButtonFormField<String>(
-                initialValue: _productId.isEmpty ? null : _productId,
-                decoration: const InputDecoration(
-                  labelText: 'Consumable Product',
-                  border: OutlineInputBorder(),
+      padding: EdgeInsets.fromLTRB(18, 18, 18, bottom + 18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Record Product Usage',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 5),
+          const Text(
+            'Tick products, enter qty + unit. Optionally pick customer & service.',
+            style: TextStyle(color: Color(0xFF6B7280), fontSize: 12),
+          ),
+          const SizedBox(height: 14),
+          Expanded(
+            child: ListView(
+              children: [
+                DropdownButtonFormField<String>(
+                  initialValue: _staffId,
+                  decoration: const InputDecoration(
+                    labelText: 'Stylist (optional)',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: [
+                    const DropdownMenuItem(value: '', child: Text('None')),
+                    ...widget.staff.map(
+                      (s) => DropdownMenuItem(value: s.id, child: Text(s.name)),
+                    ),
+                  ],
+                  onChanged: (value) => setState(() => _staffId = value ?? ''),
                 ),
-                items: widget.products
-                    .map(
-                      (p) => DropdownMenuItem(
-                        value: '${p['id']}',
-                        child: Text('${p['name']} (${p['unit']})'),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _customerSearch,
+                  decoration: const InputDecoration(
+                    labelText: 'Search customer',
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.search_rounded),
+                    isDense: true,
+                  ),
+                  onChanged: (_) => setState(() {}),
+                ),
+                const SizedBox(height: 8),
+                DropdownButtonFormField<String>(
+                  initialValue: _customerId.isEmpty ||
+                          filteredCustomers.any((c) => c.id == _customerId)
+                      ? (_customerId.isEmpty ? '' : _customerId)
+                      : '',
+                  decoration: const InputDecoration(
+                    labelText: 'Customer (optional)',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: [
+                    const DropdownMenuItem(value: '', child: Text('None')),
+                    ...filteredCustomers.map(
+                      (c) => DropdownMenuItem(
+                        value: c.id,
+                        child: Text(
+                          c.phone.trim().isEmpty
+                              ? c.name
+                              : '${c.name} — ${c.phone}',
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ),
+                  ],
+                  onChanged: (value) =>
+                      setState(() => _customerId = value ?? ''),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _serviceSearch,
+                  decoration: const InputDecoration(
+                    labelText: 'Search service',
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.search_rounded),
+                    isDense: true,
+                  ),
+                  onChanged: (_) => setState(() {}),
+                ),
+                const SizedBox(height: 8),
+                DropdownButtonFormField<String>(
+                  initialValue: _serviceId.isEmpty ||
+                          filteredServices.any((s) => s.id == _serviceId)
+                      ? (_serviceId.isEmpty ? '' : _serviceId)
+                      : '',
+                  decoration: const InputDecoration(
+                    labelText: 'Service (optional)',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: [
+                    const DropdownMenuItem(value: '', child: Text('None')),
+                    ...filteredServices.map(
+                      (s) => DropdownMenuItem(
+                        value: s.id,
+                        child: Text(
+                          s.category.trim().isEmpty
+                              ? s.name
+                              : '${s.name} — ${s.category}',
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ),
+                  ],
+                  onChanged: (value) =>
+                      setState(() => _serviceId = value ?? ''),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _reason,
+                  maxLines: 2,
+                  decoration: const InputDecoration(
+                    labelText: 'Reason (optional)',
+                    hintText: 'e.g. Hair wash',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    const Expanded(
+                      child: Text(
+                        'PRODUCTS',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                          color: Color(0xFF667085),
+                          letterSpacing: 0.4,
+                        ),
+                      ),
+                    ),
+                    Text(
+                      '$_selectedCount selected',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFF98A2B3),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: _productSearch,
+                  decoration: const InputDecoration(
+                    labelText: 'Search products',
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.search_rounded),
+                    isDense: true,
+                  ),
+                  onChanged: (_) => setState(() {}),
+                ),
+                const SizedBox(height: 10),
+                ...filteredLines.map((line) {
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    padding: const EdgeInsets.fromLTRB(8, 8, 10, 10),
+                    decoration: BoxDecoration(
+                      color: line.selected
+                          ? const Color(0xFFECFDF5)
+                          : const Color(0xFFF9FAFB),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: line.selected
+                            ? const Color(0xFFA7F3D0)
+                            : _border,
+                      ),
+                    ),
+                    child: Column(
+                      children: [
+                        Row(
+                          children: [
+                            Checkbox(
+                              value: line.selected,
+                              activeColor: _emerald,
+                              onChanged: (v) {
+                                setState(() => line.selected = v ?? false);
+                              },
+                            ),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    line.name,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                  Text(
+                                    line.stockLabel,
+                                    style: const TextStyle(
+                                      color: Color(0xFF6B7280),
+                                      fontSize: 11,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                        if (line.selected)
+                          Padding(
+                            padding: const EdgeInsets.only(left: 8, right: 4),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: TextField(
+                                    controller: line.qty,
+                                    keyboardType:
+                                        const TextInputType.numberWithOptions(
+                                      decimal: true,
+                                    ),
+                                    decoration: const InputDecoration(
+                                      labelText: 'Qty',
+                                      border: OutlineInputBorder(),
+                                      isDense: true,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                SizedBox(
+                                  width: 100,
+                                  child: DropdownButtonFormField<String>(
+                                    initialValue: line.unit,
+                                    decoration: const InputDecoration(
+                                      labelText: 'Unit',
+                                      border: OutlineInputBorder(),
+                                      isDense: true,
+                                    ),
+                                    items: _units
+                                        .map(
+                                          (u) => DropdownMenuItem(
+                                            value: u,
+                                            child: Text(u),
+                                          ),
+                                        )
+                                        .toList(),
+                                    onChanged: (value) {
+                                      setState(() {
+                                        line.unit = value ?? line.unit;
+                                      });
+                                    },
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                      ],
+                    ),
+                  );
+                }),
+                if (filteredLines.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 20),
+                    child: Center(
+                      child: Text(
+                        'No products match your search.',
+                        style: TextStyle(color: Color(0xFF6B7280)),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: _saving ? null : _save,
+              style: FilledButton.styleFrom(
+                backgroundColor: _emerald,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+              ),
+              icon: _saving
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
                       ),
                     )
-                    .toList(),
-                onChanged: (value) => setState(() => _productId = value ?? ''),
-                validator: (value) =>
-                    value == null || value.isEmpty ? 'Select a product' : null,
+                  : const Icon(Icons.save_rounded),
+              label: Text(
+                _saving
+                    ? 'Saving...'
+                    : (_selectedCount > 0
+                        ? 'Save Pending ($_selectedCount)'
+                        : 'Save Pending'),
               ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _quantity,
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
-                ),
-                decoration: const InputDecoration(
-                  labelText: 'Quantity Used',
-                  border: OutlineInputBorder(),
-                ),
-                validator: (value) {
-                  if ((double.tryParse(value ?? '') ?? 0) <= 0) {
-                    return 'Enter a positive quantity';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 12),
-              DropdownButtonFormField<String>(
-                initialValue: _staffId,
-                decoration: const InputDecoration(
-                  labelText: 'Stylist (optional)',
-                  border: OutlineInputBorder(),
-                ),
-                items: [
-                  const DropdownMenuItem(value: '', child: Text('None')),
-                  ...widget.staff.map(
-                    (s) => DropdownMenuItem(value: s.id, child: Text(s.name)),
-                  ),
-                ],
-                onChanged: (value) => setState(() => _staffId = value ?? ''),
-              ),
-              const SizedBox(height: 12),
-              DropdownButtonFormField<String>(
-                initialValue: _serviceId,
-                decoration: const InputDecoration(
-                  labelText: 'Service (optional)',
-                  border: OutlineInputBorder(),
-                ),
-                items: [
-                  const DropdownMenuItem(value: '', child: Text('None')),
-                  ...widget.services.map(
-                    (s) => DropdownMenuItem(value: s.id, child: Text(s.name)),
-                  ),
-                ],
-                onChanged: (value) => setState(() => _serviceId = value ?? ''),
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _reason,
-                maxLines: 2,
-                decoration: const InputDecoration(
-                  labelText: 'Reason (optional)',
-                  hintText: 'e.g. Hair wash',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 18),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton.icon(
-                  onPressed: _saving ? null : _save,
-                  icon: _saving
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.save_rounded),
-                  label: Text(_saving ? 'Saving...' : 'Save Pending'),
-                ),
-              ),
-            ],
+            ),
           ),
-        ),
+        ],
       ),
     );
   }

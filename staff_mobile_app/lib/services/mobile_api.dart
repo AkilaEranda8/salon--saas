@@ -1861,6 +1861,7 @@ class MobileApi {
     required String date,
     required String unit,
     String? staffId,
+    String? customerId,
     String? serviceId,
     String? reason,
   }) async {
@@ -1875,6 +1876,8 @@ class MobileApi {
         'unit': unit,
         if (staffId != null && staffId.isNotEmpty)
           'staff_id': int.tryParse(staffId) ?? staffId,
+        if (customerId != null && customerId.isNotEmpty)
+          'customer_id': int.tryParse(customerId) ?? customerId,
         if (serviceId != null && serviceId.isNotEmpty)
           'service_id': int.tryParse(serviceId) ?? serviceId,
         if (reason != null && reason.trim().isNotEmpty) 'reason': reason.trim(),

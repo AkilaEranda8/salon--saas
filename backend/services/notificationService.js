@@ -99,7 +99,8 @@ async function writeLog({ customer_name, phone, email, event_type, channel, mess
 const DEFAULT_FLAGS = {
   appt_confirmed_email:      true,
   appt_confirmed_whatsapp:   true,
-  appt_confirmed_sms:        true,
+  // Match NotificationSettings default — SMS off unless salon enables it.
+  appt_confirmed_sms:        false,
   payment_receipt_email:     true,
   payment_receipt_whatsapp:  true,
   payment_receipt_sms:       true,
@@ -247,7 +248,7 @@ function smsCredsFromEnv() {
   return null;
 }
 
-async function getSMSCreds(tenantId = null) {
+async function getSMSCreds(tenantId = null, { allowPlatformFallback = true } = {}) {
   try {
     const { NotificationSettings } = getModels();
     // 1. Tenant-specific SMS (saved on Notifications page per salon)
@@ -255,6 +256,8 @@ async function getSMSCreds(tenantId = null) {
       const tenantRow = await NotificationSettings.findOne({ where: { branch_id: null, tenant_id: tenantId } });
       const tenantCreds = smsCredsFromRow(tenantRow);
       if (tenantCreds) return tenantCreds;
+      // Tenant scoped send should not silently bill platform SMS unless allowed.
+      if (!allowPlatformFallback) return null;
     }
     // 2. Platform-level SMS
     const row = await NotificationSettings.findOne({ where: { branch_id: null, tenant_id: null } });
@@ -326,12 +329,21 @@ async function sendEmail({ to, subject, html, meta = {}, tenantId = null, attach
  * Send an SMS via Notify.lk or Textit.biz. Logs result. Never throws.
  * @param {{ to, message, meta?, tenantId? }} opts
  */
-async function sendSMS({ to, message, meta = {}, tenantId = null }) {
+async function sendSMS({ to, message, meta = {}, tenantId = null, allowPlatformFallback }) {
   if (!to) return null;
   const tid = tenantId || meta.tenant_id || null;
-  const creds = await getSMSCreds(tid);
+  // Tenant transactional SMS: do not fall back to platform account (stops Hexaone SMS bill).
+  // Set SMS_PLATFORM_FALLBACK=1 to restore old billing-to-platform behaviour.
+  const fallbackAllowed = allowPlatformFallback != null
+    ? !!allowPlatformFallback
+    : (tid == null ? true : process.env.SMS_PLATFORM_FALLBACK === '1');
+  const creds = await getSMSCreds(tid, { allowPlatformFallback: fallbackAllowed });
   if (!creds) {
-    console.warn('[Notifications] SMS skipped — SMS credentials not configured.');
+    console.warn(
+      tid
+        ? `[Notifications] SMS skipped — tenant ${tid} has no SMS credentials (platform fallback disabled).`
+        : '[Notifications] SMS skipped — SMS credentials not configured.'
+    );
     return null;
   }
   const provider = creds.provider || 'notify_lk';
@@ -339,6 +351,13 @@ async function sendSMS({ to, message, meta = {}, tenantId = null }) {
     console.warn('[Notifications] SMS skipped — SMS Sender ID not configured.');
     return null;
   }
+  // Prefer GSM-7: strip fancy punctuation that forces multi-part unicode billing.
+  const smsBody = String(message || '')
+    .replace(/[–—]/g, '-')
+    .replace(/[‘’]/g, "'")
+    .replace(/[“”]/g, '"')
+    .replace(/\u00A0/g, ' ')
+    .trim();
   const toFormatted = formatSmsTo94(to);
   let status = 'sent', errorMsg = null;
   try {
@@ -358,10 +377,10 @@ async function sendSMS({ to, message, meta = {}, tenantId = null }) {
             Authorization: `Basic ${creds.apiKey}`,
           },
           signal: controller.signal,
-          body: JSON.stringify({ to: toFormatted, text: message }),
+          body: JSON.stringify({ to: toFormatted, text: smsBody }),
         });
       } else {
-        const isUnicode = /[^\u0000-\u007F]/.test(message);
+        const isUnicode = /[^\u0000-\u007F]/.test(smsBody);
         res = await fetch('https://app.notify.lk/api/v1/send', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -371,7 +390,7 @@ async function sendSMS({ to, message, meta = {}, tenantId = null }) {
             api_key: creds.apiKey,
             sender_id: creds.senderId,
             to: toFormatted,
-            message,
+            message: smsBody,
             ...(isUnicode ? { type: 'unicode' } : {}),
           }),
         });
@@ -402,7 +421,7 @@ async function sendSMS({ to, message, meta = {}, tenantId = null }) {
     tenant_id: meta.tenant_id ?? tid,
     channel: 'sms',
     phone: to,
-    message_preview: message.slice(0, 255),
+    message_preview: smsBody.slice(0, 255),
     status,
     error_message: errorMsg,
   });
@@ -609,13 +628,8 @@ async function notifyAppointmentConfirmed(appointment, branch, service, tenantId
     const tpl = await getTemplate('appointment_confirmed', 'sms', tid);
     const smsMsg = tpl
       ? interpolate(tpl.body, vars)
-      : `HEXAONE\n` +
-        `Hi ${appointment.customer_name}! Appointment booked.\n` +
-        `Service: ${svcName}\n` +
-        `Date: ${date} | ${time}\n` +
-        `Branch: ${brName}\n` +
-        `Thank you!`;
-    await sendSMS({ to: phone, message: smsMsg, meta });
+      : `${brName}: Hi ${appointment.customer_name}, booked ${svcName} on ${date} ${time}. See you!`;
+    await sendSMS({ to: phone, message: smsMsg, meta, tenantId: tid });
   }
 }
 
@@ -650,8 +664,8 @@ async function notifyAppointmentCompleted(appointment, branch, service, tenantId
     const tpl = await getTemplate('appointment_completed', 'sms', tid);
     const smsMsg = tpl
       ? interpolate(tpl.body, vars)
-      : `HEXAONE\nHi ${appointment.customer_name}! Your ${svcName} is done.\n${date} ${time} | ${brName}\nThank you for visiting!`;
-    await sendSMS({ to: phone, message: smsMsg, meta });
+      : `${brName}: Hi ${appointment.customer_name}, ${svcName} done on ${date}. Thank you!`;
+    await sendSMS({ to: phone, message: smsMsg, meta, tenantId: tid });
   }
 }
 
@@ -822,7 +836,7 @@ async function notifyLoyaltyPoints(customer, pointsEarned, totalPoints, branch, 
     const smsMsg = tpl
       ? interpolate(tpl.body, vars)
       : `HEXAONE\nHi ${name}! You earned +${pointsEarned} loyalty points.\nTotal: ${totalPoints} pts. Every 10 pts = Rs. 1 discount!`;
-    await sendSMS({ to: phone, message: smsMsg, meta });
+    await sendSMS({ to: phone, message: smsMsg, meta, tenantId: tid });
   }
 }
 
@@ -923,16 +937,36 @@ async function notifyWalkInCompleted(walkin, branch, service, tenantId) {
 async function notifyWaitlistSlotAvailable(waitlistEntry, branch, service) {
   const phone = waitlistEntry?.phone || null;
   if (!phone) return;
+  const tid = resolveNotifyTenantId(null, waitlistEntry, branch);
   const brName  = branch?.name  || 'the salon';
   const svcName = service?.name || 'your requested service';
   const message =
-    `Hi ${waitlistEntry.customer_name || 'there'}! A slot has opened up for *${svcName}* at *${brName}*. ` +
-    `Please call us or book online to confirm your appointment.`;
+    `${brName}: Hi ${waitlistEntry.customer_name || 'there'}, a slot opened for ${svcName}. Call or book online to confirm.`;
   try {
-    await sendSMS({ to: phone, message });
+    await sendSMS({
+      to: phone,
+      message,
+      tenantId: tid,
+      meta: {
+        customer_name: waitlistEntry.customer_name,
+        event_type: 'waitlist_slot',
+        branch_id: branch?.id || waitlistEntry.branch_id,
+        tenant_id: tid,
+      },
+    });
   } catch { /* ignore */ }
   try {
-    await sendWhatsApp({ to: phone, message });
+    await sendWhatsApp({
+      to: phone,
+      message,
+      tenantId: tid,
+      meta: {
+        customer_name: waitlistEntry.customer_name,
+        event_type: 'waitlist_slot',
+        branch_id: branch?.id || waitlistEntry.branch_id,
+        tenant_id: tid,
+      },
+    });
   } catch { /* ignore */ }
 }
 

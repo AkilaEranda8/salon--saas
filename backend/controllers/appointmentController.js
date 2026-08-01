@@ -552,7 +552,7 @@ const create = async (req, res) => {
         await created[0].reload();
       }
 
-      // SMS once for the batch
+      // SMS only when appointment is already confirmed — avoids double SMS when staff later confirms.
       const notifyPhone = phone || (customer_id
         ? await (async () => {
             const { Customer: CustModel } = require('../models');
@@ -560,7 +560,7 @@ const create = async (req, res) => {
             return c?.phone || null;
           })()
         : null);
-      if (notifyPhone && created[0]) {
+      if (notifyPhone && created[0] && created[0].status === 'confirmed') {
         const [branch, service] = await Promise.all([
           Branch.findOne({ where: byIdWhere(req, branch_id), attributes: ['id', 'name', 'phone'] }),
           Service.findOne({ where: byIdWhere(req, created[0].service_id), attributes: ['id', 'name'] }),
@@ -655,7 +655,8 @@ const create = async (req, res) => {
           return c?.phone || null;
         })()
       : null);
-    if (notifyPhone) {
+    // Only notify on create when already confirmed — pending bookings notify when status becomes confirmed.
+    if (notifyPhone && appt.status === 'confirmed') {
       const [branch, service] = await Promise.all([
         Branch.findOne({ where: byIdWhere(req, branch_id), attributes: ['id', 'name', 'phone'] }),
         Service.findOne({ where: byIdWhere(req, primaryServiceId), attributes: ['id', 'name'] }),
@@ -821,10 +822,11 @@ const changeStatus = async (req, res) => {
       return res.status(403).json({ message: 'Access denied. Appointment belongs to a different branch.' });
     }
 
+    const previousStatus = appt.status;
     await appt.update({ status });
 
-    // Send confirmation notification when status changes to 'confirmed'
-    if (status === 'confirmed' && appt.phone) {
+    // Send confirmation notification only on transition into confirmed (not repeats).
+    if (status === 'confirmed' && previousStatus !== 'confirmed' && appt.phone) {
       const [branch, service] = await Promise.all([
         Branch.findOne({ where: byIdWhere(req, appt.branch_id), attributes: ['id', 'name', 'phone'] }),
         Service.findOne({ where: byIdWhere(req, appt.service_id), attributes: ['id', 'name'] }),
@@ -833,7 +835,7 @@ const changeStatus = async (req, res) => {
     }
 
     // Send notification when appointment is completed
-    if (status === 'completed' && appt.phone) {
+    if (status === 'completed' && previousStatus !== 'completed' && appt.phone) {
       const [branch, service] = await Promise.all([
         Branch.findOne({ where: byIdWhere(req, appt.branch_id), attributes: ['id', 'name', 'phone'] }),
         Service.findOne({ where: byIdWhere(req, appt.service_id), attributes: ['id', 'name'] }),

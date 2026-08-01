@@ -3,6 +3,7 @@
 const cron = require('node-cron');
 const { Op } = require('sequelize');
 const { slToday } = require('../utils/dateUtils');
+const { sequelize } = require('../config/database');
 
 let _models = null;
 function getModels() {
@@ -11,11 +12,29 @@ function getModels() {
 }
 
 /**
+ * Claim an appointment for recurring reminder send (atomic — prevents double SMS).
+ * Returns true if this worker claimed it.
+ */
+async function claimRecurringSms(appointmentId) {
+  const [affected] = await sequelize.query(
+    `UPDATE appointments
+     SET recurring_sms_sent_at = NOW()
+     WHERE id = :id AND recurring_sms_sent_at IS NULL`,
+    { replacements: { id: appointmentId } }
+  );
+  // mysql2 returns ResultSetHeader; Sequelize may return metadata differently by dialect.
+  const changed = typeof affected === 'number'
+    ? affected
+    : (affected?.affectedRows ?? affected?.rowCount ?? 0);
+  return Number(changed) > 0;
+}
+
+/**
  * Send day-of recurring visit reminders (SMS / WhatsApp) for appointments today.
  * Channel toggles: Notifications → Recurring Visit Reminder.
  * If recurring_message_template_ids is set, every selected channel template is sent.
  * The legacy recurring_message_template_id remains supported for older bookings.
- * Idempotent via appointments.recurring_sms_sent_at.
+ * Idempotent via appointments.recurring_sms_sent_at (claimed before send).
  */
 async function runRecurringDaySms(dateOverride) {
   const { Appointment, Branch, Service, Customer } = getModels();
@@ -47,6 +66,10 @@ async function runRecurringDaySms(dateOverride) {
     const phone = appt.phone || appt.customer?.phone;
     if (!phone) continue;
 
+    // Claim first so overlapping cron workers cannot double-bill SMS.
+    const claimed = await claimRecurringSms(appt.id);
+    if (!claimed) continue;
+
     const tid = appt.tenant_id || null;
     let flags;
     try {
@@ -60,9 +83,9 @@ async function runRecurringDaySms(dateOverride) {
     if (!smsOn && !waOn) continue;
 
     const date = appt.date || today;
-    const time = appt.time ? String(appt.time).slice(0, 5) : '—';
-    const svcName = appt.service?.name || '—';
-    const brName = appt.branch?.name || '—';
+    const time = appt.time ? String(appt.time).slice(0, 5) : '-';
+    const svcName = appt.service?.name || '-';
+    const brName = appt.branch?.name || '-';
     const customerName = appt.customer_name || appt.customer?.name || 'Customer';
     const vars = {
       customer_name: customerName,
@@ -70,7 +93,7 @@ async function runRecurringDaySms(dateOverride) {
       time,
       service_name: svcName,
       branch_name: brName,
-      amount: appt.amount != null ? `Rs. ${parseFloat(appt.amount).toFixed(2)}` : '—',
+      amount: appt.amount != null ? `Rs. ${parseFloat(appt.amount).toFixed(2)}` : '-',
     };
     const meta = {
       customer_name: customerName,
@@ -95,9 +118,11 @@ async function runRecurringDaySms(dateOverride) {
         const msg = interpolate(chosen.body, vars);
         try {
           if (chosen.channel === 'sms' && smsOn) {
-            await sendSMS({ to: phone, message: msg, meta, tenantId: tid });
-            sentChannels.add(chosen.channel);
-            anyOk = true;
+            const result = await sendSMS({ to: phone, message: msg, meta, tenantId: tid });
+            if (result?.status === 'sent') {
+              sentChannels.add(chosen.channel);
+              anyOk = true;
+            }
           } else if (chosen.channel === 'whatsapp' && waOn) {
             await sendWhatsApp({ to: phone, message: msg, meta, tenantId: tid });
             sentChannels.add(chosen.channel);
@@ -108,10 +133,7 @@ async function runRecurringDaySms(dateOverride) {
         }
       }
 
-      if (anyOk) {
-        await appt.update({ recurring_sms_sent_at: new Date() });
-        sent += 1;
-      }
+      if (anyOk) sent += 1;
       continue;
     }
 
@@ -125,8 +147,8 @@ async function runRecurringDaySms(dateOverride) {
       const msg = interpolate(chosen.body, vars);
       try {
         if (chosen.channel === 'sms' && smsOn) {
-          await sendSMS({ to: phone, message: msg, meta, tenantId: tid });
-          anyOk = true;
+          const result = await sendSMS({ to: phone, message: msg, meta, tenantId: tid });
+          if (result?.status === 'sent') anyOk = true;
         } else if (chosen.channel === 'whatsapp' && waOn) {
           await sendWhatsApp({ to: phone, message: msg, meta, tenantId: tid });
           anyOk = true;
@@ -135,10 +157,7 @@ async function runRecurringDaySms(dateOverride) {
         console.error('[recurringSmsCron] chosen template failed', appt.id, err.message);
       }
 
-      if (anyOk) {
-        await appt.update({ recurring_sms_sent_at: new Date() });
-        sent += 1;
-      }
+      if (anyOk) sent += 1;
       continue;
     }
 
@@ -148,13 +167,13 @@ async function runRecurringDaySms(dateOverride) {
         const tpl = await getTemplate('recurring_reminder', 'sms', tid);
         smsMsg = tpl
           ? interpolate(tpl.body, vars)
-          : `${brName}\nHi ${customerName}! Reminder for your recurring visit today.\nService: ${svcName}\nDate: ${date} | ${time}\nBranch: ${brName}\nSee you soon!`;
+          : `${brName}: Hi ${customerName}, reminder today ${svcName} at ${time}. See you!`;
       } catch {
-        smsMsg = `${brName}\nHi ${customerName}! Reminder for your recurring visit today.\nService: ${svcName}\nDate: ${date} | ${time}\nBranch: ${brName}\nSee you soon!`;
+        smsMsg = `${brName}: Hi ${customerName}, reminder today ${svcName} at ${time}. See you!`;
       }
       try {
-        await sendSMS({ to: phone, message: smsMsg, meta, tenantId: tid });
-        anyOk = true;
+        const result = await sendSMS({ to: phone, message: smsMsg, meta, tenantId: tid });
+        if (result?.status === 'sent') anyOk = true;
       } catch (err) {
         console.error('[recurringSmsCron] SMS failed', appt.id, err.message);
       }
@@ -166,9 +185,9 @@ async function runRecurringDaySms(dateOverride) {
         const tpl = await getTemplate('recurring_reminder', 'whatsapp', tid);
         waMsg = tpl
           ? interpolate(tpl.body, vars)
-          : `✂️ *${brName} — Recurring Visit Reminder*\n\nHi ${customerName}! Reminder for your visit today:\n\n📅 Date: ${date}\n⏰ Time: ${time}\n💇 Service: ${svcName}\n🏠 Branch: ${brName}\n\nSee you soon! 😊`;
+          : `*${brName} — Recurring Visit Reminder*\n\nHi ${customerName}! Reminder for your visit today:\n\nDate: ${date}\nTime: ${time}\nService: ${svcName}\nBranch: ${brName}\n\nSee you soon!`;
       } catch {
-        waMsg = `✂️ *${brName} — Recurring Visit Reminder*\n\nHi ${customerName}! Reminder for your visit today:\n\n📅 Date: ${date}\n⏰ Time: ${time}\n💇 Service: ${svcName}\n🏠 Branch: ${brName}\n\nSee you soon! 😊`;
+        waMsg = `*${brName} — Recurring Visit Reminder*\n\nHi ${customerName}! Reminder for your visit today:\n\nDate: ${date}\nTime: ${time}\nService: ${svcName}\nBranch: ${brName}\n\nSee you soon!`;
       }
       try {
         await sendWhatsApp({ to: phone, message: waMsg, meta, tenantId: tid });
@@ -178,10 +197,7 @@ async function runRecurringDaySms(dateOverride) {
       }
     }
 
-    if (anyOk) {
-      await appt.update({ recurring_sms_sent_at: new Date() });
-      sent += 1;
-    }
+    if (anyOk) sent += 1;
   }
 
   if (sent > 0) {
@@ -191,13 +207,10 @@ async function runRecurringDaySms(dateOverride) {
 }
 
 function startRecurringSmsCron() {
+  // Single schedule — was */15 AND 02:30 which increased overlap risk.
   cron.schedule('*/15 * * * *', () => {
     runRecurringDaySms().catch((e) => console.error('[recurringSmsCron]', e.message));
   });
-  cron.schedule('30 2 * * *', () => {
-    runRecurringDaySms().catch((e) => console.error('[recurringSmsCron]', e.message));
-  });
-  console.log('[recurringSmsCron] scheduled');
 }
 
 module.exports = { startRecurringSmsCron, runRecurringDaySms };

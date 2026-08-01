@@ -15,7 +15,7 @@ const PaymentSplit = require('../models/PaymentSplit');
 const StaffSpecialization = require('../models/StaffSpecialization');
 const StaffOffDay = require('../models/StaffOffDay');
 const Attendance = require('../models/Attendance');
-const { sendSMS } = require('../services/notificationService');
+const { sendSMS, getChannelFlags } = require('../services/notificationService');
 const { getMaintenanceMode } = require('../services/systemSettings');
 const Tenant = require('../models/Tenant');
 const {
@@ -1210,17 +1210,18 @@ router.post('/bookings', async (req, res) => {
 
       setImmediate(async () => {
         try {
+          const flags = await getChannelFlags(bookingTenantId);
+          if (!flags?.appt_confirmed_sms) return;
+
           const branch = await Branch.findByPk(effectiveBranchId, { attributes: ['id', 'name'] });
           const salonName = await resolveTenantSmsName(bookingTenantId);
-          const lines = requested.map((r) =>
-            `${r.date} ${r.time} · ${r.service.name} · ${r.staff?.name || 'Staff'}`);
-          const totalAmount = requested.reduce((sum, r) => sum + (parseFloat(r.service.price) || 0), 0);
+          // Keep under ~1 GSM segment when possible (avoid multi-part billing).
+          const first = requested[0];
+          const extra = requested.length > 1 ? ` +${requested.length - 1} more` : '';
           const summaryMsg =
-            `${salonName} - Booking Received\n` +
-            `Hi ${bookingName}, your booking is pending confirmation.\n` +
-            `${lines.join('\n')}\n` +
-            `Branch: ${branch?.name || salonName}\n` +
-            `Total: Rs. ${totalAmount.toFixed(2)}`;
+            `${salonName}: Hi ${bookingName}, booking received ` +
+            `${first.date} ${first.time}${extra}. ` +
+            `${branch?.name || salonName}. Pending confirmation.`;
 
           await sendSMS({
             to: bookingPhone,

@@ -16,15 +16,20 @@ class HSB_API {
 
     public static function ajax_proxy() {
         try {
-            check_ajax_referer('hsb_nonce', 'nonce');
+            if (!check_ajax_referer('hsb_nonce', 'nonce', false)) {
+                self::fail('Session expired. Please refresh the page and try again.', 403);
+            }
 
             $settings = self::settings();
-            $api_base = untrailingslashit(trim($settings['api_base']));
+            $api_base = untrailingslashit(trim((string) $settings['api_base']));
             $tenant_id = trim((string) $settings['tenant_id']);
 
             if ($api_base === '' || $tenant_id === '') {
                 self::fail('Plugin is not configured. Set API URL and Tenant ID in Settings.');
             }
+
+            // Avoid accidental double /public/public when settings already include the path.
+            $api_base = preg_replace('#/public/public$#i', '/public', $api_base);
 
             $action = sanitize_key(wp_unslash($_REQUEST['hsb_action'] ?? ''));
             $allowed = ['branches', 'services', 'staff', 'availability', 'book', 'check_phone', 'request_otp', 'verify_otp'];

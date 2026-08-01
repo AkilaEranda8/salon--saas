@@ -4,11 +4,57 @@ if (!defined('ABSPATH')) {
 }
 
 class HSB_Shortcode {
-    private static $printed = false;
+    private static $instances = 0;
+    private static $assets_registered = false;
+    private static $assets_enqueued = false;
 
     public static function init() {
         add_shortcode('salon_booking', [__CLASS__, 'render']);
         add_shortcode('hexaone_booking', [__CLASS__, 'render']);
+        add_action('wp_enqueue_scripts', [__CLASS__, 'register_assets'], 5);
+        // Elementor / page builders often render shortcodes after the normal enqueue pass.
+        add_action('wp_footer', [__CLASS__, 'maybe_enqueue_assets'], 1);
+    }
+
+    public static function register_assets() {
+        if (self::$assets_registered) {
+            return;
+        }
+        self::$assets_registered = true;
+
+        wp_register_style(
+            'hsb-fonts',
+            'https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Outfit:wght@400;500;600;700&display=swap',
+            [],
+            null
+        );
+        wp_register_style(
+            'hsb-booking',
+            HSB_PLUGIN_URL . 'assets/css/booking.css',
+            ['hsb-fonts'],
+            HSB_VERSION
+        );
+        wp_register_script(
+            'hsb-booking',
+            HSB_PLUGIN_URL . 'assets/js/booking.js',
+            [],
+            HSB_VERSION,
+            true
+        );
+    }
+
+    public static function maybe_enqueue_assets() {
+        if (self::$assets_enqueued) {
+            self::enqueue_assets();
+        }
+    }
+
+    private static function enqueue_assets() {
+        self::register_assets();
+        self::$assets_enqueued = true;
+        wp_enqueue_style('hsb-fonts');
+        wp_enqueue_style('hsb-booking');
+        wp_enqueue_script('hsb-booking');
     }
 
     public static function render($atts = []) {
@@ -25,17 +71,25 @@ class HSB_Shortcode {
             return '';
         }
 
-        self::enqueue($atts);
+        $accent = sanitize_hex_color($atts['accent']);
+        if (!$accent) {
+            $accent = sanitize_hex_color($settings['accent']) ?: '#8B2942';
+        }
+
+        self::enqueue_assets();
+        self::$instances += 1;
+        $uid = 'hsb-' . self::$instances . '-' . wp_generate_password(6, false, false);
 
         ob_start();
         ?>
         <div
             class="hsb-root"
-            id="hsb-root"
-            style="--hsb-accent: <?php echo esc_attr($atts['accent']); ?>;"
+            id="<?php echo esc_attr($uid); ?>"
+            style="--hsb-accent: <?php echo esc_attr($accent); ?>;"
             data-ajax-url="<?php echo esc_url(admin_url('admin-ajax.php')); ?>"
             data-nonce="<?php echo esc_attr(wp_create_nonce('hsb_nonce')); ?>"
             data-title="<?php echo esc_attr($atts['title']); ?>"
+            data-hsb-version="<?php echo esc_attr(HSB_VERSION); ?>"
         >
             <div class="hsb-card">
                 <header class="hsb-header">
@@ -49,41 +103,33 @@ class HSB_Shortcode {
                         <li data-step="4" data-step-num="5"><span class="hsb-step-label">Done</span></li>
                     </ol>
                 </header>
-                <div class="hsb-body" id="hsb-body">
+                <div class="hsb-body">
                     <p class="hsb-loading">Preparing your booking…</p>
                 </div>
-                <footer class="hsb-footer" id="hsb-footer" hidden></footer>
+                <footer class="hsb-footer" hidden></footer>
             </div>
-            <p class="hsb-error" id="hsb-error" hidden></p>
+            <p class="hsb-error" hidden></p>
         </div>
+        <script>
+        (function () {
+          var root = document.getElementById(<?php echo wp_json_encode($uid); ?>);
+          if (!root) return;
+          setTimeout(function () {
+            if (root.getAttribute('data-hsb-booted') === '1') return;
+            var body = root.querySelector('.hsb-body');
+            if (!body) return;
+            var loading = body.querySelector('.hsb-loading');
+            if (!loading) return;
+            body.innerHTML = '';
+            var err = root.querySelector('.hsb-error');
+            if (err) {
+              err.hidden = false;
+              err.textContent = 'Booking script failed to load. Hard-refresh (Ctrl+F5) or reinstall Hexaone Salon Booking v<?php echo esc_js(HSB_VERSION); ?>.';
+            }
+          }, 10000);
+        })();
+        </script>
         <?php
         return ob_get_clean();
-    }
-
-    private static function enqueue($atts) {
-        if (self::$printed) {
-            return;
-        }
-        self::$printed = true;
-
-        wp_enqueue_style(
-            'hsb-fonts',
-            'https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Outfit:wght@400;500;600;700&display=swap',
-            [],
-            null
-        );
-        wp_enqueue_style(
-            'hsb-booking',
-            HSB_PLUGIN_URL . 'assets/css/booking.css',
-            ['hsb-fonts'],
-            HSB_VERSION
-        );
-        wp_enqueue_script(
-            'hsb-booking',
-            HSB_PLUGIN_URL . 'assets/js/booking.js',
-            [],
-            HSB_VERSION,
-            true
-        );
     }
 }

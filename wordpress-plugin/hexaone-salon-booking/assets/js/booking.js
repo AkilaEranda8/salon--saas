@@ -60,15 +60,30 @@
   }
 
   ready(function () {
-    var root = document.getElementById('hsb-root');
-    if (!root) return;
+    function bootAll() {
+      var roots = document.querySelectorAll('.hsb-root:not([data-hsb-booted])');
+      for (var i = 0; i < roots.length; i += 1) {
+        bootWidget(roots[i]);
+      }
+    }
+
+    function bootWidget(root) {
+      if (!root || root.getAttribute('data-hsb-booted') === '1') return;
 
     var ajaxUrl = root.getAttribute('data-ajax-url');
     var nonce = root.getAttribute('data-nonce');
-    var bodyEl = document.getElementById('hsb-body');
-    var footerEl = document.getElementById('hsb-footer');
-    var errorEl = document.getElementById('hsb-error');
+    var bodyEl = root.querySelector('.hsb-body');
+    var footerEl = root.querySelector('.hsb-footer');
+    var errorEl = root.querySelector('.hsb-error');
     var stepEls = root.querySelectorAll('.hsb-steps li');
+    if (!ajaxUrl || !nonce || !bodyEl || !footerEl || !errorEl) {
+      if (errorEl) {
+        errorEl.hidden = false;
+        errorEl.textContent = 'Booking widget markup is incomplete. Reinstall the plugin.';
+      }
+      return;
+    }
+    root.setAttribute('data-hsb-booted', '1');
 
     var state = {
       step: 0,
@@ -282,7 +297,7 @@
         '<div class="hsb-grid">' +
         state.branches
           .map(function (b) {
-            var sel = state.form.branch && state.form.branch.id === b.id ? ' is-selected' : '';
+            var sel = state.form.branch && Number(state.form.branch.id) === Number(b.id) ? ' is-selected' : '';
             return (
               '<button type="button" class="hsb-option' +
               sel +
@@ -609,11 +624,12 @@
 
     function renderDetails(opts) {
       opts = opts || {};
-      var activeId = document.activeElement && document.activeElement.id;
+      var active = document.activeElement;
+      var activeId = active && root.contains(active) ? active.id : '';
       var keepFocusId = opts.keepFocusId || (activeId === 'hsb-phone' || activeId === 'hsb-otp' ? activeId : '');
       var selStart =
-        keepFocusId && document.activeElement && typeof document.activeElement.selectionStart === 'number'
-          ? document.activeElement.selectionStart
+        keepFocusId && active && typeof active.selectionStart === 'number'
+          ? active.selectionStart
           : null;
 
       var summary = state.form.services
@@ -668,7 +684,7 @@
         '</div>';
 
       if (keepFocusId) {
-        var focusEl = document.getElementById(keepFocusId);
+        var focusEl = root.querySelector('#' + keepFocusId);
         if (focusEl) {
           focusEl.focus();
           if (selStart != null && typeof focusEl.setSelectionRange === 'function') {
@@ -939,7 +955,7 @@
 
     function loadSlotsForService(serviceId) {
       var svc = state.form.services.find(function (s) {
-        return s.id === Number(serviceId);
+        return Number(s.id) === Number(serviceId);
       });
       var a = getAssignment(serviceId);
       if (!svc || !a.staff || !a.date) {
@@ -1229,9 +1245,9 @@
               state.phoneCheck.otpSentFor
             ) {
               resetPhoneCheck();
-              var nameEl = document.getElementById('hsb-name');
-              var emailEl = document.getElementById('hsb-email');
-              var notesEl = document.getElementById('hsb-notes');
+              var nameEl = root.querySelector('#hsb-name');
+              var emailEl = root.querySelector('#hsb-email');
+              var notesEl = root.querySelector('#hsb-notes');
               if (nameEl) state.form.customer_name = nameEl.value;
               if (emailEl) state.form.email = emailEl.value;
               if (notesEl) state.form.notes = notesEl.value;
@@ -1255,6 +1271,20 @@
       }
     }, true);
 
-    loadBranches();
+    try {
+      loadBranches();
+    } catch (bootErr) {
+      bodyEl.innerHTML = '';
+      showError((bootErr && bootErr.message) || 'Booking failed to start.');
+    }
+    } // bootWidget
+
+    bootAll();
+    document.addEventListener('hsb:boot', bootAll);
+    if (window.jQuery && window.jQuery.fn) {
+      window.jQuery(window).on('elementor/frontend/init', function () {
+        setTimeout(bootAll, 50);
+      });
+    }
   });
 })();

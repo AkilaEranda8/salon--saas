@@ -47,7 +47,7 @@ class HSB_Admin {
         $s = HSB_API::settings();
         ?>
         <div class="wrap">
-            <h1>Hexaone Salon Booking</h1>
+            <h1>Hexaone Salon Booking <small style="font-weight:400;color:#646970;">v<?php echo esc_html(HSB_VERSION); ?></small></h1>
             <p>Add the shortcode <code>[salon_booking]</code> to any page or post.</p>
             <form method="post" action="options.php">
                 <?php settings_fields('hsb_settings_group'); ?>

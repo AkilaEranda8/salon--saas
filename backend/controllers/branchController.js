@@ -40,7 +40,10 @@ const getOne = async (req, res) => {
 
 const create = async (req, res) => {
   try {
-    const { name, address, phone, manager_name, color, manager_commission_percent } = req.body;
+    const {
+      name, address, phone, manager_name, color, manager_commission_percent,
+      latitude, longitude, attendance_radius_m,
+    } = req.body;
     if (!name) return res.status(400).json({ message: 'Branch name is required.' });
 
     const branch = await Branch.create({
@@ -49,6 +52,11 @@ const create = async (req, res) => {
       phone,
       manager_name,
       color,
+      latitude: latitude != null && latitude !== '' ? parseFloat(latitude) : null,
+      longitude: longitude != null && longitude !== '' ? parseFloat(longitude) : null,
+      attendance_radius_m: attendance_radius_m != null && attendance_radius_m !== ''
+        ? Math.max(30, parseInt(attendance_radius_m, 10) || 150)
+        : 150,
       manager_commission_percent: manager_commission_percent != null && manager_commission_percent !== ''
         ? parseFloat(manager_commission_percent)
         : null,
@@ -65,10 +73,30 @@ const update = async (req, res) => {
     const branch = await Branch.findOne({ where: byIdWhere(req, req.params.id) });
     if (!branch) return res.status(404).json({ message: 'Branch not found.' });
 
-    const allowed = ['name', 'address', 'phone', 'email', 'color', 'open_time', 'close_time', 'manager_name', 'manager_commission_percent'];
+    const allowed = [
+      'name', 'address', 'phone', 'email', 'color', 'open_time', 'close_time',
+      'manager_name', 'manager_commission_percent', 'status',
+      'latitude', 'longitude', 'attendance_radius_m',
+    ];
     const updates = {};
     for (const field of allowed) {
       if (req.body[field] !== undefined) updates[field] = req.body[field];
+    }
+    if (updates.latitude !== undefined) {
+      updates.latitude = updates.latitude === '' || updates.latitude == null
+        ? null
+        : parseFloat(updates.latitude);
+    }
+    if (updates.longitude !== undefined) {
+      updates.longitude = updates.longitude === '' || updates.longitude == null
+        ? null
+        : parseFloat(updates.longitude);
+    }
+    if (updates.attendance_radius_m !== undefined) {
+      updates.attendance_radius_m = Math.max(
+        30,
+        parseInt(updates.attendance_radius_m, 10) || 150,
+      );
     }
     await branch.update(updates);
     return res.json(branch);

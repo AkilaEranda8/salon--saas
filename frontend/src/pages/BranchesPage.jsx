@@ -6,7 +6,10 @@ import { Input, Select, FormGroup } from '../components/ui/FormElements';
 import PageWrapper from '../components/layout/PageWrapper';
 import { PKModal as Modal, StatCard, IconUsers, IconCheck, IconStop, DataTable, ActionBtn } from '../components/ui/PageKit';
 
-const EMPTY = { name:'', address:'', phone:'', manager_name:'', status:'active', color:'#2563EB' };
+const EMPTY = {
+  name: '', address: '', phone: '', manager_name: '', status: 'active', color: '#2563EB',
+  latitude: '', longitude: '', attendance_radius_m: 150,
+};
 const BRANCH_COLORS = ['#2563EB','#7C3AED','#0891B2','#059669','#DC2626','#D97706','#DB2777'];
 
 function EditIcon() {
@@ -35,13 +38,49 @@ export default function BranchesPage() {
   useEffect(() => { load(); }, [load]);
 
   const openAdd  = () => { setEditItem(null); setForm(EMPTY); setFormErr(''); setShowForm(true); };
-  const openEdit = row => { setEditItem(row); setForm({...row}); setFormErr(''); setShowForm(true); };
+  const openEdit = row => {
+    setEditItem(row);
+    setForm({
+      ...EMPTY,
+      ...row,
+      latitude: row.latitude ?? '',
+      longitude: row.longitude ?? '',
+      attendance_radius_m: row.attendance_radius_m ?? 150,
+    });
+    setFormErr('');
+    setShowForm(true);
+  };
+
+  const useMyLocation = () => {
+    if (!navigator.geolocation) {
+      setFormErr('Geolocation is not supported in this browser.');
+      return;
+    }
+    setFormErr('');
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setForm((f) => ({
+          ...f,
+          latitude: pos.coords.latitude.toFixed(7),
+          longitude: pos.coords.longitude.toFixed(7),
+        }));
+      },
+      (err) => setFormErr(err.message || 'Could not get your location.'),
+      { enableHighAccuracy: true, timeout: 15000 },
+    );
+  };
 
   const handleSave = async () => {
     if (!form.name) return setFormErr('Branch name is required');
     setSaving(true);
     try {
-      editItem ? await api.put(`/branches/${editItem.id}`, form) : await api.post('/branches', form);
+      const payload = {
+        ...form,
+        latitude: form.latitude === '' || form.latitude == null ? null : form.latitude,
+        longitude: form.longitude === '' || form.longitude == null ? null : form.longitude,
+        attendance_radius_m: Number(form.attendance_radius_m) || 150,
+      };
+      editItem ? await api.put(`/branches/${editItem.id}`, payload) : await api.post('/branches', payload);
       setShowForm(false); load();
     } catch (e) { setFormErr(e.response?.data?.message || 'Save failed'); }
     setSaving(false);
@@ -73,6 +112,22 @@ export default function BranchesPage() {
     },
     { id: 'phone', header: 'Phone', accessorKey: 'phone', cell: ({ getValue }) => getValue() || '—' },
     { id: 'manager_name', header: 'Manager', accessorKey: 'manager_name', cell: ({ getValue }) => getValue() || '—' },
+    {
+      id: 'geo',
+      header: 'Attendance GPS',
+      accessorFn: (b) => (b.latitude != null && b.longitude != null ? 'set' : 'off'),
+      cell: ({ row: { original: b } }) => {
+        const set = b.latitude != null && b.longitude != null && b.latitude !== '' && b.longitude !== '';
+        return (
+          <span style={{
+            padding: '3px 10px', borderRadius: 20, fontSize: 12, fontWeight: 600,
+            background: set ? '#ECFDF5' : '#FFFBEB', color: set ? '#059669' : '#D97706',
+          }}>
+            {set ? `On · ${b.attendance_radius_m || 150}m` : 'Not set'}
+          </span>
+        );
+      },
+    },
     {
       id: 'status',
       header: 'Status',
@@ -162,6 +217,59 @@ export default function BranchesPage() {
           <FormGroup label="Manager Name">
             <Input value={form.manager_name||''} onChange={e => setForm(f=>({...f, manager_name:e.target.value}))} />
           </FormGroup>
+
+          <div style={{
+            padding: 14, borderRadius: 12, background: '#F8FAFC', border: '1px solid #E4E7EC',
+            display: 'flex', flexDirection: 'column', gap: 12,
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 13, color: '#101828' }}>Attendance GPS (geofence)</div>
+                <div style={{ fontSize: 12, color: '#64748B', marginTop: 2 }}>
+                  Staff can check in only within this radius of the salon pin.
+                </div>
+              </div>
+              <Button type="button" variant="secondary" onClick={useMyLocation} style={{ fontSize: 12, padding: '6px 12px' }}>
+                Use my location
+              </Button>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+              <FormGroup label="Latitude">
+                <Input
+                  value={form.latitude ?? ''}
+                  onChange={e => setForm(f => ({ ...f, latitude: e.target.value }))}
+                  placeholder="6.9271000"
+                />
+              </FormGroup>
+              <FormGroup label="Longitude">
+                <Input
+                  value={form.longitude ?? ''}
+                  onChange={e => setForm(f => ({ ...f, longitude: e.target.value }))}
+                  placeholder="79.8612000"
+                />
+              </FormGroup>
+              <FormGroup label="Radius (m)">
+                <Input
+                  type="number"
+                  min={30}
+                  value={form.attendance_radius_m ?? 150}
+                  onChange={e => setForm(f => ({ ...f, attendance_radius_m: e.target.value }))}
+                  placeholder="150"
+                />
+              </FormGroup>
+            </div>
+            <button
+              type="button"
+              onClick={() => setForm(f => ({ ...f, latitude: '', longitude: '' }))}
+              style={{
+                alignSelf: 'flex-start', background: 'none', border: 'none', padding: 0,
+                color: '#64748B', fontSize: 12, cursor: 'pointer', textDecoration: 'underline',
+              }}
+            >
+              Clear GPS (disable geofence)
+            </button>
+          </div>
+
           <FormGroup label="Branch Color">
             <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginTop:4 }}>
               {BRANCH_COLORS.map(c => (

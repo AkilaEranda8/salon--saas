@@ -4,6 +4,7 @@
 
 list(APPEND FLUTTER_PLUGIN_LIST
   firebase_core
+  geolocator_windows
   local_auth_windows
 )
 

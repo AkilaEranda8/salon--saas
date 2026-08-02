@@ -1691,6 +1691,8 @@ class MobileApi {
     String? checkIn,
     String? checkOut,
     String? note,
+    double? latitude,
+    double? longitude,
   }) async {
     final response = await http.post(
       Uri.parse('$baseUrl/api/attendance'),
@@ -1702,6 +1704,8 @@ class MobileApi {
         if (checkIn != null && checkIn.isNotEmpty) 'check_in': checkIn,
         if (checkOut != null && checkOut.isNotEmpty) 'check_out': checkOut,
         if (note != null) 'note': note,
+        if (latitude != null) 'latitude': latitude,
+        if (longitude != null) 'longitude': longitude,
       }),
     );
     final body = _decode(response.body);
@@ -1719,6 +1723,8 @@ class MobileApi {
     String? checkIn,
     String? checkOut,
     String? note,
+    double? latitude,
+    double? longitude,
   }) async {
     final response = await http.put(
       Uri.parse('$baseUrl/api/attendance/$id'),
@@ -1728,6 +1734,8 @@ class MobileApi {
         if (checkIn != null && checkIn.isNotEmpty) 'check_in': checkIn,
         if (checkOut != null && checkOut.isNotEmpty) 'check_out': checkOut,
         if (note != null) 'note': note,
+        if (latitude != null) 'latitude': latitude,
+        if (longitude != null) 'longitude': longitude,
       }),
     );
     final body = _decode(response.body);

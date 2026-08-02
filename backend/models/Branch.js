@@ -15,6 +15,21 @@ const Branch = sequelize.define('Branch', {
     type: DataTypes.TEXT,
     allowNull: true,
   },
+  /** Salon pin for attendance geofence (WGS84) */
+  latitude: {
+    type: DataTypes.DECIMAL(10, 7),
+    allowNull: true,
+  },
+  longitude: {
+    type: DataTypes.DECIMAL(10, 7),
+    allowNull: true,
+  },
+  /** Allowed distance from salon pin when marking attendance (metres) */
+  attendance_radius_m: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 150,
+  },
   phone: {
     type: DataTypes.STRING(30),
     allowNull: true,

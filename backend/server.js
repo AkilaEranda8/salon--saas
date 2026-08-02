@@ -39,6 +39,7 @@ const ensureSmsProviderColumn = require('./services/ensureSmsProviderColumn');
 const ensureMultipleMessageTemplates = require('./services/ensureMultipleMessageTemplates');
 const ensureTenantMobileRoleDefaultsColumn = require('./services/ensureTenantMobileRoleDefaultsColumn');
 const ensureStaffRoleTitlesColumn = require('./services/ensureStaffRoleTitlesColumn');
+const ensureBranchAttendanceGeoColumns = require('./services/ensureBranchAttendanceGeoColumns');
 const { ensureTenantEnabledFeaturesColumn } = require('./services/ensureTenantEnabledFeaturesColumn');
 const { ensureTenantDocsPageColumn } = require('./services/ensureTenantDocsPageColumn');
 const { ensureStaffPhotoColumn } = require('./services/ensureStaffPhotoColumn');
@@ -393,6 +394,7 @@ connectWithRetry().then(async () => {
   await ensureUsersSessionsRevokedColumn();
   await ensureTenantMobileRoleDefaultsColumn();
   await ensureStaffRoleTitlesColumn();
+  await ensureBranchAttendanceGeoColumns();
   await ensureTenantEnabledFeaturesColumn();
   await ensureTenantDocsPageColumn();
   await ensureWalkInNotificationColumns();

@@ -2,6 +2,10 @@ const { Op, fn, col } = require('sequelize');
 const { Attendance, Staff, Branch } = require('../models');
 const { tenantWhere } = require('../utils/tenantScope');
 const { resolveStaffRecordForRequest } = require('../utils/resolveUserBranch');
+const {
+  requiresGpsForWrite,
+  assertWithinBranchGeofence,
+} = require('../utils/attendanceGeo');
 
 function isTeamAttendanceRole(role) {
   const r = String(role || '').toLowerCase();
@@ -22,6 +26,35 @@ async function assertCanWriteStaffAttendance(req, staffId) {
     return { status: 403, message: 'You can only mark your own attendance.' };
   }
   return null;
+}
+
+/**
+ * Enforce salon GPS geofence for self check-in / present / late.
+ * Managers/admins can override (team marking from office).
+ */
+async function assertAttendanceGeo(req, staffId, body) {
+  if (isTeamAttendanceRole(roleOf(req))) return null;
+  if (!requiresGpsForWrite(body)) return null;
+
+  const staff = await Staff.findOne({
+    where: { id: staffId, ...tenantWhere(req) },
+    attributes: ['id', 'branch_id'],
+  });
+  if (!staff?.branch_id) {
+    return { status: 400, message: 'Staff has no branch assigned.' };
+  }
+
+  const branch = await Branch.findOne({
+    where: { id: staff.branch_id, ...tenantWhere(req) },
+    attributes: ['id', 'name', 'latitude', 'longitude', 'attendance_radius_m'],
+  });
+  if (!branch) return { status: 404, message: 'Branch not found.' };
+
+  const denied = assertWithinBranchGeofence(branch, {
+    latitude: body.latitude ?? body.lat,
+    longitude: body.longitude ?? body.lng ?? body.lon,
+  });
+  return denied;
 }
 
 const list = async (req, res) => {
@@ -56,7 +89,11 @@ const list = async (req, res) => {
         as: 'staff',
         where: Object.keys(staffWhere).length ? staffWhere : undefined,
         attributes: ['id', 'name', 'branch_id'],
-        include: [{ model: Branch, as: 'branch', attributes: ['id', 'name'] }],
+        include: [{
+          model: Branch,
+          as: 'branch',
+          attributes: ['id', 'name', 'latitude', 'longitude', 'attendance_radius_m'],
+        }],
       }],
     });
 
@@ -69,13 +106,30 @@ const list = async (req, res) => {
 
 const upsert = async (req, res) => {
   try {
-    const { staff_id, date, check_in, check_out, status, note } = req.body;
+    const {
+      staff_id, date, check_in, check_out, status, note,
+      latitude, longitude, lat, lng, lon,
+    } = req.body;
     if (!staff_id || !date) {
       return res.status(400).json({ message: 'staff_id and date are required.' });
     }
 
     const denied = await assertCanWriteStaffAttendance(req, staff_id);
     if (denied) return res.status(denied.status).json({ message: denied.message });
+
+    const geoDenied = await assertAttendanceGeo(req, staff_id, {
+      status, check_in, check_out,
+      latitude: latitude ?? lat,
+      longitude: longitude ?? lng ?? lon,
+    });
+    if (geoDenied) {
+      return res.status(geoDenied.status).json({
+        message: geoDenied.message,
+        code: geoDenied.code,
+        distance_m: geoDenied.distance_m,
+        radius_m: geoDenied.radius_m,
+      });
+    }
 
     const tenantId = req.userTenantId ?? req.user?.tenantId ?? null;
 
@@ -115,7 +169,25 @@ const update = async (req, res) => {
     const denied = await assertCanWriteStaffAttendance(req, record.staff_id);
     if (denied) return res.status(denied.status).json({ message: denied.message });
 
-    const { check_in, check_out, status, note } = req.body;
+    const {
+      check_in, check_out, status, note,
+      latitude, longitude, lat, lng, lon,
+    } = req.body;
+
+    const geoDenied = await assertAttendanceGeo(req, record.staff_id, {
+      status, check_in, check_out,
+      latitude: latitude ?? lat,
+      longitude: longitude ?? lng ?? lon,
+    });
+    if (geoDenied) {
+      return res.status(geoDenied.status).json({
+        message: geoDenied.message,
+        code: geoDenied.code,
+        distance_m: geoDenied.distance_m,
+        radius_m: geoDenied.radius_m,
+      });
+    }
+
     const updates = {};
     if (check_in !== undefined) updates.check_in = check_in;
     if (check_out !== undefined) updates.check_out = check_out;

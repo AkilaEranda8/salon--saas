@@ -3,6 +3,7 @@ const { sequelize } = require('../config/database');
 const { Appointment, Payment, PaymentSplit, Branch, Staff, Service, InvProduct, Reminder, Customer, Expense, WalkIn } = require('../models');
 const XLSX = require('xlsx');
 const { tenantWhere } = require('../utils/tenantScope');
+const { helperAmountForStaff } = require('../utils/helperCommission');
 
 /* ── Sri Lanka timezone helpers (UTC+05:30) ─────────────────── */
 const SL_OFFSET_MS = 5.5 * 60 * 60 * 1000;
@@ -28,6 +29,23 @@ const getMonthRange = (monthValue) => {
     end: `${yearStr}-${monthStr}-${String(lastDay).padStart(2, '0')}`,
   };
 };
+
+/** Resolve payment/appointment date filter: date | from+to | month */
+function getReportDateWhere(query = {}) {
+  if (query.date && /^\d{4}-\d{2}-\d{2}$/.test(query.date)) {
+    return { date: query.date };
+  }
+  if (query.from && query.to
+    && /^\d{4}-\d{2}-\d{2}$/.test(query.from)
+    && /^\d{4}-\d{2}-\d{2}$/.test(query.to)) {
+    return { date: { [Op.between]: [query.from, query.to] } };
+  }
+  if (query.month) {
+    const range = getMonthRange(query.month);
+    if (range) return { date: { [Op.between]: [range.start, range.end] } };
+  }
+  return {};
+}
 
 // GET /api/reports/revenue  — last 12 months grouped by month
 const revenue = async (req, res) => {
@@ -85,17 +103,11 @@ const services = async (req, res) => {
   }
 };
 
-// GET /api/reports/staff — staff performance
+// GET /api/reports/staff — staff performance (supports date | from+to | month)
 const staffReport = async (req, res) => {
   try {
     const branchWhere = getBranchWhere(req);
-
-    let dateWhere = {};
-    if (req.query.month) {
-      const [year, month] = req.query.month.split('-');
-      const lastDay = new Date(year, month, 0).getDate();
-      dateWhere = { date: { [Op.between]: [`${year}-${month}-01`, `${year}-${month}-${lastDay}`] } };
-    }
+    const dateWhere = getReportDateWhere(req.query);
 
     // 1. All staff (with branch info)
     const staffRows = await Staff.findAll({
@@ -115,17 +127,44 @@ const staffReport = async (req, res) => {
       raw: true,
     });
 
-    // 3. Payment sums — separate query
+    // 3. Payment sums as main staff — separate query
     const payAgg = await Payment.findAll({
       where: { staff_id: { [Op.in]: staffIds }, ...branchWhere, ...dateWhere },
       attributes: [
         'staff_id',
         [fn('SUM', col('commission_amount')), 'totalCommission'],
         [fn('SUM', col('total_amount')),      'totalRevenue'],
+        [fn('COUNT', col('id')), 'paymentCount'],
       ],
       group: ['staff_id'],
       raw: true,
     });
+
+    // 4. Helper commissions from payments.helper_commission JSON
+    const helperCommMap = {};
+    try {
+      const helperPayments = await Payment.findAll({
+        where: {
+          ...branchWhere,
+          ...dateWhere,
+          helper_commission: { [Op.ne]: null },
+        },
+        attributes: ['id', 'helper_commission', 'total_amount'],
+        raw: true,
+      });
+      for (const p of helperPayments) {
+        for (const sid of staffIds) {
+          const amt = helperAmountForStaff(p.helper_commission, sid);
+          if (!(amt > 0)) continue;
+          if (!helperCommMap[sid]) helperCommMap[sid] = { commission: 0, count: 0, revenue: 0 };
+          helperCommMap[sid].commission += amt;
+          helperCommMap[sid].count += 1;
+          helperCommMap[sid].revenue += parseFloat(p.total_amount) || 0;
+        }
+      }
+    } catch (helperErr) {
+      console.warn('staffReport helper commission skipped:', helperErr.message);
+    }
 
     // Build lookup maps
     const apptMap = {};
@@ -136,11 +175,18 @@ const staffReport = async (req, res) => {
     // Merge and return
     const mergedByUser = new Map();
     for (const staff of staffRows) {
+      const mainComm = parseFloat(payMap[staff.id]?.totalCommission || 0);
+      const helperComm = parseFloat(helperCommMap[staff.id]?.commission || 0);
       const row = {
         ...staff.toJSON(),
-        apptCount:       parseInt(apptMap[staff.id]?.apptCount        || 0, 10),
-        totalCommission: parseFloat(payMap[staff.id]?.totalCommission || 0),
-        totalRevenue:    parseFloat(payMap[staff.id]?.totalRevenue    || 0),
+        apptCount:       parseInt(apptMap[staff.id]?.apptCount || 0, 10),
+        paymentCount:    parseInt(payMap[staff.id]?.paymentCount || 0, 10)
+          + (helperCommMap[staff.id]?.count || 0),
+        mainCommission:  mainComm,
+        helperCommission: helperComm,
+        totalCommission: mainComm + helperComm,
+        totalRevenue:    parseFloat(payMap[staff.id]?.totalRevenue || 0)
+          + (helperCommMap[staff.id]?.revenue || 0),
       };
       const key = row.user_id ? `user:${row.user_id}` : `staff:${row.id}`;
       const existing = mergedByUser.get(key);
@@ -150,6 +196,9 @@ const staffReport = async (req, res) => {
       }
 
       existing.apptCount += row.apptCount;
+      existing.paymentCount += row.paymentCount;
+      existing.mainCommission += row.mainCommission;
+      existing.helperCommission += row.helperCommission;
       existing.totalCommission += row.totalCommission;
       existing.totalRevenue += row.totalRevenue;
 
@@ -160,7 +209,10 @@ const staffReport = async (req, res) => {
       }
     }
 
-    return res.json(Array.from(mergedByUser.values()));
+    const rows = Array.from(mergedByUser.values())
+      .sort((a, b) => (b.totalRevenue || 0) - (a.totalRevenue || 0));
+
+    return res.json(rows);
   } catch (err) {
     console.error(err);
     return res.status(500).json({ message: 'Server error.' });
@@ -392,25 +444,37 @@ const exportExcel = async (req, res) => {
     payments.forEach(p => {
       const sid = p.staff_id;
       if (!sid) return;
-      if (!staffPayments[sid]) staffPayments[sid] = { revenue: 0, commission: 0, count: 0 };
-      staffPayments[sid].revenue    += Number(p.total_amount || 0);
-      staffPayments[sid].commission += Number(p.commission_amount || 0);
-      staffPayments[sid].count      += 1;
+      if (!staffPayments[sid]) staffPayments[sid] = { revenue: 0, mainCommission: 0, helperCommission: 0, count: 0 };
+      staffPayments[sid].revenue         += Number(p.total_amount || 0);
+      staffPayments[sid].mainCommission += Number(p.commission_amount || 0);
+      staffPayments[sid].count          += 1;
+      for (const s of staffRows) {
+        const helperAmt = helperAmountForStaff(p.helper_commission, s.id);
+        if (!(helperAmt > 0)) continue;
+        if (!staffPayments[s.id]) staffPayments[s.id] = { revenue: 0, mainCommission: 0, helperCommission: 0, count: 0 };
+        staffPayments[s.id].helperCommission += helperAmt;
+        staffPayments[s.id].count += 1;
+      }
     });
-    const staffData = staffRows.map(s => ({
-      Name: s.name,
-      Role: s.role_title || '',
-      Branch: s.branch?.name || '',
-      'Commission Type': s.commission_type,
-      'Commission Rate': Number(s.commission_value || 0),
-      'Total Revenue (Rs)': staffPayments[s.id]?.revenue || 0,
-      'Total Commission (Rs)': staffPayments[s.id]?.commission || 0,
-      'Payments Count': staffPayments[s.id]?.count || 0,
-      'Active': s.is_active ? 'Yes' : 'No',
-      'Joined': s.join_date || '',
-    }));
+    const staffData = staffRows.map(s => {
+      const sp = staffPayments[s.id] || { revenue: 0, mainCommission: 0, helperCommission: 0, count: 0 };
+      return {
+        Name: s.name,
+        Role: s.role_title || '',
+        Branch: s.branch?.name || '',
+        'Commission Type': s.commission_type,
+        'Commission Rate': Number(s.commission_value || 0),
+        'Total Revenue (Rs)': sp.revenue,
+        'Main Commission (Rs)': sp.mainCommission,
+        'Helper Commission (Rs)': sp.helperCommission,
+        'Total Commission (Rs)': sp.mainCommission + sp.helperCommission,
+        'Payments Count': sp.count,
+        'Active': s.is_active ? 'Yes' : 'No',
+        'Joined': s.join_date || '',
+      };
+    });
     const ws4 = XLSX.utils.json_to_sheet(staffData);
-    ws4['!cols'] = [{ wch: 20 }, { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 14 }, { wch: 16 }, { wch: 18 }, { wch: 14 }, { wch: 8 }, { wch: 12 }];
+    ws4['!cols'] = [{ wch: 20 }, { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 14 }, { wch: 16 }, { wch: 18 }, { wch: 18 }, { wch: 18 }, { wch: 14 }, { wch: 8 }, { wch: 12 }];
     XLSX.utils.book_append_sheet(wb, ws4, 'Staff');
 
     // ── Sheet 5: Customers ──

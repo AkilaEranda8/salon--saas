@@ -2142,6 +2142,8 @@ class AppState extends ChangeNotifier {
     String? checkIn,
     String? checkOut,
     String? note,
+    double? latitude,
+    double? longitude,
   }) async {
     final token = _currentUser?.authToken;
     if (token == null || token.isEmpty) {
@@ -2157,6 +2159,8 @@ class AppState extends ChangeNotifier {
         checkIn: checkIn,
         checkOut: checkOut,
         note: note,
+        latitude: latitude,
+        longitude: longitude,
       );
       return AttendanceRecord.fromJson(body);
     } catch (e) {
@@ -2171,6 +2175,8 @@ class AppState extends ChangeNotifier {
     String? checkIn,
     String? checkOut,
     String? note,
+    double? latitude,
+    double? longitude,
   }) async {
     final token = _currentUser?.authToken;
     if (token == null || token.isEmpty) {
@@ -2185,10 +2191,46 @@ class AppState extends ChangeNotifier {
         checkIn: checkIn,
         checkOut: checkOut,
         note: note,
+        latitude: latitude,
+        longitude: longitude,
       );
       return AttendanceRecord.fromJson(body);
     } catch (e) {
       _lastError = e.toString().replaceFirst('Exception: ', '');
+      return null;
+    }
+  }
+
+  /// Branch GPS pin + radius for attendance geofence (null fields if unset).
+  Future<Map<String, dynamic>?> loadBranchAttendanceGeo({String? branchId}) async {
+    final token = _currentUser?.authToken;
+    if (token == null || token.isEmpty) return null;
+    try {
+      final loaded = await _api.fetchBranches(token: token);
+      final bid = (branchId ?? _currentUser?.branchId ?? '').trim();
+      Map<String, dynamic>? match;
+      if (bid.isNotEmpty) {
+        for (final b in loaded) {
+          if ('${b['id'] ?? ''}' == bid) {
+            match = b;
+            break;
+          }
+        }
+      }
+      match ??= loaded.isNotEmpty ? loaded.first : null;
+      if (match == null) return null;
+      final lat = double.tryParse('${match['latitude'] ?? ''}');
+      final lng = double.tryParse('${match['longitude'] ?? ''}');
+      final radius = int.tryParse('${match['attendance_radius_m'] ?? ''}') ?? 150;
+      return {
+        'id': '${match['id'] ?? ''}',
+        'name': '${match['name'] ?? ''}',
+        'latitude': lat,
+        'longitude': lng,
+        'attendance_radius_m': radius,
+        'configured': lat != null && lng != null,
+      };
+    } catch (_) {
       return null;
     }
   }

@@ -113,7 +113,7 @@ export default function ReportsPage() {
       const results = await Promise.allSettled([
         api.get('/reports/revenue', { params: bq }),
         api.get('/reports/services', { params: { month, ...bq } }),
-        api.get('/reports/staff', { params: { month, ...bq } }),
+        api.get('/reports/staff', { params: { from: dateFrom, to: dateTo, ...bq } }),
         api.get('/reports/appointments', { params: { month, ...bq } }),
         api.get('/expenses/summary', { params: { year, ...bq } }),
         api.get('/payments', { params: { limit: 500, from: dateFrom, to: dateTo, ...bq } }),
@@ -137,10 +137,14 @@ export default function ReportsPage() {
       setStaffRep(stRows.map((r, i) => ({
         rank: i + 1,
         name: r.name || r.dataValues?.name || 'Staff',
+        role: r.role_title || r.dataValues?.role_title || '',
         branch: r.branch?.name || '',
         commission: Number(r.dataValues?.totalCommission || r.totalCommission || 0),
+        mainCommission: Number(r.dataValues?.mainCommission || r.mainCommission || 0),
+        helperCommission: Number(r.dataValues?.helperCommission || r.helperCommission || 0),
         revenue: Number(r.dataValues?.totalRevenue || r.totalRevenue || 0),
         appts: Number(r.dataValues?.apptCount || r.apptCount || 0),
+        payments: Number(r.dataValues?.paymentCount || r.paymentCount || 0),
       })));
 
       const aRows = Array.isArray(val(3)) ? val(3) : [];
@@ -498,6 +502,10 @@ export default function ReportsPage() {
   );
 
   /* ── STAFF TAB ── */
+  const staffPeriodLabel = dateFrom === dateTo
+    ? `Daily · ${dateFrom}`
+    : `${dateFrom} → ${dateTo}`;
+
   const staffColumns = useMemo(() => [
     { accessorKey:'rank', header:'#', size:50, cell: v => {
       const r = v.getValue();
@@ -507,19 +515,48 @@ export default function ReportsPage() {
       return <div style={{ width:28, height:28, borderRadius:'50%', background:bg, color:tc, display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, fontWeight:800 }}>{r}</div>;
     }},
     { accessorKey:'name', header:'Staff', cell: v => <span style={{ fontWeight:600, color:'#101828', ...S }}>{v.getValue()}</span> },
+    { accessorKey:'role', header:'Role', cell: v => v.getValue() || '—' },
     { accessorKey:'branch', header:'Branch' },
-    { accessorKey:'appts', header:'Appointments', cell: v => <span style={{ fontWeight:700, color:'#344054', ...S }}>{v.getValue()}</span> },
+    { accessorKey:'appts', header:'Appts', cell: v => <span style={{ fontWeight:700, color:'#344054', ...S }}>{v.getValue()}</span> },
+    { accessorKey:'payments', header:'Payments', cell: v => <span style={{ fontWeight:700, color:'#344054', ...S }}>{v.getValue()}</span> },
     { accessorKey:'revenue', header:'Revenue', cell: v => <span style={{ fontWeight:700, color:'#2563EB', ...S }}>{fmt(v.getValue())}</span> },
-    { accessorKey:'commission', header:'Commission', cell: v => <span style={{ fontWeight:700, color:'#059669', ...S }}>{fmt(v.getValue())}</span> },
+    { accessorKey:'mainCommission', header:'Main Comm.', cell: v => <span style={{ fontWeight:600, color:'#344054', ...S }}>{fmt(v.getValue())}</span> },
+    { accessorKey:'helperCommission', header:'Helper Comm.', cell: v => <span style={{ fontWeight:600, color:'#7C3AED', ...S }}>{fmt(v.getValue())}</span> },
+    { accessorKey:'commission', header:'Total Comm.', cell: v => <span style={{ fontWeight:700, color:'#059669', ...S }}>{fmt(v.getValue())}</span> },
     { id:'efficiency', header:'Avg/Appt', accessorFn: r => r.appts > 0 ? (r.revenue/r.appts).toFixed(0) : 0, cell: v => <span style={{ color:'#64748B', ...S }}>{fmt(v.getValue())}</span> },
   ], []);
 
   const renderStaff = () => (
     <>
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:10 }}>
+        <div style={{ fontSize:13, color:'#64748B', ...S }}>
+          Staff-wise report for <span style={{ fontWeight:700, color:'#101828' }}>{staffPeriodLabel}</span>
+          {' · '}Use From/To above for any day or range.
+        </div>
+        <div style={{ display:'flex', gap:8 }}>
+          <button
+            type="button"
+            onClick={() => { setDateFrom(today); setDateTo(today); }}
+            style={{ padding:'7px 14px', borderRadius:10, border:'1.5px solid #D0D5DD', background: dateFrom === today && dateTo === today ? '#EFF6FF' : '#fff', color: dateFrom === today && dateTo === today ? '#2563EB' : '#344054', fontWeight:600, cursor:'pointer', fontSize:12, ...S }}
+          >
+            Today
+          </button>
+          <button
+            type="button"
+            onClick={() => { setDateFrom(monthStart); setDateTo(monthEnd); }}
+            style={{ padding:'7px 14px', borderRadius:10, border:'1.5px solid #D0D5DD', background: dateFrom === monthStart && dateTo === monthEnd ? '#EFF6FF' : '#fff', color: dateFrom === monthStart && dateTo === monthEnd ? '#2563EB' : '#344054', fontWeight:600, cursor:'pointer', fontSize:12, ...S }}
+          >
+            This month
+          </button>
+        </div>
+      </div>
+
       <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:20 }}>
         <Card title="Staff Performance Ranking">
           <div style={{ display:'flex', flexDirection:'column', gap:10, overflowY:'auto', maxHeight:300 }}>
-            {staffRep.slice(0,10).map((s,i) => {
+            {staffRep.length === 0
+              ? <div style={{ textAlign:'center', padding:'32px 0', color:'#64748B', ...S }}>No staff data for this period</div>
+              : staffRep.slice(0,10).map((s,i) => {
               const rankColors = ['#F59E0B','#9CA3AF','#92400E'];
               const rc = i<3 ? rankColors[i] : '#E4E7EC';
               const rtc = i<3 ? '#fff' : '#64748B';
@@ -529,11 +566,11 @@ export default function ReportsPage() {
                   <div style={{ width:32, height:32, borderRadius:'50%', background:'#EFF6FF', display:'flex', alignItems:'center', justifyContent:'center', fontSize:14, fontWeight:700, color:'#2563EB', flexShrink:0 }}>{(s.name||'?')[0].toUpperCase()}</div>
                   <div style={{ flex:1, ...S }}>
                     <div style={{ fontSize:13, fontWeight:600, color:'#101828' }}>{s.name}</div>
-                    <div style={{ fontSize:11, color:'#64748B' }}>{s.appts} appts • {s.branch}</div>
+                    <div style={{ fontSize:11, color:'#64748B' }}>{s.appts} appts · {s.payments} pays{s.role ? ` · ${s.role}` : ''}{s.branch ? ` · ${s.branch}` : ''}</div>
                   </div>
                   <div style={{ textAlign:'right', ...S }}>
                     <div style={{ fontSize:13, fontWeight:700, color:'#059669' }}>{fmt(s.commission)}</div>
-                    <div style={{ fontSize:10, color:'#64748B' }}>commission</div>
+                    <div style={{ fontSize:10, color:'#64748B' }}>total commission</div>
                   </div>
                 </div>
               );
@@ -559,7 +596,7 @@ export default function ReportsPage() {
         </Card>
       </div>
 
-      <Card title="Staff Details">
+      <Card title={`Staff Details · ${staffPeriodLabel}`}>
         <DataTable data={staffRep} columns={staffColumns} pageSize={10} showRowNumbers={false} searchableColumns={[{ id: 'name', title: 'Staff' }]} />
       </Card>
     </>
@@ -710,6 +747,10 @@ export default function ReportsPage() {
       subtitle="Comprehensive business analytics & data export"
       actions={
         <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' }}>
+          <button type="button" onClick={() => { setDateFrom(today); setDateTo(today); }}
+            style={{ padding:'8px 12px', borderRadius:10, border:'1.5px solid #D0D5DD', background: dateFrom === today && dateTo === today ? '#EFF6FF' : '#fff', color: dateFrom === today && dateTo === today ? '#2563EB' : '#344054', fontWeight:600, cursor:'pointer', fontSize:12, ...S }}>
+            Today
+          </button>
           <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
             style={{ padding:'8px 12px', borderRadius:10, border:'1.5px solid #D0D5DD', fontSize:13, color:'#101828', ...S }}/>
           <span style={{ color:'#98A2B3', fontSize:13, ...S }}>to</span>

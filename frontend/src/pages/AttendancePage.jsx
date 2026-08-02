@@ -53,10 +53,21 @@ const dayLabel = dateStr => {
   return d.toLocaleDateString('en-US', { weekday:'long', day:'numeric', month:'long', year:'numeric' });
 };
 
+/** Local calendar YMD — never use toISOString() (UTC) or Aug 1 is skipped in SL (UTC+5:30). */
+const toLocalYmd = (d) => {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+};
+
+const SL_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+const slToday = () => new Date(Date.now() + SL_OFFSET_MS).toISOString().slice(0, 10);
+
 const shiftDate = (dateStr, delta) => {
   const d = new Date(dateStr + 'T00:00:00');
   d.setDate(d.getDate() + delta);
-  return d.toISOString().slice(0,10);
+  return toLocalYmd(d);
 };
 
 /* ── SummaryCard ─────────────────────────────────────────────────────── */
@@ -83,7 +94,7 @@ export default function AttendancePage() {
   const { toast }    = useToast();
   const isSuperAdmin = ['superadmin','admin'].includes(user?.role);
   const canEdit      = ['superadmin','admin','manager'].includes(user?.role);
-  const today        = new Date().toISOString().slice(0,10);
+  const today        = slToday();
 
   const [date, setDate]               = useState(today);
   const [filterBranch, setFilterBranch] = useState(isSuperAdmin ? '' : user?.branch_id || '');

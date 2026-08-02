@@ -2,10 +2,39 @@ const { Op } = require('sequelize');
 const { Customer, Branch, Appointment, Service } = require('../models');
 const { tenantWhere, byIdWhere, resolveTenantId } = require('../utils/tenantScope');
 
-const getBranchWhere = (req) => {
+/**
+ * Branch filter for customers:
+ * - Branch-scoped users see their branch + customers with no branch (shared).
+ * - Optional ?branchId= same rule for admins filtering a branch.
+ */
+const getCustomerListWhere = (req) => {
   const where = tenantWhere(req);
-  if (req.userBranchId)    where.branch_id = req.userBranchId;
-  else if (req.query.branchId) where.branch_id = req.query.branchId;
+  const and = [];
+
+  const branchId = req.userBranchId || req.query.branchId || null;
+  if (branchId) {
+    and.push({
+      [Op.or]: [
+        { branch_id: branchId },
+        { branch_id: null },
+      ],
+    });
+  }
+
+  const q = String(req.query.search || req.query.q || '').trim();
+  if (q) {
+    and.push({
+      [Op.or]: [
+        { name:  { [Op.like]: `%${q}%` } },
+        { phone: { [Op.like]: `%${q}%` } },
+        { email: { [Op.like]: `%${q}%` } },
+      ],
+    });
+  }
+
+  if (and.length === 1) Object.assign(where, and[0]);
+  else if (and.length > 1) where[Op.and] = and;
+
   return where;
 };
 
@@ -15,13 +44,7 @@ const list = async (req, res) => {
     const limit  = Math.min(parseInt(req.query.limit) || 20, 2000);
     const offset = (page - 1) * limit;
 
-    const where = getBranchWhere(req);
-    if (req.query.search) {
-      where[Op.or] = [
-        { name:  { [Op.like]: `%${req.query.search}%` } },
-        { phone: { [Op.like]: `%${req.query.search}%` } },
-      ];
-    }
+    const where = getCustomerListWhere(req);
 
     const { count, rows } = await Customer.findAndCountAll({
       where,
@@ -71,15 +94,20 @@ const create = async (req, res) => {
       return res.status(403).json({ message: 'You can only create customers in your branch.' });
     }
 
+    const emailNorm = email != null && String(email).trim() !== '' ? String(email).trim() : null;
+
     const cust = await Customer.create({
       name,
       phone,
-      email,
+      email: emailNorm,
       branch_id: effectiveBranchId,
       tenant_id: resolveTenantId(req),
     });
     return res.status(201).json(cust);
   } catch (err) {
+    if (err.name === 'SequelizeValidationError') {
+      return res.status(400).json({ message: err.errors?.[0]?.message || 'Validation failed.' });
+    }
     return res.status(500).json({ message: 'Server error.' });
   }
 };
@@ -94,9 +122,17 @@ const update = async (req, res) => {
     for (const field of allowed) {
       if (req.body[field] !== undefined) updates[field] = req.body[field];
     }
+    if (updates.email !== undefined) {
+      updates.email = updates.email != null && String(updates.email).trim() !== ''
+        ? String(updates.email).trim()
+        : null;
+    }
     await cust.update(updates);
     return res.json(cust);
   } catch (err) {
+    if (err.name === 'SequelizeValidationError') {
+      return res.status(400).json({ message: err.errors?.[0]?.message || 'Validation failed.' });
+    }
     return res.status(500).json({ message: 'Server error.' });
   }
 };

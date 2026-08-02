@@ -18,7 +18,15 @@ const Customer = sequelize.define('Customer', {
   email: {
     type: DataTypes.STRING(255),
     allowNull: true,
-    validate: { isEmail: true },
+    validate: {
+      isEmailOrEmpty(value) {
+        if (value == null || String(value).trim() === '') return;
+        // Basic email check — empty is allowed (optional field)
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value).trim())) {
+          throw new Error('Email must be a valid email address');
+        }
+      },
+    },
   },
   branch_id: {
     type: DataTypes.INTEGER,

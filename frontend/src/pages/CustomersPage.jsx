@@ -113,7 +113,11 @@ export default function CustomersPage() {
     if (!form.name || !form.phone) return setFormErr('Name and phone are required');
     setSaving(true);
     try {
-      editItem ? await api.put(`/customers/${editItem.id}`, form) : await api.post('/customers', form);
+      const payload = {
+        ...form,
+        email: form.email?.trim() ? form.email.trim() : null,
+      };
+      editItem ? await api.put(`/customers/${editItem.id}`, payload) : await api.post('/customers', payload);
       setShowForm(false); load();
     } catch (e) { setFormErr(e.response?.data?.message || 'Save failed'); }
     setSaving(false);
@@ -311,7 +315,7 @@ export default function CustomersPage() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <FormGroup label="Full Name" required><Input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Full name" /></FormGroup>
           <FormGroup label="Phone" required><Input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} placeholder="07X XXX XXXX" /></FormGroup>
-          <FormGroup label="Email"><Input type="email" value={form.email || ''} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} /></FormGroup>
+          <FormGroup label="Email" helper="Optional"><Input type="email" value={form.email || ''} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} placeholder="customer@email.com (optional)" /></FormGroup>
           <FormGroup label="Branch">
             <Select value={form.branch_id || ''} onChange={e => setForm(f => ({ ...f, branch_id: e.target.value }))}>
               <option value="">Select branch</option>

@@ -160,20 +160,35 @@ function CustomerTypeahead({ customers, value, onSelect, onNew, branchId }) {
   const [phone,  setPhone]  = useState('');
   const [name,   setName]   = useState('');
   const [adding, setAdding] = useState(false);
+  const [remote, setRemote] = useState([]);
+  const [searching, setSearching] = useState(false);
   const ref = useRef(null);
+  const searchTimer = useRef(null);
 
   const isPhone  = /^[\d+\-\s()]{3,}$/.test(query.trim());
-  const selected = customers.find(c => String(c.id) === String(value));
+  const selected = customers.find(c => String(c.id) === String(value))
+    || remote.find(c => String(c.id) === String(value));
+
+  // Merge local + API search results (API finds customers beyond the cached limit / other edge cases)
+  const pool = useMemo(() => {
+    const map = new Map();
+    for (const c of [...customers, ...remote]) {
+      if (c?.id != null) map.set(String(c.id), c);
+    }
+    return [...map.values()];
+  }, [customers, remote]);
+
   const filtered = query.length > 0
-    ? customers.filter(c =>
+    ? pool.filter(c =>
         c.name?.toLowerCase().includes(query.toLowerCase()) ||
-        c.phone?.toLowerCase().includes(query.toLowerCase())
-      ).slice(0, 8)
+        c.phone?.toLowerCase().includes(query.toLowerCase()) ||
+        (c.email || '').toLowerCase().includes(query.toLowerCase())
+      ).slice(0, 12)
     : [];
   const hasExact = isPhone
-    ? customers.some(c => c.phone === query.trim())
-    : customers.some(c => c.name?.toLowerCase() === query.trim().toLowerCase());
-  const showNew  = query.trim().length >= 2 && !hasExact;
+    ? pool.some(c => c.phone === query.trim())
+    : pool.some(c => c.name?.toLowerCase() === query.trim().toLowerCase());
+  const showNew  = query.trim().length >= 2 && !hasExact && !searching;
 
   useEffect(() => {
     const fn = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
@@ -181,7 +196,36 @@ function CustomerTypeahead({ customers, value, onSelect, onNew, branchId }) {
     return () => document.removeEventListener('mousedown', fn);
   }, []);
 
-  const pick  = c  => { onSelect(c.id); setQuery(''); setPhone(''); setName(''); setOpen(false); };
+  useEffect(() => {
+    const q = query.trim();
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    if (q.length < 2) {
+      setRemote([]);
+      setSearching(false);
+      return;
+    }
+    setSearching(true);
+    searchTimer.current = setTimeout(async () => {
+      try {
+        const res = await api.get('/customers', {
+          params: {
+            search: q,
+            limit: 40,
+            ...(branchId ? { branchId } : {}),
+          },
+        });
+        const rows = Array.isArray(res.data) ? res.data : (res.data?.data ?? []);
+        setRemote(rows);
+      } catch {
+        setRemote([]);
+      } finally {
+        setSearching(false);
+      }
+    }, 280);
+    return () => { if (searchTimer.current) clearTimeout(searchTimer.current); };
+  }, [query, branchId]);
+
+  const pick  = c  => { onSelect(c.id, c); setQuery(''); setPhone(''); setName(''); setOpen(false); };
   const clear = e  => { e.stopPropagation(); onSelect(''); setQuery(''); setPhone(''); setName(''); setOpen(false); };
 
   const addNew = async () => {
@@ -196,7 +240,7 @@ function CustomerTypeahead({ customers, value, onSelect, onNew, branchId }) {
         ...(branchId ? { branch_id: branchId } : {}),
       });
       onNew(res.data);
-      onSelect(res.data.id);
+      onSelect(res.data.id, res.data);
       setQuery(''); setPhone(''); setName(''); setOpen(false);
     } catch { }
     setAdding(false);
@@ -218,8 +262,11 @@ function CustomerTypeahead({ customers, value, onSelect, onNew, branchId }) {
           onChange={e => { setQuery(e.target.value); setOpen(true); }}
           onFocus={() => setOpen(true)} />
       )}
-      {open && (filtered.length > 0 || showNew) && (
+      {open && (filtered.length > 0 || showNew || searching) && (
         <div style={{ position:'absolute', top:'100%', left:0, right:0, zIndex:999, background:'#fff', border:'1.5px solid #E4E7EC', borderRadius:9, boxShadow:'0 4px 16px rgba(0,0,0,0.10)', marginTop:2, maxHeight:220, overflowY:'auto' }}>
+          {searching && filtered.length === 0 && (
+            <div style={{ padding:'10px 12px', fontSize:12, color:'#94A3B8' }}>Searching…</div>
+          )}
           {filtered.map(c => (
             <div key={c.id} onClick={() => pick(c)}
               style={{ padding:'8px 12px', cursor:'pointer', fontSize:13, display:'flex', justifyContent:'space-between', alignItems:'center' }}
@@ -696,7 +743,7 @@ export default function PaymentsPage() {
   useEffect(() => {
     Promise.allSettled([
       api.get('/branches',  { params:{ limit:100 } }),
-      api.get('/customers', { params:{ limit:500 } }),
+      api.get('/customers', { params:{ limit:2000 } }),
       api.get('/staff',     { params:{ limit:200 } }),
       api.get('/services',  { params:{ limit:200 } }),
     ]).then(([brR, cuR, stR, svR]) => {
@@ -1190,8 +1237,14 @@ export default function PaymentsPage() {
                 <CustomerTypeahead
                   customers={customers}
                   value={form.customer_id}
-                  branchId={form.branch_id || user?.branch_id}
-                  onSelect={cid => {
+                  branchId={form.branch_id || user?.branchId}
+                  onSelect={(cid, cust) => {
+                    if (cust) {
+                      setCustomers((prev) => {
+                        if (prev.some((c) => String(c.id) === String(cust.id))) return prev;
+                        return [cust, ...prev];
+                      });
+                    }
                     setForm(f => ({ ...f, customer_id: cid }));
                     setFormPackageId('');
                     setCustPackages([]);

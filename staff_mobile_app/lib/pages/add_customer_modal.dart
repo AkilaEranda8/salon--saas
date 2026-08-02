@@ -224,13 +224,21 @@ class _AddCustomerModalState extends State<AddCustomerModal> {
 
               const SizedBox(height: 14),
 
-              // ── Email ───────────────────────────────────────────────
-              _label('EMAIL ADDRESS'),
+              // ── Email (optional) ────────────────────────────────────
+              _label('EMAIL ADDRESS (OPTIONAL)'),
               TextFormField(
                 controller: _emailCtrl,
                 keyboardType: TextInputType.emailAddress,
                 decoration:
                     _deco('customer@email.com', Icons.mail_outline_rounded),
+                validator: (v) {
+                  final t = (v ?? '').trim();
+                  if (t.isEmpty) return null;
+                  if (!RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(t)) {
+                    return 'Enter a valid email or leave blank';
+                  }
+                  return null;
+                },
               ),
 
               // ── Branch ──────────────────────────────────────────────

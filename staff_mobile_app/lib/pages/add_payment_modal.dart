@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../models/customer.dart';
@@ -137,6 +139,7 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
 
   final _formKey               = GlobalKey<FormState>();
   final _customerNameCtrl      = TextEditingController();
+  final _customerFocus         = FocusNode();
   final _staffNameCtrl         = TextEditingController();
   final _totalAmountCtrl       = TextEditingController();
   final _paidAmountCtrl        = TextEditingController();
@@ -159,6 +162,9 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
   List<String> _recurringTemplateIds = [];
   List<RecurringTemplateOption> _recurringTemplates = const [];
   bool _loadingTemplates = false;
+  List<Customer> _remoteCustomers = const [];
+  bool _searchingCustomers = false;
+  Timer? _customerSearchTimer;
 
   @override
   void initState() {
@@ -167,6 +173,58 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
     if (widget.recurringAllowed) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _loadRecurringTemplates());
     }
+  }
+
+  List<Customer> get _customerPool {
+    final map = <String, Customer>{};
+    for (final c in [...widget.customers, ..._remoteCustomers]) {
+      if (c.id.isNotEmpty) map[c.id] = c;
+    }
+    return map.values.toList();
+  }
+
+  void _scheduleCustomerSearch(String raw) {
+    _customerSearchTimer?.cancel();
+    final q = raw.trim();
+    if (q.length < 2) {
+      if (_remoteCustomers.isNotEmpty || _searchingCustomers) {
+        setState(() {
+          _remoteCustomers = const [];
+          _searchingCustomers = false;
+        });
+      }
+      return;
+    }
+    setState(() => _searchingCustomers = true);
+    _customerSearchTimer = Timer(const Duration(milliseconds: 280), () async {
+      final api = widget.mobileApi;
+      if (api == null || widget.token.isEmpty) {
+        if (mounted) setState(() => _searchingCustomers = false);
+        return;
+      }
+      try {
+        final rows = await api.fetchCustomers(
+          token: widget.token,
+          branchId: _branchId,
+          search: q,
+          limit: 40,
+        );
+        if (!mounted) return;
+        setState(() {
+          _remoteCustomers = rows;
+          _searchingCustomers = false;
+        });
+        // Refresh Autocomplete options without remounting the field
+        _customerNameCtrl.notifyListeners();
+      } catch (_) {
+        if (!mounted) return;
+        setState(() {
+          _remoteCustomers = const [];
+          _searchingCustomers = false;
+        });
+        _customerNameCtrl.notifyListeners();
+      }
+    });
   }
 
   Future<void> _loadRecurringTemplates() async {
@@ -191,7 +249,9 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
 
   @override
   void dispose() {
+    _customerSearchTimer?.cancel();
     _customerNameCtrl.dispose();
+    _customerFocus.dispose();
     _staffNameCtrl.dispose();
     _totalAmountCtrl.dispose();
     _paidAmountCtrl.dispose();
@@ -520,10 +580,12 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
 
               // ── Customer — search existing or register new inline ─────
               _label('CUSTOMER *'),
-              Autocomplete<Customer>(
+              RawAutocomplete<Customer>(
+                textEditingController: _customerNameCtrl,
+                focusNode: _customerFocus,
                 optionsBuilder: (val) {
                   final q   = val.text.trim().toLowerCase();
-                  final all = widget.customers;
+                  final all = _customerPool;
                   List<Customer> matches;
                   if (q.isEmpty) {
                     matches = all.take(10).toList();
@@ -540,6 +602,7 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
                       (c) => c.name.toLowerCase() == q);
                   if (q.length >= 2 &&
                       !hasExact &&
+                      !_searchingCustomers &&
                       widget.onRegisterNewCustomer != null) {
                     matches = [
                       ...matches,
@@ -572,10 +635,6 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
                   });
                 },
                 fieldViewBuilder: (ctx, ctrl, fn, _) {
-                  if (_customerNameCtrl.text.isNotEmpty &&
-                      ctrl.text != _customerNameCtrl.text) {
-                    ctrl.text = _customerNameCtrl.text;
-                  }
                   return TextFormField(
                     controller: ctrl,
                     focusNode: fn,
@@ -586,7 +645,7 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
                             : 'Search name / phone, or type new name',
                         Icons.person_search_rounded),
                     onChanged: (v) {
-                      _customerNameCtrl.text = v;
+                      _scheduleCustomerSearch(v);
                       if (_linkedCustomer != null &&
                           v.trim() != _linkedCustomer!.name) {
                         setState(() {

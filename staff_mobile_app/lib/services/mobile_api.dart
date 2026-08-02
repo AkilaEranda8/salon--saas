@@ -172,6 +172,7 @@ class MobileApi {
   Future<List<Customer>> fetchCustomers({
     required String token,
     String? branchId,
+    String? search,
     int limit = 500,
   }) async {
     final all = <Customer>[];
@@ -179,12 +180,13 @@ class MobileApi {
     var total = 1 << 30;
 
     while (all.length < total) {
-      final branchQ = branchId != null && branchId.isNotEmpty
-          ? '&branchId=$branchId'
-          : '';
-      final uri = Uri.parse(
-        '$baseUrl/api/customers?limit=$limit&page=$page$branchQ',
-      );
+      final qp = <String, String>{
+        'limit': '$limit',
+        'page': '$page',
+        if (branchId != null && branchId.isNotEmpty) 'branchId': branchId,
+        if (search != null && search.trim().isNotEmpty) 'search': search.trim(),
+      };
+      final uri = Uri.parse('$baseUrl/api/customers').replace(queryParameters: qp);
       final response = await http.get(uri, headers: _authHeaders(token));
       final body = _decode(response.body);
       if (response.statusCode >= 400) {
@@ -204,6 +206,8 @@ class MobileApi {
       all.addAll(rows);
       if (rows.isEmpty || rows.length < limit) break;
       page += 1;
+      // When searching, one page is enough
+      if (search != null && search.trim().isNotEmpty) break;
     }
     return all;
   }

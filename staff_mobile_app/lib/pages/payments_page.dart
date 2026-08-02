@@ -167,6 +167,7 @@ class _PaymentsPageState extends State<PaymentsPage> {
       serviceId:      payload.serviceIds.isNotEmpty ? payload.serviceIds.first : '',
       serviceIds:     payload.serviceIds,
       staffId:        payload.staffId.isEmpty ? null : payload.staffId,
+      helpers:        payload.helpers.isEmpty ? null : payload.helpers,
       customerId:     payload.customerId.isEmpty ? null : payload.customerId,
       customerName:   payload.customerName,
       totalAmount:    payload.totalAmount,

@@ -441,6 +441,17 @@ class _WalkInPageState extends State<WalkInPage> {
         : const <Map<String, dynamic>>[];
     if (!mounted) return;
 
+    var staff = _staffList;
+    if (staff.isEmpty) {
+      try {
+        staff = await app.loadStaffList(
+          branchId: bid.isEmpty ? null : bid,
+        );
+        if (mounted) setState(() => _staffList = staff);
+      } catch (_) {}
+    }
+    if (!mounted) return;
+
     final payload = await AddWalkInPaymentModal.show(
       context,
       customerName: e.customerName,
@@ -448,6 +459,8 @@ class _WalkInPageState extends State<WalkInPage> {
       initialAmount: initialPay,
       services: _services,
       selectedServiceIds: selectedForModal,
+      staff: staff,
+      initialStaffId: e.staffId,
       discounts: discounts,
       mobileApi: app.api,
       token: app.currentUser?.authToken ?? '',
@@ -460,7 +473,8 @@ class _WalkInPageState extends State<WalkInPage> {
       branchId:       e.branchId,
       serviceId:      payIds.isNotEmpty ? payIds.first : e.serviceId,
       serviceIds:     payIds.length > 1 ? payIds : null,
-      staffId:        e.staffId.isEmpty ? null : e.staffId,
+      staffId:        payload.staffId.isEmpty ? null : payload.staffId,
+      helpers:        payload.helpers.isEmpty ? null : payload.helpers,
       customerName:   e.customerName,
       phone:          e.phone.trim().isEmpty ? null : e.phone.trim(),
       walkinToken:    e.token.trim().isEmpty ? null : e.token.trim(),

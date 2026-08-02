@@ -597,6 +597,7 @@ class MobileApi {
     required String amount,
     required String method,
     String? staffId,
+    List<Map<String, dynamic>>? helpers,
     String? customerId,
     String subtotal = '',
     String loyaltyDiscount = '0',
@@ -644,6 +645,7 @@ class MobileApi {
       if (replaceAppointmentPayments) 'replace_appointment_payments': true,
       if (staffId != null && staffId.isNotEmpty)
         'staff_id': int.tryParse(staffId) ?? staffId,
+      if (helpers != null && helpers.isNotEmpty) 'helpers': helpers,
       if (customerId != null && customerId.isNotEmpty)
         'customer_id': int.tryParse(customerId) ?? customerId,
       if (isRecurring != null) 'is_recurring': isRecurring,
@@ -700,6 +702,7 @@ class MobileApi {
     required String serviceId,
     List<String>? serviceIds,
     String? staffId,
+    List<Map<String, dynamic>>? helpers,
     String? customerId,
     String? customerName,
     String? phone,
@@ -729,6 +732,7 @@ class MobileApi {
               .toList(),
         if (staffId != null && staffId.isNotEmpty)
           'staff_id': int.tryParse(staffId) ?? staffId,
+        if (helpers != null && helpers.isNotEmpty) 'helpers': helpers,
         if (customerId != null && customerId.isNotEmpty)
           'customer_id': int.tryParse(customerId) ?? customerId,
         if (customerName != null && customerName.trim().isNotEmpty)

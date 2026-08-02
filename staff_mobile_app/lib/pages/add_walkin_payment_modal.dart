@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 
 import '../models/recurring_template_option.dart';
 import '../models/salon_service.dart';
+import '../models/staff_member.dart';
 import '../services/mobile_api.dart';
 import 'helapay_qr_screen.dart';
+import '../widgets/payment_helper_staff_section.dart';
 import '../widgets/recurring_booking_section.dart';
 import '../widgets/walk_in_service_dropdown_section.dart';
 
@@ -30,6 +32,8 @@ class AddWalkInPaymentModalResult {
     this.isRecurring = false,
     this.recurringNextDate = '',
     this.recurringMessageTemplateIds = const [],
+    this.staffId = '',
+    this.helpers = const [],
   });
 
   final String method;
@@ -46,6 +50,8 @@ class AddWalkInPaymentModalResult {
   final bool isRecurring;
   final String recurringNextDate;
   final List<String> recurringMessageTemplateIds;
+  final String staffId;
+  final List<Map<String, dynamic>> helpers;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -54,6 +60,8 @@ class AddWalkInPaymentModal extends StatefulWidget {
     required this.initialAmount,
     required this.services,
     required this.selectedServiceIds,
+    this.staff = const [],
+    this.initialStaffId = '',
     this.customerName = '',
     this.serviceName = '',
     this.discounts = const [],
@@ -67,6 +75,8 @@ class AddWalkInPaymentModal extends StatefulWidget {
   final List<SalonService> services;
   /// Walk-in lines to pre-select; user may add more (additional services).
   final List<String> selectedServiceIds;
+  final List<StaffMember> staff;
+  final String initialStaffId;
   final String customerName;
   final String serviceName;
   final List<Map<String, dynamic>> discounts;
@@ -79,6 +89,8 @@ class AddWalkInPaymentModal extends StatefulWidget {
     required String initialAmount,
     required List<SalonService> services,
     required List<String> selectedServiceIds,
+    List<StaffMember> staff = const [],
+    String initialStaffId = '',
     String customerName = '',
     String serviceName = '',
     List<Map<String, dynamic>> discounts = const [],
@@ -94,6 +106,8 @@ class AddWalkInPaymentModal extends StatefulWidget {
         initialAmount: initialAmount,
         services: services,
         selectedServiceIds: selectedServiceIds,
+        staff: staff,
+        initialStaffId: initialStaffId,
         customerName: customerName,
         serviceName: serviceName,
         discounts: discounts,
@@ -129,6 +143,8 @@ class _AddWalkInPaymentModalState extends State<AddWalkInPaymentModal> {
 
   String? _primaryServiceId;
   final List<String> _extraServiceIds = [];
+  String _mainStaffId = '';
+  List<PaymentHelperDraft> _helpers = [];
   bool _isRecurring = false;
   String _recurringNextDate = defaultRecurringNextDate();
   List<String> _recurringTemplateIds = [];
@@ -139,6 +155,7 @@ class _AddWalkInPaymentModalState extends State<AddWalkInPaymentModal> {
   void initState() {
     super.initState();
     _hydrateSelection();
+    _mainStaffId = widget.initialStaffId;
     _amtCtrl = TextEditingController(text: '0');
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _syncAmountFromServices();
@@ -296,6 +313,20 @@ class _AddWalkInPaymentModalState extends State<AddWalkInPaymentModal> {
       );
       return;
     }
+    if (_mainStaffId.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Select main staff')),
+      );
+      return;
+    }
+    if (!helpersDraftValid(_helpers)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Each helper needs a staff member and commission value.'),
+        ),
+      );
+      return;
+    }
     final gross  = _totalSelectedAmount();
     final promo  = _computedPromo();
     final result = AddWalkInPaymentModalResult(
@@ -309,6 +340,8 @@ class _AddWalkInPaymentModalState extends State<AddWalkInPaymentModal> {
       isRecurring: widget.recurringAllowed && _isRecurring,
       recurringNextDate: _recurringNextDate,
       recurringMessageTemplateIds: List<String>.from(_recurringTemplateIds),
+      staffId: _mainStaffId.trim(),
+      helpers: helpersApiPayload(_helpers),
     );
 
     if (_method == 'LankaQR') {
@@ -480,6 +513,19 @@ class _AddWalkInPaymentModalState extends State<AddWalkInPaymentModal> {
                     ),
                   ]),
                 ),
+
+              const SizedBox(height: 18),
+
+              PaymentHelperStaffSection(
+                staffOptions: widget.staff,
+                mainStaffId: _mainStaffId,
+                helpers: _helpers,
+                onMainStaffChanged: (id) => setState(() {
+                  _mainStaffId = id;
+                  _helpers = _helpers.where((h) => h.staffId != id).toList();
+                }),
+                onHelpersChanged: (rows) => setState(() => _helpers = rows),
+              ),
 
               const SizedBox(height: 18),
 

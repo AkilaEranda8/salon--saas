@@ -799,6 +799,7 @@ class AppState extends ChangeNotifier {
     required String serviceId,
     List<String>? serviceIds,
     String? staffId,
+    List<Map<String, dynamic>>? helpers,
     String? customerId,
     String? customerName,
     String? phone,
@@ -826,6 +827,7 @@ class AppState extends ChangeNotifier {
         serviceId: serviceId,
         serviceIds: serviceIds,
         staffId: staffId,
+        helpers: helpers,
         customerId: customerId,
         customerName: customerName,
         phone: phone,
@@ -1247,6 +1249,8 @@ class AppState extends ChangeNotifier {
     required String amount,
     required String method,
     required List<String> paymentServiceIds,
+    String? staffId,
+    List<Map<String, dynamic>>? helpers,
     String subtotal = '',
     String loyaltyDiscount = '0',
     String promoDiscount = '0',
@@ -1333,6 +1337,9 @@ class AppState extends ChangeNotifier {
         return false;
       }
 
+      final resolvedStaffId = (staffId != null && staffId.trim().isNotEmpty)
+          ? staffId.trim()
+          : (appointment.staffId.isNotEmpty ? appointment.staffId : null);
       await _api.createPayment(
         token: token,
         branchId: effectiveBranchId,
@@ -1340,7 +1347,8 @@ class AppState extends ChangeNotifier {
         customerName: appointment.customerName,
         serviceId: paymentServiceIds.first,
         serviceIds: paymentServiceIds,
-        staffId: appointment.staffId.isNotEmpty ? appointment.staffId : null,
+        staffId: resolvedStaffId,
+        helpers: helpers,
         customerId: appointment.customerId.isNotEmpty
             ? appointment.customerId
             : null,

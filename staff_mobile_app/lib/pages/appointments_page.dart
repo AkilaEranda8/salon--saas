@@ -11,6 +11,7 @@ import '../models/staff_user.dart';
 import '../services/mobile_api.dart';
 import '../state/app_state.dart';
 import '../utils/appointment_notes.dart';
+import '../widgets/payment_helper_staff_section.dart';
 import '../widgets/recurring_booking_section.dart';
 import '../widgets/walk_in_service_dropdown_section.dart';
 
@@ -406,6 +407,10 @@ class _ApptState extends State<AppointmentsPage> with SingleTickerProviderStateM
     if (branchKey.isNotEmpty) {
       discounts = await app.loadDiscountsForPayment(branchKey);
     }
+    List<StaffMember> staff = [];
+    try {
+      staff = await app.loadStaffList(branchId: branchKey.isEmpty ? null : branchKey);
+    } catch (_) {}
     if (!mounted) return;
 
     final result = await showModalBottomSheet<_PayResult>(
@@ -417,6 +422,7 @@ class _ApptState extends State<AppointmentsPage> with SingleTickerProviderStateM
         services: svcs,
         preSelected: ids,
         initialAmount: initialAmt,
+        staff: staff,
         discounts: discounts,
         recurringAllowed: true,
         token: app.currentUser?.authToken ?? '',
@@ -430,6 +436,8 @@ class _ApptState extends State<AppointmentsPage> with SingleTickerProviderStateM
       amount: result.amount,
       method: result.method,
       paymentServiceIds: result.serviceIds,
+      staffId: result.staffId.isEmpty ? null : result.staffId,
+      helpers: result.helpers.isEmpty ? null : result.helpers,
       subtotal: result.subtotal,
       discountId: result.discountId.isNotEmpty ? result.discountId : null,
       promoDiscount: result.promoDiscount,
@@ -1665,6 +1673,8 @@ class _PayResult {
     this.isRecurring = false,
     this.recurringNextDate = '',
     this.recurringMessageTemplateIds = const [],
+    this.staffId = '',
+    this.helpers = const [],
   });
   /// Net collected (after promo).
   final String amount;
@@ -1677,6 +1687,8 @@ class _PayResult {
   final bool isRecurring;
   final String recurringNextDate;
   final List<String> recurringMessageTemplateIds;
+  final String staffId;
+  final List<Map<String, dynamic>> helpers;
 }
 
 class _PaySheet extends StatefulWidget {
@@ -1685,6 +1697,7 @@ class _PaySheet extends StatefulWidget {
     required this.services,
     required this.preSelected,
     required this.initialAmount,
+    this.staff = const [],
     this.discounts = const [],
     this.recurringAllowed = false,
     this.token = '',
@@ -1694,6 +1707,7 @@ class _PaySheet extends StatefulWidget {
   final List<SalonService> services;
   final List<int> preSelected;
   final String initialAmount;
+  final List<StaffMember> staff;
   final List<Map<String, dynamic>> discounts;
   final bool recurringAllowed;
   final String token;
@@ -1728,6 +1742,8 @@ class _PaySheetState extends State<_PaySheet> {
   String _method = 'Cash';
   String _calcTotal = '';
   String _discountId = '';
+  String _mainStaffId = '';
+  List<PaymentHelperDraft> _helpers = [];
   bool _isRecurring = false;
   String _recurringNextDate = defaultRecurringNextDate();
   List<String> _recurringTemplateIds = [];
@@ -1743,6 +1759,7 @@ class _PaySheetState extends State<_PaySheet> {
     _calcTotal = widget.initialAmount;
     _amtCtrl = TextEditingController(text: widget.initialAmount);
     final a = widget.appointment;
+    _mainStaffId = a.staffId;
     _isRecurring = a.isRecurring;
     if (a.recurringNextDate.isNotEmpty) {
       _recurringNextDate = a.recurringNextDate.length >= 10
@@ -1866,6 +1883,20 @@ class _PaySheetState extends State<_PaySheet> {
       );
       return;
     }
+    if (_mainStaffId.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Select main staff')),
+      );
+      return;
+    }
+    if (!helpersDraftValid(_helpers)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Each helper needs a staff member and commission value.'),
+        ),
+      );
+      return;
+    }
     final gross = _grossFromSelection();
     final promo = _computedPromo();
     Navigator.of(context).pop(_PayResult(
@@ -1878,6 +1909,8 @@ class _PaySheetState extends State<_PaySheet> {
       isRecurring: widget.recurringAllowed && _isRecurring,
       recurringNextDate: _recurringNextDate,
       recurringMessageTemplateIds: List<String>.from(_recurringTemplateIds),
+      staffId: _mainStaffId.trim(),
+      helpers: helpersApiPayload(_helpers),
     ));
   }
 
@@ -2088,6 +2121,19 @@ class _PaySheetState extends State<_PaySheet> {
               ),
               const SizedBox(height: 14),
             ],
+
+            PaymentHelperStaffSection(
+              staffOptions: widget.staff,
+              mainStaffId: _mainStaffId,
+              helpers: _helpers,
+              onMainStaffChanged: (id) => setState(() {
+                _mainStaffId = id;
+                _helpers = _helpers.where((h) => h.staffId != id).toList();
+              }),
+              onHelpersChanged: (rows) => setState(() => _helpers = rows),
+            ),
+
+            const SizedBox(height: 16),
 
             // ── Services ───────────────────────────────────────────────
             WalkInServiceDropdownSection(

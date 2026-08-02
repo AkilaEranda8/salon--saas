@@ -6,6 +6,7 @@ import '../services/mobile_api.dart';
 import 'helapay_qr_screen.dart';
 import '../models/salon_service.dart';
 import '../models/staff_member.dart';
+import '../widgets/payment_helper_staff_section.dart';
 import '../widgets/recurring_booking_section.dart';
 import '../widgets/walk_in_service_dropdown_section.dart';
 
@@ -35,6 +36,7 @@ class AddPaymentModalResult {
     this.isRecurring = false,
     this.recurringNextDate = '',
     this.recurringMessageTemplateIds = const [],
+    this.helpers = const [],
   });
 
   final String branchId;
@@ -52,6 +54,7 @@ class AddPaymentModalResult {
   final bool isRecurring;
   final String recurringNextDate;
   final List<String> recurringMessageTemplateIds;
+  final List<Map<String, dynamic>> helpers;
 }
 
 class AddPaymentModal extends StatefulWidget {
@@ -146,7 +149,7 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
   bool _registerMode = false;
   bool _registering  = false;
   String? _staffId;
-  StaffMember? _linkedStaff;
+  List<PaymentHelperDraft> _helpers = [];
   String? _primaryServiceId;
   final List<String> _extraServiceIds = [];
   String _method = _methods.first;
@@ -296,6 +299,24 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
       );
       return;
     }
+    if ((_staffId ?? '').trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Select main staff.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+    if (!helpersDraftValid(_helpers)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Each helper needs a staff member and commission value.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
     final allCusts = [
       ?_newlyRegistered,
       ...widget.customers,
@@ -309,6 +330,7 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
       branchId:       (_branchId ?? '').trim(),
       customerId:     _customerId.trim(),
       staffId:        (_staffId ?? '').trim(),
+      helpers:        helpersApiPayload(_helpers),
       serviceIds:     _orderedServiceIds(),
       totalAmount:    _totalAmountCtrl.text.trim(),
       loyaltyDiscount: '0',
@@ -487,7 +509,7 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
                   onChanged: (v) => setState(() {
                     _branchId = v;
                     _staffId = null;
-                    _linkedStaff = null;
+                    _helpers = [];
                     _staffNameCtrl.clear();
                   }),
                   validator: (v) =>
@@ -709,118 +731,25 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
 
               const SizedBox(height: 12),
 
-              // ── Staff (search + select — same idea as customer) ─────
-              _label('STAFF *'),
-              Autocomplete<StaffMember>(
-                optionsBuilder: (val) {
-                  final q = val.text.trim().toLowerCase();
-                  final all = filteredStaff;
-                  if (q.isEmpty) return all.take(12);
-                  return all
-                      .where((s) {
-                        final name = s.name.toLowerCase();
-                        final email = (s.email ?? '').toLowerCase();
-                        return name.contains(q) || email.contains(q);
-                      })
-                      .take(15);
-                },
-                displayStringForOption: (s) => s.name,
-                onSelected: (s) {
+              PaymentHelperStaffSection(
+                staffOptions: filteredStaff,
+                mainStaffId: _staffId ?? '',
+                helpers: _helpers,
+                onMainStaffChanged: (id) {
                   setState(() {
-                    _linkedStaff = s;
-                    _staffId = s.id;
-                    _staffNameCtrl.text = s.name;
+                    _staffId = id;
+                    String name = '';
+                    for (final s in filteredStaff) {
+                      if (s.id == id) {
+                        name = s.name;
+                        break;
+                      }
+                    }
+                    _staffNameCtrl.text = name;
+                    _helpers = _helpers.where((h) => h.staffId != id).toList();
                   });
                 },
-                fieldViewBuilder: (ctx, ctrl, fn, _) {
-                  if (_staffNameCtrl.text.isNotEmpty &&
-                      ctrl.text != _staffNameCtrl.text) {
-                    ctrl.text = _staffNameCtrl.text;
-                  }
-                  return TextFormField(
-                    controller: ctrl,
-                    focusNode: fn,
-                    textCapitalization: TextCapitalization.words,
-                    decoration: _deco(
-                      filteredStaff.isEmpty
-                          ? 'No staff for this branch'
-                          : 'Search staff name, tap to select',
-                      Icons.badge_outlined,
-                    ),
-                    onChanged: (v) {
-                      _staffNameCtrl.text = v;
-                      if (_linkedStaff != null &&
-                          v.trim() != _linkedStaff!.name) {
-                        setState(() {
-                          _linkedStaff = null;
-                          _staffId = null;
-                        });
-                      }
-                    },
-                    validator: (_) =>
-                        (_staffId == null || _staffId!.trim().isEmpty)
-                            ? 'Select staff'
-                            : null,
-                  );
-                },
-                optionsViewBuilder: filteredStaff.isEmpty
-                    ? null
-                    : (ctx, onSel, opts) => Align(
-                          alignment: Alignment.topLeft,
-                          child: Material(
-                            elevation: 8,
-                            borderRadius: BorderRadius.circular(14),
-                            child: ConstrainedBox(
-                              constraints: const BoxConstraints(
-                                maxHeight: 220,
-                                maxWidth: 420,
-                              ),
-                              child: ListView.builder(
-                                shrinkWrap: true,
-                                padding:
-                                    const EdgeInsets.symmetric(vertical: 6),
-                                itemCount: opts.length,
-                                itemBuilder: (_, i) {
-                                  final s = opts.elementAt(i);
-                                  final init = s.name.isNotEmpty
-                                      ? s.name[0].toUpperCase()
-                                      : '?';
-                                  return ListTile(
-                                    dense: true,
-                                    leading: CircleAvatar(
-                                      radius: 16,
-                                      backgroundColor: _pGreenL,
-                                      child: Text(
-                                        init,
-                                        style: const TextStyle(
-                                          color: _pGreen,
-                                          fontWeight: FontWeight.w800,
-                                          fontSize: 13,
-                                        ),
-                                      ),
-                                    ),
-                                    title: Text(
-                                      s.name,
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.w700,
-                                        fontSize: 13,
-                                      ),
-                                    ),
-                                    subtitle: (s.email ?? '').isNotEmpty
-                                        ? Text(
-                                            s.email!,
-                                            style: const TextStyle(
-                                              fontSize: 11,
-                                            ),
-                                          )
-                                        : null,
-                                    onTap: () => onSel(s),
-                                  );
-                                },
-                              ),
-                            ),
-                          ),
-                        ),
+                onHelpersChanged: (rows) => setState(() => _helpers = rows),
               ),
 
               const SizedBox(height: 12),

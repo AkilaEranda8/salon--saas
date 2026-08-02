@@ -7,6 +7,7 @@ class MobileFeatures {
   static const walkin = 'walkin';
   static const staff = 'staff';
   static const commission = 'commission';
+  static const attendance = 'attendance';
   static const aiChat = 'ai_chat';
   static const reminders = 'reminders';
   static const expenses = 'expenses';
@@ -22,6 +23,7 @@ class MobileFeatures {
     walkin,
     staff,
     commission,
+    attendance,
     aiChat,
     reminders,
     expenses,
@@ -38,6 +40,7 @@ class MobileFeatures {
     walkin: 'Walk-in',
     staff: 'Staff',
     commission: 'Commission',
+    attendance: 'Attendance',
     aiChat: 'AI Chat',
     reminders: 'Reminders',
     expenses: 'Expenses',

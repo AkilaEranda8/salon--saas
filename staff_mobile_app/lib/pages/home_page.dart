@@ -9,6 +9,7 @@ import 'expenses_page.dart';
 import 'appointments_page.dart';
 import 'calendar_page.dart';
 import 'commission_page.dart';
+import 'attendance_page.dart';
 import 'customers_page.dart';
 import 'dashboard_page.dart';
 import 'edit_item_page.dart';
@@ -170,6 +171,19 @@ class HomePage extends StatelessWidget {
             onTap: () {
               Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const CommissionPage()),
+              );
+            },
+          ),
+          const SizedBox(height: 8),
+          _actionTile(
+            context: context,
+            title: 'Attendance',
+            subtitle: 'Check in / team attendance',
+            icon: Icons.fact_check_outlined,
+            enabled: true,
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const AttendancePage()),
               );
             },
           ),

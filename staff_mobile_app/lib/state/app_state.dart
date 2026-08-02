@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/app_item.dart';
 import '../models/appointment.dart';
+import '../models/attendance_record.dart';
 import '../models/customer.dart';
 import '../models/payment_record.dart';
 import '../models/salon_service.dart';
@@ -2093,6 +2094,84 @@ class AppState extends ChangeNotifier {
     } catch (e) {
       _lastError = e.toString().replaceFirst('Exception: ', '');
       return false;
+    }
+  }
+
+  Future<List<AttendanceRecord>> loadAttendance({
+    String? date,
+    String? month,
+    String? staffId,
+    String? branchId,
+  }) async {
+    final token = _currentUser?.authToken;
+    if (token == null || token.isEmpty) {
+      throw Exception('Missing auth token (cannot load attendance).');
+    }
+    final rows = await _api.fetchAttendance(
+      token: token,
+      date: date,
+      month: month,
+      staffId: staffId,
+      branchId: branchId ?? _currentUser?.branchId,
+    );
+    return rows.map(AttendanceRecord.fromJson).toList();
+  }
+
+  Future<AttendanceRecord?> upsertAttendance({
+    required String staffId,
+    required String date,
+    String? status,
+    String? checkIn,
+    String? checkOut,
+    String? note,
+  }) async {
+    final token = _currentUser?.authToken;
+    if (token == null || token.isEmpty) {
+      _lastError = 'Missing auth token (cannot save attendance).';
+      return null;
+    }
+    try {
+      final body = await _api.upsertAttendance(
+        token: token,
+        staffId: staffId,
+        date: date,
+        status: status,
+        checkIn: checkIn,
+        checkOut: checkOut,
+        note: note,
+      );
+      return AttendanceRecord.fromJson(body);
+    } catch (e) {
+      _lastError = e.toString().replaceFirst('Exception: ', '');
+      return null;
+    }
+  }
+
+  Future<AttendanceRecord?> updateAttendanceRecord({
+    required String id,
+    String? status,
+    String? checkIn,
+    String? checkOut,
+    String? note,
+  }) async {
+    final token = _currentUser?.authToken;
+    if (token == null || token.isEmpty) {
+      _lastError = 'Missing auth token (cannot update attendance).';
+      return null;
+    }
+    try {
+      final body = await _api.updateAttendance(
+        token: token,
+        id: id,
+        status: status,
+        checkIn: checkIn,
+        checkOut: checkOut,
+        note: note,
+      );
+      return AttendanceRecord.fromJson(body);
+    } catch (e) {
+      _lastError = e.toString().replaceFirst('Exception: ', '');
+      return null;
     }
   }
 

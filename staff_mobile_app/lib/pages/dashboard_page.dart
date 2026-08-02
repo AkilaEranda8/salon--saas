@@ -9,6 +9,7 @@ import '../state/app_state.dart';
 import '../services/notification_store.dart';
 import 'ai_chat_page.dart';
 import 'appointments_page.dart';
+import 'attendance_page.dart';
 import 'calendar_page.dart';
 import 'commission_page.dart';
 import 'customers_page.dart';
@@ -358,6 +359,13 @@ class _DashboardPageState extends State<DashboardPage>
         [const Color(0xFF15803D), const Color(0xFF22C55E)],
         const CommissionPage(),
         ok: s.isFeatureEnabled(MobileFeatures.commission),
+      ),
+      _NavData(
+        'Attendance',
+        Icons.fact_check_rounded,
+        [const Color(0xFF0E7490), const Color(0xFF22D3EE)],
+        const AttendancePage(),
+        ok: s.isFeatureEnabled(MobileFeatures.attendance),
       ),
       _NavData(
         'AI Chat',

@@ -1626,6 +1626,87 @@ class MobileApi {
     }
   }
 
+  /// GET /api/attendance
+  Future<List<Map<String, dynamic>>> fetchAttendance({
+    required String token,
+    String? date,
+    String? month,
+    String? staffId,
+    String? branchId,
+  }) async {
+    final qp = <String, String>{};
+    if (date != null && date.isNotEmpty) qp['date'] = date;
+    if (month != null && month.isNotEmpty) qp['month'] = month;
+    if (staffId != null && staffId.isNotEmpty) qp['staffId'] = staffId;
+    if (branchId != null && branchId.isNotEmpty) qp['branchId'] = branchId;
+    final uri = Uri.parse(
+      '$baseUrl/api/attendance',
+    ).replace(queryParameters: qp.isEmpty ? null : qp);
+    final response = await http.get(uri, headers: _authHeaders(token));
+    if (response.statusCode >= 400) {
+      final body = _decode(response.body);
+      throw Exception(body['message'] ?? 'Attendance load failed');
+    }
+    return _decodeList(
+      response.body,
+    ).whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+  }
+
+  /// POST /api/attendance — upsert by staff_id + date
+  Future<Map<String, dynamic>> upsertAttendance({
+    required String token,
+    required String staffId,
+    required String date,
+    String? status,
+    String? checkIn,
+    String? checkOut,
+    String? note,
+  }) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/api/attendance'),
+      headers: _authHeaders(token),
+      body: jsonEncode({
+        'staff_id': int.tryParse(staffId) ?? staffId,
+        'date': date,
+        if (status != null && status.isNotEmpty) 'status': status,
+        if (checkIn != null && checkIn.isNotEmpty) 'check_in': checkIn,
+        if (checkOut != null && checkOut.isNotEmpty) 'check_out': checkOut,
+        if (note != null) 'note': note,
+      }),
+    );
+    final body = _decode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['message'] ?? 'Attendance save failed');
+    }
+    return body;
+  }
+
+  /// PUT /api/attendance/:id
+  Future<Map<String, dynamic>> updateAttendance({
+    required String token,
+    required String id,
+    String? status,
+    String? checkIn,
+    String? checkOut,
+    String? note,
+  }) async {
+    final response = await http.put(
+      Uri.parse('$baseUrl/api/attendance/$id'),
+      headers: _authHeaders(token),
+      body: jsonEncode({
+        if (status != null && status.isNotEmpty) 'status': status,
+        if (checkIn != null && checkIn.isNotEmpty) 'check_in': checkIn,
+        if (checkOut != null && checkOut.isNotEmpty) 'check_out': checkOut,
+        if (note != null) 'note': note,
+      }),
+    );
+    final body = _decode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['message'] ?? 'Attendance update failed');
+    }
+    return body;
+  }
+
   Future<List<Map<String, dynamic>>> fetchInventoryProducts({
     required String token,
     String? branchId,

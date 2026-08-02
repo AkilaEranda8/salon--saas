@@ -14,6 +14,19 @@ const Rs     = n => `Rs. ${Number(n || 0).toLocaleString()}`;
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const today  = () => new Date().toISOString().slice(0, 10);
 
+/** Salary portion only (not commission) — Day+Comm uses attendance days × rate. */
+function salaryPortion(r) {
+  const t = r?.salaryType || 'commission_only';
+  if (t === 'daily_salary_plus_commission') return Number(r.dailySalaryEarned || 0);
+  if (t === 'salary_only' || t === 'salary_plus_commission') return Number(r.baseSalary || 0);
+  return 0;
+}
+
+function hasSalaryPart(r) {
+  const t = r?.salaryType || 'commission_only';
+  return t === 'salary_only' || t === 'salary_plus_commission' || t === 'daily_salary_plus_commission';
+}
+
 const PAYOUT_EMPTY = { amount: '', date: today(), notes: '' };
 
 const SOURCE_COLORS = {
@@ -195,6 +208,8 @@ export default function CommissionPage() {
   const totalComm     = data.reduce((s, r) => s + Number(r.totalCommission || 0), 0);
   const totalRev      = data.reduce((s, r) => s + Number(r.totalRevenue    || 0), 0);
   const totalAppts    = data.reduce((s, r) => s + Number(r.appointmentCount || 0), 0);
+  const totalSalary   = data.reduce((s, r) => s + salaryPortion(r), 0);
+  const totalGross    = data.reduce((s, r) => s + Number(r.grossPayable || 0), 0);
   const totalAdvances = data.reduce((s, r) => s + Number(r.totalAdvances   || 0), 0);
   const totalPaid     = data.reduce((s, r) => s + Number(r.totalPaid       || 0), 0);
   const totalBalance  = data.reduce((s, r) => s + Number(r.balanceDue      || 0), 0);
@@ -345,22 +360,43 @@ export default function CommissionPage() {
       },
     },
     {
-      id: 'baseSalary', header: 'Base Sal.', accessorFn: r => r.baseSalary, meta: { width: '10%', align: 'right' },
+      id: 'baseSalary', header: 'Rate', accessorFn: r => r.baseSalary, meta: { width: '8%', align: 'right' },
       cell: ({ row: { original: r } }) => Number(r.baseSalary||0) > 0
         ? (
           <span style={{ fontWeight: 700, color: '#059669', fontFamily: "'Outfit',sans-serif", fontSize: 13 }}>
             {Rs(r.baseSalary)}
             {r.salaryType === 'daily_salary_plus_commission' ? (
-              <span style={{ display: 'block', fontSize: 10, fontWeight: 600, color: '#98A2B3' }}>
-                /day · {r.presentDays || 0}d
-              </span>
+              <span style={{ display: 'block', fontSize: 10, fontWeight: 600, color: '#98A2B3' }}>/day</span>
+            ) : r.salaryType === 'salary_only' || r.salaryType === 'salary_plus_commission' ? (
+              <span style={{ display: 'block', fontSize: 10, fontWeight: 600, color: '#98A2B3' }}>/month</span>
             ) : null}
           </span>
         )
         : <span style={{ color: '#98A2B3', fontSize: 13 }}>—</span>,
     },
     {
-      id: 'rate', header: 'Comm Rate', accessorFn: r => r.commissionValue, meta: { width: '9%' },
+      id: 'salary', header: 'Salary', accessorFn: r => salaryPortion(r), meta: { width: '11%', align: 'right' },
+      cell: ({ row: { original: r } }) => {
+        if (!hasSalaryPart(r)) {
+          return <span style={{ color: '#98A2B3', fontSize: 13 }}>—</span>;
+        }
+        const earned = salaryPortion(r);
+        return (
+          <span style={{ fontWeight: 700, color: '#DB2777', fontFamily: "'Outfit',sans-serif", fontSize: 13 }}>
+            {Rs(earned)}
+            {r.salaryType === 'daily_salary_plus_commission' ? (
+              <span style={{ display: 'block', fontSize: 10, fontWeight: 600, color: '#9D174D' }}>
+                {Number(r.presentDays || 0)}d att.
+              </span>
+            ) : (
+              <span style={{ display: 'block', fontSize: 10, fontWeight: 600, color: '#9D174D' }}>monthly</span>
+            )}
+          </span>
+        );
+      },
+    },
+    {
+      id: 'rate', header: 'Comm %', accessorFn: r => r.commissionValue, meta: { width: '8%' },
       cell: ({ row: { original: r } }) => r.salaryType === 'salary_only'
         ? <span style={{ color: '#98A2B3', fontSize: 13 }}>—</span>
         : r.commissionType === 'percentage'
@@ -368,25 +404,43 @@ export default function CommissionPage() {
           : <span style={{ padding: '3px 8px', borderRadius: 20, background: '#ECFDF5', color: '#059669', fontSize: 12, fontWeight: 700 }}>Rs.{Number(r.commissionValue||0).toLocaleString()}</span>,
     },
     {
-      id: 'services', header: 'Svcs', accessorFn: r => r.appointmentCount, meta: { width: '7%', align: 'center' },
+      id: 'services', header: 'Svcs', accessorFn: r => r.appointmentCount, meta: { width: '6%', align: 'center' },
       cell: ({ row: { original: r } }) => <span style={{ fontWeight: 700, color: '#101828' }}>{r.appointmentCount || 0}</span>,
     },
     {
-      id: 'commission', header: 'Commission', accessorFn: r => r.totalCommission, meta: { width: '12%', align: 'right' },
-      cell: ({ row: { original: r } }) => <span style={{ fontWeight: 700, color: '#D97706', fontFamily: "'Outfit',sans-serif", fontSize: 14 }}>{Rs(r.totalCommission)}</span>,
+      id: 'commission', header: 'Commission', accessorFn: r => r.totalCommission, meta: { width: '11%', align: 'right' },
+      cell: ({ row: { original: r } }) => (
+        <span style={{ fontWeight: 700, color: '#D97706', fontFamily: "'Outfit',sans-serif", fontSize: 14 }}>
+          {r.salaryType === 'salary_only' ? '—' : Rs(r.totalCommission)}
+        </span>
+      ),
     },
     {
-      id: 'advances', header: 'Advance', accessorFn: r => r.totalAdvances, meta: { width: '11%', align: 'right' },
+      id: 'gross', header: 'Total', accessorFn: r => r.grossPayable, meta: { width: '12%', align: 'right' },
+      cell: ({ row: { original: r } }) => {
+        const sal = salaryPortion(r);
+        const comm = r.salaryType === 'salary_only' ? 0 : Number(r.totalCommission || 0);
+        const showParts = hasSalaryPart(r) && r.salaryType !== 'salary_only';
+        return (
+          <span style={{ fontWeight: 800, color: '#101828', fontFamily: "'Outfit',sans-serif", fontSize: 13 }}>
+            {Rs(r.grossPayable)}
+            {showParts ? (
+              <span style={{ display: 'block', fontSize: 10, fontWeight: 600, color: '#667085', lineHeight: 1.35 }}>
+                {Rs(sal)} + {Rs(comm)}
+              </span>
+            ) : null}
+          </span>
+        );
+      },
+    },
+    {
+      id: 'advances', header: 'Advance', accessorFn: r => r.totalAdvances, meta: { width: '9%', align: 'right' },
       cell: ({ row: { original: r } }) => Number(r.totalAdvances || 0) > 0
         ? <span style={{ fontWeight: 700, color: '#DC2626', fontFamily: "'Outfit',sans-serif", fontSize: 13 }}>−{Rs(r.totalAdvances)}</span>
         : <span style={{ color: '#98A2B3', fontSize: 13 }}>—</span>,
     },
     {
-      id: 'gross', header: 'Gross', accessorFn: r => r.grossPayable, meta: { width: '11%', align: 'right' },
-      cell: ({ row: { original: r } }) => <span style={{ fontWeight: 700, color: '#475467', fontFamily: "'Outfit',sans-serif", fontSize: 13 }}>{Rs(r.grossPayable)}</span>,
-    },
-    {
-      id: 'net', header: 'Net Payable', accessorFn: r => r.netCommission, meta: { width: '11%', align: 'right' },
+      id: 'net', header: 'Net Payable', accessorFn: r => r.netCommission, meta: { width: '10%', align: 'right' },
       cell: ({ row: { original: r } }) => <span style={{ fontWeight: 700, color: '#7C3AED', fontFamily: "'Outfit',sans-serif", fontSize: 14 }}>{Rs(r.netCommission)}</span>,
     },
     {
@@ -434,7 +488,7 @@ export default function CommissionPage() {
   return (
     <PageWrapper
       title="Salary & Commission"
-      subtitle="Staff salary and commission summary by period"
+      subtitle="Salary and commission are calculated separately, then added: Salary + Commission = Total"
       actions={canEmailPdfs && (
         <Button variant="secondary" loading={emailBusy} onClick={sendStaffPdfs} style={{ whiteSpace: 'nowrap' }}>
           Email staff PDF reports
@@ -444,12 +498,13 @@ export default function CommissionPage() {
 
       {/* Stat Cards */}
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-        <StatCard label="Total Commission" value={Rs(totalComm)}     color="#D97706" icon={<IconDollar />} />
-        <StatCard label="Total Revenue"    value={Rs(totalRev)}      color="#059669" icon={<IconReceipt />} />
-        <StatCard label="Gross Payable"    value={Rs(data.reduce((s,r)=>s+Number(r.grossPayable||0),0))} color="#7C3AED" icon={<IconDollar />} />
-        <StatCard label="Advances (Deduct)"value={Rs(totalAdvances)} color="#DC2626" icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="5" y1="12" x2="19" y2="12"/></svg>} />
-        <StatCard label="Total Paid Out"   value={Rs(totalPaid)}     color="#2563EB" icon={<IconReceipt />} />
-        <StatCard label="Balance Due"      value={Rs(totalBalance)}  color={totalBalance > 0 ? '#B45309' : '#059669'} icon={<IconDollar />} />
+        <StatCard label="1. Salary" value={Rs(totalSalary)} color="#DB2777" icon={<IconUsers />} />
+        <StatCard label="2. Commission" value={Rs(totalComm)} color="#D97706" icon={<IconDollar />} />
+        <StatCard label="3. Total (Sal+Comm)" value={Rs(totalGross)} color="#7C3AED" icon={<IconDollar />} />
+        <StatCard label="Revenue" value={Rs(totalRev)} color="#059669" icon={<IconReceipt />} />
+        <StatCard label="Advances (Deduct)" value={Rs(totalAdvances)} color="#DC2626" icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="5" y1="12" x2="19" y2="12"/></svg>} />
+        <StatCard label="Paid Out" value={Rs(totalPaid)} color="#2563EB" icon={<IconReceipt />} />
+        <StatCard label="Balance Due" value={Rs(totalBalance)} color={totalBalance > 0 ? '#B45309' : '#059669'} icon={<IconDollar />} />
       </div>
 
       {emailMsg && (
@@ -477,11 +532,13 @@ export default function CommissionPage() {
         emptySub="Add staff from the Staff page first, then record payments with a staff member selected"
         footerRows={data.length > 0 ? (
           <tr style={{ background: '#F9FAFB', borderTop: '2px solid #EAECF0' }}>
-            <td style={{ padding: '13px 16px' }} colSpan={5}><span style={{ fontWeight: 700, color: '#101828', fontSize: 13, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Totals</span></td>
+            <td style={{ padding: '13px 16px' }} colSpan={4}><span style={{ fontWeight: 700, color: '#101828', fontSize: 13, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Totals</span></td>
+            <td style={{ padding: '13px 16px', textAlign: 'right' }}><span style={{ fontWeight: 800, color: '#DB2777', fontFamily: "'Outfit',sans-serif" }}>{Rs(totalSalary)}</span></td>
+            <td />
             <td style={{ padding: '13px 16px', textAlign: 'center' }}><span style={{ fontWeight: 700, color: '#101828' }}>{totalAppts}</span></td>
             <td style={{ padding: '13px 16px', textAlign: 'right' }}><span style={{ fontWeight: 800, color: '#D97706', fontFamily: "'Outfit',sans-serif" }}>{Rs(totalComm)}</span></td>
+            <td style={{ padding: '13px 16px', textAlign: 'right' }}><span style={{ fontWeight: 800, color: '#101828', fontFamily: "'Outfit',sans-serif" }}>{Rs(totalGross)}</span></td>
             <td style={{ padding: '13px 16px', textAlign: 'right' }}><span style={{ fontWeight: 800, color: '#DC2626', fontFamily: "'Outfit',sans-serif" }}>−{Rs(totalAdvances)}</span></td>
-            <td style={{ padding: '13px 16px', textAlign: 'right' }}><span style={{ fontWeight: 800, color: '#475467', fontFamily: "'Outfit',sans-serif" }}>{Rs(data.reduce((s,r)=>s+Number(r.grossPayable||0),0))}</span></td>
             <td style={{ padding: '13px 16px', textAlign: 'right' }}><span style={{ fontWeight: 800, color: '#7C3AED', fontFamily: "'Outfit',sans-serif" }}>{Rs(data.reduce((s,r)=>s+Number(r.netCommission||0),0))}</span></td>
             <td style={{ padding: '13px 16px', textAlign: 'right' }}><span style={{ fontWeight: 800, color: '#059669', fontFamily: "'Outfit',sans-serif" }}>{Rs(totalPaid)}</span></td>
             <td style={{ padding: '13px 16px', textAlign: 'right' }}><span style={{ fontWeight: 800, color: '#B45309', fontFamily: "'Outfit',sans-serif" }}>{Rs(totalBalance)}</span></td>
@@ -545,35 +602,47 @@ export default function CommissionPage() {
           <>
             <div style={{ background: '#F5F3FF', color: '#5B21B6', padding: '10px 14px', borderRadius: 9, fontSize: 13, marginBottom: 14, display: 'flex', flexWrap: 'wrap', gap: 16 }}>
               <span>Period: <strong>{MONTHS[month - 1]} {year}</strong></span>
-              <span>Total commission: <strong>{Rs(breakData?.totalCommission || 0)}</strong></span>
               <span>{(breakData?.data || []).length} payment{(breakData?.data || []).length !== 1 ? 's' : ''}</span>
             </div>
-            {(breakRow?.salaryType === 'daily_salary_plus_commission' || breakData?.salaryType === 'daily_salary_plus_commission') && (
+            {hasSalaryPart(breakRow || breakData) && (
               <div style={{
-                background: '#FDF2F8', color: '#9D174D', padding: '12px 14px', borderRadius: 9, fontSize: 13,
-                marginBottom: 14, border: '1px solid #FBCFE8', lineHeight: 1.5,
+                background: '#F8FAFC', color: '#334155', padding: '14px 16px', borderRadius: 10, fontSize: 13,
+                marginBottom: 14, border: '1.5px solid #E2E8F0', lineHeight: 1.55,
               }}>
-                <div style={{ fontWeight: 700, marginBottom: 4 }}>Linked to Attendance</div>
-                <div>
-                  Daily rate <strong>{Rs(breakData?.baseSalary ?? breakRow?.baseSalary ?? 0)}</strong>
-                  {' × '}
-                  <strong>{breakData?.presentDays ?? breakRow?.presentDays ?? 0}</strong> Present/Late days
-                  {' = '}
-                  <strong>{Rs(breakData?.dailySalaryEarned ?? breakRow?.dailySalaryEarned ?? 0)}</strong>
-                  {' + commission '}
-                  <strong>{Rs(breakData?.totalCommission || 0)}</strong>
-                  {' = gross '}
-                  <strong>{Rs(breakData?.grossPayable ?? breakRow?.grossPayable ?? 0)}</strong>
+                <div style={{ fontWeight: 800, marginBottom: 10, color: '#0F172A' }}>Pay calculation (separate, then combined)</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '8px 16px', maxWidth: 420 }}>
+                  <span style={{ color: '#9D174D', fontWeight: 600 }}>1. Salary</span>
+                  <strong style={{ textAlign: 'right', color: '#DB2777' }}>
+                    {Rs(salaryPortion({
+                      ...breakRow,
+                      ...breakData,
+                      salaryType: breakData?.salaryType || breakRow?.salaryType,
+                      dailySalaryEarned: breakData?.dailySalaryEarned ?? breakRow?.dailySalaryEarned,
+                      baseSalary: breakData?.baseSalary ?? breakRow?.baseSalary,
+                      presentDays: breakData?.presentDays ?? breakRow?.presentDays,
+                    }))}
+                  </strong>
+                  {(breakData?.salaryType || breakRow?.salaryType) === 'daily_salary_plus_commission' && (
+                    <>
+                      <span style={{ gridColumn: '1 / -1', fontSize: 11, color: '#94A3B8', marginTop: -4 }}>
+                        {Rs(breakData?.baseSalary ?? breakRow?.baseSalary ?? 0)}/day × {breakData?.presentDays ?? breakRow?.presentDays ?? 0} Present/Late days
+                        {' · '}<a href="/attendance" style={{ color: '#BE185D', fontWeight: 700 }}>Attendance</a>
+                      </span>
+                    </>
+                  )}
+                  <span style={{ color: '#B45309', fontWeight: 600 }}>2. Commission</span>
+                  <strong style={{ textAlign: 'right', color: '#D97706' }}>{Rs(breakData?.totalCommission || 0)}</strong>
+                  <span style={{ borderTop: '1px solid #E2E8F0', paddingTop: 8, fontWeight: 800, color: '#0F172A' }}>3. Total (Salary + Commission)</span>
+                  <strong style={{ borderTop: '1px solid #E2E8F0', paddingTop: 8, textAlign: 'right', color: '#7C3AED', fontSize: 15 }}>
+                    {Rs(breakData?.grossPayable ?? breakRow?.grossPayable ?? 0)}
+                  </strong>
                 </div>
-                <a href="/attendance" style={{ display: 'inline-block', marginTop: 8, color: '#BE185D', fontWeight: 700, fontSize: 12 }}>
-                  Open Attendance →
-                </a>
               </div>
             )}
             {!(breakData?.data || []).length ? (
               <div style={{ textAlign: 'center', padding: 32, color: '#98A2B3' }}>
                 {breakRow?.salaryType === 'daily_salary_plus_commission'
-                  ? 'No commission payments this period — day salary still counts from Attendance.'
+                  ? 'No commission payments this period — salary still counts from Attendance.'
                   : 'No commission payments for this period.'}
               </div>
             ) : (
@@ -708,10 +777,29 @@ export default function CommissionPage() {
       <Modal open={!!payRow} title={payRow ? `Record Payment — ${payRow.staffName}` : ''} onClose={() => setPayRow(null)} size="md"
         footer={<><Button variant="secondary" onClick={() => setPayRow(null)}>Cancel</Button><Button variant="primary" loading={paySaving} onClick={handlePay}>Save Payment</Button></>}>
         {payRow && <>
-          <div style={{ background: '#ECFDF5', color: '#065F46', padding: '9px 14px', borderRadius: 9, fontSize: 13, marginBottom: 16, display: 'flex', gap: 16 }}>
-            <span>Net Payable: <strong>{Rs(payRow.netCommission)}</strong></span>
-            <span>Paid: <strong>{Rs(payRow.totalPaid)}</strong></span>
-            <span>Balance Due: <strong>{Rs(payRow.balanceDue)}</strong></span>
+          <div style={{
+            background: '#F8FAFC', border: '1.5px solid #E2E8F0', borderRadius: 10, padding: '12px 14px',
+            fontSize: 13, marginBottom: 16, color: '#334155', lineHeight: 1.5,
+          }}>
+            <div style={{ fontWeight: 800, color: '#0F172A', marginBottom: 8 }}>Breakdown</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '6px 12px' }}>
+              <span>1. Salary</span>
+              <strong style={{ color: '#DB2777' }}>{Rs(salaryPortion(payRow))}</strong>
+              <span>2. Commission</span>
+              <strong style={{ color: '#D97706' }}>{payRow.salaryType === 'salary_only' ? '—' : Rs(payRow.totalCommission)}</strong>
+              <span style={{ borderTop: '1px solid #E2E8F0', paddingTop: 6, fontWeight: 700 }}>3. Total (Salary + Commission)</span>
+              <strong style={{ borderTop: '1px solid #E2E8F0', paddingTop: 6, color: '#7C3AED' }}>{Rs(payRow.grossPayable)}</strong>
+              {Number(payRow.totalAdvances || 0) > 0 && (
+                <>
+                  <span>Advances</span>
+                  <strong style={{ color: '#DC2626' }}>−{Rs(payRow.totalAdvances)}</strong>
+                </>
+              )}
+              <span>Already paid</span>
+              <strong>{Rs(payRow.totalPaid)}</strong>
+              <span style={{ fontWeight: 800 }}>Balance due</span>
+              <strong style={{ color: '#B45309' }}>{Rs(payRow.balanceDue)}</strong>
+            </div>
           </div>
           {payErr && <div style={{ background: '#FEF2F2', color: '#DC2626', padding: '9px 14px', borderRadius: 9, fontSize: 13, marginBottom: 14 }}>{payErr}</div>}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>

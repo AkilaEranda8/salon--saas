@@ -117,9 +117,11 @@ async function presentDaysMapForMonth(req, staffIds, year, month) {
   const start = `${ym}-01`;
   const last = new Date(Number(year), Number(month), 0).getDate();
   const end = `${ym}-${String(last).padStart(2, '0')}`;
+  const ids = staffIds.map((id) => Number(id)).filter((id) => Number.isFinite(id));
+  if (!ids.length) return map;
   const rows = await Attendance.findAll({
     where: {
-      staff_id: { [Op.in]: staffIds },
+      staff_id: { [Op.in]: ids },
       date: { [Op.between]: [start, end] },
       status: { [Op.in]: ['present', 'late'] },
     },
@@ -131,7 +133,10 @@ async function presentDaysMapForMonth(req, staffIds, year, month) {
     raw: true,
   });
   for (const row of rows) {
-    map[row.staff_id] = parseInt(row.days, 10) || 0;
+    // Normalize keys so Number / string staff ids both resolve
+    const sid = Number(row.staff_id);
+    const days = parseInt(row.days, 10) || 0;
+    if (Number.isFinite(sid)) map[sid] = days;
   }
   return map;
 }
@@ -915,7 +920,7 @@ const commissionSummary = async (req, res) => {
       const totalPaid       = paidMap[staff.id] || 0;
       const baseSalary      = parseFloat(staff.base_salary) || 0;
       const salaryType      = staff.salary_type || 'commission_only';
-      const presentDays     = presentMap[staff.id] || 0;
+      const presentDays     = presentMap[Number(staff.id)] || 0;
       const dailySalaryEarned = salaryType === 'daily_salary_plus_commission'
         ? baseSalary * presentDays
         : 0;

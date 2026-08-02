@@ -1,5 +1,5 @@
 import Button from '../ui/Button';
-import { Input, Select, FormGroup } from '../ui/FormElements';
+import { Select, FormGroup } from '../ui/FormElements';
 
 /** Equal share of commission pool for each person (main + helpers). */
 export function equalHelperPercent(helperCount) {
@@ -7,29 +7,15 @@ export function equalHelperPercent(helperCount) {
   return Math.round((100 / (n + 1)) * 100) / 100;
 }
 
-const emptyHelper = (helperCount = 1) => ({
+const emptyHelper = () => ({
   staff_id: '',
   commission_type: 'percentage_of_main',
-  commission_value: String(equalHelperPercent(helperCount)),
+  commission_value: '50',
 });
 
 /**
- * Apply equal pool shares across all %-of-main helpers (main keeps the rest).
- * 1 helper → 50% each; 2 helpers → ~33.33% each person, etc.
- */
-function withEqualShares(list) {
-  const rows = list || [];
-  if (!rows.length) return rows;
-  const pct = equalHelperPercent(rows.length);
-  return rows.map((h) => (
-    (h.commission_type || 'percentage_of_main') === 'fixed'
-      ? h
-      : { ...h, commission_type: 'percentage_of_main', commission_value: String(pct) }
-  ));
-}
-
-/**
- * Main staff + optional helper staff (commission taken from main pool).
+ * Main staff + optional helpers.
+ * Commission pool (from main rate) is always split equally — % or fixed are not used.
  */
 export default function PaymentHelperStaffFields({
   mainStaffId,
@@ -51,18 +37,18 @@ export default function PaymentHelperStaffFields({
     mainId,
     ...(helpers || []).map((h) => String(h.staff_id || '')).filter(Boolean),
   ]);
+  const sharePct = equalHelperPercent((helpers || []).length || 1);
 
   const setHelpersEnabled = (on) => {
     if (on) {
-      if (!(helpers || []).length) onHelpersChange(withEqualShares([emptyHelper(1)]));
+      if (!(helpers || []).length) onHelpersChange([emptyHelper()]);
     } else {
       onHelpersChange([]);
     }
   };
 
   const addHelper = () => {
-    const next = [...(helpers || []), emptyHelper((helpers || []).length + 1)];
-    onHelpersChange(withEqualShares(next));
+    onHelpersChange([...(helpers || []), emptyHelper()]);
   };
 
   const updateHelper = (idx, patch) => {
@@ -70,20 +56,8 @@ export default function PaymentHelperStaffFields({
   };
 
   const removeHelper = (idx) => {
-    const next = (helpers || []).filter((_, i) => i !== idx);
-    onHelpersChange(next.length ? withEqualShares(next) : []);
+    onHelpersChange((helpers || []).filter((_, i) => i !== idx));
   };
-
-  const fieldLabel = {
-    fontSize: 11,
-    fontWeight: 700,
-    color: muted,
-    letterSpacing: '0.03em',
-    textTransform: 'uppercase',
-    marginBottom: 4,
-  };
-
-  const helperPct = equalHelperPercent((helpers || []).length || 1);
 
   return (
     <div style={{
@@ -98,8 +72,8 @@ export default function PaymentHelperStaffFields({
       <div>
         <div style={{ fontWeight: 700, fontSize: 14, color: title }}>Staff & commission</div>
         <div style={{ fontSize: 12, color: muted, marginTop: 4, lineHeight: 1.45 }}>
-          Main staff rate makes the commission pool (e.g. 20% of service). Helpers share that pool —
-          default is equal split (1 helper → 50% / 50%). Example: pool Rs. 1000 → main Rs. 500, helper Rs. 500.
+          Main staff rate makes the commission pool. Helpers always split that pool equally
+          (percentage / fixed same result). Example: pool Rs. 1000 + 1 helper → Rs. 500 each.
         </div>
       </div>
 
@@ -152,9 +126,8 @@ export default function PaymentHelperStaffFields({
             borderRadius: 8,
             padding: '8px 10px',
           }}>
-            Equal share now: <strong style={{ color: title }}>{helperPct}%</strong> of the pool each
+            Each person gets <strong style={{ color: title }}>{sharePct}%</strong> of the pool
             (main + {(helpers || []).length} helper{(helpers || []).length === 1 ? '' : 's'}).
-            Change % or use Fixed Rs to customize.
           </div>
 
           {(helpers || []).map((h, idx) => {
@@ -164,7 +137,6 @@ export default function PaymentHelperStaffFields({
               if (sid === String(h.staff_id)) return true;
               return !usedIds.has(sid);
             });
-            const isPct = (h.commission_type || 'percentage_of_main') !== 'fixed';
             return (
               <div
                 key={`helper-${idx}`}
@@ -181,6 +153,9 @@ export default function PaymentHelperStaffFields({
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
                   <div style={{ fontSize: 12, fontWeight: 700, color: title }}>
                     Helper {idx + 1}
+                    <span style={{ fontWeight: 500, color: muted, marginLeft: 8 }}>
+                      · {sharePct}% equal share
+                    </span>
                   </div>
                   <button
                     type="button"
@@ -200,45 +175,27 @@ export default function PaymentHelperStaffFields({
                   </button>
                 </div>
 
-                <div style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'minmax(0, 1.6fr) minmax(0, 1fr) minmax(0, 0.85fr)',
-                  gap: 10,
-                  alignItems: 'end',
-                }}>
-                  <div>
-                    <div style={fieldLabel}>Helper</div>
-                    <Select
-                      value={h.staff_id || ''}
-                      onChange={(e) => updateHelper(idx, { staff_id: e.target.value })}
-                    >
-                      <option value="">Select helper</option>
-                      {options.map((s) => (
-                        <option key={s.id} value={s.id}>{s.name}</option>
-                      ))}
-                    </Select>
+                <div>
+                  <div style={{
+                    fontSize: 11,
+                    fontWeight: 700,
+                    color: muted,
+                    letterSpacing: '0.03em',
+                    textTransform: 'uppercase',
+                    marginBottom: 4,
+                  }}
+                  >
+                    Helper
                   </div>
-                  <div>
-                    <div style={fieldLabel}>Type</div>
-                    <Select
-                      value={h.commission_type || 'percentage_of_main'}
-                      onChange={(e) => updateHelper(idx, { commission_type: e.target.value })}
-                    >
-                      <option value="percentage_of_main">% of commission</option>
-                      <option value="fixed">Fixed Rs</option>
-                    </Select>
-                  </div>
-                  <div>
-                    <div style={fieldLabel}>{isPct ? 'Share (%)' : 'Amount (Rs)'}</div>
-                    <Input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={h.commission_value ?? ''}
-                      onChange={(e) => updateHelper(idx, { commission_value: e.target.value })}
-                      placeholder={isPct ? String(helperPct) : '200'}
-                    />
-                  </div>
+                  <Select
+                    value={h.staff_id || ''}
+                    onChange={(e) => updateHelper(idx, { staff_id: e.target.value })}
+                  >
+                    <option value="">Select helper</option>
+                    {options.map((s) => (
+                      <option key={s.id} value={s.id}>{s.name}</option>
+                    ))}
+                  </Select>
                 </div>
               </div>
             );
@@ -254,11 +211,11 @@ export default function PaymentHelperStaffFields({
 }
 
 export function helpersPayload(helpers) {
-  return (helpers || [])
-    .filter((h) => h.staff_id && Number(h.commission_value) > 0)
-    .map((h) => ({
-      staff_id: Number(h.staff_id),
-      commission_type: h.commission_type === 'fixed' ? 'fixed' : 'percentage_of_main',
-      commission_value: Number(h.commission_value),
-    }));
+  const list = (helpers || []).filter((h) => h.staff_id);
+  const pct = equalHelperPercent(list.length || 1);
+  return list.map((h) => ({
+    staff_id: Number(h.staff_id),
+    commission_type: 'percentage_of_main',
+    commission_value: pct,
+  }));
 }

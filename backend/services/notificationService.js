@@ -714,8 +714,6 @@ async function notifyStaffAppointmentAssigned(appointment, branch, service, tena
     const time = rawTime ? String(rawTime).slice(0, 5) : '—';
     const svcName = service?.name || appointment.service_name || 'Service';
     const brName = branch?.name || 'Salon';
-    const amountNum = Number(appointment.amount ?? appointment.total_amount ?? service?.price ?? 0);
-    const amount = Number.isFinite(amountNum) ? `Rs. ${amountNum.toFixed(2)}` : '—';
     const staffName = staff.name || 'there';
     const customerName = appointment.customer_name || 'Customer';
 
@@ -725,7 +723,6 @@ async function notifyStaffAppointmentAssigned(appointment, branch, service, tena
       service_name: svcName,
       date,
       time,
-      amount,
       branch_name: brName,
     };
 
@@ -747,7 +744,6 @@ async function notifyStaffAppointmentAssigned(appointment, branch, service, tena
         `Service: ${svcName}\n` +
         `Date: ${date}\n` +
         `Time: ${time}\n` +
-        `Amount: ${amount}\n` +
         `Branch: ${brName}`;
 
     await sendWhatsApp({ to: staff.phone, message: msg, meta, tenantId: tid });

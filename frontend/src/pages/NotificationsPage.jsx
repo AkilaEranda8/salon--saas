@@ -115,7 +115,6 @@ const TEMPLATE_VARIABLES = {
     ['staff_name', 'Staff Name'],
     ['date', 'Date'],
     ['time', 'Time'],
-    ['amount', 'Amount'],
   ],
   appointment_completed: [
     ['date', 'Date'],

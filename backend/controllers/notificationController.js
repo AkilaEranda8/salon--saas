@@ -682,7 +682,7 @@ const DEFAULT_TEMPLATES = {
   },
   staff_appointment_assigned: {
     whatsapp: {
-      body: `*{branch_name} — New Appointment*\n\nHi {staff_name}, you have a new appointment:\n\nCustomer: {customer_name}\nService: {service_name}\nDate: {date}\nTime: {time}\nAmount: {amount}\nBranch: {branch_name}`,
+      body: `*{branch_name} — New Appointment*\n\nHi {staff_name}, you have a new appointment:\n\nCustomer: {customer_name}\nService: {service_name}\nDate: {date}\nTime: {time}\nBranch: {branch_name}`,
     },
   },
   appointment_completed: {

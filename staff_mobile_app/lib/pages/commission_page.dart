@@ -56,6 +56,11 @@ class _CommissionPageState extends State<CommissionPage> {
   double _netCommission  = 0;
   double _totalPaid      = 0;
   double _balanceDue     = 0;
+  double _salaryPortion  = 0;
+  double _grossPayable   = 0;
+  String _salaryType     = 'commission_only';
+  int _presentDays       = 0;
+  double _baseSalary     = 0;
   List<Map<String, dynamic>> _payouts = const [];
   bool _payoutsLoading   = false;
   String? _staffName;
@@ -77,10 +82,39 @@ class _CommissionPageState extends State<CommissionPage> {
     _load();
   }
 
-  /// Team mode: superadmin/admin/manager see all staff; regular staff see only their own.
+  /// Team mode: only managers see all staff. Regular staff see their own only.
   bool get _teamMode {
-    final r = AppStateScope.of(context).currentUser?.role ?? '';
+    final r = (AppStateScope.of(context).currentUser?.role ?? '').toLowerCase();
     return r == 'superadmin' || r == 'admin' || r == 'manager';
+  }
+
+  bool get _hasSalaryPart =>
+      _salaryType == 'salary_only' ||
+      _salaryType == 'salary_plus_commission' ||
+      _salaryType == 'daily_salary_plus_commission';
+
+  void _applyDetailTotals({
+    required double total,
+    required double advances,
+    required double net,
+    required double paid,
+    required double balance,
+    required double salary,
+    required double gross,
+    required String salaryType,
+    required int presentDays,
+    required double baseSalary,
+  }) {
+    _total = total;
+    _totalAdvances = advances;
+    _netCommission = net;
+    _totalPaid = paid;
+    _balanceDue = balance;
+    _salaryPortion = salary;
+    _grossPayable = gross;
+    _salaryType = salaryType;
+    _presentDays = presentDays;
+    _baseSalary = baseSalary;
   }
 
   Future<void> _load() async {
@@ -111,50 +145,80 @@ class _CommissionPageState extends State<CommissionPage> {
           }
           final name = detail.staffName ?? match?.staffName;
           setState(() {
-            _summaries     = summaries;
-            _rows          = detail.records;
-            _total         = detail.total;
-            _totalAdvances = detail.totalAdvances;
-            _netCommission = detail.netCommission;
-            _totalPaid     = detail.totalPaid;
-            _balanceDue    = detail.balanceDue;
-            _staffName     = name;
-            _loading       = false;
+            _summaries = summaries;
+            _rows = detail.records;
+            _applyDetailTotals(
+              total: detail.total,
+              advances: detail.totalAdvances,
+              net: detail.netCommission,
+              paid: detail.totalPaid,
+              balance: detail.balanceDue,
+              salary: detail.salaryPortion,
+              gross: detail.grossPayable > 0
+                  ? detail.grossPayable
+                  : (detail.salaryPortion + detail.total),
+              salaryType: detail.salaryType,
+              presentDays: detail.presentDays,
+              baseSalary: detail.baseSalary,
+            );
+            _staffName = name;
+            _loading = false;
           });
           _loadPayouts(sel);
         } else {
-          final grand    = summaries.fold(0.0, (double s, StaffCommissionSummary x) => s + x.totalCommission);
+          final grand = summaries.fold(0.0, (double s, StaffCommissionSummary x) => s + x.totalCommission);
+          final grandSal = summaries.fold(0.0, (double s, StaffCommissionSummary x) => s + x.salaryPortion);
+          final grandGross = summaries.fold(0.0, (double s, StaffCommissionSummary x) =>
+              s + (x.grossPayable > 0 ? x.grossPayable : (x.salaryPortion + x.totalCommission)));
           final grandAdv = summaries.fold(0.0, (double s, StaffCommissionSummary x) => s + x.totalAdvances);
           final grandPaid = summaries.fold(0.0, (double s, StaffCommissionSummary x) => s + x.totalPaid);
-          final grandNet  = (grand - grandAdv).clamp(0, double.infinity).toDouble();
+          final grandNet = summaries.fold(0.0, (double s, StaffCommissionSummary x) => s + x.netCommission);
           setState(() {
-            _summaries     = summaries;
-            _rows          = const [];
-            _total         = grand;
-            _totalAdvances = grandAdv;
-            _netCommission = grandNet;
-            _totalPaid     = grandPaid;
-            _balanceDue    = (grandNet - grandPaid).clamp(0, double.infinity).toDouble();
-            _payouts       = const [];
-            _staffName     = null;
-            _loading       = false;
+            _summaries = summaries;
+            _rows = const [];
+            _applyDetailTotals(
+              total: grand,
+              advances: grandAdv,
+              net: grandNet,
+              paid: grandPaid,
+              balance: (grandNet - grandPaid).clamp(0, double.infinity).toDouble(),
+              salary: grandSal,
+              gross: grandGross,
+              salaryType: 'mixed',
+              presentDays: 0,
+              baseSalary: 0,
+            );
+            _payouts = const [];
+            _staffName = null;
+            _loading = false;
           });
         }
       } else {
+        // Staff login → own earnings only (GET /staff/me/commission)
         final result = await app.loadMyCommission(month: _month);
         if (!mounted) return;
         setState(() {
-          _summaries       = const [];
+          _summaries = const [];
           _selectedStaffId = result.staffId;
-          _rows            = result.records;
-          _total           = result.total;
-          _totalAdvances   = result.totalAdvances;
-          _netCommission   = result.netCommission;
-          _totalPaid       = result.totalPaid;
-          _balanceDue      = result.balanceDue;
-          _payouts         = const [];
-          _staffName       = result.staffName;
-          _loading         = false;
+          _rows = result.records;
+          _applyDetailTotals(
+            total: result.total,
+            advances: result.totalAdvances,
+            net: result.netCommission,
+            paid: result.totalPaid,
+            balance: result.balanceDue,
+            salary: result.salaryPortion,
+            gross: result.grossPayable > 0
+                ? result.grossPayable
+                : (result.salaryPortion + result.total),
+            salaryType: result.salaryType,
+            presentDays: result.presentDays,
+            baseSalary: result.baseSalary,
+          );
+          _payouts = const [];
+          _staffName = result.staffName ??
+              AppStateScope.of(context).currentUser?.displayName;
+          _loading = false;
         });
         final sid = result.staffId;
         if (sid != null && sid.isNotEmpty) _loadPayouts(sid);
@@ -262,7 +326,11 @@ class _CommissionPageState extends State<CommissionPage> {
 
   bool get _isEmptyState {
     if (_teamMode && _selectedStaffId == null) return _summaries.isEmpty;
-    final hasTotals = _total > 0 || _netCommission > 0 || _totalPaid > 0;
+    final hasTotals = _grossPayable > 0 ||
+        _salaryPortion > 0 ||
+        _total > 0 ||
+        _netCommission > 0 ||
+        _totalPaid > 0;
     if (hasTotals || _payouts.isNotEmpty) return false;
     if (_teamMode && _selectedStaffId != null) return _rows.isEmpty;
     return _rows.isEmpty;
@@ -414,7 +482,7 @@ class _CommissionPageState extends State<CommissionPage> {
                   Icon(Icons.workspace_premium_rounded,
                       color: _forest, size: 18),
                   SizedBox(width: 6),
-                  Text('Commission',
+                  Text('Salary & Commission',
                     style: TextStyle(
                       color: _forest, fontSize: 16,
                       fontWeight: FontWeight.w800, letterSpacing: -0.3)),
@@ -542,12 +610,12 @@ class _CommissionPageState extends State<CommissionPage> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  _staffName ?? 'My Commission',
+                                  _staffName ?? 'My earnings',
                                   style: const TextStyle(
                                     color: _ink, fontSize: 13,
                                     fontWeight: FontWeight.w800),
                                   overflow: TextOverflow.ellipsis),
-                                const Text('Staff member',
+                                const Text('Your salary & commission only',
                                   style: TextStyle(
                                     color: _muted, fontSize: 11,
                                     fontWeight: FontWeight.w500)),
@@ -619,47 +687,79 @@ class _CommissionPageState extends State<CommissionPage> {
                         fontWeight: FontWeight.w600)),
                   ]),
                   const SizedBox(height: 12),
-                  // Total commission row
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text('Total Commission',
-                              style: TextStyle(
-                                color: Colors.white70, fontSize: 12,
-                                fontWeight: FontWeight.w600)),
-                            const SizedBox(height: 4),
-                            _loading
-                                ? Container(
-                                    width: 120, height: 34,
-                                    decoration: BoxDecoration(
-                                      color: Colors.white.withValues(
-                                          alpha: 0.15),
-                                      borderRadius: BorderRadius.circular(8)))
-                                : Row(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.end,
-                                    children: [
-                                      const Text('LKR ',
-                                        style: TextStyle(
-                                          color: Colors.white70,
-                                          fontSize: 14,
-                                          fontWeight: FontWeight.w700)),
-                                      Text(_total.toStringAsFixed(0),
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 32,
-                                          fontWeight: FontWeight.w900,
-                                          letterSpacing: -1)),
-                                    ],
-                                  ),
-                            if (!_loading) ...[
-                              // Advance deduction
+                  // Salary + Commission + Total (matches web)
+                  if (!_loading && (_hasSalaryPart || _salaryType == 'mixed')) ...[
+                    _PayLine(
+                      label: '1. Salary',
+                      amount: _salaryPortion,
+                      hint: _salaryType == 'daily_salary_plus_commission'
+                          ? '$_presentDays d × LKR ${_baseSalary.toStringAsFixed(0)}'
+                          : null,
+                    ),
+                    const SizedBox(height: 6),
+                    _PayLine(label: '2. Commission', amount: _total),
+                    const SizedBox(height: 8),
+                    const Divider(color: Colors.white24, height: 1),
+                    const SizedBox(height: 8),
+                    _PayLine(
+                      label: '3. Total',
+                      amount: _grossPayable > 0 ? _grossPayable : (_salaryPortion + _total),
+                      emphasize: true,
+                    ),
+                    const SizedBox(height: 10),
+                  ] else ...[
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text('Total Commission',
+                                style: TextStyle(
+                                  color: Colors.white70, fontSize: 12,
+                                  fontWeight: FontWeight.w600)),
+                              const SizedBox(height: 4),
+                              _loading
+                                  ? Container(
+                                      width: 120, height: 34,
+                                      decoration: BoxDecoration(
+                                        color: Colors.white.withValues(
+                                            alpha: 0.15),
+                                        borderRadius: BorderRadius.circular(8)))
+                                  : Row(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.end,
+                                      children: [
+                                        const Text('LKR ',
+                                          style: TextStyle(
+                                            color: Colors.white70,
+                                            fontSize: 14,
+                                            fontWeight: FontWeight.w700)),
+                                        Text(_total.toStringAsFixed(0),
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 32,
+                                            fontWeight: FontWeight.w900,
+                                            letterSpacing: -1)),
+                                      ],
+                                    ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                  ],
+                  if (!_loading) ...[
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
                               if (_totalAdvances > 0) ...[
-                                const SizedBox(height: 8),
                                 _DeductChip(
                                   label: 'Advance  −LKR ${_totalAdvances.toStringAsFixed(0)}',
                                   icon: Icons.remove_circle_rounded,
@@ -668,8 +768,9 @@ class _CommissionPageState extends State<CommissionPage> {
                                 ),
                                 const SizedBox(height: 5),
                                 _AmountRow(label: 'Net Payable', amount: _netCommission, color: const Color(0xFF86EFAC)),
+                              ] else if (_hasSalaryPart || _salaryType == 'mixed') ...[
+                                _AmountRow(label: 'Net Payable', amount: _netCommission, color: const Color(0xFF86EFAC)),
                               ],
-                              // Paid
                               if (_totalPaid > 0) ...[
                                 const SizedBox(height: 5),
                                 _DeductChip(
@@ -679,8 +780,7 @@ class _CommissionPageState extends State<CommissionPage> {
                                   bg: const Color(0xFF059669),
                                 ),
                               ],
-                              // Balance due
-                              if (_netCommission > 0 || _totalPaid > 0) ...[
+                              if (_netCommission > 0 || _totalPaid > 0 || _grossPayable > 0) ...[
                                 const SizedBox(height: 6),
                                 const Divider(color: Colors.white24, height: 1),
                                 const SizedBox(height: 6),
@@ -697,7 +797,6 @@ class _CommissionPageState extends State<CommissionPage> {
                                   ],
                                 ]),
                               ],
-                              // Record Payment button
                               if (_canRecordPayout && _balanceDue > 0 &&
                                   (_selectedStaffId != null || !_teamMode)) ...[
                                 const SizedBox(height: 10),
@@ -719,14 +818,11 @@ class _CommissionPageState extends State<CommissionPage> {
                                 ),
                               ],
                             ],
-                          ],
+                          ),
                         ),
-                      ),
-                      // Stats pills
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          if (!_loading) ...[
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
                             _StatPill(
                               icon: Icons.receipt_rounded,
                               label: _teamMode && _selectedStaffId == null
@@ -743,10 +839,10 @@ class _CommissionPageState extends State<CommissionPage> {
                                 label: '${_commissionRate.toStringAsFixed(1)}% rate'),
                             ],
                           ],
-                        ],
-                      ),
-                    ],
-                  ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -814,7 +910,7 @@ class _CommissionPageState extends State<CommissionPage> {
           color: _forest, size: 30),
     ),
     const SizedBox(height: 16),
-    const Text('No commission records',
+    const Text('No salary or commission yet',
       style: TextStyle(color: _ink, fontSize: 16,
           fontWeight: FontWeight.w700)),
     const SizedBox(height: 6),
@@ -907,22 +1003,23 @@ class _StaffSummaryCard extends StatelessWidget {
           Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              Text('LKR ${row.totalCommission.toStringAsFixed(0)}',
-                style: TextStyle(
-                  color: row.totalAdvances > 0 ? _muted : _forest,
-                  fontSize: row.totalAdvances > 0 ? 12 : 15,
-                  fontWeight: FontWeight.w700,
-                  decoration: row.totalAdvances > 0
-                      ? TextDecoration.lineThrough : null)),
-              if (row.totalAdvances > 0) ...[
-                Text('−${row.totalAdvances.toStringAsFixed(0)}',
-                  style: const TextStyle(color: Color(0xFFDC2626),
+              if (row.salaryPortion > 0)
+                Text('Sal ${row.salaryPortion.toStringAsFixed(0)}',
+                  style: const TextStyle(color: Color(0xFFDB2777),
                       fontSize: 11, fontWeight: FontWeight.w700)),
-                Text('Net: ${row.netCommission.toStringAsFixed(0)}',
+              Text('Comm ${row.totalCommission.toStringAsFixed(0)}',
+                style: const TextStyle(color: Color(0xFFD97706),
+                    fontSize: 11, fontWeight: FontWeight.w700)),
+              Text('LKR ${(row.grossPayable > 0 ? row.grossPayable : (row.salaryPortion + row.totalCommission)).toStringAsFixed(0)}',
+                style: const TextStyle(
+                  color: _forest,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w900)),
+              if (row.totalAdvances > 0)
+                Text('Net ${row.netCommission.toStringAsFixed(0)}',
                   style: const TextStyle(color: Color(0xFF059669),
-                      fontSize: 13, fontWeight: FontWeight.w900)),
-              ],
-              Text('${row.appointmentCount} appts',
+                      fontSize: 12, fontWeight: FontWeight.w800)),
+              Text('${row.appointmentCount} svc',
                 style: const TextStyle(color: _muted, fontSize: 11)),
             ],
           ),
@@ -930,6 +1027,51 @@ class _StaffSummaryCard extends StatelessWidget {
           const Icon(Icons.chevron_right_rounded, color: _muted, size: 20),
         ]),
       ),
+    );
+  }
+}
+
+class _PayLine extends StatelessWidget {
+  const _PayLine({
+    required this.label,
+    required this.amount,
+    this.hint,
+    this.emphasize = false,
+  });
+  final String label;
+  final double amount;
+  final String? hint;
+  final bool emphasize;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(label,
+                style: TextStyle(
+                  color: emphasize ? Colors.white : Colors.white70,
+                  fontSize: emphasize ? 13 : 12,
+                  fontWeight: FontWeight.w700)),
+              if (hint != null && hint!.isNotEmpty)
+                Text(hint!,
+                  style: const TextStyle(
+                    color: Colors.white54, fontSize: 10.5,
+                    fontWeight: FontWeight.w500)),
+            ],
+          ),
+        ),
+        Text('LKR ${amount.toStringAsFixed(0)}',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: emphasize ? 22 : 16,
+            fontWeight: FontWeight.w900,
+            letterSpacing: -0.5)),
+      ],
     );
   }
 }

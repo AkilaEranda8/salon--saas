@@ -36,6 +36,11 @@ class MyCommissionResult {
     required this.balanceDue,
     this.staffId,
     this.staffName,
+    this.salaryType = 'commission_only',
+    this.baseSalary = 0,
+    this.presentDays = 0,
+    this.dailySalaryEarned = 0,
+    this.grossPayable = 0,
   });
 
   final double total;
@@ -46,6 +51,20 @@ class MyCommissionResult {
   final List<CommissionRecord> records;
   final String? staffId;
   final String? staffName;
+  final String salaryType;
+  final double baseSalary;
+  final int presentDays;
+  final double dailySalaryEarned;
+  final double grossPayable;
+
+  /// Salary portion only (Day+Comm / monthly salary types).
+  double get salaryPortion {
+    if (salaryType == 'daily_salary_plus_commission') return dailySalaryEarned;
+    if (salaryType == 'salary_only' || salaryType == 'salary_plus_commission') {
+      return baseSalary;
+    }
+    return 0;
+  }
 }
 
 class MobileApi {
@@ -904,51 +923,7 @@ class MobileApi {
       throw Exception(body['message'] ?? 'Commission load failed');
     }
     final list = _commissionRowsFromBody(body);
-    final staffMap = body['staff'] is Map
-        ? Map<String, dynamic>.from(body['staff'])
-        : const <String, dynamic>{};
-    final totalRaw = body['total'];
-    final records = <CommissionRecord>[];
-    for (final item in list) {
-      if (item is! Map) continue;
-      try {
-        records.add(CommissionRecord.fromJson(Map<String, dynamic>.from(item)));
-      } catch (_) {
-        // Skip malformed rows instead of failing the whole response.
-      }
-    }
-    final advRaw = body['totalAdvances'];
-    final netRaw = body['netCommission'];
-    final paidRaw = body['totalPaid'];
-    final balRaw = body['balanceDue'];
-    final totalComm = totalRaw is num
-        ? totalRaw.toDouble()
-        : double.tryParse('$totalRaw') ?? 0;
-    final totalAdv = advRaw is num
-        ? advRaw.toDouble()
-        : double.tryParse('$advRaw') ?? 0;
-    final netComm = netRaw is num
-        ? netRaw.toDouble()
-        : double.tryParse('$netRaw') ??
-              (totalComm - totalAdv).clamp(0, double.infinity);
-    final tPaid = paidRaw is num
-        ? paidRaw.toDouble()
-        : double.tryParse('$paidRaw') ?? 0;
-    final staffIdRaw = '${staffMap['id'] ?? ''}'.trim();
-    final staffNameRaw = '${staffMap['name'] ?? ''}'.trim();
-    return MyCommissionResult(
-      total: totalComm,
-      totalAdvances: totalAdv,
-      netCommission: netComm,
-      totalPaid: tPaid,
-      balanceDue: balRaw is num
-          ? balRaw.toDouble()
-          : double.tryParse('$balRaw') ??
-                (netComm - tPaid).clamp(0, double.infinity),
-      records: records,
-      staffId: staffIdRaw.isEmpty ? null : staffIdRaw,
-      staffName: staffNameRaw.isEmpty ? null : staffNameRaw,
-    );
+    return _parseMyCommissionResult(body, list);
   }
 
   /// All staff commission totals for the month (admin / manager / superadmin).
@@ -1011,10 +986,35 @@ class MobileApi {
       throw Exception(body['message'] ?? 'Commission report failed');
     }
     final list = _commissionRowsFromBody(body);
+    final result = _parseMyCommissionResult(body, list);
+    if ((result.staffId == null || result.staffId!.isEmpty) &&
+        staffId.trim().isNotEmpty) {
+      return MyCommissionResult(
+        total: result.total,
+        records: result.records,
+        totalAdvances: result.totalAdvances,
+        netCommission: result.netCommission,
+        totalPaid: result.totalPaid,
+        balanceDue: result.balanceDue,
+        staffId: staffId.trim(),
+        staffName: result.staffName,
+        salaryType: result.salaryType,
+        baseSalary: result.baseSalary,
+        presentDays: result.presentDays,
+        dailySalaryEarned: result.dailySalaryEarned,
+        grossPayable: result.grossPayable,
+      );
+    }
+    return result;
+  }
+
+  MyCommissionResult _parseMyCommissionResult(
+    Map<String, dynamic> body,
+    List<dynamic> list,
+  ) {
     final staffMap = body['staff'] is Map
         ? Map<String, dynamic>.from(body['staff'])
         : const <String, dynamic>{};
-    final totalRaw = body['total'];
     final records = <CommissionRecord>[];
     for (final item in list) {
       if (item is! Map) continue;
@@ -1022,37 +1022,46 @@ class MobileApi {
         records.add(CommissionRecord.fromJson(Map<String, dynamic>.from(item)));
       } catch (_) {}
     }
-    final advRaw2 = body['totalAdvances'];
-    final netRaw2 = body['netCommission'];
-    final paidRaw2 = body['totalPaid'];
-    final balRaw2 = body['balanceDue'];
-    final totalComm2 = totalRaw is num
-        ? totalRaw.toDouble()
-        : double.tryParse('$totalRaw') ?? 0;
-    final totalAdv2 = advRaw2 is num
-        ? advRaw2.toDouble()
-        : double.tryParse('$advRaw2') ?? 0;
-    final netComm2 = netRaw2 is num
-        ? netRaw2.toDouble()
-        : double.tryParse('$netRaw2') ??
-              (totalComm2 - totalAdv2).clamp(0, double.infinity);
-    final tPaid2 = paidRaw2 is num
-        ? paidRaw2.toDouble()
-        : double.tryParse('$paidRaw2') ?? 0;
-    final staffIdRaw2 = '${staffMap['id'] ?? staffId}'.trim();
-    final staffNameRaw2 = '${staffMap['name'] ?? ''}'.trim();
+    double n(dynamic v) {
+      if (v is num) return v.toDouble();
+      return double.tryParse('$v') ?? 0;
+    }
+
+    final totalComm = n(body['total'] ?? body['totalCommission']);
+    final totalAdv = n(body['totalAdvances']);
+    final netComm = body['netCommission'] != null
+        ? n(body['netCommission'])
+        : (totalComm - totalAdv).clamp(0, double.infinity).toDouble();
+    final tPaid = n(body['totalPaid']);
+    final salaryType = '${body['salaryType'] ?? 'commission_only'}';
+    final baseSalary = n(body['baseSalary']);
+    final presentDays = int.tryParse('${body['presentDays'] ?? 0}') ?? 0;
+    final dailySalaryEarned = n(body['dailySalaryEarned']);
+    final gross = body['grossPayable'] != null
+        ? n(body['grossPayable'])
+        : (salaryType == 'daily_salary_plus_commission'
+            ? dailySalaryEarned + totalComm
+            : (salaryType == 'salary_plus_commission'
+                ? baseSalary + totalComm
+                : (salaryType == 'salary_only' ? baseSalary : totalComm)));
+    final staffIdRaw = '${staffMap['id'] ?? ''}'.trim();
+    final staffNameRaw = '${staffMap['name'] ?? ''}'.trim();
     return MyCommissionResult(
-      total: totalComm2,
-      totalAdvances: totalAdv2,
-      netCommission: netComm2,
-      totalPaid: tPaid2,
-      balanceDue: balRaw2 is num
-          ? balRaw2.toDouble()
-          : double.tryParse('$balRaw2') ??
-                (netComm2 - tPaid2).clamp(0, double.infinity),
+      total: totalComm,
+      totalAdvances: totalAdv,
+      netCommission: netComm,
+      totalPaid: tPaid,
+      balanceDue: body['balanceDue'] != null
+          ? n(body['balanceDue'])
+          : (netComm - tPaid).clamp(0, double.infinity).toDouble(),
       records: records,
-      staffId: staffIdRaw2.isEmpty ? null : staffIdRaw2,
-      staffName: staffNameRaw2.isEmpty ? null : staffNameRaw2,
+      staffId: staffIdRaw.isEmpty ? null : staffIdRaw,
+      staffName: staffNameRaw.isEmpty ? null : staffNameRaw,
+      salaryType: salaryType,
+      baseSalary: baseSalary,
+      presentDays: presentDays,
+      dailySalaryEarned: dailySalaryEarned,
+      grossPayable: gross,
     );
   }
 

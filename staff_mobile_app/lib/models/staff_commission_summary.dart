@@ -14,6 +14,11 @@ class StaffCommissionSummary {
     required this.balanceDue,
     this.commissionType,
     this.commissionValue,
+    this.salaryType = 'commission_only',
+    this.baseSalary = 0,
+    this.presentDays = 0,
+    this.dailySalaryEarned = 0,
+    this.grossPayable = 0,
   });
 
   final String staffId;
@@ -29,33 +34,70 @@ class StaffCommissionSummary {
   final double balanceDue;
   final String? commissionType;
   final double? commissionValue;
+  final String salaryType;
+  final double baseSalary;
+  final int presentDays;
+  final double dailySalaryEarned;
+  final double grossPayable;
+
+  double get salaryPortion {
+    if (salaryType == 'daily_salary_plus_commission') return dailySalaryEarned;
+    if (salaryType == 'salary_only' || salaryType == 'salary_plus_commission') {
+      return baseSalary;
+    }
+    return 0;
+  }
+
+  static double _num(dynamic v) {
+    if (v is num) return v.toDouble();
+    return double.tryParse('$v') ?? 0;
+  }
 
   factory StaffCommissionSummary.fromJson(Map<String, dynamic> json) {
-    final rev  = json['totalRevenue'];
-    final comm = json['totalCommission'];
-    final adv  = json['totalAdvances'];
-    final net  = json['netCommission'];
-    final cv   = json['commissionValue'];
-    final paidRaw = json['totalPaid'];
-    final balRaw  = json['balanceDue'];
-    final totalCommission = comm is num ? comm.toDouble() : double.tryParse('$comm') ?? 0;
-    final totalAdvances   = adv  is num ? adv.toDouble()  : double.tryParse('$adv')  ?? 0;
-    final netC  = net  is num ? net.toDouble()  : (net  != null ? double.tryParse('$net')  ?? 0 : (totalCommission - totalAdvances).clamp(0, double.infinity).toDouble());
-    final tPaid = paidRaw is num ? paidRaw.toDouble() : double.tryParse('$paidRaw') ?? 0;
+    final totalCommission = _num(json['totalCommission']);
+    final totalAdvances = _num(json['totalAdvances']);
+    final netRaw = json['netCommission'];
+    final netC = netRaw != null
+        ? _num(netRaw)
+        : (totalCommission - totalAdvances).clamp(0, double.infinity).toDouble();
+    final tPaid = _num(json['totalPaid']);
+    final balRaw = json['balanceDue'];
+    final salaryType = '${json['salaryType'] ?? 'commission_only'}';
+    final baseSalary = _num(json['baseSalary']);
+    final presentDays = int.tryParse('${json['presentDays'] ?? 0}') ?? 0;
+    final dailySalaryEarned = _num(json['dailySalaryEarned']);
+    final grossRaw = json['grossPayable'];
+    final gross = grossRaw != null
+        ? _num(grossRaw)
+        : (salaryType == 'daily_salary_plus_commission'
+            ? dailySalaryEarned + totalCommission
+            : (salaryType == 'salary_plus_commission'
+                ? baseSalary + totalCommission
+                : (salaryType == 'salary_only' ? baseSalary : totalCommission)));
+
     return StaffCommissionSummary(
-      staffId:          '${json['staffId'] ?? ''}',
-      staffName:        '${json['staffName'] ?? ''}',
-      role:             '${json['role'] ?? ''}',
-      branchName:       '${json['branchName'] ?? ''}',
+      staffId: '${json['staffId'] ?? ''}',
+      staffName: '${json['staffName'] ?? ''}',
+      role: '${json['role'] ?? ''}',
+      branchName: '${json['branchName'] ?? ''}',
       appointmentCount: int.tryParse('${json['appointmentCount'] ?? 0}') ?? 0,
-      totalRevenue:     rev is num ? rev.toDouble() : double.tryParse('$rev') ?? 0,
+      totalRevenue: _num(json['totalRevenue']),
       totalCommission: totalCommission,
       totalAdvances: totalAdvances,
-      netCommission:    netC,
-      totalPaid:        tPaid,
-      balanceDue:       balRaw is num ? balRaw.toDouble() : double.tryParse('$balRaw') ?? (netC - tPaid).clamp(0, double.infinity).toDouble(),
-      commissionType:   json['commissionType']?.toString(),
-      commissionValue:  cv is num ? cv.toDouble() : double.tryParse('$cv'),
+      netCommission: netC,
+      totalPaid: tPaid,
+      balanceDue: balRaw != null
+          ? _num(balRaw)
+          : (netC - tPaid).clamp(0, double.infinity).toDouble(),
+      commissionType: json['commissionType']?.toString(),
+      commissionValue: json['commissionValue'] == null
+          ? null
+          : _num(json['commissionValue']),
+      salaryType: salaryType,
+      baseSalary: baseSalary,
+      presentDays: presentDays,
+      dailySalaryEarned: dailySalaryEarned,
+      grossPayable: gross,
     );
   }
 }

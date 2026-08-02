@@ -744,11 +744,11 @@ class AppState extends ChangeNotifier {
     if (token == null || token.isEmpty) {
       throw Exception('Missing auth token (cannot load commission).');
     }
-    final staffId = _currentUser?.linkedStaffId?.trim() ?? '';
-    if (staffId.isNotEmpty) {
-      return loadStaffCommissionReport(staffId: staffId, month: month);
-    }
-    return _api.fetchMyCommission(token: token, month: month);
+    // Always use /me so staff is scoped to their linked profile (backend enforces).
+    return _api.fetchMyCommission(
+      token: token,
+      month: month ?? _commissionMonthDefault(),
+    );
   }
 
   /// All staff monthly totals (GET /api/staff/commission). Branch-scoped for staff/manager; all branches for superadmin/admin unless [branchId] is set.

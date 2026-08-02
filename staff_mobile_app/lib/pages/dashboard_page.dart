@@ -354,7 +354,7 @@ class _DashboardPageState extends State<DashboardPage>
         ok: s.isFeatureEnabled(MobileFeatures.staff),
       ),
       _NavData(
-        'Commission',
+        'Salary & Comm',
         Icons.monetization_on_rounded,
         [const Color(0xFF15803D), const Color(0xFF22C55E)],
         const CommissionPage(),

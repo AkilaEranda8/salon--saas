@@ -39,7 +39,7 @@ class MobileFeatures {
     calendar: 'Calendar',
     walkin: 'Walk-in',
     staff: 'Staff',
-    commission: 'Commission',
+    commission: 'Salary & Commission',
     attendance: 'Attendance',
     aiChat: 'AI Chat',
     reminders: 'Reminders',

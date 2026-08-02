@@ -39,7 +39,7 @@ const photoUpload = multer({
   },
 });
 
-const STAFF_APP_VERSION = '1.3.3';
+const STAFF_APP_VERSION = '1.3.4';
 const STAFF_APP_FILENAME = 'hexaone-staff-app.apk';
 
 function resolveStaffAppPath() {

@@ -2,13 +2,21 @@ import 'package:flutter/material.dart';
 
 import '../models/staff_member.dart';
 
+/// Equal share of commission pool for each person (main + helpers).
+double equalHelperPercent(int helperCount) {
+  final n = helperCount < 1 ? 1 : helperCount;
+  return double.parse((100 / (n + 1)).toStringAsFixed(2));
+}
+
 /// One helper staff row for payment commission split.
 class PaymentHelperDraft {
   PaymentHelperDraft({
     this.staffId = '',
     this.commissionType = 'percentage_of_main',
-    this.commissionValue = '20',
-  });
+    String? commissionValue,
+    int helperCount = 1,
+  }) : commissionValue =
+            commissionValue ?? equalHelperPercent(helperCount).toString();
 
   String staffId;
   String commissionType; // percentage_of_main | fixed
@@ -20,6 +28,22 @@ class PaymentHelperDraft {
             commissionType == 'fixed' ? 'fixed' : 'percentage_of_main',
         'commission_value': double.tryParse(commissionValue.trim()) ?? 0,
       };
+}
+
+List<PaymentHelperDraft> withEqualShares(List<PaymentHelperDraft> list) {
+  if (list.isEmpty) return list;
+  final pct = equalHelperPercent(list.length).toString();
+  return list
+      .map(
+        (h) => h.commissionType == 'fixed'
+            ? h
+            : PaymentHelperDraft(
+                staffId: h.staffId,
+                commissionType: 'percentage_of_main',
+                commissionValue: pct,
+              ),
+      )
+      .toList();
 }
 
 List<Map<String, dynamic>> helpersApiPayload(List<PaymentHelperDraft> helpers) {
@@ -38,7 +62,7 @@ bool helpersDraftValid(List<PaymentHelperDraft> helpers) {
       (double.tryParse(h.commissionValue.trim()) ?? 0) > 0);
 }
 
-/// Main staff + optional helpers (share taken from main commission).
+/// Main staff + optional helpers (share taken from main commission pool).
 class PaymentHelperStaffSection extends StatelessWidget {
   const PaymentHelperStaffSection({
     required this.staffOptions,
@@ -71,6 +95,8 @@ class PaymentHelperStaffSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final mainId = mainStaffId.trim();
+    final helperPct = equalHelperPercent(helpers.isEmpty ? 1 : helpers.length);
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(12),
@@ -92,7 +118,8 @@ class PaymentHelperStaffSection extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           const Text(
-            'Helpers optional — their share comes from the main commission.',
+            'Main rate makes the commission pool. Helpers share that pool — '
+            'default equal split (1 helper → 50%/50%). Example: pool Rs. 1000 → Rs. 500 each.',
             style: TextStyle(fontSize: 11.5, color: _muted, height: 1.35),
           ),
           const SizedBox(height: 12),
@@ -139,7 +166,9 @@ class PaymentHelperStaffSection extends StatelessWidget {
                     if (_helpersOn) {
                       onHelpersChanged(const []);
                     } else {
-                      onHelpersChanged([PaymentHelperDraft()]);
+                      onHelpersChanged(
+                        withEqualShares([PaymentHelperDraft(helperCount: 1)]),
+                      );
                     }
                   },
             borderRadius: BorderRadius.circular(10),
@@ -162,7 +191,11 @@ class PaymentHelperStaffSection extends StatelessWidget {
                           ? null
                           : (v) {
                               if (v == true) {
-                                onHelpersChanged([PaymentHelperDraft()]);
+                                onHelpersChanged(
+                                  withEqualShares(
+                                    [PaymentHelperDraft(helperCount: 1)],
+                                  ),
+                                );
                               } else {
                                 onHelpersChanged(const []);
                               }
@@ -183,7 +216,7 @@ class PaymentHelperStaffSection extends StatelessWidget {
                             ),
                           ),
                           TextSpan(
-                            text: '(optional)',
+                            text: '(optional · equal split)',
                             style: TextStyle(
                               fontWeight: FontWeight.w500,
                               fontSize: 13,
@@ -199,6 +232,21 @@ class PaymentHelperStaffSection extends StatelessWidget {
             ),
           ),
           if (_helpersOn) ...[
+            const SizedBox(height: 10),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              decoration: BoxDecoration(
+                color: _soft,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: _border),
+              ),
+              child: Text(
+                'Equal share: ${helperPct.toStringAsFixed(helperPct % 1 == 0 ? 0 : 2)}% of pool each '
+                '(main + ${helpers.length} helper${helpers.length == 1 ? '' : 's'}).',
+                style: const TextStyle(fontSize: 12, color: _muted, height: 1.35),
+              ),
+            ),
             const SizedBox(height: 10),
             ...helpers.asMap().entries.map((entry) {
               final idx = entry.key;
@@ -241,7 +289,9 @@ class PaymentHelperStaffSection extends StatelessWidget {
                         GestureDetector(
                           onTap: () {
                             final next = [...helpers]..removeAt(idx);
-                            onHelpersChanged(next);
+                            onHelpersChanged(
+                              next.isEmpty ? const [] : withEqualShares(next),
+                            );
                           },
                           child: const Text(
                             'Remove',
@@ -289,7 +339,7 @@ class PaymentHelperStaffSection extends StatelessWidget {
                             items: const [
                               DropdownMenuItem(
                                 value: 'percentage_of_main',
-                                child: Text('% of main'),
+                                child: Text('% of commission'),
                               ),
                               DropdownMenuItem(
                                 value: 'fixed',
@@ -311,13 +361,13 @@ class PaymentHelperStaffSection extends StatelessWidget {
                         Expanded(
                           child: TextFormField(
                             key: ValueKey(
-                              'helper-val-$idx-${h.commissionType}',
+                              'helper-val-$idx-${h.commissionType}-${h.commissionValue}',
                             ),
                             initialValue: h.commissionValue,
                             keyboardType: const TextInputType.numberWithOptions(
                               decimal: true,
                             ),
-                            decoration: _fieldDeco(isPct ? '%' : 'Rs'),
+                            decoration: _fieldDeco(isPct ? 'Share %' : 'Rs'),
                             onChanged: (v) {
                               final next = [...helpers];
                               next[idx] = PaymentHelperDraft(
@@ -340,7 +390,13 @@ class PaymentHelperStaffSection extends StatelessWidget {
               child: TextButton.icon(
                 onPressed: mainId.isEmpty
                     ? null
-                    : () => onHelpersChanged([...helpers, PaymentHelperDraft()]),
+                    : () {
+                        final next = [
+                          ...helpers,
+                          PaymentHelperDraft(helperCount: helpers.length + 1),
+                        ];
+                        onHelpersChanged(withEqualShares(next));
+                      },
                 icon: const Icon(Icons.add, size: 18),
                 label: const Text('Add another helper'),
                 style: TextButton.styleFrom(

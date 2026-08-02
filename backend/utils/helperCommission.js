@@ -1,8 +1,10 @@
 /**
  * Split main worker commission with optional helper staff.
  * Helper types:
- *  - percentage_of_main: % of main's gross commission
- *  - fixed: fixed Rs taken from main
+ *  - percentage_of_main: % of the main commission POOL (not of the service total)
+ *  - fixed: fixed Rs taken from the pool
+ *
+ * Example: main rate makes a Rs. 1000 pool; one helper at 50% → main Rs. 500, helper Rs. 500.
  */
 
 function parseHelpersInput(raw) {
@@ -26,6 +28,12 @@ function parseHelpersInput(raw) {
     });
   }
   return out;
+}
+
+/** Equal share of the pool for each person (main + helpers), as helper %. */
+function equalHelperPercent(helperCount) {
+  const n = Math.max(1, Number(helperCount) || 1);
+  return Math.round((100 / (n + 1)) * 100) / 100;
 }
 
 function computeHelperCommissionSplit(grossMainAmount, helpersInput = []) {
@@ -54,7 +62,7 @@ function computeHelperCommissionSplit(grossMainAmount, helpersInput = []) {
       commission_amount: amount,
       rateLabel: h.commission_type === 'fixed'
         ? `Rs. ${h.commission_value}`
-        : `${h.commission_value}% of main`,
+        : `${h.commission_value}% of commission`,
     };
   });
 
@@ -65,7 +73,7 @@ function computeHelperCommissionSplit(grossMainAmount, helpersInput = []) {
       helpersTotal,
       mainNet: 0,
       helpers: lines,
-      error: `Helper commission (Rs. ${helpersTotal.toFixed(2)}) exceeds main commission (Rs. ${grossMain.toFixed(2)}).`,
+      error: `Helper commission (Rs. ${helpersTotal.toFixed(2)}) exceeds main commission pool (Rs. ${grossMain.toFixed(2)}).`,
     };
   }
 
@@ -93,6 +101,7 @@ function helperAmountForStaff(helperCommission, staffId) {
 
 module.exports = {
   parseHelpersInput,
+  equalHelperPercent,
   computeHelperCommissionSplit,
   helperAmountForStaff,
 };

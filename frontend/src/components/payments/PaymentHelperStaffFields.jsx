@@ -1,14 +1,35 @@
 import Button from '../ui/Button';
 import { Input, Select, FormGroup } from '../ui/FormElements';
 
-const emptyHelper = () => ({
+/** Equal share of commission pool for each person (main + helpers). */
+export function equalHelperPercent(helperCount) {
+  const n = Math.max(1, Number(helperCount) || 1);
+  return Math.round((100 / (n + 1)) * 100) / 100;
+}
+
+const emptyHelper = (helperCount = 1) => ({
   staff_id: '',
   commission_type: 'percentage_of_main',
-  commission_value: '20',
+  commission_value: String(equalHelperPercent(helperCount)),
 });
 
 /**
- * Main staff + optional helper staff (commission taken from main).
+ * Apply equal pool shares across all %-of-main helpers (main keeps the rest).
+ * 1 helper → 50% each; 2 helpers → ~33.33% each person, etc.
+ */
+function withEqualShares(list) {
+  const rows = list || [];
+  if (!rows.length) return rows;
+  const pct = equalHelperPercent(rows.length);
+  return rows.map((h) => (
+    (h.commission_type || 'percentage_of_main') === 'fixed'
+      ? h
+      : { ...h, commission_type: 'percentage_of_main', commission_value: String(pct) }
+  ));
+}
+
+/**
+ * Main staff + optional helper staff (commission taken from main pool).
  */
 export default function PaymentHelperStaffFields({
   mainStaffId,
@@ -33,14 +54,15 @@ export default function PaymentHelperStaffFields({
 
   const setHelpersEnabled = (on) => {
     if (on) {
-      if (!(helpers || []).length) onHelpersChange([emptyHelper()]);
+      if (!(helpers || []).length) onHelpersChange(withEqualShares([emptyHelper(1)]));
     } else {
       onHelpersChange([]);
     }
   };
 
   const addHelper = () => {
-    onHelpersChange([...(helpers || []), emptyHelper()]);
+    const next = [...(helpers || []), emptyHelper((helpers || []).length + 1)];
+    onHelpersChange(withEqualShares(next));
   };
 
   const updateHelper = (idx, patch) => {
@@ -48,7 +70,8 @@ export default function PaymentHelperStaffFields({
   };
 
   const removeHelper = (idx) => {
-    onHelpersChange((helpers || []).filter((_, i) => i !== idx));
+    const next = (helpers || []).filter((_, i) => i !== idx);
+    onHelpersChange(next.length ? withEqualShares(next) : []);
   };
 
   const fieldLabel = {
@@ -59,6 +82,8 @@ export default function PaymentHelperStaffFields({
     textTransform: 'uppercase',
     marginBottom: 4,
   };
+
+  const helperPct = equalHelperPercent((helpers || []).length || 1);
 
   return (
     <div style={{
@@ -72,8 +97,9 @@ export default function PaymentHelperStaffFields({
     }}>
       <div>
         <div style={{ fontWeight: 700, fontSize: 14, color: title }}>Staff & commission</div>
-        <div style={{ fontSize: 12, color: muted, marginTop: 4, lineHeight: 1.4 }}>
-          Helpers optional — their share comes from the main commission.
+        <div style={{ fontSize: 12, color: muted, marginTop: 4, lineHeight: 1.45 }}>
+          Main staff rate makes the commission pool (e.g. 20% of service). Helpers share that pool —
+          default is equal split (1 helper → 50% / 50%). Example: pool Rs. 1000 → main Rs. 500, helper Rs. 500.
         </div>
       </div>
 
@@ -112,12 +138,25 @@ export default function PaymentHelperStaffFields({
           style={{ width: 16, height: 16, accentColor: '#2563EB', flexShrink: 0 }}
         />
         <span style={{ fontWeight: 700, fontSize: 13, color: title }}>
-          Helper staff <span style={{ fontWeight: 500, color: muted }}>(optional)</span>
+          Helper staff <span style={{ fontWeight: 500, color: muted }}>(optional · equal split)</span>
         </span>
       </label>
 
       {helpersOn && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{
+            fontSize: 12,
+            color: muted,
+            background: soft,
+            border: `1px solid ${border}`,
+            borderRadius: 8,
+            padding: '8px 10px',
+          }}>
+            Equal share now: <strong style={{ color: title }}>{helperPct}%</strong> of the pool each
+            (main + {(helpers || []).length} helper{(helpers || []).length === 1 ? '' : 's'}).
+            Change % or use Fixed Rs to customize.
+          </div>
+
           {(helpers || []).map((h, idx) => {
             const options = staffOptions.filter((s) => {
               const sid = String(s.id);
@@ -185,19 +224,19 @@ export default function PaymentHelperStaffFields({
                       value={h.commission_type || 'percentage_of_main'}
                       onChange={(e) => updateHelper(idx, { commission_type: e.target.value })}
                     >
-                      <option value="percentage_of_main">% of main</option>
+                      <option value="percentage_of_main">% of commission</option>
                       <option value="fixed">Fixed Rs</option>
                     </Select>
                   </div>
                   <div>
-                    <div style={fieldLabel}>{isPct ? 'Percent (%)' : 'Amount (Rs)'}</div>
+                    <div style={fieldLabel}>{isPct ? 'Share (%)' : 'Amount (Rs)'}</div>
                     <Input
                       type="number"
                       min="0"
                       step="0.01"
                       value={h.commission_value ?? ''}
                       onChange={(e) => updateHelper(idx, { commission_value: e.target.value })}
-                      placeholder={isPct ? '20' : '200'}
+                      placeholder={isPct ? String(helperPct) : '200'}
                     />
                   </div>
                 </div>

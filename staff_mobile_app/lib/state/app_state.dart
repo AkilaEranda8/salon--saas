@@ -277,6 +277,9 @@ class AppState extends ChangeNotifier {
     return role == 'superadmin' || role == 'admin' || role == 'manager';
   }
 
+  /// Admin/manager/superadmin see all branch appointments; staff see only own.
+  bool get seesAllBranchAppointments => canManageSalonStaff;
+
   StaffUser _staffUserFromApi(
     Map<String, dynamic> user, {
     required String token,
@@ -1042,18 +1045,28 @@ class AppState extends ChangeNotifier {
     _lastApptDate = date;
     _lastApptBranchId = effectiveBranch.isEmpty ? null : effectiveBranch;
 
+    // Staff role: only own appointments (admin/manager/superadmin see branch/team)
+    final ownStaffId = (_currentUser?.linkedStaffId ?? '').trim();
+    final staffFilter =
+        (!seesAllBranchAppointments && ownStaffId.isNotEmpty) ? ownStaffId : null;
+
     final result = await _api.fetchAppointments(
       token: token,
       branchId: effectiveBranch.isEmpty ? null : effectiveBranch,
+      staffId: staffFilter,
       page: page,
       limit: limit,
       status: status,
       date: date,
     );
     _appointmentTotal = result.total;
+    var rows = result.data;
+    if (staffFilter != null) {
+      rows = rows.where((a) => a.staffId == staffFilter).toList();
+    }
     _appointments
       ..clear()
-      ..addAll(result.data);
+      ..addAll(rows);
     notifyListeners();
     return appointments;
   }
@@ -1118,7 +1131,18 @@ class AppState extends ChangeNotifier {
       _lastError = 'Branch is missing.';
       return false;
     }
-    final useItems = bookingItems != null && bookingItems.isNotEmpty;
+    final ownStaffId = (_currentUser?.linkedStaffId ?? '').trim();
+    final lockedToSelf = !seesAllBranchAppointments && ownStaffId.isNotEmpty;
+    final effectiveStaffId = lockedToSelf ? ownStaffId : staffId;
+    var effectiveItems = bookingItems;
+    if (lockedToSelf && bookingItems != null && bookingItems.isNotEmpty) {
+      effectiveItems = bookingItems.map((raw) {
+        final m = Map<String, dynamic>.from(raw);
+        m['staff_id'] = int.tryParse(ownStaffId) ?? ownStaffId;
+        return m;
+      }).toList();
+    }
+    final useItems = effectiveItems != null && effectiveItems.isNotEmpty;
     if (!useItems && orderedServiceIds.isEmpty) {
       _lastError = 'Select at least one service.';
       return false;
@@ -1153,7 +1177,7 @@ class AppState extends ChangeNotifier {
           time: time,
           customerId: customerId.isNotEmpty ? customerId : null,
           phone: phone,
-          staffId: staffId.isNotEmpty ? staffId : null,
+          staffId: effectiveStaffId.isNotEmpty ? effectiveStaffId : null,
           amount: amountStr,
           notes: notes,
           status: status.isNotEmpty ? status : null,
@@ -1174,7 +1198,7 @@ class AppState extends ChangeNotifier {
           isRecurring: isRecurring,
           recurringNextDate: recurringNextDate,
           recurringMessageTemplateIds: recurringMessageTemplateIds,
-          items: bookingItems,
+          items: effectiveItems,
           advanceAmount: advanceAmount,
           advanceMethod: advanceMethod,
         );
@@ -1206,7 +1230,7 @@ class AppState extends ChangeNotifier {
           time: time,
           customerId: customerId.isNotEmpty ? customerId : null,
           phone: phone,
-          staffId: staffId.isNotEmpty ? staffId : null,
+          staffId: effectiveStaffId.isNotEmpty ? effectiveStaffId : null,
           amount: amountStr,
           notes: notes,
           isRecurring: isRecurring,

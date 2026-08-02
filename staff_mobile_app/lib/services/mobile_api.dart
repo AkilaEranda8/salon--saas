@@ -404,6 +404,7 @@ class MobileApi {
   Future<AppointmentListResult> fetchAppointments({
     required String token,
     String? branchId,
+    String? staffId,
     int page = 1,
     int limit = 20,
     String? status,
@@ -413,6 +414,7 @@ class MobileApi {
       'page': '$page',
       'limit': '$limit',
       if (branchId != null && branchId.isNotEmpty) 'branchId': branchId,
+      if (staffId != null && staffId.isNotEmpty) 'staffId': staffId,
       if (status != null && status.isNotEmpty) 'status': status,
       if (date != null && date.isNotEmpty) 'date': date,
     };

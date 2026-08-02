@@ -1,0 +1,17 @@
+# Apple signing files for GitHub Actions (never commit real certs).
+#
+# Required Secrets (repo → Settings → Secrets and variables → Actions):
+#   IOS_DIST_CERT_P12_BASE64
+#   IOS_DIST_CERT_PASSWORD
+#   IOS_PROVISION_PROFILE_BASE64
+#   IOS_TEAM_ID
+# Optional:
+#   IOS_BUNDLE_ID          (default in workflow: com.hexaone.staff)
+#   IOS_KEYCHAIN_PASSWORD
+#
+# Create Ad Hoc or App Store distribution cert + profile in Apple Developer,
+# matching the Bundle ID used above. Then:
+#   base64 -i YourCert.p12 | pbcopy
+#   base64 -i YourProfile.mobileprovision | pbcopy
+#
+# Run: GitHub → Actions → "iOS IPA (macOS)" → Run workflow

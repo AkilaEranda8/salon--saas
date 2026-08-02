@@ -411,6 +411,56 @@ class _AttendancePageState extends State<AttendancePage> {
     await _load();
   }
 
+  Future<void> _teamCheckIn(String staffId, AttendanceRecord? rec) async {
+    if (_hasClock(rec?.checkIn)) {
+      _toast('Already checked in');
+      return;
+    }
+    final app = AppStateScope.of(context);
+    setState(() => _busy = true);
+    final row = await app.upsertAttendance(
+      staffId: staffId,
+      date: _date,
+      status: 'present',
+      checkIn: _nowTime(),
+    );
+    setState(() => _busy = false);
+    if (row == null) {
+      _toast(app.lastError ?? 'Check-in failed');
+      return;
+    }
+    _toast('Checked in at ${_fmtClock(row.checkIn)}', success: true);
+    await _load();
+  }
+
+  Future<void> _teamCheckOut(AttendanceRecord? rec) async {
+    if (rec == null || !_hasClock(rec.checkIn)) {
+      _toast('Check in first');
+      return;
+    }
+    if (_hasClock(rec.checkOut)) {
+      _toast('Already day-ended out');
+      return;
+    }
+    if (rec.id.isEmpty) {
+      _toast('No attendance record yet — check in first');
+      return;
+    }
+    final app = AppStateScope.of(context);
+    setState(() => _busy = true);
+    final row = await app.updateAttendanceRecord(
+      id: rec.id,
+      checkOut: _nowTime(),
+    );
+    setState(() => _busy = false);
+    if (row == null) {
+      _toast(app.lastError ?? 'Day end out failed');
+      return;
+    }
+    _toast('Day end out at ${_fmtClock(row.checkOut)}', success: true);
+    await _load();
+  }
+
   void _toast(String msg, {bool success = false}) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -894,30 +944,39 @@ class _AttendancePageState extends State<AttendancePage> {
                     ),
                   ),
                   const SizedBox(height: 14),
-                  Row(children: [
-                    Expanded(
-                      child: _PrimaryBtn(
-                        label: 'Check In',
-                        icon: Icons.login_rounded,
-                        color: _emerald,
-                        enabled: !_busy && !_hasClock(mine?.checkIn),
-                        onTap: _checkIn,
+                  // Check In — full width
+                  _PrimaryBtn(
+                    label: 'Check In',
+                    icon: Icons.login_rounded,
+                    color: _emerald,
+                    enabled: !_busy && !_hasClock(mine?.checkIn),
+                    onTap: _checkIn,
+                  ),
+                  const SizedBox(height: 10),
+                  // Day End Out — always visible
+                  _PrimaryBtn(
+                    label: _hasClock(mine?.checkOut)
+                        ? 'Day End Out · ${_fmtClock(mine?.checkOut)}'
+                        : 'Day End Out',
+                    icon: Icons.logout_rounded,
+                    color: const Color(0xFFB45309),
+                    enabled: !_busy &&
+                        _hasClock(mine?.checkIn) &&
+                        !_hasClock(mine?.checkOut),
+                    onTap: _checkOut,
+                  ),
+                  if (_hasClock(mine?.checkIn) && !_hasClock(mine?.checkOut))
+                    const Padding(
+                      padding: EdgeInsets.only(top: 8),
+                      child: Text(
+                        'Day අවසානයේ Out button එක tap කරන්න — time auto save වෙනවා.',
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          color: _muted,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: _PrimaryBtn(
-                        label: 'Day End Out',
-                        icon: Icons.logout_rounded,
-                        color: const Color(0xFFB45309),
-                        enabled: !_busy &&
-                            mine != null &&
-                            _hasClock(mine.checkIn) &&
-                            !_hasClock(mine.checkOut),
-                        onTap: _checkOut,
-                      ),
-                    ),
-                  ]),
                   const SizedBox(height: 18),
                   const Text(
                     'Or mark status',
@@ -976,21 +1035,46 @@ class _AttendancePageState extends State<AttendancePage> {
 
     return ListView.builder(
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 32),
-      itemCount: _staff.length,
+      itemCount: _staff.length + (_isToday ? 1 : 0),
       itemBuilder: (_, i) {
-        final s = _staff[i];
+        if (_isToday && i == 0) {
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFF7ED),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFFDBA74)),
+              ),
+              child: const Text(
+                'Each staff: Check In + Day End Out buttons. Out = day end time (auto).',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF9A3412),
+                  height: 1.35,
+                ),
+              ),
+            ),
+          );
+        }
+        final s = _staff[_isToday ? i - 1 : i];
         final rec = byStaff[s.id];
         return _TeamStaffCard(
           staff: s,
           record: rec,
           busy: _busy,
+          showClockActions: _isToday,
           onMark: (status) => _markTeam(
             staffId: s.id,
             status: status,
-            checkIn: status == 'present' && rec?.checkIn == null
+            checkIn: status == 'present' && !_hasClock(rec?.checkIn)
                 ? _nowTime()
                 : null,
           ),
+          onCheckIn: () => _teamCheckIn(s.id, rec),
+          onDayEndOut: () => _teamCheckOut(rec),
         );
       },
     );
@@ -1156,6 +1240,7 @@ class _PrimaryBtn extends StatelessWidget {
         opacity: enabled ? 1 : 0.45,
         duration: const Duration(milliseconds: 150),
         child: Container(
+          width: double.infinity,
           padding: const EdgeInsets.symmetric(vertical: 14),
           decoration: BoxDecoration(
             color: color,
@@ -1257,11 +1342,19 @@ class _TeamStaffCard extends StatelessWidget {
     required this.record,
     required this.busy,
     required this.onMark,
+    required this.onCheckIn,
+    required this.onDayEndOut,
+    this.showClockActions = true,
   });
   final StaffMember staff;
   final AttendanceRecord? record;
   final bool busy;
+  final bool showClockActions;
   final ValueChanged<String> onMark;
+  final VoidCallback onCheckIn;
+  final VoidCallback onDayEndOut;
+
+  bool _has(String? t) => t != null && t.trim().isNotEmpty;
 
   @override
   Widget build(BuildContext context) {
@@ -1270,9 +1363,11 @@ class _TeamStaffCard extends StatelessWidget {
     final rate = staff.baseSalary ?? 0;
     final earns = status == 'present' || status == 'late';
     final times = [
-      if (record?.checkIn != null) 'In ${_fmtClock(record!.checkIn)}',
-      if (record?.checkOut != null) 'Out ${_fmtClock(record!.checkOut)}',
+      if (_has(record?.checkIn)) 'In ${_fmtClock(record!.checkIn)}',
+      if (_has(record?.checkOut)) 'Out ${_fmtClock(record!.checkOut)}',
     ].join(' · ');
+    final canIn = !_has(record?.checkIn);
+    final canOut = _has(record?.checkIn) && !_has(record?.checkOut);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
@@ -1374,6 +1469,30 @@ class _TeamStaffCard extends StatelessWidget {
                 ),
               ),
             ]),
+            if (showClockActions) ...[
+              const SizedBox(height: 12),
+              Row(children: [
+                Expanded(
+                  child: _PrimaryBtn(
+                    label: 'Check In',
+                    icon: Icons.login_rounded,
+                    color: _emerald,
+                    enabled: !busy && canIn,
+                    onTap: onCheckIn,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _PrimaryBtn(
+                    label: 'Out',
+                    icon: Icons.logout_rounded,
+                    color: const Color(0xFFB45309),
+                    enabled: !busy && canOut,
+                    onTap: onDayEndOut,
+                  ),
+                ),
+              ]),
+            ],
             const SizedBox(height: 12),
             const Divider(height: 1, color: _border),
             const SizedBox(height: 10),

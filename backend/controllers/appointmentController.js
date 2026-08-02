@@ -13,9 +13,40 @@ const { notifyBranch, notifyStaffUser } = require('../services/fcmService');
 const { tenantWhere, byIdWhere, resolveTenantId } = require('../utils/tenantScope');
 const { notesUsesPackage, usesPackageBooking, parsePackageIdFromNotes, resolvePackageBundlePrice } = require('../utils/packageNotes');
 const { parseDurationMinutes, listAvailableSlots } = require('../utils/staffAvailability');
+const { resolveStaffRecordForRequest } = require('../utils/resolveUserBranch');
 
 const ADVANCE_METHODS = new Set(['Cash', 'Card', 'Online Transfer']);
-const ADVANCE_NOTE_PREFIX = 'Advance paid:';
+const ADVANCE_NOTE_PREFIX = 'Advance paid: ';
+
+function roleOf(req) {
+  return String(req.user?.role || req.userRole || '').toLowerCase();
+}
+
+function isTeamAppointmentRole(role) {
+  return role === 'superadmin' || role === 'admin' || role === 'manager';
+}
+
+/** Staff (non-manager) users only see/edit their own appointments. */
+async function applyStaffSelfScope(req, where) {
+  if (isTeamAppointmentRole(roleOf(req))) return;
+  const linked = await resolveStaffRecordForRequest(req);
+  where.staff_id = linked ? linked.id : -1;
+}
+
+async function assertStaffOwnsAppointment(req, appt) {
+  if (isTeamAppointmentRole(roleOf(req))) return null;
+  const linked = await resolveStaffRecordForRequest(req);
+  if (!linked || Number(appt.staff_id) !== Number(linked.id)) {
+    return { status: 403, message: 'You can only access your own appointments.' };
+  }
+  return null;
+}
+
+async function linkedStaffIdOrNull(req) {
+  if (isTeamAppointmentRole(roleOf(req))) return null;
+  const linked = await resolveStaffRecordForRequest(req);
+  return linked ? linked.id : null;
+}
 
 let appointmentServicesTableReadyPromise = null;
 
@@ -253,6 +284,8 @@ const list = async (req, res) => {
     if (req.query.status)  where.status   = req.query.status;
     if (req.query.staffId) where.staff_id = req.query.staffId;
     if (req.query.date)    where.date     = req.query.date;
+    // Staff role: force own appointments only (ignore client staffId override)
+    await applyStaffSelfScope(req, where);
 
     const { count, rows } = await Appointment.findAndCountAll({
       where,
@@ -350,6 +383,7 @@ const calendar = async (req, res) => {
     } else if (req.query.branchId) {
       where.branch_id = req.query.branchId;
     }
+    await applyStaffSelfScope(req, where);
 
     const appts = await Appointment.findAll({
       where,
@@ -391,6 +425,9 @@ const getOne = async (req, res) => {
     });
     if (!appt) return res.status(404).json({ message: 'Appointment not found.' });
 
+    const denied = await assertStaffOwnsAppointment(req, appt);
+    if (denied) return res.status(denied.status).json({ message: denied.message });
+
     await attachServiceIdsToAppointments(appt);
     await attachAdvancePaidToAppointments(appt);
     return res.json(appt);
@@ -425,6 +462,11 @@ const create = async (req, res) => {
       return res.status(400).json({ message: 'branch_id is required.' });
     }
 
+    const selfStaffId = await linkedStaffIdOrNull(req);
+    if (!isTeamAppointmentRole(roleOf(req)) && !selfStaffId) {
+      return res.status(403).json({ message: 'No staff profile linked to this account.' });
+    }
+
     const recurringTplId = parseInt(recurring_message_template_id, 10);
     const recurringTplIds = Array.isArray(recurring_message_template_ids)
       ? [...new Set(recurring_message_template_ids.map(Number).filter((id) => Number.isInteger(id) && id > 0))]
@@ -445,9 +487,11 @@ const create = async (req, res) => {
       for (let i = 0; i < items.length; i += 1) {
         const raw = items[i] || {};
         const sid = Number(raw.service_id ?? raw.serviceId);
-        const itemStaff = raw.staff_id != null && raw.staff_id !== ''
-          ? Number(raw.staff_id)
-          : null;
+        const itemStaff = selfStaffId != null
+          ? Number(selfStaffId)
+          : (raw.staff_id != null && raw.staff_id !== ''
+            ? Number(raw.staff_id)
+            : null);
         const itemDate = String(raw.date || '').trim();
         const itemTime = String(raw.time || '').trim();
         if (!Number.isInteger(sid) || sid <= 0) {
@@ -634,7 +678,9 @@ const create = async (req, res) => {
     }
 
     const appt = await Appointment.create({
-      branch_id, customer_id, staff_id, service_id: primaryServiceId, customer_name, phone, date, time, amount: finalAmount, notes,
+      branch_id, customer_id,
+      staff_id: selfStaffId != null ? selfStaffId : (staff_id || null),
+      service_id: primaryServiceId, customer_name, phone, date, time, amount: finalAmount, notes,
       status: req.body.status || 'pending',
       ...recurringFields,
       tenant_id: resolveTenantId(req),
@@ -714,6 +760,9 @@ const update = async (req, res) => {
       return res.status(403).json({ message: 'Access denied. Appointment belongs to a different branch.' });
     }
 
+    const deniedOwn = await assertStaffOwnsAppointment(req, appt);
+    if (deniedOwn) return res.status(deniedOwn.status).json({ message: deniedOwn.message });
+
     if (req.body.status !== undefined) {
       return res.status(400).json({ message: 'Use PATCH /appointments/:id/status to update appointment status.' });
     }
@@ -726,6 +775,10 @@ const update = async (req, res) => {
     const updates = {};
     for (const field of allowed) {
       if (req.body[field] !== undefined) updates[field] = req.body[field];
+    }
+    // Staff cannot reassign appointment to another stylist
+    if (!isTeamAppointmentRole(roleOf(req))) {
+      delete updates.staff_id;
     }
     if (updates.is_recurring === false) {
       updates.recurrence_frequency = null;
@@ -834,6 +887,9 @@ const changeStatus = async (req, res) => {
       return res.status(403).json({ message: 'Access denied. Appointment belongs to a different branch.' });
     }
 
+    const deniedOwn = await assertStaffOwnsAppointment(req, appt);
+    if (deniedOwn) return res.status(deniedOwn.status).json({ message: deniedOwn.message });
+
     const previousStatus = appt.status;
     await appt.update({ status });
 
@@ -915,6 +971,9 @@ const remove = async (req, res) => {
       return res.status(403).json({ message: 'Access denied. Appointment belongs to a different branch.' });
     }
 
+    const deniedOwn = await assertStaffOwnsAppointment(req, appt);
+    if (deniedOwn) return res.status(deniedOwn.status).json({ message: deniedOwn.message });
+
     await appt.destroy();
     return res.json({ message: 'Appointment deleted.' });
   } catch (err) {
@@ -931,6 +990,7 @@ const listRecurring = async (req, res) => {
     // Get root recurring appointments (parents — those with no recurrence_parent_id)
     where.is_recurring = true;
     where.recurrence_parent_id = null;
+    await applyStaffSelfScope(req, where);
 
     const parents = await Appointment.findAll({
       where,

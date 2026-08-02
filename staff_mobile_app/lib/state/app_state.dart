@@ -528,7 +528,9 @@ class AppState extends ChangeNotifier {
       'is_active': isActive,
       if (branchNum != null) 'branch_ids': [branchNum],
     };
-    if (salaryType == 'salary_only' || salaryType == 'salary_plus_commission') {
+    if (salaryType == 'salary_only' ||
+        salaryType == 'salary_plus_commission' ||
+        salaryType == 'daily_salary_plus_commission') {
       final bs = baseSalary?.trim() ?? '';
       if (bs.isNotEmpty) payload['base_salary'] = double.tryParse(bs) ?? 0;
     }

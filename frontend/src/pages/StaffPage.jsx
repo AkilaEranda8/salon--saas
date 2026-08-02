@@ -647,7 +647,7 @@ export default function StaffPage() {
           payload.commission_value = parseFloat(form.commission_value);
         }
       }
-      if (form.salary_type === 'salary_only' || form.salary_type === 'salary_plus_commission') {
+      if (form.salary_type === 'salary_only' || form.salary_type === 'salary_plus_commission' || form.salary_type === 'daily_salary_plus_commission') {
         if (form.base_salary !== '' && form.base_salary != null) {
           payload.base_salary = parseFloat(form.base_salary);
         }
@@ -1218,12 +1218,28 @@ export default function StaffPage() {
                   <option value="commission_only">Commission Only</option>
                   <option value="salary_only">Fixed Salary Only</option>
                   <option value="salary_plus_commission">Salary + Commission</option>
+                  <option value="daily_salary_plus_commission">Per-day Salary + Commission</option>
                 </Select>
               </FormGroup>
               {(form.salary_type === 'salary_only' || form.salary_type === 'salary_plus_commission') && (
                 <FormGroup label="Base Salary (Rs./month)">
                   <Input type="number" min="0" value={form.base_salary || ''} onChange={e => setForm(f => ({ ...f, base_salary: e.target.value }))} placeholder="e.g. 30000" />
                 </FormGroup>
+              )}
+              {form.salary_type === 'daily_salary_plus_commission' && (
+                <>
+                  <FormGroup label="Per-day Salary (Rs./day)">
+                    <Input type="number" min="0" value={form.base_salary || ''} onChange={e => setForm(f => ({ ...f, base_salary: e.target.value }))} placeholder="e.g. 1500" />
+                  </FormGroup>
+                  <div style={{
+                    padding: '10px 12px', borderRadius: 10, background: '#FDF2F8', border: '1px solid #FBCFE8',
+                    fontSize: 12, color: '#9D174D', lineHeight: 1.5, marginBottom: 4,
+                  }}>
+                    Monthly pay uses <strong>Attendance</strong>: Present or Late days × this rate, plus commission.
+                    Absent / Leave days are not paid.{' '}
+                    <a href="/attendance" style={{ color: '#BE185D', fontWeight: 700 }}>Open Attendance →</a>
+                  </div>
+                </>
               )}
               {form.salary_type !== 'salary_only' && (
                 <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: 14 }}>

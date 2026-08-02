@@ -168,6 +168,8 @@ export default function CommissionPage() {
           branchName: '',
           salaryType: d.salaryType || 'commission_only',
           baseSalary: d.baseSalary || 0,
+          presentDays: d.presentDays || 0,
+          dailySalaryEarned: d.dailySalaryEarned || 0,
           commissionType: 'percentage',
           commissionValue: 0,
           appointmentCount: (d.data || []).length,
@@ -336,16 +338,25 @@ export default function CommissionPage() {
     {
       id: 'salaryType', header: 'Pay Type', accessorFn: r => r.salaryType, meta: { width: '11%' },
       cell: ({ row: { original: r } }) => {
-        const colors = { commission_only: ['#EFF6FF','#2563EB'], salary_only: ['#F0FDF4','#059669'], salary_plus_commission: ['#FEF3C7','#D97706'] };
+        const colors = { commission_only: ['#EFF6FF','#2563EB'], salary_only: ['#F0FDF4','#059669'], salary_plus_commission: ['#FEF3C7','#D97706'], daily_salary_plus_commission: ['#FDF2F8','#DB2777'] };
         const [bg, fg] = colors[r.salaryType] || colors.commission_only;
-        const labels = { commission_only: 'Comm Only', salary_only: 'Salary', salary_plus_commission: 'Salary+Comm' };
+        const labels = { commission_only: 'Comm Only', salary_only: 'Salary', salary_plus_commission: 'Salary+Comm', daily_salary_plus_commission: 'Day+Comm' };
         return <span style={{ padding: '3px 8px', borderRadius: 20, background: bg, color: fg, fontSize: 11, fontWeight: 700 }}>{labels[r.salaryType]||r.salaryType}</span>;
       },
     },
     {
       id: 'baseSalary', header: 'Base Sal.', accessorFn: r => r.baseSalary, meta: { width: '10%', align: 'right' },
       cell: ({ row: { original: r } }) => Number(r.baseSalary||0) > 0
-        ? <span style={{ fontWeight: 700, color: '#059669', fontFamily: "'Outfit',sans-serif", fontSize: 13 }}>{Rs(r.baseSalary)}</span>
+        ? (
+          <span style={{ fontWeight: 700, color: '#059669', fontFamily: "'Outfit',sans-serif", fontSize: 13 }}>
+            {Rs(r.baseSalary)}
+            {r.salaryType === 'daily_salary_plus_commission' ? (
+              <span style={{ display: 'block', fontSize: 10, fontWeight: 600, color: '#98A2B3' }}>
+                /day · {r.presentDays || 0}d
+              </span>
+            ) : null}
+          </span>
+        )
         : <span style={{ color: '#98A2B3', fontSize: 13 }}>—</span>,
     },
     {
@@ -397,11 +408,12 @@ export default function CommissionPage() {
       id: 'actions', header: '', enableSorting: false, meta: { width: '11%', align: 'center' },
       cell: ({ row: { original: r } }) => (
         <div style={{ display: 'flex', gap: 6, justifyContent: 'center' }}>
-          {r.salaryType !== 'salary_only' && Number(r.appointmentCount || 0) > 0 && (
+          {(r.salaryType !== 'salary_only' && Number(r.appointmentCount || 0) > 0)
+            || r.salaryType === 'daily_salary_plus_commission' ? (
             <ActionBtn onClick={() => openBreakdown(r)} title="Calculation breakdown" color="#7C3AED">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="6" x2="16" y2="6"/><line x1="8" y1="10" x2="16" y2="10"/><line x1="8" y1="14" x2="12" y2="14"/></svg>
             </ActionBtn>
-          )}
+          ) : null}
           {canPay && Number(r.balanceDue || 0) > 0 && (
             <ActionBtn onClick={() => openPay(r)} title="Record Payment" color="#059669">
               <IconPlus />
@@ -417,7 +429,7 @@ export default function CommissionPage() {
     },
   ];
 
-  const SALARY_LABELS = { commission_only: 'Commission', salary_only: 'Salary', salary_plus_commission: 'Salary + Comm' };
+  const SALARY_LABELS = { commission_only: 'Commission', salary_only: 'Salary', salary_plus_commission: 'Salary + Comm', daily_salary_plus_commission: 'Per-day + Comm' };
 
   return (
     <PageWrapper
@@ -529,15 +541,43 @@ export default function CommissionPage() {
       >
         {breakLoading ? (
           <div style={{ textAlign: 'center', padding: 32, color: '#98A2B3' }}>Loading breakdown…</div>
-        ) : !breakData?.data?.length ? (
-          <div style={{ textAlign: 'center', padding: 32, color: '#98A2B3' }}>No commission payments for this period.</div>
         ) : (
           <>
             <div style={{ background: '#F5F3FF', color: '#5B21B6', padding: '10px 14px', borderRadius: 9, fontSize: 13, marginBottom: 14, display: 'flex', flexWrap: 'wrap', gap: 16 }}>
               <span>Period: <strong>{MONTHS[month - 1]} {year}</strong></span>
-              <span>Total commission: <strong>{Rs(breakData.totalCommission)}</strong></span>
-              <span>{breakData.data.length} payment{breakData.data.length !== 1 ? 's' : ''}</span>
+              <span>Total commission: <strong>{Rs(breakData?.totalCommission || 0)}</strong></span>
+              <span>{(breakData?.data || []).length} payment{(breakData?.data || []).length !== 1 ? 's' : ''}</span>
             </div>
+            {(breakRow?.salaryType === 'daily_salary_plus_commission' || breakData?.salaryType === 'daily_salary_plus_commission') && (
+              <div style={{
+                background: '#FDF2F8', color: '#9D174D', padding: '12px 14px', borderRadius: 9, fontSize: 13,
+                marginBottom: 14, border: '1px solid #FBCFE8', lineHeight: 1.5,
+              }}>
+                <div style={{ fontWeight: 700, marginBottom: 4 }}>Linked to Attendance</div>
+                <div>
+                  Daily rate <strong>{Rs(breakData?.baseSalary ?? breakRow?.baseSalary ?? 0)}</strong>
+                  {' × '}
+                  <strong>{breakData?.presentDays ?? breakRow?.presentDays ?? 0}</strong> Present/Late days
+                  {' = '}
+                  <strong>{Rs(breakData?.dailySalaryEarned ?? breakRow?.dailySalaryEarned ?? 0)}</strong>
+                  {' + commission '}
+                  <strong>{Rs(breakData?.totalCommission || 0)}</strong>
+                  {' = gross '}
+                  <strong>{Rs(breakData?.grossPayable ?? breakRow?.grossPayable ?? 0)}</strong>
+                </div>
+                <a href="/attendance" style={{ display: 'inline-block', marginTop: 8, color: '#BE185D', fontWeight: 700, fontSize: 12 }}>
+                  Open Attendance →
+                </a>
+              </div>
+            )}
+            {!(breakData?.data || []).length ? (
+              <div style={{ textAlign: 'center', padding: 32, color: '#98A2B3' }}>
+                {breakRow?.salaryType === 'daily_salary_plus_commission'
+                  ? 'No commission payments this period — day salary still counts from Attendance.'
+                  : 'No commission payments for this period.'}
+              </div>
+            ) : (
+            <>
             <p style={{ fontSize: 12, color: '#667085', margin: '0 0 12px', lineHeight: 1.5 }}>
               Each payment is split across services. The <strong>base</strong> is the service&apos;s share of the net paid amount (after loyalty/promo discounts).
               Worker commission: staff custom rate → service catalogue rate → staff default.
@@ -633,6 +673,8 @@ export default function CommissionPage() {
                 );
               })}
             </div>
+            </>
+            )}
           </>
         )}
       </Modal>

@@ -546,6 +546,24 @@ class _AttendancePageState extends State<AttendancePage> {
                               color: _ink,
                             ),
                           ),
+                          if (s.salaryType == 'daily_salary_plus_commission')
+                            Text(
+                              () {
+                                final rate = s.baseSalary ?? 0;
+                                final earns = status == 'present' || status == 'late';
+                                final rateTxt = rate.toStringAsFixed(0);
+                                return earns
+                                    ? 'Day pay +LKR $rateTxt today'
+                                    : 'Day pay LKR $rateTxt/day (Present/Late)';
+                              }(),
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                color: (status == 'present' || status == 'late')
+                                    ? const Color(0xFF059669)
+                                    : const Color(0xFFDB2777),
+                              ),
+                            ),
                           Text(
                             [
                               if (rec?.checkIn != null) 'In ${rec!.checkIn}',

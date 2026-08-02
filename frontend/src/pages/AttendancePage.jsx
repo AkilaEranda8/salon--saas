@@ -186,9 +186,42 @@ export default function AttendancePage() {
           <div style={{ display:'flex', alignItems:'center', gap:10, opacity:isSaving?0.6:1, transition:'opacity 0.15s' }}>
             <StaffAvatar name={staff.name} />
             <div>
-              <div style={{ fontWeight:600, color:'#101828', fontSize:14 }}>{staff.name}</div>
+              <div style={{ fontWeight:600, color:'#101828', fontSize:14, display:'flex', alignItems:'center', gap:6, flexWrap:'wrap' }}>
+                {staff.name}
+                {staff.salary_type === 'daily_salary_plus_commission' ? (
+                  <span style={{ fontSize:10, fontWeight:700, color:'#DB2777', background:'#FDF2F8', padding:'1px 6px', borderRadius:999 }}>day pay</span>
+                ) : null}
+              </div>
               <div style={{ fontSize:11, color:'#98A2B3' }}>{staff.phone || staff.role_title || ''}</div>
             </div>
+          </div>
+        );
+      },
+    },
+    {
+      id: 'dayPay',
+      header: 'Day Pay',
+      enableSorting: false,
+      meta: { width: '12%' },
+      cell: ({ row: { original: staff } }) => {
+        if (staff.salary_type !== 'daily_salary_plus_commission') {
+          return <span style={{ color: '#D0D5DD', fontSize: 12 }}>—</span>;
+        }
+        const rate = Number(staff.base_salary) || 0;
+        const rec = getRecord(staff.id);
+        const earns = rec && (rec.status === 'present' || rec.status === 'late');
+        return (
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: '#DB2777' }}>
+              Rs.{rate.toLocaleString()}/day
+            </div>
+            {earns ? (
+              <div style={{ fontSize: 11, fontWeight: 600, color: '#059669', marginTop: 2 }}>+Rs.{rate.toLocaleString()} today</div>
+            ) : (
+              <div style={{ fontSize: 11, color: '#98A2B3', marginTop: 2 }}>
+                {rec ? 'No pay today' : 'Mark present/late'}
+              </div>
+            )}
           </div>
         );
       },
@@ -197,7 +230,7 @@ export default function AttendancePage() {
       id: 'status',
       header: 'Status',
       enableSorting: false,
-      meta: { width: '24%' },
+      meta: { width: '22%' },
       cell: ({ row: { original: staff } }) => {
         const rec = getRecord(staff.id);
         const isSaving = saving[staff.id];
@@ -301,7 +334,7 @@ export default function AttendancePage() {
 
   return (
     <PageWrapper title="Attendance"
-      subtitle="Daily staff attendance tracker"
+      subtitle="Daily staff attendance — Present/Late days pay per-day salary staff"
       actions={canEdit && (
         <Button variant="primary" onClick={() => { setAddForm({ staff_id:'', status:'present', check_in:'', check_out:'', note:'' }); setShowAdd(true); }}
           style={{ display:'flex', alignItems:'center', gap:6 }}><IconPlus /> Add Attendance</Button>

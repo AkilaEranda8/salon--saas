@@ -500,6 +500,8 @@ class _StaffCard extends StatelessWidget {
         return 'Salary';
       case 'salary_plus_commission':
         return 'Salary+Comm';
+      case 'daily_salary_plus_commission':
+        return 'Day+Comm';
       default:
         return 'Commission';
     }

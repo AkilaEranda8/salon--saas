@@ -40,14 +40,19 @@ const Staff = sequelize.define('Staff', {
     defaultValue: 0,
   },
   salary_type: {
-    type: DataTypes.ENUM('commission_only', 'salary_only', 'salary_plus_commission'),
+    type: DataTypes.ENUM(
+      'commission_only',
+      'salary_only',
+      'salary_plus_commission',
+      'daily_salary_plus_commission',
+    ),
     defaultValue: 'commission_only',
-    comment: 'commission_only=commission based, salary_only=fixed monthly salary, salary_plus_commission=base salary + commission',
+    comment: 'commission_only | salary_only (monthly) | salary_plus_commission (monthly+comm) | daily_salary_plus_commission (per-day+comm)',
   },
   base_salary: {
     type: DataTypes.DECIMAL(10, 2),
     defaultValue: 0,
-    comment: 'Monthly base salary amount (used when salary_type is salary_only or salary_plus_commission)',
+    comment: 'Base salary: monthly for salary_* types, per-day for daily_salary_plus_commission',
   },
   join_date: {
     type: DataTypes.DATEONLY,

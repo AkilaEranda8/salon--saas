@@ -459,6 +459,10 @@ class _AddStaffModalState extends State<AddStaffModal> {
                     value: 'salary_plus_commission',
                     child: Text('Salary + Commission'),
                   ),
+                  DropdownMenuItem(
+                    value: 'daily_salary_plus_commission',
+                    child: Text('Per-day Salary + Commission'),
+                  ),
                 ],
                 onChanged: _onSalaryTypeChanged,
               ),
@@ -470,6 +474,34 @@ class _AddStaffModalState extends State<AddStaffModal> {
                   controller: _baseSalaryCtrl,
                   keyboardType: TextInputType.number,
                   decoration: _deco('e.g. 30000', Icons.account_balance_wallet_outlined),
+                ),
+              ],
+              if (_salaryType == 'daily_salary_plus_commission') ...[
+                const SizedBox(height: 12),
+                _label('PER-DAY SALARY (LKR / DAY)'),
+                TextFormField(
+                  controller: _baseSalaryCtrl,
+                  keyboardType: TextInputType.number,
+                  decoration: _deco('e.g. 1500', Icons.account_balance_wallet_outlined),
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFDF2F8),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: const Color(0xFFFBCFE8)),
+                  ),
+                  child: const Text(
+                    'Linked to Attendance: Present or Late days × this rate + commission. Absent/Leave = no day pay.',
+                    style: TextStyle(
+                      fontSize: 12,
+                      height: 1.4,
+                      color: Color(0xFF9D174D),
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
                 ),
               ],
               if (_paysCommission) ...[

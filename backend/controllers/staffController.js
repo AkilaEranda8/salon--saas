@@ -89,7 +89,54 @@ function parseBoolFlag(raw, fallback = true) {
 }
 
 function staffRequiresCommission(salaryType) {
-  return salaryType === 'commission_only' || salaryType === 'salary_plus_commission';
+  return salaryType === 'commission_only'
+    || salaryType === 'salary_plus_commission'
+    || salaryType === 'daily_salary_plus_commission';
+}
+
+function staffUsesBaseSalary(salaryType) {
+  return salaryType === 'salary_only'
+    || salaryType === 'salary_plus_commission'
+    || salaryType === 'daily_salary_plus_commission';
+}
+
+/** Present or late days count toward per-day salary (unique dates).
+ *  Staff IDs are already tenant-scoped; do not require attendance.tenant_id
+ *  so legacy rows with null tenant_id still count.
+ */
+async function presentDaysMapForMonth(req, staffIds, year, month) {
+  const map = {};
+  if (!staffIds?.length || !year || !month) return map;
+  const ym = `${year}-${String(month).padStart(2, '0')}`;
+  const start = `${ym}-01`;
+  const last = new Date(Number(year), Number(month), 0).getDate();
+  const end = `${ym}-${String(last).padStart(2, '0')}`;
+  const rows = await Attendance.findAll({
+    where: {
+      staff_id: { [Op.in]: staffIds },
+      date: { [Op.between]: [start, end] },
+      status: { [Op.in]: ['present', 'late'] },
+    },
+    attributes: [
+      'staff_id',
+      [fn('COUNT', fn('DISTINCT', col('Attendance.date'))), 'days'],
+    ],
+    group: ['staff_id'],
+    raw: true,
+  });
+  for (const row of rows) {
+    map[row.staff_id] = parseInt(row.days, 10) || 0;
+  }
+  return map;
+}
+
+function computeGrossPayable(salaryType, baseSalary, totalCommission, presentDays = 0) {
+  if (salaryType === 'salary_only') return baseSalary;
+  if (salaryType === 'salary_plus_commission') return baseSalary + totalCommission;
+  if (salaryType === 'daily_salary_plus_commission') {
+    return (baseSalary * (presentDays || 0)) + totalCommission;
+  }
+  return totalCommission;
 }
 
 /** Manager / default-only staff: link all active services with null override (uses staff default). */
@@ -148,7 +195,7 @@ function parseCommissionValue(raw) {
 }
 
 function parseStaffCommission(body = {}, { forCreate = false } = {}) {
-  const salary_type = ['commission_only', 'salary_only', 'salary_plus_commission'].includes(body.salary_type)
+  const salary_type = ['commission_only', 'salary_only', 'salary_plus_commission', 'daily_salary_plus_commission'].includes(body.salary_type)
     ? body.salary_type
     : (forCreate ? 'commission_only' : undefined);
   const commission_type = ['percentage', 'fixed'].includes(body.commission_type)
@@ -715,6 +762,7 @@ const commissionSummary = async (req, res) => {
     // Fetch pending advance totals + paid payout totals for the same month
     const advMap  = {};
     const paidMap = {};
+    let presentMap = {};
     if (month && year) {
       const ym = `${year}-${String(month).padStart(2, '0')}`;
 
@@ -733,6 +781,12 @@ const commissionSummary = async (req, res) => {
         raw: true,
       });
       for (const row of payoutsAgg) paidMap[row.staff_id] = parseFloat(row.totalPaid) || 0;
+
+      try {
+        presentMap = await presentDaysMapForMonth(req, staffIds, year, month);
+      } catch (attErr) {
+        console.warn('commissionSummary attendance days skipped:', attErr.message);
+      }
     }
 
     const results = staffRows.map((staff) => {
@@ -742,19 +796,17 @@ const commissionSummary = async (req, res) => {
       const totalPaid       = paidMap[staff.id] || 0;
       const baseSalary      = parseFloat(staff.base_salary) || 0;
       const salaryType      = staff.salary_type || 'commission_only';
+      const presentDays     = presentMap[staff.id] || 0;
+      const dailySalaryEarned = salaryType === 'daily_salary_plus_commission'
+        ? baseSalary * presentDays
+        : 0;
 
       // Net payable depends on salary_type:
-      //  commission_only          → commission - advances
-      //  salary_only              → base_salary - advances
-      //  salary_plus_commission   → base_salary + commission - advances
-      let grossPayable;
-      if (salaryType === 'salary_only') {
-        grossPayable = baseSalary;
-      } else if (salaryType === 'salary_plus_commission') {
-        grossPayable = baseSalary + totalCommission;
-      } else {
-        grossPayable = totalCommission;
-      }
+      //  commission_only                 → commission - advances
+      //  salary_only                     → base_salary - advances
+      //  salary_plus_commission          → base_salary + commission - advances
+      //  daily_salary_plus_commission    → (daily × present/late days) + commission - advances
+      const grossPayable = computeGrossPayable(salaryType, baseSalary, totalCommission, presentDays);
       const netPayable = Math.max(0, grossPayable - totalAdvances);
 
       return {
@@ -767,6 +819,8 @@ const commissionSummary = async (req, res) => {
         commissionValue:  staff.commission_value,
         salaryType,
         baseSalary,
+        presentDays,
+        dailySalaryEarned,
         appointmentCount: parseInt(agg.appointmentCount) || 0,
         totalRevenue:     parseFloat(agg.totalRevenue) || 0,
         totalCommission,
@@ -863,20 +917,13 @@ const commissionReport = async (req, res) => {
     const salaryType  = staffRecord?.salary_type || 'commission_only';
     const baseSalary  = parseFloat(staffRecord?.base_salary) || 0;
 
-    let grossPayable;
-    if (salaryType === 'salary_only') {
-      grossPayable = baseSalary;
-    } else if (salaryType === 'salary_plus_commission') {
-      grossPayable = baseSalary + totalCommission;
-    } else {
-      grossPayable = totalCommission;
-    }
-
     // Pending advances + commission payouts for this staff for the same month
     let totalAdvances = 0;
     let totalPaid     = 0;
+    let presentDays   = 0;
     if (req.query.month) {
-      const [advRows, payoutRows] = await Promise.all([
+      const [yStr, mStr] = String(req.query.month).split('-');
+      const [advRows, payoutRows, dayMap] = await Promise.all([
         StaffAdvance.findAll({
           where: { staff_id: req.params.id, month: req.query.month, status: 'pending', ...tenantWhere(req) },
           raw: true,
@@ -885,11 +932,17 @@ const commissionReport = async (req, res) => {
           where: { staff_id: req.params.id, month: req.query.month, ...tenantWhere(req) },
           raw: true,
         }),
+        presentDaysMapForMonth(req, [Number(req.params.id)], yStr, mStr).catch(() => ({})),
       ]);
       totalAdvances = advRows.reduce((s, a) => s + parseFloat(a.amount || 0), 0);
       totalPaid     = payoutRows.reduce((s, p) => s + parseFloat(p.amount || 0), 0);
+      presentDays   = dayMap[Number(req.params.id)] || 0;
     }
 
+    const grossPayable = computeGrossPayable(salaryType, baseSalary, totalCommission, presentDays);
+    const dailySalaryEarned = salaryType === 'daily_salary_plus_commission'
+      ? baseSalary * presentDays
+      : 0;
     const netPayable = Math.max(0, grossPayable - totalAdvances);
 
     const paymentRows = await Promise.all(payments.map(async (payment) => {
@@ -942,6 +995,8 @@ const commissionReport = async (req, res) => {
       totalCommission,
       baseSalary,
       salaryType,
+      presentDays,
+      dailySalaryEarned,
       grossPayable,
       totalAdvances,
       netCommission: netPayable,

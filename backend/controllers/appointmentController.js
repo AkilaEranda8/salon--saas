@@ -573,7 +573,8 @@ const create = async (req, res) => {
       for (const row of created) {
         notifyStaffAppointmentAssigned(row, branch, service, resolveTenantId(req));
       }
-      if (notifyPhone && created[0] && created[0].status === 'confirmed') {
+      // Customer SMS/WhatsApp/email on create (any status). Confirm transition does not re-send.
+      if (notifyPhone && created[0]) {
         notifyAppointmentConfirmed({ ...created[0].toJSON(), phone: notifyPhone }, branch, service, resolveTenantId(req));
       }
 
@@ -670,8 +671,8 @@ const create = async (req, res) => {
     ]);
     // WhatsApp assigned staff as soon as the booking is created
     notifyStaffAppointmentAssigned(appt, branch, service, resolveTenantId(req));
-    // Customer notify only when already confirmed — pending bookings notify when status becomes confirmed.
-    if (notifyPhone && appt.status === 'confirmed') {
+    // Customer SMS/WhatsApp/email on create (any status). Confirm transition does not re-send.
+    if (notifyPhone) {
       notifyAppointmentConfirmed({ ...appt.toJSON(), phone: notifyPhone }, branch, service, resolveTenantId(req));
     }
 
@@ -836,14 +837,7 @@ const changeStatus = async (req, res) => {
     const previousStatus = appt.status;
     await appt.update({ status });
 
-    // Send confirmation notification only on transition into confirmed (not repeats).
-    if (status === 'confirmed' && previousStatus !== 'confirmed' && appt.phone) {
-      const [branch, service] = await Promise.all([
-        Branch.findOne({ where: byIdWhere(req, appt.branch_id), attributes: ['id', 'name', 'phone'] }),
-        Service.findOne({ where: byIdWhere(req, appt.service_id), attributes: ['id', 'name'] }),
-      ]);
-      notifyAppointmentConfirmed(appt, branch, service, resolveTenantId(req));
-    }
+    // Customer notified on create — do not re-send when confirming (avoids duplicate SMS).
 
     // Send notification when appointment is completed
     if (status === 'completed' && previousStatus !== 'completed' && appt.phone) {

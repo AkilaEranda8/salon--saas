@@ -983,12 +983,19 @@ export default function NotificationsPage() {
               <div style={{ fontSize:15, fontWeight:700, color:C.title }}>Mobile Push (Staff App)</div>
               <div style={{ fontSize:12, color:C.muted, marginTop:4 }}>
                 Sends a test FCM notification to staff devices registered for the current branch. Staff must be signed in on the mobile app with notifications allowed.
+                Download the latest APK from the Staff page if phones need an update.
               </div>
             </div>
-            <button type="button" disabled={testBusy.push} onClick={sendTestPush}
-              style={{ padding:'10px 18px', borderRadius:8, border:'none', background: testBusy.push ? '#BFDBFE' : '#2563EB', color:'#fff', fontWeight:700, fontSize:13, cursor: testBusy.push ? 'not-allowed' : 'pointer', whiteSpace:'nowrap', fontFamily:"'Inter',sans-serif" }}>
-              {testBusy.push ? 'Sending…' : '▶ Send Test Push'}
-            </button>
+            <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+              <button type="button" onClick={() => { window.location.href = '/staff'; }}
+                style={{ padding:'10px 18px', borderRadius:8, border:`1px solid ${C.border}`, background:C.card, color:C.title, fontWeight:700, fontSize:13, cursor:'pointer', whiteSpace:'nowrap', fontFamily:"'Inter',sans-serif" }}>
+                ↓ Download App
+              </button>
+              <button type="button" disabled={testBusy.push} onClick={sendTestPush}
+                style={{ padding:'10px 18px', borderRadius:8, border:'none', background: testBusy.push ? '#BFDBFE' : '#2563EB', color:'#fff', fontWeight:700, fontSize:13, cursor: testBusy.push ? 'not-allowed' : 'pointer', whiteSpace:'nowrap', fontFamily:"'Inter',sans-serif" }}>
+                {testBusy.push ? 'Sending…' : '▶ Send Test Push'}
+              </button>
+            </div>
           </div>
         </div>
       )}

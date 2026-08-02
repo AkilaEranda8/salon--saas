@@ -39,12 +39,58 @@ const photoUpload = multer({
   },
 });
 
+const STAFF_APP_VERSION = '1.3.0';
+const STAFF_APP_FILENAME = 'hexaone-staff-app.apk';
+
+function resolveStaffAppPath() {
+  const candidates = [
+    path.join(__dirname, '..', 'uploads', 'apps', STAFF_APP_FILENAME),
+    path.join(__dirname, '..', 'assets', STAFF_APP_FILENAME),
+  ];
+  return candidates.find((p) => fs.existsSync(p)) || null;
+}
+
 const router = Router();
 router.use(verifyToken, branchAccess);
 
 router.get('/',                         ctrl.list);
 router.get('/commission',               ctrl.commissionSummary);
 router.get('/me/commission',            ctrl.myCommission);
+
+/** Staff Android APK info (must be before /:id). */
+router.get('/app-info', (_req, res) => {
+  const appPath = resolveStaffAppPath();
+  let size = null;
+  if (appPath) {
+    try { size = fs.statSync(appPath).size; } catch { /* ignore */ }
+  }
+  return res.json({
+    available: Boolean(appPath),
+    version: STAFF_APP_VERSION,
+    filename: `hexaone-staff-app-${STAFF_APP_VERSION}.apk`,
+    size_bytes: size,
+    platform: 'android',
+  });
+});
+
+/** Download Staff Android APK (must be before /:id). */
+router.get('/app-download', (req, res) => {
+  const appPath = resolveStaffAppPath();
+  if (!appPath) {
+    return res.status(503).json({ message: 'Staff app package is temporarily unavailable.' });
+  }
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  res.setHeader('X-Staff-App-Version', STAFF_APP_VERSION);
+  return res.download(appPath, `hexaone-staff-app-${STAFF_APP_VERSION}.apk`, (err) => {
+    if (err && !res.headersSent) {
+      console.error('staff app download error:', err);
+      res.status(500).json({ message: 'Staff app download failed.' });
+    }
+  });
+});
+
 router.get('/:id',                      ctrl.getOne);
 router.post('/',                        requireRole('superadmin', 'admin', 'manager'), checkLimit('staff'), ctrl.create);
 router.put('/:id',                      requireRole('superadmin', 'admin', 'manager'), ctrl.update);

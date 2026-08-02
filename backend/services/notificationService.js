@@ -288,6 +288,46 @@ function formatSmsTo94(to) {
   return '94' + local.slice(-9);
 }
 
+/** GSM-7 basic + extension set used for segment billing. */
+const GSM_CHAR_RE = /^[\x00-\x7F]*$/;
+const GSM_EXTENDED = new Set(['^', '{', '}', '\\', '[', ']', '~', '|', '€']);
+
+function normalizeSmsBody(message) {
+  return String(message || '')
+    .replace(/[–—−]/g, '-')
+    .replace(/[‘’‚‛]/g, "'")
+    .replace(/[“”„‟]/g, '"')
+    .replace(/[•·]/g, '-')
+    .replace(/[…]/g, '...')
+    .replace(/[×]/g, 'x')
+    .replace(/[÷]/g, '/')
+    .replace(/\u00A0/g, ' ')
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+    // Strip emoji / symbols that force Unicode multiparts (cost x2+)
+    .replace(/[\u{1F300}-\u{1FAFF}]/gu, '')
+    .replace(/[\u2600-\u27BF]/g, '')
+    .trim();
+}
+
+/**
+ * Estimate billed SMS parts.
+ * GSM: 160 / 153; Unicode: 70 / 67.
+ */
+function estimateSmsSegments(message) {
+  const text = normalizeSmsBody(message);
+  if (!text) return { chars: 0, encoding: 'gsm', segments: 0, isUnicode: false };
+  const isUnicode = !GSM_CHAR_RE.test(text);
+  if (isUnicode) {
+    const chars = [...text].length;
+    const segments = chars <= 70 ? 1 : Math.ceil(chars / 67);
+    return { chars, encoding: 'unicode', segments, isUnicode: true };
+  }
+  let units = 0;
+  for (const ch of text) units += GSM_EXTENDED.has(ch) ? 2 : 1;
+  const segments = units <= 160 ? 1 : Math.ceil(units / 153);
+  return { chars: text.length, encoding: 'gsm', segments, isUnicode: false };
+}
+
 // ── Core senders ──────────────────────────────────────────────────────────────
 
 /**
@@ -363,13 +403,14 @@ async function sendSMS({ to, message, meta = {}, tenantId = null, allowPlatformF
     console.warn('[Notifications] SMS skipped — SMS Sender ID not configured.');
     return null;
   }
-  // Prefer GSM-7: strip fancy punctuation that forces multi-part unicode billing.
-  const smsBody = String(message || '')
-    .replace(/[–—]/g, '-')
-    .replace(/[‘’]/g, "'")
-    .replace(/[“”]/g, '"')
-    .replace(/\u00A0/g, ' ')
-    .trim();
+  // Prefer GSM-7: strip fancy punctuation/emoji that force multi-part unicode billing.
+  const smsBody = normalizeSmsBody(message);
+  const segInfo = estimateSmsSegments(smsBody);
+  if (segInfo.segments > 1) {
+    console.warn(
+      `[Notifications] SMS will bill ~${segInfo.segments} parts (${segInfo.encoding}, ${segInfo.chars} chars) → ${to}`
+    );
+  }
   const toFormatted = formatSmsTo94(to);
   let status = 'sent', errorMsg = null;
   try {
@@ -392,7 +433,7 @@ async function sendSMS({ to, message, meta = {}, tenantId = null, allowPlatformF
           body: JSON.stringify({ to: toFormatted, text: smsBody }),
         });
       } else {
-        const isUnicode = /[^\u0000-\u007F]/.test(smsBody);
+        const isUnicode = segInfo.isUnicode;
         res = await fetch('https://app.notify.lk/api/v1/send', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -422,7 +463,9 @@ async function sendSMS({ to, message, meta = {}, tenantId = null, allowPlatformF
       const errMsg = (Array.isArray(data.errors) && data.errors[0]) || data.message || `HTTP ${res.status}`;
       throw new Error(errMsg);
     }
-    console.log(`[Notifications] SMS sent via ${provider} → ${toFormatted}`);
+    console.log(
+      `[Notifications] SMS sent via ${provider} → ${toFormatted} (~${segInfo.segments} part(s), ${segInfo.encoding})`
+    );
   } catch (err) {
     status = 'failed';
     errorMsg = err.name === 'AbortError' ? 'SMS gateway timeout (15s)' : err.message;
@@ -437,7 +480,7 @@ async function sendSMS({ to, message, meta = {}, tenantId = null, allowPlatformF
     status,
     error_message: errorMsg,
   });
-  return { status, error: errorMsg };
+  return { status, error: errorMsg, segments: segInfo.segments, encoding: segInfo.encoding };
 }
 
 /**
@@ -998,5 +1041,7 @@ module.exports = {
   resolveChosenTemplate,
   interpolate,
   getChannelFlags,
+  estimateSmsSegments,
+  normalizeSmsBody,
 };
 

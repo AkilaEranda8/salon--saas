@@ -150,6 +150,24 @@ function templateVariablesFor(eventType) {
     ...(TEMPLATE_VARIABLES[eventType] || []),
   ];
 }
+
+/** Estimate billed SMS parts (GSM 160/153, Unicode 70/67). */
+function estimateSmsParts(raw) {
+  const text = String(raw || '')
+    .replace(/[–—−]/g, '-')
+    .replace(/[‘’]/g, "'")
+    .replace(/[“”]/g, '"')
+    .replace(/\u00A0/g, ' ')
+    .trim();
+  if (!text) return { chars: 0, encoding: 'GSM', parts: 0 };
+  const isUnicode = /[^\u0000-\u007F]/.test(text);
+  if (isUnicode) {
+    const chars = [...text].length;
+    return { chars, encoding: 'Unicode', parts: chars <= 70 ? 1 : Math.ceil(chars / 67) };
+  }
+  const chars = text.length;
+  return { chars, encoding: 'GSM', parts: chars <= 160 ? 1 : Math.ceil(chars / 153) };
+}
 const EVENT_CHANNELS = {
   customer_registered:['email','sms'],
   appointment_confirmed:['email','whatsapp','sms'],
@@ -1103,10 +1121,27 @@ export default function NotificationsPage() {
                   <label style={{ fontSize:12, fontWeight:600, color:C.label }}>
                     Message Body {editTpl.channel === 'email' ? '(HTML supported)' : ''}
                   </label>
-                  <span style={{ fontSize:11, color:C.faint }}>{editBody.length} chars</span>
+                  {editTpl.channel === 'sms' ? (() => {
+                    const est = estimateSmsParts(editBody);
+                    const costHint = est.parts > 0 ? ` · ~Rs ${(est.parts * 1.35).toFixed(2)}` : '';
+                    const warn = est.parts > 1 || est.encoding === 'Unicode';
+                    return (
+                      <span style={{ fontSize:11, fontWeight:600, color: warn ? '#B45309' : C.faint }}>
+                        {est.chars} chars · {est.encoding} · {est.parts} SMS part{est.parts === 1 ? '' : 's'}{costHint}
+                      </span>
+                    );
+                  })() : (
+                    <span style={{ fontSize:11, color:C.faint }}>{editBody.length} chars</span>
+                  )}
                 </div>
                 <textarea value={editBody} onChange={e => setEditBody(e.target.value)} rows={editTpl.channel === 'email' ? 12 : 8}
                   style={{ ...inputStyle, width:'100%', fontFamily:'monospace', fontSize:12, lineHeight:1.5, resize:'vertical' }} />
+                {editTpl.channel === 'sms' && estimateSmsParts(editBody).parts > 1 && (
+                  <div style={{ marginTop:8, padding:'8px 12px', background:'#FEF3C7', borderRadius:8, fontSize:11, color:'#92400E', lineHeight:1.45 }}>
+                    This message bills as {estimateSmsParts(editBody).parts} parts (providers charge per part).
+                    Keep English under 160 chars, no Sinhala/emoji — Unicode drops the limit to 70 chars/part.
+                  </div>
+                )}
               </div>
 
               {/* Variable hints */}
@@ -1123,9 +1158,14 @@ export default function NotificationsPage() {
               </div>
 
               {/* Preview note */}
-              {editTpl.channel !== 'email' && (
+              {editTpl.channel === 'whatsapp' && (
                 <div style={{ padding:'10px 14px', background:'#FEF3C7', borderRadius:8, fontSize:11, color:'#92400E' }}>
-                  💡 For WhatsApp: use *bold*, _italic_. For SMS: keep under 160 chars per segment.
+                  For WhatsApp: use *bold*, _italic_.
+                </div>
+              )}
+              {editTpl.channel === 'sms' && (
+                <div style={{ padding:'10px 14px', background:'#FEF3C7', borderRadius:8, fontSize:11, color:'#92400E' }}>
+                  SMS tip: English only, under 160 chars = 1 part (~Rs 1.35). Sinhala/emoji = Unicode (70 chars/part) and cost doubles fast.
                 </div>
               )}
               {editTpl.channel === 'email' && (

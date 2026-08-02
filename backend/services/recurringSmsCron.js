@@ -3,7 +3,6 @@
 const cron = require('node-cron');
 const { Op } = require('sequelize');
 const { slToday } = require('../utils/dateUtils');
-const { sequelize } = require('../config/database');
 
 let _models = null;
 function getModels() {

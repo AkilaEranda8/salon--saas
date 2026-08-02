@@ -676,7 +676,7 @@ const DEFAULT_TEMPLATES = {
       body: `✂️ *{branch_name} — Appointment Confirmed!*\n\nHi {customer_name}, your booking is confirmed:\n\n📅 Date: {date}\n⏰ Time: {time}\n💇 Service: {service_name}\n🏠 Branch: {branch_name}\n💰 Amount: {amount}\n\nPlease arrive 5 mins early. See you soon! 😊`,
     },
     sms: {
-      body: `{branch_name}\nHi {customer_name}! Appointment booked.\nService: {service_name}\nDate: {date} | {time}\nBranch: {branch_name}\nThank you!`,
+      body: `{branch_name}: Hi {customer_name}, booked {service_name} on {date} {time}. See you!`,
     },
   },
   appointment_completed: {
@@ -684,7 +684,7 @@ const DEFAULT_TEMPLATES = {
       body: `✅ *{branch_name} — Service Complete*\n\nHi {customer_name}! Your {service_name} is done.\n📅 {date} {time}\n🏠 {branch_name}\n\nThank you for visiting! 🙏`,
     },
     sms: {
-      body: `{branch_name}\nHi {customer_name}! Your {service_name} is done.\n{date} {time} | {branch_name}\nThank you for visiting!`,
+      body: `{branch_name}: Hi {customer_name}, {service_name} done on {date}. Thank you!`,
     },
   },
   recurring_reminder: {
@@ -692,7 +692,7 @@ const DEFAULT_TEMPLATES = {
       body: `✂️ *{branch_name} — Recurring Visit Reminder*\n\nHi {customer_name}! Reminder for your visit today:\n\n📅 Date: {date}\n⏰ Time: {time}\n💇 Service: {service_name}\n🏠 Branch: {branch_name}\n\nSee you soon! 😊`,
     },
     sms: {
-      body: `{branch_name}\nHi {customer_name}! Reminder for your recurring visit today.\nService: {service_name}\nDate: {date} | {time}\nBranch: {branch_name}\nSee you soon!`,
+      body: `{branch_name}: Hi {customer_name}, reminder today {service_name} at {time}. See you!`,
     },
   },
   payment_receipt: {
@@ -712,7 +712,7 @@ const DEFAULT_TEMPLATES = {
       body: `🧾 *{branch_name} — Payment Receipt*\n\nHi {customer_name}!\n\n💇 Service: {service_name}\n🏠 Branch: {branch_name}\n📅 Date: {date}\n💰 Paid: {amount}{loyalty_section}`,
     },
     sms: {
-      body: `{branch_name} - Receipt\n{ticket_line}Hi {customer_name}!\nPaid: {amount}\nService: {service_name} | {date}{loyalty_section}`,
+      body: `{branch_name} receipt: Hi {customer_name}, paid {amount} for {service_name} on {date}.{loyalty_section}`,
     },
   },
   loyalty_points: {
@@ -720,7 +720,7 @@ const DEFAULT_TEMPLATES = {
       body: `🌟 *{branch_name} — Loyalty Points Update*\n\nHey {customer_name}! 🎉\n\nYou just earned *+{points_earned} points* at *{branch_name}*!\n\n📊 Points Balance:\n  • Earned this visit: +{points_earned}\n  • Total balance: *{points_total} pts*\n\n💡 Every 10 pts = Rs. 1 discount on your next visit!\n\nKeep visiting {branch_name} to unlock more rewards. 🛍️`,
     },
     sms: {
-      body: `{branch_name}\nHi {customer_name}! You earned +{points_earned} loyalty points.\nTotal: {points_total} pts. Every 10 pts = Rs. 1 discount!`,
+      body: `{branch_name}: Hi {customer_name}, +{points_earned} pts earned. Total {points_total}. 10pts=Rs1.`,
     },
   },
   walk_in_checkin: {
@@ -728,7 +728,7 @@ const DEFAULT_TEMPLATES = {
       body: `🚶 *{branch_name} — Walk-In Check-In*\n\nHi {customer_name}! You're checked in.\n\n🎫 Token: *{token}*\n💇 Service: {service_name}\n🏠 Branch: {branch_name}\n⏳ Est. wait: {wait_mins} mins\n\nPlease wait — we'll call your token soon.`,
     },
     sms: {
-      body: `{branch_name}\nHi {customer_name}! You are checked in.\nToken: {token}\nService: {service_name}\nEstimated wait: {wait_mins} mins.`,
+      body: `{branch_name}: Hi {customer_name}, checked in. Token {token}. Wait ~{wait_mins} mins.`,
     },
   },
   walk_in_serving: {
@@ -736,7 +736,7 @@ const DEFAULT_TEMPLATES = {
       body: `🚶 *{branch_name} — Your Turn!*\n\nHi {customer_name}, token *{token}* is now being served.\n💇 {service_name}\n🏠 {branch_name}\n\nPlease proceed to the service area.`,
     },
     sms: {
-      body: `{branch_name}\nHi {customer_name}, token {token} is now being served.\nPlease proceed to the service area.`,
+      body: `{branch_name}: Hi {customer_name}, token {token} is now serving. Please come in.`,
     },
   },
   walk_in_completed: {
@@ -744,7 +744,7 @@ const DEFAULT_TEMPLATES = {
       body: `✅ *{branch_name} — Service Complete*\n\nHi {customer_name}! Your walk-in service is complete.\n💇 {service_name}\n\nThank you for visiting {branch_name}! 🙏`,
     },
     sms: {
-      body: `{branch_name}\nHi {customer_name}! Your {service_name} is complete.\nThank you for visiting!`,
+      body: `{branch_name}: Hi {customer_name}, {service_name} complete. Thank you!`,
     },
   },
   review_request: {

@@ -1761,7 +1761,7 @@ export default function WalkInPage() {
         onClose={() => setPaymentEntry(null)}
         title="Collect Walk-in Payment"
         subtitle={paymentEntry ? `${paymentEntry.customer_name || 'Walk-in'}${paymentEntry.phone ? ` · ${paymentEntry.phone}` : ''}` : ''}
-        size="lg"
+        size="xl"
         dark={isDark}
         accent="emerald"
         footer={paymentEntry && !paymentOk ? (

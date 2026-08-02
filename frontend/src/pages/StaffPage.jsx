@@ -16,6 +16,7 @@ import {
 import {
   STAFF_ROLE_TITLES, STAFF_ROLE_OTHER, staffRoleSelectValue,
 } from '../constants/staffRoleTitles';
+import { useToast } from '../components/ui/Toast';
 
 const EMPTY = { name:'', phone:'', email:'', role_title:'', branch_ids:[], commission_type:'percentage', commission_value:'', salary_type:'commission_only', base_salary:'', join_date:'', is_active:true, available_online:false };
 
@@ -379,6 +380,7 @@ function StaffModal({ open, onClose, title, subtitle, children, footer, size = '
 
 export default function StaffPage() {
   const { user }     = useAuth();
+  const { toast }    = useToast();
   const { isDark }   = useTheme();
   const { C }        = usePageTheme();
   const photoInputRef = useRef(null);
@@ -630,7 +632,16 @@ export default function StaffPage() {
     } catch (e) { setFormErr(e.response?.data?.message || 'Save failed'); }
     setSaving(false);
   };
-  const handleDelete = async id => { if (!window.confirm('Delete this staff member?')) return; await api.delete(`/staff/${id}`); load(); };
+  const handleDelete = async (id) => {
+    if (!window.confirm('Delete this staff member? Payments and appointments stay, but staff link is cleared.')) return;
+    try {
+      await api.delete(`/staff/${id}`);
+      toast('Staff deleted.', 'success');
+      load();
+    } catch (e) {
+      toast(e.response?.data?.message || 'Failed to delete staff.', 'error');
+    }
+  };
 
   const activeCount = staff.filter(s => s.is_active !== false).length;
   const p = profileItem;

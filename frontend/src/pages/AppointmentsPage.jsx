@@ -2042,7 +2042,7 @@ export default function AppointmentsPage() {
       </Modal>
 
       {/* Collect Payment Modal */}
-      <Modal open={showPayment} onClose={() => setShowPayment(false)} title="Collect Payment" size="md"
+      <Modal open={showPayment} onClose={() => setShowPayment(false)} title="Collect Payment" size="xl"
         footer={!paymentOk&&<><Button variant="secondary" onClick={()=>setShowPayment(false)}>Cancel</Button><Button variant="primary" loading={paymentSaving} onClick={handlePayment}>Confirm Payment</Button></>}>
         {paymentAppt && (
           paymentOk ? (

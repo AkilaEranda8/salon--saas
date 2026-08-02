@@ -1,7 +1,13 @@
 const fs = require('fs').promises;
 const path = require('path');
 const { Op, fn, col, literal } = require('sequelize');
-const { Staff, Branch, StaffBranch, StaffSpecialization, StaffOffDay, Service, Appointment, Payment, User, StaffAdvance, CommissionPayout } = require('../models');
+const { sequelize } = require('../config/database');
+const {
+  Staff, Branch, StaffBranch, StaffSpecialization, StaffOffDay, Service,
+  Appointment, Payment, User, StaffAdvance, CommissionPayout,
+  Attendance, WalkIn, Waitlist, CommissionTransaction, InvConsumption, StaffFcmToken,
+  PackageRedemption,
+} = require('../models');
 const { tenantWhere, byIdWhere, resolveTenantId } = require('../utils/tenantScope');
 const { normalizeStaffSpecializations } = require('../utils/commissionCalculator');
 const {
@@ -488,14 +494,65 @@ const update = async (req, res) => {
 };
 
 const remove = async (req, res) => {
+  const t = await sequelize.transaction();
   try {
-    const staff = await Staff.findOne({ where: byIdWhere(req, req.params.id) });
-    if (!staff) return res.status(404).json({ message: 'Staff not found.' });
+    const staff = await Staff.findOne({ where: byIdWhere(req, req.params.id), transaction: t });
+    if (!staff) {
+      await t.rollback();
+      return res.status(404).json({ message: 'Staff not found.' });
+    }
 
-    await staff.destroy();
+    const staffId = staff.id;
+    const photoUrl = staff.photo_url;
+
+    // Child rows that require this staff (NOT NULL FKs) — remove first
+    await StaffSpecialization.destroy({ where: { staff_id: staffId }, transaction: t });
+    await StaffOffDay.destroy({ where: { staff_id: staffId }, transaction: t });
+    await StaffBranch.destroy({ where: { staff_id: staffId }, transaction: t });
+    await Attendance.destroy({ where: { staff_id: staffId }, transaction: t });
+    await StaffAdvance.destroy({ where: { staff_id: staffId }, transaction: t });
+    await CommissionPayout.destroy({ where: { staff_id: staffId }, transaction: t });
+    if (staff.user_id) {
+      await StaffFcmToken.destroy({ where: { user_id: staff.user_id }, transaction: t }).catch(() => 0);
+    }
+
+    // Historical records — keep rows, clear staff link
+    await Appointment.update({ staff_id: null }, { where: { staff_id: staffId }, transaction: t });
+    await Payment.update({ staff_id: null }, { where: { staff_id: staffId }, transaction: t });
+    await Payment.update({ manager_staff_id: null }, { where: { manager_staff_id: staffId }, transaction: t });
+    await WalkIn.update({ staff_id: null }, { where: { staff_id: staffId }, transaction: t });
+    await Waitlist.update({ staff_id: null }, { where: { staff_id: staffId }, transaction: t });
+    try {
+      await PackageRedemption.update({ redeemed_by: null }, { where: { redeemed_by: staffId }, transaction: t });
+    } catch { /* optional */ }
+    try {
+      await InvConsumption.update({ staff_id: null }, { where: { staff_id: staffId }, transaction: t });
+    } catch { /* column/table may be absent on older DBs */ }
+    try {
+      await CommissionTransaction.update(
+        { worker_staff_id: null },
+        { where: { worker_staff_id: staffId }, transaction: t },
+      );
+      await CommissionTransaction.update(
+        { manager_staff_id: null },
+        { where: { manager_staff_id: staffId }, transaction: t },
+      );
+    } catch { /* franchise table optional */ }
+
+    await staff.destroy({ transaction: t });
+    await t.commit();
+
+    unlinkStaffPhotoFile(photoUrl).catch(() => {});
     return res.json({ message: 'Staff deleted.' });
   } catch (err) {
-    return res.status(500).json({ message: 'Server error.' });
+    await t.rollback().catch(() => {});
+    console.error('staff.remove error:', err);
+    const isFk = /foreign key|ER_ROW_IS_REFERENCED|1451/i.test(err.message || '');
+    return res.status(isFk ? 409 : 500).json({
+      message: isFk
+        ? 'Cannot delete this staff — still linked to other records. Deactivate them instead.'
+        : (err.message || 'Failed to delete staff.'),
+    });
   }
 };
 

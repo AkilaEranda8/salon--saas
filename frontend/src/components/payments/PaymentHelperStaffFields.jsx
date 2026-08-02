@@ -23,9 +23,6 @@ export default function PaymentHelperStaffFields({
   const title = isDark ? '#E2E8F0' : '#101828';
   const panel = isDark ? '#0F172A' : '#fff';
   const soft = isDark ? '#1E293B' : '#F8FAFC';
-  const tipBg = isDark ? 'rgba(37,99,235,0.12)' : '#EFF6FF';
-  const tipBorder = isDark ? 'rgba(96,165,250,0.35)' : '#BFDBFE';
-  const tipText = isDark ? '#93C5FD' : '#1D4ED8';
 
   const mainId = mainStaffId ? String(mainStaffId) : '';
   const helpersOn = (helpers || []).length > 0;
@@ -51,15 +48,23 @@ export default function PaymentHelperStaffFields({
   };
 
   const removeHelper = (idx) => {
-    const next = (helpers || []).filter((_, i) => i !== idx);
-    onHelpersChange(next);
+    onHelpersChange((helpers || []).filter((_, i) => i !== idx));
+  };
+
+  const fieldLabel = {
+    fontSize: 11,
+    fontWeight: 700,
+    color: muted,
+    letterSpacing: '0.03em',
+    textTransform: 'uppercase',
+    marginBottom: 4,
   };
 
   return (
     <div style={{
       border: `1px solid ${border}`,
       borderRadius: 12,
-      padding: 12,
+      padding: 14,
       background: panel,
       display: 'flex',
       flexDirection: 'column',
@@ -67,26 +72,12 @@ export default function PaymentHelperStaffFields({
     }}>
       <div>
         <div style={{ fontWeight: 700, fontSize: 14, color: title }}>Staff & commission</div>
-        <div style={{
-          marginTop: 8,
-          padding: '8px 10px',
-          borderRadius: 8,
-          background: tipBg,
-          border: `1px solid ${tipBorder}`,
-          fontSize: 11,
-          color: tipText,
-          lineHeight: 1.45,
-        }}>
-          Tip: Main staff gets the service commission. Helper staff is optional —
-          if you add helpers, their share is taken from the main commission (not extra on top).
+        <div style={{ fontSize: 12, color: muted, marginTop: 4, lineHeight: 1.4 }}>
+          Helpers optional — their share comes from the main commission.
         </div>
       </div>
 
-      <FormGroup
-        label="Main staff"
-        required
-        helper="Who mainly did the service. Their normal commission is calculated first."
-      >
+      <FormGroup label="Main staff" required>
         <Select
           value={mainId}
           onChange={(e) => {
@@ -105,7 +96,7 @@ export default function PaymentHelperStaffFields({
       <label style={{
         display: 'flex',
         gap: 10,
-        alignItems: 'flex-start',
+        alignItems: 'center',
         cursor: mainId ? 'pointer' : 'not-allowed',
         opacity: mainId ? 1 : 0.55,
         padding: '10px 12px',
@@ -118,27 +109,15 @@ export default function PaymentHelperStaffFields({
           checked={helpersOn}
           disabled={!mainId}
           onChange={(e) => setHelpersEnabled(e.target.checked)}
-          style={{ marginTop: 3, width: 16, height: 16, accentColor: '#2563EB' }}
+          style={{ width: 16, height: 16, accentColor: '#2563EB', flexShrink: 0 }}
         />
-        <span>
-          <div style={{ fontWeight: 700, fontSize: 13, color: title }}>
-            Helper staff <span style={{ fontWeight: 600, color: muted }}>(optional)</span>
-          </div>
-          <div style={{ fontSize: 11, color: muted, marginTop: 2, lineHeight: 1.4 }}>
-            Tip: Turn on only if another staff helped. You can add multiple helpers.
-            Leave off for normal single-staff commission.
-          </div>
+        <span style={{ fontWeight: 700, fontSize: 13, color: title }}>
+          Helper staff <span style={{ fontWeight: 500, color: muted }}>(optional)</span>
         </span>
       </label>
 
       {helpersOn && (
-        <>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
-            <Button type="button" variant="secondary" size="sm" onClick={addHelper} disabled={!mainId}>
-              + Add another helper
-            </Button>
-          </div>
-
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {(helpers || []).map((h, idx) => {
             const options = staffOptions.filter((s) => {
               const sid = String(s.id);
@@ -146,6 +125,7 @@ export default function PaymentHelperStaffFields({
               if (sid === String(h.staff_id)) return true;
               return !usedIds.has(sid);
             });
+            const isPct = (h.commission_type || 'percentage_of_main') !== 'fixed';
             return (
               <div
                 key={`helper-${idx}`}
@@ -153,80 +133,82 @@ export default function PaymentHelperStaffFields({
                   background: soft,
                   border: `1px solid ${border}`,
                   borderRadius: 10,
-                  padding: 10,
+                  padding: 12,
                   display: 'flex',
                   flexDirection: 'column',
-                  gap: 8,
+                  gap: 10,
                 }}
               >
-                <div style={{ fontSize: 11, fontWeight: 700, color: muted }}>
-                  Helper {idx + 1}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: title }}>
+                    Helper {idx + 1}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => removeHelper(idx)}
+                    title="Remove helper"
+                    style={{
+                      border: 'none',
+                      background: 'transparent',
+                      color: isDark ? '#FCA5A5' : '#DC2626',
+                      fontSize: 12,
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      padding: '2px 4px',
+                    }}
+                  >
+                    Remove
+                  </button>
                 </div>
-                <FormGroup
-                  label="Helper staff"
-                  helper="Assistant who helped on this job. Cannot be the same as main staff."
-                >
-                  <Select
-                    value={h.staff_id || ''}
-                    onChange={(e) => updateHelper(idx, { staff_id: e.target.value })}
-                  >
-                    <option value="">Select helper</option>
-                    {options.map((s) => (
-                      <option key={s.id} value={s.id}>{s.name}</option>
-                    ))}
-                  </Select>
-                </FormGroup>
-                <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr auto', gap: 8, alignItems: 'end' }}>
-                  <FormGroup
-                    label="Helper commission type"
-                    helper="% of main = share of main’s commission. Fixed Rs = set amount from main."
-                  >
+
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'minmax(0, 1.6fr) minmax(0, 1fr) minmax(0, 0.85fr)',
+                  gap: 10,
+                  alignItems: 'end',
+                }}>
+                  <div>
+                    <div style={fieldLabel}>Helper</div>
+                    <Select
+                      value={h.staff_id || ''}
+                      onChange={(e) => updateHelper(idx, { staff_id: e.target.value })}
+                    >
+                      <option value="">Select helper</option>
+                      {options.map((s) => (
+                        <option key={s.id} value={s.id}>{s.name}</option>
+                      ))}
+                    </Select>
+                  </div>
+                  <div>
+                    <div style={fieldLabel}>Type</div>
                     <Select
                       value={h.commission_type || 'percentage_of_main'}
                       onChange={(e) => updateHelper(idx, { commission_type: e.target.value })}
                     >
-                      <option value="percentage_of_main">% of main commission</option>
+                      <option value="percentage_of_main">% of main</option>
                       <option value="fixed">Fixed Rs</option>
                     </Select>
-                  </FormGroup>
-                  <FormGroup
-                    label={h.commission_type === 'fixed' ? 'Amount (Rs)' : 'Percent (%)'}
-                    helper={h.commission_type === 'fixed'
-                      ? 'Tip: e.g. 200 → helper gets Rs 200 from main.'
-                      : 'Tip: e.g. 20 → helper gets 20% of main commission.'}
-                  >
+                  </div>
+                  <div>
+                    <div style={fieldLabel}>{isPct ? 'Percent (%)' : 'Amount (Rs)'}</div>
                     <Input
                       type="number"
                       min="0"
                       step="0.01"
                       value={h.commission_value ?? ''}
                       onChange={(e) => updateHelper(idx, { commission_value: e.target.value })}
-                      placeholder={h.commission_type === 'fixed' ? '0' : '20'}
+                      placeholder={isPct ? '20' : '200'}
                     />
-                  </FormGroup>
-                  <button
-                    type="button"
-                    onClick={() => removeHelper(idx)}
-                    title="Remove this helper"
-                    style={{
-                      height: 38,
-                      padding: '0 10px',
-                      borderRadius: 8,
-                      border: `1px solid ${isDark ? '#7F1D1D' : '#FECACA'}`,
-                      background: isDark ? '#450A0A' : '#FEF2F2',
-                      color: isDark ? '#FCA5A5' : '#DC2626',
-                      fontSize: 12,
-                      fontWeight: 700,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    Remove
-                  </button>
+                  </div>
                 </div>
               </div>
             );
           })}
-        </>
+
+          <Button type="button" variant="secondary" size="sm" onClick={addHelper} disabled={!mainId}>
+            + Add another helper
+          </Button>
+        </div>
       )}
     </div>
   );

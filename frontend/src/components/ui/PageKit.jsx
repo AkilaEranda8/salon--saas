@@ -417,7 +417,7 @@ export function PKModal({ open, onClose, title, children, footer, size = 'md', w
     return () => { document.body.style.overflow = ''; };
   }, [open]);
   if (!open) return null;
-  const widths = { sm: 420, md: 560, lg: 720 };
+  const widths = { sm: 420, md: 560, lg: 720, xl: 920 };
   const modalMaxWidth = width ?? widths[size] ?? 560;
   return createPortal(
     <div style={{ position: 'fixed', inset: 0, zIndex: 900, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>

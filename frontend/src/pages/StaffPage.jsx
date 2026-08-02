@@ -278,6 +278,22 @@ function CommBadge({ type, value, dark = false }) {
   );
 }
 
+const SALARY_TYPE_LABELS = {
+  commission_only: 'Commission Only',
+  salary_only: 'Fixed Salary Only',
+  salary_plus_commission: 'Salary + Commission',
+  daily_salary_plus_commission: 'Per-day Salary + Commission',
+};
+
+function ProfileField({ label, value }) {
+  return (
+    <div style={{ background: '#F9FAFB', borderRadius: 10, padding: '12px 14px' }}>
+      <div style={{ fontSize: 11, fontWeight: 700, color: '#98A2B3', textTransform: 'uppercase', marginBottom: 4 }}>{label}</div>
+      <div style={{ fontSize: 14, fontWeight: 600, color: '#101828', wordBreak: 'break-word' }}>{value || '—'}</div>
+    </div>
+  );
+}
+
 function StaffSection({ title, desc, children, dark = false }) {
   return (
     <div style={{
@@ -420,6 +436,7 @@ export default function StaffPage() {
   const [roleTitles, setRoleTitles]     = useState(STAFF_ROLE_TITLES);
   const [newRoleDraft, setNewRoleDraft] = useState('');
   const [addingRole, setAddingRole]     = useState(false);
+  const [showNewRoleInput, setShowNewRoleInput] = useState(false);
 
   const loadRoles = useCallback(async () => {
     try {
@@ -558,6 +575,7 @@ export default function StaffPage() {
     setRemovePhoto(false);
     setFormErr('');
     setNewRoleDraft('');
+    setShowNewRoleInput(false);
     refreshServices();
     loadRoles();
     setShowForm(true);
@@ -598,6 +616,7 @@ export default function StaffPage() {
       setRemovePhoto(false);
       setFormErr('');
       setNewRoleDraft('');
+      setShowNewRoleInput(false);
       loadRoles();
       setShowForm(true);
     } catch (err) {
@@ -713,7 +732,9 @@ export default function StaffPage() {
 
   const activeCount = staff.filter(s => s.is_active !== false).length;
   const p = profileItem;
-  const roleSelectValue = staffRoleSelectValue(form.role_title, roleTitles);
+  const roleSelectValue = showNewRoleInput
+    ? STAFF_ROLE_OTHER
+    : staffRoleSelectValue(form.role_title, roleTitles);
 
   const addRoleToSystem = async () => {
     const title = String(newRoleDraft || '').trim();
@@ -726,6 +747,7 @@ export default function StaffPage() {
       setRoleTitles(list.length ? list : [...roleTitles, title]);
       setForm((f) => ({ ...f, role_title: res.data?.title || title }));
       setNewRoleDraft('');
+      setShowNewRoleInput(false);
       toast(res.data?.message || 'Role added.', 'success');
     } catch (e) {
       setFormErr(e.response?.data?.message || 'Failed to add role.');
@@ -1217,13 +1239,15 @@ export default function StaffPage() {
             <StaffSection title="Role & Branches" desc="Job title from system roles, and assigned locations" dark={isDark}>
               <FormGroup label="Role" required>
                     <Select
-                      value={roleSelectValue === STAFF_ROLE_OTHER ? STAFF_ROLE_OTHER : (roleTitles.includes(form.role_title) ? form.role_title : roleSelectValue)}
+                      value={roleSelectValue}
                       onChange={(e) => {
                         const v = e.target.value;
                         if (v === STAFF_ROLE_OTHER) {
+                          setShowNewRoleInput(true);
                           setNewRoleDraft('');
                           setForm((f) => ({ ...f, role_title: '' }));
                         } else {
+                          setShowNewRoleInput(false);
                           setNewRoleDraft('');
                           setForm((f) => ({ ...f, role_title: v }));
                         }
@@ -1233,18 +1257,24 @@ export default function StaffPage() {
                       {roleTitles.map((r) => <option key={r} value={r}>{r}</option>)}
                       <option value={STAFF_ROLE_OTHER}>+ Add new role…</option>
                     </Select>
-                    {roleSelectValue === STAFF_ROLE_OTHER && (
-                      <div style={{ display: 'flex', gap: 8, marginTop: 8, alignItems: 'center' }}>
-                        <Input
-                          value={newRoleDraft}
-                          onChange={(e) => setNewRoleDraft(e.target.value)}
-                          placeholder="e.g. Spa Therapist"
-                          style={{ flex: 1 }}
-                          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addRoleToSystem(); } }}
-                        />
-                        <Button type="button" variant="secondary" loading={addingRole} onClick={addRoleToSystem} style={{ whiteSpace: 'nowrap' }}>
-                          Add to system
-                        </Button>
+                    {showNewRoleInput && (
+                      <div style={{ marginTop: 10 }}>
+                        <div style={{ fontSize: 12, fontWeight: 600, color: isDark ? '#94A3B8' : '#667085', marginBottom: 6 }}>
+                          Type new role name
+                        </div>
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                          <Input
+                            autoFocus
+                            value={newRoleDraft}
+                            onChange={(e) => setNewRoleDraft(e.target.value)}
+                            placeholder="e.g. Spa Therapist"
+                            style={{ flex: 1 }}
+                            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addRoleToSystem(); } }}
+                          />
+                          <Button type="button" variant="primary" loading={addingRole} onClick={addRoleToSystem} style={{ whiteSpace: 'nowrap' }}>
+                            Add role
+                          </Button>
+                        </div>
                       </div>
                     )}
               </FormGroup>
@@ -1470,33 +1500,99 @@ export default function StaffPage() {
       </StaffModal>
 
       {/* Profile Drawer */}
-      <Drawer open={showProfile} onClose={() => setShowProfile(false)} title="Staff Profile" width={520}
+      <Drawer open={showProfile} onClose={() => setShowProfile(false)} title="Staff Profile" width={560}
         footer={canEdit && <Button variant="primary" onClick={() => { setShowProfile(false); openEdit(p); }} style={{ display:'flex', alignItems:'center', gap:6 }}><IconEdit /> Edit Profile</Button>}>
-        {p && (
+        {p && (() => {
+          const salaryType = p.salary_type || 'commission_only';
+          const paysCommission = salaryType !== 'salary_only';
+          const baseSalary = Number(p.base_salary || 0);
+          const baseSalaryLabel = salaryType === 'daily_salary_plus_commission'
+            ? (baseSalary > 0 ? `Rs. ${baseSalary.toLocaleString()}/day` : '—')
+            : (baseSalary > 0 ? `Rs. ${baseSalary.toLocaleString()}/month` : '—');
+          const showBaseSalary = salaryType === 'salary_only'
+            || salaryType === 'salary_plus_commission'
+            || salaryType === 'daily_salary_plus_commission';
+          return (
           <div style={{ fontFamily:"'Inter',sans-serif" }}>
-            <div style={{ display:'flex', gap:16, alignItems:'center', marginBottom:24, padding:16, background:'#F9FAFB', borderRadius:12 }}>
+            <div style={{ display:'flex', gap:16, alignItems:'center', marginBottom:20, padding:16, background:'#F9FAFB', borderRadius:12 }}>
               <StaffAvatar name={p.name} size={64} photoUrl={p.photo_url} />
-              <div>
+              <div style={{ minWidth: 0 }}>
                 <h2 style={{ margin:0, fontSize:20, fontWeight:800, color:'#101828' }}>{p.name}</h2>
-                <p style={{ margin:'4px 0 8px', color:'#475467', fontSize:14 }}>{p.role_title}</p>
-                <CommBadge type={p.commission_type} value={p.commission_value} />
+                <p style={{ margin:'4px 0 8px', color:'#475467', fontSize:14 }}>{p.role_title || '—'}</p>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+                  <span style={{
+                    padding: '2px 8px', borderRadius: 6, fontSize: 11, fontWeight: 700,
+                    background: '#EEF2FF', color: '#4338CA',
+                  }}>
+                    {SALARY_TYPE_LABELS[salaryType] || salaryType}
+                  </span>
+                  {paysCommission && (p.commission_value != null && p.commission_value !== '') && (
+                    <CommBadge type={p.commission_type || 'percentage'} value={p.commission_value} />
+                  )}
+                  <span style={{
+                    padding: '2px 8px', borderRadius: 6, fontSize: 11, fontWeight: 700,
+                    background: p.is_active !== false ? '#ECFDF5' : '#F2F4F7',
+                    color: p.is_active !== false ? '#059669' : '#667085',
+                  }}>
+                    {p.is_active !== false ? 'Active' : 'Inactive'}
+                  </span>
+                </div>
               </div>
             </div>
+
+            <h4 style={{ margin:'0 0 10px', fontSize:13, fontWeight:700, color:'#475467', textTransform:'uppercase' }}>
+              Basic details
+            </h4>
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:20 }}>
-              {[
-                { label:'Branches',  value: (p.branches && p.branches.length) ? p.branches.map(b=>b.name).join(', ') : (p.branch?.name||'') },
-                { label:'Phone',   value: p.phone||'' },
-                { label:'Email',   value: p.email||'' },
-                { label:'Joined',  value: p.join_date ? new Date(p.join_date).toLocaleDateString() : '' },
-                { label:'Status',  value: p.is_active!==false ? 'Active' : 'Inactive' },
-                { label:'Online booking', value: p.available_online !== false ? 'Available' : 'Off' },
-              ].map(({ label, value }) => (
-                <div key={label} style={{ background:'#F9FAFB', borderRadius:10, padding:'12px 14px' }}>
-                  <div style={{ fontSize:11, fontWeight:700, color:'#98A2B3', textTransform:'uppercase', marginBottom:4 }}>{label}</div>
-                  <div style={{ fontSize:14, fontWeight:600, color:'#101828' }}>{value}</div>
-                </div>
-              ))}
+              <ProfileField label="Role" value={p.role_title} />
+              <ProfileField
+                label="Branches"
+                value={(p.branches && p.branches.length) ? p.branches.map((b) => b.name).join(', ') : (p.branch?.name || '')}
+              />
+              <ProfileField label="Phone" value={p.phone} />
+              <ProfileField label="Email" value={p.email} />
+              <ProfileField label="Joined" value={p.join_date ? new Date(p.join_date).toLocaleDateString() : ''} />
+              <ProfileField label="Online booking" value={p.available_online !== false ? 'Available' : 'Off'} />
+              {p.user?.username && (
+                <ProfileField label="Linked login" value={`${p.user.name || p.user.username} (${p.user.role || 'user'})`} />
+              )}
             </div>
+
+            <h4 style={{ margin:'0 0 10px', fontSize:13, fontWeight:700, color:'#475467', textTransform:'uppercase' }}>
+              Pay & commission
+            </h4>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:20 }}>
+              <ProfileField label="Salary type" value={SALARY_TYPE_LABELS[salaryType] || salaryType} />
+              {showBaseSalary && (
+                <ProfileField
+                  label={salaryType === 'daily_salary_plus_commission' ? 'Per-day salary' : 'Base salary'}
+                  value={baseSalaryLabel}
+                />
+              )}
+              {paysCommission ? (
+                <>
+                  <ProfileField
+                    label="Commission type"
+                    value={(p.commission_type || 'percentage') === 'fixed' ? 'Fixed per service' : 'Percentage %'}
+                  />
+                  <ProfileField
+                    label={(p.commission_type || 'percentage') === 'fixed' ? 'Default commission (Rs.)' : 'Default commission %'}
+                    value={(p.commission_type || 'percentage') === 'fixed'
+                      ? `Rs. ${Number(p.commission_value || 0).toLocaleString()}`
+                      : `${p.commission_value ?? '—'}%`}
+                  />
+                </>
+              ) : (
+                <ProfileField label="Commission" value="Not applicable (salary only)" />
+              )}
+              {salaryType === 'daily_salary_plus_commission' && (
+                <ProfileField
+                  label="Attendance link"
+                  value="Present / Late days × per-day rate + commission"
+                />
+              )}
+            </div>
+
             <div style={{ marginBottom: 20 }}>
               <h4 style={{ margin:'0 0 10px', fontSize:13, fontWeight:700, color:'#475467', textTransform:'uppercase' }}>
                 Working Hours
@@ -1516,11 +1612,11 @@ export default function StaffPage() {
                 })}
               </div>
             </div>
-            {Array.isArray(p.offDays) && p.offDays.length > 0 && (
-              <div style={{ marginBottom: 20 }}>
-                <h4 style={{ margin:'0 0 10px', fontSize:13, fontWeight:700, color:'#475467', textTransform:'uppercase' }}>
-                  Off Days
-                </h4>
+            <div style={{ marginBottom: 20 }}>
+              <h4 style={{ margin:'0 0 10px', fontSize:13, fontWeight:700, color:'#475467', textTransform:'uppercase' }}>
+                Off Days
+              </h4>
+              {Array.isArray(p.offDays) && p.offDays.length > 0 ? (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                   {p.offDays.map((d) => (
                     <div key={d.id || d.date} style={{ padding: '8px 12px', background: '#FEF2F2', borderRadius: 8, fontSize: 13, color: '#B91C1C', fontWeight: 600 }}>
@@ -1528,13 +1624,17 @@ export default function StaffPage() {
                     </div>
                   ))}
                 </div>
-              </div>
-            )}
-            {(p.specializations || []).length > 0 && (
-              <div>
-                <h4 style={{ margin:'0 0 10px', fontSize:13, fontWeight:700, color:'#475467', textTransform:'uppercase' }}>
-                  {serviceWiseForUser && p.salary_type !== 'salary_only' ? 'Linked Services' : 'Assignable Services'}
-                </h4>
+              ) : (
+                <div style={{ padding: '10px 12px', background: '#F9FAFB', borderRadius: 8, fontSize: 13, color: '#98A2B3' }}>
+                  No off days set
+                </div>
+              )}
+            </div>
+            <div>
+              <h4 style={{ margin:'0 0 10px', fontSize:13, fontWeight:700, color:'#475467', textTransform:'uppercase' }}>
+                {serviceWiseForUser && paysCommission ? 'Linked Services' : 'Assignable Services'}
+              </h4>
+              {(p.specializations || []).length > 0 ? (
                 <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
                   {p.specializations.map((s) => {
                     const svc = services.find((sv) => sv.id === s.service_id || sv.id === s.service?.id);
@@ -1545,10 +1645,10 @@ export default function StaffPage() {
                       ? formatCommission(svc.commission_type, svc.commission_value)
                       : null;
                     return (
-                      <div key={s.id} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'8px 12px', background:'#F9FAFB', borderRadius:8, fontSize:13 }}>
+                      <div key={s.id || s.service_id} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'8px 12px', background:'#F9FAFB', borderRadius:8, fontSize:13, gap: 8 }}>
                         <span style={{ fontWeight:600, color:'#344054' }}>{s.service?.name || svc?.name || s.service_id}</span>
-                        {serviceWiseForUser && p.salary_type !== 'salary_only' && (
-                          <span style={{ fontSize:12, color: staffOverride ? '#059669' : '#667085', fontWeight: staffOverride ? 700 : 500 }}>
+                        {serviceWiseForUser && paysCommission && (
+                          <span style={{ fontSize:12, color: staffOverride ? '#059669' : '#667085', fontWeight: staffOverride ? 700 : 500, flexShrink: 0 }}>
                             {staffOverride
                               ? staffOverride
                               : (catalogue
@@ -1560,10 +1660,15 @@ export default function StaffPage() {
                     );
                   })}
                 </div>
-              </div>
-            )}
+              ) : (
+                <div style={{ padding: '10px 12px', background: '#F9FAFB', borderRadius: 8, fontSize: 13, color: '#98A2B3' }}>
+                  No services assigned
+                </div>
+              )}
+            </div>
           </div>
-        )}
+          );
+        })()}
       </Drawer>
     </PageWrapper>
   );

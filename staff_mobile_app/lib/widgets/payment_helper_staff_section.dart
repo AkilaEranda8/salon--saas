@@ -39,6 +39,7 @@ bool helpersDraftValid(List<PaymentHelperDraft> helpers) {
 }
 
 /// Main staff + optional helpers (share taken from main commission).
+/// Used by Collect Payment / walk-in payment on mobile.
 class PaymentHelperStaffSection extends StatelessWidget {
   const PaymentHelperStaffSection({
     required this.staffOptions,
@@ -73,7 +74,7 @@ class PaymentHelperStaffSection extends StatelessWidget {
     final mainId = mainStaffId.trim();
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
@@ -90,21 +91,26 @@ class PaymentHelperStaffSection extends StatelessWidget {
               color: _ink,
             ),
           ),
-          const SizedBox(height: 4),
-          const Text(
-            'Helpers optional — their share comes from the main commission.',
-            style: TextStyle(fontSize: 11.5, color: _muted, height: 1.35),
-          ),
-          const SizedBox(height: 12),
-          const Text(
-            'MAIN STAFF *',
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-              color: _muted,
-              letterSpacing: 0.4,
+          const SizedBox(height: 6),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            decoration: BoxDecoration(
+              color: const Color(0xFFEFF6FF),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: const Color(0xFFBFDBFE)),
+            ),
+            child: const Text(
+              'Main staff gets commission first. Helpers take a typed % or fixed amount from that.',
+              style: TextStyle(
+                fontSize: 11.5,
+                color: Color(0xFF1D4ED8),
+                height: 1.4,
+              ),
             ),
           ),
+          const SizedBox(height: 14),
+          _label('1. MAIN STAFF *'),
           const SizedBox(height: 6),
           DropdownButtonFormField<String>(
             key: ValueKey('main-staff-$mainId'),
@@ -112,6 +118,7 @@ class PaymentHelperStaffSection extends StatelessWidget {
                     !_activeStaff.any((s) => s.id == mainId)
                 ? null
                 : mainId,
+            isExpanded: true,
             decoration: _fieldDeco('Select main staff'),
             items: _activeStaff
                 .map((s) => DropdownMenuItem(value: s.id, child: Text(s.name)))
@@ -131,7 +138,7 @@ class PaymentHelperStaffSection extends StatelessWidget {
                 ? (v) => (v == null || v.isEmpty) ? 'Select main staff' : null
                 : null,
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 12),
           InkWell(
             onTap: mainId.isEmpty
                 ? null
@@ -175,7 +182,7 @@ class PaymentHelperStaffSection extends StatelessWidget {
                       TextSpan(
                         children: [
                           TextSpan(
-                            text: 'Helper staff ',
+                            text: '2. Helper staff ',
                             style: TextStyle(
                               fontWeight: FontWeight.w800,
                               fontSize: 13,
@@ -199,7 +206,7 @@ class PaymentHelperStaffSection extends StatelessWidget {
             ),
           ),
           if (_helpersOn) ...[
-            const SizedBox(height: 10),
+            const SizedBox(height: 12),
             ...helpers.asMap().entries.map((entry) {
               final idx = entry.key;
               final h = entry.value;
@@ -212,13 +219,12 @@ class PaymentHelperStaffSection extends StatelessWidget {
                     .map((e) => e.value.staffId),
               };
               final options = _activeStaff
-                  .where((s) =>
-                      s.id == h.staffId || !used.contains(s.id))
+                  .where((s) => s.id == h.staffId || !used.contains(s.id))
                   .toList();
               final isPct = h.commissionType != 'fixed';
               return Container(
                 margin: const EdgeInsets.only(bottom: 10),
-                padding: const EdgeInsets.all(12),
+                padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
                   color: _soft,
                   borderRadius: BorderRadius.circular(10),
@@ -232,7 +238,7 @@ class PaymentHelperStaffSection extends StatelessWidget {
                         Text(
                           'Helper ${idx + 1}',
                           style: const TextStyle(
-                            fontSize: 12,
+                            fontSize: 13,
                             fontWeight: FontWeight.w800,
                             color: _ink,
                           ),
@@ -254,17 +260,22 @@ class PaymentHelperStaffSection extends StatelessWidget {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 12),
+                    _label('HELPER STAFF'),
+                    const SizedBox(height: 6),
                     DropdownButtonFormField<String>(
                       key: ValueKey('helper-staff-$idx-${h.staffId}'),
                       initialValue: h.staffId.isEmpty ||
                               !options.any((s) => s.id == h.staffId)
                           ? null
                           : h.staffId,
+                      isExpanded: true,
                       decoration: _fieldDeco('Select helper'),
                       items: options
-                          .map((s) =>
-                              DropdownMenuItem(value: s.id, child: Text(s.name)))
+                          .map((s) => DropdownMenuItem(
+                                value: s.id,
+                                child: Text(s.name),
+                              ))
                           .toList(),
                       onChanged: (v) {
                         final next = [...helpers];
@@ -276,60 +287,66 @@ class PaymentHelperStaffSection extends StatelessWidget {
                         onHelpersChanged(next);
                       },
                     ),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: DropdownButtonFormField<String>(
-                            key: ValueKey('helper-type-$idx-${h.commissionType}'),
-                            initialValue: h.commissionType == 'fixed'
-                                ? 'fixed'
-                                : 'percentage_of_main',
-                            decoration: _fieldDeco('Type'),
-                            items: const [
-                              DropdownMenuItem(
-                                value: 'percentage_of_main',
-                                child: Text('% of main'),
-                              ),
-                              DropdownMenuItem(
-                                value: 'fixed',
-                                child: Text('Fixed Rs'),
-                              ),
-                            ],
-                            onChanged: (v) {
-                              final next = [...helpers];
-                              next[idx] = PaymentHelperDraft(
-                                staffId: h.staffId,
-                                commissionType: v ?? 'percentage_of_main',
-                                commissionValue: h.commissionValue,
-                              );
-                              onHelpersChanged(next);
-                            },
-                          ),
+                    const SizedBox(height: 12),
+                    _label('COMMISSION TYPE'),
+                    const SizedBox(height: 6),
+                    DropdownButtonFormField<String>(
+                      key: ValueKey('helper-type-$idx-${h.commissionType}'),
+                      initialValue: h.commissionType == 'fixed'
+                          ? 'fixed'
+                          : 'percentage_of_main',
+                      isExpanded: true,
+                      decoration: _fieldDeco('Type'),
+                      items: const [
+                        DropdownMenuItem(
+                          value: 'percentage_of_main',
+                          child: Text('% of main commission'),
                         ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: TextFormField(
-                            key: ValueKey(
-                              'helper-val-$idx-${h.commissionType}',
-                            ),
-                            initialValue: h.commissionValue,
-                            keyboardType: const TextInputType.numberWithOptions(
-                              decimal: true,
-                            ),
-                            decoration: _fieldDeco(isPct ? '%' : 'Rs'),
-                            onChanged: (v) {
-                              final next = [...helpers];
-                              next[idx] = PaymentHelperDraft(
-                                staffId: h.staffId,
-                                commissionType: h.commissionType,
-                                commissionValue: v,
-                              );
-                              onHelpersChanged(next);
-                            },
-                          ),
+                        DropdownMenuItem(
+                          value: 'fixed',
+                          child: Text('Fixed amount (Rs)'),
                         ),
                       ],
+                      onChanged: (v) {
+                        final next = [...helpers];
+                        next[idx] = PaymentHelperDraft(
+                          staffId: h.staffId,
+                          commissionType: v ?? 'percentage_of_main',
+                          commissionValue: h.commissionValue,
+                        );
+                        onHelpersChanged(next);
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    _label(isPct ? 'PERCENT (%)' : 'AMOUNT (RS)'),
+                    const SizedBox(height: 6),
+                    TextFormField(
+                      key: ValueKey('helper-val-$idx-${h.commissionType}'),
+                      initialValue: h.commissionValue,
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      decoration: _fieldDeco(isPct ? 'e.g. 20' : 'e.g. 200'),
+                      onChanged: (v) {
+                        final next = [...helpers];
+                        next[idx] = PaymentHelperDraft(
+                          staffId: h.staffId,
+                          commissionType: h.commissionType,
+                          commissionValue: v,
+                        );
+                        onHelpersChanged(next);
+                      },
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      isPct
+                          ? 'This % of the main staff commission goes to the helper.'
+                          : 'This Rs amount is taken from the main staff commission.',
+                      style: const TextStyle(
+                        fontSize: 11.5,
+                        color: _muted,
+                        height: 1.35,
+                      ),
                     ),
                   ],
                 ),
@@ -354,6 +371,16 @@ class PaymentHelperStaffSection extends StatelessWidget {
       ),
     );
   }
+
+  Widget _label(String text) => Text(
+        text,
+        style: const TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          color: _muted,
+          letterSpacing: 0.4,
+        ),
+      );
 
   InputDecoration _fieldDeco(String hint) => InputDecoration(
         hintText: hint,

@@ -305,6 +305,36 @@ class MobileApi {
         .toList();
   }
 
+  Future<List<String>> fetchStaffRoles({required String token}) async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/api/staff/roles'),
+      headers: _authHeaders(token),
+    );
+    final body = _decode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['message'] ?? 'Staff roles load failed');
+    }
+    final list = (body['data'] as List? ?? const []);
+    return list.map((e) => '$e'.trim()).where((e) => e.isNotEmpty).toList();
+  }
+
+  Future<List<String>> addStaffRole({
+    required String token,
+    required String title,
+  }) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/api/staff/roles'),
+      headers: _authHeaders(token),
+      body: jsonEncode({'title': title.trim()}),
+    );
+    final body = _decode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['message'] ?? 'Add staff role failed');
+    }
+    final list = (body['data'] as List? ?? const []);
+    return list.map((e) => '$e'.trim()).where((e) => e.isNotEmpty).toList();
+  }
+
   Future<StaffMember> createSalonStaff({
     required String token,
     required Map<String, dynamic> payload,

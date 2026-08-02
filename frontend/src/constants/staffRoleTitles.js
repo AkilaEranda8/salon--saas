@@ -1,4 +1,4 @@
-/** Salon job roles shown when adding/editing staff. */
+/** Fallback salon job roles when API is unavailable. */
 export const STAFF_ROLE_TITLES = [
   'Branch Manager',
   'Salon Manager',
@@ -16,10 +16,12 @@ export const STAFF_ROLE_TITLES = [
   'Salon Assistant',
 ];
 
+/** Sentinel value for “add a new role into the system”. */
 export const STAFF_ROLE_OTHER = '__other__';
 
-export function staffRoleSelectValue(roleTitle) {
+export function staffRoleSelectValue(roleTitle, roleTitles = STAFF_ROLE_TITLES) {
   const title = (roleTitle || '').trim();
   if (!title) return '';
-  return STAFF_ROLE_TITLES.includes(title) ? title : STAFF_ROLE_OTHER;
+  const list = Array.isArray(roleTitles) && roleTitles.length ? roleTitles : STAFF_ROLE_TITLES;
+  return list.includes(title) ? title : STAFF_ROLE_OTHER;
 }

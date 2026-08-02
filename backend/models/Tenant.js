@@ -132,6 +132,11 @@ const Tenant = sequelize.define('Tenant', {
     allowNull: true,
     comment: 'Per-role default mobile app feature access for this tenant',
   },
+  staff_role_titles: {
+    type: DataTypes.JSON,
+    allowNull: true,
+    comment: 'Extra staff job titles for this tenant (merged with system defaults)',
+  },
   enabled_features: {
     type: DataTypes.JSON,
     allowNull: true,

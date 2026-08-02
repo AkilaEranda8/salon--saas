@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../constants/staff_role_titles.dart';
 import '../models/salon_service.dart';
 import '../models/staff_member.dart';
+import '../state/app_state.dart';
 
 const Color _cForest  = Color(0xFF1B3A2D);
 const Color _cEmerald = Color(0xFF2D6A4F);
@@ -101,6 +102,9 @@ class _AddStaffModalState extends State<AddStaffModal> {
   late bool _isActive;
   final Map<String, TextEditingController> _svcCommCtrls = {};
   final Set<String> _selectedServices = {};
+  List<String> _roleTitles = List<String>.from(staffRoleTitles);
+  bool _rolesLoading = true;
+  bool _addingRole = false;
 
   bool get _isEdit => widget.initial != null;
   bool get _paysCommission =>
@@ -124,7 +128,7 @@ class _AddStaffModalState extends State<AddStaffModal> {
     if (roleTitle.isEmpty) {
       _rolePick = '';
       _roleCustomCtrl = TextEditingController();
-    } else if (staffRoleTitles.contains(roleTitle)) {
+    } else if (_roleTitles.contains(roleTitle)) {
       _rolePick = roleTitle;
       _roleCustomCtrl = TextEditingController();
     } else {
@@ -155,6 +159,57 @@ class _AddStaffModalState extends State<AddStaffModal> {
       }
     } else if (widget.showServiceWiseCommission && _paysCommission) {
       _linkAllServices(prefillCatalogue: !widget.defaultCommissionOnly);
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadRoles());
+  }
+
+  Future<void> _loadRoles() async {
+    try {
+      final app = AppStateScope.of(context);
+      final list = await app.loadStaffRoleTitles();
+      if (!mounted) return;
+      setState(() {
+        _roleTitles = list.isNotEmpty ? list : List<String>.from(staffRoleTitles);
+        _rolesLoading = false;
+        final current = (widget.initial?.roleTitle ?? '').trim();
+        if (current.isNotEmpty && _roleTitles.contains(current)) {
+          _rolePick = current;
+          _roleCustomCtrl.clear();
+        }
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _roleTitles = List<String>.from(staffRoleTitles);
+        _rolesLoading = false;
+      });
+    }
+  }
+
+  Future<void> _addRoleToSystem() async {
+    final title = _roleCustomCtrl.text.trim();
+    if (title.isEmpty) return;
+    setState(() => _addingRole = true);
+    try {
+      final app = AppStateScope.of(context);
+      final list = await app.addStaffRoleTitle(title);
+      if (!mounted) return;
+      setState(() {
+        _roleTitles = list.isNotEmpty ? list : [..._roleTitles, title];
+        _rolePick = title;
+        _roleCustomCtrl.clear();
+        _addingRole = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Role "$title" added to system')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _addingRole = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$e')),
+      );
     }
   }
 
@@ -396,18 +451,25 @@ class _AddStaffModalState extends State<AddStaffModal> {
               const SizedBox(height: 12),
               _label('ROLE'),
               DropdownButtonFormField<String>(
-                key: ValueKey('role_$_rolePick'),
-                initialValue: _rolePick.isEmpty ? null : _rolePick,
+                key: ValueKey('role_$_rolePick ${_roleTitles.length}'),
+                initialValue: _rolePick.isEmpty
+                    ? null
+                    : (_roleTitles.contains(_rolePick) || _rolePick == staffRoleOther
+                        ? _rolePick
+                        : staffRoleOther),
                 isExpanded: true,
-                decoration: _deco('Select role', Icons.work_outline_rounded,
-                    required: true),
+                decoration: _deco(
+                  _rolesLoading ? 'Loading roles…' : 'Select role',
+                  Icons.work_outline_rounded,
+                  required: true,
+                ),
                 items: [
-                  ...staffRoleTitles.map(
+                  ..._roleTitles.map(
                     (r) => DropdownMenuItem(value: r, child: Text(r)),
                   ),
                   const DropdownMenuItem(
                     value: staffRoleOther,
-                    child: Text('Other'),
+                    child: Text('+ Add new role…'),
                   ),
                 ],
                 onChanged: (v) {
@@ -421,22 +483,37 @@ class _AddStaffModalState extends State<AddStaffModal> {
                   if (v == null || v.isEmpty) return 'Select a role';
                   if (v == staffRoleOther &&
                       _roleCustomCtrl.text.trim().isEmpty) {
-                    return 'Enter custom role';
+                    return 'Enter new role name';
                   }
                   return null;
                 },
               ),
               if (_rolePick == staffRoleOther) ...[
                 const SizedBox(height: 12),
-                _label('CUSTOM ROLE'),
+                _label('NEW ROLE (SAVED TO SYSTEM)'),
                 TextFormField(
                   controller: _roleCustomCtrl,
                   textCapitalization: TextCapitalization.words,
-                  decoration: _deco('Enter role title', Icons.edit_rounded,
+                  decoration: _deco('e.g. Spa Therapist', Icons.edit_rounded,
                       required: true),
                   onChanged: (_) => setState(() {}),
                   validator: (v) =>
                       (v == null || v.trim().isEmpty) ? 'Required' : null,
+                ),
+                const SizedBox(height: 8),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    onPressed: _addingRole ? null : _addRoleToSystem,
+                    icon: _addingRole
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.add, size: 18),
+                    label: Text(_addingRole ? 'Adding…' : 'Add to system'),
+                  ),
                 ),
               ],
               const SizedBox(height: 12),

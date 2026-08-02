@@ -417,6 +417,20 @@ export default function StaffPage() {
   const [removePhoto, setRemovePhoto]   = useState(false);
   const [appInfo, setAppInfo]           = useState(null);
   const [appDownloading, setAppDownloading] = useState(false);
+  const [roleTitles, setRoleTitles]     = useState(STAFF_ROLE_TITLES);
+  const [newRoleDraft, setNewRoleDraft] = useState('');
+  const [addingRole, setAddingRole]     = useState(false);
+
+  const loadRoles = useCallback(async () => {
+    try {
+      const res = await api.get('/staff/roles');
+      const list = Array.isArray(res.data?.data) ? res.data.data : (Array.isArray(res.data) ? res.data : []);
+      if (list.length) setRoleTitles(list);
+      else setRoleTitles(STAFF_ROLE_TITLES);
+    } catch {
+      setRoleTitles(STAFF_ROLE_TITLES);
+    }
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -441,7 +455,7 @@ export default function StaffPage() {
     }
     setLoading(false);
   }, []);
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(); loadRoles(); }, [load, loadRoles]);
 
   useEffect(() => {
     let active = true;
@@ -543,7 +557,9 @@ export default function StaffPage() {
     setPhotoPreview('');
     setRemovePhoto(false);
     setFormErr('');
+    setNewRoleDraft('');
     refreshServices();
+    loadRoles();
     setShowForm(true);
   };
   const openEdit = async (row) => {
@@ -581,6 +597,8 @@ export default function StaffPage() {
       setPhotoPreview(full.photo_url || '');
       setRemovePhoto(false);
       setFormErr('');
+      setNewRoleDraft('');
+      loadRoles();
       setShowForm(true);
     } catch (err) {
       setFormErr(err?.response?.data?.message || 'Failed to load staff profile.');
@@ -609,7 +627,21 @@ export default function StaffPage() {
 
   const handleSave = async () => {
     if (!form.name || !form.branch_ids?.length) return setFormErr('Name and at least one branch are required');
-    if (!String(form.role_title || '').trim()) return setFormErr('Select a role for this staff member.');
+    let roleTitle = String(form.role_title || '').trim();
+    if (!roleTitle && String(newRoleDraft || '').trim()) {
+      roleTitle = String(newRoleDraft).trim();
+      try {
+        const res = await api.post('/staff/roles', { title: roleTitle });
+        const list = Array.isArray(res.data?.data) ? res.data.data : roleTitles;
+        if (list.length) setRoleTitles(list);
+        roleTitle = res.data?.title || roleTitle;
+        setForm((f) => ({ ...f, role_title: roleTitle }));
+        setNewRoleDraft('');
+      } catch (e) {
+        return setFormErr(e.response?.data?.message || 'Failed to add role.');
+      }
+    }
+    if (!roleTitle) return setFormErr('Select a role for this staff member.');
     const paysCommission = form.salary_type !== 'salary_only';
     const effectiveSpecs = specs;
     if (paysCommission && (form.commission_value === '' || form.commission_value == null)) {
@@ -621,7 +653,7 @@ export default function StaffPage() {
         name: form.name,
         phone: form.phone || '',
         email: form.email || '',
-        role_title: form.role_title || '',
+        role_title: roleTitle,
         branch_ids: form.branch_ids.map((x) => Number(x)).filter((n) => Number.isFinite(n)),
         salary_type: form.salary_type || 'commission_only',
         join_date: form.join_date || null,
@@ -681,7 +713,25 @@ export default function StaffPage() {
 
   const activeCount = staff.filter(s => s.is_active !== false).length;
   const p = profileItem;
-  const roleSelectValue = staffRoleSelectValue(form.role_title);
+  const roleSelectValue = staffRoleSelectValue(form.role_title, roleTitles);
+
+  const addRoleToSystem = async () => {
+    const title = String(newRoleDraft || '').trim();
+    if (!title) return setFormErr('Enter a role name to add.');
+    setAddingRole(true);
+    setFormErr('');
+    try {
+      const res = await api.post('/staff/roles', { title });
+      const list = Array.isArray(res.data?.data) ? res.data.data : roleTitles;
+      setRoleTitles(list.length ? list : [...roleTitles, title]);
+      setForm((f) => ({ ...f, role_title: res.data?.title || title }));
+      setNewRoleDraft('');
+      toast(res.data?.message || 'Role added.', 'success');
+    } catch (e) {
+      setFormErr(e.response?.data?.message || 'Failed to add role.');
+    }
+    setAddingRole(false);
+  };
 
   const columns = [
     {
@@ -1164,22 +1214,38 @@ export default function StaffPage() {
               )}
             </StaffSection>
 
-            <StaffSection title="Role & Branches" desc="Job title and assigned locations" dark={isDark}>
+            <StaffSection title="Role & Branches" desc="Job title from system roles, and assigned locations" dark={isDark}>
               <FormGroup label="Role" required>
                     <Select
-                      value={roleSelectValue}
+                      value={roleSelectValue === STAFF_ROLE_OTHER ? STAFF_ROLE_OTHER : (roleTitles.includes(form.role_title) ? form.role_title : roleSelectValue)}
                       onChange={(e) => {
                         const v = e.target.value;
-                        if (v === STAFF_ROLE_OTHER) setForm((f) => ({ ...f, role_title: '' }));
-                        else setForm((f) => ({ ...f, role_title: v }));
+                        if (v === STAFF_ROLE_OTHER) {
+                          setNewRoleDraft('');
+                          setForm((f) => ({ ...f, role_title: '' }));
+                        } else {
+                          setNewRoleDraft('');
+                          setForm((f) => ({ ...f, role_title: v }));
+                        }
                       }}
                     >
                       <option value="">Select role...</option>
-                      {STAFF_ROLE_TITLES.map((r) => <option key={r} value={r}>{r}</option>)}
-                      <option value={STAFF_ROLE_OTHER}>Other</option>
+                      {roleTitles.map((r) => <option key={r} value={r}>{r}</option>)}
+                      <option value={STAFF_ROLE_OTHER}>+ Add new role…</option>
                     </Select>
                     {roleSelectValue === STAFF_ROLE_OTHER && (
-                      <Input value={form.role_title || ''} onChange={(e) => setForm((f) => ({ ...f, role_title: e.target.value }))} placeholder="Enter custom role" style={{ marginTop: 8 }} />
+                      <div style={{ display: 'flex', gap: 8, marginTop: 8, alignItems: 'center' }}>
+                        <Input
+                          value={newRoleDraft}
+                          onChange={(e) => setNewRoleDraft(e.target.value)}
+                          placeholder="e.g. Spa Therapist"
+                          style={{ flex: 1 }}
+                          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addRoleToSystem(); } }}
+                        />
+                        <Button type="button" variant="secondary" loading={addingRole} onClick={addRoleToSystem} style={{ whiteSpace: 'nowrap' }}>
+                          Add to system
+                        </Button>
+                      </div>
                     )}
               </FormGroup>
               <FormGroup label="Branches" required>

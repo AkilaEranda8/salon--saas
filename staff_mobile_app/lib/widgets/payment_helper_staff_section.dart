@@ -2,37 +2,43 @@ import 'package:flutter/material.dart';
 
 import '../models/staff_member.dart';
 
-/// Equal share of commission pool for each person (main + helpers).
-double equalHelperPercent(int helperCount) {
-  final n = helperCount < 1 ? 1 : helperCount;
-  return double.parse((100 / (n + 1)).toStringAsFixed(2));
-}
-
-/// One helper staff row — API always equal-splits the pool (ignores % / fixed).
+/// One helper staff row for payment commission split.
 class PaymentHelperDraft {
-  PaymentHelperDraft({this.staffId = ''});
+  PaymentHelperDraft({
+    this.staffId = '',
+    this.commissionType = 'percentage_of_main',
+    this.commissionValue = '20',
+  });
 
   String staffId;
+  String commissionType; // percentage_of_main | fixed
+  String commissionValue;
 
-  Map<String, dynamic> toApiJson(double sharePct) => {
+  Map<String, dynamic> toApiJson() => {
         'staff_id': int.tryParse(staffId) ?? staffId,
-        'commission_type': 'percentage_of_main',
-        'commission_value': sharePct,
+        'commission_type':
+            commissionType == 'fixed' ? 'fixed' : 'percentage_of_main',
+        'commission_value': double.tryParse(commissionValue.trim()) ?? 0,
       };
 }
 
 List<Map<String, dynamic>> helpersApiPayload(List<PaymentHelperDraft> helpers) {
-  final list = helpers.where((h) => h.staffId.trim().isNotEmpty).toList();
-  final pct = equalHelperPercent(list.isEmpty ? 1 : list.length);
-  return list.map((h) => h.toApiJson(pct)).toList();
+  return helpers
+      .where((h) =>
+          h.staffId.trim().isNotEmpty &&
+          (double.tryParse(h.commissionValue.trim()) ?? 0) > 0)
+      .map((h) => h.toApiJson())
+      .toList();
 }
 
 bool helpersDraftValid(List<PaymentHelperDraft> helpers) {
   if (helpers.isEmpty) return true;
-  return helpers.every((h) => h.staffId.trim().isNotEmpty);
+  return helpers.every((h) =>
+      h.staffId.trim().isNotEmpty &&
+      (double.tryParse(h.commissionValue.trim()) ?? 0) > 0);
 }
 
-/// Main staff + optional helpers (pool always split equally).
+/// Main staff + optional helpers (share taken from main commission).
 class PaymentHelperStaffSection extends StatelessWidget {
   const PaymentHelperStaffSection({
     required this.staffOptions,
@@ -65,8 +71,6 @@ class PaymentHelperStaffSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final mainId = mainStaffId.trim();
-    final helperPct = equalHelperPercent(helpers.isEmpty ? 1 : helpers.length);
-
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(12),
@@ -88,8 +92,7 @@ class PaymentHelperStaffSection extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           const Text(
-            'Main rate makes the commission pool. Helpers always split it equally '
-            '(same for % or fixed). Example: pool Rs. 1000 → Rs. 500 each.',
+            'Helpers optional — their share comes from the main commission.',
             style: TextStyle(fontSize: 11.5, color: _muted, height: 1.35),
           ),
           const SizedBox(height: 12),
@@ -180,7 +183,7 @@ class PaymentHelperStaffSection extends StatelessWidget {
                             ),
                           ),
                           TextSpan(
-                            text: '(optional · equal split)',
+                            text: '(optional)',
                             style: TextStyle(
                               fontWeight: FontWeight.w500,
                               fontSize: 13,
@@ -197,21 +200,6 @@ class PaymentHelperStaffSection extends StatelessWidget {
           ),
           if (_helpersOn) ...[
             const SizedBox(height: 10),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-              decoration: BoxDecoration(
-                color: _soft,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: _border),
-              ),
-              child: Text(
-                'Each gets ${helperPct.toStringAsFixed(helperPct % 1 == 0 ? 0 : 2)}% of the pool '
-                '(main + ${helpers.length} helper${helpers.length == 1 ? '' : 's'}).',
-                style: const TextStyle(fontSize: 12, color: _muted, height: 1.35),
-              ),
-            ),
-            const SizedBox(height: 10),
             ...helpers.asMap().entries.map((entry) {
               final idx = entry.key;
               final h = entry.value;
@@ -227,6 +215,7 @@ class PaymentHelperStaffSection extends StatelessWidget {
                   .where((s) =>
                       s.id == h.staffId || !used.contains(s.id))
                   .toList();
+              final isPct = h.commissionType != 'fixed';
               return Container(
                 margin: const EdgeInsets.only(bottom: 10),
                 padding: const EdgeInsets.all(12),
@@ -247,11 +236,6 @@ class PaymentHelperStaffSection extends StatelessWidget {
                             fontWeight: FontWeight.w800,
                             color: _ink,
                           ),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          '· ${helperPct.toStringAsFixed(helperPct % 1 == 0 ? 0 : 2)}% equal',
-                          style: const TextStyle(fontSize: 12, color: _muted),
                         ),
                         const Spacer(),
                         GestureDetector(
@@ -284,9 +268,68 @@ class PaymentHelperStaffSection extends StatelessWidget {
                           .toList(),
                       onChanged: (v) {
                         final next = [...helpers];
-                        next[idx] = PaymentHelperDraft(staffId: v ?? '');
+                        next[idx] = PaymentHelperDraft(
+                          staffId: v ?? '',
+                          commissionType: h.commissionType,
+                          commissionValue: h.commissionValue,
+                        );
                         onHelpersChanged(next);
                       },
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: DropdownButtonFormField<String>(
+                            key: ValueKey('helper-type-$idx-${h.commissionType}'),
+                            initialValue: h.commissionType == 'fixed'
+                                ? 'fixed'
+                                : 'percentage_of_main',
+                            decoration: _fieldDeco('Type'),
+                            items: const [
+                              DropdownMenuItem(
+                                value: 'percentage_of_main',
+                                child: Text('% of main'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'fixed',
+                                child: Text('Fixed Rs'),
+                              ),
+                            ],
+                            onChanged: (v) {
+                              final next = [...helpers];
+                              next[idx] = PaymentHelperDraft(
+                                staffId: h.staffId,
+                                commissionType: v ?? 'percentage_of_main',
+                                commissionValue: h.commissionValue,
+                              );
+                              onHelpersChanged(next);
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: TextFormField(
+                            key: ValueKey(
+                              'helper-val-$idx-${h.commissionType}',
+                            ),
+                            initialValue: h.commissionValue,
+                            keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true,
+                            ),
+                            decoration: _fieldDeco(isPct ? '%' : 'Rs'),
+                            onChanged: (v) {
+                              final next = [...helpers];
+                              next[idx] = PaymentHelperDraft(
+                                staffId: h.staffId,
+                                commissionType: h.commissionType,
+                                commissionValue: v,
+                              );
+                              onHelpersChanged(next);
+                            },
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),

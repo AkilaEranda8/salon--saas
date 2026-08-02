@@ -54,6 +54,9 @@ const router = Router();
 router.use(verifyToken, branchAccess);
 
 router.get('/',                         ctrl.list);
+router.get('/roles',                    ctrl.listRoles);
+router.post('/roles',                   requireRole('superadmin', 'admin', 'manager'), ctrl.addRole);
+router.delete('/roles/:title',          requireRole('superadmin', 'admin', 'manager'), ctrl.removeRole);
 router.get('/commission',               ctrl.commissionSummary);
 router.get('/me/commission',            ctrl.myCommission);
 

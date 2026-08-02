@@ -504,6 +504,22 @@ class AppState extends ChangeNotifier {
     return loaded;
   }
 
+  Future<List<String>> loadStaffRoleTitles() async {
+    final token = _currentUser?.authToken;
+    if (token == null || token.isEmpty) {
+      throw Exception('Missing auth token (cannot load staff roles).');
+    }
+    return _api.fetchStaffRoles(token: token);
+  }
+
+  Future<List<String>> addStaffRoleTitle(String title) async {
+    final token = _currentUser?.authToken;
+    if (token == null || token.isEmpty) {
+      throw Exception('Missing auth token (cannot add staff role).');
+    }
+    return _api.addStaffRole(token: token, title: title);
+  }
+
   Map<String, dynamic> _staffPayloadFromModal({
     required String name,
     required String phone,

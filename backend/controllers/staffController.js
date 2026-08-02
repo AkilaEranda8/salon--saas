@@ -6,9 +6,15 @@ const {
   Staff, Branch, StaffBranch, StaffSpecialization, StaffOffDay, Service,
   Appointment, Payment, User, StaffAdvance, CommissionPayout,
   Attendance, WalkIn, Waitlist, CommissionTransaction, InvConsumption, StaffFcmToken,
-  PackageRedemption,
+  PackageRedemption, Tenant,
 } = require('../models');
 const { tenantWhere, byIdWhere, resolveTenantId } = require('../utils/tenantScope');
+const {
+  DEFAULT_STAFF_ROLE_TITLES,
+  normalizeRoleTitle,
+  mergeRoleTitles,
+  parseStoredRoleTitles,
+} = require('../constants/staffRoleTitles');
 const { normalizeStaffSpecializations } = require('../utils/commissionCalculator');
 const {
   applyServiceWiseCommissionPolicy,
@@ -138,6 +144,117 @@ function computeGrossPayable(salaryType, baseSalary, totalCommission, presentDay
   }
   return totalCommission;
 }
+
+async function resolveTenantForRoles(req) {
+  const tenantId = resolveTenantId(req);
+  if (!tenantId) return null;
+  return Tenant.findByPk(tenantId);
+}
+
+async function collectStaffRoleTitles(req) {
+  const tenant = await resolveTenantForRoles(req);
+  const custom = parseStoredRoleTitles(tenant?.staff_role_titles);
+  let used = [];
+  try {
+    const rows = await Staff.findAll({
+      where: {
+        ...tenantWhere(req),
+        role_title: { [Op.and]: [{ [Op.ne]: null }, { [Op.ne]: '' }] },
+      },
+      attributes: ['role_title'],
+      group: ['role_title'],
+      raw: true,
+    });
+    used = rows.map((r) => r.role_title);
+  } catch (err) {
+    console.warn('listStaffRoles used-titles skipped:', err.message);
+  }
+  return {
+    tenant,
+    titles: mergeRoleTitles(DEFAULT_STAFF_ROLE_TITLES, custom, used),
+    custom,
+  };
+}
+
+async function ensureRoleTitleSaved(req, roleTitle) {
+  const title = normalizeRoleTitle(roleTitle);
+  if (!title) return;
+  const tenant = await resolveTenantForRoles(req);
+  if (!tenant) return;
+  const custom = parseStoredRoleTitles(tenant.staff_role_titles);
+  const merged = mergeRoleTitles(DEFAULT_STAFF_ROLE_TITLES, custom);
+  if (merged.some((t) => t.toLowerCase() === title.toLowerCase())) {
+    // Already known via defaults or custom — still persist custom if not default
+    if (!DEFAULT_STAFF_ROLE_TITLES.some((t) => t.toLowerCase() === title.toLowerCase())
+      && !custom.some((t) => t.toLowerCase() === title.toLowerCase())) {
+      await tenant.update({ staff_role_titles: mergeRoleTitles(custom, [title]) });
+    }
+    return;
+  }
+  await tenant.update({ staff_role_titles: mergeRoleTitles(custom, [title]) });
+}
+
+const listRoles = async (req, res) => {
+  try {
+    const { titles, custom } = await collectStaffRoleTitles(req);
+    return res.json({
+      data: titles,
+      defaults: DEFAULT_STAFF_ROLE_TITLES,
+      custom,
+    });
+  } catch (err) {
+    console.error('listStaffRoles error:', err);
+    return res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+const addRole = async (req, res) => {
+  try {
+    const title = normalizeRoleTitle(req.body?.title ?? req.body?.role_title);
+    if (!title) return res.status(400).json({ message: 'Role title is required.' });
+
+    const tenant = await resolveTenantForRoles(req);
+    if (!tenant) return res.status(400).json({ message: 'Tenant not found.' });
+
+    const custom = parseStoredRoleTitles(tenant.staff_role_titles);
+    const all = mergeRoleTitles(DEFAULT_STAFF_ROLE_TITLES, custom);
+    if (all.some((t) => t.toLowerCase() === title.toLowerCase())) {
+      const { titles } = await collectStaffRoleTitles(req);
+      return res.json({ message: 'Role already exists.', title, data: titles });
+    }
+
+    const next = mergeRoleTitles(custom, [title]);
+    await tenant.update({ staff_role_titles: next });
+    const { titles } = await collectStaffRoleTitles(req);
+    return res.status(201).json({ message: 'Role added.', title, data: titles });
+  } catch (err) {
+    console.error('addStaffRole error:', err);
+    return res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+const removeRole = async (req, res) => {
+  try {
+    const title = normalizeRoleTitle(req.params.title || req.body?.title);
+    if (!title) return res.status(400).json({ message: 'Role title is required.' });
+
+    if (DEFAULT_STAFF_ROLE_TITLES.some((t) => t.toLowerCase() === title.toLowerCase())) {
+      return res.status(400).json({ message: 'Default system roles cannot be removed.' });
+    }
+
+    const tenant = await resolveTenantForRoles(req);
+    if (!tenant) return res.status(400).json({ message: 'Tenant not found.' });
+
+    const custom = parseStoredRoleTitles(tenant.staff_role_titles)
+      .filter((t) => t.toLowerCase() !== title.toLowerCase());
+    await tenant.update({ staff_role_titles: custom });
+    const { titles } = await collectStaffRoleTitles(req);
+    return res.json({ message: 'Role removed.', data: titles });
+  } catch (err) {
+    console.error('removeStaffRole error:', err);
+    return res.status(500).json({ message: 'Server error.' });
+  }
+};
 
 /** Manager / default-only staff: link all active services with null override (uses staff default). */
 async function managerDefaultServiceSpecs(req) {
@@ -433,6 +550,7 @@ const create = async (req, res) => {
     await replaceStaffSpecializations(staff.id, specItems);
     await replaceStaffOffDays(staff.id, tenantId, offDayItems);
     await syncLinkedUserBranch(staff, tenantId);
+    await ensureRoleTitleSaved(req, role_title);
 
     const created = await Staff.findOne({
       where: { id: staff.id },
@@ -488,6 +606,7 @@ const update = async (req, res) => {
     if (!refreshedForRole?.role_title || !String(refreshedForRole.role_title).trim()) {
       return res.status(400).json({ message: 'Staff role is required.' });
     }
+    await ensureRoleTitleSaved(req, refreshedForRole.role_title);
 
     // Replace branch associations if branch_ids provided
     if (branchIds.length) {
@@ -1083,4 +1202,5 @@ module.exports = {
   list, getOne, create, update, remove,
   myCommission, commissionSummary, commissionReport, setSpecializations,
   uploadPhoto, deletePhoto,
+  listRoles, addRole, removeRole,
 };

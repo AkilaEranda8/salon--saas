@@ -18,6 +18,27 @@ const getBranchWhere = (req) => {
   return where;
 };
 
+/** Prefer linked customer record name over stale/empty customer_name. */
+function displayCustomerName(payment) {
+  const linked = payment?.customer?.name;
+  if (linked && String(linked).trim()) return String(linked).trim();
+  const raw = payment?.customer_name;
+  if (raw && String(raw).trim()) return String(raw).trim();
+  return null;
+}
+
+async function resolveCustomerName(req, customerId, fallbackName, { transaction } = {}) {
+  const trimmed = fallbackName != null ? String(fallbackName).trim() : '';
+  if (!customerId) return trimmed || null;
+  const cust = await Customer.findOne({
+    where: byIdWhere(req, customerId),
+    attributes: ['id', 'name'],
+    ...(transaction ? { transaction } : {}),
+  });
+  if (cust?.name && String(cust.name).trim()) return String(cust.name).trim();
+  return trimmed || null;
+}
+
 const list = async (req, res) => {
   try {
     const page   = Math.max(parseInt(req.query.page)  || 1, 1);
@@ -47,7 +68,14 @@ const list = async (req, res) => {
       ],
     });
 
-    return res.json({ total: count, page, limit, data: rows });
+    const data = rows.map((row) => {
+      const json = row.toJSON();
+      const name = displayCustomerName(json);
+      if (name) json.customer_name = name;
+      return json;
+    });
+
+    return res.json({ total: count, page, limit, data });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ message: 'Server error.' });
@@ -69,7 +97,10 @@ const getOne = async (req, res) => {
     });
 
     if (!payment) return res.status(404).json({ message: 'Payment not found.' });
-    return res.json(payment);
+    const json = payment.toJSON();
+    const name = displayCustomerName(json);
+    if (name) json.customer_name = name;
+    return res.json(json);
   } catch (err) {
     return res.status(500).json({ message: 'Server error.' });
   }
@@ -350,13 +381,21 @@ const create = async (req, res) => {
       };
     }
 
+    const resolvedCustomerName = await resolveCustomerName(
+      req,
+      customer_id,
+      customer_name,
+      { transaction: t },
+    );
+
     const payment = await Payment.create({
       branch_id,
       staff_id:       staff_id       || null,
       customer_id:    customer_id    || null,
       service_id:     service_id     || null,
       appointment_id: resolvedAppointmentId || null,
-      customer_name, total_amount, loyalty_discount, promo_discount, points_earned,
+      customer_name:  resolvedCustomerName,
+      total_amount, loyalty_discount, promo_discount, points_earned,
       commission_amount, commission_breakdown,
       manager_staff_id, manager_commission_amount, manager_commission_breakdown,
       helper_commission,

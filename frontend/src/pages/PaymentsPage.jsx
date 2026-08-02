@@ -987,8 +987,10 @@ export default function PaymentsPage() {
     setSaving(true);
     try {
       const { service_ids, is_recurring, recurring_next_date, appointment_time, recurring_message_template_ids, ...rest } = form;
+      const selectedCustomer = customers.find((c) => String(c.id) === String(form.customer_id));
       const payload = {
         ...rest,
+        customer_name: selectedCustomer?.name || rest.customer_name || undefined,
         service_id: service_ids[0] || null,
         service_ids,
         subtotal,
@@ -1089,10 +1091,12 @@ export default function PaymentsPage() {
             }
           },
           { id:'search', header:'Customer', meta:{ width:'18%' },
-            accessorFn: r => `${r.customer_name || ''} ${r.service?.name || ''} ${r.staff?.name || ''}`.trim(),
+            accessorFn: r => `${r.customer?.name || r.customer_name || ''} ${r.service?.name || ''} ${r.staff?.name || ''}`.trim(),
             cell: ({ row }) => (
               <>
-                <div style={{ fontWeight:600, color:'#101828', fontSize:14 }}>{row.original.customer_name || 'Walk-in'}</div>
+                <div style={{ fontWeight:600, color:'#101828', fontSize:14 }}>
+                  {row.original.customer?.name || row.original.customer_name || 'Walk-in'}
+                </div>
                 <div style={{ fontSize:12, color:'#98A2B3' }}>{row.original.staff?.name || ''}</div>
               </>
             )

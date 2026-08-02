@@ -35,6 +35,7 @@ import usePageTheme, { PAGE_STAT_COLORS as SC } from '../hooks/usePageTheme';
 import { useNavigate } from 'react-router-dom';
 import RecurringDateCalendar, { defaultRecurringNextDate } from '../components/ui/RecurringDateCalendar';
 import RecurringTemplateCheckboxes from '../components/ui/RecurringTemplateCheckboxes';
+import PaymentHelperStaffFields, { helpersPayload } from '../components/payments/PaymentHelperStaffFields';
 
 const IconMoney    = () => <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>;
 
@@ -263,6 +264,8 @@ export default function AppointmentsPage() {
   const [paymentCustPackages, setPaymentCustPackages] = useState([]);
   const [paymentCustPackageId, setPaymentCustPackageId] = useState('');
   const [loadingPaymentPkgs, setLoadingPaymentPkgs] = useState(false);
+  const [paymentMainStaffId, setPaymentMainStaffId] = useState('');
+  const [paymentHelpers, setPaymentHelpers] = useState([]);
   const [apptPackageCache, setApptPackageCache] = useState({});
   const [availableSlots, setAvailableSlots] = useState([]);
   const [slotsLoading, setSlotsLoading] = useState(false);
@@ -379,6 +382,8 @@ export default function AppointmentsPage() {
     setPaymentOk(false);
     setPaymentCustPackages([]);
     setPaymentCustPackageId('');
+    setPaymentMainStaffId(String(sourceRow.staff_id || sourceRow.staff?.id || ''));
+    setPaymentHelpers([]);
     const custId = sourceRow.customer_id || sourceRow.customer?.id;
     if (custId) {
       setLoadingPaymentPkgs(true);
@@ -460,6 +465,11 @@ export default function AppointmentsPage() {
       return setPaymentErr('Amount is required');
     }
     if (!paymentServices.length) return setPaymentErr('At least one service is required');
+    if (!paymentMainStaffId) return setPaymentErr('Select main staff.');
+    const helperRows = helpersPayload(paymentHelpers);
+    if (paymentHelpers.some((h) => !h.staff_id || !(Number(h.commission_value) > 0))) {
+      return setPaymentErr('Each helper needs a staff member and commission value.');
+    }
     if (paymentRecurring && !paymentRecurringDate) {
       return setPaymentErr('Select the next recurring appointment date.');
     }
@@ -518,7 +528,8 @@ export default function AppointmentsPage() {
       if (splits.length) {
         await api.post('/payments', {
           branch_id: paymentAppt.branch_id || paymentAppt.branch?.id || user?.branch_id,
-          staff_id: paymentAppt.staff_id || paymentAppt.staff?.id || null,
+          staff_id: Number(paymentMainStaffId) || null,
+          helpers: helperRows,
           customer_id: paymentAppt.customer_id || null,
           service_id: paymentServices[0] || null,
           service_ids: paymentServices,
@@ -2050,7 +2061,6 @@ export default function AppointmentsPage() {
                     <div style={{ fontSize:15, fontWeight:700, color:isDark?'#E2E8F0':'#101828' }}>{paymentAppt.customer_name}</div>
                     <div style={{ fontSize:13, color:isDark?'#94A3B8':'#667085', marginTop:2 }}>{paymentAppt.phone||''}</div>
                   </div>
-                  {paymentAppt.staff?.name && <span style={{ background:isDark?'#334155':'#F3F4F6', color:isDark?'#CBD5E1':'#475467', padding:'4px 12px', borderRadius:8, fontSize:12, fontWeight:500 }}>{paymentAppt.staff.name}</span>}
                 </div>
                 {Number(paymentAppt.advance_paid || paymentAppt.amount_paid || 0) > 0 && (
                   <div style={{
@@ -2109,6 +2119,19 @@ export default function AppointmentsPage() {
                   </>
                 )}
               </div>
+              <PaymentHelperStaffFields
+                mainStaffId={paymentMainStaffId}
+                onMainStaffChange={setPaymentMainStaffId}
+                helpers={paymentHelpers}
+                onHelpersChange={setPaymentHelpers}
+                staffOptions={(() => {
+                  const bid = paymentAppt.branch_id || paymentAppt.branch?.id;
+                  if (!bid) return staffList;
+                  return staffList.filter((s) => String(s.branch_id) === String(bid)
+                    || (s.branches || []).some((b) => String(b.id) === String(bid)));
+                })()}
+                isDark={isDark}
+              />
               <FormGroup label="Services" required>
                 <div style={{ border:`1px solid ${isDark?'#334155':'#DCE6F3'}`, borderRadius:12, overflow:'hidden', maxHeight:180, overflowY:'auto', background:isDark?'#0F172A':'#fff' }}>
                   {services.filter(s => s.is_active !== false).map((s, idx, arr) => {

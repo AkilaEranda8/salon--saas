@@ -46,7 +46,7 @@ async function ensureFranchiseCommissionSchema() {
         payment_id: { type: DataTypes.INTEGER, allowNull: false },
         branch_id: { type: DataTypes.INTEGER, allowNull: true },
         transaction_type: {
-          type: DataTypes.ENUM('worker', 'manager_override'),
+          type: DataTypes.ENUM('worker', 'manager_override', 'helper'),
           allowNull: false,
         },
         worker_staff_id: { type: DataTypes.INTEGER, allowNull: true },
@@ -68,6 +68,17 @@ async function ensureFranchiseCommissionSchema() {
         updatedAt: { type: DataTypes.DATE, allowNull: false },
       });
       console.log('[migration] commission_transactions table created');
+    } else {
+      // Expand ENUM for helper commission rows (MySQL).
+      try {
+        await sequelize.query(
+          "ALTER TABLE commission_transactions MODIFY COLUMN transaction_type ENUM('worker','manager_override','helper') NOT NULL"
+        );
+      } catch (enumErr) {
+        if (!/duplicate|same|already/i.test(enumErr.message || '')) {
+          console.warn('[migration] commission_transactions helper enum:', enumErr.message);
+        }
+      }
     }
   } catch (err) {
     console.error('[migration] ensureFranchiseCommissionSchema error:', err.message);

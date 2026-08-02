@@ -12,6 +12,7 @@ const {
 } = require('../utils/tenantFeatures');
 const { breakdownForPayment } = require('../services/paymentCommissionBreakdown');
 const { hasFranchiseCommission } = require('../utils/tenantFeatures');
+const { helperAmountForStaff } = require('../utils/helperCommission');
 const {
   defaultWorkingHours,
   normalizeWorkingHours,
@@ -616,6 +617,44 @@ const commissionSummary = async (req, res) => {
     for (const row of workerAgg) mergeAgg(row, 'staff_id');
     for (const row of managerAgg) mergeAgg(row, 'manager_staff_id');
 
+    // Helper commissions stored on payments.helper_commission (taken from main)
+    try {
+      const helperPayments = await Payment.findAll({
+        where: {
+          ...paymentWhere,
+          helper_commission: { [Op.ne]: null },
+        },
+        attributes: ['id', 'helper_commission', 'total_amount'],
+        raw: true,
+      });
+      for (const p of helperPayments) {
+        const list = (() => {
+          const raw = p.helper_commission;
+          if (!raw) return [];
+          if (typeof raw === 'string') {
+            try {
+              const parsed = JSON.parse(raw);
+              return Array.isArray(parsed) ? parsed : (parsed.helpers || []);
+            } catch { return []; }
+          }
+          return Array.isArray(raw) ? raw : (raw.helpers || []);
+        })();
+        for (const h of list) {
+          const hid = Number(h.staff_id);
+          const amt = parseFloat(h.commission_amount) || 0;
+          if (!hid || !(amt > 0) || !staffIds.includes(hid)) continue;
+          const prev = aggMap[hid] || { totalRevenue: 0, totalCommission: 0, appointmentCount: 0 };
+          aggMap[hid] = {
+            totalRevenue: (parseFloat(prev.totalRevenue) || 0) + (parseFloat(p.total_amount) || 0),
+            totalCommission: (parseFloat(prev.totalCommission) || 0) + amt,
+            appointmentCount: (parseInt(prev.appointmentCount, 10) || 0) + 1,
+          };
+        }
+      }
+    } catch (helperErr) {
+      console.warn('commissionSummary helper_agg skipped:', helperErr.message);
+    }
+
     // Fetch pending advance totals + paid payout totals for the same month
     const advMap  = {};
     const paidMap = {};
@@ -714,7 +753,7 @@ const commissionReport = async (req, res) => {
       { model: Staff,       as: 'staff',       attributes: ['id', 'name'] },
     ];
 
-    const [workerPayments, oversightPayments] = await Promise.all([
+    const [workerPayments, oversightPayments, helperCandidatePayments] = await Promise.all([
       Payment.findAll({
         where: { staff_id: staffId, ...tenantWhere(req), ...dateFilter },
         include: paymentInclude,
@@ -727,10 +766,24 @@ const commissionReport = async (req, res) => {
           order: [['date', 'DESC']],
         })
         : Promise.resolve([]),
+      Payment.findAll({
+        where: {
+          ...tenantWhere(req),
+          ...dateFilter,
+          helper_commission: { [Op.ne]: null },
+          staff_id: { [Op.ne]: staffId },
+        },
+        include: paymentInclude,
+        order: [['date', 'DESC']],
+      }).catch(() => []),
     ]);
 
+    const helperPayments = helperCandidatePayments.filter(
+      (p) => helperAmountForStaff(p.helper_commission, staffId) > 0,
+    );
+
     const seenPaymentIds = new Set();
-    const payments = [...workerPayments, ...oversightPayments]
+    const payments = [...workerPayments, ...oversightPayments, ...helperPayments]
       .filter((p) => {
         if (seenPaymentIds.has(p.id)) return false;
         seenPaymentIds.add(p.id);
@@ -742,7 +795,10 @@ const commissionReport = async (req, res) => {
       if (Number(p.manager_staff_id) === Number(staffId)) {
         return acc + parseFloat(p.manager_commission_amount || 0);
       }
-      return acc + parseFloat(p.commission_amount || 0);
+      if (Number(p.staff_id) === Number(staffId)) {
+        return acc + parseFloat(p.commission_amount || 0);
+      }
+      return acc + helperAmountForStaff(p.helper_commission, staffId);
     }, 0);
 
     // Fetch staff salary info for correct gross calculation
@@ -782,15 +838,36 @@ const commissionReport = async (req, res) => {
     const paymentRows = await Promise.all(payments.map(async (payment) => {
       const json = payment.toJSON();
       const isOversight = Number(payment.manager_staff_id) === Number(staffId);
-      json.commission_role = isOversight ? 'manager_oversight' : 'worker';
+      const isMain = Number(payment.staff_id) === Number(staffId);
+      const helperAmt = helperAmountForStaff(payment.helper_commission, staffId);
+      const isHelper = !isOversight && !isMain && helperAmt > 0;
+      json.commission_role = isOversight ? 'manager_oversight' : (isHelper ? 'helper' : 'worker');
       json.display_commission_amount = isOversight
         ? parseFloat(payment.manager_commission_amount || 0)
-        : parseFloat(payment.commission_amount || 0);
+        : (isHelper ? helperAmt : parseFloat(payment.commission_amount || 0));
       if (isOversight) {
         json.commission_breakdown = managerOversightBreakdown(
           payment,
           payment.manager_commission_breakdown,
         );
+      } else if (isHelper) {
+        const hc = parseJsonField(payment.helper_commission);
+        const line = (hc?.helpers || []).find((h) => Number(h.staff_id) === Number(staffId));
+        json.commission_breakdown = {
+          total: helperAmt,
+          note: 'Helper commission from main staff',
+          lines: line ? [{
+            serviceName: payment.service?.name || 'Helper share',
+            lineBase: hc?.grossMain || 0,
+            rateLabel: line.rateLabel || `${line.commission_value}${line.commission_type === 'fixed' ? '' : '%'}`,
+            source: 'helper',
+            sourceLabel: 'Helper commission',
+            commission: helperAmt,
+          }] : [],
+        };
+        json.helper_main_staff = payment.staff
+          ? { id: payment.staff.id, name: payment.staff.name }
+          : null;
       } else {
         json.commission_breakdown = parseJsonField(payment.commission_breakdown)
           || await breakdownForPayment(payment, req.tenant, req);

@@ -20,7 +20,7 @@ const CommissionTransaction = sequelize.define('CommissionTransaction', {
     allowNull: true,
   },
   transaction_type: {
-    type: DataTypes.ENUM('worker', 'manager_override'),
+    type: DataTypes.ENUM('worker', 'manager_override', 'helper'),
     allowNull: false,
   },
   worker_staff_id: {

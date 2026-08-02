@@ -16,6 +16,7 @@ async function recordCommissionTransactions({
   managerAmount,
   managerPercent,
   managerBreakdown,
+  helpers = [],
 }, { transaction } = {}) {
   const rows = [];
   const amt = parseFloat(serviceAmount) || 0;
@@ -32,6 +33,33 @@ async function recordCommissionTransactions({
       commission_percent: null,
       commission_amount: parseFloat(workerAmount),
       breakdown: workerBreakdown || null,
+      date,
+    });
+  }
+
+  for (const h of (helpers || [])) {
+    const helperId = Number(h.staff_id);
+    const helperAmt = parseFloat(h.commission_amount);
+    if (!helperId || !(helperAmt > 0)) continue;
+    rows.push({
+      tenant_id: tenantId,
+      payment_id: paymentId,
+      branch_id: branchId || null,
+      transaction_type: 'helper',
+      worker_staff_id: helperId,
+      manager_staff_id: null,
+      service_amount: amt,
+      commission_percent: h.commission_type === 'percentage_of_main'
+        ? parseFloat(h.commission_value)
+        : null,
+      commission_amount: helperAmt,
+      breakdown: {
+        role: 'helper',
+        mainStaffId: workerStaffId || null,
+        commission_type: h.commission_type,
+        commission_value: h.commission_value,
+        rateLabel: h.rateLabel,
+      },
       date,
     });
   }

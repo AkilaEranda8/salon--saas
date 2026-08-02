@@ -27,6 +27,7 @@ import {
 import { useFeatureGate } from '../hooks/useFeatureGate';
 import RecurringDateCalendar, { defaultRecurringNextDate } from '../components/ui/RecurringDateCalendar';
 import RecurringTemplateCheckboxes from '../components/ui/RecurringTemplateCheckboxes';
+import PaymentHelperStaffFields, { helpersPayload } from '../components/payments/PaymentHelperStaffFields';
 
 const METHODS = ['Cash','Card','Online Transfer','Loyalty Points','Package','LankaQR'];
 const METHOD_LABEL = { 'Cash':'Cash', 'Card':'Card', 'Online Transfer':'Bank Transfer', 'Loyalty Points':'Loyalty Pts', 'Package':'Package', 'LankaQR':'LankaQR' };
@@ -684,6 +685,7 @@ export default function PaymentsPage() {
   const [custPackages, setCustPackages] = useState([]);
   const [loadingPkgs, setLoadingPkgs]   = useState(false);
   const [formPackageId, setFormPackageId] = useState('');
+  const [formHelpers, setFormHelpers]   = useState([]);
   const [discounts, setDiscounts]       = useState([]);
   const [discountsLoading, setDiscountsLoading] = useState(false);
   const [discountsLoadError, setDiscountsLoadError] = useState(false);
@@ -793,6 +795,7 @@ export default function PaymentsPage() {
     setFormErr('');
     setCustPackages([]);
     setFormPackageId('');
+    setFormHelpers([]);
     setShowForm(true);
   };
   const applyFormPackage = (packageId) => {
@@ -845,6 +848,7 @@ export default function PaymentsPage() {
       });
       const pkgSplit = (p.splits || []).find((sp) => sp.method === 'Package');
       setFormPackageId(pkgSplit?.customer_package_id ? String(pkgSplit.customer_package_id) : '');
+      setFormHelpers([]);
       setCustPackages([]);
       if (p.customer_id) {
         setLoadingPkgs(true);
@@ -898,6 +902,10 @@ export default function PaymentsPage() {
   const handleSave = async () => {
     if (!String(form.customer_id || '').trim()) return setFormErr('Select a customer before recording payment.');
     if (!String(form.staff_id || '').trim()) return setFormErr('Select staff before recording payment.');
+    const helperRows = helpersPayload(formHelpers);
+    if (!editId && formHelpers.some((h) => !h.staff_id || !(Number(h.commission_value) > 0))) {
+      return setFormErr('Each helper needs a staff member and commission value.');
+    }
     if (!form.service_ids.length) return setFormErr('At least one service is required');
     const usingPackage = form.splits.some((sp) => sp.method === 'Package');
     const pkgSplit = usingPackage ? form.splits.find((sp) => sp.method === 'Package') : null;
@@ -950,6 +958,7 @@ export default function PaymentsPage() {
         await api.put(`/payments/${editId}`, payload);
         toast('Payment updated successfully!', 'success');
       } else {
+        payload.helpers = helperRows;
         await api.post('/payments', payload);
         toast('Payment recorded successfully!', 'success');
       }
@@ -1168,7 +1177,10 @@ export default function PaymentsPage() {
             <PaySection title="Customer & Staff" desc="Who received the service and who served them" dark={isDark}>
               {(isAdmin && !hasFixedBranch) && (
                 <FormGroup label="Branch">
-                  <Select value={form.branch_id || ''} disabled={!!editId} onChange={e => setForm(f => ({ ...f, branch_id: e.target.value, staff_id: '' }))}>
+                  <Select value={form.branch_id || ''} disabled={!!editId} onChange={e => {
+                    setForm(f => ({ ...f, branch_id: e.target.value, staff_id: '' }));
+                    setFormHelpers([]);
+                  }}>
                     <option value="">Select branch</option>
                     {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
                   </Select>
@@ -1212,14 +1224,28 @@ export default function PaymentsPage() {
                   )}
                 </FormGroup>
               )}
-              <FormGroup label="Staff *">
-                <Select value={form.staff_id || ''} onChange={e => setForm(f => ({ ...f, staff_id: e.target.value }))}>
-                  <option value="">Select staff</option>
-                  {(form.branch_id ? staffList.filter(s => s.branch_id == form.branch_id) : staffList).map(s => (
-                    <option key={s.id} value={s.id}>{s.name}</option>
-                  ))}
-                </Select>
-              </FormGroup>
+              {editId ? (
+                <FormGroup label="Staff *" helper="Staff cannot change helper commission on edit.">
+                  <Select value={form.staff_id || ''} onChange={e => setForm(f => ({ ...f, staff_id: e.target.value }))}>
+                    <option value="">Select staff</option>
+                    {(form.branch_id ? staffList.filter(s => s.branch_id == form.branch_id) : staffList).map(s => (
+                      <option key={s.id} value={s.id}>{s.name}</option>
+                    ))}
+                  </Select>
+                </FormGroup>
+              ) : (
+                <PaymentHelperStaffFields
+                  mainStaffId={form.staff_id}
+                  onMainStaffChange={(id) => setForm((f) => ({ ...f, staff_id: id }))}
+                  helpers={formHelpers}
+                  onHelpersChange={setFormHelpers}
+                  staffOptions={form.branch_id
+                    ? staffList.filter((s) => String(s.branch_id) === String(form.branch_id)
+                      || (s.branches || []).some((b) => String(b.id) === String(form.branch_id)))
+                    : staffList}
+                  isDark={isDark}
+                />
+              )}
               {!editId && recurringAllowed && (
                 <div style={{
                   marginTop: 8,

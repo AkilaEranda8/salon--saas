@@ -28,6 +28,7 @@ const ensureStaffAvailableOnlineColumn = require('./services/ensureStaffAvailabl
 const ensureStaffScheduleColumns = require('./services/ensureStaffScheduleColumns');
 const ensurePaymentCommissionBreakdownColumn = require('./services/ensurePaymentCommissionBreakdownColumn');
 const ensurePaymentManagerCommissionColumns = require('./services/ensurePaymentManagerCommissionColumns');
+const ensurePaymentHelperCommissionColumn = require('./services/ensurePaymentHelperCommissionColumn');
 const ensureFranchiseCommissionSchema = require('./services/ensureFranchiseCommissionSchema');
 const ensureUserMobileFeaturesColumn = require('./services/ensureUserMobileFeaturesColumn');
 const ensureUsersSessionsRevokedColumn = require('./services/ensureUsersSessionsRevokedColumn');
@@ -385,6 +386,7 @@ connectWithRetry().then(async () => {
   await ensureStaffScheduleColumns();
   await ensurePaymentCommissionBreakdownColumn();
   await ensurePaymentManagerCommissionColumns();
+  await ensurePaymentHelperCommissionColumn();
   await ensureFranchiseCommissionSchema();
   await ensureUserMobileFeaturesColumn();
   await ensureUsersSessionsRevokedColumn();

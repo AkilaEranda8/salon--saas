@@ -45,6 +45,7 @@ import {
 import { useFeatureGate } from '../hooks/useFeatureGate';
 import RecurringDateCalendar, { defaultRecurringNextDate } from '../components/ui/RecurringDateCalendar';
 import RecurringTemplateCheckboxes from '../components/ui/RecurringTemplateCheckboxes';
+import PaymentHelperStaffFields, { helpersPayload } from '../components/payments/PaymentHelperStaffFields';
 
 /*  Constants  */
 const STATUS_META = {
@@ -436,6 +437,8 @@ export default function WalkInPage() {
   const [recurringTemplates, setRecurringTemplates] = useState([]);
   const { allowed: recurringAllowed } = useFeatureGate('recurring');
   const [loadingPaymentPkgs, setLoadingPaymentPkgs] = useState(false);
+  const [paymentMainStaffId, setPaymentMainStaffId] = useState('');
+  const [paymentHelpers, setPaymentHelpers] = useState([]);
   const [checkinCustPackages, setCheckinCustPackages] = useState([]);
   const [checkinCustPackageId, setCheckinCustPackageId] = useState('');
   const [checkinPackageTemplateId, setCheckinPackageTemplateId] = useState('');
@@ -595,6 +598,8 @@ export default function WalkInPage() {
     setPaymentRecurring(false);
     setPaymentRecurringDate(defaultRecurringNextDate());
     setPaymentRecurringTemplateIds([]);
+    setPaymentMainStaffId(String(entry.staff_id || entry.staff?.id || ''));
+    setPaymentHelpers([]);
 
     const custId = await resolveCustomerId(api, {
       customerId: entry.customer_id || entry.customer?.id,
@@ -789,6 +794,15 @@ export default function WalkInPage() {
       setPaymentError('Select at least one service.');
       return;
     }
+    if (!paymentMainStaffId) {
+      setPaymentError('Select main staff.');
+      return;
+    }
+    const helperRows = helpersPayload(paymentHelpers);
+    if (paymentHelpers.some((h) => !h.staff_id || !(Number(h.commission_value) > 0))) {
+      setPaymentError('Each helper needs a staff member and commission value.');
+      return;
+    }
     setPaymentSaving(true);
     setPaymentError('');
     try {
@@ -801,7 +815,8 @@ export default function WalkInPage() {
         : Number(paymentAmount);
       await api.post('/payments', {
         branch_id: paymentEntry.branch_id || selectedBranch,
-        staff_id: paymentEntry.staff_id || paymentEntry.staff?.id || null,
+        staff_id: Number(paymentMainStaffId) || null,
+        helpers: helperRows,
         customer_id: paymentCustomerId || paymentEntry.customer_id || paymentEntry.customer?.id || null,
         service_id: paymentServices[0] || paymentEntry.service_id || paymentEntry.service?.id || null,
         service_ids: paymentServices,
@@ -1789,10 +1804,17 @@ export default function WalkInPage() {
                   <div style={{ fontSize: 14, fontWeight: 800, color: C.title, lineHeight: 1.2 }}>{paymentEntry.customer_name || 'Walk-in'}</div>
                   <div style={{ marginTop: 4, display: 'flex', gap: 10, flexWrap: 'wrap', fontSize: 12, color: C.muted, fontWeight: 600 }}>
                     {paymentEntry.phone && <span>📞 {paymentEntry.phone}</span>}
-                    {(paymentEntry.staff?.name || paymentEntry.staff_id) && <span>✂ {paymentEntry.staff?.name || 'Staff'}</span>}
                   </div>
                 </div>
               </div>
+              <PaymentHelperStaffFields
+                mainStaffId={paymentMainStaffId}
+                onMainStaffChange={setPaymentMainStaffId}
+                helpers={paymentHelpers}
+                onHelpersChange={setPaymentHelpers}
+                staffOptions={staffList.filter((s) => s.is_active !== false)}
+                isDark={isDark}
+              />
               {recurringAllowed && (
                 <div style={{
                   border: `1px solid ${isDark ? '#334155' : '#E5EAF0'}`,

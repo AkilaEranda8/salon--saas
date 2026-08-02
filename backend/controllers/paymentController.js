@@ -2,13 +2,7 @@ const { Op, fn, col, literal } = require('sequelize');
 const { sequelize } = require('../config/database');
 const { Payment, PaymentSplit, Branch, Staff, StaffSpecialization, Customer, Service, Appointment, AppointmentService, CustomerPackage, Package: PkgModel, PackageRedemption, LoyaltyRule, CommissionTransaction } = require('../models');
 const { computeCommissionDetails } = require('../utils/commissionCalculator');
-const {
-  resolveBranchManagerStaff,
-  resolveManagerOverridePercent,
-  managerEligibleForOversight,
-  shouldApplyManagerOverride,
-  staffBelongsToBranch,
-} = require('../utils/branchManagerCommission');
+const { computeHelperCommissionSplit } = require('../utils/helperCommission');
 const { allowsServiceWiseOverrides, hasFranchiseCommission, hasTenantFeature } = require('../utils/tenantFeatures');
 const { recordCommissionTransactions } = require('../services/recordCommissionTransactions');
 const { notifyPaymentReceipt } = require('../services/notificationService');
@@ -91,6 +85,7 @@ const create = async (req, res) => {
       is_recurring = false, recurring_next_date, appointment_time,
       recurring_message_template_id, recurring_message_template_ids,
       replace_appointment_payments = false,
+      helpers: helpersBody = [],
     } = req.body;
     const recurringSpecified = req.body.is_recurring !== undefined;
     const recurringTemplateId = parseInt(recurring_message_template_id, 10);
@@ -191,9 +186,11 @@ const create = async (req, res) => {
       promo_discount,
     };
 
-    // Worker staff commission
+    // Worker staff commission (main) + optional helpers taken from main
     let commission_amount = 0;
     let commission_breakdown = null;
+    let helper_commission = null;
+    let helperLines = [];
     if (staff_id) {
       const staffMember = await Staff.findOne({
         where: byIdWhere(req, staff_id),
@@ -207,47 +204,64 @@ const create = async (req, res) => {
           allowServiceOverrides: allowsServiceWiseOverrides(req.tenant),
           ...commissionInputBase,
         });
-        commission_amount = computed.amount;
-        commission_breakdown = computed.breakdown;
+        const helperIds = (Array.isArray(helpersBody) ? helpersBody : [])
+          .map((h) => Number(h?.staff_id ?? h?.id))
+          .filter((id) => Number.isInteger(id) && id > 0 && id !== Number(staff_id));
+        const helperNameMap = {};
+        if (helperIds.length) {
+          const helperStaff = await Staff.findAll({
+            where: { id: helperIds, ...tenantWhere(req) },
+            attributes: ['id', 'name'],
+            transaction: t,
+          });
+          for (const hs of helperStaff) helperNameMap[hs.id] = hs.name;
+          const missing = helperIds.filter((id) => !helperNameMap[id]);
+          if (missing.length) {
+            await t.rollback();
+            return res.status(400).json({ message: 'One or more helper staff were not found.' });
+          }
+        }
+        const helpersInput = (Array.isArray(helpersBody) ? helpersBody : [])
+          .map((h) => ({
+            ...h,
+            staff_id: Number(h?.staff_id ?? h?.id),
+            staff_name: helperNameMap[Number(h?.staff_id ?? h?.id)] || h?.staff_name || null,
+          }))
+          .filter((h) => h.staff_id && h.staff_id !== Number(staff_id));
+
+        const split = computeHelperCommissionSplit(computed.amount, helpersInput);
+        if (split.error) {
+          await t.rollback();
+          return res.status(400).json({ message: split.error });
+        }
+        commission_amount = split.mainNet;
+        helperLines = split.helpers;
+        helper_commission = helperLines.length
+          ? {
+            grossMain: split.grossMain,
+            helpersTotal: split.helpersTotal,
+            mainNet: split.mainNet,
+            helpers: helperLines,
+          }
+          : null;
+        commission_breakdown = {
+          ...computed.breakdown,
+          total: split.mainNet,
+          grossMain: split.grossMain,
+          helpersTotal: split.helpersTotal,
+          helpers: helperLines,
+          note: helperLines.length
+            ? `Main net after helpers: Rs. ${split.mainNet.toFixed(2)} (gross Rs. ${split.grossMain.toFixed(2)})`
+            : computed.breakdown?.note,
+        };
       }
     }
 
-    // Branch manager override — % of total service amount (franchise mode)
-    let manager_staff_id = null;
-    let manager_commission_amount = 0;
-    let manager_commission_breakdown = null;
-    let manager_override_percent = null;
-    if (hasFranchiseCommission(req.tenant) && staff_id && branch_id) {
-      const workerInBranch = await staffBelongsToBranch(staff_id, branch_id);
-      if (workerInBranch) {
-        const branch = await Branch.findOne({ where: byIdWhere(req, branch_id), transaction: t });
-        const managerStaff = await resolveBranchManagerStaff(req, branch_id, { transaction: t });
-        const overridePct = resolveManagerOverridePercent(branch, req.tenant, managerStaff);
-        if (shouldApplyManagerOverride(req.tenant)
-          && managerStaff
-          && managerEligibleForOversight(managerStaff, overridePct)
-          && Number(managerStaff.id) !== Number(staff_id)) {
-          const managerComputed = computeCommissionDetails({
-            staff: {
-              salary_type: 'commission_only',
-              commission_type: 'percentage',
-              commission_value: overridePct,
-            },
-            specializations: [],
-            allowServiceOverrides: false,
-            ...commissionInputBase,
-          });
-          manager_staff_id = managerStaff.id;
-          manager_override_percent = overridePct;
-          manager_commission_amount = managerComputed.amount;
-          manager_commission_breakdown = {
-            ...managerComputed.breakdown,
-            overridePercent: overridePct,
-            note: `Manager override ${overridePct}% of service amount`,
-          };
-        }
-      }
-    }
+    // Manager override commission removed — managers no longer earn on other staff work
+    const manager_staff_id = null;
+    const manager_commission_amount = 0;
+    const manager_commission_breakdown = null;
+    const manager_override_percent = null;
 
     const today = slToday();
 
@@ -345,6 +359,7 @@ const create = async (req, res) => {
       customer_name, total_amount, loyalty_discount, promo_discount, points_earned,
       commission_amount, commission_breakdown,
       manager_staff_id, manager_commission_amount, manager_commission_breakdown,
+      helper_commission,
       date: today, status: 'paid',
       tenant_id: resolveTenantId(req),
       is_advance: false,
@@ -364,6 +379,7 @@ const create = async (req, res) => {
         managerAmount: manager_commission_amount,
         managerPercent: manager_override_percent,
         managerBreakdown: manager_commission_breakdown,
+        helpers: helperLines,
       }, { transaction: t });
     }
 

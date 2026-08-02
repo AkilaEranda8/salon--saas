@@ -71,6 +71,11 @@ const Payment = sequelize.define('Payment', {
     allowNull: true,
     comment: 'Manager oversight commission calculation snapshot',
   },
+  helper_commission: {
+    type: DataTypes.JSON,
+    allowNull: true,
+    comment: 'Helper staff commission split taken from main worker commission',
+  },
   date: {
     type: DataTypes.DATEONLY,
     allowNull: false,

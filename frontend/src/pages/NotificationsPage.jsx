@@ -70,10 +70,11 @@ function notifColors(isDark) {
   };
 }
 
-const EVENTS = ['customer_registered','appointment_confirmed','appointment_completed','recurring_reminder','payment_receipt','loyalty_points','walk_in_checkin','walk_in_serving','walk_in_completed','test','review_request','staff_earnings_pdf_test','staff_monthly_earnings'];
+const EVENTS = ['customer_registered','appointment_confirmed','staff_appointment_assigned','appointment_completed','recurring_reminder','payment_receipt','loyalty_points','walk_in_checkin','walk_in_serving','walk_in_completed','test','review_request','staff_earnings_pdf_test','staff_monthly_earnings'];
 const EVENT_LABELS = {
   customer_registered: 'Customer Registered',
   appointment_confirmed: 'Appointment Confirmed',
+  staff_appointment_assigned: 'Staff — New Appointment',
   appointment_completed: 'Appointment Completed',
   recurring_reminder: 'Recurring Visit Reminder',
   payment_receipt: 'Payment Receipt',
@@ -88,6 +89,7 @@ const EVENT_LABELS = {
 };
 const TEMPLATE_EVENT_ORDER = [
   'appointment_confirmed',
+  'staff_appointment_assigned',
   'appointment_completed',
   'recurring_reminder',
   'payment_receipt',
@@ -105,6 +107,12 @@ const TEMPLATE_VARIABLES = {
     ['service_name', 'Service'],
   ],
   appointment_confirmed: [
+    ['date', 'Date'],
+    ['time', 'Time'],
+    ['amount', 'Amount'],
+  ],
+  staff_appointment_assigned: [
+    ['staff_name', 'Staff Name'],
     ['date', 'Date'],
     ['time', 'Time'],
     ['amount', 'Amount'],
@@ -171,6 +179,7 @@ function estimateSmsParts(raw) {
 const EVENT_CHANNELS = {
   customer_registered:['email','sms'],
   appointment_confirmed:['email','whatsapp','sms'],
+  staff_appointment_assigned:['whatsapp'],
   appointment_completed:['whatsapp','sms'],
   recurring_reminder:['whatsapp','sms'],
   payment_receipt:['email','whatsapp','sms'],
@@ -182,6 +191,7 @@ const EVENT_CHANNELS = {
 const SETTINGS_KEY = {
   customer_registered_email:'customer_registered_email', customer_registered_sms:'customer_registered_sms',
   appointment_confirmed_email:'appt_confirmed_email', appointment_confirmed_whatsapp:'appt_confirmed_whatsapp', appointment_confirmed_sms:'appt_confirmed_sms',
+  staff_appointment_assigned_whatsapp:'staff_appt_assigned_whatsapp',
   appointment_completed_whatsapp:'appt_completed_whatsapp', appointment_completed_sms:'appt_completed_sms',
   recurring_reminder_sms:'recurring_reminder_sms',
   recurring_reminder_whatsapp:'recurring_reminder_whatsapp',

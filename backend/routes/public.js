@@ -15,7 +15,7 @@ const PaymentSplit = require('../models/PaymentSplit');
 const StaffSpecialization = require('../models/StaffSpecialization');
 const StaffOffDay = require('../models/StaffOffDay');
 const Attendance = require('../models/Attendance');
-const { sendSMS, getChannelFlags, getTemplate, interpolate } = require('../services/notificationService');
+const { sendSMS, getChannelFlags, getTemplate, interpolate, notifyStaffAppointmentAssigned } = require('../services/notificationService');
 const { getMaintenanceMode } = require('../services/systemSettings');
 const Tenant = require('../models/Tenant');
 const {
@@ -1209,11 +1209,26 @@ router.post('/bookings', async (req, res) => {
       });
 
       setImmediate(async () => {
+        const branch = await Branch.findByPk(effectiveBranchId, { attributes: ['id', 'name'] }).catch(() => null);
+
+        // WhatsApp each assigned staff member about their new booking
+        for (let i = 0; i < created.length; i++) {
+          try {
+            await notifyStaffAppointmentAssigned(
+              created[i],
+              branch,
+              requested[i]?.service || null,
+              bookingTenantId
+            );
+          } catch (staffErr) {
+            console.error('Public booking staff WhatsApp error:', staffErr.message || staffErr);
+          }
+        }
+
         try {
           const flags = await getChannelFlags(bookingTenantId);
           if (!flags?.appt_confirmed_sms) return;
 
-          const branch = await Branch.findByPk(effectiveBranchId, { attributes: ['id', 'name'] });
           const salonName = await resolveTenantSmsName(bookingTenantId);
           const first = requested[0];
           const vars = {

@@ -2,7 +2,12 @@ const { Op } = require('sequelize');
 const { Appointment, Branch, Customer, Staff, Service, Payment, PaymentSplit, StaffOffDay, Attendance } = require('../models');
 const AppointmentService = require('../models/AppointmentService');
 const { sequelize } = require('../config/database');
-const { notifyAppointmentConfirmed, notifyAppointmentCompleted, notifyWaitlistSlotAvailable } = require('../services/notificationService');
+const {
+  notifyAppointmentConfirmed,
+  notifyAppointmentCompleted,
+  notifyWaitlistSlotAvailable,
+  notifyStaffAppointmentAssigned,
+} = require('../services/notificationService');
 const { createNextRecurring } = require('../services/recurringService');
 const { notifyBranch, notifyStaffUser } = require('../services/fcmService');
 const { tenantWhere, byIdWhere, resolveTenantId } = require('../utils/tenantScope');
@@ -560,11 +565,15 @@ const create = async (req, res) => {
             return c?.phone || null;
           })()
         : null);
+      const [branch, service] = await Promise.all([
+        Branch.findOne({ where: byIdWhere(req, branch_id), attributes: ['id', 'name', 'phone'] }),
+        Service.findOne({ where: byIdWhere(req, created[0]?.service_id), attributes: ['id', 'name'] }),
+      ]);
+      // WhatsApp assigned staff as soon as the booking is created
+      for (const row of created) {
+        notifyStaffAppointmentAssigned(row, branch, service, resolveTenantId(req));
+      }
       if (notifyPhone && created[0] && created[0].status === 'confirmed') {
-        const [branch, service] = await Promise.all([
-          Branch.findOne({ where: byIdWhere(req, branch_id), attributes: ['id', 'name', 'phone'] }),
-          Service.findOne({ where: byIdWhere(req, created[0].service_id), attributes: ['id', 'name'] }),
-        ]);
         notifyAppointmentConfirmed({ ...created[0].toJSON(), phone: notifyPhone }, branch, service, resolveTenantId(req));
       }
 
@@ -655,12 +664,14 @@ const create = async (req, res) => {
           return c?.phone || null;
         })()
       : null);
-    // Only notify on create when already confirmed — pending bookings notify when status becomes confirmed.
+    const [branch, service] = await Promise.all([
+      Branch.findOne({ where: byIdWhere(req, branch_id), attributes: ['id', 'name', 'phone'] }),
+      Service.findOne({ where: byIdWhere(req, primaryServiceId), attributes: ['id', 'name'] }),
+    ]);
+    // WhatsApp assigned staff as soon as the booking is created
+    notifyStaffAppointmentAssigned(appt, branch, service, resolveTenantId(req));
+    // Customer notify only when already confirmed — pending bookings notify when status becomes confirmed.
     if (notifyPhone && appt.status === 'confirmed') {
-      const [branch, service] = await Promise.all([
-        Branch.findOne({ where: byIdWhere(req, branch_id), attributes: ['id', 'name', 'phone'] }),
-        Service.findOne({ where: byIdWhere(req, primaryServiceId), attributes: ['id', 'name'] }),
-      ]);
       notifyAppointmentConfirmed({ ...appt.toJSON(), phone: notifyPhone }, branch, service, resolveTenantId(req));
     }
 

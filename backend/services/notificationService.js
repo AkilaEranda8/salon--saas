@@ -118,6 +118,8 @@ const DEFAULT_FLAGS = {
   walkin_completed_sms:      false,
   recurring_reminder_sms:    true,
   recurring_reminder_whatsapp: true,
+  // Notify assigned staff when a booking is created/confirmed
+  staff_appt_assigned_whatsapp: true,
 };
 
 function resolveNotifyTenantId(explicit, ...sources) {
@@ -688,6 +690,72 @@ async function notifyAppointmentConfirmed(appointment, branch, service, tenantId
   }
 }
 
+/**
+ * WhatsApp to assigned staff when they get a new appointment.
+ */
+async function notifyStaffAppointmentAssigned(appointment, branch, service, tenantId) {
+  try {
+    const tid = resolveNotifyTenantId(tenantId, appointment, branch);
+    const flags = await getChannelFlags(tid);
+    if (!flags.staff_appt_assigned_whatsapp) return;
+
+    const staffId = appointment.staff_id;
+    if (!staffId) return;
+
+    const { Staff } = getModels();
+    const staff = await Staff.findByPk(staffId);
+    if (!staff || !staff.phone) return;
+
+    const rawDate = appointment.date || appointment.appointment_date || '';
+    const date = rawDate
+      ? (typeof rawDate === 'string' ? rawDate.slice(0, 10) : rawDate.toISOString().slice(0, 10))
+      : '—';
+    const rawTime = appointment.time || appointment.appointment_time || '';
+    const time = rawTime ? String(rawTime).slice(0, 5) : '—';
+    const svcName = service?.name || appointment.service_name || 'Service';
+    const brName = branch?.name || 'Salon';
+    const amountNum = Number(appointment.amount ?? appointment.total_amount ?? service?.price ?? 0);
+    const amount = Number.isFinite(amountNum) ? `Rs. ${amountNum.toFixed(2)}` : '—';
+    const staffName = staff.name || 'there';
+    const customerName = appointment.customer_name || 'Customer';
+
+    const vars = {
+      staff_name: staffName,
+      customer_name: customerName,
+      service_name: svcName,
+      date,
+      time,
+      amount,
+      branch_name: brName,
+    };
+
+    const meta = {
+      event_type: 'staff_appointment_assigned',
+      related_id: appointment.id,
+      related_type: 'appointment',
+      customer_name: customerName,
+      branch_id: branch?.id || appointment.branch_id || null,
+      tenant_id: tid,
+    };
+
+    const tpl = await getTemplate('staff_appointment_assigned', 'whatsapp', tid);
+    const msg = tpl
+      ? interpolate(tpl.body, vars)
+      : `*${brName} — New Appointment*\n` +
+        `Hi ${staffName}, you have a new appointment:\n\n` +
+        `Customer: ${customerName}\n` +
+        `Service: ${svcName}\n` +
+        `Date: ${date}\n` +
+        `Time: ${time}\n` +
+        `Amount: ${amount}\n` +
+        `Branch: ${brName}`;
+
+    await sendWhatsApp({ to: staff.phone, message: msg, meta, tenantId: tid });
+  } catch (err) {
+    console.error('[notify] staff appointment WhatsApp failed:', err.message);
+  }
+}
+
 // ── 2. Appointment Completed ────────────────────────────────────────────────
 async function notifyAppointmentCompleted(appointment, branch, service, tenantId) {
   const tid = resolveNotifyTenantId(tenantId, appointment, branch);
@@ -1030,6 +1098,7 @@ module.exports = {
   sendWhatsApp,
   sendSMS,
   notifyAppointmentConfirmed,
+  notifyStaffAppointmentAssigned,
   notifyAppointmentCompleted,
   notifyPaymentReceipt,
   notifyLoyaltyPoints,

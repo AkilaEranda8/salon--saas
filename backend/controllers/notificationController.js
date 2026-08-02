@@ -28,6 +28,7 @@ const DEFAULT_SETTINGS = {
   walkin_completed_sms:       false,
   recurring_reminder_sms:     true,
   recurring_reminder_whatsapp: true,
+  staff_appt_assigned_whatsapp: true,
 };
 
 const SETTINGS_FIELDS = Object.keys(DEFAULT_SETTINGS);
@@ -677,6 +678,11 @@ const DEFAULT_TEMPLATES = {
     },
     sms: {
       body: `{branch_name}: Hi {customer_name}, booked {service_name} on {date} {time}. See you!`,
+    },
+  },
+  staff_appointment_assigned: {
+    whatsapp: {
+      body: `*{branch_name} — New Appointment*\n\nHi {staff_name}, you have a new appointment:\n\nCustomer: {customer_name}\nService: {service_name}\nDate: {date}\nTime: {time}\nAmount: {amount}\nBranch: {branch_name}`,
     },
   },
   appointment_completed: {

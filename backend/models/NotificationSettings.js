@@ -173,6 +173,12 @@ const NotificationSettings = sequelize.define('NotificationSettings', {
     defaultValue: false,
     allowNull: false,
   },
+  /** WhatsApp to assigned staff when a booking is created/confirmed */
+  staff_appt_assigned_whatsapp: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: true,
+    allowNull: false,
+  },
 }, {
   tableName: 'notification_settings',
   timestamps: true,

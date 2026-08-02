@@ -111,14 +111,17 @@ async function createNextRecurring(appointment, options = {}) {
       }
     } catch (_) { /* optional */ }
 
-    if (!skipNotify && appointment.phone) {
+    if (!skipNotify) {
       const { Branch, Service } = require('../models');
-      const { notifyAppointmentConfirmed } = require('./notificationService');
+      const { notifyAppointmentConfirmed, notifyStaffAppointmentAssigned } = require('./notificationService');
       const [branch, service] = await Promise.all([
         Branch.findByPk(appointment.branch_id, { attributes: ['id', 'name', 'phone'] }),
         Service.findByPk(appointment.service_id, { attributes: ['id', 'name'] }),
       ]);
-      notifyAppointmentConfirmed(nextAppt, branch, service, appointment.tenant_id);
+      notifyStaffAppointmentAssigned(nextAppt, branch, service, appointment.tenant_id);
+      if (appointment.phone) {
+        notifyAppointmentConfirmed(nextAppt, branch, service, appointment.tenant_id);
+      }
     }
 
     return nextAppt;

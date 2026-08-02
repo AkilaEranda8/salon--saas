@@ -1,12 +1,7 @@
-/// Management roles — override commission on other staff work in the branch.
-const List<String> managementStaffRoles = [
-  'Branch Manager',
-  'Salon Manager',
-];
-
 /// Salon job roles shown when adding/editing staff.
 const List<String> staffRoleTitles = [
-  ...managementStaffRoles,
+  'Branch Manager',
+  'Salon Manager',
   'Stylist',
   'Senior Stylist',
   'Junior Stylist',

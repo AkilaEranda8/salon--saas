@@ -1,13 +1,12 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { useFeatureGate } from '../hooks/useFeatureGate';
 import api from '../api/axios';
 import Button from '../components/ui/Button';
 import { Input, Select, FormGroup } from '../components/ui/FormElements';
 import PageWrapper from '../components/layout/PageWrapper';
 import { PKModal as Modal, StatCard, IconUsers, IconCheck, IconStop, DataTable, ActionBtn } from '../components/ui/PageKit';
 
-const EMPTY = { name:'', address:'', phone:'', manager_name:'', manager_commission_percent:'', status:'active', color:'#2563EB' };
+const EMPTY = { name:'', address:'', phone:'', manager_name:'', status:'active', color:'#2563EB' };
 const BRANCH_COLORS = ['#2563EB','#7C3AED','#0891B2','#059669','#DC2626','#D97706','#DB2777'];
 
 function EditIcon() {
@@ -16,7 +15,6 @@ function EditIcon() {
 
 export default function BranchesPage() {
   const { user } = useAuth();
-  const { allowed: franchiseCommission } = useFeatureGate('franchise_commission');
   const canEdit = user?.role === 'superadmin';
   const [branches, setBranches] = useState([]);
   const [loading, setLoading]   = useState(true);
@@ -75,15 +73,6 @@ export default function BranchesPage() {
     },
     { id: 'phone', header: 'Phone', accessorKey: 'phone', cell: ({ getValue }) => getValue() || '—' },
     { id: 'manager_name', header: 'Manager', accessorKey: 'manager_name', cell: ({ getValue }) => getValue() || '—' },
-    ...(franchiseCommission ? [{
-      id: 'manager_commission_percent',
-      header: 'Manager %',
-      accessorKey: 'manager_commission_percent',
-      cell: ({ getValue }) => {
-        const v = getValue();
-        return v != null && v !== '' ? `${Number(v)}%` : '—';
-      },
-    }] : []),
     {
       id: 'status',
       header: 'Status',
@@ -111,7 +100,7 @@ export default function BranchesPage() {
         </div>
       ),
     }] : []),
-  ], [canEdit, franchiseCommission]);
+  ], [canEdit]);
 
   return (
     <PageWrapper title="Branches" subtitle={`${branches.length} branch${branches.length !== 1 ? 'es' : ''} configured`}
@@ -173,16 +162,6 @@ export default function BranchesPage() {
           <FormGroup label="Manager Name">
             <Input value={form.manager_name||''} onChange={e => setForm(f=>({...f, manager_name:e.target.value}))} />
           </FormGroup>
-          {franchiseCommission && (
-            <FormGroup label="Manager Override Commission %">
-              <Input
-                type="number" min="0" max="100" step="0.5"
-                value={form.manager_commission_percent ?? ''}
-                onChange={e => setForm(f => ({ ...f, manager_commission_percent: e.target.value }))}
-                placeholder="e.g. 5 — % of total service amount"
-              />
-            </FormGroup>
-          )}
           <FormGroup label="Branch Color">
             <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginTop:4 }}>
               {BRANCH_COLORS.map(c => (

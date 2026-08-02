@@ -64,7 +64,7 @@ function hasTenantFeature(tenant, feature) {
   return getEffectiveFeatures(tenant)[feature] === true;
 }
 
-/** Franchise mode: per-staff commission + branch manager override on paid services. */
+/** Franchise mode: per-staff commission rates on paid services. */
 function hasFranchiseCommission(tenant) {
   return hasTenantFeature(tenant, 'franchise_commission');
 }

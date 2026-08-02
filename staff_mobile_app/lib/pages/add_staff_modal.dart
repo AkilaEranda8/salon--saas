@@ -113,10 +113,6 @@ class _AddStaffModalState extends State<AddStaffModal> {
       ? _roleCustomCtrl.text.trim()
       : _rolePick;
 
-  bool get _isManagementRole =>
-      managementStaffRoles.contains(_rolePick) ||
-      managementStaffRoles.contains(_roleCustomCtrl.text.trim());
-
   @override
   void initState() {
     super.initState();
@@ -399,81 +395,14 @@ class _AddStaffModalState extends State<AddStaffModal> {
               ),
               const SizedBox(height: 12),
               _label('ROLE'),
-              Text(
-                'Branch management (override commission)',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.orange.shade800,
-                  letterSpacing: 0.3,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Row(
-                children: managementStaffRoles.map((role) {
-                  final active = _rolePick == role;
-                  return Expanded(
-                    child: Padding(
-                      padding: EdgeInsets.only(
-                        right: role == managementStaffRoles.first ? 6 : 0,
-                        left: role == managementStaffRoles.last ? 6 : 0,
-                      ),
-                      child: OutlinedButton(
-                        onPressed: () => setState(() {
-                          _rolePick = role;
-                          _roleCustomCtrl.clear();
-                        }),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor:
-                              active ? Colors.orange.shade900 : _cInk,
-                          backgroundColor:
-                              active ? const Color(0xFFFFFBEB) : Colors.white,
-                          side: BorderSide(
-                            color: active
-                                ? const Color(0xFFD97706)
-                                : _cBorder,
-                            width: active ? 2 : 1,
-                          ),
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                        ),
-                        child: Text(
-                          role,
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                    ),
-                  );
-                }).toList(),
-              ),
-              const SizedBox(height: 12),
-              Text(
-                'Service staff',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  color: _cMuted,
-                  letterSpacing: 0.3,
-                ),
-              ),
-              const SizedBox(height: 8),
               DropdownButtonFormField<String>(
-                key: ValueKey(
-                  'svc_role_${managementStaffRoles.contains(_rolePick) ? 'mgmt' : _rolePick}',
-                ),
-                initialValue: managementStaffRoles.contains(_rolePick)
-                    ? null
-                    : (_rolePick.isEmpty ? null : _rolePick),
+                key: ValueKey('role_$_rolePick'),
+                initialValue: _rolePick.isEmpty ? null : _rolePick,
                 isExpanded: true,
-                decoration: _deco('Select service role', Icons.work_outline_rounded,
+                decoration: _deco('Select role', Icons.work_outline_rounded,
                     required: true),
                 items: [
-                  ...staffRoleTitles
-                      .where((r) => !managementStaffRoles.contains(r))
-                      .map(
+                  ...staffRoleTitles.map(
                     (r) => DropdownMenuItem(value: r, child: Text(r)),
                   ),
                   const DropdownMenuItem(
@@ -489,7 +418,6 @@ class _AddStaffModalState extends State<AddStaffModal> {
                   });
                 },
                 validator: (v) {
-                  if (managementStaffRoles.contains(_rolePick)) return null;
                   if (v == null || v.isEmpty) return 'Select a role';
                   if (v == staffRoleOther &&
                       _roleCustomCtrl.text.trim().isEmpty) {
@@ -580,14 +508,12 @@ class _AddStaffModalState extends State<AddStaffModal> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          _label(_isManagementRole ? 'MGR OVERRIDE %' : 'DEFAULT COMM.'),
+                          _label('DEFAULT COMM.'),
                           TextFormField(
                             controller: _commCtrl,
                             keyboardType: TextInputType.number,
                             decoration: _deco(
-                              _isManagementRole
-                                  ? '5'
-                                  : (_commissionType == 'fixed' ? '500' : '10'),
+                              _commissionType == 'fixed' ? '500' : '10',
                               Icons.trending_up_rounded,
                               required: _paysCommission,
                             ),
@@ -616,11 +542,9 @@ class _AddStaffModalState extends State<AddStaffModal> {
                       border: Border.all(color: const Color(0xFFBBF7D0)),
                     ),
                     child: Text(
-                      _isManagementRole
-                          ? 'Branch Manager override % is calculated from the total service amount when other staff in this branch complete paid work.'
-                          : (_activeServices.isEmpty
-                              ? 'Default commission applies to all services when this staff completes work.'
-                              : 'Default commission applies to all ${_activeServices.length} active services — no per-service setup needed.'),
+                      _activeServices.isEmpty
+                          ? 'Default commission applies to all services when this staff completes work.'
+                          : 'Default commission applies to all ${_activeServices.length} active services — no per-service setup needed.',
                       style: const TextStyle(
                         color: Color(0xFF166534),
                         fontSize: 12,

@@ -1,9 +1,7 @@
-/** Management roles — earn override commission on other staff's work in the branch. */
-export const MANAGEMENT_STAFF_ROLES = ['Branch Manager', 'Salon Manager'];
-
 /** Salon job roles shown when adding/editing staff. */
 export const STAFF_ROLE_TITLES = [
-  ...MANAGEMENT_STAFF_ROLES,
+  'Branch Manager',
+  'Salon Manager',
   'Stylist',
   'Senior Stylist',
   'Junior Stylist',

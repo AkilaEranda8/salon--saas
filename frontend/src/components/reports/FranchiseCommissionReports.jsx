@@ -322,7 +322,7 @@ export default function FranchiseCommissionReports({ dateFrom, dateTo }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div style={{ background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 12, padding: '12px 16px', fontSize: 13, color: '#92400E', ...S }}>
-        <strong>Franchise commission:</strong> Each staff has their own rate. Branch managers earn an additional override % of the <em>total service amount</em> (not from staff commission). Only staff in the manager&apos;s branch count.
+        <strong>Franchise commission:</strong> Each staff has their own rate on services they complete. Manager override on other staff work is no longer applied to new payments.
       </div>
       <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
         {SUB_TABS.map(t => (

@@ -14,7 +14,7 @@ import {
   DataTable,
 } from '../components/ui/PageKit';
 import {
-  STAFF_ROLE_TITLES, STAFF_ROLE_OTHER, staffRoleSelectValue, MANAGEMENT_STAFF_ROLES,
+  STAFF_ROLE_TITLES, STAFF_ROLE_OTHER, staffRoleSelectValue,
 } from '../constants/staffRoleTitles';
 
 const EMPTY = { name:'', phone:'', email:'', role_title:'', branch_ids:[], commission_type:'percentage', commission_value:'', salary_type:'commission_only', base_salary:'', join_date:'', is_active:true, available_online:false };
@@ -635,8 +635,6 @@ export default function StaffPage() {
   const activeCount = staff.filter(s => s.is_active !== false).length;
   const p = profileItem;
   const roleSelectValue = staffRoleSelectValue(form.role_title);
-  const isManagementRole = MANAGEMENT_STAFF_ROLES.includes(form.role_title);
-  const serviceRoles = STAFF_ROLE_TITLES.filter((r) => !MANAGEMENT_STAFF_ROLES.includes(r));
 
   const columns = [
     {
@@ -1089,53 +1087,6 @@ export default function StaffPage() {
 
             <StaffSection title="Role & Branches" desc="Job title and assigned locations" dark={isDark}>
               <FormGroup label="Role" required>
-                {franchiseCommission ? (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: '#D97706', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                      Branch management (override commission)
-                    </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                      {MANAGEMENT_STAFF_ROLES.map((role) => {
-                        const active = form.role_title === role;
-                        return (
-                          <button
-                            key={role}
-                            type="button"
-                            onClick={() => setForm((f) => ({ ...f, role_title: role }))}
-                            style={{
-                              padding: '10px 12px', borderRadius: 10, cursor: 'pointer', fontSize: 13, fontWeight: 700,
-                              border: active ? '2px solid #D97706' : `1.5px solid ${isDark ? '#334155' : '#E4E7EC'}`,
-                              background: active ? (isDark ? 'rgba(217,119,6,0.15)' : '#FFFBEB') : (isDark ? '#0F172A' : '#fff'),
-                              color: active ? '#D97706' : C.label,
-                            }}
-                          >
-                            {role}
-                          </button>
-                        );
-                      })}
-                    </div>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                      Service staff
-                    </div>
-                    <Select
-                      value={isManagementRole ? '' : roleSelectValue}
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        if (!v) return;
-                        if (v === STAFF_ROLE_OTHER) setForm((f) => ({ ...f, role_title: '' }));
-                        else setForm((f) => ({ ...f, role_title: v }));
-                      }}
-                    >
-                      <option value="">Select service role...</option>
-                      {serviceRoles.map((r) => <option key={r} value={r}>{r}</option>)}
-                      <option value={STAFF_ROLE_OTHER}>Other</option>
-                    </Select>
-                    {roleSelectValue === STAFF_ROLE_OTHER && (
-                      <Input value={form.role_title || ''} onChange={(e) => setForm((f) => ({ ...f, role_title: e.target.value }))} placeholder="Enter custom role" />
-                    )}
-                  </div>
-                ) : (
-                  <>
                     <Select
                       value={roleSelectValue}
                       onChange={(e) => {
@@ -1151,8 +1102,6 @@ export default function StaffPage() {
                     {roleSelectValue === STAFF_ROLE_OTHER && (
                       <Input value={form.role_title || ''} onChange={(e) => setForm((f) => ({ ...f, role_title: e.target.value }))} placeholder="Enter custom role" style={{ marginTop: 8 }} />
                     )}
-                  </>
-                )}
               </FormGroup>
               <FormGroup label="Branches" required>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
@@ -1205,16 +1154,12 @@ export default function StaffPage() {
                       {serviceWiseForUser && <option value="fixed">Fixed per Service</option>}
                     </Select>
                   </FormGroup>
-                  <FormGroup label={
-                    franchiseCommission && isManagementRole && form.commission_type === 'percentage'
-                      ? 'Manager Override %'
-                      : (form.commission_type === 'percentage' ? 'Default Commission %' : 'Default Commission (Rs.)')
-                  }>
+                  <FormGroup label={form.commission_type === 'percentage' ? 'Default Commission %' : 'Default Commission (Rs.)'}>
                     <Input
-                      type="number" min="0" step="0.01" max={franchiseCommission && isManagementRole ? '100' : undefined}
+                      type="number" min="0" step="0.01"
                       value={form.commission_value || ''}
                       onChange={e => setForm(f => ({ ...f, commission_value: e.target.value }))}
-                      placeholder={franchiseCommission && isManagementRole ? 'e.g. 5' : 'e.g. 10'}
+                      placeholder="e.g. 10"
                     />
                   </FormGroup>
                 </div>
@@ -1347,11 +1292,7 @@ export default function StaffPage() {
                   border: `1px solid ${serviceWiseForUser ? (isDark ? 'rgba(96,165,250,0.25)' : '#BAE6FD') : (isDark ? 'rgba(52,211,153,0.25)' : '#BBF7D0')}`,
                   borderRadius: 12, fontSize: 12, color: C.tipText || (isDark ? '#CBD5E1' : '#374151'), lineHeight: 1.5,
                 }}>
-                  {franchiseCommission && isManagementRole ? (
-                    <>
-                      <strong>Branch Manager / Salon Manager:</strong> override commission % applies to total service amount when other staff complete paid work.
-                    </>
-                  ) : serviceWiseForUser ? (
+                  {serviceWiseForUser ? (
                     <>
                       Tick <strong>Service Rates (optional)</strong> only if this staff needs custom per-service commission. Otherwise the default / catalogue rate is used.
                     </>

@@ -85,9 +85,9 @@ function franchiseCommissionEnabled(tenant) {
   return hasFranchiseCommission(tenant);
 }
 
-/** Manager override only when Franchise Commission feature is enabled for the tenant. */
-function shouldApplyManagerOverride(tenant) {
-  return hasFranchiseCommission(tenant);
+/** Manager override disabled — no longer applied on payments. */
+function shouldApplyManagerOverride() {
+  return false;
 }
 
 module.exports = {

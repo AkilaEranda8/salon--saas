@@ -1,6 +1,11 @@
 const { Op } = require('sequelize');
 const { Customer, Branch, Appointment, Service } = require('../models');
 const { tenantWhere, byIdWhere, resolveTenantId } = require('../utils/tenantScope');
+const {
+  ensureWalkInCustomerForTenant,
+  sortWalkInFirst,
+  WALK_IN_CUSTOMER_NAME,
+} = require('../services/ensureWalkInCustomer');
 
 /**
  * Branch filter for customers:
@@ -40,6 +45,11 @@ const getCustomerListWhere = (req) => {
 
 const list = async (req, res) => {
   try {
+    const tenantId = resolveTenantId(req);
+    if (tenantId) {
+      await ensureWalkInCustomerForTenant(tenantId);
+    }
+
     const page   = Math.max(parseInt(req.query.page)  || 1, 1);
     const limit  = Math.min(parseInt(req.query.limit) || 20, 2000);
     const offset = (page - 1) * limit;
@@ -50,11 +60,17 @@ const list = async (req, res) => {
       where,
       limit,
       offset,
-      order: [['name', 'ASC']],
+      order: [
+        // Walk-in Customer always first within the page
+        [Customer.sequelize.literal(
+          `CASE WHEN \`Customer\`.\`name\` = ${Customer.sequelize.escape(WALK_IN_CUSTOMER_NAME)} THEN 0 ELSE 1 END`
+        ), 'ASC'],
+        ['name', 'ASC'],
+      ],
       include: [{ model: Branch, as: 'branch', attributes: ['id', 'name'] }],
     });
 
-    return res.json({ total: count, page, limit, data: rows });
+    return res.json({ total: count, page, limit, data: sortWalkInFirst(rows) });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ message: 'Server error.' });
@@ -141,6 +157,9 @@ const remove = async (req, res) => {
   try {
     const cust = await Customer.findOne({ where: byIdWhere(req, req.params.id) });
     if (!cust) return res.status(404).json({ message: 'Customer not found.' });
+    if (cust.name === WALK_IN_CUSTOMER_NAME) {
+      return res.status(400).json({ message: 'Walk-in Customer is a system record and cannot be deleted.' });
+    }
 
     await cust.destroy();
     return res.json({ message: 'Customer deleted.' });

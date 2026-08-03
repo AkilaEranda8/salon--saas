@@ -32,6 +32,7 @@ import {
   resolveWalkInAmountDisplay,
 } from '../utils/packageHelpers';
 import { getKcAccessToken } from '../utils/kcTokenStore';
+import { pinWalkInFirst } from '../utils/walkInCustomer';
 import {
   PKModal as Modal, StatCard, StaffAvatar,
   IconUsers, IconCheck, IconClock, IconClose, IconPlus, IconDollar,
@@ -1083,9 +1084,10 @@ export default function WalkInPage() {
           if (page > 40) break; // safety: max ~20k
         }
         if (cancelled) return;
-        setCustAll(all);
-        setCustTotal(total === Infinity ? all.length : total);
-        setCustResults(all.slice(0, 100));
+        const pinned = pinWalkInFirst(all);
+        setCustAll(pinned);
+        setCustTotal(total === Infinity ? pinned.length : total);
+        setCustResults(pinned.slice(0, 100));
       } catch {
         if (!cancelled) {
           setCustAll([]);
@@ -1115,7 +1117,7 @@ export default function WalkInPage() {
 
     if (!q) {
       setCustSearching(false);
-      setCustResults(custAll.slice(0, 100));
+      setCustResults(pinWalkInFirst(custAll).slice(0, 100));
       return;
     }
 

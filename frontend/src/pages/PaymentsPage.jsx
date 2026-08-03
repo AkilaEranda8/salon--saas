@@ -28,6 +28,7 @@ import { useFeatureGate } from '../hooks/useFeatureGate';
 import RecurringDateCalendar, { defaultRecurringNextDate } from '../components/ui/RecurringDateCalendar';
 import RecurringTemplateCheckboxes from '../components/ui/RecurringTemplateCheckboxes';
 import PaymentHelperStaffFields, { helpersPayload } from '../components/payments/PaymentHelperStaffFields';
+import { pinWalkInFirst } from '../utils/walkInCustomer';
 
 const METHODS = ['Cash','Card','Online Transfer','Loyalty Points','Package','LankaQR'];
 const METHOD_LABEL = { 'Cash':'Cash', 'Card':'Card', 'Online Transfer':'Bank Transfer', 'Loyalty Points':'Loyalty Pts', 'Package':'Package', 'LankaQR':'LankaQR' };
@@ -184,7 +185,7 @@ function CustomerTypeahead({ customers, value, onSelect, onNew, branchId }) {
         c.phone?.toLowerCase().includes(query.toLowerCase()) ||
         (c.email || '').toLowerCase().includes(query.toLowerCase())
       ).slice(0, 12)
-    : [];
+    : pinWalkInFirst(pool).slice(0, 12);
   const hasExact = isPhone
     ? pool.some(c => c.phone === query.trim())
     : pool.some(c => c.name?.toLowerCase() === query.trim().toLowerCase());
@@ -748,7 +749,10 @@ export default function PaymentsPage() {
       api.get('/services',  { params:{ limit:200 } }),
     ]).then(([brR, cuR, stR, svR]) => {
       if (brR.status === 'fulfilled') setBranches(Array.isArray(brR.value.data) ? brR.value.data : (brR.value.data?.data ?? []));
-      if (cuR.status === 'fulfilled') setCustomers(Array.isArray(cuR.value.data) ? cuR.value.data : (cuR.value.data?.data ?? []));
+      if (cuR.status === 'fulfilled') {
+        const list = Array.isArray(cuR.value.data) ? cuR.value.data : (cuR.value.data?.data ?? []);
+        setCustomers(pinWalkInFirst(list));
+      }
       if (stR.status === 'fulfilled') setStaffList(Array.isArray(stR.value.data) ? stR.value.data : (stR.value.data?.data ?? []));
       if (svR.status === 'fulfilled') setServices(Array.isArray(svR.value.data) ? svR.value.data : (svR.value.data?.data ?? []));
     });

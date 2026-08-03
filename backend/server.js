@@ -46,6 +46,7 @@ const { ensureTenantDocsPageColumn } = require('./services/ensureTenantDocsPageC
 const { ensureStaffPhotoColumn } = require('./services/ensureStaffPhotoColumn');
 const { ensurePaymentIsAdvanceColumn } = require('./services/ensurePaymentIsAdvanceColumn');
 const { ensureCustomerLoyaltyMarkColumn } = require('./services/ensureCustomerLoyaltyMarkColumn');
+const { ensureWalkInCustomersForAllTenants } = require('./services/ensureWalkInCustomer');
 const ensureAppointmentReminderColumn = require('./services/ensureAppointmentReminderColumn');
 const ensureWalkInReminderColumns = require('./services/ensureWalkInReminderColumns');
 const ensureWalkInNotificationColumns = require('./services/ensureWalkInNotificationColumns');
@@ -433,6 +434,9 @@ connectWithRetry().then(async () => {
   await runWalkInQueueServicesMigration();
   await ensureWhatsAppSchema();
   await ensureAiCrmSchema();
+  ensureWalkInCustomersForAllTenants().catch((e) =>
+    console.warn('[WalkInCustomer] seed failed:', e.message)
+  );
   restoreSessionsOnBoot().catch((e) => logger.warn('whatsapp_restore_failed', { message: e.message }));
 
   // C15: Workers must run in separate process (ai_crm_worker). Never auto-start in API.

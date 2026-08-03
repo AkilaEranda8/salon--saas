@@ -36,6 +36,7 @@ import { useNavigate } from 'react-router-dom';
 import RecurringDateCalendar, { defaultRecurringNextDate } from '../components/ui/RecurringDateCalendar';
 import RecurringTemplateCheckboxes from '../components/ui/RecurringTemplateCheckboxes';
 import PaymentHelperStaffFields, { helpersPayload } from '../components/payments/PaymentHelperStaffFields';
+import { pinWalkInFirst } from '../utils/walkInCustomer';
 
 const IconMoney    = () => <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>;
 
@@ -342,7 +343,7 @@ export default function AppointmentsPage() {
           pageNum += 1;
           if (pageNum > 40) break;
         }
-        if (!cancelled) setCustomers(all);
+        if (!cancelled) setCustomers(pinWalkInFirst(all));
       } catch {
         if (!cancelled) setCustomers([]);
       } finally {
@@ -1052,7 +1053,7 @@ export default function AppointmentsPage() {
     }
     const pool = [...map.values()];
     const q = customerSearch.trim().toLowerCase();
-    if (!q) return pool.slice(0, 100);
+    if (!q) return pinWalkInFirst(pool).slice(0, 100);
     return pool.filter((c) =>
       c.name?.toLowerCase().includes(q)
       || String(c.phone || '').toLowerCase().includes(q)

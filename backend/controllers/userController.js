@@ -91,9 +91,10 @@ const create = async (req, res) => {
     }
 
     const hash = await bcrypt.hash(password, 10);
+    const normalizedEmail = email && String(email).trim() ? String(email).trim() : null;
     const user = await User.create({
       username, password: hash, name,
-      email:                email || null,
+      email:                normalizedEmail,
       role:                 role || 'staff',
       branch_id:            branch_id || null,
       is_active:            is_active !== false,
@@ -163,7 +164,7 @@ const update = async (req, res) => {
     }
     if (branch_id !== undefined) updates.branch_id  = branch_id || null;
     if (is_active !== undefined) updates.is_active  = is_active;
-    if (email !== undefined)     updates.email      = email || null;
+    if (email !== undefined)     updates.email      = email && String(email).trim() ? String(email).trim() : null;
     if (password)                updates.password   = await bcrypt.hash(password, 10);
 
     // Check username uniqueness before updating

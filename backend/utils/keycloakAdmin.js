@@ -189,11 +189,12 @@ async function createUser(opts) {
 
   const nameParts = (name || '').trim().split(' ');
   const kcUsername = tenantSlug ? `${tenantSlug}__${username}` : username;
+  // Email is optional — username alone is enough to sign in.
+  const trimmedEmail = email && String(email).trim() ? String(email).trim() : '';
 
   const payload = {
     username:      kcUsername,
-    email:         email || undefined,
-    emailVerified: true,
+    emailVerified: !!trimmedEmail,
     firstName:     nameParts[0] || username,
     lastName:      nameParts.slice(1).join(' ') || '-',
     enabled:       true,
@@ -211,6 +212,7 @@ async function createUser(opts) {
     }],
     requiredActions: temporary ? ['UPDATE_PASSWORD'] : [],
   };
+  if (trimmedEmail) payload.email = trimmedEmail;
 
   const h = await headers();
   let kcUserId;
@@ -308,7 +310,13 @@ async function updateUser(dbUserId, updates) {
     patch.firstName   = parts[0] || kcUser.firstName;
     patch.lastName    = parts.slice(1).join(' ') || '';
   }
-  if (updates.email    !== undefined) patch.email                            = updates.email || null;
+  if (updates.email !== undefined) {
+    const trimmed = updates.email && String(updates.email).trim()
+      ? String(updates.email).trim()
+      : '';
+    patch.email = trimmed || '';
+    patch.emailVerified = !!trimmed;
+  }
   if (updates.isActive !== undefined) patch.enabled                          = !!updates.isActive;
   if (updates.role     !== undefined) patch.attributes.salonRole             = [updates.role];
   if (updates.branchId !== undefined) patch.attributes.branchId              = [String(updates.branchId ?? '')];

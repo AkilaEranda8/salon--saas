@@ -658,34 +658,78 @@ const kcLogin = async (req, res) => {
 
   // KC usernames are stored as "{tenantSlug}__{username}" for tenant users.
   // Platform admins have no tenant and log in with their plain username.
+  // Also accept email (loginWithEmailAllowed) and resolve DB username/email aliases.
+  const raw = String(username).trim();
   const tenantSlug = req.tenant?.slug ?? null;
-  let kcUsername = username.trim();
-  if (tenantSlug && !kcUsername.startsWith(tenantSlug + '__')) {
-    kcUsername = `${tenantSlug}__${kcUsername}`;
+  const tenantId = req.tenant?.id ?? null;
+
+  const candidates = [];
+  const addCandidate = (value) => {
+    const v = value && String(value).trim();
+    if (v && !candidates.includes(v)) candidates.push(v);
+  };
+
+  if (tenantSlug && !raw.startsWith(`${tenantSlug}__`)) {
+    addCandidate(`${tenantSlug}__${raw}`);
+  }
+  addCandidate(raw);
+
+  if (tenantId) {
+    try {
+      const dbUser = await User.findOne({
+        where: {
+          tenant_id: tenantId,
+          is_active: true,
+          [Op.or]: [{ username: raw }, { email: raw }],
+        },
+        attributes: ['id', 'username', 'email'],
+      });
+      if (dbUser) {
+        if (tenantSlug) addCandidate(`${tenantSlug}__${dbUser.username}`);
+        addCandidate(dbUser.username);
+        if (dbUser.email) addCandidate(dbUser.email);
+      }
+    } catch (lookupErr) {
+      console.warn('[KC] kcLogin DB lookup skipped:', lookupErr.message);
+    }
   }
 
-  try {
-    const params = addKcClientAuth(new URLSearchParams({
-      grant_type: 'password',
-      username:   kcUsername,
-      password,
-    }));
-    const r = await axios.post(`${KC_REALM_URL()}/token`, params.toString(), {
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    });
-    return res.json({
-      access_token:  r.data.access_token,
-      refresh_token: r.data.refresh_token,
-      expires_in:    r.data.expires_in,
-    });
-  } catch (err) {
-    const status = err.response?.status;
-    const errorCode = err.response?.data?.error;
-    if (status === 401 || (status === 400 && errorCode === 'invalid_grant'))
-      return res.status(401).json({ message: 'Invalid username or password.' });
-    console.error('[KC] kcLogin error:', err.response?.data || err.message);
-    return res.status(502).json({ message: 'Authentication service unavailable.' });
+  let lastAuthError = null;
+  for (const kcUsername of candidates) {
+    try {
+      const params = addKcClientAuth(new URLSearchParams({
+        grant_type: 'password',
+        username:   kcUsername,
+        password,
+      }));
+      const r = await axios.post(`${KC_REALM_URL()}/token`, params.toString(), {
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      });
+      return res.json({
+        access_token:  r.data.access_token,
+        refresh_token: r.data.refresh_token,
+        expires_in:    r.data.expires_in,
+      });
+    } catch (err) {
+      lastAuthError = err;
+      const status = err.response?.status;
+      const errorCode = err.response?.data?.error;
+      if (status === 401 || (status === 400 && errorCode === 'invalid_grant')) {
+        continue;
+      }
+      console.error('[KC] kcLogin error:', err.response?.data || err.message);
+      return res.status(502).json({ message: 'Authentication service unavailable.' });
+    }
   }
+
+  if (lastAuthError) {
+    const status = lastAuthError.response?.status;
+    const errorCode = lastAuthError.response?.data?.error;
+    if (status === 401 || (status === 400 && errorCode === 'invalid_grant')) {
+      return res.status(401).json({ message: 'Invalid username or password.' });
+    }
+  }
+  return res.status(401).json({ message: 'Invalid username or password.' });
 };
 
 // ─── KC refresh proxy — POST /api/auth/kc-refresh ───────────────────────────

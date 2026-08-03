@@ -87,7 +87,10 @@ export default function UsersPage() {
     if (!editItem && !form.password)  return setFormError('Password is required for new user.');
     setSaving(true);
     try {
-      const payload = { ...form };
+      const payload = {
+        ...form,
+        email: (form.email || '').trim() || null,
+      };
       if (!payload.password) delete payload.password;
       editItem ? await api.put(`/users/${editItem.id}`, payload) : await api.post('/users', payload);
       setShowForm(false); load();
@@ -254,8 +257,8 @@ export default function UsersPage() {
           <FormGroup label="Full Name" required><Input value={form.name} onChange={e => setForm({...form, name:e.target.value})} /></FormGroup>
           <FormGroup label="Username" required><Input value={form.username} onChange={e => setForm({...form, username:e.target.value})} autoComplete="off" /></FormGroup>
           <div style={{ gridColumn:'1/-1' }}>
-            <FormGroup label="Email" helperText="Used for password reset emails">
-              <Input type="email" value={form.email || ''} onChange={e => setForm({...form, email:e.target.value})} placeholder="staff@example.com" autoComplete="off" />
+            <FormGroup label="Email (optional)" helperText="Optional — username is enough to sign in. Email is only for password reset.">
+              <Input type="text" inputMode="email" value={form.email || ''} onChange={e => setForm({...form, email:e.target.value})} placeholder="Optional — leave blank if not needed" autoComplete="off" />
             </FormGroup>
           </div>
 

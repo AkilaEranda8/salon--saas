@@ -35,17 +35,53 @@ const calcDuration = (checkIn, checkOut) => {
   return `${hrs}h ${mins}m`;
 };
 
-const calcOvertime = (checkIn, checkOut, standardHrs = 8) => {
+const calcOvertime = (checkIn, checkOut, standardMinutes = 8 * 60) => {
   if (!checkIn || !checkOut) return null;
-  const [h1,m1] = checkIn.split(':').map(Number);
-  const [h2,m2] = checkOut.split(':').map(Number);
-  let diff = (h2*60+m2) - (h1*60+m1);
-  if (diff < 0) diff += 24*60;
-  const overMins = diff - standardHrs*60;
+  const [h1, m1] = checkIn.split(':').map(Number);
+  const [h2, m2] = checkOut.split(':').map(Number);
+  let diff = (h2 * 60 + m2) - (h1 * 60 + m1);
+  if (diff < 0) diff += 24 * 60;
+  const overMins = diff - standardMinutes;
   if (overMins <= 0) return null;
-  const hrs = Math.floor(overMins/60);
-  const mins = overMins%60;
+  const hrs = Math.floor(overMins / 60);
+  const mins = overMins % 60;
   return `${hrs}h ${mins}m`;
+};
+
+/** Resolve expected shift from staff working_hours / schedule for a YYYY-MM-DD date. */
+const resolveStaffShift = (staff, dateStr, attendanceRec = null) => {
+  if (attendanceRec?.schedule) return attendanceRec.schedule;
+  if (attendanceRec?.staff?.schedule) return attendanceRec.staff.schedule;
+  if (staff?.schedule && (staff.schedule.closed || staff.schedule.start)) return staff.schedule;
+
+  const offDays = staff?.offDays || staff?.off_days || [];
+  const off = offDays.find((d) => String(d.date).slice(0, 10) === String(dateStr).slice(0, 10));
+  if (off) {
+    return { closed: true, start: null, end: null, standardMinutes: 0, reason: off.reason || 'Off day' };
+  }
+
+  const hours = staff?.working_hours;
+  if (!hours || !dateStr) {
+    return { closed: false, start: '09:00', end: '18:00', standardMinutes: 9 * 60 };
+  }
+  const d = new Date(`${dateStr}T12:00:00`);
+  const key = String(d.getDay());
+  const day = hours[key] || hours[Number(key)] || { closed: false, start: '09:00', end: '18:00' };
+  if (day.closed) {
+    return { closed: true, start: null, end: null, standardMinutes: 0, reason: 'Weekly off' };
+  }
+  const start = String(day.start || '09:00').slice(0, 5);
+  const end = String(day.end || '18:00').slice(0, 5);
+  const [sh, sm] = start.split(':').map(Number);
+  const [eh, em] = end.split(':').map(Number);
+  const standardMinutes = Math.max(0, (eh * 60 + em) - (sh * 60 + sm));
+  return { closed: false, start, end, standardMinutes };
+};
+
+const fmtShift = (shift) => {
+  if (!shift) return '—';
+  if (shift.closed) return shift.reason || 'Off';
+  return `${fmtTime(shift.start)} – ${fmtTime(shift.end)}`;
 };
 
 const dayLabel = dateStr => {
@@ -238,10 +274,35 @@ export default function AttendancePage() {
       },
     },
     {
+      id: 'shift',
+      header: 'Shift',
+      enableSorting: false,
+      meta: { width: '12%' },
+      cell: ({ row: { original: staff } }) => {
+        const rec = getRecord(staff.id);
+        const shift = resolveStaffShift(staff, date, rec);
+        return (
+          <div>
+            <div style={{
+              fontSize: 12, fontWeight: 600,
+              color: shift.closed ? '#D97706' : '#475467',
+            }}>
+              {fmtShift(shift)}
+            </div>
+            {!shift.closed && shift.standardMinutes > 0 && (
+              <div style={{ fontSize: 10, color: '#98A2B3', marginTop: 2 }}>
+                {Math.floor(shift.standardMinutes / 60)}h {shift.standardMinutes % 60 ? `${shift.standardMinutes % 60}m` : ''} schedule
+              </div>
+            )}
+          </div>
+        );
+      },
+    },
+    {
       id: 'status',
       header: 'Status',
       enableSorting: false,
-      meta: { width: '22%' },
+      meta: { width: '20%' },
       cell: ({ row: { original: staff } }) => {
         const rec = getRecord(staff.id);
         const isSaving = saving[staff.id];
@@ -306,7 +367,9 @@ export default function AttendancePage() {
       meta: { width: '10%', align: 'center' },
       cell: ({ row: { original: staff } }) => {
         const rec = getRecord(staff.id);
-        const ot = rec ? calcOvertime(rec.check_in, rec.check_out) : null;
+        const shift = resolveStaffShift(staff, date, rec);
+        const standardMins = shift.closed ? 8 * 60 : (shift.standardMinutes || 8 * 60);
+        const ot = rec ? calcOvertime(rec.check_in, rec.check_out, standardMins) : null;
         return ot
           ? <span style={{ padding:'3px 10px', borderRadius:20, background:'#FFF7ED', color:'#EA580C', fontSize:12, fontWeight:700 }}>{ot}</span>
           : <span style={{ color:'#D0D5DD', fontSize:12 }}>—</span>;
@@ -345,7 +408,7 @@ export default function AttendancePage() {
 
   return (
     <PageWrapper title="Attendance"
-      subtitle="Daily staff attendance — Present/Late days pay per-day salary staff"
+      subtitle="Daily attendance linked to each staff member’s working hours — late after shift start (+15 min grace); overtime vs scheduled shift"
       actions={canEdit && (
         <Button variant="primary" onClick={() => { setAddForm({ staff_id:'', status:'present', check_in:'', check_out:'', note:'' }); setShowAdd(true); }}
           style={{ display:'flex', alignItems:'center', gap:6 }}><IconPlus /> Add Attendance</Button>

@@ -1070,7 +1070,7 @@ export default function StaffPage() {
               </label>
             </StaffSection>
 
-            <StaffSection title="Working hours" desc="Weekly schedule used for online booking slots" dark={isDark}>
+            <StaffSection title="Working hours" desc="Weekly schedule for booking slots and Attendance (late / overtime)" dark={isDark}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0 }}>
                 {WEEKDAYS.map(({ key, label }) => {
                   const day = workingHours[key] || { closed: false, start: '09:00', end: '18:00' };

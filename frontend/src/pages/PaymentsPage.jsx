@@ -1363,7 +1363,10 @@ export default function PaymentsPage() {
                 </div>
               )}
             </PaySection>
+          </div>
 
+          {/* Right column */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <PaySection title="Services" desc="Select one or more services — total auto-calculates" dark={isDark}>
               <ServiceMultiSelect
                 dark={isDark}
@@ -1415,10 +1418,7 @@ export default function PaymentsPage() {
                 </div>
               )}
             </PaySection>
-          </div>
 
-          {/* Right column */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <PaySection title="Amount & Discounts" desc="Bill total, loyalty points, and promo codes" dark={isDark}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 <FormGroup label={formPackageId ? 'Bundle price (Rs.)' : 'Total Amount (Rs.)'} required>

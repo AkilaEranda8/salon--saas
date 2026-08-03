@@ -459,10 +459,13 @@ export default function WalkInPage() {
   const [custSearch,     setCustSearch]     = useState('');
   const [custResults,    setCustResults]    = useState([]);
   const [custAll,        setCustAll]        = useState([]);
+  const [custTotal,      setCustTotal]      = useState(0);
   const [custLoading,    setCustLoading]    = useState(false);
+  const [custSearching,  setCustSearching]  = useState(false);
   const [showCustDrop,   setShowCustDrop]   = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const custSearchRef = useRef(null);
+  const custSearchTimer = useRef(null);
   const [custDropPos, setCustDropPos] = useState({ top: 0, left: 0, width: 0 });
 
   const [branches,  setBranches]  = useState([]);
@@ -1059,16 +1062,42 @@ export default function WalkInPage() {
     } finally { setSaving(false); }
   };
 
-  /*  Load all customers when modal opens  */
+  /*  Load all salon customers when modal opens (not branch-limited — search must find anyone)  */
   useEffect(() => {
     if (!showCheckin) return;
-    const branchQ = form.branchId || selectedBranch;
+    let cancelled = false;
     setCustLoading(true);
-    api.get(`/customers?limit=100${branchQ ? `&branchId=${branchQ}` : ''}`)
-      .then((r) => { setCustAll(r.data.data || []); setCustResults(r.data.data || []); })
-      .catch(() => { setCustAll([]); setCustResults([]); })
-      .finally(() => setCustLoading(false));
-  }, [showCheckin, form.branchId, selectedBranch]);
+    (async () => {
+      try {
+        const pageLimit = 500;
+        let page = 1;
+        let all = [];
+        let total = Infinity;
+        while (all.length < total) {
+          const { data } = await api.get('/customers', { params: { limit: pageLimit, page } });
+          const rows = Array.isArray(data) ? data : (data?.data ?? []);
+          total = typeof data?.total === 'number' ? data.total : rows.length;
+          all = all.concat(rows);
+          if (!rows.length || rows.length < pageLimit) break;
+          page += 1;
+          if (page > 40) break; // safety: max ~20k
+        }
+        if (cancelled) return;
+        setCustAll(all);
+        setCustTotal(total === Infinity ? all.length : total);
+        setCustResults(all.slice(0, 100));
+      } catch {
+        if (!cancelled) {
+          setCustAll([]);
+          setCustTotal(0);
+          setCustResults([]);
+        }
+      } finally {
+        if (!cancelled) setCustLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [showCheckin]);
 
   useEffect(() => {
     if (!showCheckin && !editEntry) return;
@@ -1078,19 +1107,50 @@ export default function WalkInPage() {
       .catch(() => setPackageTemplates([]));
   }, [showCheckin, editEntry, form.branchId, selectedBranch]);
 
-  /*  Filter customers as user types  */
+  /*  Local filter + API search so customers beyond the first page / other branches show up  */
   useEffect(() => {
-    if (!custSearch.trim()) {
-      setCustResults(custAll);
+    if (!showCheckin) return;
+    const q = custSearch.trim();
+    if (custSearchTimer.current) clearTimeout(custSearchTimer.current);
+
+    if (!q) {
+      setCustSearching(false);
+      setCustResults(custAll.slice(0, 100));
       return;
     }
-    const q = custSearch.toLowerCase();
-    setCustResults(
-      custAll.filter((c) =>
-        c.name?.toLowerCase().includes(q) || String(getCustomerPhone(c)).includes(q)
-      )
+
+    const qLower = q.toLowerCase();
+    const local = custAll.filter((c) =>
+      c.name?.toLowerCase().includes(qLower)
+      || String(getCustomerPhone(c) || '').toLowerCase().includes(qLower)
+      || String(c.email || '').toLowerCase().includes(qLower)
     );
-  }, [custSearch, custAll]);
+    setCustResults(local.slice(0, 40));
+
+    if (q.length < 2) {
+      setCustSearching(false);
+      return;
+    }
+
+    setCustSearching(true);
+    custSearchTimer.current = setTimeout(async () => {
+      try {
+        const { data } = await api.get('/customers', { params: { search: q, limit: 50 } });
+        const rows = Array.isArray(data) ? data : (data?.data ?? []);
+        const map = new Map();
+        for (const c of [...local, ...rows]) {
+          if (c?.id != null) map.set(String(c.id), c);
+        }
+        setCustResults([...map.values()].slice(0, 50));
+      } catch {
+        /* keep local results */
+      } finally {
+        setCustSearching(false);
+      }
+    }, 280);
+
+    return () => { if (custSearchTimer.current) clearTimeout(custSearchTimer.current); };
+  }, [custSearch, custAll, showCheckin]);
 
   const selectCustomer = (c) => {
     setForm((f) => ({ ...f, customerName: c.name, phone: getCustomerPhone(c) }));
@@ -1117,6 +1177,8 @@ export default function WalkInPage() {
     setCustSearch('');
     setCustResults([]);
     setCustAll([]);
+    setCustTotal(0);
+    setCustSearching(false);
     setShowCustDrop(false);
   };
 
@@ -1163,13 +1225,17 @@ export default function WalkInPage() {
           ))
         ) : custResults.length === 0 ? (
           <div style={{ padding: '14px', fontSize: 13, color: C.muted, textAlign: 'center' }}>
-            No customers found for &quot;<strong>{custSearch}</strong>&quot;
+            {custSearching
+              ? 'Searching customers…'
+              : (
+                <>No customers found for &quot;<strong>{custSearch}</strong>&quot;</>
+              )}
           </div>
         ) : (
           <>
             {custSearch.trim() && (
               <div style={{ padding: '6px 14px', fontSize: 11, color: C.muted, background: isDark ? '#0F172A' : '#F9FAFB', borderBottom: `1px solid ${isDark ? '#334155' : '#F2F4F7'}`, fontWeight: 600 }}>
-                {custResults.length} result{custResults.length !== 1 ? 's' : ''} found
+                {custSearching ? 'Searching… · ' : ''}{custResults.length} result{custResults.length !== 1 ? 's' : ''} found
               </div>
             )}
             {custResults.slice(0, 50).map((c) => (
@@ -1526,8 +1592,12 @@ export default function WalkInPage() {
                 <Label style={{ margin: 0 }}>Select Customer *</Label>
                 {custLoading ? (
                   <span style={{ fontSize: 11, color: '#6366f1', fontWeight: 600 }}>Loading…</span>
+                ) : custSearching ? (
+                  <span style={{ fontSize: 11, color: '#6366f1', fontWeight: 600 }}>Searching…</span>
                 ) : custAll.length > 0 && (
-                  <span style={{ fontSize: 11, color: C.muted }}>{custAll.length} loaded</span>
+                  <span style={{ fontSize: 11, color: C.muted }}>
+                    {custTotal > custAll.length ? `${custAll.length} of ${custTotal}` : custAll.length} customers
+                  </span>
                 )}
               </div>
 

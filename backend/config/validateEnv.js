@@ -52,6 +52,37 @@ function validateEnv() {
     );
   }
 
+  // AI CRM secrets — never reuse JWT_SECRET (C6)
+  const aiSecret = (process.env.AI_ENGINE_SERVICE_SECRET || '').trim();
+  const aiSecretsKey = (process.env.AI_SECRETS_KEY || '').trim();
+  if (isProduction) {
+    if (!aiSecret || aiSecret.length < 16) {
+      throw new Error(
+        '✗ FATAL: AI_ENGINE_SERVICE_SECRET is required in production (min 16 chars).'
+      );
+    }
+    if (!aiSecretsKey || aiSecretsKey.length < 16) {
+      throw new Error(
+        '✗ FATAL: AI_SECRETS_KEY is required in production (min 16 chars). Do not reuse JWT_SECRET.'
+      );
+    }
+    if (aiSecret === process.env.JWT_SECRET || aiSecretsKey === process.env.JWT_SECRET) {
+      throw new Error(
+        '✗ FATAL: AI_ENGINE_SERVICE_SECRET / AI_SECRETS_KEY must not equal JWT_SECRET.'
+      );
+    }
+    if (!process.env.REDIS_URL) {
+      throw new Error('✗ FATAL: REDIS_URL is required in production for AI CRM queues.');
+    }
+  } else {
+    if (!aiSecret) {
+      console.warn('⚠  AI_ENGINE_SERVICE_SECRET not set — CRM AI service auth will fail closed.');
+    }
+    if (!aiSecretsKey) {
+      console.warn('⚠  AI_SECRETS_KEY not set — encrypting AI/Meta secrets will fail.');
+    }
+  }
+
   // Warn about optional but recommended env vars
   const recommended = [
     'EMAIL_USER',

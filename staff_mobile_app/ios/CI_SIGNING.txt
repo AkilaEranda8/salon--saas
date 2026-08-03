@@ -1,12 +1,14 @@
 # Apple signing files for GitHub Actions (never commit real certs).
 #
+# Your Apple Team ID: 6J94NRH5M6
+#
 # Required Secrets (repo → Settings → Secrets and variables → Actions):
 #   IOS_DIST_CERT_P12_BASE64
 #   IOS_DIST_CERT_PASSWORD
 #   IOS_PROVISION_PROFILE_BASE64
-#   IOS_TEAM_ID
+#   IOS_TEAM_ID              ← set to: 6J94NRH5M6
 # Optional:
-#   IOS_BUNDLE_ID          (default in workflow: com.hexaone.staff)
+#   IOS_BUNDLE_ID            (recommended: com.hexaone.staff — create App ID first)
 #   IOS_KEYCHAIN_PASSWORD
 #
 # Create Ad Hoc or App Store distribution cert + profile in Apple Developer,

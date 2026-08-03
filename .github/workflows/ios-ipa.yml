@@ -8,7 +8,7 @@ name: iOS IPA (macOS)
 #   IOS_DIST_CERT_P12_BASE64   — base64 of .p12 distribution certificate
 #   IOS_DIST_CERT_PASSWORD     — password for that .p12
 #   IOS_PROVISION_PROFILE_BASE64 — base64 of .mobileprovision
-#   IOS_TEAM_ID                — Apple Developer Team ID (10 chars)
+#   IOS_TEAM_ID                — Apple Developer Team ID (yours: 6J94NRH5M6)
 # Optional:
 #   IOS_BUNDLE_ID              — override (default: com.hexaone.staff)
 #   IOS_KEYCHAIN_PASSWORD      — keychain password (random OK)

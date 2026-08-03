@@ -48,6 +48,18 @@ const CommissionPayout  = require('./CommissionPayout');
 const CommissionTransaction = require('./CommissionTransaction');
 const WhatsAppMessage = require('./WhatsAppMessage');
 const WhatsAppConnection = require('./WhatsAppConnection');
+const TenantAiSettings = require('./TenantAiSettings');
+const AiUsage = require('./AiUsage');
+const AiModelRate = require('./AiModelRate');
+const CrmLead = require('./CrmLead');
+const CrmConversation = require('./CrmConversation');
+const CrmMessage = require('./CrmMessage');
+const CrmBookingRequest = require('./CrmBookingRequest');
+const CrmAiMemory = require('./CrmAiMemory');
+const CrmAuditLog = require('./CrmAuditLog');
+const WhatsAppBusinessAccount = require('./WhatsAppBusinessAccount');
+const CrmKnowledgeArticle = require('./CrmKnowledgeArticle');
+const CrmFollowUpJob = require('./CrmFollowUpJob');
 
 // Salon Inventory (v2)
 const InvCategory = require('./InvCategory');
@@ -78,6 +90,28 @@ PlatformInvoice.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
 Tenant.hasMany(BankSlip, { foreignKey: 'tenant_id', as: 'bankSlips' });
 BankSlip.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
 Tenant.hasMany(Branch, { foreignKey: 'tenant_id', as: 'branches' });
+Tenant.hasOne(TenantAiSettings, { foreignKey: 'tenant_id', as: 'aiSettings' });
+TenantAiSettings.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
+Tenant.hasOne(WhatsAppBusinessAccount, { foreignKey: 'tenant_id', as: 'whatsappBusinessAccount' });
+WhatsAppBusinessAccount.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
+Tenant.hasMany(CrmKnowledgeArticle, { foreignKey: 'tenant_id', as: 'knowledgeArticles' });
+CrmKnowledgeArticle.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
+Tenant.hasMany(CrmFollowUpJob, { foreignKey: 'tenant_id', as: 'crmFollowUpJobs' });
+CrmFollowUpJob.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
+Tenant.hasMany(AiUsage, { foreignKey: 'tenant_id', as: 'aiUsage' });
+AiUsage.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
+Tenant.hasMany(CrmLead, { foreignKey: 'tenant_id', as: 'crmLeads' });
+CrmLead.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
+Tenant.hasMany(CrmConversation, { foreignKey: 'tenant_id', as: 'crmConversations' });
+CrmConversation.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
+CrmLead.hasMany(CrmConversation, { foreignKey: 'lead_id', as: 'conversations' });
+CrmConversation.belongsTo(CrmLead, { foreignKey: 'lead_id', as: 'lead' });
+CrmConversation.hasMany(CrmMessage, { foreignKey: 'conversation_id', as: 'messages' });
+CrmMessage.belongsTo(CrmConversation, { foreignKey: 'conversation_id', as: 'conversation' });
+CrmLead.hasMany(CrmBookingRequest, { foreignKey: 'lead_id', as: 'bookingRequests' });
+CrmConversation.hasMany(CrmBookingRequest, { foreignKey: 'conversation_id', as: 'bookingRequests' });
+CrmConversation.hasMany(CrmAiMemory, { foreignKey: 'conversation_id', as: 'memories' });
+Tenant.hasMany(CrmAuditLog, { foreignKey: 'tenant_id', as: 'crmAuditLogs' });
 Tenant.hasMany(User, { foreignKey: 'tenant_id', as: 'users' });
 Tenant.hasMany(Staff, { foreignKey: 'tenant_id', as: 'staffMembers' });
 Tenant.hasMany(Customer, { foreignKey: 'tenant_id', as: 'customers' });
@@ -377,6 +411,18 @@ module.exports = {
   CommissionTransaction,
   WhatsAppMessage,
   WhatsAppConnection,
+  TenantAiSettings,
+  AiUsage,
+  AiModelRate,
+  CrmLead,
+  CrmConversation,
+  CrmMessage,
+  CrmBookingRequest,
+  CrmAiMemory,
+  CrmAuditLog,
+  WhatsAppBusinessAccount,
+  CrmKnowledgeArticle,
+  CrmFollowUpJob,
   InvCategory,
   InvSupplier,
   InvProduct,

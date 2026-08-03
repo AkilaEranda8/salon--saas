@@ -78,6 +78,11 @@ import SupportTicketsPage from './pages/SupportTicketsPage';
 import MaintenancePage  from './pages/MaintenancePage';
 import BrandingSettingsPage  from './pages/BrandingSettingsPage';
 import PaymentSettingsPage   from './pages/PaymentSettingsPage';
+import CrmAiSettingsPage     from './pages/crm/CrmAiSettingsPage';
+import CrmInboxPage          from './pages/crm/CrmInboxPage';
+import CrmWhatsAppCloudPage  from './pages/crm/CrmWhatsAppCloudPage';
+import CrmKnowledgePage      from './pages/crm/CrmKnowledgePage';
+import CrmAiCostPage         from './pages/crm/CrmAiCostPage';
 import DomainSettingsPage  from './pages/DomainSettingsPage';
 import ThemeOptionsPage from './pages/ThemeOptionsPage';
 import TableCraftDemoPage from './pages/TableCraftDemoPage';
@@ -421,6 +426,31 @@ function AppShellRoutes() {
             <Route path="/payment-settings" element={
               <RoleRoute roles={['superadmin', 'admin']}>
                 <PaymentSettingsPage />
+              </RoleRoute>
+            } />
+            <Route path="/crm/ai-settings" element={
+              <RoleRoute roles={['superadmin', 'admin']}>
+                <CrmAiSettingsPage />
+              </RoleRoute>
+            } />
+            <Route path="/crm/inbox" element={
+              <RoleRoute roles={['superadmin', 'admin', 'manager', 'staff']}>
+                <CrmInboxPage />
+              </RoleRoute>
+            } />
+            <Route path="/crm/whatsapp-cloud" element={
+              <RoleRoute roles={['superadmin', 'admin']}>
+                <CrmWhatsAppCloudPage />
+              </RoleRoute>
+            } />
+            <Route path="/crm/knowledge" element={
+              <RoleRoute roles={['superadmin', 'admin']}>
+                <CrmKnowledgePage />
+              </RoleRoute>
+            } />
+            <Route path="/crm/ai-cost" element={
+              <RoleRoute roles={['superadmin', 'admin']}>
+                <CrmAiCostPage />
               </RoleRoute>
             } />
             <Route path="/domain-settings" element={

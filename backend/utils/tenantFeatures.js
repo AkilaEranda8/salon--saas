@@ -7,6 +7,8 @@ const { getPlanFeatures } = require('./planConfig');
 
 const FEATURE_CATALOG = [
   { key: 'ai_chat', label: 'AI Chat', category: 'Main' },
+  { key: 'whatsapp_ai_crm', label: 'WhatsApp AI CRM', category: 'Engage' },
+  { key: 'ai_knowledge_base', label: 'AI Knowledge Base', category: 'Engage' },
   { key: 'loyalty', label: 'Loyalty Program', category: 'Operations' },
   { key: 'membership', label: 'Membership Plans', category: 'Operations' },
   { key: 'packages', label: 'Packages', category: 'Operations' },
@@ -60,7 +62,8 @@ function getEffectiveFeatures(tenant) {
 }
 
 function hasTenantFeature(tenant, feature) {
-  if (!tenant) return true;
+  // Default deny — missing tenant must never unlock paid features (C2)
+  if (!tenant) return false;
   return getEffectiveFeatures(tenant)[feature] === true;
 }
 

@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { hasFeature } from '../../hooks/useFeatureGate';
@@ -56,6 +56,20 @@ const NAV_GROUPS = [
   ]},
   { label:'ENGAGE', items:[
     { path:'/offer-sms',     label:'Offer SMS',     roles:MGR, feature:'offer_sms', icon:'M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2v10zm-4-6H7m10 4H7' },
+    {
+      id: 'crm',
+      label: 'CRM',
+      roles: ALL,
+      feature: 'whatsapp_ai_crm',
+      icon: 'M17 8h2a2 2 0 012 2v6a2 2 0 01-2 2h-2v4l-4-4H9a1.994 1.994 0 01-1.414-.586m0 0L11 14h4a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2v4l.586-.586z',
+      children: [
+        { path:'/crm/inbox',          label:'Inbox',           roles:ALL, feature:'whatsapp_ai_crm',    icon:'M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z' },
+        { path:'/crm/whatsapp-cloud', label:'WhatsApp Cloud',  roles:ADM, feature:'whatsapp_ai_crm',    icon:'M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z' },
+        { path:'/crm/knowledge',      label:'Knowledge Base',  roles:ADM, feature:'ai_knowledge_base', icon:'M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253' },
+        { path:'/crm/ai-cost',        label:'AI Cost',         roles:ADM, feature:'whatsapp_ai_crm',    icon:'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z' },
+        { path:'/crm/ai-settings',    label:'AI Settings',     roles:ADM, feature:'whatsapp_ai_crm',    icon:'M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z' },
+      ],
+    },
     { path:'/reminders',     label:'Reminders',     roles:ALL, icon:'M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9' },
     { path:'/notifications', label:'Notifications', roles:ADM, icon:'M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9' },
   ]},
@@ -125,7 +139,126 @@ function getColors(isDark, sidebarAppearance, sidebarStyle, primaryColor) {
   };
 }
 
-function NavItem({ item, collapsed, isActive, onClick, C }) {
+function NavDropdown({ item, children, collapsed, isOpen, childActivePath, onToggle, onNavigate, isActive, C }) {
+  const [hov, setHov] = useState(false);
+  const [tip, setTip] = useState(null);
+  const ref = useRef(null);
+  const parentActive = !!childActivePath;
+
+  return (
+    <div ref={ref} style={{ position: 'relative', marginBottom: 2 }}>
+      <div
+        onClick={() => {
+          if (collapsed) {
+            const first = children[0];
+            if (first) onNavigate(first.path);
+            return;
+          }
+          onToggle();
+        }}
+        onMouseEnter={() => {
+          setHov(true);
+          if (collapsed && ref.current) {
+            const r = ref.current.getBoundingClientRect();
+            setTip({
+              x: r.right + 10,
+              y: Math.min(Math.max(r.top + r.height / 2, 24), window.innerHeight - 24),
+            });
+          }
+        }}
+        onMouseLeave={() => { setHov(false); setTip(null); }}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: collapsed ? 'center' : 'space-between',
+          gap: 10,
+          padding: collapsed ? '10px 0' : '10px 12px',
+          borderRadius: 10,
+          cursor: 'pointer',
+          background: parentActive ? C.accentBg : hov ? C.hover : 'transparent',
+          boxShadow: parentActive ? `0 2px 10px ${C.accent}28` : 'none',
+          transition: 'all 0.15s ease',
+          userSelect: 'none',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+          <span style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            width: 22, height: 22, flexShrink: 0,
+            color: parentActive ? C.accentTx : hov ? C.text : C.textSub,
+          }}>
+            <Ico d={item.icon} size={18} />
+          </span>
+          {!collapsed && (
+            <span style={{
+              fontSize: 15,
+              fontWeight: parentActive || isOpen ? 600 : 450,
+              letterSpacing: '-0.01em',
+              whiteSpace: 'nowrap',
+              color: parentActive ? C.accentTx : hov ? C.text : C.textSub,
+            }}>
+              {item.label}
+            </span>
+          )}
+        </div>
+        {!collapsed && (
+          <span style={{
+            display: 'flex',
+            color: parentActive ? C.accentTx : C.textMuted,
+            transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)',
+            transition: 'transform 0.15s ease',
+          }}>
+            <Ico d="M19 9l-7 7-7-7" size={14} />
+          </span>
+        )}
+      </div>
+
+      {collapsed && hov && tip && (
+        <div style={{
+          position: 'fixed',
+          left: tip.x,
+          top: tip.y,
+          transform: 'translateY(-50%)',
+          background: '#1E1B32',
+          color: '#fff',
+          fontSize: 13,
+          fontWeight: 600,
+          padding: '5px 12px',
+          borderRadius: 8,
+          whiteSpace: 'nowrap',
+          pointerEvents: 'none',
+          zIndex: 9999,
+          boxShadow: '0 4px 20px rgba(0,0,0,0.30)',
+          border: '1px solid rgba(255,255,255,0.08)',
+        }}>
+          {item.label}
+        </div>
+      )}
+
+      {!collapsed && isOpen && (
+        <div style={{
+          margin: '2px 0 6px 12px',
+          paddingLeft: 10,
+          borderLeft: `2px solid ${C.border}`,
+        }}>
+          {children.map((child) => (
+            <NavItem
+              key={child.path}
+              item={child}
+              collapsed={false}
+              isActive={isActive(child.path)}
+              onClick={onNavigate}
+              C={C}
+              compact
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function NavItem({ item, collapsed, isActive, onClick, C, compact = false }) {
   const [hov, setHov] = useState(false);
   const [tip, setTip] = useState(null);
   const ref = useRef(null);
@@ -145,8 +278,8 @@ function NavItem({ item, collapsed, isActive, onClick, C }) {
         display:        'flex',
         alignItems:     'center',
         justifyContent: collapsed ? 'center' : 'flex-start',
-        gap:            10,
-        padding:        collapsed ? '10px 0' : '10px 12px',
+        gap:            compact ? 8 : 10,
+        padding:        collapsed ? '10px 0' : (compact ? '8px 10px' : '10px 12px'),
         borderRadius:   10,
         cursor:         'pointer',
         marginBottom:   2,
@@ -157,15 +290,15 @@ function NavItem({ item, collapsed, isActive, onClick, C }) {
       }}>
         <span style={{
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          width: 22, height: 22, flexShrink: 0,
+          width: compact ? 18 : 22, height: compact ? 18 : 22, flexShrink: 0,
           color: isActive ? C.accentTx : hov ? C.text : C.textSub,
           transition: 'color 0.15s',
         }}>
-          <Ico d={item.icon} size={18} />
+          <Ico d={item.icon} size={compact ? 15 : 18} />
         </span>
         {!collapsed && (
           <span style={{
-            fontSize:      15,
+            fontSize:      compact ? 13.5 : 15,
             fontWeight:    isActive ? 600 : 450,
             letterSpacing: '-0.01em',
             whiteSpace:    'nowrap',
@@ -208,6 +341,7 @@ export default function Sidebar({ collapsed, onToggle, currentUser, mobileOpen, 
   const { isDark, sidebarStyle, sidebarAppearance, primaryColor } = useTheme();
   const { isMobile } = useBreakpoint();
   const [signOutHov, setSignOutHov] = useState(false);
+  const [openMenus, setOpenMenus] = useState({});
 
   const STYLE = sidebarStyle || 'default';
   const C = getColors(isDark, sidebarAppearance, STYLE, primaryColor);
@@ -223,14 +357,32 @@ export default function Sidebar({ collapsed, onToggle, currentUser, mobileOpen, 
   const plan = (tenant?.plan || tenantBranding?.plan || 'trial').toLowerCase();
   const effectiveFeatures = tenant?.effective_features ?? tenantBranding?.effective_features;
 
+  const itemAllowed = (i) => {
+    if (!i.roles?.includes(role)) return false;
+    if (!i.feature) return true;
+    return hasFeature(plan, i.feature, effectiveFeatures);
+  };
+
   const visibleGroups = NAV_GROUPS.map(g => ({
     ...g,
-    items: g.items.filter(i => {
-      if (!i.roles.includes(role)) return false;
-      if (!i.feature) return true;
-      return hasFeature(plan, i.feature, effectiveFeatures);
-    }),
+    items: g.items
+      .map((i) => {
+        if (i.children?.length) {
+          if (!itemAllowed(i)) return null;
+          const children = i.children.filter(itemAllowed);
+          if (!children.length) return null;
+          return { ...i, children };
+        }
+        return itemAllowed(i) ? i : null;
+      })
+      .filter(Boolean),
   })).filter(g => g.items.length > 0);
+
+  useEffect(() => {
+    if (location.pathname.startsWith('/crm')) {
+      setOpenMenus((prev) => (prev.crm ? prev : { ...prev, crm: true }));
+    }
+  }, [location.pathname]);
 
   const isActive = (p) => {
     if (p === '/inventory') return location.pathname === '/inventory' || location.pathname.startsWith('/inventory/');
@@ -370,16 +522,36 @@ export default function Sidebar({ collapsed, onToggle, currentUser, mobileOpen, 
                 {group.label}
               </div>
             )}
-            {group.items.map(item => (
-              <NavItem
-                key={item.path}
-                item={item}
-                collapsed={ec}
-                isActive={isActive(item.path)}
-                onClick={handleNavigate}
-                C={C}
-              />
-            ))}
+            {group.items.map(item => {
+              if (item.children?.length) {
+                const menuId = item.id || item.label;
+                const childActivePath = item.children.some((c) => isActive(c.path));
+                return (
+                  <NavDropdown
+                    key={menuId}
+                    item={item}
+                    children={item.children}
+                    collapsed={ec}
+                    isOpen={!!openMenus[menuId]}
+                    childActivePath={childActivePath}
+                    onToggle={() => setOpenMenus((prev) => ({ ...prev, [menuId]: !prev[menuId] }))}
+                    onNavigate={handleNavigate}
+                    isActive={isActive}
+                    C={C}
+                  />
+                );
+              }
+              return (
+                <NavItem
+                  key={item.path}
+                  item={item}
+                  collapsed={ec}
+                  isActive={isActive(item.path)}
+                  onClick={handleNavigate}
+                  C={C}
+                />
+              );
+            })}
           </div>
         ))}
       </nav>

@@ -12,6 +12,8 @@ const PLAN_LIMITS = {
 const PLAN_FEATURES = {
   trial: {
     ai_chat: false,
+    whatsapp_ai_crm: false,
+    ai_knowledge_base: false,
     loyalty: false,
     membership: false,
     packages: false,
@@ -32,6 +34,8 @@ const PLAN_FEATURES = {
   },
   basic: {
     ai_chat: false,
+    whatsapp_ai_crm: false,
+    ai_knowledge_base: false,
     loyalty: false,
     membership: false,
     packages: true,
@@ -52,6 +56,8 @@ const PLAN_FEATURES = {
   },
   pro: {
     ai_chat: true,
+    whatsapp_ai_crm: true,
+    ai_knowledge_base: true,
     loyalty: true,
     membership: true,
     packages: true,
@@ -72,6 +78,8 @@ const PLAN_FEATURES = {
   },
   enterprise: {
     ai_chat: true,
+    whatsapp_ai_crm: true,
+    ai_knowledge_base: true,
     loyalty: true,
     membership: true,
     packages: true,

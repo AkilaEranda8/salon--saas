@@ -10,52 +10,69 @@
  */
 const GRACE_DAYS = 7; // days after expiry before hard-blocking
 
-const checkSubscription = (req, res, next) => {
-  const tenant = req.tenant;
+const checkSubscription = async (req, res, next) => {
+  try {
+    const { enforceJwtTenantAuthority } = require('./featureGate');
+    const enforced = await enforceJwtTenantAuthority(req, 'subscription');
+    if (!enforced.ok) {
+      return res.status(enforced.status).json(enforced.body);
+    }
 
-  // Platform admins and requests without a tenant slug bypass this check
-  if (!tenant) return next();
+    if (req.user?.role === 'platform_admin' && !enforced.tenant) {
+      return next();
+    }
 
-  const now = new Date();
-
-  // Hard suspended
-  if (tenant.status === 'suspended') {
-    return res.status(402).json({
-      message: 'Your subscription is suspended. Please update your billing to continue.',
-      code: 'SUBSCRIPTION_SUSPENDED',
-    });
-  }
-
-  // Trial expired — check grace period
-  if (tenant.plan === 'trial' && tenant.trial_ends_at) {
-    const trialEnd = new Date(tenant.trial_ends_at);
-    if (trialEnd < now) {
-      const graceCutoff = new Date(trialEnd.getTime() + GRACE_DAYS * 24 * 60 * 60 * 1000);
-      if (now > graceCutoff) {
-        return res.status(402).json({
-          message: 'Your free trial has expired. Please subscribe to continue.',
-          code: 'TRIAL_EXPIRED',
+    const tenant = enforced.tenant;
+    if (!tenant) {
+      if (req.user && req.user.role !== 'platform_admin') {
+        return res.status(403).json({
+          message: 'Tenant context required.',
+          code: 'TENANT_REQUIRED',
         });
       }
-      // Within grace — allow through but signal to frontend
-      res.setHeader('X-Subscription-Warning', 'trial_grace_period');
+      return next();
     }
-  }
 
-  // Paid plan that lapsed (past_due) — check grace period
-  if (tenant.status === 'past_due' && tenant.subscription_ends_at) {
-    const subEnd = new Date(tenant.subscription_ends_at);
-    const graceCutoff = new Date(subEnd.getTime() + GRACE_DAYS * 24 * 60 * 60 * 1000);
-    if (now > graceCutoff) {
+    const now = new Date();
+
+    if (tenant.status === 'suspended') {
       return res.status(402).json({
-        message: 'Your subscription has expired. Please renew to continue.',
-        code: 'SUBSCRIPTION_EXPIRED',
+        message: 'Your subscription is suspended. Please update your billing to continue.',
+        code: 'SUBSCRIPTION_SUSPENDED',
       });
     }
-    res.setHeader('X-Subscription-Warning', 'past_due_grace_period');
-  }
 
-  next();
+    if (tenant.plan === 'trial' && tenant.trial_ends_at) {
+      const trialEnd = new Date(tenant.trial_ends_at);
+      if (trialEnd < now) {
+        const graceCutoff = new Date(trialEnd.getTime() + GRACE_DAYS * 24 * 60 * 60 * 1000);
+        if (now > graceCutoff) {
+          return res.status(402).json({
+            message: 'Your free trial has expired. Please subscribe to continue.',
+            code: 'TRIAL_EXPIRED',
+          });
+        }
+        res.setHeader('X-Subscription-Warning', 'trial_grace_period');
+      }
+    }
+
+    if (tenant.status === 'past_due' && tenant.subscription_ends_at) {
+      const subEnd = new Date(tenant.subscription_ends_at);
+      const graceCutoff = new Date(subEnd.getTime() + GRACE_DAYS * 24 * 60 * 60 * 1000);
+      if (now > graceCutoff) {
+        return res.status(402).json({
+          message: 'Your subscription has expired. Please renew to continue.',
+          code: 'SUBSCRIPTION_EXPIRED',
+        });
+      }
+      res.setHeader('X-Subscription-Warning', 'past_due_grace_period');
+    }
+
+    return next();
+  } catch (err) {
+    console.error('checkSubscription error:', err);
+    return res.status(500).json({ message: 'Subscription check failed.' });
+  }
 };
 
 module.exports = { checkSubscription };

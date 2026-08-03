@@ -42,11 +42,31 @@ services:
       retries: 10
       start_period: 30s
 
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+    entrypoint: ["/bin/sh", "/entrypoint.sh"]
+    volumes:
+      - redis_data:/data
+      - ./redis/entrypoint.sh:/entrypoint.sh:ro
+      - ./redis/users.acl.template:/etc/redis/users.acl.template:ro
+    expose:
+      - "6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "--user", "salon_app", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
   backend:
     build: ./backend
     restart: unless-stopped
     depends_on:
       db:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     environment:
       NODE_ENV: production
@@ -56,6 +76,15 @@ services:
       DB_NAME: ${DB_NAME:?DB_NAME is required}
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
       PORT: 5000
+      # C15: app user covers cache + queues
+      REDIS_URL: redis://salon_app:${REDIS_PASSWORD}@redis:6379
+      AI_ENGINE_URL: ${AI_ENGINE_URL:-http://ai_engine:8010}
+      AI_ENGINE_SERVICE_SECRET: ${AI_ENGINE_SERVICE_SECRET:?AI_ENGINE_SERVICE_SECRET is required}
+      AI_SECRETS_KEY: ${AI_SECRETS_KEY:?AI_SECRETS_KEY is required}
+      AI_CRM_WORKERS: "false"
+      CRM_DLQ_SLACK_WEBHOOK_URL: ${CRM_DLQ_SLACK_WEBHOOK_URL:-}
+      CRM_DLQ_ALERT_EMAIL: ${CRM_DLQ_ALERT_EMAIL:-}
+      CRM_DLQ_ALERT_WEBHOOK_URL: ${CRM_DLQ_ALERT_WEBHOOK_URL:-}
       FIREBASE_SERVICE_ACCOUNT_JSON: ${FIREBASE_SERVICE_ACCOUNT_JSON:-}
       SUPERADMIN_EMAIL: ${SUPERADMIN_EMAIL:-}
       # Stripe billing (optional — billing features disabled if not set)
@@ -124,6 +153,57 @@ services:
     expose:
       - "8000"
 
+  # New WhatsApp AI CRM engine — does NOT replace ai_bot
+  ai_engine:
+    build: ./ai_engine
+    restart: unless-stopped
+    depends_on:
+      - backend
+      - redis
+    environment:
+      SALON_API_URL: http://backend:5000/api
+      AI_ENGINE_SERVICE_SECRET: ${AI_ENGINE_SERVICE_SECRET:?AI_ENGINE_SERVICE_SECRET is required}
+      REDIS_URL: redis://salon_session:${REDIS_PASSWORD}@redis:6379
+      NODE_ENV: production
+      PORT: 8010
+    expose:
+      - "8010"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8010/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # Dedicated AI CRM workers (C15) — must not run inside API process
+  ai_crm_worker:
+    build: ./backend
+    restart: unless-stopped
+    command: ["node", "workers/aiCrmWorker.js"]
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_started
+      ai_engine:
+        condition: service_started
+    environment:
+      NODE_ENV: production
+      DB_HOST: db
+      DB_USER: root
+      DB_PASS: ${DB_PASS:?DB_PASS is required}
+      DB_NAME: ${DB_NAME:?DB_NAME is required}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      REDIS_URL: redis://salon_app:${REDIS_PASSWORD}@redis:6379
+      AI_ENGINE_URL: http://ai_engine:8010
+      AI_ENGINE_SERVICE_SECRET: ${AI_ENGINE_SERVICE_SECRET:?AI_ENGINE_SERVICE_SECRET is required}
+      AI_SECRETS_KEY: ${AI_SECRETS_KEY:?AI_SECRETS_KEY is required}
+      AI_CRM_WORKERS: "true"
+      CRM_DLQ_SLACK_WEBHOOK_URL: ${CRM_DLQ_SLACK_WEBHOOK_URL:-}
+      CRM_DLQ_ALERT_EMAIL: ${CRM_DLQ_ALERT_EMAIL:-}
+      CRM_DLQ_ALERT_WEBHOOK_URL: ${CRM_DLQ_ALERT_WEBHOOK_URL:-}
+
   phpmyadmin:
     image: phpmyadmin:5
     restart: unless-stopped
@@ -168,6 +248,8 @@ volumes:
   uploads_data:
     external: true
     name: salon_v1_uploads_data
+  redis_data:
+    name: salon_v1_redis_data
   certbot_www:
     external: true
     name: salon_v1_certbot_www

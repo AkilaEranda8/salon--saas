@@ -15,28 +15,32 @@ import { useAuth } from '../context/AuthContext';
 // Must mirror backend PLAN_FEATURES.  Keep in sync with backend/utils/planConfig.js
 const PLAN_FEATURES = {
   trial: {
-    ai_chat: false, loyalty: false, membership: false, packages: false,
+    ai_chat: false, whatsapp_ai_crm: false, ai_knowledge_base: false,
+    loyalty: false, membership: false, packages: false,
     kpi_dashboard: false, marketing_auto: false, advanced_reports: false,
     inventory: true, discounts: false, recurring: false, custom_domain: false,
     consent_forms: true, offer_sms: false, multi_branch: false,
     reviews: true, expenses: true, service_wise_commission: false, franchise_commission: false,
   },
   basic: {
-    ai_chat: false, loyalty: false, membership: false, packages: true,
+    ai_chat: false, whatsapp_ai_crm: false, ai_knowledge_base: false,
+    loyalty: false, membership: false, packages: true,
     kpi_dashboard: false, marketing_auto: false, advanced_reports: false,
     inventory: true, discounts: true, recurring: true, custom_domain: false,
     consent_forms: true, offer_sms: true, multi_branch: false,
     reviews: true, expenses: true, service_wise_commission: false, franchise_commission: false,
   },
   pro: {
-    ai_chat: true, loyalty: true, membership: true, packages: true,
+    ai_chat: true, whatsapp_ai_crm: true, ai_knowledge_base: true,
+    loyalty: true, membership: true, packages: true,
     kpi_dashboard: true, marketing_auto: true, advanced_reports: true,
     inventory: true, discounts: true, recurring: true, custom_domain: false,
     consent_forms: true, offer_sms: true, multi_branch: true,
     reviews: true, expenses: true, service_wise_commission: false, franchise_commission: false,
   },
   enterprise: {
-    ai_chat: true, loyalty: true, membership: true, packages: true,
+    ai_chat: true, whatsapp_ai_crm: true, ai_knowledge_base: true,
+    loyalty: true, membership: true, packages: true,
     kpi_dashboard: true, marketing_auto: true, advanced_reports: true,
     inventory: true, discounts: true, recurring: true, custom_domain: true,
     consent_forms: true, offer_sms: true, multi_branch: true,
@@ -55,6 +59,8 @@ const PLAN_LABELS = {
 
 const FEATURE_LABELS = {
   ai_chat: 'AI Chat Assistant',
+  whatsapp_ai_crm: 'WhatsApp AI CRM',
+  ai_knowledge_base: 'AI Knowledge Base',
   loyalty: 'Loyalty Program',
   membership: 'Membership Plans',
   packages: 'Packages',

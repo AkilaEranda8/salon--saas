@@ -13,6 +13,7 @@ const { initSocket } = require('./socket');
 const { startAppointmentReminderCron, startReminderDueCron } = require('./services/appointmentReminderCron');
 const { startMarketingAutomationCron } = require('./services/marketingAutomationCron');
 const { startRecurringSmsCron } = require('./services/recurringSmsCron');
+// CRM reminders: worker-only (BullMQ) — do not import startCrmReminderCron on API
 const { apiMonitorMiddleware } = require('./services/apiMonitoring');
 const { tenantScope }          = require('./middleware/tenantScope');
 const { checkSubscription }    = require('./middleware/checkSubscription');
@@ -54,6 +55,7 @@ const { ensureInvConsumptionCustomerColumn } = require('./services/ensureInvCons
 const { ensureFcmTokenTenantIds } = require('./services/ensureFcmTokenTenantIds');
 const { runWalkInQueueServicesMigration } = require('./services/walkInQueueServicesMigration');
 const ensureWhatsAppSchema = require('./services/ensureWhatsAppSchema');
+const ensureAiCrmSchema = require('./services/ensureAiCrmSchema');
 const { restoreSessionsOnBoot } = require('./services/whatsappWebService');
 const { ensureServiceDurationDefaults } = require('./services/ensureServiceDurationDefaults');
 const platformGuard = require('./middleware/platformGuard');
@@ -115,6 +117,19 @@ const apiLimiter = rateLimit({
   max:      200,
   standardHeaders: true,
   legacyHeaders:   false,
+  skip: (req) => {
+    // C18: Meta webhooks must not share the generic API limiter
+    const path = req.originalUrl || req.url || '';
+    return path.startsWith('/api/webhooks/whatsapp');
+  },
+});
+
+const webhookLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 1200, // Meta-friendly burst budget per IP
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: 'Webhook rate limit exceeded.' },
 });
 
 const onboardingLimiter = rateLimit({
@@ -136,6 +151,7 @@ const helapayLimiter = rateLimit({
 app.use('/api/auth/login',    authLimiter);
 app.use('/api/auth/register', authLimiter);
 app.use('/api/helapay',       helapayLimiter);
+app.use('/api/webhooks/whatsapp', webhookLimiter);
 app.use('/api/',              apiLimiter);
 
 // ── Socket.io ─────────────────────────────────────────────────────────────────
@@ -149,6 +165,13 @@ initSocket(server, {
 
 // ── Stripe webhook (MUST be before express.json — needs raw body) ─────────────
 app.use('/api/billing/webhook', express.raw({ type: 'application/json' }), require('./routes/billing'));
+
+// ── WhatsApp Cloud webhook (raw body for X-Hub-Signature-256) ────────────────
+app.use(
+  '/api/webhooks/whatsapp',
+  express.raw({ type: 'application/json' }),
+  require('./routes/webhooksWhatsapp')
+);
 
 app.use(express.json());
 app.use(cookieParser());
@@ -234,6 +257,8 @@ app.use('/api/marketing',    require('./routes/marketing'));
 app.use('/api/helapay',      require('./routes/helapay'));
 app.use('/api/advances',            require('./routes/advances'));
 app.use('/api/commission-payouts',  require('./routes/commissionPayouts'));
+app.use('/api/crm',          require('./routes/crm'));
+app.use('/api/crm-integration', require('./routes/crmIntegration'));
 
 // ── 404 handler ───────────────────────────────────────────────────────────────
 app.use((_req, res) => res.status(404).json({ message: 'Route not found.' }));
@@ -375,6 +400,7 @@ connectWithRetry().then(async () => {
   startReminderDueCron();
   startMarketingAutomationCron();
   startRecurringSmsCron();
+  // C11: CRM reminders run only in ai_crm_worker via BullMQ (not API node-cron)
 
   // ── New column migrations ───────────────────────────────────────────────────
   await ensureCustomerProfileColumns();
@@ -406,7 +432,24 @@ connectWithRetry().then(async () => {
   await ensureFcmTokenTenantIds();
   await runWalkInQueueServicesMigration();
   await ensureWhatsAppSchema();
+  await ensureAiCrmSchema();
   restoreSessionsOnBoot().catch((e) => logger.warn('whatsapp_restore_failed', { message: e.message }));
+
+  // C15: Workers must run in separate process (ai_crm_worker). Never auto-start in API.
+  if (process.env.AI_CRM_WORKERS === 'true' && process.env.ALLOW_INLINE_CRM_WORKERS === 'true') {
+    logger.warn('ai_crm_workers_inline', {
+      message: 'Inline AI CRM workers enabled — not recommended for production',
+    });
+    try {
+      require('./workers/aiCrmWorker').startAiCrmWorkers();
+    } catch (e) {
+      logger.warn('ai_crm_workers', { message: e.message });
+    }
+  } else if (process.env.AI_CRM_WORKERS === 'true') {
+    logger.warn('ai_crm_workers', {
+      message: 'AI_CRM_WORKERS=true ignored on API — start backend/workers/aiCrmWorker.js separately',
+    });
+  }
 
   server.listen(PORT, () =>
     logger.info('server_started', { port: PORT })

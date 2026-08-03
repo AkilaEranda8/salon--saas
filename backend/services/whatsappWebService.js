@@ -29,12 +29,43 @@ function phoneFromJid(jid = '') {
   return raw.replace(/\D/g, '') || null;
 }
 
+function isLidJid(jid = '') {
+  return String(jid).includes('@lid');
+}
+
 function toJid(phone) {
   if (!phone) return null;
-  let digits = String(phone).replace(/\D/g, '');
+  const raw = String(phone).trim();
+  if (raw.includes('@')) return raw; // already a JID (pn or lid)
+  let digits = raw.replace(/\D/g, '');
   if (!digits) return null;
+  // WhatsApp LID identifiers are long numeric IDs (not E.164 phones)
+  if (digits.length >= 14) return `${digits}@lid`;
   if (digits.startsWith('0')) digits = `94${digits.slice(1)}`;
   return `${digits}@s.whatsapp.net`;
+}
+
+/**
+ * Resolve customer phone + reply JID from an inbound Baileys message.
+ * WhatsApp now often delivers DMs as @lid; remoteJidAlt / senderPn holds the PN.
+ */
+async function resolveInboundPeer(sock, msg) {
+  const key = msg?.key || {};
+  const remoteJid = key.remoteJid || '';
+  const altJid = key.remoteJidAlt || key.senderPn || key.participantAlt || null;
+
+  let phoneJid = altJid || null;
+  if (!phoneJid && isLidJid(remoteJid) && sock?.signalRepository?.lidMapping?.getPNForLID) {
+    try {
+      phoneJid = await sock.signalRepository.lidMapping.getPNForLID(remoteJid);
+    } catch (_) { /* ignore */ }
+  }
+  if (!phoneJid && !isLidJid(remoteJid)) phoneJid = remoteJid;
+
+  const phone = phoneFromJid(phoneJid || remoteJid);
+  // Always reply to the JID WhatsApp addressed us on (works for both @lid and @s.whatsapp.net)
+  const replyJid = remoteJid || phoneJid || toJid(phone);
+  return { phone, replyJid, phoneJid: phoneJid || remoteJid };
 }
 
 function getModels() {
@@ -204,12 +235,13 @@ async function startSession(tenantId, audit = {}) {
         || msg.message.videoMessage?.caption
         || '';
       if (!body) continue;
-      const phone = phoneFromJid(jid);
+      const peer = await resolveInboundPeer(sock, msg);
+      const phone = peer.phone;
       await storeMessage({
         tenantId: tid,
         direction: 'in',
         phone,
-        jid,
+        jid: peer.replyJid || jid,
         body,
         status: 'received',
         wa_message_id: msg.key.id,
@@ -230,6 +262,7 @@ async function startSession(tenantId, audit = {}) {
             name: msg.pushName || null,
             channel: 'qr',
             campaignSource: 'whatsapp_qr',
+            replyJid: peer.replyJid,
           });
         }
       } catch (err) {
@@ -293,7 +326,8 @@ async function sendViaQr(tenantId, phone, message, meta = {}) {
   }
   if (!isConnected(tid)) return { used: false };
   const sock = activeSockets.get(tid);
-  const jid = toJid(phone);
+  // Prefer explicit reply JID (required for @lid chats); fall back to phone→PN JID.
+  const jid = meta.replyJid || meta.jid || toJid(phone);
   if (!jid || !sock) return { used: false };
 
   let status = 'sent';
@@ -303,7 +337,7 @@ async function sendViaQr(tenantId, phone, message, meta = {}) {
     await storeMessage({
       tenantId: tid,
       direction: 'out',
-      phone: phoneFromJid(jid),
+      phone: phoneFromJid(meta.phoneJid || phone || jid),
       jid,
       body: message,
       status: 'sent',
@@ -316,7 +350,7 @@ async function sendViaQr(tenantId, phone, message, meta = {}) {
     await storeMessage({
       tenantId: tid,
       direction: 'out',
-      phone: phoneFromJid(jid),
+      phone: phoneFromJid(meta.phoneJid || phone || jid),
       jid,
       body: message,
       status: 'failed',
@@ -325,7 +359,7 @@ async function sendViaQr(tenantId, phone, message, meta = {}) {
     });
     throw err;
   }
-  return { used: true, status, error: errorMsg };
+  return { used: true, status, error: errorMsg, jid };
 }
 
 async function listMessages(tenantId, { page = 1, limit = 50 } = {}) {

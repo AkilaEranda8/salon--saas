@@ -121,8 +121,19 @@ router.post('/internal/whatsapp-qr-send', requireServiceAuth, async (req, res) =
     const tenantId = parseInt(req.body?.tenantId || req.body?.tenant_id || req.headers['x-tenant-id'], 10);
     const phone = String(req.body?.phone || '').trim();
     const message = String(req.body?.message || '').trim();
+    let replyJid = req.body?.replyJid || req.body?.reply_jid || null;
+    const conversationId = parseInt(req.body?.conversation_id || req.body?.conversationId, 10);
     if (!Number.isInteger(tenantId) || tenantId <= 0 || !phone || !message) {
       return res.status(400).json({ message: 'tenantId, phone, message required' });
+    }
+    // Recover reply JID from last inbound if worker didn't pass it (LID chats)
+    if (!replyJid && Number.isInteger(conversationId) && conversationId > 0) {
+      const { CrmMessage } = require('../models');
+      const lastIn = await CrmMessage.findOne({
+        where: { tenant_id: tenantId, conversation_id: conversationId, direction: 'inbound' },
+        order: [['id', 'DESC']],
+      });
+      replyJid = lastIn?.meta?.reply_jid || null;
     }
     const whatsappWeb = require('../services/whatsappWebService');
     if (!whatsappWeb.isConnected(tenantId)) {
@@ -131,6 +142,7 @@ router.post('/internal/whatsapp-qr-send', requireServiceAuth, async (req, res) =
     const result = await whatsappWeb.sendViaQr(tenantId, phone, message, {
       tenant_id: tenantId,
       event_type: req.body?.event_type || 'crm_ai_reply',
+      replyJid,
     });
     if (!result?.used) {
       return res.status(502).json({ ok: false, reason: 'qr_send_failed', result });

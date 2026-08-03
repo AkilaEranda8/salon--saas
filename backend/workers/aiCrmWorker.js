@@ -130,6 +130,8 @@ async function handleOutbound(job) {
         phone,
         message,
         event_type: 'crm_ai_reply',
+        replyJid: d.replyJid || d.reply_jid || null,
+        conversation_id: d.conversation_id || d.conversationId || null,
       }),
     });
     const body = await r.json().catch(() => ({}));

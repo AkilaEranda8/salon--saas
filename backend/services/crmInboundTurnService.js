@@ -174,7 +174,11 @@ async function processInboundAiTurn(jobData) {
         body: message,
         waMessageId,
         deliveryStatus: 'received',
-        meta: { turn_state: TURN_PENDING },
+        meta: {
+          turn_state: TURN_PENDING,
+          reply_jid: jobData.replyJid || jobData.reply_jid || null,
+          channel: jobData.channel || null,
+        },
       });
     } catch (e) {
       if (isUniqueViolation(e)) {
@@ -271,6 +275,7 @@ async function processInboundAiTurn(jobData) {
         message: apology,
         crm_message_id: apologyMsg.id,
         sender_type: 'system',
+        replyJid: jobData.replyJid || jobData.reply_jid || inboundMsg?.meta?.reply_jid || null,
       }, { name: 'ai-error-apology', jobId: outJobId }).catch((e) => {
         console.error('[inbound] apology enqueue failed', e.message);
       });
@@ -420,6 +425,7 @@ async function processInboundAiTurn(jobData) {
       message: replyText,
       crm_message_id: outboundMsg?.id || null,
       sender_type: 'ai',
+      replyJid: jobData.replyJid || jobData.reply_jid || inboundMsg?.meta?.reply_jid || null,
     }, { name: 'ai-reply', jobId: outJobId });
   }
 

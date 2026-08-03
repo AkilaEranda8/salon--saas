@@ -1,0 +1,2172 @@
+[
+  {
+    "name": "Aloe gel \u2014 Hydra liquid",
+    "brand": "Aloe gel",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 0.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Hydra liquid | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Aroma",
+    "brand": "Aroma",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 0.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Aroma \u2014 Gold Facial pack",
+    "brand": "Aroma",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 4.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Gold Facial pack | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Aroma \u2014 Toner",
+    "brand": "Aroma",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 82.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Toner | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "As1 \u2014 Hydra liquid",
+    "brand": "As1",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 0.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Hydra liquid | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "As2 \u2014 Hydra liquid",
+    "brand": "As2",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 419.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Hydra liquid | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "As3 \u2014 Hydra liquid",
+    "brand": "As3",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 469.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Hydra liquid | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Bellose 5min Hair color \u2014 Colors",
+    "brand": "Bellose",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 0.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Colors | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Bellose 5min Hair developer \u2014 Colors",
+    "brand": "Bellose",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 0.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Colors | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Beta carotone \u2014 Mask",
+    "brand": "Beta carotone",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 500.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Mask | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Bleaching powders \u2014 Bleaching",
+    "brand": "Bleaching powders",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 500.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Bleaching | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Blonde shampo \u2014 Shampo",
+    "brand": "Blonde shampo",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 0.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Shampo | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Blue botel \u2014 cream",
+    "brand": "Blue botel",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 233.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: cream | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Body wax \u2014 bean wax",
+    "brand": "Body wax",
+    "product_type": "consumable",
+    "unit": "pcs",
+    "opening_stock": 307.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: bean wax | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Capelli secchie \u2014 Shampo",
+    "brand": "Capelli secchie",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 325.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Shampo | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Cleanser \u2014 Facial korean brand",
+    "brand": "Cleanser",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 0.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Facial korean brand | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Collagen mask \u2014 Mask",
+    "brand": "Collagen mask",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 340.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Mask | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Collagen Moisturizing cream \u2014 Facial korean brand",
+    "brand": "Collagen Moisturizing cream",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 0.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Facial korean brand | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Color  Zone  9.34 \u2014 Colors",
+    "brand": "Color  Zone",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 167.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Colors | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Color Zone  12% \u2014 Developer",
+    "brand": "Color Zone",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 1017.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Developer | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Color Zone  12.01 \u2014 Colors",
+    "brand": "Color Zone",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 0.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Colors | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Color Zone  3.0 \u2014 Colors",
+    "brand": "Color Zone",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 240.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Colors | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Color Zone  5.22 \u2014 Colors",
+    "brand": "Color Zone",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 156.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Colors | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Color Zone  7.35 \u2014 Colors",
+    "brand": "Color Zone",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 61.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Colors | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Color Zone  7.62 \u2014 Colors",
+    "brand": "Color Zone",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 36.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Colors | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Color Zone  8.110 \u2014 Colors",
+    "brand": "Color Zone",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 269.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Colors | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Color Zone  9% \u2014 Developer",
+    "brand": "Color Zone",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 1659.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Developer | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Color Zone (BLUE) \u2014 Colors",
+    "brand": "Color Zone",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 78.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Colors | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Color Zone (BORDAUX) \u2014 Colors",
+    "brand": "Color Zone",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 100.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Colors | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Color Zone (GREEN) \u2014 Colors",
+    "brand": "Color Zone",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 100.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Colors | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Color Zone (RED) \u2014 Colors",
+    "brand": "Color Zone",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 100.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Colors | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Color Zone (VOILET) \u2014 Colors",
+    "brand": "Color Zone",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 73.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Colors | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Color Zone (YELLOW) \u2014 Colors",
+    "brand": "Color Zone",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 100.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Colors | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Color Zone 0 \u2014 Colors",
+    "brand": "Color Zone",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 100.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Colors | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Color Zone 12.0 \u2014 Colors",
+    "brand": "Color Zone",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 100.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Colors | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Color Zone 12\\11 \u2014 Colors",
+    "brand": "Color Zone",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 340.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Colors | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Color Zone 1SU \u2014 Colors",
+    "brand": "Color Zone",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 71.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Colors | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Color Zone 2 \u2014 Colors",
+    "brand": "Color Zone",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 124.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Colors | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Color Zone 4 \u2014 Colors",
+    "brand": "Color Zone",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 240.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Colors | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Color Zone 6.23 \u2014 Colors",
+    "brand": "Color Zone",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 0.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Colors | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Color Zone 7.03 \u2014 Colors",
+    "brand": "Color Zone",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 146.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Colors | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Color Zone 7.04 \u2014 Colors",
+    "brand": "Color Zone",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 200.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Colors | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Color Zone 7.444 \u2014 Colors",
+    "brand": "Color Zone",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 100.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Colors | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Color Zone 8.003 \u2014 Colors",
+    "brand": "Color Zone",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 200.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Colors | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Color Zone 8.35 \u2014 Colors",
+    "brand": "Color Zone",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 146.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Colors | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Color Zone 9.04 \u2014 Colors",
+    "brand": "Color Zone",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 120.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Colors | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Color Zone BLUE \u2014 Colors",
+    "brand": "Color Zone",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 100.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Colors | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Color Zone C \u2014 Colors",
+    "brand": "Color Zone",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 100.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Colors | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Color Zone G \u2014 Colors",
+    "brand": "Color Zone",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 100.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Colors | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Color Zone \u2014 Bleaching",
+    "brand": "Color Zone",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 819.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Bleaching | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "DCM  8.78 \u2014 Colors",
+    "brand": "DCM",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 129.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Colors | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "DCM  9.78 \u2014 Colors",
+    "brand": "DCM",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 182.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Colors | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "DCM 1.O \u2014 Colors",
+    "brand": "DCM",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 42.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Colors | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "DCM 5.80 \u2014 Colors",
+    "brand": "DCM",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 154.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Colors | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "DCM 6.80 \u2014 Colors",
+    "brand": "DCM",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 67.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Colors | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "DCM 7,36 \u2014 Colors",
+    "brand": "DCM",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 167.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Colors | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "DCM 7.78 \u2014 Colors",
+    "brand": "DCM",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 246.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Colors | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Derma Pro \u2014 Blackhead White head remover",
+    "brand": "Derma Pro",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 32.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Blackhead White head remover | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Dreamron 20 volume \u2014 Developer",
+    "brand": "Dreamron",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 0.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Developer | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Dreamron 30 volume \u2014 Dreamron 30 volume",
+    "brand": "Dreamron",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 892.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Dreamron 30 volume | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Dreamron 40 volume \u2014 Developer",
+    "brand": "Dreamron",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 0.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Developer | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Dreamron \u2014 Shampo",
+    "brand": "Dreamron",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 600.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Shampo | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Dreamron \u2014 Waving lotion",
+    "brand": "Dreamron",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 92.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Waving lotion | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Dreamrone \u2014 Conditioner",
+    "brand": "Dreamrone",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 5000.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Conditioner | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "E Vitamin \u2014 Hair tretments",
+    "brand": "E Vitamin",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 0.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Hair tretments | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Facial mask \u2014 Facial korean brand",
+    "brand": "Facial mask",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 0.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Facial korean brand | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Facial Sponge",
+    "brand": "Facial Sponge",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 76.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Fanola  Blue \u2014 Shampo",
+    "brand": "Fanola  Blue",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 300.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Shampo | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Firming Lotion \u2014 Straigtiting cream & Neautrilizer",
+    "brand": "Firming Lotion",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 0.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Straigtiting cream & Neautrilizer | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Foot mask \u2014 Foot mask",
+    "brand": "Foot mask",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 870.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Foot mask | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Gold Mask \u2014 Mask",
+    "brand": "Gold Mask",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 449.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Mask | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "HQ 1 \u2014 Keratin Shampoo",
+    "brand": "HQ",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 1029.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Keratin Shampoo | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "HQ 2 \u2014 Keratin Lotion",
+    "brand": "HQ",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 655.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Keratin Lotion | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "HQ 3 \u2014 Keratin Mask",
+    "brand": "HQ",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 953.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Keratin Mask | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "HQ \u2014 Charcoal cream",
+    "brand": "HQ",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 100.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Charcoal cream | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Jawal 0.1 \u2014 Colors",
+    "brand": "Jawal",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 28.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Colors | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Jawal 09 \u2014 Colors",
+    "brand": "Jawal",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 0.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Colors | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Jelly Pedicure \u2014 packet",
+    "brand": "Jelly Pedicure",
+    "product_type": "accessories",
+    "unit": "pcs",
+    "opening_stock": 2.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: packet | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Jeval 60 \u2014 Colors",
+    "brand": "Jeval",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 60.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Colors | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Jovees",
+    "brand": "Jovees",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 0.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Jovees \u2014 Anti acne face pack",
+    "brand": "Jovees",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 100.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Anti acne face pack | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Jovees \u2014 Face scrub",
+    "brand": "Jovees",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 307.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Face scrub | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Jovees \u2014 Glow Pack",
+    "brand": "Jovees",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 313.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Glow Pack | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Keaun \u2014 Kaeun treatment",
+    "brand": "Keaun",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 0.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Kaeun treatment | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Keraplex \u2014 hair mask",
+    "brand": "Keraplex",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 555.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: hair mask | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Keraplex \u2014 Shampo",
+    "brand": "Keraplex",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 895.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Shampo | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Keratin lumafofo \u2014 Keratin",
+    "brand": "Keratin lumafofo",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 0.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Keratin | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Keune 1 \u2014 Colors",
+    "brand": "Keune",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 70.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Colors | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Keune 2000 \u2014 Colors",
+    "brand": "Keune",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 0.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Colors | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Keune 3% \u2014 Developer",
+    "brand": "Keune",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 617.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Developer | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Keune 3000 \u2014 Colors",
+    "brand": "Keune",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 60.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Colors | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Keune 444 \u2014 Colors",
+    "brand": "Keune",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 60.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Colors | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Keune Neautrilizer \u2014 Straigtiting cream & Neautrilizer",
+    "brand": "Keune Neautrilizer",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 0.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Straigtiting cream & Neautrilizer | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Keune Straight lotion \u2014 Straigtiting cream & Neautrilizer",
+    "brand": "Keune Straight lotion",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 700.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Straigtiting cream & Neautrilizer | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Keune \u2014 Bond fusion 1",
+    "brand": "Keune",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 472.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Bond fusion 1 | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Lafresh \u2014 massage cream pedicure",
+    "brand": "Lafresh",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 495.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: massage cream pedicure | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Life  9% \u2014 Developer",
+    "brand": "Life",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 487.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Developer | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Life 4.0 \u2014 Colors",
+    "brand": "Life",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 0.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Colors | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Life 5.20 \u2014 Colors",
+    "brand": "Life",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 0.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Colors | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Life 5.62 \u2014 Colors",
+    "brand": "Life",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 80.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Colors | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Life 5.64 \u2014 Colors",
+    "brand": "Life",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 0.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Colors | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Life 6.3 \u2014 Colors",
+    "brand": "Life",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 0.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Colors | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Life 6.43 \u2014 Colors",
+    "brand": "Life",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 72.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Colors | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Life 6.52 \u2014 Colors",
+    "brand": "Life",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 0.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Colors | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Life 7.11 \u2014 Colors",
+    "brand": "Life",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 123.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Colors | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Life 7.13 \u2014 Colors",
+    "brand": "Life",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 100.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Colors | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Life 7.46 \u2014 Colors",
+    "brand": "Life",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 0.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Colors | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Life 8.13 \u2014 Colors",
+    "brand": "Life",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 83.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Colors | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Life 8.3 \u2014 Colors",
+    "brand": "Life",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 42.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Colors | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Life 8.34 \u2014 Colors",
+    "brand": "Life",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 55.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Colors | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Life 9.03 \u2014 Colors",
+    "brand": "Life",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 74.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Colors | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Loeal 900s \u2014 Colors",
+    "brand": "Loeal",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 56.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Colors | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Loreal  30 volume 9% \u2014 Developer",
+    "brand": "Loreal",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 0.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Developer | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Loreal 01 \u2014 Colors",
+    "brand": "Loreal",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 10.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Colors | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Loreal 03 \u2014 Colors",
+    "brand": "Loreal",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 69.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Colors | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Loreal 04 \u2014 Colors",
+    "brand": "Loreal",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 60.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Colors | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Loreal 11.06 \u2014 Colors",
+    "brand": "Loreal",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 210.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Colors | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Loreal 12.03 \u2014 Colors",
+    "brand": "Loreal",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 5.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Colors | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Loreal 12.05 \u2014 Colors",
+    "brand": "Loreal",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 0.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Colors | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Loreal 13 \u2014 Colors",
+    "brand": "Loreal",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 5.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Colors | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Loreal 20 volume 6% \u2014 Developer",
+    "brand": "Loreal",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 300.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Developer | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Loreal 4.20 \u2014 Colors",
+    "brand": "Loreal",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 130.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Colors | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Loreal 4.56 \u2014 Colors",
+    "brand": "Loreal",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 96.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Colors | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Loreal 40 volume 12% \u2014 Developer",
+    "brand": "Loreal",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 686.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Developer | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Loreal 5 \u2014 Colors",
+    "brand": "Loreal",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 15.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Colors | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Loreal 5.3 \u2014 Colors",
+    "brand": "Loreal",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 0.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Colors | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Loreal 5.6 \u2014 Colors",
+    "brand": "Loreal",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 47.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Colors | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Loreal 6 \u2014 Colors",
+    "brand": "Loreal",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 10.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Colors | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Loreal 6.45 \u2014 Colors",
+    "brand": "Loreal",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 70.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Colors | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Loreal 6.62 \u2014 Colors",
+    "brand": "Loreal",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 25.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Colors | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Loreal 7.4 \u2014 Colors",
+    "brand": "Loreal",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 53.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Colors | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Loreal 8.31 \u2014 Colors",
+    "brand": "Loreal",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 70.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Colors | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Loreal Cream \u2014 Straigtiting cream & Neautrilizer",
+    "brand": "Loreal Cream",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 0.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Straigtiting cream & Neautrilizer | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Loreal hair spa serum \u2014 Hair Treatments products",
+    "brand": "Loreal hair spa serum",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 0.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Hair Treatments products | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Loreal hair spa \u2014 Hair Treatments products",
+    "brand": "Loreal hair spa",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 118.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Hair Treatments products | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Loreal neautrilizer \u2014 Straigtiting cream & Neautrilizer",
+    "brand": "Loreal neautrilizer",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 1136.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Straigtiting cream & Neautrilizer | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Loreal \u2014 hair mask",
+    "brand": "Loreal",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 528.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: hair mask | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Loreal \u2014 Reducteur",
+    "brand": "Loreal",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 232.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Reducteur | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Loreal \u2014 Smooth Cream",
+    "brand": "Loreal",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 54.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Smooth Cream | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Lumafofo \u2014 Keratin",
+    "brand": "Lumafofo",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 0.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Keratin | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Lumafofo \u2014 Keratin  mask",
+    "brand": "Lumafofo",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 0.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Keratin  mask | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Lumafofo \u2014 Shampo",
+    "brand": "Lumafofo",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 338.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Shampo | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Majenta loreal rooge \u2014 Colors",
+    "brand": "Majenta loreal rooge",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 5.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Colors | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Matrix 12N \u2014 Colors",
+    "brand": "Matrix",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 90.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Colors | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Matrix TGR \u2014 Colors",
+    "brand": "Matrix TGR",
+    "product_type": "chemical",
+    "unit": "ml",
+    "opening_stock": 60.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Colors | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Moisturizing \u2014 Facial korean brand",
+    "brand": "Moisturizing",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 0.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Facial korean brand | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Moon Star",
+    "brand": "Moon Star",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 0.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Moon Star \u2014 Salieylicacid face waash",
+    "brand": "Moon Star",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 151.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Salieylicacid face waash | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Moroccan",
+    "brand": "Moroccan",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 2919.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Nails \u2014 Plastic form",
+    "brand": "Nails",
+    "product_type": "accessories",
+    "unit": "pcs",
+    "opening_stock": 0.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Plastic form | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Natures essence diamond \u2014 Cleanser",
+    "brand": "Natures Essence",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 154.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Cleanser | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Natures essence diamond \u2014 Cream",
+    "brand": "Natures Essence",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 181.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Cream | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Natures essence diamond \u2014 face pack",
+    "brand": "Natures Essence",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 150.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: face pack | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Natures essence diamond \u2014 Scrub",
+    "brand": "Natures Essence",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 111.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Scrub | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Natures essence diamond \u2014 Serum",
+    "brand": "Natures Essence",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 170.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Serum | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Natures essence \u2014 Cleanser",
+    "brand": "Natures Essence",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 169.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Cleanser | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Natures essence \u2014 Gel",
+    "brand": "Natures Essence",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 311.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Gel | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Natures essence \u2014 Massage cream",
+    "brand": "Natures Essence",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 187.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Massage cream | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Natures essence \u2014 pack",
+    "brand": "Natures Essence",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 108.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: pack | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Natures essence \u2014 Scrub",
+    "brand": "Natures Essence",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 267.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Scrub | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Neautrilizer \u2014 Straigtiting cream & Neautrilizer",
+    "brand": "Neautrilizer",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 0.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Straigtiting cream & Neautrilizer | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Orange Oil \u2014 Wax Oil",
+    "brand": "Orange Oil",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 291.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Wax Oil | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Oxyglow",
+    "brand": "Oxyglow",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 0.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Oxyglow \u2014 Liquorice mud pack",
+    "brand": "Oxyglow",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 130.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Liquorice mud pack | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Oxyglow \u2014 Massage cream",
+    "brand": "Oxyglow",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 120.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Massage cream | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Oxyglow \u2014 Scrub",
+    "brand": "Oxyglow",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 33.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Scrub | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Peeling gel \u2014 Facial korean brand",
+    "brand": "Peeling gel",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 0.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Facial korean brand | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Pro TECH \u2014 Keratin smooth oil",
+    "brand": "Pro Tech",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 148.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Keratin smooth oil | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Pro TECH \u2014 Repair Mask",
+    "brand": "Pro Tech",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 183.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Repair Mask | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Pro TECH \u2014 Shampo",
+    "brand": "Pro Tech",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 383.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Shampo | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Pro TECH \u2014 Smooth Cream",
+    "brand": "Pro Tech",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 200.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Smooth Cream | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Rose water \u2014 Hydra liquid",
+    "brand": "Rose water",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 0.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Hydra liquid | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "S4 Bubble pen \u2014 Hydra liquid",
+    "brand": "S4",
+    "product_type": "consumable",
+    "unit": "pcs",
+    "opening_stock": 0.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Hydra liquid | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Scrub",
+    "brand": "Scrub",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 2000.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Spa Cylon \u2014 Facial Scrub",
+    "brand": "Spa Cylon",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 224.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Facial Scrub | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Spa Cylon \u2014 Neem & Tea Tree Exfoliator",
+    "brand": "Spa Cylon",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 43.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Neem & Tea Tree Exfoliator | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Spa Cylon \u2014 Neem & Tea Tree masque",
+    "brand": "Spa Cylon",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 26.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Neem & Tea Tree masque | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Spa Cylon \u2014 Neem & Tea Tree Protectors SPF",
+    "brand": "Spa Cylon",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 47.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Neem & Tea Tree Protectors SPF | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Spa Cylon \u2014 Neem & wintergreen spot",
+    "brand": "Spa Cylon",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 11.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Neem & wintergreen spot | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Spa Cylon \u2014 Plumping Cream Masque",
+    "brand": "Spa Cylon",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 177.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Plumping Cream Masque | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Spa Cylon \u2014 Radiance Exfolitor",
+    "brand": "Spa Cylon",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 176.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Radiance Exfolitor | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Spa Cylon \u2014 True turmeric cleanser",
+    "brand": "Spa Cylon",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 51.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: True turmeric cleanser | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Spa Cylon \u2014 White jasmine masque",
+    "brand": "Spa Cylon",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 390.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: White jasmine masque | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Spa Cylon \u2014 White jasmine skin tonic",
+    "brand": "Spa Cylon",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 158.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: White jasmine skin tonic | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Spa Cylon \u2014 White Mint Cleansing foam",
+    "brand": "Spa Cylon",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 32.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: White Mint Cleansing foam | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Spa Cylon \u2014 White rice cleanser",
+    "brand": "Spa Cylon",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 164.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: White rice cleanser | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Spa Cylon \u2014 White rice moisturiser",
+    "brand": "Spa Cylon",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 100.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: White rice moisturiser | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Spa Cylon \u2014 White rice under eye",
+    "brand": "Spa Cylon",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 55.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: White rice under eye | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Spa Cylon \u2014 White rose moisturser",
+    "brand": "Spa Cylon",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 95.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: White rose moisturser | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Spa Salt",
+    "brand": "Spa Salt",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 336.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Thermo \u2014 Aciderm Foam gel",
+    "brand": "Thermo",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 100.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Aciderm Foam gel | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Thermo \u2014 Aciderm toner",
+    "brand": "Thermo",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 71.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Aciderm toner | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Thermo \u2014 Bubble packet",
+    "brand": "Thermo",
+    "product_type": "accessories",
+    "unit": "pcs",
+    "opening_stock": 37.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Bubble packet | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Thermo \u2014 Cleanser",
+    "brand": "Thermo",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 71.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Cleanser | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Thermo \u2014 Exo regentron Foamgel",
+    "brand": "Thermo",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 109.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Exo regentron Foamgel | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Thermo \u2014 Exo regentron toner",
+    "brand": "Thermo",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 109.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Exo regentron toner | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Thermo \u2014 Max Hydra gel",
+    "brand": "Thermo",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 234.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Max Hydra gel | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Thermo \u2014 Melaless peel",
+    "brand": "Thermo",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 111.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Melaless peel | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Toner \u2014 Facial korean brand",
+    "brand": "Toner",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 0.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Facial korean brand | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Twiser \u2014 Twiser",
+    "brand": "Twiser",
+    "product_type": "accessories",
+    "unit": "pcs",
+    "opening_stock": 0.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Twiser | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Ume Care \u2014 Brightining Serum",
+    "brand": "Ume Care",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 199.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Brightining Serum | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Ume Care \u2014 Face pack 1",
+    "brand": "Ume Care",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 126.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Face pack 1 | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Ume Care \u2014 Face pack 2",
+    "brand": "Ume Care",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 138.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Face pack 2 | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Ume Care \u2014 Face pack 3",
+    "brand": "Ume Care",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 122.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Face pack 3 | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Ume Care \u2014 Foaming cleanser",
+    "brand": "Ume Care",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 500.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Foaming cleanser | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Ume Care \u2014 Gentle cleanser",
+    "brand": "Ume Care",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 960.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Gentle cleanser | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Ume Care \u2014 H2O Massage cream",
+    "brand": "Ume Care",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 376.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: H2O Massage cream | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Ume Care \u2014 Hyaluronic serum",
+    "brand": "Ume Care",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 141.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Hyaluronic serum | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Ume Care \u2014 Protective emulsion",
+    "brand": "Ume Care",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 150.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Protective emulsion | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Ume Care \u2014 Purfying  Toner",
+    "brand": "Ume Care",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 93.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Purfying  Toner | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Ume Care \u2014 Scrub",
+    "brand": "Ume Care",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 67.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Scrub | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Ume Care \u2014 Soothing toner",
+    "brand": "Ume Care",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 23.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Soothing toner | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Vitamin c \u2014 Mask",
+    "brand": "Vitamin c",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 400.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Mask | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Vitta \u2014 Gold hair mask",
+    "brand": "Vitta",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 1053.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Gold hair mask | Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Wax",
+    "brand": "Wax",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 336.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Wax sticks",
+    "brand": "Wax sticks",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 89.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Imported from Larvendo Stock Aug 2026"
+  },
+  {
+    "name": "Yellow cut shampo HQ \u2014 Shampo",
+    "brand": "Yellow cut shampo HQ",
+    "product_type": "consumable",
+    "unit": "ml",
+    "opening_stock": 205.0,
+    "min_stock": 0,
+    "status": "active",
+    "notes": "Type: Shampo | Imported from Larvendo Stock Aug 2026"
+  }
+]

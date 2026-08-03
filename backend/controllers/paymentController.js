@@ -3,7 +3,7 @@ const { sequelize } = require('../config/database');
 const { Payment, PaymentSplit, Branch, Staff, StaffSpecialization, Customer, Service, Appointment, AppointmentService, CustomerPackage, Package: PkgModel, PackageRedemption, LoyaltyRule, CommissionTransaction } = require('../models');
 const { computeCommissionDetails } = require('../utils/commissionCalculator');
 const { computeHelperCommissionSplit } = require('../utils/helperCommission');
-const { allowsServiceWiseOverrides, hasFranchiseCommission, hasTenantFeature } = require('../utils/tenantFeatures');
+const { allowsServiceWiseOverrides, hasFranchiseCommission, hasTenantFeature, getMinCommissionableAmount } = require('../utils/tenantFeatures');
 const { recordCommissionTransactions } = require('../services/recordCommissionTransactions');
 const { notifyPaymentReceipt } = require('../services/notificationService');
 const { seedRecurringFromVisit } = require('../services/recurringService');
@@ -233,6 +233,7 @@ const create = async (req, res) => {
           staff: staffMember,
           specializations: staffMember.specializations || [],
           allowServiceOverrides: allowsServiceWiseOverrides(req.tenant),
+          minCommissionableAmount: getMinCommissionableAmount(req.tenant),
           ...commissionInputBase,
         });
         const helperIds = (Array.isArray(helpersBody) ? helpersBody : [])

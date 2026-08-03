@@ -31,6 +31,7 @@ const PLAN_FEATURES = {
     expenses: true,
     service_wise_commission: false,
     franchise_commission: false,
+    skip_commission_under_500: false,
   },
   basic: {
     ai_chat: false,
@@ -53,6 +54,7 @@ const PLAN_FEATURES = {
     expenses: true,
     service_wise_commission: false,
     franchise_commission: false,
+    skip_commission_under_500: false,
   },
   pro: {
     ai_chat: true,
@@ -75,6 +77,7 @@ const PLAN_FEATURES = {
     expenses: true,
     service_wise_commission: false,
     franchise_commission: false,
+    skip_commission_under_500: false,
   },
   enterprise: {
     ai_chat: true,
@@ -97,6 +100,7 @@ const PLAN_FEATURES = {
     expenses: true,
     service_wise_commission: false,
     franchise_commission: false,
+    skip_commission_under_500: false,
   },
 };
 

@@ -26,6 +26,11 @@ const FEATURE_CATALOG = [
   { key: 'reviews', label: 'Reviews', category: 'Engage' },
   { key: 'service_wise_commission', label: 'Service-Wise Commission', category: 'Team' },
   { key: 'franchise_commission', label: 'Franchise Commission', category: 'Team' },
+  {
+    key: 'skip_commission_under_500',
+    label: 'No Commission Under Rs. 500',
+    category: 'Team',
+  },
 ];
 
 const FEATURE_KEYS = new Set(FEATURE_CATALOG.map((f) => f.key));
@@ -82,6 +87,13 @@ function hasServiceWiseCommissionForUser(tenant, req) {
 function allowsServiceWiseOverrides(tenant) {
   return hasTenantFeature(tenant, 'service_wise_commission')
     || hasFranchiseCommission(tenant);
+}
+
+/** When enabled, payment/service amounts under Rs. 500 earn no commission. */
+const COMMISSION_MIN_AMOUNT = 500;
+
+function getMinCommissionableAmount(tenant) {
+  return hasTenantFeature(tenant, 'skip_commission_under_500') ? COMMISSION_MIN_AMOUNT : 0;
 }
 
 /** Hide service catalogue commission in API payloads when the flag is off. */
@@ -167,6 +179,8 @@ module.exports = {
   hasFranchiseCommission,
   allowsServiceWiseOverrides,
   hasServiceWiseCommissionForUser,
+  getMinCommissionableAmount,
+  COMMISSION_MIN_AMOUNT,
   applyServiceWiseCommissionPolicy,
   sanitizeServiceRecord,
   sanitizeStaffRecord,

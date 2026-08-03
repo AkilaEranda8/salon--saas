@@ -110,26 +110,44 @@ async function handleOutbound(job) {
     return { channel: 'cloud', ...result };
   }
 
-  // Fallback: Baileys QR session when Cloud API is not enabled
-  const whatsappWeb = require('../services/whatsappWebService');
-  if (!whatsappWeb.isConnected(tenantId)) {
-    console.warn('[worker] wa-outbound skipped — Cloud off and QR not connected', { tenantId });
-    return { skipped: true, reason: 'no_whatsapp_channel' };
+  // Fallback: Baileys QR lives in the API process — call backend over HTTP
+  const secret = process.env.AI_ENGINE_SERVICE_SECRET || process.env.CRM_SERVICE_SECRET || '';
+  const backendUrl = (process.env.BACKEND_INTERNAL_URL || 'http://backend:5000').replace(/\/$/, '');
+  if (!secret) {
+    console.warn('[worker] wa-outbound skipped — no service secret for QR send', { tenantId });
+    return { skipped: true, reason: 'no_service_secret' };
   }
-  const qrResult = await whatsappWeb.sendViaQr(tenantId, phone, message, {
-    tenant_id: tenantId,
-    event_type: 'crm_ai_reply',
-  });
-  if (!qrResult?.used) {
-    return { skipped: true, reason: 'qr_send_failed' };
+  try {
+    const r = await fetch(`${backendUrl}/api/crm/internal/whatsapp-qr-send`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Service-Key': secret,
+        'X-Tenant-Id': String(tenantId),
+      },
+      body: JSON.stringify({
+        tenantId,
+        phone,
+        message,
+        event_type: 'crm_ai_reply',
+      }),
+    });
+    const body = await r.json().catch(() => ({}));
+    if (!r.ok || !body.ok) {
+      console.warn('[worker] wa-outbound QR via API failed', { tenantId, status: r.status, body });
+      return { skipped: true, reason: body.reason || 'qr_api_failed', status: r.status };
+    }
+    if (d.crm_message_id) {
+      await CrmMessage.update(
+        { delivery_status: 'sent' },
+        { where: { id: d.crm_message_id, tenant_id: tenantId } }
+      );
+    }
+    return { channel: 'qr', via: 'backend_api', ...body };
+  } catch (err) {
+    console.error('[worker] wa-outbound QR API error', err.message);
+    return { skipped: true, reason: 'qr_api_error', error: err.message };
   }
-  if (d.crm_message_id) {
-    await CrmMessage.update(
-      { delivery_status: 'sent' },
-      { where: { id: d.crm_message_id, tenant_id: tenantId } }
-    );
-  }
-  return { channel: 'qr', ...qrResult };
 }
 
 async function handleHandoff(job) {

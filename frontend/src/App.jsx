@@ -80,6 +80,7 @@ import BrandingSettingsPage  from './pages/BrandingSettingsPage';
 import PaymentSettingsPage   from './pages/PaymentSettingsPage';
 import CrmAiSettingsPage     from './pages/crm/CrmAiSettingsPage';
 import CrmInboxPage          from './pages/crm/CrmInboxPage';
+import CrmLeadsPage          from './pages/crm/CrmLeadsPage';
 import CrmWhatsAppCloudPage  from './pages/crm/CrmWhatsAppCloudPage';
 import CrmKnowledgePage      from './pages/crm/CrmKnowledgePage';
 import CrmAiCostPage         from './pages/crm/CrmAiCostPage';
@@ -436,6 +437,11 @@ function AppShellRoutes() {
             <Route path="/crm/inbox" element={
               <RoleRoute roles={['superadmin', 'admin', 'manager', 'staff']}>
                 <CrmInboxPage />
+              </RoleRoute>
+            } />
+            <Route path="/crm/leads" element={
+              <RoleRoute roles={['superadmin', 'admin', 'manager', 'staff']}>
+                <CrmLeadsPage />
               </RoleRoute>
             } />
             <Route path="/crm/whatsapp-cloud" element={

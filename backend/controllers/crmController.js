@@ -6,6 +6,7 @@ const {
   CrmConversation,
   CrmMessage,
   CrmAuditLog,
+  Customer,
 } = require('../models');
 const { resolveTenantId } = require('../utils/tenantScope');
 const { enqueueInboundTurn, processInboundAiTurn } = require('../services/crmInboundTurnService');
@@ -31,11 +32,23 @@ const listLeads = async (req, res) => {
     const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
     const { rows, count } = await CrmLead.findAndCountAll({
       where,
+      include: [{
+        model: Customer,
+        as: 'customer',
+        required: false,
+        attributes: ['id', 'name', 'phone', 'email'],
+      }],
       order: [['last_message_at', 'DESC'], ['id', 'DESC']],
       limit,
       offset: (page - 1) * limit,
     });
-    return res.json({ total: count, page, limit, data: rows });
+    return res.json({
+      total: count,
+      page,
+      limit,
+      stages: CrmLead.STAGES,
+      data: rows,
+    });
   } catch (err) {
     console.error('[crm] listLeads', err);
     return res.status(500).json({ message: 'Server error' });

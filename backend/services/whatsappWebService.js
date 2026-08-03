@@ -204,15 +204,37 @@ async function startSession(tenantId, audit = {}) {
         || msg.message.videoMessage?.caption
         || '';
       if (!body) continue;
+      const phone = phoneFromJid(jid);
       await storeMessage({
         tenantId: tid,
         direction: 'in',
-        phone: phoneFromJid(jid),
+        phone,
         jid,
         body,
         status: 'received',
         wa_message_id: msg.key.id,
       });
+
+      // Feed CRM AI inbox when tenant has WhatsApp AI CRM (QR channel).
+      try {
+        const { Tenant } = getModels();
+        const { hasTenantFeature } = require('../utils/tenantFeatures');
+        const tenant = await Tenant.findByPk(tid);
+        if (tenant && hasTenantFeature(tenant, 'whatsapp_ai_crm') && phone) {
+          const { enqueueInboundTurn } = require('./crmInboundTurnService');
+          await enqueueInboundTurn({
+            tenantId: tid,
+            phone,
+            message: body,
+            waMessageId: msg.key.id || `qr-${tid}-${Date.now()}`,
+            name: msg.pushName || null,
+            channel: 'qr',
+            campaignSource: 'whatsapp_qr',
+          });
+        }
+      } catch (err) {
+        console.error('[WhatsApp] CRM inbound enqueue failed:', err.message);
+      }
     }
   });
 

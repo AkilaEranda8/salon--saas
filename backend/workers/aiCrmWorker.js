@@ -76,42 +76,60 @@ async function handleOutbound(job) {
   }
 
   const waba = await getWabaByTenant(tenantId);
-  if (!waba || !waba.enabled) {
-    console.warn('[worker] wa-outbound skipped — Cloud API not enabled', { tenantId });
-    return { skipped: true, reason: 'waba_disabled' };
+  if (waba && waba.enabled) {
+    const result = await sendCloudText({
+      tenantId,
+      to: phone,
+      body: message,
+      wabaRow: waba,
+    });
+
+    if (d.crm_message_id && result.waMessageId) {
+      await CrmMessage.update(
+        { wa_message_id: result.waMessageId, delivery_status: 'sent' },
+        { where: { id: d.crm_message_id, tenant_id: tenantId } }
+      );
+    } else if (d.conversation_id && result.waMessageId) {
+      const latest = await CrmMessage.findOne({
+        where: {
+          tenant_id: tenantId,
+          conversation_id: d.conversation_id,
+          direction: 'outbound',
+          sender_type: d.sender_type || 'ai',
+        },
+        order: [['id', 'DESC']],
+      });
+      if (latest && !latest.wa_message_id) {
+        await latest.update({
+          wa_message_id: result.waMessageId,
+          delivery_status: 'sent',
+        });
+      }
+    }
+
+    return { channel: 'cloud', ...result };
   }
 
-  const result = await sendCloudText({
-    tenantId,
-    to: phone,
-    body: message,
-    wabaRow: waba,
+  // Fallback: Baileys QR session when Cloud API is not enabled
+  const whatsappWeb = require('../services/whatsappWebService');
+  if (!whatsappWeb.isConnected(tenantId)) {
+    console.warn('[worker] wa-outbound skipped — Cloud off and QR not connected', { tenantId });
+    return { skipped: true, reason: 'no_whatsapp_channel' };
+  }
+  const qrResult = await whatsappWeb.sendViaQr(tenantId, phone, message, {
+    tenant_id: tenantId,
+    event_type: 'crm_ai_reply',
   });
-
-  if (d.crm_message_id && result.waMessageId) {
+  if (!qrResult?.used) {
+    return { skipped: true, reason: 'qr_send_failed' };
+  }
+  if (d.crm_message_id) {
     await CrmMessage.update(
-      { wa_message_id: result.waMessageId, delivery_status: 'sent' },
+      { delivery_status: 'sent' },
       { where: { id: d.crm_message_id, tenant_id: tenantId } }
     );
-  } else if (d.conversation_id && result.waMessageId) {
-    const latest = await CrmMessage.findOne({
-      where: {
-        tenant_id: tenantId,
-        conversation_id: d.conversation_id,
-        direction: 'outbound',
-        sender_type: d.sender_type || 'ai',
-      },
-      order: [['id', 'DESC']],
-    });
-    if (latest && !latest.wa_message_id) {
-      await latest.update({
-        wa_message_id: result.waMessageId,
-        delivery_status: 'sent',
-      });
-    }
   }
-
-  return result;
+  return { channel: 'qr', ...qrResult };
 }
 
 async function handleHandoff(job) {

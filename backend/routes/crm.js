@@ -119,7 +119,7 @@ router.get('/internal/ai-settings/:tenantId', requireServiceAuth, aiSettingsCtrl
 
 // ── Leads & Inbox ────────────────────────────────────────────────────────────
 router.get('/leads', ...staffInbox, crmCtrl.listLeads);
-router.patch('/leads/:id', ...admin, crmCtrl.updateLead);
+router.patch('/leads/:id', ...staffInbox, crmCtrl.updateLead);
 
 router.get('/conversations', ...staffInbox, crmCtrl.listConversations);
 router.get('/conversations/:id', ...staffInbox, crmCtrl.getConversation);

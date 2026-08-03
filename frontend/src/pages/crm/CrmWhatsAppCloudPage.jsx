@@ -1,6 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { io } from 'socket.io-client';
 import toast from 'react-hot-toast';
 import api from '../../api/axios';
+import { useAuth } from '../../context/AuthContext';
+import { getKcAccessToken } from '../../utils/kcTokenStore';
 import PageWrapper from '../../components/layout/PageWrapper';
 import usePageTheme from '../../hooks/usePageTheme';
 
@@ -67,10 +70,16 @@ const EMPTY = {
 
 export default function CrmWhatsAppCloudPage() {
   const { C } = usePageTheme();
+  const { tenant, user } = useAuth();
+  const waTenantId = tenant?.id ?? user?.tenant_id ?? user?.tenantId ?? null;
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState(EMPTY);
   const [testTo, setTestTo] = useState('');
+  const [waStatus, setWaStatus] = useState({ status: 'disconnected' });
+  const [waQrImage, setWaQrImage] = useState(null);
+  const [waBusy, setWaBusy] = useState(false);
+  const waSocketRef = useRef(null);
 
   const load = async () => {
     setLoading(true);
@@ -84,7 +93,68 @@ export default function CrmWhatsAppCloudPage() {
     }
   };
 
+  const loadWaStatus = useCallback(async () => {
+    try {
+      const { data } = await api.get('/notifications/whatsapp/status');
+      setWaStatus(data || { status: 'disconnected' });
+      if (data?.qrImage) setWaQrImage(data.qrImage);
+    } catch { /* silent */ }
+  }, []);
+
   useEffect(() => { load(); }, []);
+
+  useEffect(() => {
+    loadWaStatus();
+    const token = getKcAccessToken()
+      || document.cookie.split(';').map((c) => c.trim()).find((c) => c.startsWith('token='))?.split('=')[1];
+    const socket = io({ auth: { token } });
+    waSocketRef.current = socket;
+    socket.on('connect', () => {
+      if (waTenantId) socket.emit('whatsapp:join', { tenantId: waTenantId });
+    });
+    socket.on('whatsapp:qr', ({ qrImage }) => { if (qrImage) setWaQrImage(qrImage); });
+    socket.on('whatsapp:status', (payload) => {
+      setWaStatus((prev) => ({ ...prev, ...payload }));
+      if (payload.status === 'connected') {
+        setWaQrImage(null);
+        toast.success('WhatsApp QR connected');
+      }
+      if (payload.status === 'disconnected') setWaQrImage(null);
+    });
+    return () => {
+      socket.disconnect();
+      waSocketRef.current = null;
+    };
+  }, [waTenantId, loadWaStatus]);
+
+  const handleWaConnect = async () => {
+    setWaBusy(true);
+    try {
+      const { data } = await api.post('/notifications/whatsapp/connect');
+      setWaStatus(data);
+      if (data.qrImage) setWaQrImage(data.qrImage);
+      toast.success(data.message || 'Scan QR with WhatsApp');
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to connect WhatsApp');
+    } finally {
+      setWaBusy(false);
+    }
+  };
+
+  const handleWaDisconnect = async () => {
+    if (!window.confirm('Disconnect WhatsApp QR? You will need to scan again.')) return;
+    setWaBusy(true);
+    try {
+      await api.post('/notifications/whatsapp/disconnect');
+      setWaStatus({ status: 'disconnected' });
+      setWaQrImage(null);
+      toast.success('WhatsApp disconnected');
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to disconnect');
+    } finally {
+      setWaBusy(false);
+    }
+  };
 
   const save = async () => {
     setSaving(true);
@@ -142,14 +212,69 @@ export default function CrmWhatsAppCloudPage() {
 
   return (
     <PageWrapper
-      title="WhatsApp Cloud API"
-      subtitle="Connect Meta WABA for AI CRM inbound webhooks and outbound replies."
+      title="WhatsApp for CRM"
+      subtitle="Connect via QR (quick start) or Meta Cloud API. Inbound messages feed CRM Inbox, Leads, and AI."
     >
       {loading ? (
         <div style={{ color: C.muted, padding: 24 }}>Loading…</div>
       ) : (
         <div style={{ display: 'grid', gap: 18, maxWidth: 720 }}>
-          <SectionCard title="Connection" subtitle="Enable Cloud API for this salon. Baileys QR remains available separately for legacy notify.">
+          <SectionCard
+            title="QR connect (Baileys)"
+            subtitle="Scan with WhatsApp → Linked Devices. Same session as Notifications. Best for quick CRM AI without Meta setup."
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+              <span style={{ fontSize: 13, fontWeight: 700, color: C.text }}>Status</span>
+              {waStatus.status === 'connected' ? (
+                <span style={{ fontSize: 10, fontWeight: 700, background: '#DCFCE7', color: '#166534', padding: '2px 8px', borderRadius: 6 }}>Connected</span>
+              ) : waStatus.status === 'connecting' ? (
+                <span style={{ fontSize: 10, fontWeight: 700, background: '#FEF3C7', color: '#92400E', padding: '2px 8px', borderRadius: 6 }}>Scan QR</span>
+              ) : (
+                <span style={{ fontSize: 10, fontWeight: 700, background: '#F3F4F6', color: '#6B7280', padding: '2px 8px', borderRadius: 6 }}>Not connected</span>
+              )}
+            </div>
+
+            {waStatus.status === 'connected' ? (
+              <div style={{
+                padding: '12px 14px', marginBottom: 12, borderRadius: 10,
+                background: '#F0FDF4', border: '1px solid #BBF7D0', fontSize: 13, color: '#166534',
+              }}>
+                <strong>Connected:</strong> +{waStatus.phone || '—'}
+                {waStatus.push_name ? ` (${waStatus.push_name})` : ''}
+              </div>
+            ) : waQrImage ? (
+              <div style={{ textAlign: 'center', marginBottom: 12 }}>
+                <p style={{ fontSize: 12, fontWeight: 600, color: C.label, margin: '0 0 10px' }}>
+                  Open WhatsApp → Linked Devices → Link a Device → Scan this QR
+                </p>
+                <img
+                  src={waQrImage}
+                  alt="WhatsApp QR"
+                  style={{ width: 280, height: 280, borderRadius: 12, border: `1px solid ${C.border}` }}
+                />
+              </div>
+            ) : (
+              <p style={{ fontSize: 13, color: C.muted, margin: '0 0 12px' }}>
+                Click Connect to generate a QR code for this salon.
+              </p>
+            )}
+
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {waStatus.status !== 'connected' && (
+                <button type="button" disabled={waBusy} onClick={handleWaConnect} style={primaryBtn(C, waBusy)}>
+                  {waBusy ? 'Starting…' : waQrImage ? 'Refresh QR' : 'Connect WhatsApp QR'}
+                </button>
+              )}
+              {(waStatus.status === 'connected' || waStatus.status === 'connecting') && (
+                <button type="button" disabled={waBusy} onClick={handleWaDisconnect} style={ghostBtn(C)}>
+                  Disconnect
+                </button>
+              )}
+              <button type="button" onClick={loadWaStatus} style={ghostBtn(C)}>Refresh status</button>
+            </div>
+          </SectionCard>
+
+          <SectionCard title="Cloud API (Meta)" subtitle="Official WABA for production. Prefer this when available; QR stays as fallback.">
             <label style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14, cursor: 'pointer' }}>
               <input
                 type="checkbox"

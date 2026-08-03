@@ -106,6 +106,8 @@ Tenant.hasMany(CrmConversation, { foreignKey: 'tenant_id', as: 'crmConversations
 CrmConversation.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
 CrmLead.hasMany(CrmConversation, { foreignKey: 'lead_id', as: 'conversations' });
 CrmConversation.belongsTo(CrmLead, { foreignKey: 'lead_id', as: 'lead' });
+CrmLead.belongsTo(Customer, { foreignKey: 'customer_id', as: 'customer', constraints: false });
+Customer.hasMany(CrmLead, { foreignKey: 'customer_id', as: 'crmLeads', constraints: false });
 CrmConversation.hasMany(CrmMessage, { foreignKey: 'conversation_id', as: 'messages' });
 CrmMessage.belongsTo(CrmConversation, { foreignKey: 'conversation_id', as: 'conversation' });
 CrmLead.hasMany(CrmBookingRequest, { foreignKey: 'lead_id', as: 'bookingRequests' });

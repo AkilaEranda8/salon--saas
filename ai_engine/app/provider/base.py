@@ -4,9 +4,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
-from .openai_provider import OpenAIProvider
-from .gemini_provider import GeminiProvider
-
 
 @dataclass
 class CompletionRequest:
@@ -36,10 +33,13 @@ class LLMProvider(Protocol):
 
 
 def get_provider(provider: str) -> LLMProvider:
+    # Lazy imports avoid circular import with openai/gemini modules.
     key = (provider or "openai").lower().strip()
     if key == "gemini":
+        from .gemini_provider import GeminiProvider
         return GeminiProvider()
     if key in ("openai", "nvidia"):
+        from .openai_provider import OpenAIProvider
         # nvidia uses OpenAI-compatible API; base_url set by caller via env later
         return OpenAIProvider(name=key)
     raise ValueError(f"Unsupported provider: {provider}")

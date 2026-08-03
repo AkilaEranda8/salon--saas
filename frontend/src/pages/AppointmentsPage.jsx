@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import api from '../api/axios';
@@ -217,6 +217,9 @@ export default function AppointmentsPage() {
   const [services, setServices]   = useState([]);
   const [staffList, setStaffList] = useState([]);
   const [customers, setCustomers] = useState([]);
+  const [remoteCustomers, setRemoteCustomers] = useState([]);
+  const [customerSearching, setCustomerSearching] = useState(false);
+  const customerSearchTimer = useRef(null);
   const [loading, setLoading]     = useState(true);
   const [filterBranch, setFilterBranch] = useState(isSuperAdmin ? '' : user?.branch_id||'');
   const [filterStatus, setFilterStatus] = useState('');
@@ -283,12 +286,11 @@ export default function AppointmentsPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [apR, brR, svR, stR, cuR] = await Promise.all([
+      const [apR, brR, svR, stR] = await Promise.all([
         api.get('/appointments', { params:{ page, limit:LIMIT, ...(filterBranch?{branchId:filterBranch}:{}), ...(filterStatus?{status:filterStatus}:{}), ...(filterDate?{date:filterDate}:{}) } }),
         api.get('/branches',     { params:{ limit:100 } }),
         api.get('/services',     { params:{ limit:1000 } }),
         api.get('/staff',        { params:{ limit:200, ...(filterBranch?{branchId:filterBranch}:{}) } }),
-        api.get('/customers',    { params:{ limit:500, ...(filterBranch?{branchId:filterBranch}:{}) } }),
       ]);
       const d = apR.data?.data ?? apR.data ?? [];
       const rows = Array.isArray(d) ? d : [];
@@ -314,20 +316,66 @@ export default function AppointmentsPage() {
       setBranches(Array.isArray(brR.data) ? brR.data : (brR.data?.data??[]));
       setServices(Array.isArray(svR.data) ? svR.data : (svR.data?.data??[]));
       setStaffList(Array.isArray(stR.data) ? stR.data : (stR.data?.data??[]));
-      setCustomers(Array.isArray(cuR.data) ? cuR.data : (cuR.data?.data??[]));
     } catch {}
     setLoading(false);
   }, [filterBranch, filterStatus, filterDate, page]);
   useEffect(() => { load(); }, [load]);
 
+  /* Load all salon customers when booking modal opens (not branch-limited) */
   useEffect(() => {
     if (!showForm) return;
+    let cancelled = false;
     setCustomerLoading(true);
-    api.get('/customers', { params: { limit: 500, ...(form.branch_id ? { branchId: form.branch_id } : {}) } })
-      .then((r) => setCustomers(Array.isArray(r.data) ? r.data : (r.data?.data ?? [])))
-      .catch(() => setCustomers([]))
-      .finally(() => setCustomerLoading(false));
-  }, [showForm, form.branch_id]);
+    setRemoteCustomers([]);
+    (async () => {
+      try {
+        const pageLimit = 500;
+        let pageNum = 1;
+        let all = [];
+        let total = Infinity;
+        while (all.length < total) {
+          const { data } = await api.get('/customers', { params: { limit: pageLimit, page: pageNum } });
+          const rows = Array.isArray(data) ? data : (data?.data ?? []);
+          total = typeof data?.total === 'number' ? data.total : rows.length;
+          all = all.concat(rows);
+          if (!rows.length || rows.length < pageLimit) break;
+          pageNum += 1;
+          if (pageNum > 40) break;
+        }
+        if (!cancelled) setCustomers(all);
+      } catch {
+        if (!cancelled) setCustomers([]);
+      } finally {
+        if (!cancelled) setCustomerLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [showForm]);
+
+  /* Debounced API search — finds customers beyond local cache */
+  useEffect(() => {
+    if (!showForm) return;
+    const q = customerSearch.trim();
+    if (customerSearchTimer.current) clearTimeout(customerSearchTimer.current);
+    if (q.length < 2 || form.customer_id) {
+      setRemoteCustomers([]);
+      setCustomerSearching(false);
+      return;
+    }
+    setCustomerSearching(true);
+    customerSearchTimer.current = setTimeout(async () => {
+      try {
+        const { data } = await api.get('/customers', { params: { search: q, limit: 50 } });
+        const rows = Array.isArray(data) ? data : (data?.data ?? []);
+        setRemoteCustomers(rows);
+      } catch {
+        setRemoteCustomers([]);
+      } finally {
+        setCustomerSearching(false);
+      }
+    }, 280);
+    return () => { if (customerSearchTimer.current) clearTimeout(customerSearchTimer.current); };
+  }, [customerSearch, showForm, form.customer_id]);
 
   useEffect(() => {
     if (!showForm) return;
@@ -997,11 +1045,20 @@ export default function AppointmentsPage() {
       return next;
     });
   };
-  const filteredCustomers = customers.filter(c => {
+  const filteredCustomers = useMemo(() => {
+    const map = new Map();
+    for (const c of [...customers, ...remoteCustomers]) {
+      if (c?.id != null) map.set(String(c.id), c);
+    }
+    const pool = [...map.values()];
     const q = customerSearch.trim().toLowerCase();
-    if (!q) return true;
-    return c.name?.toLowerCase().includes(q) || c.phone?.includes(q);
-  });
+    if (!q) return pool.slice(0, 100);
+    return pool.filter((c) =>
+      c.name?.toLowerCase().includes(q)
+      || String(c.phone || '').toLowerCase().includes(q)
+      || String(c.email || '').toLowerCase().includes(q)
+    ).slice(0, 50);
+  }, [customers, remoteCustomers, customerSearch]);
   const selectCustomer = (c) => {
     setForm(f => ({ ...f, customer_id: c.id, customer_name: c.name || '', phone: c.phone || f.phone }));
     setCustomerSearch(c.name || '');
@@ -1492,7 +1549,11 @@ export default function AppointmentsPage() {
                     }}
                     onFocus={() => setShowCustomerDrop(true)}
                     onBlur={() => setTimeout(() => setShowCustomerDrop(false), 200)}
-                    placeholder={customerLoading ? 'Loading customers…' : 'Search by name or phone…'}
+                    placeholder={
+                      customerLoading ? 'Loading customers…'
+                        : customerSearching ? 'Searching…'
+                          : 'Search by name or phone…'
+                    }
                   />
                   {showCustomerDrop && (
                     <div style={{
@@ -1503,13 +1564,28 @@ export default function AppointmentsPage() {
                       maxHeight: 240, overflowY: 'auto',
                     }}>
                       {customerLoading ? (
-                        <div style={{ padding: '12px 14px', fontSize: 12, color: '#98A2B3' }}>Loading…</div>
+                        <div style={{ padding: '12px 14px', fontSize: 12, color: '#98A2B3' }}>Loading all customers…</div>
                       ) : filteredCustomers.length === 0 ? (
                         <div style={{ padding: '14px', fontSize: 12, color: '#98A2B3', textAlign: 'center' }}>
-                          No customer found — name will be saved as walk-in
+                          {customerSearching
+                            ? 'Searching customers…'
+                            : 'No customer found — name will be saved as walk-in'}
                         </div>
                       ) : (
-                        filteredCustomers.slice(0, 80).map((c) => (
+                        <>
+                          {(customerSearch.trim() || customers.length > 0) && (
+                            <div style={{
+                              padding: '6px 14px', fontSize: 11, color: '#98A2B3', fontWeight: 600,
+                              background: isDark ? '#0F172A' : '#F9FAFB',
+                              borderBottom: `1px solid ${isDark ? '#334155' : '#F2F4F7'}`,
+                            }}>
+                              {customerSearching ? 'Searching… · ' : ''}
+                              {customerSearch.trim()
+                                ? `${filteredCustomers.length} result${filteredCustomers.length !== 1 ? 's' : ''}`
+                                : `${customers.length} customers loaded`}
+                            </div>
+                          )}
+                          {filteredCustomers.map((c) => (
                           <div
                             key={c.id}
                             onMouseDown={() => selectCustomer(c)}
@@ -1535,7 +1611,8 @@ export default function AppointmentsPage() {
                             )}
                             <span style={{ fontSize: 11, color: '#10b981', fontWeight: 700, flexShrink: 0 }}>Select →</span>
                           </div>
-                        ))
+                        ))}
+                        </>
                       )}
                     </div>
                   )}

@@ -232,24 +232,50 @@ async function processInboundAiTurn(jobData) {
       },
     });
   } catch (err) {
-    await appendMessage({
-      tenantId,
-      conversationId: conversation.id,
-      direction: 'outbound',
-      senderType: 'system',
-      body: 'Sorry — our assistant is temporarily unavailable. A team member will help you shortly.',
-      deliveryStatus: 'pending',
-      meta: {
-        error: err.message,
-        inbound_message_id: inboundMsg?.id,
-        inbound_wa_message_id: waMessageId,
-      },
-    });
+    const apology =
+      'Sorry — our assistant is temporarily unavailable. A team member will help you shortly.';
+    let apologyMsg = null;
+    try {
+      apologyMsg = await appendMessage({
+        tenantId,
+        conversationId: conversation.id,
+        direction: 'outbound',
+        senderType: 'system',
+        body: apology,
+        deliveryStatus: 'pending',
+        meta: {
+          error: err.message,
+          inbound_message_id: inboundMsg?.id,
+          inbound_wa_message_id: waMessageId,
+        },
+      });
+    } catch (appendErr) {
+      console.error('[inbound] apology append failed', appendErr.message);
+    }
+
+    // Keep AI channel open on provider/transient errors so the next customer
+    // message retries after keys/quota are fixed (do not soft-lock as queued).
+    const transient = /429|quota|rate|timeout|ECONN|fetch failed|503|502/i.test(String(err.message || ''));
     await conversation.update({
-      status: 'queued',
-      handoff_reason: `ai_error: ${err.message}`.slice(0, 255),
+      status: transient ? 'ai_active' : 'queued',
+      handoff_reason: transient ? null : `ai_error: ${err.message}`.slice(0, 255),
       ai_turn_state: TURN_COMPLETED,
     });
+
+    if (apologyMsg) {
+      const outJobId = waMessageId ? `wa-out-err-${tenantId}-${waMessageId}` : undefined;
+      await enqueue(QUEUE_NAMES.WA_OUTBOUND, {
+        tenant_id: tenantId,
+        conversation_id: conversation.id,
+        phone: lead.phone || phone,
+        message: apology,
+        crm_message_id: apologyMsg.id,
+        sender_type: 'system',
+      }, { name: 'ai-error-apology', jobId: outJobId }).catch((e) => {
+        console.error('[inbound] apology enqueue failed', e.message);
+      });
+    }
+
     return {
       skipped: false,
       failed: true,
@@ -257,6 +283,7 @@ async function processInboundAiTurn(jobData) {
       error: err.message,
       conversationId: conversation.id,
       leadId: lead.id,
+      replyText: apology,
     };
   }
 

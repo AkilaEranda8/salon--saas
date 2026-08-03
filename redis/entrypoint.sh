@@ -6,7 +6,10 @@ ACL_SRC="/etc/redis/users.acl.template"
 ACL_DST="/data/users.acl"
 CONF_DST="/data/redis.conf"
 
-sed "s/__REDIS_PASSWORD__/${PASS}/g" "$ACL_SRC" > "$ACL_DST"
+# Strip CR (Windows checkouts) and comments; inject password without sed delimiter issues.
+tr -d '\r' < "$ACL_SRC" | grep -v '^[[:space:]]*#' | grep -v '^[[:space:]]*$' \
+  | awk -v p="$PASS" '{ gsub(/__REDIS_PASSWORD__/, p); print }' > "$ACL_DST"
+
 cat > "$CONF_DST" <<EOF
 bind 0.0.0.0
 protected-mode yes

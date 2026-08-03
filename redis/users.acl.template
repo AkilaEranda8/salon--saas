@@ -1,4 +1,3 @@
-# Redis ACL template — __REDIS_PASSWORD__ replaced at container start
 user default off
 user salon_cache on >__REDIS_PASSWORD__ sanitize-payload ~t:* resetchannels -@all +ping +info +get +set +setex +del +exists +ttl +mget +mset +incr +decr
 user salon_queue on >__REDIS_PASSWORD__ sanitize-payload ~* resetchannels +@all

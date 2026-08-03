@@ -1,16 +1,5 @@
-# Redis ACL — separate identities for cache / queues / sessions (C15)
-# Passwords injected at container start via redis-acl-init.sh
-
 user default off
-
-# Application cache keys: t:{tenantId}:...
 user salon_cache on sanitize-payload ~t:* resetchannels -@all +ping +info +get +set +setex +del +exists +ttl +mget +mset +incr +decr
-
-# BullMQ / locks / follow-up jobs
 user salon_queue on sanitize-payload ~* resetchannels +@all
-
-# AI engine booking sessions only
 user salon_session on sanitize-payload ~ai:booking:* resetchannels -@all +ping +get +set +setex +del +exists +ttl
-
-# Backend API + CRM workers (cache + queues + locks)
 user salon_app on sanitize-payload ~* resetchannels +@all

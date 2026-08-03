@@ -65,7 +65,9 @@ async function ensureUniqueIndex(indexName, tableName, createSql) {
 }
 
 async function ensureActiveSlotConstraint() {
-  // Generated column: NULL for cancelled/completed → multiple history rows OK;
+  // VIRTUAL generated column (not STORED): MySQL forbids STORED generated cols
+  // that reference FK base columns with CASCADE/SET NULL (staff_id/tenant_id).
+  // NULL for cancelled/completed → multiple history rows OK;
   // unique among active pending/confirmed/in_service (C17).
   if (!(await columnExists('appointments', 'active_slot_key'))) {
     try {
@@ -81,7 +83,7 @@ async function ensureActiveSlotConstraint() {
               DATE_FORMAT(\`time\`, '%H:%i')
             )
           )
-        ) STORED
+        ) VIRTUAL
       `);
     } catch (err) {
       const e = new Error(

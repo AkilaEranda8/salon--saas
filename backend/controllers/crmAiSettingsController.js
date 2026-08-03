@@ -15,7 +15,7 @@ const {
 const PROVIDERS = new Set(['openai', 'gemini', 'nvidia', 'local']);
 
 function defaultModelFor(provider) {
-  if (provider === 'gemini') return 'gemini-2.0-flash';
+  if (provider === 'gemini') return 'gemini-2.0-flash-lite';
   if (provider === 'nvidia') return 'meta/llama-3.3-70b-instruct';
   if (provider === 'local') return 'local';
   return 'gpt-4o-mini';

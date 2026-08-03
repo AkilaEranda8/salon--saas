@@ -13,7 +13,7 @@ const PROVIDERS = [
 
 const DEFAULT_MODELS = {
   openai: 'gpt-4o-mini',
-  gemini: 'gemini-2.0-flash',
+  gemini: 'gemini-2.0-flash-lite',
   nvidia: 'meta/llama-3.3-70b-instruct',
   local: 'local',
 };
@@ -201,7 +201,7 @@ export default function CrmAiSettingsPage() {
                 value={form.model}
                 onChange={(v) => setForm((f) => ({ ...f, model: v }))}
                 placeholder={DEFAULT_MODELS[form.provider]}
-                hint="e.g. gpt-4o-mini or gemini-2.0-flash"
+                hint="Free tier: gemini-2.0-flash-lite (recommended). Paid: gpt-4o-mini"
               />
             </div>
           </SectionCard>

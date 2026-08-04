@@ -36,9 +36,11 @@ function getSalonNow() {
   }).formatToParts(new Date());
   const get = (type) => parts.find((p) => p.type === type)?.value;
   const date = `${get('year')}-${get('month')}-${get('day')}`;
-  let hour = get('hour');
+  let hour = String(get('hour') || '00');
   if (hour === '24') hour = '00'; // en-GB midnight quirk
-  const time = `${hour}:${get('minute')}`;
+  const minute = String(get('minute') || '00').padStart(2, '0');
+  hour = hour.padStart(2, '0');
+  const time = `${hour}:${minute}`;
   return { date, time, minutes: timeToMinutes(time) };
 }
 

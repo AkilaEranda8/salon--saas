@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, useLayoutEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import api from '../api/axios';
@@ -146,19 +147,32 @@ const EMPTY = {
 };
 const LIMIT = 20;
 
-/** Local calendar date YYYY-MM-DD (avoid UTC shift). */
+const SALON_TZ = 'Asia/Colombo';
+
+/** Salon (Asia/Colombo) calendar date YYYY-MM-DD. */
 function localToday() {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: SALON_TZ,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date());
+  const get = (t) => parts.find((p) => p.type === t)?.value;
+  return `${get('year')}-${get('month')}-${get('day')}`;
 }
 
-/** Local HH:MM wall clock. */
+/** Salon HH:MM wall clock. */
 function localNowTime() {
-  const d = new Date();
-  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: SALON_TZ,
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(new Date());
+  const get = (t) => parts.find((p) => p.type === t)?.value;
+  let hour = String(get('hour') || '00');
+  if (hour === '24') hour = '00';
+  return `${hour.padStart(2, '0')}:${String(get('minute') || '00').padStart(2, '0')}`;
 }
 
 function timeToMinutesLocal(t) {
@@ -175,7 +189,34 @@ function normalizeApptTime(t) {
   return `${String(m[1]).padStart(2, '0')}:${m[2]}`;
 }
 
-/** True when date+time is before now (browser local — salon PCs use Sri Lanka time). */
+function toMinutes24(hour12, minute, ampm) {
+  let h = Number(hour12) % 12;
+  if (String(ampm).toUpperCase() === 'PM') h += 12;
+  return h * 60 + Number(minute);
+}
+
+function fromMinutes24(totalMin) {
+  const mins = ((Number(totalMin) % (24 * 60)) + 24 * 60) % (24 * 60);
+  const h24 = Math.floor(mins / 60);
+  const m = mins % 60;
+  const ampm = h24 >= 12 ? 'PM' : 'AM';
+  const hour12 = h24 % 12 || 12;
+  return {
+    hour12,
+    minute: m,
+    ampm,
+    hhmm: `${String(h24).padStart(2, '0')}:${String(m).padStart(2, '0')}`,
+  };
+}
+
+function formatWatchLabel(hhmm) {
+  const t = normalizeApptTime(hhmm);
+  if (!t) return '';
+  const parts = fromMinutes24(timeToMinutesLocal(t));
+  return `${String(parts.hour12).padStart(2, '0')}:${String(parts.minute).padStart(2, '0')} ${parts.ampm}`;
+}
+
+/** True when date+time is before salon now. */
 function isPastDateTime(dateStr, timeStr) {
   const d = String(dateStr || '').slice(0, 10);
   const t = normalizeApptTime(timeStr);
@@ -201,6 +242,257 @@ function slotListIncludes(slots, time) {
   const nt = normalizeApptTime(time);
   if (!nt || !Array.isArray(slots) || !slots.length) return false;
   return slots.some((s) => normalizeApptTime(s) === nt);
+}
+
+const WATCH_HOURS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+const WATCH_MINUTES = Array.from({ length: 12 }, (_, i) => i * 5); // 00,05,…,55
+
+/**
+ * Watch-style time spinner (hour / minute / AM·PM).
+ * For today, past hour/minute/AMPM choices are disabled — unlike native <input type="time">.
+ */
+function WatchTimePicker({
+  value,
+  date,
+  onChange,
+  dark = false,
+  allowPast = false,
+  disabled = false,
+}) {
+  const rootRef = useRef(null);
+  const [open, setOpen] = useState(false);
+  const [menuPos, setMenuPos] = useState({ top: 0, left: 0, width: 220 });
+  const selected = normalizeApptTime(value);
+  const parsed = selected
+    ? fromMinutes24(timeToMinutesLocal(selected))
+    : { hour12: 10, minute: 0, ampm: 'AM', hhmm: '' };
+
+  const [hour12, setHour12] = useState(parsed.hour12);
+  const [minute, setMinute] = useState(Math.round(parsed.minute / 5) * 5 % 60);
+  const [ampm, setAmpm] = useState(parsed.ampm);
+
+  useEffect(() => {
+    if (!open) return;
+    const p = selected
+      ? fromMinutes24(timeToMinutesLocal(selected))
+      : { hour12: 10, minute: 0, ampm: 'AM' };
+    setHour12(p.hour12);
+    setMinute(Math.round(p.minute / 5) * 5 % 60);
+    setAmpm(p.ampm);
+  }, [open, selected]);
+
+  useLayoutEffect(() => {
+    if (!open || !rootRef.current) return;
+    const update = () => {
+      const rect = rootRef.current.getBoundingClientRect();
+      const width = Math.max(220, rect.width);
+      let top = rect.bottom + 4;
+      if (top + 220 > window.innerHeight) top = Math.max(8, rect.top - 224);
+      setMenuPos({ top, left: rect.left, width });
+    };
+    update();
+    window.addEventListener('resize', update);
+    window.addEventListener('scroll', update, true);
+    return () => {
+      window.removeEventListener('resize', update);
+      window.removeEventListener('scroll', update, true);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e) => {
+      if (rootRef.current && !rootRef.current.contains(e.target)
+        && !e.target?.closest?.('[data-watch-time-menu]')) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [open]);
+
+  const nowMin = timeToMinutesLocal(localNowTime());
+  const isToday = String(date || '').slice(0, 10) === localToday();
+  const enforceFuture = isToday && !allowPast;
+
+  const isDisabledCombo = (h12, min, ap) => {
+    if (!enforceFuture) return false;
+    return toMinutes24(h12, min, ap) < nowMin;
+  };
+
+  const commit = (h12, min, ap) => {
+    if (isDisabledCombo(h12, min, ap)) return false;
+    const hhmm = fromMinutes24(toMinutes24(h12, min, ap)).hhmm;
+    onChange(hhmm);
+    return true;
+  };
+
+  const colStyle = {
+    flex: 1,
+    maxHeight: 180,
+    overflowY: 'auto',
+    borderRight: `1px solid ${dark ? '#334155' : '#E5E7EB'}`,
+  };
+  const itemStyle = (active, isDisabled) => ({
+    padding: '8px 0',
+    textAlign: 'center',
+    fontSize: 14,
+    fontWeight: active ? 800 : 500,
+    cursor: isDisabled ? 'not-allowed' : 'pointer',
+    color: isDisabled
+      ? (dark ? '#475569' : '#CBD5E1')
+      : active
+        ? '#fff'
+        : (dark ? '#E2E8F0' : '#344054'),
+    background: active && !isDisabled ? '#2563EB' : 'transparent',
+    opacity: isDisabled ? 0.45 : 1,
+    userSelect: 'none',
+  });
+
+  return (
+    <div ref={rootRef} style={{ position: 'relative' }}>
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => !disabled && setOpen((o) => !o)}
+        style={{
+          width: '100%',
+          boxSizing: 'border-box',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 8,
+          padding: '9px 13px',
+          borderRadius: 10,
+          border: `1.5px solid ${open ? '#2563EB' : (dark ? '#334155' : '#D0D5DD')}`,
+          background: dark ? '#0B1220' : '#fff',
+          color: selected ? (dark ? '#E2E8F0' : '#101828') : (dark ? '#64748B' : '#98A2B3'),
+          fontSize: 14,
+          fontFamily: "'Inter', sans-serif",
+          cursor: disabled ? 'not-allowed' : 'pointer',
+          textAlign: 'left',
+        }}
+      >
+        <span style={{ fontWeight: selected ? 700 : 500 }}>
+          {selected ? formatWatchLabel(selected) : '-- : -- --'}
+        </span>
+        <span style={{ fontSize: 11, color: '#94A3B8' }}>{open ? '▴' : '▾'}</span>
+      </button>
+
+      {open && createPortal(
+        <div
+          data-watch-time-menu
+          style={{
+            position: 'fixed',
+            top: menuPos.top,
+            left: menuPos.left,
+            width: menuPos.width,
+            zIndex: 10050,
+            background: dark ? '#1E293B' : '#fff',
+            border: `1.5px solid ${dark ? '#334155' : '#E4E7EC'}`,
+            borderRadius: 12,
+            boxShadow: dark ? '0 12px 32px rgba(0,0,0,0.45)' : '0 12px 32px rgba(16,24,40,0.14)',
+            overflow: 'hidden',
+          }}
+        >
+          <div style={{ display: 'flex' }}>
+            <div style={colStyle}>
+              {WATCH_HOURS.map((h) => {
+                const disabledH = WATCH_MINUTES.every((m) => isDisabledCombo(h, m, ampm));
+                const active = hour12 === h;
+                return (
+                  <div
+                    key={h}
+                    style={itemStyle(active, disabledH)}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      if (disabledH) return;
+                      setHour12(h);
+                      const nextMin = WATCH_MINUTES.find((m) => !isDisabledCombo(h, m, ampm)) ?? minute;
+                      setMinute(nextMin);
+                      commit(h, nextMin, ampm);
+                    }}
+                  >
+                    {String(h).padStart(2, '0')}
+                  </div>
+                );
+              })}
+            </div>
+            <div style={colStyle}>
+              {WATCH_MINUTES.map((m) => {
+                const disabledM = isDisabledCombo(hour12, m, ampm);
+                const active = minute === m;
+                return (
+                  <div
+                    key={m}
+                    style={itemStyle(active, disabledM)}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      if (disabledM) return;
+                      setMinute(m);
+                      commit(hour12, m, ampm);
+                    }}
+                  >
+                    {String(m).padStart(2, '0')}
+                  </div>
+                );
+              })}
+            </div>
+            <div style={{ ...colStyle, borderRight: 'none' }}>
+              {['AM', 'PM'].map((ap) => {
+                const disabledAp = WATCH_HOURS.every((h) =>
+                  WATCH_MINUTES.every((m) => isDisabledCombo(h, m, ap)));
+                const active = ampm === ap;
+                return (
+                  <div
+                    key={ap}
+                    style={itemStyle(active, disabledAp)}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      if (disabledAp) return;
+                      setAmpm(ap);
+                      // pick first valid combo for this ampm
+                      let nextH = hour12;
+                      let nextM = minute;
+                      if (isDisabledCombo(hour12, minute, ap)) {
+                        outer: for (const h of WATCH_HOURS) {
+                          for (const m of WATCH_MINUTES) {
+                            if (!isDisabledCombo(h, m, ap)) {
+                              nextH = h;
+                              nextM = m;
+                              break outer;
+                            }
+                          }
+                        }
+                        setHour12(nextH);
+                        setMinute(nextM);
+                      }
+                      commit(nextH, nextM, ap);
+                    }}
+                  >
+                    {ap}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+          {enforceFuture && (
+            <div style={{
+              padding: '8px 10px',
+              fontSize: 11,
+              fontWeight: 600,
+              color: '#D97706',
+              borderTop: `1px solid ${dark ? '#334155' : '#F2F4F7'}`,
+              background: dark ? '#0F172A' : '#FFFBEB',
+            }}>
+              Past times are disabled
+            </div>
+          )}
+        </div>,
+        document.body,
+      )}
+    </div>
+  );
 }
 
 function StatusBadge({ status, dark = false }) {
@@ -1604,7 +1896,19 @@ export default function AppointmentsPage() {
             </div>
             <div style={{ display: 'flex', gap: 8, marginLeft: 'auto' }}>
               <Button variant="secondary" onClick={() => setShowForm(false)}>Cancel</Button>
-              <Button variant="primary" loading={saving} onClick={handleSave}>
+              <Button
+                variant="primary"
+                loading={saving}
+                onClick={handleSave}
+                disabled={
+                  saving
+                  || (!editItem && !multiBooking && form.date && form.time && isPastDateTime(form.date, form.time))
+                  || (!editItem && multiBooking && apptServiceIds.some((id) => {
+                    const a = serviceAssignments[String(id)] || {};
+                    return a.date && a.time && isPastDateTime(a.date, a.time);
+                  }))
+                }
+              >
                 {editItem
                   ? 'Save Changes'
                   : (multiBooking && apptServiceIds.length > 1
@@ -2018,26 +2322,13 @@ export default function AppointmentsPage() {
                               />
                             </FormGroup>
                             <FormGroup label="Time" required>
-                              <Input
-                                type="time"
+                              <WatchTimePicker
+                                dark={isDark}
+                                date={a.date}
                                 value={normalizeApptTime(a.time) || ''}
-                                min={a.date === today ? localNowTime() : undefined}
-                                onChange={(e) => {
-                                  const t = normalizeApptTime(e.target.value);
-                                  if (a.date && t && isPastDateTime(a.date, t)) {
-                                    setFormErr('Cannot book a past time. Choose a later slot.');
-                                    updateServiceAssignment(s.id, { time: '' });
-                                    return;
-                                  }
+                                onChange={(t) => {
                                   setFormErr('');
                                   updateServiceAssignment(s.id, { time: t });
-                                }}
-                                onBlur={(e) => {
-                                  const t = normalizeApptTime(e.target.value);
-                                  if (a.date && t && isPastDateTime(a.date, t)) {
-                                    setFormErr('Cannot book a past time. Choose a later slot.');
-                                    updateServiceAssignment(s.id, { time: '' });
-                                  }
                                 }}
                               />
                             </FormGroup>
@@ -2096,34 +2387,14 @@ export default function AppointmentsPage() {
                       />
                     </FormGroup>
                     <FormGroup label="Time" required>
-                      <Input
-                        type="time"
+                      <WatchTimePicker
+                        dark={isDark}
+                        date={form.date}
                         value={normalizeApptTime(form.time) || ''}
-                        min={!editItem && form.date === today ? localNowTime() : undefined}
-                        onChange={(e) => {
-                          const t = normalizeApptTime(e.target.value);
-                          if (form.date && t && isPastDateTime(form.date, t)) {
-                            const sameAsOriginal = editItem
-                              && String(editItem.date || '').slice(0, 10) === String(form.date).slice(0, 10)
-                              && normalizeApptTime(editItem.time) === t;
-                            if (!sameAsOriginal) {
-                              setFormErr('Cannot book a past time. Choose a later slot.');
-                              setForm((f) => ({ ...f, time: '' }));
-                              return;
-                            }
-                          }
+                        allowPast={!!editItem && String(editItem.date || '').slice(0, 10) < today}
+                        onChange={(t) => {
                           setFormErr('');
                           setForm((f) => ({ ...f, time: t }));
-                        }}
-                        onBlur={(e) => {
-                          const t = normalizeApptTime(e.target.value);
-                          if (!form.date || !t || !isPastDateTime(form.date, t)) return;
-                          const sameAsOriginal = editItem
-                            && String(editItem.date || '').slice(0, 10) === String(form.date).slice(0, 10)
-                            && normalizeApptTime(editItem.time) === t;
-                          if (sameAsOriginal) return;
-                          setFormErr('Cannot book a past time. Choose a later slot.');
-                          setForm((f) => ({ ...f, time: '' }));
                         }}
                       />
                     </FormGroup>

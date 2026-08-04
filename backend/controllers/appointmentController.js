@@ -12,7 +12,7 @@ const { createNextRecurring } = require('../services/recurringService');
 const { notifyBranch, notifyStaffUser } = require('../services/fcmService');
 const { tenantWhere, byIdWhere, resolveTenantId } = require('../utils/tenantScope');
 const { notesUsesPackage, usesPackageBooking, parsePackageIdFromNotes, resolvePackageBundlePrice } = require('../utils/packageNotes');
-const { parseDurationMinutes, listAvailableSlots } = require('../utils/staffAvailability');
+const { parseDurationMinutes, listAvailableSlots, isDateTimeInPast, pastBookingMessage } = require('../utils/staffAvailability');
 const { resolveStaffRecordForRequest } = require('../utils/resolveUserBranch');
 
 const ADVANCE_METHODS = new Set(['Cash', 'Card', 'Online Transfer']);
@@ -500,6 +500,9 @@ const create = async (req, res) => {
         if (!itemDate || !itemTime) {
           return res.status(400).json({ message: `items[${i}] needs date and time.` });
         }
+        if (isDateTimeInPast(itemDate, itemTime)) {
+          return res.status(400).json({ message: pastBookingMessage() });
+        }
         if (itemStaff != null && (!Number.isInteger(itemStaff) || itemStaff <= 0)) {
           return res.status(400).json({ message: `items[${i}].staff_id is invalid.` });
         }
@@ -652,6 +655,9 @@ const create = async (req, res) => {
     if (!primaryServiceId || !date || !time) {
       return res.status(400).json({ message: 'branch_id, service_id, customer_name, date and time are required.' });
     }
+    if (isDateTimeInPast(date, time)) {
+      return res.status(400).json({ message: pastBookingMessage() });
+    }
 
     const usesPackage = usesPackageBooking({
       notes,
@@ -763,8 +769,12 @@ const update = async (req, res) => {
     const deniedOwn = await assertStaffOwnsAppointment(req, appt);
     if (deniedOwn) return res.status(deniedOwn.status).json({ message: deniedOwn.message });
 
-    if (req.body.status !== undefined) {
-      return res.status(400).json({ message: 'Use PATCH /appointments/:id/status to update appointment status.' });
+    // Status must go through PATCH /appointments/:id/status.
+    // Older clients still send status on PUT — ignore when unchanged; reject only if changing.
+    if (req.body.status !== undefined && String(req.body.status) !== String(appt.status)) {
+      return res.status(400).json({
+        message: 'Use PATCH /appointments/:id/status to update appointment status.',
+      });
     }
 
     const allowed = [
@@ -775,6 +785,24 @@ const update = async (req, res) => {
     const updates = {};
     for (const field of allowed) {
       if (req.body[field] !== undefined) updates[field] = req.body[field];
+    }
+    if (updates.time !== undefined) {
+      const t = String(updates.time || '').trim();
+      const m = t.match(/^(\d{1,2}):(\d{2})/);
+      updates.time = m ? `${String(m[1]).padStart(2, '0')}:${m[2]}` : t.slice(0, 5);
+    }
+
+    if (updates.date !== undefined || updates.time !== undefined) {
+      const nextDate = updates.date !== undefined ? updates.date : appt.date;
+      const nextTime = updates.time !== undefined ? updates.time : appt.time;
+      if (isDateTimeInPast(nextDate, nextTime)) {
+        const sameDate = String(nextDate).slice(0, 10) === String(appt.date || '').slice(0, 10);
+        const sameTime = String(nextTime || '').slice(0, 5) === String(appt.time || '').slice(0, 5);
+        // Allow editing other fields on an already-past appointment without changing schedule
+        if (!(sameDate && sameTime)) {
+          return res.status(400).json({ message: pastBookingMessage() });
+        }
+      }
     }
     // Staff cannot reassign appointment to another stylist
     if (!isTeamAppointmentRole(roleOf(req))) {

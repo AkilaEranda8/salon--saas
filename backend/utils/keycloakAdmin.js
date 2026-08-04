@@ -303,12 +303,20 @@ async function updateUser(dbUserId, updates) {
   }
 
   const h = await headers();
-  const patch = { attributes: { ...kcUser.attributes } };
+  const patch = {
+    username: kcUser.username,
+    enabled: kcUser.enabled !== false,
+    email: kcUser.email || '',
+    firstName: kcUser.firstName || kcUser.username || 'User',
+    lastName: kcUser.lastName || '-',
+    emailVerified: !!kcUser.emailVerified,
+    attributes: { ...(kcUser.attributes || {}) },
+  };
 
   if (updates.name !== undefined) {
     const parts       = (updates.name || '').trim().split(' ');
-    patch.firstName   = parts[0] || kcUser.firstName;
-    patch.lastName    = parts.slice(1).join(' ') || '';
+    patch.firstName   = parts[0] || patch.firstName;
+    patch.lastName    = parts.slice(1).join(' ') || patch.lastName || '-';
   }
   if (updates.email !== undefined) {
     const trimmed = updates.email && String(updates.email).trim()
@@ -321,11 +329,22 @@ async function updateUser(dbUserId, updates) {
   if (updates.role     !== undefined) patch.attributes.salonRole             = [updates.role];
   if (updates.branchId !== undefined) patch.attributes.branchId              = [String(updates.branchId ?? '')];
 
+  // Ensure required name fields are never blank (Keycloak realm policy)
+  if (!String(patch.firstName || '').trim()) patch.firstName = kcUser.username || 'User';
+  if (!String(patch.lastName || '').trim()) patch.lastName = '-';
+
   await axios.put(`${baseUrl()}/users/${kcUser.id}`, patch, { headers: h });
 
-  // Role change requires the role-mapping endpoint
+  // Role change requires the role-mapping endpoint (non-fatal — attribute claim is primary)
   if (updates.role !== undefined) {
-    await assignRole(kcUser.id, updates.role);
+    try {
+      await assignRole(kcUser.id, updates.role);
+    } catch (err) {
+      console.warn(
+        `[KC] assignRole failed for dbUserId=${dbUserId} role=${updates.role}:`,
+        err.response?.data || err.message
+      );
+    }
   }
 }
 

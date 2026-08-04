@@ -7,6 +7,9 @@ const SLOT_INTERVAL_MIN = 15;
 /** Attendance statuses that mean staff cannot take online bookings that day. */
 const BLOCKING_ATTENDANCE_STATUSES = ['leave', 'absent'];
 
+/** Salon wall-clock timezone (Sri Lanka). */
+const SALON_TZ = 'Asia/Colombo';
+
 function parseDurationMinutes(raw, fallback = 30) {
   const n = Number.parseInt(raw, 10);
   return Number.isFinite(n) && n > 0 ? n : fallback;
@@ -15,6 +18,54 @@ function parseDurationMinutes(raw, fallback = 30) {
 function timeToMinutes(hhmm) {
   const [h, m] = String(hhmm || '00:00').substring(0, 5).split(':').map(Number);
   return (Number(h) || 0) * 60 + (Number(m) || 0);
+}
+
+/**
+ * Current salon date/time (Asia/Colombo).
+ * @returns {{ date: string, time: string, minutes: number }}
+ */
+function getSalonNow() {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: SALON_TZ,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(new Date());
+  const get = (type) => parts.find((p) => p.type === type)?.value;
+  const date = `${get('year')}-${get('month')}-${get('day')}`;
+  let hour = get('hour');
+  if (hour === '24') hour = '00'; // en-GB midnight quirk
+  const time = `${hour}:${get('minute')}`;
+  return { date, time, minutes: timeToMinutes(time) };
+}
+
+/** True when date+time is strictly before salon "now". */
+function isDateTimeInPast(dateStr, timeStr) {
+  const dateKey = String(dateStr || '').slice(0, 10);
+  const t = String(timeStr || '').trim().slice(0, 5);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey) || !t) return false;
+  const now = getSalonNow();
+  if (dateKey < now.date) return true;
+  if (dateKey > now.date) return false;
+  return timeToMinutes(t) < now.minutes;
+}
+
+function pastBookingMessage() {
+  return 'Cannot book a past date or time. Choose a current or future slot.';
+}
+
+/** Drop slots that already started (today). Past calendar days → empty. */
+function filterFutureSlots(slots, dateStr) {
+  const dateKey = String(dateStr || '').slice(0, 10);
+  const list = Array.isArray(slots) ? slots : [];
+  if (!dateKey || !list.length) return list;
+  const now = getSalonNow();
+  if (dateKey < now.date) return [];
+  if (dateKey > now.date) return list;
+  return list.filter((s) => timeToMinutes(s) >= now.minutes);
 }
 
 /** Total blocked minutes for an appointment (sum linked services, else primary). */
@@ -249,11 +300,14 @@ async function listAvailableSlots({
     branchId: scopeBranchConflicts ? branchId : null,
   });
 
-  const slots = generateAvailableSlots({
-    dayWindow,
-    durationMinutes,
-    blockedRanges,
-  });
+  const slots = filterFutureSlots(
+    generateAvailableSlots({
+      dayWindow,
+      durationMinutes,
+      blockedRanges,
+    }),
+    dateKey,
+  );
 
   return {
     slots,
@@ -268,8 +322,13 @@ async function listAvailableSlots({
 module.exports = {
   SLOT_INTERVAL_MIN,
   BLOCKING_ATTENDANCE_STATUSES,
+  SALON_TZ,
   parseDurationMinutes,
   timeToMinutes,
+  getSalonNow,
+  isDateTimeInPast,
+  pastBookingMessage,
+  filterFutureSlots,
   appointmentBlockDuration,
   buildConflictWhere,
   loadBlockedRanges,

@@ -167,10 +167,10 @@ def _parse_phone(text: str) -> Optional[str]:
     return None
 
 
-def _format_services(services: list) -> str:
+def _format_services(services: list, *, title: str | None = None) -> str:
     if not services:
         return "Sorry, no services available right now."
-    lines = ["Here are our services:\n"]
+    lines = [title or "Here are the matching services:\n"]
     current_cat = None
     for i, s in enumerate(services, 1):
         cat = s.get("category", "Other")
@@ -179,6 +179,69 @@ def _format_services(services: list) -> str:
             current_cat = cat
         lines.append(f"  {i}. {s['name']} — Rs. {s['price']} ({s['duration_minutes']} mins)")
     return "\n".join(lines)
+
+
+def _service_categories(services: list) -> list[str]:
+    cats: list[str] = []
+    seen = set()
+    for s in services:
+        c = str(s.get("category") or "Other").strip() or "Other"
+        key = c.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        cats.append(c)
+    return cats
+
+
+def _wants_all_services(text: str) -> bool:
+    return bool(
+        re.search(
+            r"all\s*services|full\s*(service\s*)?list|complete\s*list|every\s*service|"
+            r"okkoma|okkom|සියලු|සියලුම|all\s*price",
+            text or "",
+            re.I,
+        )
+    )
+
+
+def _filter_services(services: list, text: str) -> list:
+    """Match by category or name tokens; empty if only a vague ask."""
+    if not services:
+        return []
+    if _wants_all_services(text):
+        return list(services)
+    q = (text or "").lower()
+    cats = _service_categories(services)
+    # Category hit
+    cat_hits = [c for c in cats if c.lower() in q and len(c) >= 3]
+    if cat_hits:
+        return [
+            s for s in services
+            if str(s.get("category") or "").lower() in {c.lower() for c in cat_hits}
+        ]
+    tokens = [t for t in re.split(r"[^\w\u0D80-\u0DFF]+", q) if len(t) >= 3]
+    stop = {"service", "services", "price", "prices", "list", "what", "have", "offer", "show", "tell", "about", "please"}
+    tokens = [t for t in tokens if t not in stop]
+    if not tokens:
+        return []
+    out = []
+    for s in services:
+        blob = f"{s.get('name','')} {s.get('category','')} {s.get('description','')}".lower()
+        if any(t in blob for t in tokens):
+            out.append(s)
+    return out
+
+
+def _ask_service_type(services: list) -> str:
+    cats = _service_categories(services)
+    cat_txt = ", ".join(cats[:10]) if cats else "Hair, Beauty, Bridal, Nails"
+    return (
+        "Sure! What kind of service are you looking for?\n"
+        f"Examples: {cat_txt}\n\n"
+        "Tell me the type (or a service name), and I’ll show matching options with prices.\n"
+        "Or say **all services** if you want the full list."
+    )
 
 
 def _format_staff(staff: list) -> str:
@@ -504,16 +567,43 @@ async def handle_message(
 
     if intent == "check_services":
         services = await salon_api.get_services(tenant_id=effective_tenant)
-        reply = _format_services(services) + "\n\nWould you like to book one? Just say **book**!"
+        sess.services = services
+        matched = _filter_services(services, text)
+        if _wants_all_services(text):
+            reply = (
+                _format_services(services, title="Here are all our services:\n")
+                + "\n\nWould you like to book one? Just say **book**!"
+            )
+        elif matched:
+            reply = (
+                _format_services(matched)
+                + "\n\nWant a different type, or say **all services** for the full list. "
+                "Ready to book? Say **book**!"
+            )
+        else:
+            reply = _ask_service_type(services)
         add_to_history(session_id, "bot", reply)
         return reply
 
     if intent == "check_prices":
         services = await salon_api.get_services(tenant_id=effective_tenant)
-        lines = ["**Price List:**\n"]
-        for s in services:
-            lines.append(f"• {s['name']}: Rs. {s['price']}")
-        reply = "\n".join(lines) + "\n\nWant to book? Say **book**!"
+        sess.services = services
+        matched = _filter_services(services, text)
+        if _wants_all_services(text):
+            lines = ["**Full price list:**\n"]
+            for s in services:
+                lines.append(f"• {s['name']}: Rs. {s['price']}")
+            reply = "\n".join(lines) + "\n\nWant to book? Say **book**!"
+        elif matched:
+            lines = ["**Matching prices:**\n"]
+            for s in matched:
+                lines.append(f"• {s['name']}: Rs. {s['price']}")
+            reply = (
+                "\n".join(lines)
+                + "\n\nNeed another category, or say **all services**. Book with **book**!"
+            )
+        else:
+            reply = _ask_service_type(services)
         add_to_history(session_id, "bot", reply)
         return reply
 

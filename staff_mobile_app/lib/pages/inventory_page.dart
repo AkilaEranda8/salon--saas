@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../models/mobile_feature.dart';
 import '../state/app_state.dart';
 import 'inv_consumption_page.dart';
 import 'inv_day_end_page.dart';
@@ -16,9 +15,7 @@ class InventoryPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final app = AppStateScope.of(context);
-    final allowed =
-        app.isFeatureEnabled(MobileFeatures.inventory) &&
-        app.isTenantFeatureEnabled('inventory');
+    final allowed = app.canAccessInventory;
 
     if (!allowed) {
       return Scaffold(
@@ -32,7 +29,7 @@ class InventoryPage extends StatelessWidget {
     }
 
     final actions = <_InventoryAction>[
-      if (app.canManageSalonStaff)
+      if (app.canManageInventoryStock)
         const _InventoryAction(
           title: 'Products',
           subtitle: 'Catalog, opening stock, edit & deactivate',
@@ -40,7 +37,7 @@ class InventoryPage extends StatelessWidget {
           colors: [Color(0xFFB45309), Color(0xFFF59E0B)],
           page: InvStockManagementPage(initialTab: 0),
         ),
-      if (app.canManageSalonStaff)
+      if (app.canManageInventoryStock)
         const _InventoryAction(
           title: 'Goods Received',
           subtitle: 'GRN — receive goods and increase stock',
@@ -62,7 +59,7 @@ class InventoryPage extends StatelessWidget {
         colors: [Color(0xFF1D4ED8), Color(0xFF3B82F6)],
         page: InvDayEndPage(),
       ),
-      if (app.canManageSalonStaff)
+      if (app.canManageInventoryStock)
         const _InventoryAction(
           title: 'Adjustments',
           subtitle: 'Immediate stock + or − with reason',

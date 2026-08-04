@@ -194,7 +194,7 @@ class _InvConsumptionPageState extends State<InvConsumptionPage> {
         backgroundColor: _forest,
         foregroundColor: Colors.white,
         title: const Text(
-          'Product Consumption',
+          'Product Usage',
           style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
         ),
         actions: [
@@ -520,11 +520,14 @@ class _RecordConsumptionSheetState extends State<_RecordConsumptionSheet> {
 
   List<Customer> get _filteredCustomers {
     final q = _customerSearch.text.trim().toLowerCase();
-    if (q.isEmpty) return widget.customers;
-    return widget.customers.where((c) {
-      return c.name.toLowerCase().contains(q) ||
-          c.phone.toLowerCase().contains(q);
-    }).toList();
+    // Show all when searching; when idle show a capped preview so the dropdown stays usable.
+    final source = q.isEmpty
+        ? widget.customers
+        : widget.customers.where((c) {
+            return c.name.toLowerCase().contains(q) ||
+                c.phone.toLowerCase().contains(q);
+          });
+    return source.take(q.isEmpty ? 150 : 200).toList();
   }
 
   List<SalonService> get _filteredServices {
@@ -596,6 +599,50 @@ class _RecordConsumptionSheetState extends State<_RecordConsumptionSheet> {
     );
   }
 
+  Widget _label(String text) => Padding(
+        padding: const EdgeInsets.only(bottom: 6),
+        child: Text(
+          text,
+          style: const TextStyle(
+            color: Color(0xFF6B7280),
+            fontSize: 11.5,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 0.5,
+          ),
+        ),
+      );
+
+  InputDecoration _deco(
+    String hint,
+    IconData icon, {
+    bool required = false,
+    bool dense = false,
+  }) =>
+      InputDecoration(
+        hintText: required ? hint : (hint.contains('optional') ? hint : '$hint (optional)'),
+        hintStyle: const TextStyle(color: Color(0xFFB0B8B0), fontSize: 14),
+        prefixIcon: Icon(icon, color: _forest, size: 19),
+        filled: true,
+        fillColor: const Color(0xFFF9FAFB),
+        isDense: dense,
+        contentPadding: EdgeInsets.symmetric(
+          horizontal: 14,
+          vertical: dense ? 10 : 13,
+        ),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: _border),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: _border),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: _forest, width: 1.8),
+        ),
+      );
+
   @override
   Widget build(BuildContext context) {
     final bottom = MediaQuery.of(context).viewInsets.bottom;
@@ -608,47 +655,135 @@ class _RecordConsumptionSheetState extends State<_RecordConsumptionSheet> {
       height: height,
       decoration: const BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
-      padding: EdgeInsets.fromLTRB(18, 18, 18, bottom + 18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Record Product Usage',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+          Center(
+            child: Container(
+              margin: const EdgeInsets.only(top: 12, bottom: 10),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: const Color(0xFFE5E7EB),
+                borderRadius: BorderRadius.circular(99),
+              ),
+            ),
           ),
-          const SizedBox(height: 5),
-          const Text(
-            'Tick products, enter qty + unit. Optionally pick customer & service.',
-            style: TextStyle(color: Color(0xFF6B7280), fontSize: 12),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 16, 0),
+            child: Row(
+              children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFECFDF5),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFFA7F3D0)),
+                  ),
+                  child: const Icon(Icons.science_rounded, color: _forest, size: 19),
+                ),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Record Product Usage',
+                        style: TextStyle(
+                          color: Color(0xFF111827),
+                          fontSize: 17,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: -0.2,
+                        ),
+                      ),
+                      Text(
+                        'Select products & optional customer details',
+                        style: TextStyle(
+                          color: Color(0xFFADB5BD),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                GestureDetector(
+                  onTap: () => Navigator.of(context).pop(),
+                  child: Container(
+                    width: 32,
+                    height: 32,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF3F4F6),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(Icons.close_rounded, size: 16, color: Color(0xFF6B7280)),
+                  ),
+                ),
+              ],
+            ),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 8),
+          const Divider(height: 1, color: Color(0xFFF3F4F6)),
           Expanded(
             child: ListView(
+              padding: EdgeInsets.fromLTRB(20, 16, 20, 12),
               children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFECFDF5),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFFA7F3D0)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.event_rounded, size: 18, color: _forest),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Usage date · ${widget.date}',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 13,
+                          color: _forest,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 18),
+                _label('STYLIST'),
                 DropdownButtonFormField<String>(
                   initialValue: _staffId,
-                  decoration: const InputDecoration(
-                    labelText: 'Stylist (optional)',
-                    border: OutlineInputBorder(),
-                  ),
+                  isExpanded: true,
+                  decoration: _deco('Select stylist', Icons.person_outline_rounded),
                   items: [
                     const DropdownMenuItem(value: '', child: Text('None')),
                     ...widget.staff.map(
-                      (s) => DropdownMenuItem(value: s.id, child: Text(s.name)),
+                      (s) => DropdownMenuItem(
+                        value: s.id,
+                        child: Text(s.name, overflow: TextOverflow.ellipsis),
+                      ),
                     ),
                   ],
                   onChanged: (value) => setState(() => _staffId = value ?? ''),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 14),
+                _label('CUSTOMER'),
                 TextField(
                   controller: _customerSearch,
-                  decoration: const InputDecoration(
-                    labelText: 'Search customer',
-                    border: OutlineInputBorder(),
-                    prefixIcon: Icon(Icons.search_rounded),
-                    isDense: true,
+                  decoration: _deco(
+                    widget.customers.isEmpty
+                        ? 'No customers loaded'
+                        : 'Search name or phone · ${widget.customers.length} loaded',
+                    Icons.search_rounded,
+                    dense: true,
+                  ).copyWith(
+                    hintText: widget.customers.isEmpty
+                        ? 'No customers loaded'
+                        : 'Search name or phone · ${widget.customers.length} loaded',
                   ),
                   onChanged: (_) => setState(() {}),
                 ),
@@ -658,9 +793,12 @@ class _RecordConsumptionSheetState extends State<_RecordConsumptionSheet> {
                           filteredCustomers.any((c) => c.id == _customerId)
                       ? (_customerId.isEmpty ? '' : _customerId)
                       : '',
-                  decoration: const InputDecoration(
-                    labelText: 'Customer (optional)',
-                    border: OutlineInputBorder(),
+                  isExpanded: true,
+                  decoration: _deco(
+                    filteredCustomers.length < widget.customers.length
+                        ? 'Showing ${filteredCustomers.length} matches'
+                        : 'Select customer',
+                    Icons.people_outline_rounded,
                   ),
                   items: [
                     const DropdownMenuItem(value: '', child: Text('None')),
@@ -668,26 +806,20 @@ class _RecordConsumptionSheetState extends State<_RecordConsumptionSheet> {
                       (c) => DropdownMenuItem(
                         value: c.id,
                         child: Text(
-                          c.phone.trim().isEmpty
-                              ? c.name
-                              : '${c.name} — ${c.phone}',
+                          c.phone.trim().isEmpty ? c.name : '${c.name} — ${c.phone}',
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
                     ),
                   ],
-                  onChanged: (value) =>
-                      setState(() => _customerId = value ?? ''),
+                  onChanged: (value) => setState(() => _customerId = value ?? ''),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 14),
+                _label('SERVICE'),
                 TextField(
                   controller: _serviceSearch,
-                  decoration: const InputDecoration(
-                    labelText: 'Search service',
-                    border: OutlineInputBorder(),
-                    prefixIcon: Icon(Icons.search_rounded),
-                    isDense: true,
-                  ),
+                  decoration: _deco('Search service', Icons.search_rounded, dense: true)
+                      .copyWith(hintText: 'Search service'),
                   onChanged: (_) => setState(() {}),
                 ),
                 const SizedBox(height: 8),
@@ -696,56 +828,57 @@ class _RecordConsumptionSheetState extends State<_RecordConsumptionSheet> {
                           filteredServices.any((s) => s.id == _serviceId)
                       ? (_serviceId.isEmpty ? '' : _serviceId)
                       : '',
-                  decoration: const InputDecoration(
-                    labelText: 'Service (optional)',
-                    border: OutlineInputBorder(),
-                  ),
+                  isExpanded: true,
+                  decoration: _deco('Select service', Icons.content_cut_rounded),
                   items: [
                     const DropdownMenuItem(value: '', child: Text('None')),
                     ...filteredServices.map(
                       (s) => DropdownMenuItem(
                         value: s.id,
                         child: Text(
-                          s.category.trim().isEmpty
-                              ? s.name
-                              : '${s.name} — ${s.category}',
+                          s.category.trim().isEmpty ? s.name : '${s.name} — ${s.category}',
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
                     ),
                   ],
-                  onChanged: (value) =>
-                      setState(() => _serviceId = value ?? ''),
+                  onChanged: (value) => setState(() => _serviceId = value ?? ''),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 14),
+                _label('REASON'),
                 TextField(
                   controller: _reason,
                   maxLines: 2,
-                  decoration: const InputDecoration(
-                    labelText: 'Reason (optional)',
-                    hintText: 'e.g. Hair wash',
-                    border: OutlineInputBorder(),
-                  ),
+                  decoration: _deco('e.g. Hair wash', Icons.notes_rounded),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 20),
                 Row(
                   children: [
-                    const Expanded(
-                      child: Text(
-                        'PRODUCTS',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w800,
-                          color: Color(0xFF667085),
-                          letterSpacing: 0.4,
-                        ),
+                    const Text(
+                      'PRODUCTS',
+                      style: TextStyle(
+                        color: Color(0xFF6B7280),
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.5,
                       ),
                     ),
-                    Text(
-                      '$_selectedCount selected',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: Color(0xFF98A2B3),
+                    const Spacer(),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: _selectedCount > 0
+                            ? const Color(0xFFECFDF5)
+                            : const Color(0xFFF3F4F6),
+                        borderRadius: BorderRadius.circular(99),
+                      ),
+                      child: Text(
+                        '$_selectedCount selected',
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w700,
+                          color: _selectedCount > 0 ? _emerald : const Color(0xFF98A2B3),
+                        ),
                       ),
                     ),
                   ],
@@ -753,12 +886,8 @@ class _RecordConsumptionSheetState extends State<_RecordConsumptionSheet> {
                 const SizedBox(height: 8),
                 TextField(
                   controller: _productSearch,
-                  decoration: const InputDecoration(
-                    labelText: 'Search products',
-                    border: OutlineInputBorder(),
-                    prefixIcon: Icon(Icons.search_rounded),
-                    isDense: true,
-                  ),
+                  decoration: _deco('Search products', Icons.search_rounded, dense: true)
+                      .copyWith(hintText: 'Search products'),
                   onChanged: (_) => setState(() {}),
                 ),
                 const SizedBox(height: 10),
@@ -770,7 +899,7 @@ class _RecordConsumptionSheetState extends State<_RecordConsumptionSheet> {
                       color: line.selected
                           ? const Color(0xFFECFDF5)
                           : const Color(0xFFF9FAFB),
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(14),
                       border: Border.all(
                         color: line.selected
                             ? const Color(0xFFA7F3D0)
@@ -784,6 +913,9 @@ class _RecordConsumptionSheetState extends State<_RecordConsumptionSheet> {
                             Checkbox(
                               value: line.selected,
                               activeColor: _emerald,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(5),
+                              ),
                               onChanged: (v) {
                                 setState(() => line.selected = v ?? false);
                               },
@@ -796,14 +928,15 @@ class _RecordConsumptionSheetState extends State<_RecordConsumptionSheet> {
                                     line.name,
                                     style: const TextStyle(
                                       fontWeight: FontWeight.w700,
-                                      fontSize: 13,
+                                      fontSize: 13.5,
+                                      color: Color(0xFF111827),
                                     ),
                                   ),
                                   Text(
                                     line.stockLabel,
                                     style: const TextStyle(
                                       color: Color(0xFF6B7280),
-                                      fontSize: 11,
+                                      fontSize: 11.5,
                                     ),
                                   ),
                                 ],
@@ -813,45 +946,48 @@ class _RecordConsumptionSheetState extends State<_RecordConsumptionSheet> {
                         ),
                         if (line.selected)
                           Padding(
-                            padding: const EdgeInsets.only(left: 8, right: 4),
+                            padding: const EdgeInsets.only(left: 8, right: 4, top: 4),
                             child: Row(
                               children: [
                                 Expanded(
                                   child: TextField(
                                     controller: line.qty,
-                                    keyboardType:
-                                        const TextInputType.numberWithOptions(
+                                    keyboardType: const TextInputType.numberWithOptions(
                                       decimal: true,
                                     ),
-                                    decoration: const InputDecoration(
-                                      labelText: 'Qty',
-                                      border: OutlineInputBorder(),
-                                      isDense: true,
-                                    ),
+                                    decoration: _deco('Qty', Icons.scale_rounded, dense: true)
+                                        .copyWith(hintText: 'Qty'),
                                   ),
                                 ),
                                 const SizedBox(width: 8),
                                 SizedBox(
-                                  width: 100,
+                                  width: 110,
                                   child: DropdownButtonFormField<String>(
                                     initialValue: line.unit,
-                                    decoration: const InputDecoration(
-                                      labelText: 'Unit',
-                                      border: OutlineInputBorder(),
+                                    decoration: InputDecoration(
+                                      filled: true,
+                                      fillColor: const Color(0xFFF9FAFB),
                                       isDense: true,
+                                      contentPadding: const EdgeInsets.symmetric(
+                                        horizontal: 12,
+                                        vertical: 10,
+                                      ),
+                                      border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                        borderSide: const BorderSide(color: _border),
+                                      ),
+                                      enabledBorder: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                        borderSide: const BorderSide(color: _border),
+                                      ),
                                     ),
                                     items: _units
                                         .map(
-                                          (u) => DropdownMenuItem(
-                                            value: u,
-                                            child: Text(u),
-                                          ),
+                                          (u) => DropdownMenuItem(value: u, child: Text(u)),
                                         )
                                         .toList(),
                                     onChanged: (value) {
-                                      setState(() {
-                                        line.unit = value ?? line.unit;
-                                      });
+                                      setState(() => line.unit = value ?? line.unit);
                                     },
                                   ),
                                 ),
@@ -864,7 +1000,7 @@ class _RecordConsumptionSheetState extends State<_RecordConsumptionSheet> {
                 }),
                 if (filteredLines.isEmpty)
                   const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 20),
+                    padding: EdgeInsets.symmetric(vertical: 24),
                     child: Center(
                       child: Text(
                         'No products match your search.',
@@ -875,32 +1011,64 @@ class _RecordConsumptionSheetState extends State<_RecordConsumptionSheet> {
               ],
             ),
           ),
-          const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton.icon(
-              onPressed: _saving ? null : _save,
-              style: FilledButton.styleFrom(
-                backgroundColor: _emerald,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 14),
-              ),
-              icon: _saving
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
+          Container(
+            padding: EdgeInsets.fromLTRB(20, 12, 20, bottom + 20),
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              border: Border(top: BorderSide(color: Color(0xFFF3F4F6))),
+            ),
+            child: GestureDetector(
+              onTap: _saving ? null : _save,
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 15),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: _saving
+                        ? [const Color(0xFF93C5AA), const Color(0xFF93C5AA)]
+                        : const [_forest, _emerald],
+                    begin: Alignment.centerLeft,
+                    end: Alignment.centerRight,
+                  ),
+                  borderRadius: BorderRadius.circular(14),
+                  boxShadow: [
+                    BoxShadow(
+                      color: _forest.withValues(alpha: 0.28),
+                      blurRadius: 14,
+                      offset: const Offset(0, 5),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    if (_saving)
+                      const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    else
+                      const Icon(Icons.save_rounded, color: Colors.white, size: 18),
+                    const SizedBox(width: 9),
+                    Text(
+                      _saving
+                          ? 'Saving...'
+                          : (_selectedCount > 0
+                              ? 'Save Pending ($_selectedCount)'
+                              : 'Save Pending'),
+                      style: const TextStyle(
                         color: Colors.white,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.2,
                       ),
-                    )
-                  : const Icon(Icons.save_rounded),
-              label: Text(
-                _saving
-                    ? 'Saving...'
-                    : (_selectedCount > 0
-                        ? 'Save Pending ($_selectedCount)'
-                        : 'Save Pending'),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),

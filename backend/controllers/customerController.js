@@ -9,14 +9,15 @@ const {
 
 /**
  * Branch filter for customers:
- * - Branch-scoped users see their branch + customers with no branch (shared).
- * - Optional ?branchId= same rule for admins filtering a branch.
+ * - Explicit ?branchId= filters that branch + shared (null branch) customers.
+ * - Without ?branchId=, return all customers for the tenant (booking / inventory pickers).
+ * - JWT branch is NOT applied on list — managers need full salon customer pickers.
  */
 const getCustomerListWhere = (req) => {
   const where = tenantWhere(req);
   const and = [];
 
-  const branchId = req.userBranchId || req.query.branchId || null;
+  const branchId = req.query.branchId || null;
   if (branchId) {
     and.push({
       [Op.or]: [

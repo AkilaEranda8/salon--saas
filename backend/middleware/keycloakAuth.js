@@ -27,12 +27,50 @@ const PERMISSIONS = {
   staff:          { del: false, branches: false, users: false, all: false, services: false, staff: false },
 };
 
+// Short-lived DB role cache so drifted Keycloak salon_role claims don't block managers.
+const _roleCache = new Map(); // dbUserId -> { role, branchId, tenantId, at }
+const ROLE_CACHE_MS = 60_000;
+
+async function hydrateUserFromDb(user) {
+  if (!user?.id) return user;
+  const cached = _roleCache.get(user.id);
+  if (cached && Date.now() - cached.at < ROLE_CACHE_MS) {
+    user.role = cached.role;
+    if (cached.branchId != null) user.branchId = cached.branchId;
+    if (cached.tenantId != null) user.tenantId = cached.tenantId;
+    return user;
+  }
+  try {
+    const { User } = require('../models');
+    const row = await User.findByPk(user.id, {
+      attributes: ['id', 'role', 'branch_id', 'tenant_id', 'is_active'],
+    });
+    if (row && row.is_active !== false) {
+      const role = String(row.role || '').trim().toLowerCase();
+      if (role) user.role = role;
+      if (row.branch_id != null) user.branchId = Number(row.branch_id);
+      if (row.tenant_id != null) user.tenantId = Number(row.tenant_id);
+      _roleCache.set(user.id, {
+        role: user.role,
+        branchId: user.branchId ?? null,
+        tenantId: user.tenantId ?? null,
+        at: Date.now(),
+      });
+    }
+  } catch (err) {
+    console.warn('[KC auth] DB role hydrate skipped:', err.message);
+  }
+  return user;
+}
+
 // ─── Map Keycloak token claims → existing req.user shape ─────────────────────
 function mapClaims(decoded) {
   return {
     id:         decoded.db_user_id  ? Number(decoded.db_user_id)  : null,
     username:   decoded.preferred_username ?? null,
-    role:       decoded.salon_role  ?? null,
+    role:       decoded.salon_role != null
+      ? String(decoded.salon_role).trim().toLowerCase()
+      : null,
     branchId:   decoded.branch_id   ? Number(decoded.branch_id)   : null,
     name:       decoded.name        ?? null,
     tenantId:   decoded.tenant_id   ? Number(decoded.tenant_id)   : null,
@@ -58,9 +96,18 @@ const verifyToken = (req, res, next) => {
       return res.status(403).json({ message: 'Invalid or expired token.' });
     }
 
-    req.user        = mapClaims(decoded);
-    req.userTenantId = req.user.role === 'platform_admin' ? null : (req.user.tenantId ?? null);
-    next();
+    const user = mapClaims(decoded);
+    hydrateUserFromDb(user)
+      .then((hydrated) => {
+        req.user = hydrated;
+        req.userTenantId = hydrated.role === 'platform_admin' ? null : (hydrated.tenantId ?? null);
+        next();
+      })
+      .catch(() => {
+        req.user = user;
+        req.userTenantId = user.role === 'platform_admin' ? null : (user.tenantId ?? null);
+        next();
+      });
   });
 };
 
@@ -76,9 +123,18 @@ const optionalVerifyToken = (req, res, next) => {
 
   jwt.verify(token, getKey, { algorithms: ['RS256'] }, (err, decoded) => {
     if (err) return res.json({ user: null });
-    req.user        = mapClaims(decoded);
-    req.userTenantId = req.user.role === 'platform_admin' ? null : (req.user.tenantId ?? null);
-    next();
+    const user = mapClaims(decoded);
+    hydrateUserFromDb(user)
+      .then((hydrated) => {
+        req.user = hydrated;
+        req.userTenantId = hydrated.role === 'platform_admin' ? null : (hydrated.tenantId ?? null);
+        next();
+      })
+      .catch(() => {
+        req.user = user;
+        req.userTenantId = user.role === 'platform_admin' ? null : (user.tenantId ?? null);
+        next();
+      });
   });
 };
 
@@ -87,7 +143,9 @@ const requireRole = (...roles) => (req, res, next) => {
   if (!req.user) {
     return res.status(401).json({ message: 'Not authenticated.' });
   }
-  if (!roles.includes(req.user.role)) {
+  const userRole = String(req.user.role || '').trim().toLowerCase();
+  const allowed = roles.map((r) => String(r).trim().toLowerCase());
+  if (!allowed.includes(userRole)) {
     return res.status(403).json({ message: 'Access denied. Insufficient permissions.' });
   }
   next();

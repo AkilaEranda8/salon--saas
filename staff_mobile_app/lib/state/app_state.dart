@@ -273,9 +273,19 @@ class AppState extends ChangeNotifier {
   }
 
   bool get canManageSalonStaff {
-    final role = (_currentUser?.role ?? '').toLowerCase();
+    final role = (_currentUser?.role ?? '').trim().toLowerCase();
     return role == 'superadmin' || role == 'admin' || role == 'manager';
   }
+
+  /// Inventory hub + stock ops: managers/admins always when tenant module is on.
+  bool get canAccessInventory {
+    if (!isTenantFeatureEnabled('inventory')) return false;
+    if (canManageSalonStaff) return true;
+    return isFeatureEnabled(MobileFeatures.inventory);
+  }
+
+  /// Products / GRN / adjustments — managers and admins.
+  bool get canManageInventoryStock => canManageSalonStaff;
 
   /// Admin/manager/superadmin see all branch appointments; staff see only own.
   bool get seesAllBranchAppointments => canManageSalonStaff;
@@ -387,15 +397,17 @@ class AppState extends ChangeNotifier {
     return true;
   }
 
-  Future<List<Customer>> loadCustomers() async {
+  Future<List<Customer>> loadCustomers({bool allBranches = true}) async {
     if (!hasPermission(StaffPermission.canViewCustomers)) return const [];
     final token = _currentUser?.authToken;
     if (token == null || token.isEmpty) {
       throw Exception('Missing auth token (cannot load customers).');
     }
+    // Inventory / booking pickers need the full salon customer list (tenant-wide).
     final loaded = await _api.fetchCustomers(
       token: token,
-      branchId: _currentUser?.branchId,
+      branchId: allBranches ? null : _currentUser?.branchId,
+      limit: 500,
     );
     _customers
       ..clear()

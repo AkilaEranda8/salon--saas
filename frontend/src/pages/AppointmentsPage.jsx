@@ -146,6 +146,63 @@ const EMPTY = {
 };
 const LIMIT = 20;
 
+/** Local calendar date YYYY-MM-DD (avoid UTC shift). */
+function localToday() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+/** Local HH:MM wall clock. */
+function localNowTime() {
+  const d = new Date();
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+function timeToMinutesLocal(t) {
+  const [h, m] = String(t || '00:00').slice(0, 5).split(':').map(Number);
+  return (Number(h) || 0) * 60 + (Number(m) || 0);
+}
+
+/** True when date+time is before now (browser local — salon PCs use Sri Lanka time). */
+function isPastDateTime(dateStr, timeStr) {
+  const d = String(dateStr || '').slice(0, 10);
+  const t = normalizeApptTime(timeStr);
+  if (!d || !t) return false;
+  const today = localToday();
+  if (d < today) return true;
+  if (d > today) return false;
+  return timeToMinutesLocal(t) < timeToMinutesLocal(localNowTime());
+}
+
+function filterFutureSlotsLocal(slots, dateStr) {
+  const list = Array.isArray(slots) ? slots : [];
+  const d = String(dateStr || '').slice(0, 10);
+  if (!d || !list.length) return list;
+  const today = localToday();
+  if (d < today) return [];
+  if (d > today) return list.map(normalizeApptTime);
+  const nowMin = timeToMinutesLocal(localNowTime());
+  return list.map(normalizeApptTime).filter((s) => timeToMinutesLocal(s) >= nowMin);
+}
+
+/** Normalize to HH:MM for slot compare + API. */
+function normalizeApptTime(t) {
+  if (t == null || t === '') return '';
+  const s = String(t).trim();
+  const m = s.match(/^(\d{1,2}):(\d{2})/);
+  if (!m) return s.slice(0, 5);
+  return `${String(m[1]).padStart(2, '0')}:${m[2]}`;
+}
+
+function slotListIncludes(slots, time) {
+  const nt = normalizeApptTime(time);
+  if (!nt || !Array.isArray(slots) || !slots.length) return false;
+  return slots.some((s) => normalizeApptTime(s) === nt);
+}
+
 function StatusBadge({ status, dark = false }) {
   const m = STATUS_META[status] ?? STATUS_META.pending;
   const bg = dark ? `${m.color}22` : m.bg;
@@ -211,7 +268,7 @@ export default function AppointmentsPage() {
   const navigate     = useNavigate();
   const canEdit      = ['superadmin','admin','manager','staff'].includes(user?.role);
   const isSuperAdmin = user?.role === 'superadmin';
-  const today        = new Date().toISOString().slice(0,10);
+  const today        = localToday();
 
   const [appts, setAppts]         = useState([]);
   const [total, setTotal]         = useState(0);
@@ -738,11 +795,18 @@ export default function AppointmentsPage() {
       if (multiBooking) {
         const missing = apptServiceIds.find((id) => {
           const a = serviceAssignments[String(id)] || {};
-          return !a.date || !a.time;
+          return !a.date || !normalizeApptTime(a.time);
         });
         if (missing) {
           const svc = services.find((s) => Number(s.id) === Number(missing));
           return setFormErr(`Set date and time for ${svc?.name || 'each service'}`);
+        }
+        const pastItem = apptServiceIds.find((id) => {
+          const a = serviceAssignments[String(id)] || {};
+          return isPastDateTime(a.date, a.time);
+        });
+        if (pastItem) {
+          return setFormErr('Cannot book a past date or time. Choose a current or future slot.');
         }
         setSaving(true);
         try {
@@ -756,7 +820,7 @@ export default function AppointmentsPage() {
               service_id: Number(id),
               staff_id: a.staff_id || null,
               date: a.date,
-              time: a.time,
+              time: normalizeApptTime(a.time),
             };
           });
           const payload = {
@@ -791,7 +855,16 @@ export default function AppointmentsPage() {
       }
 
       // Default single booking: one staff + one time for all selected services
-      if (!form.date || !form.time) return setFormErr('Customer, service, date and time are required');
+      if (!form.date || !normalizeApptTime(form.time)) {
+        if (!form.date && !normalizeApptTime(form.time)) {
+          return setFormErr('Date and time are required');
+        }
+        if (!form.date) return setFormErr('Date is required');
+        return setFormErr('Time is required — pick an available slot or enter a time');
+      }
+      if (isPastDateTime(form.date, form.time)) {
+        return setFormErr('Cannot book a past date or time. Choose a current or future slot.');
+      }
       setSaving(true);
       try {
         const selectedSvcs = services.filter((s) => apptServiceIds.includes(Number(s.id)));
@@ -804,7 +877,7 @@ export default function AppointmentsPage() {
           phone: form.phone || '',
           staff_id: form.staff_id || null,
           date: form.date,
-          time: form.time,
+          time: normalizeApptTime(form.time),
           status: form.status || 'pending',
           service_id: primary?.id || form.service_id,
           service_ids: apptServiceIds,
@@ -836,7 +909,21 @@ export default function AppointmentsPage() {
       return;
     }
 
-    if (!form.date || !form.time) return setFormErr('Customer, service, date and time are required');
+    if (!form.date || !normalizeApptTime(form.time)) {
+      if (!form.date && !normalizeApptTime(form.time)) {
+        return setFormErr('Date and time are required');
+      }
+      if (!form.date) return setFormErr('Date is required');
+      return setFormErr('Time is required — pick an available slot or enter a time');
+    }
+    if (isPastDateTime(form.date, form.time)) {
+      const sameAsOriginal = editItem
+        && String(editItem.date || '').slice(0, 10) === String(form.date).slice(0, 10)
+        && normalizeApptTime(editItem.time) === normalizeApptTime(form.time);
+      if (!sameAsOriginal) {
+        return setFormErr('Cannot book a past date or time. Choose a current or future slot.');
+      }
+    }
     setSaving(true);
     try {
       const selectedSvcs = services.filter(s => apptServiceIds.includes(Number(s.id)));
@@ -850,24 +937,28 @@ export default function AppointmentsPage() {
         )
         : '';
       const payload = {
-        ...form,
-        service_id: primary?.id || form.service_id,
-        service_ids: apptServiceIds,
-        customer_package_id: usesPackage ? Number(bookingCustPackageId) || undefined : undefined,
+        staff_id: form.staff_id || null,
+        customer_name: form.customer_name,
+        phone: form.phone || '',
+        date: form.date,
+        time: normalizeApptTime(form.time),
         amount: Number(usesPackage ? getBookingBundlePrice() : (selectedSvcs.reduce((sum, s) => sum + Number(s.price || 0), 0) || form.amount || 0)),
         notes: [
           stripPackageLine(stripAdditionalServicesLine(form.notes || '')),
           pkgLine,
           extraNote,
         ].filter(Boolean).join('\n'),
+        service_id: primary?.id || form.service_id,
+        service_ids: apptServiceIds,
+        customer_package_id: usesPackage ? Number(bookingCustPackageId) || undefined : undefined,
+        is_recurring: !!form.is_recurring,
+        recurrence_frequency: form.is_recurring ? (form.recurrence_frequency || 'weekly') : null,
+        recurring_next_date: form.is_recurring ? (form.recurring_next_date || null) : null,
+        recurring_message_template_ids: form.is_recurring
+          ? (form.recurring_message_template_ids || [])
+          : null,
+        recurring_message_template_id: null,
       };
-      if (!payload.is_recurring) {
-        payload.recurrence_frequency = null;
-        payload.recurring_message_template_id = null;
-        payload.recurring_message_template_ids = null;
-      } else {
-        payload.recurring_message_template_id = null;
-      }
       await api.put(`/appointments/${editItem.id}`, payload);
       setShowForm(false); load();
     } catch (e) { setFormErr(e.response?.data?.message||'Save failed'); }
@@ -928,9 +1019,17 @@ export default function AppointmentsPage() {
     fetchSlots({ staffId: form.staff_id, date: form.date, duration: bookingDurationMinutes })
       .then((slots) => {
         if (cancelled) return;
-        setAvailableSlots(slots);
-        if (form.time && !slots.includes(form.time)) {
+        const normalized = filterFutureSlotsLocal(Array.isArray(slots) ? slots : [], form.date);
+        setAvailableSlots(normalized);
+        // Only clear time if API returned slots and current time is not among them.
+        // Empty slots = keep manual time entry (unless it is already past).
+        if (isPastDateTime(form.date, form.time)) {
           setForm((f) => ({ ...f, time: '' }));
+        } else if (normalized.length && form.time && !slotListIncludes(normalized, form.time)) {
+          setForm((f) => ({ ...f, time: '' }));
+        } else if (form.time) {
+          const nt = normalizeApptTime(form.time);
+          if (nt !== form.time) setForm((f) => ({ ...f, time: nt }));
         }
       })
       .finally(() => { if (!cancelled) setSlotsLoading(false); });
@@ -962,7 +1061,10 @@ export default function AppointmentsPage() {
         nextLoading[sid] = true;
         const svc = services.find((s) => Number(s.id) === Number(sid));
         const duration = Number(svc?.duration_minutes) || 30;
-        nextSlots[sid] = await fetchSlots({ staffId: a.staff_id, date: a.date, duration });
+        nextSlots[sid] = filterFutureSlotsLocal(
+          await fetchSlots({ staffId: a.staff_id, date: a.date, duration }),
+          a.date,
+        );
         nextLoading[sid] = false;
       }));
       if (cancelled) return;
@@ -972,7 +1074,18 @@ export default function AppointmentsPage() {
         let changed = false;
         const out = { ...prev };
         Object.entries(nextSlots).forEach(([sid, slots]) => {
-          if (out[sid]?.time && Array.isArray(slots) && !slots.includes(out[sid].time)) {
+          const cur = out[sid]?.time;
+          if (!cur) return;
+          const nt = normalizeApptTime(cur);
+          if (nt !== cur) {
+            out[sid] = { ...out[sid], time: nt };
+            changed = true;
+          }
+          // Clear if past or not in returned free slots
+          if (isPastDateTime(out[sid]?.date, nt)) {
+            out[sid] = { ...out[sid], time: '' };
+            changed = true;
+          } else if (Array.isArray(slots) && slots.length && !slotListIncludes(slots, nt)) {
             out[sid] = { ...out[sid], time: '' };
             changed = true;
           }
@@ -993,17 +1106,17 @@ export default function AppointmentsPage() {
         <div style={{ fontSize: 12, color: isDarkMode ? '#94A3B8' : '#64748B' }}>Loading slots…</div>
       ) : !slots.length ? (
         <div style={{ fontSize: 12, color: '#D97706' }}>
-          No free slots for this staff/date. Pick another staff or day, or enter a time manually below.
+          No free future slots for this staff/date. Past times are blocked — pick a later time, another staff, or day.
         </div>
       ) : (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
           {slots.map((t) => {
-            const active = value === t;
+            const active = normalizeApptTime(value) === normalizeApptTime(t);
             return (
               <button
                 key={t}
                 type="button"
-                onClick={() => onPick(t)}
+                onClick={() => onPick(normalizeApptTime(t))}
                 style={{
                   padding: '6px 10px', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer',
                   border: `1.5px solid ${active ? '#2563EB' : (isDarkMode ? '#334155' : '#E4E7EC')}`,
@@ -1885,22 +1998,33 @@ export default function AppointmentsPage() {
                               <Input
                                 type="date"
                                 value={a.date || ''}
+                                min={today}
                                 onChange={(e) => updateServiceAssignment(s.id, { date: e.target.value, time: '' })}
                               />
                             </FormGroup>
                             <FormGroup label="Time" required>
                               <Input
                                 type="time"
-                                value={a.time || ''}
-                                onChange={(e) => updateServiceAssignment(s.id, { time: e.target.value })}
+                                value={normalizeApptTime(a.time) || ''}
+                                min={a.date === today ? localNowTime() : undefined}
+                                onChange={(e) => {
+                                  const t = normalizeApptTime(e.target.value);
+                                  if (a.date && isPastDateTime(a.date, t)) {
+                                    setFormErr('Cannot book a past time. Choose a later slot.');
+                                    updateServiceAssignment(s.id, { time: '' });
+                                    return;
+                                  }
+                                  setFormErr('');
+                                  updateServiceAssignment(s.id, { time: t });
+                                }}
                               />
                             </FormGroup>
                           </div>
                           {!!a.staff_id && !!a.date && renderSlotChips({
                             slots: multiSlots[String(s.id)] || [],
                             loading: !!multiSlotsLoading[String(s.id)],
-                            value: a.time || '',
-                            onPick: (t) => updateServiceAssignment(s.id, { time: t }),
+                            value: normalizeApptTime(a.time) || '',
+                            onPick: (t) => updateServiceAssignment(s.id, { time: normalizeApptTime(t) }),
                             durationLabel: `${s.duration_minutes || 30} min`,
                             isDarkMode: isDark,
                           })}
@@ -1945,18 +2069,38 @@ export default function AppointmentsPage() {
                       <Input
                         type="date"
                         value={form.date || ''}
+                        min={!editItem ? today : undefined}
                         onChange={(e) => setForm((f) => ({ ...f, date: e.target.value, time: '' }))}
                       />
                     </FormGroup>
                     <FormGroup label="Time" required>
-                      <Input type="time" value={form.time || ''} onChange={(e) => setForm((f) => ({ ...f, time: e.target.value }))} />
+                      <Input
+                        type="time"
+                        value={normalizeApptTime(form.time) || ''}
+                        min={!editItem && form.date === today ? localNowTime() : undefined}
+                        onChange={(e) => {
+                          const t = normalizeApptTime(e.target.value);
+                          if (form.date && isPastDateTime(form.date, t)) {
+                            const sameAsOriginal = editItem
+                              && String(editItem.date || '').slice(0, 10) === String(form.date).slice(0, 10)
+                              && normalizeApptTime(editItem.time) === t;
+                            if (!sameAsOriginal) {
+                              setFormErr('Cannot book a past time. Choose a later slot.');
+                              setForm((f) => ({ ...f, time: '' }));
+                              return;
+                            }
+                          }
+                          setFormErr('');
+                          setForm((f) => ({ ...f, time: t }));
+                        }}
+                      />
                     </FormGroup>
                   </div>
                   {!!form.staff_id && !!form.date && renderSlotChips({
                     slots: availableSlots,
                     loading: slotsLoading,
                     value: form.time || '',
-                    onPick: (t) => setForm((f) => ({ ...f, time: t })),
+                    onPick: (t) => setForm((f) => ({ ...f, time: normalizeApptTime(t) })),
                     durationLabel: `${bookingDurationMinutes} min`,
                     isDarkMode: isDark,
                   })}

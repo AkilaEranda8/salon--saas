@@ -118,7 +118,13 @@ function resolveMobileFeatures(role, storedOverrides, tenantRoleDefaults = {}) {
   }
   const defaults = getRoleDefaults(role, tenantRoleDefaults);
   const overrides = parseStoredOverrides(storedOverrides);
-  return { ...defaults, ...overrides };
+  const effective = { ...defaults, ...overrides };
+  // Managers/admins always get inventory on mobile (tenant module still gated separately).
+  const r = String(role || '').trim().toLowerCase();
+  if (r === 'admin' || r === 'manager') {
+    effective.inventory = true;
+  }
+  return effective;
 }
 
 function computeOverrides(role, effective, tenantRoleDefaults = {}) {

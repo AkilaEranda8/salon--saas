@@ -393,9 +393,7 @@ class _DashboardPageState extends State<DashboardPage>
         Icons.inventory_2_rounded,
         [const Color(0xFF0F766E), const Color(0xFF14B8A6)],
         const InventoryPage(),
-        ok:
-            s.isFeatureEnabled(MobileFeatures.inventory) &&
-            s.isTenantFeatureEnabled('inventory'),
+        ok: s.canAccessInventory,
       ),
       _NavData(
         'Permissions',

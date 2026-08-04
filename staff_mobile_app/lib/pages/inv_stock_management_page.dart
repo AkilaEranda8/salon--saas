@@ -79,7 +79,7 @@ class _InvStockManagementPageState extends State<InvStockManagementPage>
 
   Future<void> _loadInitial() async {
     final app = AppStateScope.of(context);
-    if (!app.canManageSalonStaff) {
+    if (!app.canManageInventoryStock) {
       if (mounted) setState(() => _loading = false);
       return;
     }
@@ -234,7 +234,7 @@ class _InvStockManagementPageState extends State<InvStockManagementPage>
   @override
   Widget build(BuildContext context) {
     final app = AppStateScope.of(context);
-    if (!app.canManageSalonStaff) {
+    if (!app.canManageInventoryStock) {
       return Scaffold(
         backgroundColor: _canvas,
         appBar: AppBar(

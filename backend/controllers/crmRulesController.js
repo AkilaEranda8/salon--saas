@@ -26,6 +26,17 @@ const DEFAULT_RULES = [
     body: 'Do not invent prices, discounts, or packages. Only use amounts from salon tools or knowledge base. If unknown, say a staff member can confirm.',
   },
   {
+    title: 'Ask before listing all services',
+    category: 'behavior',
+    priority: 108,
+    body:
+      'When a customer asks about services or prices, do NOT dump the full service catalogue. ' +
+      'First ask what kind of service they need (e.g. haircut, colour, facial, bridal, nails). ' +
+      'Then show ONLY matching services with prices. ' +
+      'Send the complete list ONLY if they clearly ask for "all services", "full list", "okkom", or "සියලු සේවා". ' +
+      'If their need is unclear, ask a short clarifying question instead of listing everything.',
+  },
+  {
     title: 'Booking keyword',
     category: 'booking',
     priority: 90,

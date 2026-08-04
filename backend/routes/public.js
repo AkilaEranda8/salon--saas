@@ -28,6 +28,8 @@ const {
   loadBlockedRanges,
   findUnavailableStaffIdsOnDate,
   BLOCKING_ATTENDANCE_STATUSES,
+  isDateTimeInPast,
+  pastBookingMessage,
 } = require('../utils/staffAvailability');
 const WEB_BOOKING_BRANCH_NAME = 'HEXAONE (VIP)';
 
@@ -634,6 +636,9 @@ router.post('/customer-portal/rebook', portalAuth, async (req, res) => {
     if (!appointmentId || !date || !time) {
       return res.status(400).json({ message: 'appointmentId, date and time are required.' });
     }
+    if (isDateTimeInPast(date, time)) {
+      return res.status(400).json({ message: pastBookingMessage() });
+    }
     const variants = buildPhoneVariants(req.portalPhone);
     const source = await Appointment.findOne({
       where: { id: appointmentId, phone: { [Op.or]: variants } },
@@ -1063,6 +1068,9 @@ router.post('/bookings', async (req, res) => {
         start = toMinutes(item.time);
       }
       const end = start + duration;
+      if (isDateTimeInPast(dateKey, toHHMM(start))) {
+        return res.status(400).json({ message: pastBookingMessage() });
+      }
       if (start < dayWindow.startMin || end > dayWindow.endMin) {
         return res.status(400).json({
           message: `Selected time is outside ${staffRow?.name || 'staff'} working hours on ${dateKey}.`,

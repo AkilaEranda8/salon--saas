@@ -150,6 +150,8 @@ services:
     environment:
       SALON_API_URL: http://backend:5000/api
       NVIDIA_API_KEY: ${NVIDIA_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      AI_ENGINE_SERVICE_SECRET: ${AI_ENGINE_SERVICE_SECRET:?AI_ENGINE_SERVICE_SECRET is required}
     expose:
       - "8000"
 

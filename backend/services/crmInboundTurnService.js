@@ -218,6 +218,15 @@ async function processInboundAiTurn(jobData) {
     console.warn('[inbound] kb search', e.message);
   }
 
+  let rulesBlock = '';
+  try {
+    const { listActiveRules, formatRulesForPrompt } = require('./crmRulesService');
+    const rules = await listActiveRules(tenantId);
+    rulesBlock = formatRulesForPrompt(rules);
+  } catch (e) {
+    console.warn('[inbound] rules load', e.message);
+  }
+
   let turn;
   try {
     turn = await runTurn({
@@ -229,6 +238,7 @@ async function processInboundAiTurn(jobData) {
       provider: settings.provider,
       model: settings.model,
       kbHints,
+      rulesBlock: rulesBlock || undefined,
       customerContext: {
         name: lead.name || jobData.name || null,
         leadId: lead.id,

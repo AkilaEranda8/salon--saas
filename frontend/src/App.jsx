@@ -83,6 +83,7 @@ import CrmInboxPage          from './pages/crm/CrmInboxPage';
 import CrmLeadsPage          from './pages/crm/CrmLeadsPage';
 import CrmWhatsAppCloudPage  from './pages/crm/CrmWhatsAppCloudPage';
 import CrmKnowledgePage      from './pages/crm/CrmKnowledgePage';
+import CrmRulesPage          from './pages/crm/CrmRulesPage';
 import CrmAiCostPage         from './pages/crm/CrmAiCostPage';
 import DomainSettingsPage  from './pages/DomainSettingsPage';
 import ThemeOptionsPage from './pages/ThemeOptionsPage';
@@ -452,6 +453,11 @@ function AppShellRoutes() {
             <Route path="/crm/knowledge" element={
               <RoleRoute roles={['superadmin', 'admin']}>
                 <CrmKnowledgePage />
+              </RoleRoute>
+            } />
+            <Route path="/crm/rules" element={
+              <RoleRoute roles={['superadmin', 'admin']}>
+                <CrmRulesPage />
               </RoleRoute>
             } />
             <Route path="/crm/ai-cost" element={

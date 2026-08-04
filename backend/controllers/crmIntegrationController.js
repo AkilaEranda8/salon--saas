@@ -263,11 +263,12 @@ const getAvailability = async (req, res) => {
   }
 };
 
-/** GET /packages */
+/** GET /packages — active packages (offer fields for WhatsApp AI) */
 const listPackages = async (req, res) => {
   try {
     const tenantId = req.crmTenantId;
-    const key = cacheKey(tenantId, 'crm', 'packages');
+    const offersOnly = String(req.query.offers || '') === '1';
+    const key = cacheKey(tenantId, 'crm', offersOnly ? 'packages_offers' : 'packages');
     const cached = await cacheGet(key);
     if (cached) return res.json(cached);
 
@@ -275,7 +276,32 @@ const listPackages = async (req, res) => {
       where: { tenant_id: tenantId, is_active: true },
       order: [['name', 'ASC']],
     });
-    const data = rows.map((r) => r.toJSON());
+    let data = rows.map((r) => {
+      const j = r.toJSON();
+      const orig = Number(j.original_price) || 0;
+      const price = Number(j.package_price) || 0;
+      const disc = Number(j.discount_percent) || 0;
+      const showOffer = j.show_as_offer !== false;
+      return {
+        id: j.id,
+        name: j.name,
+        type: j.type,
+        description: j.description,
+        offer_title: j.offer_title || null,
+        offer_note: j.offer_note || j.description || null,
+        show_as_offer: showOffer,
+        package_price: price,
+        original_price: orig,
+        discount_percent: disc,
+        savings: Math.max(0, orig - price),
+        validity_days: j.validity_days,
+        sessions_count: j.sessions_count,
+        services: j.services,
+      };
+    });
+    if (offersOnly) {
+      data = data.filter((p) => p.show_as_offer && (p.discount_percent > 0 || p.offer_title || p.offer_note));
+    }
     await cacheSet(key, data);
     return res.json(data);
   } catch (err) {
@@ -303,7 +329,18 @@ const listPromotions = async (req, res) => {
     });
     const data = rows
       .map((r) => r.toJSON())
-      .filter((d) => !d.ends_at || String(d.ends_at).slice(0, 10) >= today);
+      .filter((d) => !d.ends_at || String(d.ends_at).slice(0, 10) >= today)
+      .map((d) => ({
+        id: d.id,
+        name: d.name,
+        code: d.code || null,
+        discount_type: d.discount_type,
+        value: Number(d.value),
+        min_bill: Number(d.min_bill) || 0,
+        max_discount_amount: d.max_discount_amount != null ? Number(d.max_discount_amount) : null,
+        starts_at: d.starts_at,
+        ends_at: d.ends_at,
+      }));
     return res.json(data);
   } catch (err) {
     // Discount schema varies — soft-fail
@@ -625,6 +662,36 @@ const createAppointment = async (req, res) => {
     });
 
     await storeIdempotent(tenantId, idempotency_key, result.appointment.id);
+
+    // Same salon notification path as UI bookings (SMS / WhatsApp / staff WA)
+    try {
+      const {
+        notifyAppointmentConfirmed,
+        notifyStaffAppointmentAssigned,
+      } = require('../services/notificationService');
+      const branch = await Branch.findOne({
+        where: { id: result.appointment.branch_id, tenant_id: tenantId },
+        attributes: ['id', 'name', 'phone'],
+      });
+      const serviceRow = await Service.findOne({
+        where: { id: result.appointment.service_id, tenant_id: tenantId },
+        attributes: ['id', 'name'],
+      });
+      const apptPayload = {
+        ...result.appointment.toJSON(),
+        phone: result.appointment.phone || String(phone).trim(),
+        email: email || result.customer?.email || null,
+      };
+      await Promise.allSettled([
+        notifyStaffAppointmentAssigned(apptPayload, branch, serviceRow, tenantId),
+        notifyAppointmentConfirmed(apptPayload, branch, serviceRow, tenantId),
+      ]);
+      console.log(
+        `[crm-integration] salon notifications queued appointment=${result.appointment.id} phone=${apptPayload.phone}`
+      );
+    } catch (notifyErr) {
+      console.warn('[crm-integration] appointment notify failed:', notifyErr.message);
+    }
 
     return res.status(201).json({
       appointment: result.appointment,

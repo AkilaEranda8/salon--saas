@@ -45,6 +45,20 @@ const Package = sequelize.define('Package', {
     type: DataTypes.DECIMAL(5, 2),
     allowNull: true,
   },
+  /** When true, WhatsApp AI lists this package when customers ask for offers */
+  show_as_offer: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: true,
+  },
+  offer_title: {
+    type: DataTypes.STRING(160),
+    allowNull: true,
+  },
+  offer_note: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+  },
   is_active: {
     type: DataTypes.BOOLEAN,
     defaultValue: true,

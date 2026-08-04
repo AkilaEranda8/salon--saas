@@ -3,6 +3,7 @@
 const { Op, fn, col } = require('sequelize');
 const {
   AiUsage,
+  AiCreditEntry,
   CrmConversation,
   CrmBookingRequest,
   CrmLead,
@@ -53,6 +54,59 @@ async function aggregateUsage(tenantId, from, to) {
     total_tokens: Number(row?.total_tokens || 0),
     cost: Number(row?.cost || 0),
     avg_latency_ms: row?.avg_latency_ms != null ? Math.round(Number(row.avg_latency_ms)) : null,
+  };
+}
+
+async function sumAllUsageCost(tenantId) {
+  const row = await AiUsage.findOne({
+    where: { tenant_id: tenantId },
+    attributes: [[fn('COALESCE', fn('SUM', col('cost')), 0), 'cost']],
+    raw: true,
+  });
+  return Number(row?.cost || 0);
+}
+
+async function sumCreditLedger(tenantId) {
+  const row = await AiCreditEntry.findOne({
+    where: { tenant_id: tenantId },
+    attributes: [[fn('COALESCE', fn('SUM', col('amount_usd')), 0), 'total']],
+    raw: true,
+  });
+  return Number(row?.total || 0);
+}
+
+async function getWalletSummary(tenantId) {
+  const [credits_added, spent_total, topupAgg, recentEntries] = await Promise.all([
+    sumCreditLedger(tenantId),
+    sumAllUsageCost(tenantId),
+    AiCreditEntry.findAll({
+      where: { tenant_id: tenantId, entry_type: 'topup' },
+      attributes: [
+        [fn('COALESCE', fn('SUM', col('amount_usd')), 0), 'total'],
+        [fn('COUNT', col('id')), 'count'],
+      ],
+      raw: true,
+    }),
+    AiCreditEntry.findAll({
+      where: { tenant_id: tenantId },
+      order: [['id', 'DESC']],
+      limit: 20,
+    }),
+  ]);
+
+  const topupRow = topupAgg[0] || {};
+  const remaining = credits_added - spent_total;
+
+  return {
+    currency: 'USD',
+    remaining: Math.round(remaining * 10000) / 10000,
+    credits_added: Math.round(credits_added * 10000) / 10000,
+    spent_total: Math.round(spent_total * 10000) / 10000,
+    topups_total: Math.round(Number(topupRow.total || 0) * 10000) / 10000,
+    topups_count: Number(topupRow.count || 0),
+    low_balance: remaining < 5,
+    note: 'Google AI Studio does not expose prepay balance via API. Record top-ups here; remaining = credits − tracked AI spend.',
+    entries: recentEntries,
   };
 }
 
@@ -115,11 +169,12 @@ const getAiCostSummary = async (req, res) => {
     const todayStart = startOfDay();
     const monthStart = startOfMonth();
 
-    const [today, month, providers, series] = await Promise.all([
+    const [today, month, providers, series, wallet] = await Promise.all([
       aggregateUsage(tenantId, todayStart),
       aggregateUsage(tenantId, monthStart),
       byProvider(tenantId, monthStart),
       dailySeries(tenantId, 14),
+      getWalletSummary(tenantId),
     ]);
 
     const convCount = await CrmConversation.count({
@@ -168,6 +223,7 @@ const getAiCostSummary = async (req, res) => {
 
     return res.json({
       currency: 'USD',
+      wallet,
       today: {
         ...today,
         label: "Today's AI Cost",
@@ -199,7 +255,7 @@ const getCrmOverview = async (req, res) => {
     if (!tenantId) return res.status(400).json({ message: 'Tenant required' });
     const monthStart = startOfMonth();
 
-    const [leads, conversations, activeChats, bookings, aiMonth] = await Promise.all([
+    const [leads, conversations, activeChats, bookings, aiMonth, wallet] = await Promise.all([
       CrmLead.count({ where: { tenant_id: tenantId, createdAt: { [Op.gte]: monthStart } } }),
       CrmConversation.count({ where: { tenant_id: tenantId, createdAt: { [Op.gte]: monthStart } } }),
       CrmConversation.count({
@@ -212,6 +268,7 @@ const getCrmOverview = async (req, res) => {
         where: { tenant_id: tenantId, status: 'confirmed', createdAt: { [Op.gte]: monthStart } },
       }),
       aggregateUsage(tenantId, monthStart),
+      getWalletSummary(tenantId),
     ]);
 
     const conversion = conversations > 0 ? (bookings / conversations) * 100 : 0;
@@ -225,7 +282,9 @@ const getCrmOverview = async (req, res) => {
         conversion_rate_pct: Math.round(conversion * 10) / 10,
         ai_cost: aiMonth.cost,
         ai_calls: aiMonth.calls,
+        ai_balance_remaining: wallet.remaining,
       },
+      wallet,
     });
   } catch (err) {
     console.error('[crm-analytics] overview', err);
@@ -233,7 +292,75 @@ const getCrmOverview = async (req, res) => {
   }
 };
 
+/** POST /api/crm/analytics/ai-credits/topup  { amount_usd, note? } */
+const addAiCreditTopup = async (req, res) => {
+  try {
+    const tenantId = resolveTenantId(req);
+    if (!tenantId) return res.status(400).json({ message: 'Tenant required' });
+
+    const amount = Number(req.body?.amount_usd);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return res.status(400).json({ message: 'amount_usd must be a positive number' });
+    }
+    if (amount > 100000) {
+      return res.status(400).json({ message: 'amount_usd too large' });
+    }
+
+    const entry = await AiCreditEntry.create({
+      tenant_id: tenantId,
+      entry_type: 'topup',
+      amount_usd: Math.round(amount * 10000) / 10000,
+      note: String(req.body?.note || 'Gemini / AI Studio top-up').slice(0, 255),
+      created_by: req.user?.id || null,
+    });
+
+    const wallet = await getWalletSummary(tenantId);
+    return res.status(201).json({ entry, wallet });
+  } catch (err) {
+    console.error('[crm-analytics] topup', err);
+    return res.status(500).json({ message: err.message || 'Server error' });
+  }
+};
+
+/**
+ * POST /api/crm/analytics/ai-credits/set-balance  { balance_usd, note? }
+ * Sync remaining to match the balance shown in Google AI Studio.
+ */
+const setAiCreditBalance = async (req, res) => {
+  try {
+    const tenantId = resolveTenantId(req);
+    if (!tenantId) return res.status(400).json({ message: 'Tenant required' });
+
+    const target = Number(req.body?.balance_usd);
+    if (!Number.isFinite(target) || target < 0) {
+      return res.status(400).json({ message: 'balance_usd must be a non-negative number' });
+    }
+    if (target > 1000000) {
+      return res.status(400).json({ message: 'balance_usd too large' });
+    }
+
+    const current = await getWalletSummary(tenantId);
+    const delta = Math.round((target - current.remaining) * 10000) / 10000;
+
+    const entry = await AiCreditEntry.create({
+      tenant_id: tenantId,
+      entry_type: 'set_balance',
+      amount_usd: delta,
+      note: String(req.body?.note || `Synced to AI Studio balance USD ${target}`).slice(0, 255),
+      created_by: req.user?.id || null,
+    });
+
+    const wallet = await getWalletSummary(tenantId);
+    return res.json({ entry, wallet, previous_remaining: current.remaining });
+  } catch (err) {
+    console.error('[crm-analytics] set-balance', err);
+    return res.status(500).json({ message: err.message || 'Server error' });
+  }
+};
+
 module.exports = {
   getAiCostSummary,
   getCrmOverview,
+  addAiCreditTopup,
+  setAiCreditBalance,
 };

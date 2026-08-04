@@ -149,6 +149,7 @@ const create = async (req, res) => {
     const {
       name, description, type, services, sessions_count,
       validity_days, original_price, package_price, branch_id,
+      show_as_offer, offer_title, offer_note,
     } = req.body;
 
     if (!name || !type || !services?.length || !validity_days || package_price == null || package_price === '') {
@@ -173,6 +174,9 @@ const create = async (req, res) => {
       sessions_count: sessions_count || null,
       validity_days,
       original_price: origPrice, package_price: packagePrice, discount_percent,
+      show_as_offer: show_as_offer !== false,
+      offer_title: offer_title ? String(offer_title).slice(0, 160) : null,
+      offer_note: offer_note ? String(offer_note).slice(0, 4000) : null,
       branch_id: branch_id || null,
       is_active: true,
       tenant_id: resolveTenantId(req),
@@ -194,6 +198,7 @@ const update = async (req, res) => {
     const {
       name, description, type, services, sessions_count,
       validity_days, original_price, package_price, branch_id, is_active,
+      show_as_offer, offer_title, offer_note,
     } = req.body;
 
     const pkgPrice = package_price != null ? Number(package_price) : Number(pkg.package_price);
@@ -204,7 +209,7 @@ const update = async (req, res) => {
       ? (((origPrice - pkgPrice) / origPrice) * 100).toFixed(2)
       : pkg.discount_percent;
 
-    await pkg.update({
+    const patch = {
       name:             name           ?? pkg.name,
       description:      description    ?? pkg.description,
       type:             type           ?? pkg.type,
@@ -216,7 +221,16 @@ const update = async (req, res) => {
       discount_percent,
       branch_id:        branch_id !== undefined ? (branch_id || null) : pkg.branch_id,
       is_active:        is_active !== undefined ? is_active : pkg.is_active,
-    });
+    };
+    if (show_as_offer !== undefined) patch.show_as_offer = !!show_as_offer;
+    if (offer_title !== undefined) {
+      patch.offer_title = offer_title ? String(offer_title).slice(0, 160) : null;
+    }
+    if (offer_note !== undefined) {
+      patch.offer_note = offer_note ? String(offer_note).slice(0, 4000) : null;
+    }
+
+    await pkg.update(patch);
 
     return res.json(pkg);
   } catch (err) {

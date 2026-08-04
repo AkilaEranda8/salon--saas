@@ -176,7 +176,7 @@ export default function CrmAiSettingsPage() {
         <div style={{ display: 'grid', gap: 18, maxWidth: 720 }}>
           <SectionCard
             title="Provider"
-            subtitle="AI Engine uses this provider for WhatsApp receptionist replies. Legacy AI Chat bot is unchanged."
+            subtitle="Used by WhatsApp AI CRM and the sidebar AI Chat Assistant. Set Gemini (or OpenAI) here — AI Chat uses the same keys."
           >
             <div style={{ display: 'grid', gap: 14 }}>
               <label style={{ display: 'block' }}>

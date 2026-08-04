@@ -51,6 +51,8 @@ const WhatsAppConnection = require('./WhatsAppConnection');
 const TenantAiSettings = require('./TenantAiSettings');
 const AiUsage = require('./AiUsage');
 const AiModelRate = require('./AiModelRate');
+const AiCreditEntry = require('./AiCreditEntry');
+const CrmAiRule = require('./CrmAiRule');
 const CrmLead = require('./CrmLead');
 const CrmConversation = require('./CrmConversation');
 const CrmMessage = require('./CrmMessage');
@@ -92,6 +94,8 @@ BankSlip.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
 Tenant.hasMany(Branch, { foreignKey: 'tenant_id', as: 'branches' });
 Tenant.hasOne(TenantAiSettings, { foreignKey: 'tenant_id', as: 'aiSettings' });
 TenantAiSettings.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
+Tenant.hasMany(CrmAiRule, { foreignKey: 'tenant_id', as: 'aiRules' });
+CrmAiRule.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
 Tenant.hasOne(WhatsAppBusinessAccount, { foreignKey: 'tenant_id', as: 'whatsappBusinessAccount' });
 WhatsAppBusinessAccount.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
 Tenant.hasMany(CrmKnowledgeArticle, { foreignKey: 'tenant_id', as: 'knowledgeArticles' });
@@ -100,6 +104,8 @@ Tenant.hasMany(CrmFollowUpJob, { foreignKey: 'tenant_id', as: 'crmFollowUpJobs' 
 CrmFollowUpJob.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
 Tenant.hasMany(AiUsage, { foreignKey: 'tenant_id', as: 'aiUsage' });
 AiUsage.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
+Tenant.hasMany(AiCreditEntry, { foreignKey: 'tenant_id', as: 'aiCreditEntries' });
+AiCreditEntry.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
 Tenant.hasMany(CrmLead, { foreignKey: 'tenant_id', as: 'crmLeads' });
 CrmLead.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
 Tenant.hasMany(CrmConversation, { foreignKey: 'tenant_id', as: 'crmConversations' });
@@ -416,6 +422,8 @@ module.exports = {
   TenantAiSettings,
   AiUsage,
   AiModelRate,
+  AiCreditEntry,
+  CrmAiRule,
   CrmLead,
   CrmConversation,
   CrmMessage,

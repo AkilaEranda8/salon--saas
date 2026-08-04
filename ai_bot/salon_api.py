@@ -15,9 +15,13 @@ _client = httpx.AsyncClient(timeout=10.0)
 
 
 def _auth_headers(token: str | None) -> dict:
-    if token:
-        return {"Cookie": f"token={token}"}
-    return {}
+    if not token:
+        return {}
+    # Backend accepts Bearer (web/mobile) and cookie token
+    return {
+        "Authorization": f"Bearer {token}",
+        "Cookie": f"token={token}",
+    }
 
 
 async def get_branches(tenant_id: int | None = None) -> list:
@@ -215,6 +219,143 @@ async def get_dashboard(token: str, branch_id: int | None = None) -> dict:
         return r.json()
     except Exception:
         return {}
+
+
+async def build_salon_snapshot(
+    token: str | None,
+    tenant_id: int | None = None,
+    branch_id: int | None = None,
+) -> str:
+    """
+    Compact live snapshot for Gemini / LLM so staff can ask anything
+    about THEIR salon and get answers grounded in real data.
+    """
+    from datetime import date
+
+    today = date.today().isoformat()
+    parts: list[str] = [f"Salon live snapshot for {today} (this tenant only)."]
+
+    try:
+        services = await get_services(tenant_id=tenant_id)
+        if services:
+            svc_lines = []
+            for s in services[:25]:
+                name = s.get("name", "Service")
+                price = s.get("price", s.get("amount", ""))
+                dur = s.get("duration_minutes", s.get("duration", ""))
+                svc_lines.append(f"- {name} | Rs.{price} | {dur} min")
+            parts.append("Services:\n" + "\n".join(svc_lines))
+    except Exception:
+        pass
+
+    try:
+        staff = await get_staff(tenant_id=tenant_id)
+        if staff:
+            names = [str(s.get("name") or "Staff") for s in staff[:30]]
+            parts.append("Staff: " + ", ".join(names))
+    except Exception:
+        pass
+
+    try:
+        branches = await get_branches(tenant_id=tenant_id)
+        if branches:
+            blines = []
+            for b in branches[:10]:
+                blines.append(f"- {b.get('name', 'Branch')} ({b.get('address') or b.get('phone') or ''})")
+            parts.append("Branches:\n" + "\n".join(blines))
+    except Exception:
+        pass
+
+    if not token:
+        return "\n\n".join(parts)
+
+    try:
+        appts = await get_today_appointments(token, branch_id)
+        parts.append(f"Today appointments count: {len(appts)}")
+        for a in appts[:12]:
+            t = str(a.get("time") or "")[:5]
+            cust = a.get("customer_name", "Customer")
+            status = a.get("status", "")
+            svc = a.get("service", {})
+            svc_name = svc.get("name", "") if isinstance(svc, dict) else ""
+            parts.append(f"  • {t} {cust} | {svc_name} | {status}")
+    except Exception:
+        pass
+
+    try:
+        pending = await get_pending_appointments(token, branch_id)
+        parts.append(f"Pending appointments: {len(pending)}")
+    except Exception:
+        pass
+
+    try:
+        payments = await get_today_payments(token, branch_id)
+        total = sum(float(p.get("total_amount", 0) or 0) for p in payments)
+        parts.append(f"Today payments: {len(payments)} | revenue Rs.{total:,.0f}")
+    except Exception:
+        pass
+
+    try:
+        dash = await get_dashboard(token, branch_id)
+        if dash:
+            # Keep it short — dump useful keys only
+            useful = {
+                k: dash.get(k)
+                for k in (
+                    "todayRevenue", "today_revenue", "revenue", "appointmentsToday",
+                    "todayAppointments", "customers", "pendingAppointments", "walkIns",
+                )
+                if dash.get(k) is not None
+            }
+            if useful:
+                parts.append("Dashboard KPIs: " + str(useful))
+    except Exception:
+        pass
+
+    try:
+        low = await get_low_stock(token, branch_id)
+        if low:
+            items = [str(i.get("name") or i.get("product_name") or "item") for i in low[:10]]
+            parts.append("Low stock: " + ", ".join(items))
+        else:
+            parts.append("Low stock: none")
+    except Exception:
+        pass
+
+    try:
+        walkins = await get_walkin_queue(token, branch_id)
+        parts.append(f"Walk-in queue: {len(walkins)}")
+        for w in walkins[:8]:
+            parts.append(
+                f"  • {w.get('customer_name') or w.get('name') or 'Guest'} "
+                f"| token {w.get('token') or '-'} | {w.get('status') or ''}"
+            )
+    except Exception:
+        pass
+
+    try:
+        cust = await get_customer_count(token, branch_id)
+        parts.append(f"Customers total: {cust.get('total', 0)}")
+    except Exception:
+        pass
+
+    try:
+        report = await get_staff_report(token, branch_id)
+        if report:
+            top = []
+            for s in report[:8]:
+                name = s.get("name") or s.get("staff_name") or "Staff"
+                rev = s.get("revenue") or s.get("total") or s.get("sales") or 0
+                top.append(f"{name}: Rs.{rev}")
+            parts.append("Staff performance (month): " + "; ".join(top))
+    except Exception:
+        pass
+
+    parts.append(
+        "Answer using ONLY this snapshot and conversation. "
+        "If data is missing, say so and suggest the matching dashboard page."
+    )
+    return "\n".join(parts)
 
 
 async def create_booking(payload: dict, tenant_id: int | None = None) -> dict:

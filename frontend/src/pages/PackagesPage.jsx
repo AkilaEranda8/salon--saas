@@ -16,7 +16,11 @@ import {
 /*  constants  */
 const ACCENT_COLOR  = { bundle:'#2563EB', membership:'#7C3AED' };
 const TYPE_BADGE    = { bundle:{ bg:'#EFF6FF', color:'#1D4ED8' }, membership:{ bg:'#EDE9FE', color:'#7C3AED' } };
-const EMPTY_PKG  = { name:'', type:'bundle', services:[], validity_days:'90', package_price:'', is_active:true, branch_id:'' };
+const EMPTY_PKG  = {
+  name: '', type: 'bundle', services: [], validity_days: '90', package_price: '',
+  is_active: true, branch_id: '',
+  show_as_offer: true, offer_title: '', offer_note: '',
+};
 const MUTED = '#64748B';
 
 /*  helpers  */
@@ -357,8 +361,17 @@ export default function PackagesPage() {
         const pkg = row.original;
         return (
           <>
-            <div style={{ fontWeight: 600, color: '#101828', fontSize: 14 }}>{pkg.name}</div>
-            {pkg.description && <div style={{ fontSize: 12, color: MUTED, marginTop: 2 }}>{pkg.description}</div>}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <div style={{ fontWeight: 600, color: '#101828', fontSize: 14 }}>{pkg.name}</div>
+              {pkg.show_as_offer !== false && (
+                <span style={{ padding: '2px 8px', borderRadius: 20, fontSize: 10, fontWeight: 700, background: '#ECFDF5', color: '#059669' }}>
+                  Offer
+                </span>
+              )}
+            </div>
+            {(pkg.offer_title || pkg.description) && (
+              <div style={{ fontSize: 12, color: MUTED, marginTop: 2 }}>{pkg.offer_title || pkg.description}</div>
+            )}
           </>
         );
       },
@@ -569,6 +582,9 @@ export default function PackagesPage() {
       package_price: pkg.package_price  != null ? String(pkg.package_price)  : '',
       is_active:     pkg.is_active !== false,
       branch_id:     pkg.branch_id ? String(pkg.branch_id) : '',
+      show_as_offer: pkg.show_as_offer !== false,
+      offer_title:   pkg.offer_title || '',
+      offer_note:    pkg.offer_note || '',
     });
     setServicePicker('');
     setPkgFormError('');
@@ -596,7 +612,7 @@ export default function PackagesPage() {
     try {
       const payload = {
         name:            pkgForm.name.trim(),
-        description:     '',
+        description:     pkgForm.offer_note.trim() || '',
         type:            pkgForm.type || 'bundle',
         services:        pkgForm.services.map(Number),
         sessions_count:  pkgForm.services.length,
@@ -606,6 +622,9 @@ export default function PackagesPage() {
         discount_percent:Number(discountPct.toFixed(2)),
         is_active:       pkgForm.is_active,
         branch_id:       pkgForm.branch_id ? Number(pkgForm.branch_id) : null,
+        show_as_offer:   !!pkgForm.show_as_offer,
+        offer_title:     pkgForm.offer_title.trim() || null,
+        offer_note:      pkgForm.offer_note.trim() || null,
       };
       if (editPkg) {
         await api.put(`/packages/${editPkg.id}`, payload);
@@ -926,6 +945,49 @@ export default function PackagesPage() {
                 )}
               </div>
             )}
+          </PkgSection>
+
+          <PkgSection
+            title="Customer offer (WhatsApp)"
+            desc="When a customer asks “what offers do you have?”, AI will show this package if enabled"
+            dark={isDark}
+          >
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', userSelect: 'none' }}>
+              <input
+                type="checkbox"
+                checked={!!pkgForm.show_as_offer}
+                onChange={(e) => setPkgForm((f) => ({ ...f, show_as_offer: e.target.checked }))}
+                style={{ width: 16, height: 16, accentColor: '#059669' }}
+              />
+              <span style={{ fontSize: 13, fontWeight: 600, color: C.title }}>Show as offer to customers</span>
+            </label>
+            <div>
+              <Label>Offer headline</Label>
+              <Input
+                value={pkgForm.offer_title}
+                onChange={(e) => setPkgForm((f) => ({ ...f, offer_title: e.target.value }))}
+                placeholder="e.g. Weekend Glow Package — 25% off"
+                disabled={!pkgForm.show_as_offer}
+              />
+            </div>
+            <div>
+              <Label>Offer details (what AI tells the customer)</Label>
+              <textarea
+                value={pkgForm.offer_note}
+                onChange={(e) => setPkgForm((f) => ({ ...f, offer_note: e.target.value }))}
+                placeholder="Short note: what’s included, validity, how to book…"
+                disabled={!pkgForm.show_as_offer}
+                rows={4}
+                style={{
+                  width: '100%', boxSizing: 'border-box', borderRadius: 10, padding: '10px 12px',
+                  fontSize: 13.5, fontFamily: 'inherit', resize: 'vertical',
+                  border: `1px solid ${isDark ? '#334155' : '#E4E7EC'}`,
+                  background: isDark ? '#0F172A' : '#fff',
+                  color: C.title,
+                  opacity: pkgForm.show_as_offer ? 1 : 0.55,
+                }}
+              />
+            </div>
           </PkgSection>
         </div>
       </PkgModal>

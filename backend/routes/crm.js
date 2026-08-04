@@ -10,6 +10,7 @@ const crmCtrl = require('../controllers/crmController');
 const wabaCtrl = require('../controllers/crmWhatsappController');
 const kbCtrl = require('../controllers/crmKnowledgeController');
 const analyticsCtrl = require('../controllers/crmAnalyticsController');
+const rulesCtrl = require('../controllers/crmRulesController');
 
 const admin = [verifyToken, requireRole('superadmin', 'admin'), featureGate('whatsapp_ai_crm')];
 const kbAdmin = [verifyToken, requireRole('superadmin', 'admin'), featureGate('ai_knowledge_base')];
@@ -21,9 +22,18 @@ router.put('/ai-settings', ...admin, aiSettingsCtrl.updateAiSettings);
 router.post('/ai-settings/test', ...admin, aiSettingsCtrl.testAiSettings);
 router.get('/ai-model-rates', ...admin, aiSettingsCtrl.listModelRates);
 
+// ── AI Rules (bot behaviour) ─────────────────────────────────────────────────
+router.get('/rules', ...admin, rulesCtrl.list);
+router.post('/rules', ...admin, rulesCtrl.create);
+router.put('/rules/:id', ...admin, rulesCtrl.update);
+router.delete('/rules/:id', ...admin, rulesCtrl.remove);
+router.post('/rules/seed-defaults', ...admin, rulesCtrl.seedDefaults);
+
 // ── Analytics / AI Cost ──────────────────────────────────────────────────────
 router.get('/analytics/ai-cost', ...admin, analyticsCtrl.getAiCostSummary);
 router.get('/analytics/overview', ...admin, analyticsCtrl.getCrmOverview);
+router.post('/analytics/ai-credits/topup', ...admin, analyticsCtrl.addAiCreditTopup);
+router.post('/analytics/ai-credits/set-balance', ...admin, analyticsCtrl.setAiCreditBalance);
 
 // ── WhatsApp Cloud (WABA) ────────────────────────────────────────────────────
 router.get('/whatsapp-cloud', ...admin, wabaCtrl.getWabaSettings);
@@ -86,8 +96,11 @@ router.post('/follow-ups/run-abandoned', ...admin, async (req, res) => {
 // ── Knowledge Base ───────────────────────────────────────────────────────────
 router.get('/knowledge', ...kbAdmin, kbCtrl.list);
 router.get('/knowledge/search', ...kbAdmin, kbCtrl.search);
+router.post('/knowledge/seed-defaults', ...kbAdmin, kbCtrl.seedDefaults);
+router.post('/knowledge/bulk-import', ...kbAdmin, kbCtrl.bulkImport);
 router.get('/knowledge/:id', ...kbAdmin, kbCtrl.getOne);
 router.post('/knowledge', ...kbAdmin, kbCtrl.create);
+router.post('/knowledge/:id/duplicate', ...kbAdmin, kbCtrl.duplicate);
 router.put('/knowledge/:id', ...kbAdmin, kbCtrl.update);
 router.delete('/knowledge/:id', ...kbAdmin, kbCtrl.remove);
 
@@ -116,6 +129,7 @@ router.post('/queue-stats/check-dlq-alerts', ...admin, async (_req, res) => {
 });
 
 router.get('/internal/ai-settings/:tenantId', requireServiceAuth, aiSettingsCtrl.getAiSettingsInternal);
+router.get('/internal/rules/:tenantId', requireServiceAuth, rulesCtrl.getRulesInternal);
 router.post('/internal/whatsapp-qr-send', requireServiceAuth, async (req, res) => {
   try {
     const tenantId = parseInt(req.body?.tenantId || req.body?.tenant_id || req.headers['x-tenant-id'], 10);

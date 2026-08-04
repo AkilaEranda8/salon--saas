@@ -35,6 +35,7 @@ const PAGE_LABELS = {
   '/crm/leads': 'CRM Leads',
   '/crm/whatsapp-cloud': 'WhatsApp (QR + Cloud)',
   '/crm/knowledge': 'AI Knowledge Base',
+  '/crm/rules': 'AI Rules',
   '/crm/ai-cost': 'AI Cost & Analytics',
   '/offer-sms':     'Offer SMS',
   '/branding':      'Branding Settings',

@@ -11,6 +11,7 @@ const DEFAULT_RATES = [
   { provider: 'openai', model: 'gpt-4o-mini', input_per_1k: 0.00015, output_per_1k: 0.0006, currency: 'USD' },
   { provider: 'openai', model: 'gpt-4o', input_per_1k: 0.0025, output_per_1k: 0.01, currency: 'USD' },
   { provider: 'gemini', model: 'gemini-2.0-flash', input_per_1k: 0.0001, output_per_1k: 0.0004, currency: 'USD' },
+  { provider: 'gemini', model: 'gemini-2.0-flash-lite', input_per_1k: 0.000075, output_per_1k: 0.0003, currency: 'USD' },
   { provider: 'gemini', model: 'gemini-1.5-flash', input_per_1k: 0.000075, output_per_1k: 0.0003, currency: 'USD' },
 ];
 

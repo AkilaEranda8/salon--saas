@@ -7,16 +7,17 @@ import api from '../../api/axios';
 import PageWrapper from '../../components/layout/PageWrapper';
 import usePageTheme from '../../hooks/usePageTheme';
 
-function Kpi({ label, value, sub, C }) {
+
+function Kpi({ label, value, sub, C, warn }) {
   return (
     <div style={{
-      background: C.cardBg, border: `1px solid ${C.border}`, borderRadius: 14,
+      background: C.cardBg, border: `1px solid ${warn ? '#F59E0B' : C.border}`, borderRadius: 14,
       padding: '16px 18px', boxShadow: C.shadow,
     }}>
       <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: C.label }}>
         {label}
       </div>
-      <div style={{ fontSize: 26, fontWeight: 800, color: C.text, marginTop: 6 }}>{value}</div>
+      <div style={{ fontSize: 26, fontWeight: 800, color: warn ? '#B45309' : C.text, marginTop: 6 }}>{value}</div>
       {sub && <div style={{ fontSize: 12, color: C.muted, marginTop: 4 }}>{sub}</div>}
     </div>
   );
@@ -53,6 +54,7 @@ export default function CrmAiCostPage() {
 
   const month = data?.month || {};
   const today = data?.today || {};
+  const wallet = data?.wallet || overview?.wallet || {};
   const currency = data?.currency || 'USD';
   const series = (data?.series || []).map((r) => ({
     ...r,
@@ -81,6 +83,7 @@ export default function CrmAiCostPage() {
       {!loading && data && (
         <div style={{ display: 'grid', gap: 18 }}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
+            <Kpi C={C} label="Remaining balance" value={money(wallet.remaining, currency)} sub={`Spent ${money(wallet.spent_total, currency)}`} warn={!!wallet.low_balance} />
             <Kpi C={C} label="Today's AI Cost" value={money(today.cost, currency)} sub={`${today.calls || 0} calls · ${today.total_tokens || 0} tokens`} />
             <Kpi C={C} label="Monthly AI Cost" value={money(month.cost, currency)} sub={`${month.calls || 0} calls this month`} />
             <Kpi C={C} label="Cost / Conversation" value={money(month.cost_per_conversation, currency)} sub={`${month.conversations || 0} conversations`} />
@@ -93,6 +96,36 @@ export default function CrmAiCostPage() {
             <Kpi C={C} label="Bookings (month)" value={overview?.month?.confirmed_bookings ?? '—'} />
             <Kpi C={C} label="Conversion" value={`${overview?.month?.conversion_rate_pct ?? 0}%`} sub="Conversations → bookings" />
           </div>
+
+          {(wallet.entries || []).length > 0 && (
+            <div style={{ background: C.cardBg, border: `1px solid ${C.border}`, borderRadius: 14, overflow: 'hidden' }}>
+              <div style={{ padding: '14px 16px', borderBottom: `1px solid ${C.border}`, fontWeight: 700, color: C.text }}>
+                Credit history
+              </div>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ textAlign: 'left', color: C.muted }}>
+                      <th style={th}>When</th>
+                      <th style={th}>Type</th>
+                      <th style={th}>Amount</th>
+                      <th style={th}>Note</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {wallet.entries.map((e) => (
+                      <tr key={e.id} style={{ borderTop: `1px solid ${C.border}` }}>
+                        <td style={td}>{e.createdAt ? new Date(e.createdAt).toLocaleString() : '—'}</td>
+                        <td style={td}>{e.entry_type}</td>
+                        <td style={td}>{money(e.amount_usd, currency)}</td>
+                        <td style={td}>{e.note || '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
 
           <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 16 }}>
             <div style={{ background: C.cardBg, border: `1px solid ${C.border}`, borderRadius: 14, padding: 16 }}>

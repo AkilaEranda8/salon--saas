@@ -405,7 +405,14 @@ async def handle_message(
 
     # ── Low confidence: ask clarifying question ───────────────────────────────
     if needs_clarify and sess.state == IDLE:
-        reply = await _clarify_response(text, prev_intent, sess.history)
+        if token:
+            reply = await _staff_open_question(
+                text, token, effective_tenant, sess.history, prev_intent,
+            )
+            if reply:
+                add_to_history(session_id, "bot", reply)
+                return reply
+        reply = await _clarify_response(text, prev_intent, sess.history, effective_tenant)
         add_to_history(session_id, "bot", reply)
         return reply
 
@@ -415,11 +422,23 @@ async def handle_message(
         if mgmt_reply is not None:
             add_to_history(session_id, "bot", mgmt_reply)
             return mgmt_reply
+        # Free-form staff question about their salon → Gemini + live snapshot
+        if intent not in (
+            "book_appointment", "check_services", "check_prices", "check_branches",
+            "check_staff", "check_availability", "cancel_appointment", "greet",
+            "help", "goodbye", "support_ticket",
+        ):
+            reply = await _staff_open_question(
+                text, token, effective_tenant, sess.history, prev_intent,
+            )
+            if reply:
+                add_to_history(session_id, "bot", reply)
+                return reply
 
     # ── Always-available commands ─────────────────────────────────────────────
     if intent == "goodbye":
         reset_session(session_id)
-        reply = "Thank you for visiting Hexaone! See you soon 😊"
+        reply = "Thank you for visiting! See you soon 😊"
         return reply
 
     if intent == "help":
@@ -430,14 +449,9 @@ async def handle_message(
     if intent == "support_ticket":
         reply = (
             "🎫 **Create a Support Ticket**\n\n"
-            "To raise a support request, go to:\n"
-            "**Sidebar → Support** (under the Account section)\n\n"
-            "From there you can:\n"
-            "• 📝 Create a new ticket with subject & description\n"
-            "• 📋 Track existing tickets and their status\n"
-            "• 💬 Reply to the support team in the thread\n\n"
-            "Our support team will respond as soon as possible. "
-            "Use **urgent** priority if it's blocking your operations."
+            "Go to **Sidebar → Support** to create/track tickets.\n\n"
+            "Or ask me anything about your salon data "
+            "(appointments, revenue, stock, walk-ins, customers)."
         )
         add_to_history(session_id, "bot", reply)
         return reply
@@ -450,17 +464,27 @@ async def handle_message(
 
     # ── Intents from idle state ───────────────────────────────────────────────
     if intent == "greet":
-        # Personalise based on history (returning user?)
-        if len(sess.history) > 2:
+        if token:
+            reply = (
+                "Hello! 👋 I'm your **salon AI assistant**.\n\n"
+                "Ask me anything about **your salon**, for example:\n"
+                "• Today's appointments / pending bookings\n"
+                "• Today's revenue / recent payments\n"
+                "• Staff performance / low stock / walk-in queue\n"
+                "• Services, prices, branches\n"
+                "• Or say **book** to create an appointment\n\n"
+                "What do you need?"
+            )
+        elif len(sess.history) > 2:
             reply = "Welcome back! 👋 What else can I help you with?"
         else:
             reply = (
-                "Hello! Welcome to **Hexaone** 💇\n\n"
+                "Hello! Welcome 💇\n\n"
                 "I can help you:\n"
                 "• 📅 Book an appointment\n"
-                "• 💅 Check our services & prices\n"
-                "• 📍 Find our branches\n"
-                "• 👤 View our stylists\n\n"
+                "• 💅 Check services & prices\n"
+                "• 📍 Find branches\n"
+                "• 👤 View stylists\n\n"
                 "What would you like to do?"
             )
         add_to_history(session_id, "bot", reply)
@@ -528,16 +552,46 @@ async def handle_message(
         return reply
 
     # ── LLM-powered fallback ─────────────────────────────────────────────────
-    reply = await _smart_fallback(text, prev_intent, bool(token), sess.history)
+    reply = await _smart_fallback(
+        text, prev_intent, bool(token), sess.history, effective_tenant, token=token,
+    )
     add_to_history(session_id, "bot", reply)
     return reply
 
 
-async def _clarify_response(text: str, prev_intent: str, history: list) -> str:
+async def _staff_open_question(
+    text: str,
+    token: str,
+    tenant_id: int | None,
+    history: list,
+    prev_intent: str = "",
+) -> str | None:
+    """Answer any salon question using Gemini + live tenant snapshot."""
+    if not llm_client.is_available(tenant_id):
+        return None
+    snapshot = await salon_api.build_salon_snapshot(token, tenant_id=tenant_id)
+    context_parts = [
+        "User is authenticated staff/admin for THIS salon only.",
+        "Answer their question using the live snapshot. Be specific with numbers from the snapshot.",
+    ]
+    if prev_intent:
+        context_parts.append(f"Previous topic: {prev_intent}")
+    context_parts.append(snapshot)
+    return await llm_client.llm_reply(
+        text,
+        context="\n\n".join(context_parts),
+        history=history,
+        tenant_id=tenant_id,
+    )
+
+
+async def _clarify_response(text: str, prev_intent: str, history: list, tenant_id: int | None = None) -> str:
     """Low-confidence reply — use LLM if available, else static."""
-    if llm_client.is_available():
+    if llm_client.is_available(tenant_id):
         context = f"Previous topic: {prev_intent}" if prev_intent else ""
-        llm_resp = await llm_client.llm_reply(text, context=context, history=history)
+        llm_resp = await llm_client.llm_reply(
+            text, context=context, history=history, tenant_id=tenant_id,
+        )
         if llm_resp:
             return llm_resp
     base = f"I'm not quite sure what you mean by \"*{text[:40]}*\". "
@@ -548,16 +602,29 @@ async def _clarify_response(text: str, prev_intent: str, history: list) -> str:
     return base + "Try saying:\n• **book** — for an appointment\n• **services** — to see what we offer\n• **help** — for all options"
 
 
-async def _smart_fallback(text: str, prev_intent: str, is_staff: bool, history: list) -> str:
-    """LLM-powered fallback — uses NVIDIA NIM if available, else static rules."""
-    if llm_client.is_available():
+async def _smart_fallback(
+    text: str,
+    prev_intent: str,
+    is_staff: bool,
+    history: list,
+    tenant_id: int | None = None,
+    token: str | None = None,
+) -> str:
+    """LLM fallback with live salon snapshot for staff."""
+    if is_staff and token:
+        reply = await _staff_open_question(text, token, tenant_id, history, prev_intent)
+        if reply:
+            return reply
+    if llm_client.is_available(tenant_id):
         context_parts = []
         if is_staff:
             context_parts.append("User is a staff/manager with access to management data.")
         if prev_intent:
             context_parts.append(f"Previous conversation topic: {prev_intent}")
         context = "\n".join(context_parts)
-        llm_resp = await llm_client.llm_reply(text, context=context, history=history)
+        llm_resp = await llm_client.llm_reply(
+            text, context=context, history=history, tenant_id=tenant_id,
+        )
         if llm_resp:
             return llm_resp
     # Static fallback if LLM unavailable
@@ -582,28 +649,22 @@ async def _smart_fallback(text: str, prev_intent: str, is_staff: bool, history: 
 
 def _help_message(token: str | None) -> str:
     lines = [
-        "Here's what I can do for you:\n",
+        "Here's what I can do:\n",
         "**Appointments**",
         "• Say **book** to start a new booking",
-        "• Say **cancel** to cancel an appointment\n",
+        "• Say **cancel** for cancel guidance\n",
         "**Information**",
-        "• **services** — see all services",
-        "• **price list** — see all prices",
-        "• **branches** — find our locations",
-        "• **staff** — meet our stylists",
-        "• **availability** — check free slots\n",
+        "• **services** / **price list**",
+        "• **branches** / **staff** / **availability**\n",
     ]
     if token:
         lines += [
-            "**Management (Staff)**",
-            "• **today appointments** — today's schedule",
-            "• **pending bookings** — unconfirmed appointments",
-            "• **today revenue** — today's earnings",
-            "• **staff performance** — team stats",
-            "• **low stock** — inventory alerts",
-            "• **walk-in queue** — current waiting list",
-            "• **customer stats** — total customers",
-            "• **recent payments** — latest transactions\n",
+            "**Your salon (ask in your own words)**",
+            "• today appointments / pending bookings",
+            "• today revenue / recent payments",
+            "• staff performance",
+            "• low stock / walk-in queue / customers",
+            "• Or ask anything about your salon — I'll use live data\n",
         ]
     lines.append("How can I help?")
     return "\n".join(lines)

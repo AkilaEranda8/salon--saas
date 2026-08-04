@@ -197,38 +197,6 @@ function filterFutureSlotsLocal(slots, dateStr) {
   return list.map(normalizeApptTime).filter((s) => timeToMinutesLocal(s) >= nowMin);
 }
 
-/**
- * Bookable HH:MM options (15-min). For today, only current/future times —
- * native <input type="time" min=… is ignored by many browser pickers.
- */
-function buildBookableTimeOptions(dateStr, stepMin = 15) {
-  const d = String(dateStr || '').slice(0, 10);
-  if (!d) return [];
-  const today = localToday();
-  if (d < today) return [];
-  const step = Math.max(5, Number(stepMin) || 15);
-  let startMin = 0;
-  if (d === today) {
-    const nowMin = timeToMinutesLocal(localNowTime());
-    startMin = Math.ceil(nowMin / step) * step;
-    if (startMin < nowMin) startMin += step;
-  }
-  const out = [];
-  for (let m = startMin; m < 24 * 60; m += step) {
-    out.push(`${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`);
-  }
-  return out;
-}
-
-function formatTimeOptionLabel(hhmm) {
-  const t = normalizeApptTime(hhmm);
-  if (!t) return '';
-  const [h, m] = t.split(':').map(Number);
-  const ampm = h >= 12 ? 'PM' : 'AM';
-  const h12 = h % 12 || 12;
-  return `${String(h12).padStart(2, '0')}:${String(m).padStart(2, '0')} ${ampm}`;
-}
-
 function slotListIncludes(slots, time) {
   const nt = normalizeApptTime(time);
   if (!nt || !Array.isArray(slots) || !slots.length) return false;
@@ -2050,8 +2018,10 @@ export default function AppointmentsPage() {
                               />
                             </FormGroup>
                             <FormGroup label="Time" required>
-                              <Select
+                              <Input
+                                type="time"
                                 value={normalizeApptTime(a.time) || ''}
+                                min={a.date === today ? localNowTime() : undefined}
                                 onChange={(e) => {
                                   const t = normalizeApptTime(e.target.value);
                                   if (a.date && t && isPastDateTime(a.date, t)) {
@@ -2062,17 +2032,14 @@ export default function AppointmentsPage() {
                                   setFormErr('');
                                   updateServiceAssignment(s.id, { time: t });
                                 }}
-                              >
-                                <option value="">Select time…</option>
-                                {buildBookableTimeOptions(a.date).map((t) => (
-                                  <option key={t} value={t}>{formatTimeOptionLabel(t)}</option>
-                                ))}
-                              </Select>
-                              {a.date === today && (
-                                <div style={{ fontSize: 11, color: '#D97706', marginTop: 4, fontWeight: 600 }}>
-                                  Past times are hidden for today
-                                </div>
-                              )}
+                                onBlur={(e) => {
+                                  const t = normalizeApptTime(e.target.value);
+                                  if (a.date && t && isPastDateTime(a.date, t)) {
+                                    setFormErr('Cannot book a past time. Choose a later slot.');
+                                    updateServiceAssignment(s.id, { time: '' });
+                                  }
+                                }}
+                              />
                             </FormGroup>
                           </div>
                           {!!a.staff_id && !!a.date && renderSlotChips({
@@ -2129,8 +2096,10 @@ export default function AppointmentsPage() {
                       />
                     </FormGroup>
                     <FormGroup label="Time" required>
-                      <Select
+                      <Input
+                        type="time"
                         value={normalizeApptTime(form.time) || ''}
+                        min={!editItem && form.date === today ? localNowTime() : undefined}
                         onChange={(e) => {
                           const t = normalizeApptTime(e.target.value);
                           if (form.date && t && isPastDateTime(form.date, t)) {
@@ -2146,26 +2115,17 @@ export default function AppointmentsPage() {
                           setFormErr('');
                           setForm((f) => ({ ...f, time: t }));
                         }}
-                      >
-                        <option value="">Select time…</option>
-                        {(() => {
-                          const opts = buildBookableTimeOptions(form.date);
-                          const cur = normalizeApptTime(form.time);
-                          // Keep current value visible when editing an already-past appointment
-                          if (cur && !opts.includes(cur) && editItem) {
-                            return [
-                              <option key={cur} value={cur}>{formatTimeOptionLabel(cur)} (saved)</option>,
-                              ...opts.map((t) => <option key={t} value={t}>{formatTimeOptionLabel(t)}</option>),
-                            ];
-                          }
-                          return opts.map((t) => <option key={t} value={t}>{formatTimeOptionLabel(t)}</option>);
-                        })()}
-                      </Select>
-                      {!editItem && form.date === today && (
-                        <div style={{ fontSize: 11, color: '#D97706', marginTop: 4, fontWeight: 600 }}>
-                          Past times are hidden for today
-                        </div>
-                      )}
+                        onBlur={(e) => {
+                          const t = normalizeApptTime(e.target.value);
+                          if (!form.date || !t || !isPastDateTime(form.date, t)) return;
+                          const sameAsOriginal = editItem
+                            && String(editItem.date || '').slice(0, 10) === String(form.date).slice(0, 10)
+                            && normalizeApptTime(editItem.time) === t;
+                          if (sameAsOriginal) return;
+                          setFormErr('Cannot book a past time. Choose a later slot.');
+                          setForm((f) => ({ ...f, time: '' }));
+                        }}
+                      />
                     </FormGroup>
                   </div>
                   {!!form.staff_id && !!form.date && renderSlotChips({

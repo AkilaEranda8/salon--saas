@@ -33,6 +33,7 @@ import {
 } from '../utils/packageHelpers';
 import { getKcAccessToken } from '../utils/kcTokenStore';
 import { pinWalkInFirst } from '../utils/walkInCustomer';
+import { fetchAllServices, filterServicesByQuery } from '../utils/fetchAllServices';
 import {
   PKModal as Modal, StatCard, StaffAvatar,
   IconUsers, IconCheck, IconClock, IconClose, IconPlus, IconDollar,
@@ -468,6 +469,8 @@ export default function WalkInPage() {
   const custSearchRef = useRef(null);
   const custSearchTimer = useRef(null);
   const [custDropPos, setCustDropPos] = useState({ top: 0, left: 0, width: 0 });
+  const [checkinServiceSearch, setCheckinServiceSearch] = useState('');
+  const [paymentServiceSearch, setPaymentServiceSearch] = useState('');
 
   const [branches,  setBranches]  = useState([]);
   const [services,  setServices]  = useState([]);
@@ -484,7 +487,7 @@ export default function WalkInPage() {
   /*  Lookup data  */
   useEffect(() => {
     if (isAdmin) api.get('/branches').then((r) => setBranches(r.data.data || r.data || [])).catch(() => {});
-    api.get('/services?limit=500').then((r) => setServices(r.data.data || r.data || [])).catch(() => {});
+    fetchAllServices(api).then(setServices).catch(() => setServices([]));
   }, [isAdmin]);
 
   useEffect(() => {
@@ -599,6 +602,7 @@ export default function WalkInPage() {
     setPaymentCustPackages([]);
     setPaymentCustPackageId('');
     setPaymentCustomerId(null);
+    setPaymentServiceSearch('');
     setPaymentRecurring(false);
     setPaymentRecurringDate(defaultRecurringNextDate());
     setPaymentRecurringTemplateIds([]);
@@ -1057,6 +1061,7 @@ export default function WalkInPage() {
       setCheckinPackageTemplateId('');
       setSelectedCustomer(null);
       setCustSearch('');
+      setCheckinServiceSearch('');
       setShowToken(res.data);
     } catch (err) {
       setFormError(err.response?.data?.message || 'Check-in failed.');
@@ -1182,6 +1187,7 @@ export default function WalkInPage() {
     setCustTotal(0);
     setCustSearching(false);
     setShowCustDrop(false);
+    setCheckinServiceSearch('');
   };
 
   useLayoutEffect(() => {
@@ -1292,6 +1298,9 @@ export default function WalkInPage() {
   const checkinFinalAmount = checkinUsingPackage ? checkinBundlePrice : checkinListTotal;
   const waitPreview = checkinSelectedIds.length ? stats.waiting * checkinDurationSum : null;
 
+  const checkinServiceList = filterServicesByQuery(services, checkinServiceSearch);
+  const checkinServiceQ = checkinServiceSearch.trim();
+
   const branchName = branches.find((b) => String(b.id) === String(selectedBranch))?.name || '';
 
   const paymentListTotal = calcServiceTotal(paymentServices);
@@ -1333,6 +1342,7 @@ export default function WalkInPage() {
     setCustResults([]);
     setCustAll([]);
     setShowCustDrop(false);
+    setCheckinServiceSearch('');
     setShowCheckin(true);
   };
 
@@ -1715,26 +1725,51 @@ export default function WalkInPage() {
           <WalkInSection title="Services" desc="Select one or more — first service is primary in queue" dark={isDark}>
             <div style={{
               border: `1px solid ${isDark ? '#334155' : '#DCE6F3'}`,
-              borderRadius: 12, maxHeight: 280, overflowY: 'auto',
+              borderRadius: 12, maxHeight: 300, overflow: 'hidden',
               background: isDark ? '#0F172A' : '#fff',
+              display: 'flex', flexDirection: 'column',
             }}>
-              {services.filter((s) => s.is_active !== false).map((s, idx, arr) => {
-                const active = getCheckinSelectedServiceIds().includes(Number(s.id));
-                return (
-                  <label key={s.id} style={{
-                    display: 'grid', gridTemplateColumns: '24px 1fr auto auto', alignItems: 'center', gap: 10,
-                    padding: '10px 12px',
-                    borderBottom: idx !== arr.length - 1 ? `1px solid ${isDark ? '#334155' : '#EEF2F6'}` : 'none',
-                    background: active ? (isDark ? 'rgba(37,99,235,0.15)' : '#F0F9FF') : 'transparent',
-                    cursor: 'pointer',
-                  }}>
-                    <input type="checkbox" checked={active} onChange={() => toggleCheckinService(s.id)} style={{ width: 16, height: 16, accentColor: '#2563EB' }} />
-                    <span style={{ fontSize: 14, fontWeight: active ? 700 : 500, color: C.title }}>{s.name}</span>
-                    <span style={{ fontSize: 12, color: C.muted, fontWeight: 600 }}>{s.duration_minutes || 30} min</span>
-                    <span style={{ fontSize: 14, color: '#059669', fontWeight: 800 }}>Rs.{Number(s.price || 0).toLocaleString()}</span>
-                  </label>
-                );
-              })}
+              <div style={{
+                position: 'sticky', top: 0, zIndex: 1, padding: '10px 10px 8px',
+                borderBottom: `1px solid ${isDark ? '#334155' : '#EEF2F6'}`,
+                background: isDark ? '#0F172A' : '#fff',
+              }}>
+                <Input
+                  placeholder="Search services by name or category…"
+                  value={checkinServiceSearch}
+                  onChange={(e) => setCheckinServiceSearch(e.target.value)}
+                  style={{ marginBottom: 0 }}
+                />
+                {checkinServiceQ && (
+                  <div style={{ fontSize: 11, color: C.muted, marginTop: 6, fontWeight: 600 }}>
+                    {checkinServiceList.length} match{checkinServiceList.length !== 1 ? 'es' : ''}
+                    {checkinSelectedIds.length > 0 ? ` · ${checkinSelectedIds.length} selected` : ''}
+                  </div>
+                )}
+              </div>
+              <div style={{ overflowY: 'auto', maxHeight: 240 }}>
+                {checkinServiceList.length === 0 ? (
+                  <div style={{ padding: '18px 14px', fontSize: 13, color: C.muted, textAlign: 'center' }}>
+                    No services match “{checkinServiceSearch.trim()}”
+                  </div>
+                ) : checkinServiceList.map((s, idx, arr) => {
+                  const active = getCheckinSelectedServiceIds().includes(Number(s.id));
+                  return (
+                    <label key={s.id} style={{
+                      display: 'grid', gridTemplateColumns: '24px 1fr auto auto', alignItems: 'center', gap: 10,
+                      padding: '10px 12px',
+                      borderBottom: idx !== arr.length - 1 ? `1px solid ${isDark ? '#334155' : '#EEF2F6'}` : 'none',
+                      background: active ? (isDark ? 'rgba(37,99,235,0.15)' : '#F0F9FF') : 'transparent',
+                      cursor: 'pointer',
+                    }}>
+                      <input type="checkbox" checked={active} onChange={() => toggleCheckinService(s.id)} style={{ width: 16, height: 16, accentColor: '#2563EB' }} />
+                      <span style={{ fontSize: 14, fontWeight: active ? 700 : 500, color: C.title }}>{s.name}</span>
+                      <span style={{ fontSize: 12, color: C.muted, fontWeight: 600 }}>{s.duration_minutes || 30} min</span>
+                      <span style={{ fontSize: 14, color: '#059669', fontWeight: 800 }}>Rs.{Number(s.price || 0).toLocaleString()}</span>
+                    </label>
+                  );
+                })}
+              </div>
             </div>
 
             {checkinSelectedIds.length > 0 && (
@@ -2075,21 +2110,43 @@ export default function WalkInPage() {
                 </div>
                 <div style={{ marginTop: 8 }}>
                   <Label>Select Services *</Label>
-                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
-                    {services.filter((s) => s.is_active !== false).map((s) => {
-                      const active = paymentServices.includes(Number(s.id));
-                      return (
-                        <button key={s.id} type="button" onClick={() => togglePaymentService(s.id)} style={{
-                          padding: '6px 10px', borderRadius: 8,
-                          border: `1.5px solid ${active ? '#2563EB' : (isDark ? '#475569' : '#E4E7EC')}`,
-                          background: active ? (isDark ? '#1E3A5F' : '#EFF6FF') : (isDark ? '#1E293B' : '#fff'),
-                          color: active ? (isDark ? '#93C5FD' : '#2563EB') : C.muted,
-                          fontWeight: active ? 700 : 500, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit',
-                        }}>
-                          {s.name}
-                        </button>
-                      );
-                    })}
+                  <Input
+                    placeholder="Search all services…"
+                    value={paymentServiceSearch}
+                    onChange={(e) => setPaymentServiceSearch(e.target.value)}
+                    style={{ marginTop: 4, marginBottom: 8 }}
+                  />
+                  <div style={{
+                    border: `1px solid ${isDark ? '#334155' : '#DCE6F3'}`,
+                    borderRadius: 12, maxHeight: 220, overflowY: 'auto',
+                    background: isDark ? '#0F172A' : '#fff',
+                  }}>
+                    {(() => {
+                      const filtered = filterServicesByQuery(services, paymentServiceSearch);
+                      if (!filtered.length) {
+                        return (
+                          <div style={{ padding: '12px', fontSize: 12, color: C.muted, textAlign: 'center' }}>
+                            {paymentServiceSearch.trim() ? `No services match “${paymentServiceSearch.trim()}”` : 'No active services'}
+                          </div>
+                        );
+                      }
+                      return filtered.map((s, idx, arr) => {
+                        const active = paymentServices.includes(Number(s.id));
+                        return (
+                          <label key={s.id} style={{
+                            display: 'grid', gridTemplateColumns: '24px 1fr auto', alignItems: 'center', gap: 10,
+                            padding: '9px 12px',
+                            borderBottom: idx !== arr.length - 1 ? `1px solid ${isDark ? '#334155' : '#EEF2F6'}` : 'none',
+                            background: active ? (isDark ? '#1E3A5F' : '#F0F9FF') : 'transparent',
+                            cursor: 'pointer',
+                          }}>
+                            <input type="checkbox" checked={active} onChange={() => togglePaymentService(s.id)} style={{ width: 16, height: 16, accentColor: '#2563EB' }} />
+                            <span style={{ fontSize: 13, fontWeight: active ? 700 : 500, color: C.title }}>{s.name}</span>
+                            <span style={{ fontSize: 13, color: '#059669', fontWeight: 800 }}>Rs.{Number(s.price || 0).toLocaleString()}</span>
+                          </label>
+                        );
+                      });
+                    })()}
                   </div>
                   {paymentServices.length === 0 && <div style={{ fontSize: 12, color: '#DC2626', marginTop: 6 }}>Select at least one service</div>}
                 </div>

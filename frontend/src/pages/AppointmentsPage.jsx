@@ -37,6 +37,7 @@ import RecurringDateCalendar, { defaultRecurringNextDate } from '../components/u
 import RecurringTemplateCheckboxes from '../components/ui/RecurringTemplateCheckboxes';
 import PaymentHelperStaffFields, { helpersPayload } from '../components/payments/PaymentHelperStaffFields';
 import { pinWalkInFirst } from '../utils/walkInCustomer';
+import { fetchAllServices, filterServicesByQuery } from '../utils/fetchAllServices';
 
 const IconMoney    = () => <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>;
 
@@ -252,6 +253,7 @@ export default function AppointmentsPage() {
   /** Per-service staff/date/time for multi-booking (new appointment only). */
   const [serviceAssignments, setServiceAssignments] = useState({});
   const [serviceSearch, setServiceSearch] = useState('');
+  const [paymentServiceSearch, setPaymentServiceSearch] = useState('');
   const [multiBooking, setMultiBooking] = useState(false);
   const [collectAdvance, setCollectAdvance] = useState(false);
   const [advanceAmount, setAdvanceAmount] = useState('');
@@ -287,11 +289,11 @@ export default function AppointmentsPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [apR, brR, svR, stR] = await Promise.all([
+      const [apR, brR, stR, allServices] = await Promise.all([
         api.get('/appointments', { params:{ page, limit:LIMIT, ...(filterBranch?{branchId:filterBranch}:{}), ...(filterStatus?{status:filterStatus}:{}), ...(filterDate?{date:filterDate}:{}) } }),
         api.get('/branches',     { params:{ limit:100 } }),
-        api.get('/services',     { params:{ limit:1000 } }),
         api.get('/staff',        { params:{ limit:200, ...(filterBranch?{branchId:filterBranch}:{}) } }),
+        fetchAllServices(api),
       ]);
       const d = apR.data?.data ?? apR.data ?? [];
       const rows = Array.isArray(d) ? d : [];
@@ -315,7 +317,7 @@ export default function AppointmentsPage() {
         setApptPackageCache({});
       }
       setBranches(Array.isArray(brR.data) ? brR.data : (brR.data?.data??[]));
-      setServices(Array.isArray(svR.data) ? svR.data : (svR.data?.data??[]));
+      setServices(allServices);
       setStaffList(Array.isArray(stR.data) ? stR.data : (stR.data?.data??[]));
     } catch {}
     setLoading(false);
@@ -431,6 +433,7 @@ export default function AppointmentsPage() {
     setPaymentOk(false);
     setPaymentCustPackages([]);
     setPaymentCustPackageId('');
+    setPaymentServiceSearch('');
     setPaymentMainStaffId(String(sourceRow.staff_id || sourceRow.staff?.id || ''));
     setPaymentHelpers([]);
     const custId = sourceRow.customer_id || sourceRow.customer?.id;
@@ -1713,17 +1716,11 @@ export default function AppointmentsPage() {
                 background: isDark ? '#0F172A' : '#fff',
               }}>
                 {(() => {
-                  const q = serviceSearch.trim().toLowerCase();
-                  const filtered = services.filter((s) => {
-                    if (s.is_active === false) return false;
-                    if (!q) return true;
-                    const hay = `${s.name || ''} ${s.category || ''} ${s.subcategory || ''}`.toLowerCase();
-                    return hay.includes(q);
-                  });
+                  const filtered = filterServicesByQuery(services, serviceSearch);
                   if (!filtered.length) {
                     return (
                       <div style={{ padding: '14px', fontSize: 12, color: '#98A2B3', textAlign: 'center' }}>
-                        {q ? `No services match “${serviceSearch.trim()}”` : 'No active services'}
+                        {serviceSearch.trim() ? `No services match “${serviceSearch.trim()}”` : 'No active services'}
                       </div>
                     );
                   }
@@ -2211,17 +2208,33 @@ export default function AppointmentsPage() {
                 isDark={isDark}
               />
               <FormGroup label="Services" required>
-                <div style={{ border:`1px solid ${isDark?'#334155':'#DCE6F3'}`, borderRadius:12, overflow:'hidden', maxHeight:180, overflowY:'auto', background:isDark?'#0F172A':'#fff' }}>
-                  {services.filter(s => s.is_active !== false).map((s, idx, arr) => {
-                    const active = paymentServices.includes(Number(s.id));
-                    return (
-                      <label key={s.id} style={{ display:'grid', gridTemplateColumns:'24px 1fr auto', alignItems:'center', gap:10, padding:'9px 12px', borderBottom:idx!==arr.length-1?`1px solid ${isDark?'#334155':'#EEF2F6'}`:'none', background:active?(isDark?'#1e3a5f':'#F0F9FF'):'transparent', cursor:'pointer' }}>
-                        <input type="checkbox" checked={active} onChange={() => togglePaymentService(s.id)} style={{ width:16, height:16, accentColor:'#2563EB' }} />
-                        <span style={{ fontSize:14, color:isDark?'#E2E8F0':'#0F172A', fontWeight:active?700:500 }}>{s.name}</span>
-                        <span style={{ fontSize:14, color:'#059669', fontWeight:800 }}>Rs.{Number(s.price||0).toLocaleString()}</span>
-                      </label>
-                    );
-                  })}
+                <Input
+                  value={paymentServiceSearch}
+                  onChange={(e) => setPaymentServiceSearch(e.target.value)}
+                  placeholder="Search all services…"
+                  style={{ marginBottom: 8 }}
+                />
+                <div style={{ border:`1px solid ${isDark?'#334155':'#DCE6F3'}`, borderRadius:12, overflow:'hidden', maxHeight:220, overflowY:'auto', background:isDark?'#0F172A':'#fff' }}>
+                  {(() => {
+                    const filtered = filterServicesByQuery(services, paymentServiceSearch);
+                    if (!filtered.length) {
+                      return (
+                        <div style={{ padding: '12px', fontSize: 12, color: '#98A2B3', textAlign: 'center' }}>
+                          {paymentServiceSearch.trim() ? `No services match “${paymentServiceSearch.trim()}”` : 'No active services'}
+                        </div>
+                      );
+                    }
+                    return filtered.map((s, idx, arr) => {
+                      const active = paymentServices.includes(Number(s.id));
+                      return (
+                        <label key={s.id} style={{ display:'grid', gridTemplateColumns:'24px 1fr auto', alignItems:'center', gap:10, padding:'9px 12px', borderBottom:idx!==arr.length-1?`1px solid ${isDark?'#334155':'#EEF2F6'}`:'none', background:active?(isDark?'#1e3a5f':'#F0F9FF'):'transparent', cursor:'pointer' }}>
+                          <input type="checkbox" checked={active} onChange={() => togglePaymentService(s.id)} style={{ width:16, height:16, accentColor:'#2563EB' }} />
+                          <span style={{ fontSize:14, color:isDark?'#E2E8F0':'#0F172A', fontWeight:active?700:500 }}>{s.name}</span>
+                          <span style={{ fontSize:14, color:'#059669', fontWeight:800 }}>Rs.{Number(s.price||0).toLocaleString()}</span>
+                        </label>
+                      );
+                    });
+                  })()}
                 </div>
                 {paymentServices.length===0 && <div style={{ fontSize:12, color:'#DC2626', marginTop:4 }}>Select at least one service</div>}
               </FormGroup>

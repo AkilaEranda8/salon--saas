@@ -1,3 +1,4 @@
+const { Op } = require('sequelize');
 const { Service } = require('../models');
 const { tenantWhere } = require('../utils/tenantScope');
 const { hasTenantFeature, sanitizeServiceRecord } = require('../utils/tenantFeatures');
@@ -58,13 +59,23 @@ function buildServicePayload(body = {}, tenant) {
 const list = async (req, res) => {
   try {
     const page   = Math.max(parseInt(req.query.page)  || 1, 1);
-    const limit  = Math.min(parseInt(req.query.limit) || 100, 200);
+    const limit  = Math.min(parseInt(req.query.limit) || 100, 2000);
     const offset = (page - 1) * limit;
 
     const where = tenantWhere(req);
     if (req.query.category) where.category = req.query.category;
     if (req.query.subcategory) where.subcategory = req.query.subcategory;
     if (req.query.active !== undefined) where.is_active = req.query.active !== 'false';
+
+    const q = String(req.query.search || req.query.q || '').trim();
+    if (q) {
+      where[Op.or] = [
+        { name: { [Op.like]: `%${q}%` } },
+        { category: { [Op.like]: `%${q}%` } },
+        { subcategory: { [Op.like]: `%${q}%` } },
+        { description: { [Op.like]: `%${q}%` } },
+      ];
+    }
 
     const { count, rows } = await Service.findAndCountAll({
       where,

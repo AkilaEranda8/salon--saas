@@ -29,6 +29,7 @@ import RecurringDateCalendar, { defaultRecurringNextDate } from '../components/u
 import RecurringTemplateCheckboxes from '../components/ui/RecurringTemplateCheckboxes';
 import PaymentHelperStaffFields, { helpersPayload } from '../components/payments/PaymentHelperStaffFields';
 import { pinWalkInFirst } from '../utils/walkInCustomer';
+import { fetchAllServices } from '../utils/fetchAllServices';
 
 const METHODS = ['Cash','Card','Online Transfer','Loyalty Points','Package','LankaQR'];
 const METHOD_LABEL = { 'Cash':'Cash', 'Card':'Card', 'Online Transfer':'Bank Transfer', 'Loyalty Points':'Loyalty Pts', 'Package':'Package', 'LankaQR':'LankaQR' };
@@ -746,7 +747,7 @@ export default function PaymentsPage() {
       api.get('/branches',  { params:{ limit:100 } }),
       api.get('/customers', { params:{ limit:2000 } }),
       api.get('/staff',     { params:{ limit:200 } }),
-      api.get('/services',  { params:{ limit:200 } }),
+      fetchAllServices(api),
     ]).then(([brR, cuR, stR, svR]) => {
       if (brR.status === 'fulfilled') setBranches(Array.isArray(brR.value.data) ? brR.value.data : (brR.value.data?.data ?? []));
       if (cuR.status === 'fulfilled') {
@@ -754,7 +755,7 @@ export default function PaymentsPage() {
         setCustomers(pinWalkInFirst(list));
       }
       if (stR.status === 'fulfilled') setStaffList(Array.isArray(stR.value.data) ? stR.value.data : (stR.value.data?.data ?? []));
-      if (svR.status === 'fulfilled') setServices(Array.isArray(svR.value.data) ? svR.value.data : (svR.value.data?.data ?? []));
+      if (svR.status === 'fulfilled') setServices(svR.value || []);
     });
   }, []);
 

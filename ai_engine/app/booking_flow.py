@@ -556,14 +556,40 @@ async def _handle_booking_turn_body(
         except Exception as exc:
             actions.append({"tool": "book_appointment", "ok": False, "error": str(exc)})
             return {
-                "replyText": f"I couldn’t complete the booking ({exc}). Please try another time or ask staff.",
+                "replyText": (
+                    f"I couldn’t complete the booking just now ({exc}). "
+                    "I’m retrying in the background — or pick another time / ask staff."
+                ),
                 "actions": actions,
-                "booking": None,
+                "booking": {
+                    "status": "failed",
+                    "retryable": True,
+                    "payload": payload,
+                    "idempotency_key": idem,
+                    "error": str(exc),
+                },
             }
 
         appt = result.get("appointment") if isinstance(result, dict) else None
+        if not isinstance(appt, dict) or not appt.get("id"):
+            actions.append({"tool": "book_appointment", "ok": False, "error": "no_appointment_in_result"})
+            return {
+                "replyText": (
+                    "I couldn’t confirm the booking just now. "
+                    "I’m retrying in the background — or ask staff to help."
+                ),
+                "actions": actions,
+                "booking": {
+                    "status": "failed",
+                    "retryable": True,
+                    "payload": payload,
+                    "idempotency_key": idem,
+                    "error": "no_appointment_in_result",
+                    "result": result,
+                },
+            }
         do_reset()
-        appt_id = appt.get("id") if isinstance(appt, dict) else None
+        appt_id = appt.get("id")
         return {
             "replyText": (
                 f"You’re booked! ✅\n"

@@ -8,10 +8,20 @@ require('dotenv').config();
 
 const { Worker, UnrecoverableError } = require('bullmq');
 const { getRedis } = require('../utils/redis');
-const { QUEUE_NAMES, moveToDlq } = require('../services/queue');
-const { AiUsage, AiModelRate, CrmMessage } = require('../models');
+const { QUEUE_NAMES, moveToDlq, enqueue } = require('../services/queue');
+const {
+  AiUsage,
+  AiModelRate,
+  CrmMessage,
+  CrmConversation,
+  CrmLead,
+  CrmAuditLog,
+  CrmBookingRequest,
+  Appointment,
+} = require('../models');
 const { processInboundAiTurn } = require('../services/crmInboundTurnService');
 const { sendCloudText, getWabaByTenant } = require('../services/whatsappCloudService');
+const { notifyTenantRoles } = require('../services/fcmService');
 const {
   runDayBeforeReminders,
   runAbandonedBookingNudges,
@@ -21,6 +31,14 @@ const {
 
 function connection() {
   return getRedis();
+}
+
+function backendBase() {
+  return (process.env.BACKEND_INTERNAL_URL || 'http://backend:5000').replace(/\/$/, '');
+}
+
+function serviceSecret() {
+  return process.env.AI_ENGINE_SERVICE_SECRET || process.env.CRM_SERVICE_SECRET || '';
 }
 
 async function computeCost(provider, model, promptTokens, completionTokens) {
@@ -111,14 +129,13 @@ async function handleOutbound(job) {
   }
 
   // Fallback: Baileys QR lives in the API process — call backend over HTTP
-  const secret = process.env.AI_ENGINE_SERVICE_SECRET || process.env.CRM_SERVICE_SECRET || '';
-  const backendUrl = (process.env.BACKEND_INTERNAL_URL || 'http://backend:5000').replace(/\/$/, '');
+  const secret = serviceSecret();
   if (!secret) {
     console.warn('[worker] wa-outbound skipped — no service secret for QR send', { tenantId });
     return { skipped: true, reason: 'no_service_secret' };
   }
   try {
-    const r = await fetch(`${backendUrl}/api/crm/internal/whatsapp-qr-send`, {
+    const r = await fetch(`${backendBase()}/api/crm/internal/whatsapp-qr-send`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -153,8 +170,147 @@ async function handleOutbound(job) {
 }
 
 async function handleHandoff(job) {
-  console.log('[worker] handoff', job.id, job.data);
-  return { ok: true, queued: true };
+  const d = job.data || {};
+  const tenantId = d.tenant_id || d.tenantId;
+  const conversationId = d.conversation_id || d.conversationId;
+  const reason = d.reason || 'ai_handoff';
+
+  if (!tenantId || !conversationId) {
+    throw new UnrecoverableError('tenant_id and conversation_id required for handoff');
+  }
+
+  const conv = await CrmConversation.findOne({
+    where: { id: conversationId, tenant_id: tenantId },
+    include: [{ model: CrmLead, as: 'lead', required: false }],
+  });
+  if (!conv) {
+    return { skipped: true, reason: 'conversation_not_found' };
+  }
+
+  if (conv.status === 'ai_active' || conv.status === 'ai_resume') {
+    await conv.update({
+      status: 'queued',
+      handoff_reason: String(reason).slice(0, 255),
+    });
+  }
+
+  const phone = conv.phone || conv.lead?.phone || '';
+  const title = 'CRM handoff needed';
+  const body = phone
+    ? `Customer ${phone} needs a human — ${String(reason).slice(0, 80)}`
+    : `Conversation #${conversationId} needs a human — ${String(reason).slice(0, 80)}`;
+
+  await notifyTenantRoles(
+    tenantId,
+    title,
+    body,
+    {
+      type: 'crm_handoff',
+      conversation_id: String(conversationId),
+      phone: String(phone || ''),
+      reason: String(reason).slice(0, 120),
+    },
+    ['superadmin', 'admin', 'manager']
+  );
+
+  await CrmAuditLog.create({
+    tenant_id: tenantId,
+    actor_type: 'system',
+    actor_id: null,
+    action: 'handoff_notified',
+    entity_type: 'conversation',
+    entity_id: conversationId,
+    meta: { reason, phone },
+  }).catch(() => {});
+
+  return { ok: true, conversationId, notified: true };
+}
+
+async function handleBookingRetry(job) {
+  const d = job.data || {};
+  const tenantId = d.tenant_id || d.tenantId;
+  const payload = d.payload || {};
+  const conversationId = d.conversation_id || d.conversationId || null;
+  const leadId = d.lead_id || d.leadId || null;
+  const phone = d.phone || payload.phone;
+
+  if (!tenantId || !payload.service_id || !payload.date || !payload.time) {
+    throw new UnrecoverableError('tenant_id and booking payload required');
+  }
+
+  const secret = serviceSecret();
+  if (!secret) {
+    throw new UnrecoverableError('service secret required for booking retry');
+  }
+
+  const r = await fetch(`${backendBase()}/api/crm-integration/appointments`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Service-Key': secret,
+      'X-Tenant-Id': String(tenantId),
+    },
+    body: JSON.stringify(payload),
+  });
+  const body = await r.json().catch(() => ({}));
+  if (!r.ok) {
+    console.warn('[worker] booking-retry failed', { tenantId, status: r.status, body });
+    throw new Error(body.message || body.error || `booking_retry_http_${r.status}`);
+  }
+
+  const appt = body.appointment || body;
+  const apptId = appt?.id || null;
+
+  if (conversationId && apptId) {
+    await CrmBookingRequest.create({
+      tenant_id: tenantId,
+      conversation_id: conversationId,
+      lead_id: leadId || null,
+      status: 'confirmed',
+      salon_appointment_id: apptId,
+      payload,
+      idempotency_key: payload.idempotency_key || null,
+    }).catch(() => {});
+  }
+
+  if (leadId) {
+    await CrmLead.update(
+      { stage: 'booking_confirmed' },
+      { where: { id: leadId, tenant_id: tenantId } }
+    ).catch(() => {});
+  }
+
+  if (phone && apptId) {
+    const confirmMsg =
+      `You’re booked! ✅\n`
+      + `${payload.date} at ${String(payload.time).slice(0, 5)}\n`
+      + `See you soon!`;
+    await enqueue(QUEUE_NAMES.WA_OUTBOUND, {
+      tenant_id: tenantId,
+      conversation_id: conversationId,
+      phone,
+      message: confirmMsg,
+      sender_type: 'ai',
+    }, { name: 'booking-retry-confirm' }).catch(() => {});
+
+    try {
+      const { sendBookingConfirmation } = require('../services/crmReminderService');
+      const appointment = await Appointment.findByPk(apptId);
+      if (appointment) {
+        await sendBookingConfirmation({
+          tenantId,
+          appointment,
+          phone,
+          conversationId,
+          leadId,
+        });
+      }
+    } catch (e) {
+      console.warn('[worker] booking-retry confirm WA', e.message);
+    }
+  }
+
+  return { ok: true, appointment_id: apptId, idempotent: !!body.idempotent };
 }
 
 async function handleFollowup(job) {
@@ -170,7 +326,6 @@ async function handleFollowup(job) {
       runAbandonedBookingNudges({ tenantId: d.tenantId || d.tenant_id || null })
     );
   }
-  // Tenant-scoped manual enqueue
   if (d.job === 'tenant_day_before' && d.tenantId) {
     return runDayBeforeReminders({ tenantId: d.tenantId });
   }
@@ -208,10 +363,7 @@ function startAiCrmWorkers() {
     new Worker(QUEUE_NAMES.WA_OUTBOUND, handleOutbound, { connection: conn, concurrency: 5 }),
     new Worker(QUEUE_NAMES.HANDOFF, handleHandoff, { connection: conn, concurrency: 2 }),
     new Worker(QUEUE_NAMES.FOLLOWUP, handleFollowup, { connection: conn, concurrency: 1 }),
-    new Worker(QUEUE_NAMES.BOOKING_RETRY, async (job) => {
-      console.log('[worker] booking-retry', job.id, job.data);
-      return { ok: true };
-    }, { connection: conn, concurrency: 2 }),
+    new Worker(QUEUE_NAMES.BOOKING_RETRY, handleBookingRetry, { connection: conn, concurrency: 2 }),
   ];
 
   for (const w of workers) {
@@ -230,4 +382,4 @@ if (require.main === module) {
   startAiCrmWorkers();
 }
 
-module.exports = { startAiCrmWorkers };
+module.exports = { startAiCrmWorkers, handleHandoff, handleBookingRetry };

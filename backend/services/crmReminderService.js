@@ -243,77 +243,123 @@ async function runDayBeforeReminders({ tenantId = null } = {}) {
 
 /**
  * Nudge leads stuck in interested / booking_requested with no confirmed booking (2h+).
+ * Cloud WABA first; on miss/failure fall back to QR via API process.
  */
+async function sendAbandonedViaQrHttp(tenantId, phone, message) {
+  const secret = process.env.AI_ENGINE_SERVICE_SECRET || process.env.CRM_SERVICE_SECRET || '';
+  const backendUrl = (process.env.BACKEND_INTERNAL_URL || 'http://backend:5000').replace(/\/$/, '');
+  if (!secret) return { ok: false, reason: 'no_service_secret' };
+  try {
+    const r = await fetch(`${backendUrl}/api/crm/internal/whatsapp-qr-send`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Service-Key': secret,
+        'X-Tenant-Id': String(tenantId),
+      },
+      body: JSON.stringify({
+        tenantId,
+        phone,
+        message,
+        event_type: 'abandoned_booking_nudge',
+      }),
+    });
+    const body = await r.json().catch(() => ({}));
+    if (!r.ok || !body.ok) {
+      return { ok: false, reason: body.reason || `http_${r.status}`, body };
+    }
+    return { ok: true, channel: 'qr', ...body };
+  } catch (err) {
+    return { ok: false, reason: 'qr_api_error', error: err.message };
+  }
+}
+
 async function runAbandonedBookingNudges({ tenantId = null } = {}) {
   const cutoff = new Date(Date.now() - 2 * 60 * 60 * 1000);
   const recentFloor = new Date(Date.now() - 48 * 60 * 60 * 1000);
-  const where = { enabled: true };
-  if (tenantId) where.tenant_id = Number(tenantId);
-  const accounts = await WhatsAppBusinessAccount.findAll({ where });
+  const leadWhere = {
+    stage: { [Op.in]: ['interested', 'booking_requested'] },
+    last_message_at: { [Op.between]: [recentFloor, cutoff] },
+  };
+  if (tenantId) leadWhere.tenant_id = Number(tenantId);
+
+  const leads = await CrmLead.findAll({ where: leadWhere, limit: 200, order: [['last_message_at', 'ASC']] });
   let sent = 0;
 
-  for (const waba of accounts) {
-    const tenant = await Tenant.findByPk(waba.tenant_id);
+  for (const lead of leads) {
+    const tenant = await Tenant.findByPk(lead.tenant_id);
     if (!tenant || !hasTenantFeature(tenant, 'whatsapp_ai_crm')) continue;
 
-    const leads = await CrmLead.findAll({
+    const already = await CrmFollowUpJob.findOne({
       where: {
-        tenant_id: waba.tenant_id,
-        stage: { [Op.in]: ['interested', 'booking_requested'] },
-        last_message_at: { [Op.between]: [recentFloor, cutoff] },
+        tenant_id: lead.tenant_id,
+        lead_id: lead.id,
+        job_type: 'abandoned_booking',
+        status: 'sent',
+        createdAt: { [Op.gte]: recentFloor },
       },
-      limit: 100,
     });
+    if (already) continue;
 
-    for (const lead of leads) {
-      const already = await CrmFollowUpJob.findOne({
-        where: {
-          tenant_id: waba.tenant_id,
-          lead_id: lead.id,
-          job_type: 'abandoned_booking',
-          status: 'sent',
-          createdAt: { [Op.gte]: recentFloor },
-        },
-      });
-      if (already) continue;
+    const booked = await Appointment.findOne({
+      where: {
+        tenant_id: lead.tenant_id,
+        phone: lead.phone,
+        status: { [Op.in]: ['pending', 'confirmed'] },
+        date: { [Op.gte]: new Date().toISOString().slice(0, 10) },
+      },
+    });
+    if (booked) continue;
 
-      const booked = await Appointment.findOne({
-        where: {
-          tenant_id: waba.tenant_id,
-          phone: lead.phone,
-          status: { [Op.in]: ['pending', 'confirmed'] },
-          date: { [Op.gte]: new Date().toISOString().slice(0, 10) },
-        },
-      });
-      if (booked) continue;
+    const text = `Hi${lead.name ? ` ${lead.name}` : ''}! Still want to book with us? Reply *book* and I’ll help you finish in a minute.`;
+    let channel = null;
+    let lastError = null;
 
+    const waba = await getWabaByTenant(lead.tenant_id);
+    if (waba && waba.enabled) {
       try {
         await sendCloudText({
-          tenantId: waba.tenant_id,
+          tenantId: lead.tenant_id,
           to: lead.phone,
-          body: `Hi${lead.name ? ` ${lead.name}` : ''}! Still want to book with us? Reply *book* and I’ll help you finish in a minute.`,
+          body: text,
           wabaRow: waba,
         });
-        await CrmFollowUpJob.create({
-          tenant_id: waba.tenant_id,
-          job_type: 'abandoned_booking',
-          status: 'sent',
-          lead_id: lead.id,
-          phone: lead.phone,
-          sent_at: new Date(),
-        });
-        await lead.update({ follow_up_status: 'nudged' }).catch(() => {});
-        sent += 1;
+        channel = 'cloud';
       } catch (err) {
-        await CrmFollowUpJob.create({
-          tenant_id: waba.tenant_id,
-          job_type: 'abandoned_booking',
-          status: 'failed',
-          lead_id: lead.id,
-          phone: lead.phone,
-          error_message: err.message,
-        }).catch(() => {});
+        lastError = err.message;
       }
+    }
+
+    if (!channel) {
+      const qr = await sendAbandonedViaQrHttp(lead.tenant_id, lead.phone, text);
+      if (qr.ok) {
+        channel = 'qr';
+      } else {
+        lastError = qr.reason || qr.error || lastError || 'send_failed';
+      }
+    }
+
+    if (channel) {
+      await CrmFollowUpJob.create({
+        tenant_id: lead.tenant_id,
+        job_type: 'abandoned_booking',
+        status: 'sent',
+        lead_id: lead.id,
+        phone: lead.phone,
+        sent_at: new Date(),
+        meta: { channel },
+      });
+      await lead.update({ follow_up_status: 'nudged' }).catch(() => {});
+      sent += 1;
+    } else {
+      await CrmFollowUpJob.create({
+        tenant_id: lead.tenant_id,
+        job_type: 'abandoned_booking',
+        status: 'failed',
+        lead_id: lead.id,
+        phone: lead.phone,
+        error_message: String(lastError || 'send_failed').slice(0, 500),
+      }).catch(() => {});
     }
   }
 

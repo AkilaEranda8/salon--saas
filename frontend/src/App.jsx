@@ -8,6 +8,7 @@ import Topbar  from './components/layout/Topbar';
 import PlatformSidebar from './components/layout/PlatformSidebar';
 import SubscriptionBanner from './components/shared/SubscriptionBanner';
 import UpgradePlanModal from './components/shared/UpgradePlanModal';
+import FeatureRoute from './components/FeatureRoute';
 import { useBreakpoint } from './hooks/useBreakpoint';
 import { isPlatformContext } from './utils/tenant';
 import { useTheme } from './context/ThemeContext';
@@ -438,37 +439,51 @@ function AppShellRoutes() {
             } />
             <Route path="/crm/ai-settings" element={
               <RoleRoute roles={['superadmin', 'admin']}>
-                <CrmAiSettingsPage />
+                <FeatureRoute feature="whatsapp_ai_crm" title="AI Settings">
+                  <CrmAiSettingsPage />
+                </FeatureRoute>
               </RoleRoute>
             } />
             <Route path="/crm/inbox" element={
               <RoleRoute roles={['superadmin', 'admin', 'manager', 'staff']}>
-                <CrmInboxPage />
+                <FeatureRoute feature="whatsapp_ai_crm" title="CRM Inbox">
+                  <CrmInboxPage />
+                </FeatureRoute>
               </RoleRoute>
             } />
             <Route path="/crm/leads" element={
               <RoleRoute roles={['superadmin', 'admin', 'manager', 'staff']}>
-                <CrmLeadsPage />
+                <FeatureRoute feature="whatsapp_ai_crm" title="CRM Leads">
+                  <CrmLeadsPage />
+                </FeatureRoute>
               </RoleRoute>
             } />
             <Route path="/crm/whatsapp-cloud" element={
               <RoleRoute roles={['superadmin', 'admin']}>
-                <CrmWhatsAppCloudPage />
+                <FeatureRoute feature="whatsapp_ai_crm" title="WhatsApp Cloud">
+                  <CrmWhatsAppCloudPage />
+                </FeatureRoute>
               </RoleRoute>
             } />
             <Route path="/crm/knowledge" element={
               <RoleRoute roles={['superadmin', 'admin']}>
-                <CrmKnowledgePage />
+                <FeatureRoute feature="ai_knowledge_base" title="Knowledge Base">
+                  <CrmKnowledgePage />
+                </FeatureRoute>
               </RoleRoute>
             } />
             <Route path="/crm/rules" element={
               <RoleRoute roles={['superadmin', 'admin']}>
-                <CrmRulesPage />
+                <FeatureRoute feature="whatsapp_ai_crm" title="AI Rules">
+                  <CrmRulesPage />
+                </FeatureRoute>
               </RoleRoute>
             } />
             <Route path="/crm/ai-cost" element={
               <RoleRoute roles={['superadmin', 'admin']}>
-                <CrmAiCostPage />
+                <FeatureRoute feature="whatsapp_ai_crm" title="AI Cost">
+                  <CrmAiCostPage />
+                </FeatureRoute>
               </RoleRoute>
             } />
             <Route path="/domain-settings" element={

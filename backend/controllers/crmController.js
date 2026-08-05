@@ -15,6 +15,14 @@ function tid(req) {
   return resolveTenantId(req);
 }
 
+function isUnread(conv) {
+  const inboundAt = conv.last_inbound_at ? new Date(conv.last_inbound_at).getTime() : 0;
+  if (!inboundAt) return false;
+  const readAt = conv.staff_last_read_at ? new Date(conv.staff_last_read_at).getTime() : 0;
+  if (!readAt) return true;
+  return inboundAt > readAt;
+}
+
 /** GET /api/crm/leads */
 const listLeads = async (req, res) => {
   try {
@@ -82,6 +90,14 @@ const listConversations = async (req, res) => {
     const tenantId = tid(req);
     const where = { tenant_id: tenantId };
     if (req.query.status) where.status = req.query.status;
+    if (req.query.unread === '1' || req.query.unread === 'true') {
+      where[Op.and] = [
+        ...(where[Op.and] || []),
+        CrmConversation.sequelize.literal(
+          '(last_inbound_at IS NOT NULL AND (staff_last_read_at IS NULL OR last_inbound_at > staff_last_read_at))'
+        ),
+      ];
+    }
     const limit = Math.min(parseInt(req.query.limit, 10) || 40, 100);
     const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
     const { rows, count } = await CrmConversation.findAndCountAll({
@@ -93,7 +109,13 @@ const listConversations = async (req, res) => {
       limit,
       offset: (page - 1) * limit,
     });
-    return res.json({ total: count, page, limit, data: rows });
+    const data = rows.map((r) => {
+      const json = r.toJSON();
+      json.unread = isUnread(json);
+      return json;
+    });
+    const unreadCount = data.filter((d) => d.unread).length;
+    return res.json({ total: count, page, limit, unread_in_page: unreadCount, data });
   } catch (err) {
     console.error('[crm] listConversations', err);
     return res.status(500).json({ message: 'Server error' });
@@ -109,12 +131,81 @@ const getConversation = async (req, res) => {
       include: [{ model: CrmLead, as: 'lead', required: false }],
     });
     if (!conv) return res.status(404).json({ message: 'Conversation not found' });
+
+    // Opening a thread marks it read
+    await conv.update({ staff_last_read_at: new Date() });
+
     const messages = await CrmMessage.findAll({
       where: { conversation_id: conv.id, tenant_id: tenantId },
       order: [['id', 'ASC']],
       limit: 200,
     });
-    return res.json({ conversation: conv, messages });
+    const json = conv.toJSON();
+    json.unread = false;
+    return res.json({ conversation: json, messages });
+  } catch (err) {
+    return res.status(500).json({ message: 'Server error' });
+  }
+};
+
+/** POST /api/crm/conversations/mark-all-read */
+const markAllRead = async (req, res) => {
+  try {
+    const tenantId = tid(req);
+    const rows = await CrmConversation.findAll({
+      where: {
+        tenant_id: tenantId,
+        status: { [Op.ne]: 'closed' },
+        last_inbound_at: { [Op.ne]: null },
+      },
+      attributes: ['id', 'last_inbound_at', 'staff_last_read_at'],
+    });
+    const ids = rows.filter((r) => isUnread(r)).map((r) => r.id);
+    let affected = 0;
+    if (ids.length) {
+      const [n] = await CrmConversation.update(
+        { staff_last_read_at: new Date() },
+        { where: { id: { [Op.in]: ids }, tenant_id: tenantId } }
+      );
+      affected = n;
+    }
+    await CrmAuditLog.create({
+      tenant_id: tenantId,
+      actor_type: 'user',
+      actor_id: req.user?.id || null,
+      action: 'conversations_mark_all_read',
+      entity_type: 'conversation',
+      entity_id: null,
+      meta: { affected },
+    }).catch(() => {});
+    return res.json({ message: 'Marked read', affected });
+  } catch (err) {
+    console.error('[crm] markAllRead', err);
+    return res.status(500).json({ message: 'Server error' });
+  }
+};
+
+/** POST /api/crm/conversations/:id/close */
+const closeConversation = async (req, res) => {
+  try {
+    const tenantId = tid(req);
+    const conv = await CrmConversation.findOne({ where: { id: req.params.id, tenant_id: tenantId } });
+    if (!conv) return res.status(404).json({ message: 'Conversation not found' });
+    await conv.update({
+      status: 'closed',
+      assigned_user_id: null,
+      handoff_reason: req.body?.reason || conv.handoff_reason || 'closed_by_agent',
+      staff_last_read_at: new Date(),
+    });
+    await CrmAuditLog.create({
+      tenant_id: tenantId,
+      actor_type: 'user',
+      actor_id: req.user?.id || null,
+      action: 'conversation_closed',
+      entity_type: 'conversation',
+      entity_id: conv.id,
+    });
+    return res.json(conv);
   } catch (err) {
     return res.status(500).json({ message: 'Server error' });
   }
@@ -130,6 +221,7 @@ const claimConversation = async (req, res) => {
       status: 'human_active',
       assigned_user_id: req.user?.id || null,
       handoff_reason: conv.handoff_reason || 'claimed_by_agent',
+      staff_last_read_at: new Date(),
     });
     await CrmAuditLog.create({
       tenant_id: tenantId,
@@ -179,6 +271,10 @@ const agentReply = async (req, res) => {
     const conv = await CrmConversation.findOne({ where: { id: req.params.id, tenant_id: tenantId } });
     if (!conv) return res.status(404).json({ message: 'Conversation not found' });
 
+    if (conv.status === 'closed') {
+      return res.status(400).json({ message: 'Conversation is closed. Release or open a new thread.' });
+    }
+
     if (!['human_active', 'queued'].includes(conv.status)) {
       await conv.update({ status: 'human_active', assigned_user_id: req.user?.id || null });
     }
@@ -194,6 +290,7 @@ const agentReply = async (req, res) => {
       deliveryStatus: 'pending',
       meta: { agent_id: req.user?.id || null },
     });
+    await conv.update({ staff_last_read_at: new Date() });
     await enqueue(QUEUE_NAMES.WA_OUTBOUND, {
       tenant_id: tenantId,
       conversation_id: conv.id,
@@ -210,10 +307,13 @@ const agentReply = async (req, res) => {
 
 /**
  * POST /api/crm/dev/simulate-inbound
- * Dev helper until WhatsApp Cloud webhook exists.
+ * Dev / staging helper — blocked in production unless ALLOW_CRM_SIMULATE=true.
  */
 const simulateInbound = async (req, res) => {
   try {
+    if (process.env.NODE_ENV === 'production' && process.env.ALLOW_CRM_SIMULATE !== 'true') {
+      return res.status(403).json({ message: 'Simulate inbound is disabled in production.' });
+    }
     const tenantId = tid(req);
     const { phone, message, sync } = req.body || {};
     if (!phone || !message) {
@@ -243,6 +343,8 @@ module.exports = {
   updateLead,
   listConversations,
   getConversation,
+  markAllRead,
+  closeConversation,
   claimConversation,
   releaseConversation,
   agentReply,

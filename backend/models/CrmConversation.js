@@ -69,6 +69,11 @@ const CrmConversation = sequelize.define('CrmConversation', {
     type: DataTypes.DATE,
     allowNull: true,
   },
+  /** When staff last opened / marked this thread read in Inbox. */
+  staff_last_read_at: {
+    type: DataTypes.DATE,
+    allowNull: true,
+  },
 }, {
   tableName: 'crm_conversations',
   underscored: true,

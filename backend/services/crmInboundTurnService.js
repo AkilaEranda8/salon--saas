@@ -201,8 +201,74 @@ async function processInboundAiTurn(jobData) {
     await lead.update({ stage: 'conversation' });
   }
 
+  // Prepaid credit wallet — block AI when top-ups exist and balance is exhausted
+  try {
+    const { getAiCreditGate } = require('./crmCreditGate');
+    const gate = await getAiCreditGate(tenantId);
+    if (gate.blocked) {
+      const pauseText = gate.message;
+      let pauseMsg = null;
+      try {
+        pauseMsg = await appendMessage({
+          tenantId,
+          conversationId: conversation.id,
+          direction: 'outbound',
+          senderType: 'system',
+          body: pauseText,
+          deliveryStatus: 'pending',
+          meta: { credit_blocked: true, remaining: gate.remaining },
+        });
+      } catch (e) {
+        console.warn('[inbound] credit pause append', e.message);
+      }
+      await conversation.update({
+        status: 'queued',
+        handoff_reason: 'ai_credits_exhausted',
+        ai_turn_state: TURN_COMPLETED,
+      });
+      await enqueue(QUEUE_NAMES.HANDOFF, {
+        tenant_id: tenantId,
+        conversation_id: conversation.id,
+        reason: 'ai_credits_exhausted',
+      }).catch(() => {});
+      if (pauseMsg) {
+        await enqueue(QUEUE_NAMES.WA_OUTBOUND, {
+          tenant_id: tenantId,
+          conversation_id: conversation.id,
+          phone: lead.phone || phone,
+          message: pauseText,
+          crm_message_id: pauseMsg.id,
+          sender_type: 'system',
+          replyJid: jobData.replyJid || jobData.reply_jid || inboundMsg?.meta?.reply_jid || null,
+        }, { name: 'credit-pause' }).catch(() => {});
+      }
+      return {
+        skipped: false,
+        credit_blocked: true,
+        conversationId: conversation.id,
+        leadId: lead.id,
+        replyText: pauseText,
+      };
+    }
+  } catch (e) {
+    console.warn('[inbound] credit gate', e.message);
+  }
+
   const settings = await loadAiSettings(tenantId);
   const brand = tenant.brand_name || tenant.name || 'Salon';
+
+  let memoryCtx = null;
+  try {
+    const { loadMemory, memoryToContext } = require('./crmAiMemoryService');
+    const mem = await loadMemory(tenantId, {
+      phone: lead.phone || phone,
+      conversationId: conversation.id,
+      leadId: lead.id,
+    });
+    memoryCtx = memoryToContext(mem);
+  } catch (e) {
+    console.warn('[inbound] memory load', e.message);
+  }
 
   let kbHints = null;
   try {
@@ -243,6 +309,7 @@ async function processInboundAiTurn(jobData) {
         name: lead.name || jobData.name || null,
         leadId: lead.id,
         customerId: lead.customer_id || null,
+        memory: memoryCtx || undefined,
       },
     });
   } catch (err) {
@@ -359,7 +426,7 @@ async function processInboundAiTurn(jobData) {
           idempotency_key: b.idempotency_key || null,
         });
         await lead.update({
-          stage: 'converted',
+          stage: 'booking_confirmed',
           name: lead.name || b.payload?.customer_name || null,
         });
         try {
@@ -377,6 +444,29 @@ async function processInboundAiTurn(jobData) {
         } catch (confirmErr) {
           console.warn('[inbound] booking confirm WA', confirmErr.message);
         }
+      } else if (b.status === 'failed' && b.retryable && b.payload) {
+        await CrmBookingRequest.create({
+          tenant_id: tenantId,
+          conversation_id: conversation.id,
+          lead_id: lead.id,
+          status: 'requested',
+          payload: b.payload,
+          idempotency_key: b.idempotency_key || null,
+          error_message: String(b.error || 'book_failed').slice(0, 255),
+        }).catch(() => {});
+        await enqueue(QUEUE_NAMES.BOOKING_RETRY, {
+          tenant_id: tenantId,
+          conversation_id: conversation.id,
+          lead_id: lead.id,
+          phone: lead.phone || phone,
+          payload: b.payload,
+          error: b.error || null,
+        }, {
+          name: 'booking-retry',
+          jobId: b.idempotency_key ? `book-retry-${tenantId}-${b.idempotency_key}` : undefined,
+          attempts: 3,
+          backoff: { type: 'exponential', delay: 5000 },
+        }).catch((e) => console.warn('[inbound] booking-retry enqueue', e.message));
       } else if (b.status === 'cancelled') {
         await CrmBookingRequest.create({
           tenant_id: tenantId,
@@ -395,6 +485,21 @@ async function processInboundAiTurn(jobData) {
     if (['new', 'conversation', 'qualified'].includes(lead.stage)) {
       await lead.update({ stage: lead.stage === 'new' ? 'interested' : 'booking_requested' }).catch(() => {});
     }
+  }
+
+  try {
+    const { upsertMemoryFromTurn } = require('./crmAiMemoryService');
+    await upsertMemoryFromTurn({
+      tenantId,
+      conversationId: conversation.id,
+      leadId: lead.id,
+      phone: lead.phone || phone,
+      message,
+      replyText,
+      turn,
+    });
+  } catch (e) {
+    console.warn('[inbound] memory upsert', e.message);
   }
 
   if (turn.handoff) {

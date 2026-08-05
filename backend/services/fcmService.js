@@ -245,11 +245,49 @@ async function sendTestPush(tokens, title, body, data = {}) {
   return { configured: true, sent, failed: results.length - sent, results };
 }
 
+/**
+ * Notify all devices for users with given roles in a tenant (CRM handoff, etc.).
+ */
+async function notifyTenantRoles(tenantId, title, body, data = {}, roles = ['superadmin', 'admin', 'manager']) {
+  if (!tenantId) return;
+  try {
+    const { Op } = require('sequelize');
+    const { StaffFcmToken, User } = require('../models');
+    const roleList = Array.isArray(roles) && roles.length ? roles : ['superadmin', 'admin', 'manager'];
+    const users = await User.findAll({
+      where: {
+        tenant_id: tenantId,
+        role: { [Op.in]: roleList },
+        is_active: true,
+      },
+      attributes: ['id'],
+    });
+    if (!users.length) return;
+    const userIds = users.map((u) => u.id);
+    const rows = await StaffFcmToken.findAll({
+      where: {
+        user_id: { [Op.in]: userIds },
+        [Op.or]: [{ tenant_id: tenantId }, { tenant_id: null }],
+      },
+      attributes: ['fcm_token'],
+    });
+    const tokens = rows.map((r) => r.fcm_token).filter(Boolean);
+    if (!tokens.length) return;
+    await sendToTokens(tokens, title, body, {
+      ...data,
+      tenant_id: String(tenantId),
+    });
+  } catch (err) {
+    console.error('[FCM] notifyTenantRoles error:', err.message);
+  }
+}
+
 module.exports = {
   sendToToken,
   sendToTokens,
   notifyBranch,
   notifyStaffUser,
+  notifyTenantRoles,
   isPushConfigured,
   sendTestPush,
 };

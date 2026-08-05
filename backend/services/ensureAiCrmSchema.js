@@ -143,6 +143,12 @@ async function ensureAiCrmSchema() {
       `ALTER TABLE crm_conversations ADD COLUMN ai_turn_wa_message_id VARCHAR(128) NULL`
     );
   }
+  if (!(await columnExists('crm_conversations', 'staff_last_read_at'))) {
+    await sequelize.query(
+      `ALTER TABLE crm_conversations ADD COLUMN staff_last_read_at DATETIME NULL`
+    );
+    console.log('[migration] crm_conversations.staff_last_read_at added');
+  }
 }
 
 module.exports = ensureAiCrmSchema;

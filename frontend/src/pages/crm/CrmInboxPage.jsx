@@ -22,11 +22,13 @@ export default function CrmInboxPage() {
   const [simPhone, setSimPhone] = useState('');
   const [simMsg, setSimMsg] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [unreadOnly, setUnreadOnly] = useState(false);
 
   const loadList = useCallback(async () => {
     try {
       const params = { limit: 50 };
       if (statusFilter) params.status = statusFilter;
+      if (unreadOnly) params.unread = '1';
       const { data } = await api.get('/crm/conversations', { params });
       setList(data.data || []);
     } catch (err) {
@@ -34,13 +36,14 @@ export default function CrmInboxPage() {
     } finally {
       setLoading(false);
     }
-  }, [statusFilter]);
+  }, [statusFilter, unreadOnly]);
 
   const loadDetail = useCallback(async (id) => {
     if (!id) { setDetail(null); return; }
     try {
       const { data } = await api.get(`/crm/conversations/${id}`);
       setDetail(data);
+      setList((prev) => prev.map((c) => (c.id === id ? { ...c, unread: false } : c)));
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to load thread');
     }
@@ -68,6 +71,28 @@ export default function CrmInboxPage() {
       loadDetail(selectedId);
     } catch (err) {
       toast.error(err.response?.data?.message || 'Release failed');
+    }
+  };
+
+  const closeConv = async () => {
+    try {
+      await api.post(`/crm/conversations/${selectedId}/close`, { reason: 'closed_by_agent' });
+      toast.success('Conversation closed');
+      loadList();
+      loadDetail(selectedId);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Close failed');
+    }
+  };
+
+  const markAllRead = async () => {
+    try {
+      const { data } = await api.post('/crm/conversations/mark-all-read');
+      toast.success(`Marked ${data.affected ?? 0} read`);
+      loadList();
+      if (selectedId) loadDetail(selectedId);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Mark all read failed');
     }
   };
 
@@ -108,6 +133,7 @@ export default function CrmInboxPage() {
 
   const conv = detail?.conversation;
   const messages = detail?.messages || [];
+  const unreadCount = list.filter((c) => c.unread).length;
 
   return (
     <PageWrapper
@@ -117,17 +143,36 @@ export default function CrmInboxPage() {
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(260px, 320px) 1fr', gap: 16, minHeight: 520 }}>
         {/* List */}
         <div style={{ background: C.cardBg, border: `1px solid ${C.border}`, borderRadius: 14, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-          <div style={{ padding: 12, borderBottom: `1px solid ${C.border}`, display: 'flex', gap: 8 }}>
+          <div style={{ padding: 12, borderBottom: `1px solid ${C.border}`, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              style={{ flex: 1, borderRadius: 8, border: `1px solid ${C.inputBdr}`, background: C.inputBg, color: C.text, padding: '6px 8px' }}
+              style={{ flex: 1, minWidth: 100, borderRadius: 8, border: `1px solid ${C.inputBdr}`, background: C.inputBg, color: C.text, padding: '6px 8px' }}
             >
               <option value="">All statuses</option>
               {Object.keys(STATUS_LABEL).map((k) => (
                 <option key={k} value={k}>{STATUS_LABEL[k]}</option>
               ))}
             </select>
+            <button
+              type="button"
+              onClick={() => setUnreadOnly((v) => !v)}
+              style={{
+                border: `1px solid ${C.border}`,
+                borderRadius: 8,
+                background: unreadOnly ? `${C.primary || '#2563EB'}22` : 'transparent',
+                color: C.text,
+                padding: '6px 10px',
+                cursor: 'pointer',
+                fontWeight: 600,
+                fontSize: 12,
+              }}
+            >
+              Unread{unreadCount ? ` (${unreadCount})` : ''}
+            </button>
+            <button type="button" onClick={markAllRead} style={{ border: `1px solid ${C.border}`, borderRadius: 8, background: 'transparent', color: C.text, padding: '6px 10px', cursor: 'pointer', fontSize: 12 }}>
+              Mark all read
+            </button>
             <button type="button" onClick={loadList} style={{ border: `1px solid ${C.border}`, borderRadius: 8, background: 'transparent', color: C.text, padding: '6px 10px', cursor: 'pointer' }}>
               Refresh
             </button>
@@ -147,7 +192,16 @@ export default function CrmInboxPage() {
                   color: C.text,
                 }}
               >
-                <div style={{ fontWeight: 700, fontSize: 13 }}>{c.phone}</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ fontWeight: c.unread ? 800 : 700, fontSize: 13, flex: 1 }}>{c.phone}</div>
+                  {c.unread ? (
+                    <span style={{
+                      width: 8, height: 8, borderRadius: '50%',
+                      background: C.primary || '#2563EB', flexShrink: 0,
+                    }}
+                    />
+                  ) : null}
+                </div>
                 <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>
                   {STATUS_LABEL[c.status] || c.status}
                   {c.lead?.stage ? ` · ${c.lead.stage}` : ''}
@@ -173,6 +227,9 @@ export default function CrmInboxPage() {
                 </div>
                 <button type="button" onClick={claim} style={btnStyle(C)}>Claim</button>
                 <button type="button" onClick={release} style={btnStyle(C)}>Release to AI</button>
+                <button type="button" onClick={closeConv} style={btnStyle(C)} disabled={conv?.status === 'closed'}>
+                  Close
+                </button>
               </div>
               <div style={{ flex: 1, overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {messages.map((m) => (
@@ -197,11 +254,17 @@ export default function CrmInboxPage() {
                 <input
                   value={reply}
                   onChange={(e) => setReply(e.target.value)}
-                  placeholder="Agent reply…"
+                  placeholder={conv?.status === 'closed' ? 'Conversation closed' : 'Agent reply…'}
+                  disabled={conv?.status === 'closed'}
                   style={{ flex: 1, borderRadius: 10, border: `1px solid ${C.inputBdr}`, background: C.inputBg, color: C.text, padding: '10px 12px' }}
                   onKeyDown={(e) => { if (e.key === 'Enter') sendReply(); }}
                 />
-                <button type="button" onClick={sendReply} style={{ ...btnStyle(C), background: C.primary || '#2563EB', color: '#fff', border: 'none' }}>
+                <button
+                  type="button"
+                  onClick={sendReply}
+                  disabled={conv?.status === 'closed'}
+                  style={{ ...btnStyle(C), background: C.primary || '#2563EB', color: '#fff', border: 'none', opacity: conv?.status === 'closed' ? 0.5 : 1 }}
+                >
                   Send
                 </button>
               </div>

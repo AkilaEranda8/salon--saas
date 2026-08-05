@@ -173,9 +173,11 @@ router.get('/leads', ...staffInbox, crmCtrl.listLeads);
 router.patch('/leads/:id', ...staffInbox, crmCtrl.updateLead);
 
 router.get('/conversations', ...staffInbox, crmCtrl.listConversations);
+router.post('/conversations/mark-all-read', ...staffInbox, crmCtrl.markAllRead);
 router.get('/conversations/:id', ...staffInbox, crmCtrl.getConversation);
 router.post('/conversations/:id/claim', ...staffInbox, crmCtrl.claimConversation);
 router.post('/conversations/:id/release', ...staffInbox, crmCtrl.releaseConversation);
+router.post('/conversations/:id/close', ...staffInbox, crmCtrl.closeConversation);
 router.post('/conversations/:id/agent-reply', ...staffInbox, crmCtrl.agentReply);
 
 // Dev simulate until Cloud webhook

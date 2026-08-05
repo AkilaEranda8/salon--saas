@@ -1775,7 +1775,7 @@ class MobileApi {
   }) async {
     final uri = Uri.parse('$baseUrl/api/salon-inventory/products').replace(
       queryParameters: {
-        'limit': '200',
+        'limit': '5000',
         'status': 'active',
         if (consumableOnly && (productType == null || productType.isEmpty))
           'product_type': 'consumable',

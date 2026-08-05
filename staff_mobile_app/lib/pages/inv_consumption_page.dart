@@ -114,7 +114,14 @@ class _InvConsumptionPageState extends State<InvConsumptionPage> {
       if (results[1] != null) {
         _products = List<Map<String, dynamic>>.from(
           results[1] as List,
-        ).where((p) => p['product_type'] == 'consumable').toList();
+        )
+            .where(
+              (p) =>
+                  '${p['product_type'] ?? 'consumable'}'
+                      .toLowerCase() ==
+                  'consumable',
+            )
+            .toList();
       }
       if (results[2] != null) {
         _staff = List<StaffMember>.from(results[2] as List);
@@ -174,22 +181,31 @@ class _InvConsumptionPageState extends State<InvConsumptionPage> {
       _toast('Select a branch first.');
       return;
     }
-    if (_products.isEmpty) {
-      _toast('No Consumable products found for this branch.');
-      return;
-    }
 
     final app = AppStateScope.of(context);
-    // Always refresh services from server before opening the sheet.
+    // Always refresh products + services before opening the sheet.
     try {
-      final fresh = await app.loadServices();
+      final results = await Future.wait([
+        app.loadInventoryProducts(branchId: _branchId),
+        app.loadServices(),
+      ]);
       if (mounted) {
         setState(() {
-          _services = fresh.where((s) => s.isActive).toList();
+          _products = List<Map<String, dynamic>>.from(results[0] as List)
+              .where(
+                (p) =>
+                    '${p['product_type'] ?? 'consumable'}'
+                        .toLowerCase() ==
+                    'consumable',
+              )
+              .toList();
+          _services = List<SalonService>.from(results[1] as List)
+              .where((s) => s.isActive)
+              .toList();
         });
       }
     } catch (e) {
-      if (_services.isEmpty) {
+      if (_products.isEmpty || _services.isEmpty) {
         _toast(
           e.toString().replaceFirst('Exception: ', ''),
         );
@@ -197,6 +213,11 @@ class _InvConsumptionPageState extends State<InvConsumptionPage> {
     }
 
     if (!mounted) return;
+    if (_products.isEmpty) {
+      _toast('No Consumable products found for this branch.');
+      return;
+    }
+
     final saved = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,

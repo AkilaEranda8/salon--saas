@@ -68,7 +68,8 @@ const nextDocNo = (prefix) => `${prefix}-${Date.now().toString(36).toUpperCase()
 const listProducts = async (req, res) => {
   try {
     const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
-    const limit = Math.min(parseInt(req.query.limit, 10) || 50, 200);
+    // Mobile Record Usage / stock pickers need the full catalog (not a short page).
+    const limit = Math.min(parseInt(req.query.limit, 10) || 50, 5000);
     const offset = (page - 1) * limit;
     const where = branchScope(req);
     if (req.query.status) where.status = req.query.status;

@@ -218,14 +218,14 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
           _searchingCustomers = false;
         });
         // Refresh Autocomplete options without remounting the field
-        _customerNameCtrl.notifyListeners();
+        _customerNameCtrl.value = _customerNameCtrl.value;
       } catch (_) {
         if (!mounted) return;
         setState(() {
           _remoteCustomers = const [];
           _searchingCustomers = false;
         });
-        _customerNameCtrl.notifyListeners();
+        _customerNameCtrl.value = _customerNameCtrl.value;
       }
     });
   }

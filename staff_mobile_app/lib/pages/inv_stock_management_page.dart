@@ -1045,7 +1045,7 @@ class _ProductSheetState extends State<_ProductSheet> {
     _brand = TextEditingController(text: '${p?['brand'] ?? ''}');
     _opening = TextEditingController(text: '0');
     _min = TextEditingController(
-      text: p == null ? '0' : '${_number(p['min_stock']).toStringAsFixed(0)}',
+      text: p == null ? '0' : _number(p['min_stock']).toStringAsFixed(0),
     );
     _cost = TextEditingController(
       text: p == null
@@ -2626,7 +2626,7 @@ class _ProductPickerSheetState extends State<_ProductPickerSheet> {
                   )
                 : ListView.separated(
                     itemCount: items.length,
-                    separatorBuilder: (_, __) =>
+                    separatorBuilder: (_, _) =>
                         const Divider(height: 1, color: Color(0xFFF3F4F6)),
                     itemBuilder: (context, index) {
                       final p = items[index];

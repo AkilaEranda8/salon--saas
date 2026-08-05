@@ -588,7 +588,7 @@ class MobileApi {
         'amount': double.tryParse(amount.trim()) ?? amount,
       'notes': notes ?? '',
       if (status != null && status.isNotEmpty) 'status': status,
-      if (isRecurring != null) 'is_recurring': isRecurring,
+      'is_recurring': ?isRecurring,
       if (isRecurring == true) 'recurrence_frequency': 'weekly',
       if (isRecurring == true &&
           recurringNextDate != null &&
@@ -704,7 +704,7 @@ class MobileApi {
       if (helpers != null && helpers.isNotEmpty) 'helpers': helpers,
       if (customerId != null && customerId.isNotEmpty)
         'customer_id': int.tryParse(customerId) ?? customerId,
-      if (isRecurring != null) 'is_recurring': isRecurring,
+      'is_recurring': ?isRecurring,
       if (isRecurring == true &&
           recurringNextDate != null &&
           recurringNextDate.trim().isNotEmpty)
@@ -1255,8 +1255,9 @@ class MobileApi {
     ).replace(queryParameters: qp);
     final response = await http.get(uri, headers: _authHeaders(token));
     final body = _decode(response.body);
-    if (response.statusCode >= 400)
+    if (response.statusCode >= 400) {
       throw Exception(body['message'] ?? 'Payouts load failed');
+    }
     return body;
   }
 
@@ -1283,8 +1284,9 @@ class MobileApi {
       }),
     );
     final body = _decode(response.body);
-    if (response.statusCode >= 400)
+    if (response.statusCode >= 400) {
       throw Exception(body['message'] ?? 'Create payout failed');
+    }
     return body;
   }
 
@@ -1319,8 +1321,9 @@ class MobileApi {
     final uri = Uri.parse('$baseUrl/api/advances').replace(queryParameters: qp);
     final response = await http.get(uri, headers: _authHeaders(token));
     final body = _decode(response.body);
-    if (response.statusCode >= 400)
+    if (response.statusCode >= 400) {
       throw Exception(body['message'] ?? 'Advances load failed');
+    }
     return body;
   }
 
@@ -1347,8 +1350,9 @@ class MobileApi {
       }),
     );
     final body = _decode(response.body);
-    if (response.statusCode >= 400)
+    if (response.statusCode >= 400) {
       throw Exception(body['message'] ?? 'Create advance failed');
+    }
     return body;
   }
 
@@ -1723,9 +1727,9 @@ class MobileApi {
         if (status != null && status.isNotEmpty) 'status': status,
         if (checkIn != null && checkIn.isNotEmpty) 'check_in': checkIn,
         if (checkOut != null && checkOut.isNotEmpty) 'check_out': checkOut,
-        if (note != null) 'note': note,
-        if (latitude != null) 'latitude': latitude,
-        if (longitude != null) 'longitude': longitude,
+        'note': ?note,
+        'latitude': ?latitude,
+        'longitude': ?longitude,
       }),
     );
     final body = _decode(response.body);
@@ -1753,9 +1757,9 @@ class MobileApi {
         if (status != null && status.isNotEmpty) 'status': status,
         if (checkIn != null && checkIn.isNotEmpty) 'check_in': checkIn,
         if (checkOut != null && checkOut.isNotEmpty) 'check_out': checkOut,
-        if (note != null) 'note': note,
-        if (latitude != null) 'latitude': latitude,
-        if (longitude != null) 'longitude': longitude,
+        'note': ?note,
+        'latitude': ?latitude,
+        'longitude': ?longitude,
       }),
     );
     final body = _decode(response.body);

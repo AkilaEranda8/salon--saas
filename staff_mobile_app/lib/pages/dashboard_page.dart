@@ -114,8 +114,9 @@ class _DashboardPageState extends State<DashboardPage>
       ]);
       if (mounted) setState(() {});
     } catch (_) {
-      if (mounted)
+      if (mounted) {
         setState(() => _error = 'Could not load data — check your connection.');
+      }
     }
   }
 

@@ -1680,7 +1680,7 @@ class _CustomerPickerSheetState extends State<_CustomerPickerSheet> {
                   )
                 : ListView.separated(
                     itemCount: items.length,
-                    separatorBuilder: (_, __) =>
+                    separatorBuilder: (_, _) =>
                         const Divider(height: 1, color: Color(0xFFF3F4F6)),
                     itemBuilder: (context, index) {
                       final c = items[index];
@@ -1840,7 +1840,7 @@ class _ServicePickerSheetState extends State<_ServicePickerSheet> {
                   )
                 : ListView.separated(
                     itemCount: items.length,
-                    separatorBuilder: (_, __) =>
+                    separatorBuilder: (_, _) =>
                         const Divider(height: 1, color: Color(0xFFF3F4F6)),
                     itemBuilder: (context, index) {
                       final s = items[index];

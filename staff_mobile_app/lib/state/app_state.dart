@@ -319,7 +319,7 @@ class AppState extends ChangeNotifier {
     final roleRaw = '${user['role'] ?? ''}'.trim();
     final role = roleRaw.isNotEmpty
         ? roleRaw.toLowerCase()
-        : '${prev?.role ?? 'staff'}'.toLowerCase();
+        : (prev?.role ?? 'staff').toLowerCase();
     final staffProfile = user['staffProfile'] is Map
         ? Map<String, dynamic>.from(user['staffProfile'])
         : const <String, dynamic>{};
@@ -1395,7 +1395,7 @@ class AppState extends ChangeNotifier {
           merged[key] = {
             'method': method,
             'amount': amt,
-            if (packageId != null) 'customer_package_id': packageId,
+            'customer_package_id': ?packageId,
           };
         }
       }

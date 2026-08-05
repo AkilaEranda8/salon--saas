@@ -155,12 +155,25 @@ const update = async (req, res) => {
     const updates = {};
     if (name !== undefined)      updates.name      = name;
     if (username !== undefined)  updates.username   = username;
-    // Only superadmin may change roles to prevent privilege escalation
+    // Role changes: ignore when unchanged (so admin toggles/edits don't 403).
+    // Superadmin may set any role; admin may set staff/manager/admin on non-superadmins.
     if (role !== undefined) {
-      if (req.user?.role !== 'superadmin') {
-        return res.status(403).json({ message: 'Only superadmins may change user roles.' });
+      const nextRole = String(role).trim().toLowerCase();
+      const currentRole = String(user.role || '').trim().toLowerCase();
+      const actorRole = String(req.user?.role || '').trim().toLowerCase();
+      if (nextRole && nextRole !== currentRole) {
+        if (actorRole === 'superadmin') {
+          updates.role = nextRole;
+        } else if (
+          actorRole === 'admin'
+          && ['staff', 'manager', 'admin'].includes(nextRole)
+          && currentRole !== 'superadmin'
+        ) {
+          updates.role = nextRole;
+        } else {
+          return res.status(403).json({ message: 'You are not allowed to change this user role.' });
+        }
       }
-      updates.role = role;
     }
     if (branch_id !== undefined) updates.branch_id  = branch_id || null;
     if (is_active !== undefined) updates.is_active  = is_active;
@@ -182,6 +195,13 @@ const update = async (req, res) => {
     await user.update(updates);
     const result = user.toJSON();
     delete result.password;
+
+    if (updates.role !== undefined) {
+      try {
+        const { invalidateRoleCache } = require('../middleware/keycloakAuth');
+        invalidateRoleCache(user.id);
+      } catch (_) { /* optional when using legacy auth */ }
+    }
 
     // Sync profile + role changes to Keycloak (non-fatal)
     if (process.env.KEYCLOAK_URL) {

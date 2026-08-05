@@ -53,8 +53,24 @@ class AppState extends ChangeNotifier {
   static const _kUserJsonKey = 'staff_user_json';
   static const _kSlugKey = 'salon_slug';
   static const _kRefreshTokenKey = 'kc_refresh_token';
+  static const _kBiometricUnlockKey = 'biometric_unlock_enabled';
 
   MobileApi _api;
+  bool _biometricUnlockEnabled = false;
+
+  bool get biometricUnlockEnabled => _biometricUnlockEnabled;
+
+  Future<void> loadBiometricPreference() async {
+    final prefs = await SharedPreferences.getInstance();
+    _biometricUnlockEnabled = prefs.getBool(_kBiometricUnlockKey) == true;
+  }
+
+  Future<void> setBiometricUnlockEnabled(bool enabled) async {
+    _biometricUnlockEnabled = enabled;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_kBiometricUnlockKey, enabled);
+    notifyListeners();
+  }
 
   String get apiBaseUrl => _api.baseUrl;
 
@@ -109,6 +125,7 @@ class AppState extends ChangeNotifier {
   /// Restore session from device storage (call once at app start).
   Future<void> loadPersistedSession() async {
     try {
+      await loadBiometricPreference();
       final prefs = await SharedPreferences.getInstance();
       final savedSlug = prefs.getString(_kSlugKey);
       if (savedSlug != null && savedSlug.isNotEmpty) {
@@ -168,10 +185,14 @@ class AppState extends ChangeNotifier {
       if (user.isEmpty) return;
       _currentUser = _staffUserFromApi(user, token: token, prev: prev);
       await _persistSession(_currentUser!);
+      notifyListeners();
     } catch (_) {
       /* keep restored session */
     }
   }
+
+  /// Public refresh so dashboard / app resume pick up role changes from web.
+  Future<void> refreshCurrentUser() => _refreshCurrentUserFromServer();
 
   Future<void> _persistSession(StaffUser user, {String? refreshToken}) async {
     final token = user.authToken?.trim() ?? '';
@@ -295,12 +316,18 @@ class AppState extends ChangeNotifier {
     required String token,
     StaffUser? prev,
   }) {
-    final role = '${user['role'] ?? prev?.role ?? 'staff'}';
-    final branchMap = user['branch'] is Map
-        ? Map<String, dynamic>.from(user['branch'])
-        : const <String, dynamic>{};
+    final roleRaw = '${user['role'] ?? ''}'.trim();
+    final role = roleRaw.isNotEmpty
+        ? roleRaw.toLowerCase()
+        : '${prev?.role ?? 'staff'}'.toLowerCase();
     final staffProfile = user['staffProfile'] is Map
         ? Map<String, dynamic>.from(user['staffProfile'])
+        : const <String, dynamic>{};
+    final jobTitleRaw =
+        '${staffProfile['role_title'] ?? prev?.jobTitle ?? ''}'.trim();
+    final jobTitle = jobTitleRaw.isEmpty ? null : jobTitleRaw;
+    final branchMap = user['branch'] is Map
+        ? Map<String, dynamic>.from(user['branch'])
         : const <String, dynamic>{};
     final staffBranchMap = staffProfile['branch'] is Map
         ? Map<String, dynamic>.from(staffProfile['branch'])
@@ -339,6 +366,7 @@ class AppState extends ChangeNotifier {
           '${user['name'] ?? user['username'] ?? prev?.displayName ?? 'Staff'}',
       isActive: true,
       role: role,
+      jobTitle: jobTitle,
       branchId: (branchId.isEmpty || branchId.toLowerCase() == 'null')
           ? null
           : branchId,
@@ -502,18 +530,22 @@ class AppState extends ChangeNotifier {
     _staffUsers
       ..clear()
       ..addAll(
-        loaded.map(
-          (staff) => StaffUser(
+        loaded.map((staff) {
+          final accessRole = (staff.accessRole ?? 'staff').trim().toLowerCase();
+          final role =
+              accessRole.isEmpty ? 'staff' : accessRole;
+          return StaffUser(
             id: staff.id,
             username: staff.name,
             password: '',
             displayName: staff.name,
             isActive: staff.isActive,
-            role: 'staff',
+            role: role,
+            jobTitle: staff.roleTitle,
             branchId: staff.branchId.isEmpty ? null : staff.branchId,
-            permissions: _permissionsFromRole('staff'),
-          ),
-        ),
+            permissions: _permissionsFromRole(role),
+          );
+        }),
       );
     notifyListeners();
     return loaded;

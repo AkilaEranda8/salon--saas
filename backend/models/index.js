@@ -62,6 +62,7 @@ const CrmAuditLog = require('./CrmAuditLog');
 const WhatsAppBusinessAccount = require('./WhatsAppBusinessAccount');
 const CrmKnowledgeArticle = require('./CrmKnowledgeArticle');
 const CrmFollowUpJob = require('./CrmFollowUpJob');
+const MobileOffer = require('./MobileOffer');
 
 // Salon Inventory (v2)
 const InvCategory = require('./InvCategory');
@@ -106,6 +107,8 @@ Tenant.hasMany(AiUsage, { foreignKey: 'tenant_id', as: 'aiUsage' });
 AiUsage.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
 Tenant.hasMany(AiCreditEntry, { foreignKey: 'tenant_id', as: 'aiCreditEntries' });
 AiCreditEntry.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
+Tenant.hasMany(MobileOffer, { foreignKey: 'tenant_id', as: 'mobileOffers' });
+MobileOffer.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
 Tenant.hasMany(CrmLead, { foreignKey: 'tenant_id', as: 'crmLeads' });
 CrmLead.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
 Tenant.hasMany(CrmConversation, { foreignKey: 'tenant_id', as: 'crmConversations' });
@@ -433,6 +436,7 @@ module.exports = {
   WhatsAppBusinessAccount,
   CrmKnowledgeArticle,
   CrmFollowUpJob,
+  MobileOffer,
   InvCategory,
   InvSupplier,
   InvProduct,

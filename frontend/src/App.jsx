@@ -57,6 +57,7 @@ import WalkInPage      from './pages/WalkInPage';
 import TokenDisplayScreen from './pages/TokenDisplayScreen';
 import NotificationsPage from './pages/NotificationsPage';
 import OfferSmsPage from './pages/OfferSmsPage';
+import MobileOffersPage from './pages/MobileOffersPage';
 import WaitlistPage from './pages/WaitlistPage';
 import LoyaltyPage from './pages/LoyaltyPage';
 import MembershipPlansPage from './pages/MembershipPlansPage';
@@ -411,6 +412,11 @@ function AppShellRoutes() {
             <Route path="/offer-sms" element={
               <RoleRoute roles={['superadmin', 'admin', 'manager']}>
                 <OfferSmsPage kind="offer" />
+              </RoleRoute>
+            } />
+            <Route path="/mobile-offers" element={
+              <RoleRoute roles={['superadmin', 'admin', 'manager']}>
+                <MobileOffersPage />
               </RoleRoute>
             } />
 

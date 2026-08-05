@@ -1,16 +1,49 @@
-# customer_mobile_app
+# Customer Mobile App
 
-A new Flutter project.
+Hexaone single-salon customer app (Flutter): phone OTP login, book appointments, view history/rebook, loyalty profile, and in-app offers from salon admin.
 
-## Getting Started
+## Requirements
 
-This project is a starting point for a Flutter application.
+- Flutter SDK compatible with `sdk: ^3.10.4`
+- Backend with `/api/public` booking + customer-portal APIs
+- A numeric salon **Tenant ID** (from Branding / admin settings)
 
-A few resources to get you started if this is your first Flutter project:
+## Run
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+```bash
+cd customer_mobile_app
+flutter pub get
+flutter run --dart-define=API_BASE_URL=https://api.salon.hexalyte.com --dart-define=TENANT_ID=1
+```
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+Optional brand label:
+
+```bash
+flutter run --dart-define=API_BASE_URL=https://api.salon.hexalyte.com --dart-define=TENANT_ID=1 --dart-define=BRAND_NAME=Hexaone
+```
+
+Local backend example:
+
+```bash
+flutter run --dart-define=API_BASE_URL=http://10.0.2.2:3000 --dart-define=TENANT_ID=1
+```
+
+(`10.0.2.2` is the Android emulator host loopback.)
+
+## Features
+
+| Tab | Access | Notes |
+|-----|--------|--------|
+| Book | Guest OK | All active services → staff → slot → confirm (+ booking OTP for new phones) |
+| Appointments | Login | History + rebook |
+| Offers | Guest OK | Published mobile offers for this tenant |
+| Profile | Login | Name, phone, loyalty points |
+
+## Admin offers
+
+Salon admins/managers create offers in the web app under **Engage → Mobile Offers**. Published offers appear on the Offers tab via `GET /api/public/offers?tenantId=`.
+
+## Notes
+
+- `TENANT_ID` is required; the app shows a setup screen if it is missing.
+- Push notifications are not included in this MVP.

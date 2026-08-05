@@ -1,21 +1,40 @@
-import 'package:customer_mobile_app/screens/login_screen.dart';
 import 'package:flutter/material.dart';
 
+import 'pages/session_gate.dart';
+import 'state/app_state.dart';
+import 'theme/app_theme.dart';
+
 void main() {
-  runApp(const MyApp());
+  WidgetsFlutterBinding.ensureInitialized();
+  runApp(const CustomerApp());
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+class CustomerApp extends StatefulWidget {
+  const CustomerApp({super.key});
+
+  @override
+  State<CustomerApp> createState() => _CustomerAppState();
+}
+
+class _CustomerAppState extends State<CustomerApp> {
+  final AppState _state = AppState();
+
+  @override
+  void dispose() {
+    _state.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Hexaone',
-      theme: ThemeData(
-        primarySwatch: Colors.blue,
+    return AppStateScope(
+      notifier: _state,
+      child: MaterialApp(
+        title: 'Hexaone',
+        debugShowCheckedModeBanner: false,
+        theme: AppTheme.light(),
+        home: const SessionGate(),
       ),
-      home: const LoginScreen(),
     );
   }
 }

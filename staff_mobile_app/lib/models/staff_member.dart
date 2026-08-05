@@ -35,6 +35,7 @@ class StaffMember {
     this.email,
     this.phone,
     this.roleTitle,
+    this.accessRole,
     this.salaryType = 'commission_only',
     this.commissionType = 'percentage',
     this.commissionValue,
@@ -50,6 +51,8 @@ class StaffMember {
   final String? email;
   final String? phone;
   final String? roleTitle;
+  /// Linked portal user role (admin/manager/staff) when Staff.user_id is set.
+  final String? accessRole;
   final String salaryType;
   final String commissionType;
   final double? commissionValue;
@@ -80,6 +83,10 @@ class StaffMember {
         : <StaffSpecialization>[];
 
     final branch = json['branch'];
+    final linkedUser = json['user'];
+    final accessRole = linkedUser is Map
+        ? '${linkedUser['role'] ?? ''}'.trim()
+        : '';
     return StaffMember(
       id: '${json['id'] ?? ''}',
       name: '${json['name'] ?? ''}',
@@ -87,6 +94,7 @@ class StaffMember {
       email: json['email'] != null ? '${json['email']}' : null,
       phone: json['phone'] != null ? '${json['phone']}' : null,
       roleTitle: json['role_title']?.toString(),
+      accessRole: accessRole.isEmpty ? null : accessRole.toLowerCase(),
       salaryType: '${json['salary_type'] ?? 'commission_only'}',
       commissionType: '${json['commission_type'] ?? 'percentage'}',
       commissionValue: commVal,

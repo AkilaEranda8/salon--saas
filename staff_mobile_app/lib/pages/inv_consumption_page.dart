@@ -8,7 +8,10 @@ import '../state/app_state.dart';
 const _forest = Color(0xFF1B3A2D);
 const _emerald = Color(0xFF2D6A4F);
 const _canvas = Color(0xFFF2F5F2);
+const _surface = Color(0xFFFFFFFF);
 const _border = Color(0xFFE5E7EB);
+const _ink = Color(0xFF111827);
+const _muted = Color(0xFF6B7280);
 const _units = ['ml', 'g', 'kg', 'L', 'pcs'];
 
 String _today() {
@@ -42,6 +45,9 @@ class _InvConsumptionPageState extends State<InvConsumptionPage> {
   List<StaffMember> _staff = [];
   List<SalonService> _services = [];
   List<Customer> _customers = [];
+  int _pendingCount = 0;
+  int _processedCount = 0;
+  int _cancelledCount = 0;
 
   @override
   void didChangeDependencies() {
@@ -73,27 +79,68 @@ class _InvConsumptionPageState extends State<InvConsumptionPage> {
       return;
     }
     final app = AppStateScope.of(context);
+    String? error;
+
+    Future<T?> safe<T>(Future<T> Function() run) async {
+      try {
+        return await run();
+      } catch (e) {
+        error ??= e.toString().replaceFirst('Exception: ', '');
+        return null;
+      }
+    }
+
     final results = await Future.wait<dynamic>([
-      app.loadInventoryConsumptions(
-        branchId: _branchId,
-        status: _status.isEmpty ? null : _status,
-        date: _date,
-      ),
-      app.loadInventoryProducts(branchId: _branchId),
-      app.loadStaffList(branchId: _branchId),
-      app.loadServices(),
-      app.loadCustomers(),
+      safe(() => app.loadInventoryConsumptions(
+            branchId: _branchId,
+            status: _status.isEmpty ? null : _status,
+            date: _date,
+          )),
+      safe(() => app.loadInventoryProducts(branchId: _branchId)),
+      safe(() => app.loadStaffList(branchId: _branchId)),
+      safe(() => app.loadServices()),
+      safe(() => app.loadCustomers()),
+      // Day totals (unfiltered by status) for summary cards
+      safe(() => app.loadInventoryConsumptions(
+            branchId: _branchId,
+            date: _date,
+          )),
     ]);
     if (!mounted) return;
     setState(() {
-      _rows = List<Map<String, dynamic>>.from(results[0] as List);
-      _products = List<Map<String, dynamic>>.from(
-        results[1] as List,
-      ).where((p) => p['product_type'] == 'consumable').toList();
-      _staff = List<StaffMember>.from(results[2] as List);
-      _services = List<SalonService>.from(results[3] as List);
-      _customers = List<Customer>.from(results[4] as List);
+      if (results[0] != null) {
+        _rows = List<Map<String, dynamic>>.from(results[0] as List);
+      }
+      if (results[1] != null) {
+        _products = List<Map<String, dynamic>>.from(
+          results[1] as List,
+        ).where((p) => p['product_type'] == 'consumable').toList();
+      }
+      if (results[2] != null) {
+        _staff = List<StaffMember>.from(results[2] as List);
+      }
+      if (results[3] != null) {
+        _services = List<SalonService>.from(results[3] as List)
+            .where((s) => s.isActive)
+            .toList();
+      }
+      if (results[4] != null) {
+        _customers = List<Customer>.from(results[4] as List);
+      }
+      if (results[5] != null) {
+        final day = List<Map<String, dynamic>>.from(results[5] as List);
+        _pendingCount =
+            day.where((r) => '${r['status']}' == 'pending').length;
+        _processedCount =
+            day.where((r) => '${r['status']}' == 'processed').length;
+        _cancelledCount =
+            day.where((r) => '${r['status']}' == 'cancelled').length;
+      }
     });
+    if (error != null &&
+        (_services.isEmpty || _products.isEmpty || _customers.isEmpty)) {
+      _toast(error!);
+    }
   }
 
   Future<void> _refresh() async {
@@ -131,6 +178,25 @@ class _InvConsumptionPageState extends State<InvConsumptionPage> {
       _toast('No Consumable products found for this branch.');
       return;
     }
+
+    final app = AppStateScope.of(context);
+    // Always refresh services from server before opening the sheet.
+    try {
+      final fresh = await app.loadServices();
+      if (mounted) {
+        setState(() {
+          _services = fresh.where((s) => s.isActive).toList();
+        });
+      }
+    } catch (e) {
+      if (_services.isEmpty) {
+        _toast(
+          e.toString().replaceFirst('Exception: ', ''),
+        );
+      }
+    }
+
+    if (!mounted) return;
     final saved = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
@@ -180,27 +246,44 @@ class _InvConsumptionPageState extends State<InvConsumptionPage> {
   void _toast(String message) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
+      SnackBar(
+        content: Text(message),
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: _forest,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ),
     );
+  }
+
+  Future<void> _setStatus(String status) async {
+    setState(() => _status = status);
+    await _refresh();
   }
 
   @override
   Widget build(BuildContext context) {
     final assignedBranch =
         AppStateScope.of(context).currentUser?.branchId?.trim() ?? '';
+    final dayTotal = _pendingCount + _processedCount + _cancelledCount;
+
     return Scaffold(
       backgroundColor: _canvas,
       appBar: AppBar(
         backgroundColor: _forest,
         foregroundColor: Colors.white,
+        elevation: 0,
         title: const Text(
           'Product Usage',
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.w700,
+            letterSpacing: -0.3,
+          ),
         ),
         actions: [
           IconButton(
+            icon: const Icon(Icons.refresh_rounded, size: 22),
             onPressed: _refresh,
-            icon: const Icon(Icons.refresh_rounded),
           ),
         ],
       ),
@@ -209,22 +292,68 @@ class _InvConsumptionPageState extends State<InvConsumptionPage> {
         backgroundColor: _emerald,
         foregroundColor: Colors.white,
         icon: const Icon(Icons.add_rounded),
-        label: const Text('Record Usage'),
+        label: const Text(
+          'Record Usage',
+          style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+        ),
       ),
       body: Column(
         children: [
           Container(
-            color: Colors.white,
-            padding: const EdgeInsets.all(12),
+            color: _forest,
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 18),
+            child: Row(
+              children: [
+                Expanded(
+                  child: _UsageSummaryCard(
+                    label: 'Pending',
+                    value: '$_pendingCount',
+                    icon: Icons.hourglass_top_rounded,
+                    color: const Color(0xFFFCD34D),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _UsageSummaryCard(
+                    label: 'Processed',
+                    value: '$_processedCount',
+                    icon: Icons.task_alt_rounded,
+                    color: const Color(0xFF86EFAC),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _UsageSummaryCard(
+                    label: 'Today',
+                    value: '$dayTotal',
+                    icon: Icons.science_rounded,
+                    color: const Color(0xFF93C5FD),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Container(
+            color: _surface,
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
             child: Column(
               children: [
-                if (assignedBranch.isEmpty)
+                if (assignedBranch.isEmpty) ...[
                   DropdownButtonFormField<String>(
                     initialValue: _branchId.isEmpty ? null : _branchId,
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       labelText: 'Branch',
-                      border: OutlineInputBorder(),
+                      filled: true,
+                      fillColor: _canvas,
                       isDense: true,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: const BorderSide(color: _border),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: const BorderSide(color: _border),
+                      ),
                     ),
                     items: _branches
                         .map(
@@ -239,59 +368,88 @@ class _InvConsumptionPageState extends State<InvConsumptionPage> {
                       await _refresh();
                     },
                   ),
-                if (assignedBranch.isEmpty) const SizedBox(height: 10),
+                  const SizedBox(height: 10),
+                ],
                 Row(
                   children: [
                     Expanded(
-                      child: DropdownButtonFormField<String>(
-                        initialValue: _status,
-                        decoration: const InputDecoration(
-                          labelText: 'Status',
-                          border: OutlineInputBorder(),
-                          isDense: true,
-                        ),
-                        items: const [
-                          DropdownMenuItem(value: '', child: Text('All')),
-                          DropdownMenuItem(
-                            value: 'pending',
-                            child: Text('Pending'),
-                          ),
-                          DropdownMenuItem(
-                            value: 'processed',
-                            child: Text('Processed'),
-                          ),
-                          DropdownMenuItem(
-                            value: 'cancelled',
-                            child: Text('Cancelled'),
-                          ),
-                        ],
-                        onChanged: (value) async {
-                          setState(() => _status = value ?? '');
-                          await _refresh();
-                        },
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: InkWell(
-                        onTap: _pickDate,
-                        child: InputDecorator(
-                          decoration: const InputDecoration(
-                            labelText: 'Date',
-                            border: OutlineInputBorder(),
-                            isDense: true,
-                          ),
-                          child: Row(
-                            children: [
-                              const Icon(Icons.event_rounded, size: 18),
-                              const SizedBox(width: 7),
-                              Text(_date),
-                            ],
+                      child: Material(
+                        color: _canvas,
+                        borderRadius: BorderRadius.circular(10),
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(10),
+                          onTap: _pickDate,
+                          child: Container(
+                            height: 42,
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: _border),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(
+                                  Icons.event_rounded,
+                                  size: 18,
+                                  color: _forest,
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    _date,
+                                    style: const TextStyle(
+                                      fontSize: 13.5,
+                                      fontWeight: FontWeight.w700,
+                                      color: _ink,
+                                    ),
+                                  ),
+                                ),
+                                const Icon(
+                                  Icons.keyboard_arrow_down_rounded,
+                                  color: _muted,
+                                  size: 20,
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       ),
                     ),
                   ],
+                ),
+                const SizedBox(height: 10),
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      _UsageFilterChip(
+                        label: 'Pending',
+                        selected: _status == 'pending',
+                        onTap: () => _setStatus('pending'),
+                        color: const Color(0xFFD97706),
+                      ),
+                      const SizedBox(width: 8),
+                      _UsageFilterChip(
+                        label: 'Processed',
+                        selected: _status == 'processed',
+                        onTap: () => _setStatus('processed'),
+                        color: const Color(0xFF059669),
+                      ),
+                      const SizedBox(width: 8),
+                      _UsageFilterChip(
+                        label: 'Cancelled',
+                        selected: _status == 'cancelled',
+                        onTap: () => _setStatus('cancelled'),
+                        color: const Color(0xFFDC2626),
+                      ),
+                      const SizedBox(width: 8),
+                      _UsageFilterChip(
+                        label: 'All',
+                        selected: _status.isEmpty,
+                        onTap: () => _setStatus(''),
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),
@@ -300,30 +458,230 @@ class _InvConsumptionPageState extends State<InvConsumptionPage> {
             width: double.infinity,
             color: const Color(0xFFECFDF5),
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-            child: const Text(
-              'Usage is saved as pending. Stock is deducted only at Day End Closing.',
-              style: TextStyle(color: Color(0xFF047857), fontSize: 12),
+            child: const Row(
+              children: [
+                Icon(Icons.info_outline_rounded, size: 16, color: Color(0xFF047857)),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Usage stays pending. Stock is deducted only at Day End Closing.',
+                    style: TextStyle(
+                      color: Color(0xFF047857),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      height: 1.35,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
           Expanded(
             child: _loading
-                ? const Center(child: CircularProgressIndicator())
+                ? const Center(
+                    child: CircularProgressIndicator(color: _forest),
+                  )
                 : _rows.isEmpty
-                ? const Center(child: Text('No consumption records'))
+                ? _UsageEmptyState(
+                    status: _status,
+                    onRecord: _openRecord,
+                  )
                 : RefreshIndicator(
+                    color: _forest,
                     onRefresh: _refresh,
-                    child: ListView.separated(
-                      padding: const EdgeInsets.fromLTRB(12, 12, 12, 90),
+                    child: ListView.builder(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
                       itemCount: _rows.length,
-                      separatorBuilder: (_, _) => const SizedBox(height: 9),
-                      itemBuilder: (_, index) => _ConsumptionCard(
-                        row: _rows[index],
-                        onCancel: () => _cancelRow(_rows[index]),
+                      itemBuilder: (_, index) => Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: _ConsumptionCard(
+                          row: _rows[index],
+                          onCancel: () => _cancelRow(_rows[index]),
+                        ),
                       ),
                     ),
                   ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _UsageSummaryCard extends StatelessWidget {
+  const _UsageSummaryCard({
+    required this.label,
+    required this.value,
+    required this.icon,
+    required this.color,
+  });
+  final String label, value;
+  final IconData icon;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.15)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.18),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon, size: 17, color: color),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: const TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white70,
+                  ),
+                ),
+                const SizedBox(height: 1),
+                Text(
+                  value,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.white,
+                    letterSpacing: -0.3,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _UsageFilterChip extends StatelessWidget {
+  const _UsageFilterChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+    this.color,
+  });
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+  final Color? color;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = color ?? _emerald;
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: selected ? c.withValues(alpha: 0.14) : _canvas,
+          borderRadius: BorderRadius.circular(99),
+          border: Border.all(color: selected ? c : _border, width: selected ? 1.4 : 1),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 12.5,
+            fontWeight: FontWeight.w700,
+            color: selected ? c : _muted,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _UsageEmptyState extends StatelessWidget {
+  const _UsageEmptyState({required this.status, required this.onRecord});
+  final String status;
+  final VoidCallback onRecord;
+
+  @override
+  Widget build(BuildContext context) {
+    final label = switch (status) {
+      'pending' => 'No pending usage',
+      'processed' => 'No processed usage',
+      'cancelled' => 'No cancelled usage',
+      _ => 'No usage records',
+    };
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 64,
+              height: 64,
+              decoration: BoxDecoration(
+                color: const Color(0xFFECFDF5),
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: const Color(0xFFA7F3D0)),
+              ),
+              child: const Icon(
+                Icons.science_rounded,
+                color: _forest,
+                size: 28,
+              ),
+            ),
+            const SizedBox(height: 14),
+            Text(
+              label,
+              style: const TextStyle(
+                color: _ink,
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 6),
+            const Text(
+              'Record consumable usage during the day.\nStock decreases at Day End.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: _muted,
+                fontSize: 13,
+                height: 1.4,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            const SizedBox(height: 18),
+            FilledButton.icon(
+              onPressed: onRecord,
+              style: FilledButton.styleFrom(
+                backgroundColor: _emerald,
+                foregroundColor: Colors.white,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              icon: const Icon(Icons.add_rounded, size: 18),
+              label: const Text(
+                'Record Usage',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -342,47 +700,100 @@ class _ConsumptionCard extends StatelessWidget {
     final customer = row['customer'] is Map ? row['customer'] as Map : const {};
     final status = '${row['status'] ?? 'pending'}';
     final pending = status == 'pending';
+    final cancelled = status == 'cancelled';
+    final qty = _number(row['quantity_used']);
+    final unit = '${row['unit'] ?? product['unit'] ?? ''}';
+    final qtyLabel = qty == qty.roundToDouble()
+        ? qty.toStringAsFixed(0)
+        : qty.toStringAsFixed(2);
+
+    final statusColor = pending
+        ? const Color(0xFFD97706)
+        : cancelled
+            ? const Color(0xFFDC2626)
+            : const Color(0xFF059669);
+    final statusBg = pending
+        ? const Color(0xFFFEF3C7)
+        : cancelled
+            ? const Color(0xFFFEE2E2)
+            : const Color(0xFFDCFCE7);
+
+    final meta = [
+      if ('${customer['name'] ?? ''}'.trim().isNotEmpty) '${customer['name']}',
+      if ('${service['name'] ?? ''}'.trim().isNotEmpty) '${service['name']}',
+      if ('${staff['name'] ?? ''}'.trim().isNotEmpty) '${staff['name']}',
+    ].join(' · ');
 
     return Container(
-      padding: const EdgeInsets.all(13),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
+        color: _surface,
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(color: _border),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF0F766E).withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(
+                  Icons.science_rounded,
+                  color: Color(0xFF0F766E),
+                  size: 22,
+                ),
+              ),
+              const SizedBox(width: 12),
               Expanded(
-                child: Text(
-                  '${product['name'] ?? 'Product'}',
-                  style: const TextStyle(
-                    color: Color(0xFF111827),
-                    fontWeight: FontWeight.w800,
-                    fontSize: 14,
-                  ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '${product['name'] ?? 'Product'}',
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                        color: _ink,
+                        letterSpacing: -0.2,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '$qtyLabel${unit.isEmpty ? '' : ' $unit'}',
+                      style: const TextStyle(
+                        color: _emerald,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
                 ),
               ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  color: pending
-                      ? const Color(0xFFFEF3C7)
-                      : status == 'cancelled'
-                          ? const Color(0xFFFEE2E2)
-                          : const Color(0xFFDCFCE7),
+                  color: statusBg,
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Text(
                   status,
                   style: TextStyle(
-                    color: pending
-                        ? const Color(0xFF92400E)
-                        : status == 'cancelled'
-                            ? const Color(0xFFDC2626)
-                            : const Color(0xFF166534),
+                    color: statusColor,
                     fontSize: 11,
                     fontWeight: FontWeight.w700,
                   ),
@@ -390,41 +801,42 @@ class _ConsumptionCard extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 7),
-          Text(
-            '${_number(row['quantity_used']).toStringAsFixed(2)} ${row['unit'] ?? product['unit'] ?? ''}',
-            style: const TextStyle(
-              color: _emerald,
-              fontSize: 16,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          const SizedBox(height: 5),
+          const SizedBox(height: 10),
           Text(
             '${row['consumption_date'] ?? ''}'
-            '${customer['name'] != null ? ' · ${customer['name']}' : ''}'
-            '${service['name'] != null ? ' · ${service['name']}' : ''}'
-            '${staff['name'] != null ? ' · ${staff['name']}' : ''}',
-            style: const TextStyle(color: Color(0xFF6B7280), fontSize: 12),
+            '${meta.isEmpty ? '' : ' · $meta'}',
+            style: const TextStyle(
+              color: _muted,
+              fontSize: 12.5,
+              fontWeight: FontWeight.w500,
+            ),
           ),
           if ('${row['reason'] ?? ''}'.trim().isNotEmpty) ...[
-            const SizedBox(height: 4),
+            const SizedBox(height: 6),
             Text(
               '${row['reason']}',
-              style: const TextStyle(color: Color(0xFF6B7280), fontSize: 12),
+              style: const TextStyle(
+                color: _muted,
+                fontSize: 12.5,
+                height: 1.35,
+              ),
             ),
           ],
           if (pending) ...[
-            const SizedBox(height: 10),
+            const SizedBox(height: 12),
             Align(
               alignment: Alignment.centerRight,
-              child: TextButton(
+              child: TextButton.icon(
                 onPressed: onCancel,
                 style: TextButton.styleFrom(
                   foregroundColor: const Color(0xFFDC2626),
                   visualDensity: VisualDensity.compact,
                 ),
-                child: const Text('Cancel usage'),
+                icon: const Icon(Icons.close_rounded, size: 16),
+                label: const Text(
+                  'Cancel usage',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
               ),
             ),
           ],
@@ -477,8 +889,6 @@ class _RecordConsumptionSheet extends StatefulWidget {
 class _RecordConsumptionSheetState extends State<_RecordConsumptionSheet> {
   final _reason = TextEditingController();
   final _productSearch = TextEditingController();
-  final _customerSearch = TextEditingController();
-  final _serviceSearch = TextEditingController();
   late final List<_ProductLine> _lines;
   String _staffId = '';
   String _customerId = '';
@@ -504,8 +914,6 @@ class _RecordConsumptionSheetState extends State<_RecordConsumptionSheet> {
   void dispose() {
     _reason.dispose();
     _productSearch.dispose();
-    _customerSearch.dispose();
-    _serviceSearch.dispose();
     for (final line in _lines) {
       line.dispose();
     }
@@ -518,28 +926,51 @@ class _RecordConsumptionSheetState extends State<_RecordConsumptionSheet> {
     return _lines.where((l) => l.name.toLowerCase().contains(q)).toList();
   }
 
-  List<Customer> get _filteredCustomers {
-    final q = _customerSearch.text.trim().toLowerCase();
-    // Show all when searching; when idle show a capped preview so the dropdown stays usable.
-    final source = q.isEmpty
-        ? widget.customers
-        : widget.customers.where((c) {
-            return c.name.toLowerCase().contains(q) ||
-                c.phone.toLowerCase().contains(q);
-          });
-    return source.take(q.isEmpty ? 150 : 200).toList();
+  Customer? get _selectedCustomer {
+    if (_customerId.isEmpty) return null;
+    for (final c in widget.customers) {
+      if (c.id == _customerId) return c;
+    }
+    return null;
   }
 
-  List<SalonService> get _filteredServices {
-    final q = _serviceSearch.text.trim().toLowerCase();
-    if (q.isEmpty) return widget.services;
-    return widget.services.where((s) {
-      return s.name.toLowerCase().contains(q) ||
-          s.category.toLowerCase().contains(q);
-    }).toList();
+  SalonService? get _selectedService {
+    if (_serviceId.isEmpty) return null;
+    for (final s in widget.services) {
+      if (s.id == _serviceId) return s;
+    }
+    return null;
   }
 
   int get _selectedCount => _lines.where((l) => l.selected).length;
+
+  Future<void> _pickCustomer() async {
+    final picked = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _CustomerPickerSheet(
+        customers: widget.customers,
+        selectedId: _customerId,
+      ),
+    );
+    if (picked == null || !mounted) return;
+    setState(() => _customerId = picked);
+  }
+
+  Future<void> _pickService() async {
+    final picked = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _ServicePickerSheet(
+        services: widget.services,
+        selectedId: _serviceId,
+      ),
+    );
+    if (picked == null || !mounted) return;
+    setState(() => _serviceId = picked);
+  }
 
   Future<void> _save() async {
     final selected = _lines.where((l) => l.selected).toList();
@@ -647,8 +1078,6 @@ class _RecordConsumptionSheetState extends State<_RecordConsumptionSheet> {
   Widget build(BuildContext context) {
     final bottom = MediaQuery.of(context).viewInsets.bottom;
     final height = MediaQuery.of(context).size.height * 0.92;
-    final filteredCustomers = _filteredCustomers;
-    final filteredServices = _filteredServices;
     final filteredLines = _filteredLines;
 
     return Container(
@@ -772,77 +1201,121 @@ class _RecordConsumptionSheetState extends State<_RecordConsumptionSheet> {
                 ),
                 const SizedBox(height: 14),
                 _label('CUSTOMER'),
-                TextField(
-                  controller: _customerSearch,
-                  decoration: _deco(
-                    widget.customers.isEmpty
-                        ? 'No customers loaded'
-                        : 'Search name or phone · ${widget.customers.length} loaded',
-                    Icons.search_rounded,
-                    dense: true,
-                  ).copyWith(
-                    hintText: widget.customers.isEmpty
-                        ? 'No customers loaded'
-                        : 'Search name or phone · ${widget.customers.length} loaded',
-                  ),
-                  onChanged: (_) => setState(() {}),
-                ),
-                const SizedBox(height: 8),
-                DropdownButtonFormField<String>(
-                  initialValue: _customerId.isEmpty ||
-                          filteredCustomers.any((c) => c.id == _customerId)
-                      ? (_customerId.isEmpty ? '' : _customerId)
-                      : '',
-                  isExpanded: true,
-                  decoration: _deco(
-                    filteredCustomers.length < widget.customers.length
-                        ? 'Showing ${filteredCustomers.length} matches'
-                        : 'Select customer',
-                    Icons.people_outline_rounded,
-                  ),
-                  items: [
-                    const DropdownMenuItem(value: '', child: Text('None')),
-                    ...filteredCustomers.map(
-                      (c) => DropdownMenuItem(
-                        value: c.id,
-                        child: Text(
-                          c.phone.trim().isEmpty ? c.name : '${c.name} — ${c.phone}',
-                          overflow: TextOverflow.ellipsis,
-                        ),
+                Material(
+                  color: const Color(0xFFF9FAFB),
+                  borderRadius: BorderRadius.circular(12),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: _pickCustomer,
+                    child: InputDecorator(
+                      decoration: _deco(
+                        widget.customers.isEmpty
+                            ? 'No customers loaded from server'
+                            : 'Tap to search · ${widget.customers.length} customers',
+                        Icons.people_outline_rounded,
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              _selectedCustomer == null
+                                  ? (widget.customers.isEmpty
+                                      ? 'No customers loaded'
+                                      : 'None selected')
+                                  : (_selectedCustomer!.phone.trim().isEmpty
+                                      ? _selectedCustomer!.name
+                                      : '${_selectedCustomer!.name} — ${_selectedCustomer!.phone}'),
+                              style: TextStyle(
+                                color: _selectedCustomer == null
+                                    ? const Color(0xFFB0B8B0)
+                                    : const Color(0xFF111827),
+                                fontSize: 14,
+                                fontWeight: _selectedCustomer == null
+                                    ? FontWeight.w500
+                                    : FontWeight.w600,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          if (_customerId.isNotEmpty)
+                            GestureDetector(
+                              onTap: () => setState(() => _customerId = ''),
+                              child: const Padding(
+                                padding: EdgeInsets.only(right: 4),
+                                child: Icon(
+                                  Icons.close_rounded,
+                                  size: 18,
+                                  color: Color(0xFF9CA3AF),
+                                ),
+                              ),
+                            ),
+                          const Icon(
+                            Icons.keyboard_arrow_down_rounded,
+                            color: Color(0xFF9CA3AF),
+                          ),
+                        ],
                       ),
                     ),
-                  ],
-                  onChanged: (value) => setState(() => _customerId = value ?? ''),
+                  ),
                 ),
                 const SizedBox(height: 14),
                 _label('SERVICE'),
-                TextField(
-                  controller: _serviceSearch,
-                  decoration: _deco('Search service', Icons.search_rounded, dense: true)
-                      .copyWith(hintText: 'Search service'),
-                  onChanged: (_) => setState(() {}),
-                ),
-                const SizedBox(height: 8),
-                DropdownButtonFormField<String>(
-                  initialValue: _serviceId.isEmpty ||
-                          filteredServices.any((s) => s.id == _serviceId)
-                      ? (_serviceId.isEmpty ? '' : _serviceId)
-                      : '',
-                  isExpanded: true,
-                  decoration: _deco('Select service', Icons.content_cut_rounded),
-                  items: [
-                    const DropdownMenuItem(value: '', child: Text('None')),
-                    ...filteredServices.map(
-                      (s) => DropdownMenuItem(
-                        value: s.id,
-                        child: Text(
-                          s.category.trim().isEmpty ? s.name : '${s.name} — ${s.category}',
-                          overflow: TextOverflow.ellipsis,
-                        ),
+                Material(
+                  color: const Color(0xFFF9FAFB),
+                  borderRadius: BorderRadius.circular(12),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: _pickService,
+                    child: InputDecorator(
+                      decoration: _deco(
+                        widget.services.isEmpty
+                            ? 'No services loaded from server'
+                            : 'Tap to search · ${widget.services.length} services',
+                        Icons.content_cut_rounded,
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              _selectedService == null
+                                  ? (widget.services.isEmpty
+                                      ? 'No services loaded'
+                                      : 'None selected')
+                                  : (_selectedService!.category.trim().isEmpty
+                                      ? _selectedService!.name
+                                      : '${_selectedService!.name} — ${_selectedService!.category}'),
+                              style: TextStyle(
+                                color: _selectedService == null
+                                    ? const Color(0xFFB0B8B0)
+                                    : const Color(0xFF111827),
+                                fontSize: 14,
+                                fontWeight: _selectedService == null
+                                    ? FontWeight.w500
+                                    : FontWeight.w600,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          if (_serviceId.isNotEmpty)
+                            GestureDetector(
+                              onTap: () => setState(() => _serviceId = ''),
+                              child: const Padding(
+                                padding: EdgeInsets.only(right: 4),
+                                child: Icon(
+                                  Icons.close_rounded,
+                                  size: 18,
+                                  color: Color(0xFF9CA3AF),
+                                ),
+                              ),
+                            ),
+                          const Icon(
+                            Icons.keyboard_arrow_down_rounded,
+                            color: Color(0xFF9CA3AF),
+                          ),
+                        ],
                       ),
                     ),
-                  ],
-                  onChanged: (value) => setState(() => _serviceId = value ?? ''),
+                  ),
                 ),
                 const SizedBox(height: 14),
                 _label('REASON'),
@@ -1071,6 +1544,326 @@ class _RecordConsumptionSheetState extends State<_RecordConsumptionSheet> {
                 ),
               ),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CustomerPickerSheet extends StatefulWidget {
+  const _CustomerPickerSheet({
+    required this.customers,
+    required this.selectedId,
+  });
+
+  final List<Customer> customers;
+  final String selectedId;
+
+  @override
+  State<_CustomerPickerSheet> createState() => _CustomerPickerSheetState();
+}
+
+class _CustomerPickerSheetState extends State<_CustomerPickerSheet> {
+  final _search = TextEditingController();
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
+  List<Customer> get _filtered {
+    final q = _search.text.trim().toLowerCase();
+    if (q.isEmpty) return widget.customers;
+    return widget.customers.where((c) {
+      return c.name.toLowerCase().contains(q) ||
+          c.phone.toLowerCase().contains(q);
+    }).toList();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottom = MediaQuery.of(context).viewInsets.bottom;
+    final items = _filtered;
+    return Container(
+      height: MediaQuery.of(context).size.height * 0.75,
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      padding: EdgeInsets.only(bottom: bottom),
+      child: Column(
+        children: [
+          const SizedBox(height: 10),
+          Container(
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: const Color(0xFFE5E7EB),
+              borderRadius: BorderRadius.circular(99),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 12, 8),
+            child: Row(
+              children: [
+                const Expanded(
+                  child: Text(
+                    'Select customer',
+                    style: TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFF111827),
+                    ),
+                  ),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(context, ''),
+                  child: const Text('Clear'),
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
+            child: TextField(
+              controller: _search,
+              autofocus: true,
+              decoration: InputDecoration(
+                hintText: widget.customers.isEmpty
+                    ? 'No customers on server'
+                    : 'Search name or phone · ${widget.customers.length}',
+                prefixIcon: const Icon(Icons.search_rounded, color: _forest),
+                filled: true,
+                fillColor: const Color(0xFFF9FAFB),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: _border),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: _border),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: _forest, width: 1.8),
+                ),
+              ),
+              onChanged: (_) => setState(() {}),
+            ),
+          ),
+          Expanded(
+            child: items.isEmpty
+                ? Center(
+                    child: Text(
+                      widget.customers.isEmpty
+                          ? 'Customers did not load from server.'
+                          : 'No matching customers',
+                      style: const TextStyle(
+                        color: Color(0xFF6B7280),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  )
+                : ListView.separated(
+                    itemCount: items.length,
+                    separatorBuilder: (_, __) =>
+                        const Divider(height: 1, color: Color(0xFFF3F4F6)),
+                    itemBuilder: (context, index) {
+                      final c = items[index];
+                      final selected = c.id == widget.selectedId;
+                      final phone = c.phone.trim();
+                      return ListTile(
+                        selected: selected,
+                        selectedTileColor: const Color(0xFFECFDF5),
+                        title: Text(
+                          c.name,
+                          style: TextStyle(
+                            fontWeight:
+                                selected ? FontWeight.w800 : FontWeight.w600,
+                            color: const Color(0xFF111827),
+                          ),
+                        ),
+                        subtitle: phone.isEmpty
+                            ? null
+                            : Text(
+                                phone,
+                                style: const TextStyle(
+                                  color: Color(0xFF6B7280),
+                                  fontSize: 12.5,
+                                ),
+                              ),
+                        trailing: selected
+                            ? const Icon(
+                                Icons.check_circle_rounded,
+                                color: _emerald,
+                              )
+                            : null,
+                        onTap: () => Navigator.pop(context, c.id),
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ServicePickerSheet extends StatefulWidget {
+  const _ServicePickerSheet({
+    required this.services,
+    required this.selectedId,
+  });
+
+  final List<SalonService> services;
+  final String selectedId;
+
+  @override
+  State<_ServicePickerSheet> createState() => _ServicePickerSheetState();
+}
+
+class _ServicePickerSheetState extends State<_ServicePickerSheet> {
+  final _search = TextEditingController();
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
+  List<SalonService> get _filtered {
+    final q = _search.text.trim().toLowerCase();
+    if (q.isEmpty) return widget.services;
+    return widget.services.where((s) {
+      return s.name.toLowerCase().contains(q) ||
+          s.category.toLowerCase().contains(q);
+    }).toList();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottom = MediaQuery.of(context).viewInsets.bottom;
+    final items = _filtered;
+    return Container(
+      height: MediaQuery.of(context).size.height * 0.75,
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      padding: EdgeInsets.only(bottom: bottom),
+      child: Column(
+        children: [
+          const SizedBox(height: 10),
+          Container(
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: const Color(0xFFE5E7EB),
+              borderRadius: BorderRadius.circular(99),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 12, 8),
+            child: Row(
+              children: [
+                const Expanded(
+                  child: Text(
+                    'Select service',
+                    style: TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFF111827),
+                    ),
+                  ),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(context, ''),
+                  child: const Text('Clear'),
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
+            child: TextField(
+              controller: _search,
+              autofocus: true,
+              decoration: InputDecoration(
+                hintText: widget.services.isEmpty
+                    ? 'No services on server'
+                    : 'Search ${widget.services.length} services',
+                prefixIcon: const Icon(Icons.search_rounded, color: _forest),
+                filled: true,
+                fillColor: const Color(0xFFF9FAFB),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: _border),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: _border),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: _forest, width: 1.8),
+                ),
+              ),
+              onChanged: (_) => setState(() {}),
+            ),
+          ),
+          Expanded(
+            child: items.isEmpty
+                ? Center(
+                    child: Text(
+                      widget.services.isEmpty
+                          ? 'Services did not load from server.'
+                          : 'No matching services',
+                      style: const TextStyle(
+                        color: Color(0xFF6B7280),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  )
+                : ListView.separated(
+                    itemCount: items.length,
+                    separatorBuilder: (_, __) =>
+                        const Divider(height: 1, color: Color(0xFFF3F4F6)),
+                    itemBuilder: (context, index) {
+                      final s = items[index];
+                      final selected = s.id == widget.selectedId;
+                      final subtitle = s.category.trim();
+                      return ListTile(
+                        selected: selected,
+                        selectedTileColor: const Color(0xFFECFDF5),
+                        title: Text(
+                          s.name,
+                          style: TextStyle(
+                            fontWeight:
+                                selected ? FontWeight.w800 : FontWeight.w600,
+                            color: const Color(0xFF111827),
+                          ),
+                        ),
+                        subtitle: subtitle.isEmpty
+                            ? null
+                            : Text(
+                                subtitle,
+                                style: const TextStyle(
+                                  color: Color(0xFF6B7280),
+                                  fontSize: 12.5,
+                                ),
+                              ),
+                        trailing: selected
+                            ? const Icon(
+                                Icons.check_circle_rounded,
+                                color: _emerald,
+                              )
+                            : null,
+                        onTap: () => Navigator.pop(context, s.id),
+                      );
+                    },
+                  ),
           ),
         ],
       ),

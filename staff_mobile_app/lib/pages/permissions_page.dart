@@ -79,6 +79,9 @@ class _PermissionsPageState extends State<PermissionsPage> {
     final ok  = await app.updateUserRole(userId: '${user['id']}', role: newRole);
     if (ok) {
       setState(() => user['role'] = newRole);
+      if ('${user['id']}' == '${app.currentUser?.id}') {
+        await app.refreshCurrentUser();
+      }
       _showSnack('Role updated to $newRole', success: true);
     } else {
       _showSnack(app.lastError ?? 'Update failed');

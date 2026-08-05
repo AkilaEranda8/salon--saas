@@ -92,6 +92,9 @@ export default function UsersPage() {
         email: (form.email || '').trim() || null,
       };
       if (!payload.password) delete payload.password;
+      // Managers cannot change roles; admins can set staff/manager/admin only.
+      if (!isSuperadmin && !isAdmin) delete payload.role;
+      if (!isSuperadmin && payload.role === 'superadmin') delete payload.role;
       editItem ? await api.put(`/users/${editItem.id}`, payload) : await api.post('/users', payload);
       setShowForm(false); load();
     } catch (err) { setFormError(err.response?.data?.message || 'Save failed.'); }
@@ -290,10 +293,17 @@ export default function UsersPage() {
             </div>
           )}
 
-          <FormGroup label="Role">
-            <Select value={form.role} onChange={e => setForm({...form, role:e.target.value})}>
+          <FormGroup label="Access role (login / mobile app)">
+            <Select
+              value={form.role}
+              disabled={!isSuperadmin && !isAdmin}
+              onChange={e => setForm({...form, role:e.target.value})}
+            >
               {filterRoles.map(r => <option key={r} value={r} style={{ textTransform:'capitalize' }}>{r}</option>)}
             </Select>
+            <div style={{ fontSize:11, color:'#98A2B3', marginTop:6 }}>
+              This is the portal/mobile access role (admin, manager, staff) — not the Staff job title.
+            </div>
           </FormGroup>
           <FormGroup label="Branch">
             <Select value={form.branch_id} onChange={e => setForm({...form, branch_id:e.target.value})}>

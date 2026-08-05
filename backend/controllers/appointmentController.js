@@ -882,14 +882,27 @@ const update = async (req, res) => {
 
     await attachServiceIdsToAppointments(appt);
 
-    // If staff was newly assigned or changed, notify that staff member
-    if (updates.staff_id && updates.staff_id !== prevStaffId) {
-      const timeLabel = appt.time ? appt.time.slice(0, 5) : '';
-      notifyStaffUser(updates.staff_id, '📅 Assigned to You', `${appt.customer_name} — ${timeLabel}`, {
+    // If staff was newly assigned or changed, notify that staff (push + WhatsApp)
+    const newStaffId = updates.staff_id !== undefined ? updates.staff_id : null;
+    const staffReassigned = newStaffId != null
+      && String(newStaffId) !== ''
+      && String(newStaffId) !== String(prevStaffId ?? '');
+    if (staffReassigned) {
+      const timeLabel = appt.time ? String(appt.time).slice(0, 5) : '';
+      notifyStaffUser(newStaffId, '📅 Assigned to You', `${appt.customer_name} — ${timeLabel}`, {
         type: 'appointment_assigned',
         appointment_id: String(appt.id),
         branch_id: String(appt.branch_id),
       });
+      try {
+        const [branch, service] = await Promise.all([
+          Branch.findOne({ where: byIdWhere(req, appt.branch_id), attributes: ['id', 'name', 'phone'] }),
+          Service.findOne({ where: byIdWhere(req, appt.service_id), attributes: ['id', 'name'] }),
+        ]);
+        notifyStaffAppointmentAssigned(appt, branch, service, resolveTenantId(req));
+      } catch (notifyErr) {
+        console.warn('[appointments][update] staff WhatsApp notify failed:', notifyErr.message);
+      }
     }
 
     return res.json(appt);

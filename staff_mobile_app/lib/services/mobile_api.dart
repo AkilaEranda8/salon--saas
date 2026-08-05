@@ -277,7 +277,7 @@ class MobileApi {
 
   Future<List<SalonService>> fetchServices({required String token}) async {
     final response = await http.get(
-      Uri.parse('$baseUrl/api/services?limit=200'),
+      Uri.parse('$baseUrl/api/services?limit=500&active=true'),
       headers: _authHeaders(token),
     );
     final body = _decode(response.body);

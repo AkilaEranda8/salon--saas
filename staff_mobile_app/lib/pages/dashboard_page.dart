@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:local_auth/local_auth.dart';
+import 'dart:async';
 
 import '../models/appointment.dart';
 import '../models/salon_service.dart';
@@ -35,6 +37,12 @@ const _text = Color(0xFF111827);
 const _sub = Color(0xFF6B7280);
 const _muted = Color(0xFF9CA3AF);
 const _divider = Color(0xFFE5E7EB);
+
+String _formatRoleLabel(String role) {
+  final r = role.trim();
+  if (r.isEmpty) return 'Staff';
+  return '${r[0].toUpperCase()}${r.substring(1).toLowerCase()}';
+}
 // ─────────────────────────────────────────────────────────────────────────────
 
 class DashboardPage extends StatefulWidget {
@@ -44,7 +52,7 @@ class DashboardPage extends StatefulWidget {
 }
 
 class _DashboardPageState extends State<DashboardPage>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   Future<void>? _loadFuture;
   String? _error;
   late AnimationController _ac;
@@ -53,6 +61,7 @@ class _DashboardPageState extends State<DashboardPage>
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     SystemChrome.setSystemUIOverlayStyle(
       const SystemUiOverlayStyle(
         statusBarColor: Colors.transparent,
@@ -70,6 +79,13 @@ class _DashboardPageState extends State<DashboardPage>
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && mounted) {
+      unawaited(AppStateScope.of(context).refreshCurrentUser());
+    }
+  }
+
+  @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     _loadFuture ??= _load();
@@ -77,6 +93,7 @@ class _DashboardPageState extends State<DashboardPage>
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _ac.dispose();
     super.dispose();
   }
@@ -85,6 +102,7 @@ class _DashboardPageState extends State<DashboardPage>
     final s = AppStateScope.of(context);
     final today = _todayIso();
     try {
+      await s.refreshCurrentUser();
       await Future.wait([
         if (s.isFeatureEnabled(MobileFeatures.appointments) &&
             s.hasPermission(StaffPermission.canViewAppointments))
@@ -94,6 +112,7 @@ class _DashboardPageState extends State<DashboardPage>
           s.loadCustomers(),
         if (s.isFeatureEnabled(MobileFeatures.services)) s.loadServices(),
       ]);
+      if (mounted) setState(() {});
     } catch (_) {
       if (mounted)
         setState(() => _error = 'Could not load data — check your connection.');
@@ -268,7 +287,7 @@ class _DashboardPageState extends State<DashboardPage>
           const Color(0xFFEDE9FE),
         ),
       _StatData(
-        'My Role',
+        'Access role',
         (user?.role ?? 'staff').toUpperCase(),
         Icons.shield_rounded,
         _gold,
@@ -627,21 +646,96 @@ class _Header extends StatelessWidget {
                   PopupMenuButton<String>(
                     tooltip: 'Account',
                     offset: const Offset(0, 44),
-                    onSelected: (value) {
-                      if (value == 'logout') onLogout();
+                    onSelected: (value) async {
+                      if (value == 'logout') {
+                        onLogout();
+                        return;
+                      }
+                      if (value == 'bio_on' || value == 'bio_off') {
+                        final app = AppStateScope.of(context);
+                        final enable = value == 'bio_on';
+                        if (enable) {
+                          try {
+                            final auth = LocalAuthentication();
+                            final canCheck = await auth.canCheckBiometrics;
+                            final supported = await auth.isDeviceSupported();
+                            if (!canCheck && !supported) {
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text(
+                                      'Biometrics not available on this device',
+                                    ),
+                                    behavior: SnackBarBehavior.floating,
+                                  ),
+                                );
+                              }
+                              return;
+                            }
+                            final ok = await auth.authenticate(
+                              localizedReason:
+                                  'Confirm to enable app unlock',
+                              options: const AuthenticationOptions(
+                                biometricOnly: false,
+                                stickyAuth: true,
+                              ),
+                            );
+                            if (!ok) return;
+                          } catch (_) {
+                            return;
+                          }
+                        }
+                        await app.setBiometricUnlockEnabled(enable);
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                enable
+                                    ? 'App unlock enabled'
+                                    : 'App unlock disabled',
+                              ),
+                              behavior: SnackBarBehavior.floating,
+                            ),
+                          );
+                        }
+                      }
                     },
-                    itemBuilder: (context) => [
-                      const PopupMenuItem<String>(
-                        value: 'logout',
-                        child: Row(
-                          children: [
-                            Icon(Icons.logout_rounded, size: 20, color: _g900),
-                            SizedBox(width: 10),
-                            Text('Log out'),
-                          ],
+                    itemBuilder: (context) {
+                      final bioOn =
+                          AppStateScope.of(context).biometricUnlockEnabled;
+                      return [
+                        PopupMenuItem<String>(
+                          value: bioOn ? 'bio_off' : 'bio_on',
+                          child: Row(
+                            children: [
+                              Icon(
+                                bioOn
+                                    ? Icons.fingerprint_outlined
+                                    : Icons.fingerprint,
+                                size: 20,
+                                color: _g900,
+                              ),
+                              const SizedBox(width: 10),
+                              Text(
+                                bioOn
+                                    ? 'Disable app unlock'
+                                    : 'Enable app unlock',
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
-                    ],
+                        const PopupMenuItem<String>(
+                          value: 'logout',
+                          child: Row(
+                            children: [
+                              Icon(Icons.logout_rounded, size: 20, color: _g900),
+                              SizedBox(width: 10),
+                              Text('Log out'),
+                            ],
+                          ),
+                        ),
+                      ];
+                    },
                     child: Container(
                       width: 36,
                       height: 36,
@@ -716,7 +810,7 @@ class _Header extends StatelessWidget {
                           ),
                           const SizedBox(height: 5),
                           Text(
-                            '$userName  ·  ${role[0].toUpperCase()}${role.substring(1)}',
+                            '$userName  ·  ${_formatRoleLabel(role)}',
                             style: TextStyle(
                               color: Colors.white.withValues(alpha: 0.75),
                               fontSize: 13,

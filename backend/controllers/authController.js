@@ -234,7 +234,7 @@ const getMe = async (req, res) => {
       {
         model: Staff,
         as: 'staffProfile',
-        attributes: ['id', 'branch_id', 'name'],
+        attributes: ['id', 'branch_id', 'name', 'role_title'],
         required: false,
         include: [{ model: Branch, as: 'branch', attributes: ['id', 'name', 'color'] }],
       },

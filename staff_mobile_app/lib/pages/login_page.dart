@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:local_auth/local_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../pages/dashboard_page.dart';
@@ -141,9 +142,46 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
     }
 
     if (!mounted) return;
+    await _maybeOfferBiometric(appState);
+    if (!mounted) return;
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(builder: (_) => const DashboardPage()),
     );
+  }
+
+  Future<void> _maybeOfferBiometric(AppState appState) async {
+    try {
+      await appState.loadBiometricPreference();
+      if (appState.biometricUnlockEnabled) return;
+      final auth = LocalAuthentication();
+      final canCheck = await auth.canCheckBiometrics;
+      final supported = await auth.isDeviceSupported();
+      if (!canCheck && !supported) return;
+      if (!mounted) return;
+      final enable = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Enable app unlock?'),
+          content: const Text(
+            'Use fingerprint / Face ID next time you open the app. '
+            'You can turn this off anytime from the account menu.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Not now'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Enable'),
+            ),
+          ],
+        ),
+      );
+      if (enable == true) {
+        await appState.setBiometricUnlockEnabled(true);
+      }
+    } catch (_) {}
   }
 
   @override

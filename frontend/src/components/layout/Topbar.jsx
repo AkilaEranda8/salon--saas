@@ -38,6 +38,7 @@ const PAGE_LABELS = {
   '/crm/rules': 'AI Rules',
   '/crm/ai-cost': 'AI Cost & Analytics',
   '/offer-sms':     'Offer SMS',
+  '/mobile-offers': 'Mobile Offers',
   '/branding':      'Branding Settings',
   '/themes':        'Theme Options',
   '/branches':      'Branches',

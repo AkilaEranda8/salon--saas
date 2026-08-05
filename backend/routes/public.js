@@ -142,7 +142,7 @@ router.get('/services', async (req, res) => {
     const tenantWhr = tenantId ? { tenant_id: tenantId } : {};
 
     const services = await Service.findAll({
-      where: { is_active: true, available_online: true, ...tenantWhr },
+      where: { is_active: true, ...tenantWhr },
       attributes: ['id', 'name', 'category', 'duration_minutes', 'description'],
       order: [['category', 'ASC'], ['name', 'ASC']],
     });
@@ -512,7 +512,7 @@ router.post('/customer-portal/request-otp', async (req, res) => {
 // ── POST /api/public/customer-portal/register — new customer self-registration ─
 router.post('/customer-portal/register', async (req, res) => {
   try {
-    const { name, phone, email } = req.body || {};
+    const { name, phone, email, tenantId } = req.body || {};
     const normalized = normalizePhoneDigits(phone);
     if (!normalized || !String(name || '').trim()) {
       return res.status(400).json({ message: 'Name and phone number are required.' });
@@ -521,16 +521,21 @@ router.post('/customer-portal/register', async (req, res) => {
     const variants = buildPhoneVariants(normalized);
     let customer = await Customer.findOne({ where: { phone: { [Op.or]: variants } } });
 
+    const parsedTenantId = tenantId ? parseInt(tenantId, 10) : null;
+    const tenantIdVal = Number.isInteger(parsedTenantId) && parsedTenantId > 0 ? parsedTenantId : null;
+
     if (!customer) {
       customer = await Customer.create({
         name: String(name).trim(),
         phone: normalized,
         email: email ? String(email).trim() : null,
+        tenant_id: tenantIdVal,
       });
     } else {
       const updates = {};
       if (!String(customer.name || '').trim() && name) updates.name = String(name).trim();
       if (!String(customer.email || '').trim() && email) updates.email = String(email).trim();
+      if (!customer.tenant_id && tenantIdVal) updates.tenant_id = tenantIdVal;
       if (Object.keys(updates).length) await customer.update(updates);
     }
 
@@ -975,7 +980,7 @@ router.post('/bookings', async (req, res) => {
 
     const [services, staffRows] = await Promise.all([
       Service.findAll({
-        where: { id: serviceIds, is_active: true, available_online: true, tenant_id: bookingTenantId },
+        where: { id: serviceIds, is_active: true, tenant_id: bookingTenantId },
         attributes: ['id', 'name', 'price', 'duration_minutes'],
       }),
       Staff.findAll({
@@ -1288,6 +1293,9 @@ router.post('/bookings', async (req, res) => {
     return res.status(500).json({ message: 'Server error' });
   }
 });
+
+// ── GET /api/public/offers?tenantId= — published in-app offers for customer app ──
+router.get('/offers', require('../controllers/mobileOffersController').listPublic);
 
 // ── GET /api/public/plans – active plan configs for the billing/onboarding pages ──
 router.get('/plans', async (_req, res) => {

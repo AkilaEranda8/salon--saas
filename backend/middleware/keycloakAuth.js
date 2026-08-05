@@ -31,6 +31,19 @@ const PERMISSIONS = {
 const _roleCache = new Map(); // dbUserId -> { role, branchId, tenantId, at }
 const ROLE_CACHE_MS = 60_000;
 
+function invalidateRoleCache(userId) {
+  if (userId == null) return;
+  _roleCache.delete(Number(userId));
+}
+
+function claimRole(value) {
+  if (value == null) return null;
+  // Keycloak multi-valued attributes often arrive as arrays.
+  const raw = Array.isArray(value) ? value[0] : value;
+  const role = String(raw ?? '').trim().toLowerCase();
+  return role || null;
+}
+
 async function hydrateUserFromDb(user) {
   if (!user?.id) return user;
   const cached = _roleCache.get(user.id);
@@ -68,9 +81,7 @@ function mapClaims(decoded) {
   return {
     id:         decoded.db_user_id  ? Number(decoded.db_user_id)  : null,
     username:   decoded.preferred_username ?? null,
-    role:       decoded.salon_role != null
-      ? String(decoded.salon_role).trim().toLowerCase()
-      : null,
+    role:       claimRole(decoded.salon_role),
     branchId:   decoded.branch_id   ? Number(decoded.branch_id)   : null,
     name:       decoded.name        ?? null,
     tenantId:   decoded.tenant_id   ? Number(decoded.tenant_id)   : null,
@@ -151,4 +162,10 @@ const requireRole = (...roles) => (req, res, next) => {
   next();
 };
 
-module.exports = { verifyToken, optionalVerifyToken, requireRole, PERMISSIONS };
+module.exports = {
+  verifyToken,
+  optionalVerifyToken,
+  requireRole,
+  PERMISSIONS,
+  invalidateRoleCache,
+};

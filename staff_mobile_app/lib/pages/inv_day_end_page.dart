@@ -3,8 +3,13 @@ import 'package:flutter/material.dart';
 import '../state/app_state.dart';
 
 const _forest = Color(0xFF1B3A2D);
+const _emerald = Color(0xFF2D6A4F);
 const _blue = Color(0xFF2563EB);
 const _canvas = Color(0xFFF2F5F2);
+const _surface = Color(0xFFFFFFFF);
+const _border = Color(0xFFE5E7EB);
+const _ink = Color(0xFF111827);
+const _muted = Color(0xFF6B7280);
 
 String _today() {
   final n = DateTime.now();
@@ -12,6 +17,9 @@ String _today() {
 }
 
 double _number(dynamic value) => double.tryParse('$value') ?? 0;
+
+String _fmt(double v) =>
+    v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(2);
 
 class InvDayEndPage extends StatefulWidget {
   const InvDayEndPage({super.key});
@@ -116,6 +124,7 @@ class _InvDayEndPageState extends State<InvDayEndPage> {
           ),
           FilledButton(
             onPressed: () => Navigator.of(ctx).pop(true),
+            style: FilledButton.styleFrom(backgroundColor: _blue),
             child: const Text('Confirm Closing'),
           ),
         ],
@@ -153,7 +162,12 @@ class _InvDayEndPageState extends State<InvDayEndPage> {
   void _toast(String message) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
+      SnackBar(
+        content: Text(message),
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: _forest,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ),
     );
   }
 
@@ -161,59 +175,132 @@ class _InvDayEndPageState extends State<InvDayEndPage> {
   Widget build(BuildContext context) {
     final app = AppStateScope.of(context);
     final assignedBranch = app.currentUser?.branchId?.trim() ?? '';
+
     return Scaffold(
       backgroundColor: _canvas,
       appBar: AppBar(
         backgroundColor: _forest,
         foregroundColor: Colors.white,
+        elevation: 0,
         title: const Text(
           'Day End Closing',
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.w700,
+            letterSpacing: -0.3,
+          ),
         ),
         actions: [
           IconButton(
+            icon: const Icon(Icons.refresh_rounded, size: 22),
             onPressed: _loadPreview,
-            icon: const Icon(Icons.refresh_rounded),
           ),
         ],
       ),
       bottomNavigationBar: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: FilledButton.icon(
-            onPressed: _items.isEmpty || _closing ? null : _confirm,
-            style: FilledButton.styleFrom(
-              backgroundColor: _blue,
-              padding: const EdgeInsets.symmetric(vertical: 14),
-            ),
-            icon: _closing
-                ? const SizedBox(
-                    width: 17,
-                    height: 17,
-                    child: CircularProgressIndicator(
-                      color: Colors.white,
-                      strokeWidth: 2,
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+          child: GestureDetector(
+            onTap: _items.isEmpty || _closing ? null : _confirm,
+            child: Opacity(
+              opacity: _items.isEmpty || _closing ? 0.5 : 1,
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 15),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF1D4ED8), Color(0xFF3B82F6)],
+                    begin: Alignment.centerLeft,
+                    end: Alignment.centerRight,
+                  ),
+                  borderRadius: BorderRadius.circular(14),
+                  boxShadow: [
+                    BoxShadow(
+                      color: _blue.withValues(alpha: 0.28),
+                      blurRadius: 14,
+                      offset: const Offset(0, 5),
                     ),
-                  )
-                : const Icon(Icons.task_alt_rounded),
-            label: Text(_closing ? 'Closing...' : 'Complete Day End Closing'),
+                  ],
+                ),
+                child: _closing
+                    ? const Center(
+                        child: SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 2,
+                          ),
+                        ),
+                      )
+                    : const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.task_alt_rounded, color: Colors.white, size: 18),
+                          SizedBox(width: 9),
+                          Text(
+                            'Complete Day End Closing',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ],
+                      ),
+              ),
+            ),
           ),
         ),
       ),
       body: Column(
         children: [
           Container(
-            color: Colors.white,
-            padding: const EdgeInsets.all(12),
+            color: _forest,
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 18),
+            child: Row(
+              children: [
+                Expanded(
+                  child: _SummaryCard(
+                    label: 'Pending',
+                    value: '$_pendingCount',
+                    icon: Icons.hourglass_top_rounded,
+                    color: const Color(0xFFFCD34D),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _SummaryCard(
+                    label: 'Products',
+                    value: '${_items.length}',
+                    icon: Icons.inventory_2_rounded,
+                    color: const Color(0xFF93C5FD),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Container(
+            color: _surface,
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
             child: Column(
               children: [
-                if (assignedBranch.isEmpty)
+                if (assignedBranch.isEmpty) ...[
                   DropdownButtonFormField<String>(
                     initialValue: _branchId.isEmpty ? null : _branchId,
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       labelText: 'Branch',
-                      border: OutlineInputBorder(),
+                      filled: true,
+                      fillColor: _canvas,
                       isDense: true,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: const BorderSide(color: _border),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: const BorderSide(color: _border),
+                      ),
                     ),
                     items: _branches
                         .map(
@@ -228,21 +315,41 @@ class _InvDayEndPageState extends State<InvDayEndPage> {
                       await _loadPreview();
                     },
                   ),
-                if (assignedBranch.isEmpty) const SizedBox(height: 10),
-                InkWell(
-                  onTap: _pickDate,
-                  child: InputDecorator(
-                    decoration: const InputDecoration(
-                      labelText: 'Closing Date',
-                      border: OutlineInputBorder(),
-                      isDense: true,
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.event_rounded, size: 18),
-                        const SizedBox(width: 8),
-                        Text(_date),
-                      ],
+                  const SizedBox(height: 10),
+                ],
+                Material(
+                  color: _canvas,
+                  borderRadius: BorderRadius.circular(10),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(10),
+                    onTap: _pickDate,
+                    child: Container(
+                      height: 42,
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: _border),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.event_rounded, size: 18, color: _forest),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Closing date · $_date',
+                              style: const TextStyle(
+                                fontSize: 13.5,
+                                fontWeight: FontWeight.w700,
+                                color: _ink,
+                              ),
+                            ),
+                          ),
+                          const Icon(
+                            Icons.keyboard_arrow_down_rounded,
+                            color: _muted,
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
@@ -252,82 +359,207 @@ class _InvDayEndPageState extends State<InvDayEndPage> {
           Container(
             width: double.infinity,
             color: const Color(0xFFEFF6FF),
-            padding: const EdgeInsets.all(12),
-            child: Text(
-              'Pending records: $_pendingCount · Grouped products: ${_items.length}',
-              style: const TextStyle(
-                color: Color(0xFF1D4ED8),
-                fontSize: 12.5,
-                fontWeight: FontWeight.w700,
-              ),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            child: const Row(
+              children: [
+                Icon(Icons.info_outline_rounded, size: 16, color: Color(0xFF1D4ED8)),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Confirming deducts pending usage from stock and writes History.',
+                    style: TextStyle(
+                      color: Color(0xFF1D4ED8),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      height: 1.35,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
           Expanded(
             child: _loading
-                ? const Center(child: CircularProgressIndicator())
+                ? const Center(child: CircularProgressIndicator(color: _forest))
                 : _items.isEmpty
-                ? const Center(
-                    child: Text('No pending consumption for this date'),
-                  )
-                : ListView.separated(
-                    padding: const EdgeInsets.all(12),
-                    itemCount: _items.length,
-                    separatorBuilder: (_, _) => const SizedBox(height: 9),
-                    itemBuilder: (_, index) {
-                      final item = _items[index];
-                      final product = item['product'] is Map
-                          ? item['product'] as Map
-                          : const {};
-                      final current = _number(product['current_stock']);
-                      final used = _number(item['quantity_used']);
-                      final closing = current - used;
-                      return Container(
-                        padding: const EdgeInsets.all(13),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: const Color(0xFFE5E7EB)),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              '${product['name'] ?? 'Product'}',
-                              style: const TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w800,
+                ? const _EmptyState()
+                : RefreshIndicator(
+                    color: _forest,
+                    onRefresh: _loadPreview,
+                    child: ListView.builder(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+                      itemCount: _items.length,
+                      itemBuilder: (_, index) {
+                        final item = _items[index];
+                        final product = item['product'] is Map
+                            ? item['product'] as Map
+                            : const {};
+                        final current = _number(product['current_stock']);
+                        final used = _number(item['quantity_used']);
+                        final closing = current - used;
+                        final unit = '${item['unit'] ?? product['unit'] ?? ''}';
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 10),
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: _surface,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: closing < 0
+                                  ? const Color(0xFFFECACA)
+                                  : _border,
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.03),
+                                blurRadius: 8,
+                                offset: const Offset(0, 2),
                               ),
-                            ),
-                            const SizedBox(height: 9),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                _Metric(label: 'Current', value: current),
-                                _Metric(
-                                  label: 'Used',
-                                  value: used,
-                                  color: Colors.red,
-                                ),
-                                _Metric(
-                                  label: 'Closing',
-                                  value: closing,
-                                  color: closing < 0 ? Colors.red : _forest,
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 5),
-                            Text(
-                              'Unit: ${item['unit'] ?? product['unit'] ?? ''}',
-                              style: const TextStyle(
-                                color: Color(0xFF6B7280),
-                                fontSize: 11.5,
+                            ],
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Container(
+                                    width: 44,
+                                    height: 44,
+                                    decoration: BoxDecoration(
+                                      color: _blue.withValues(alpha: 0.12),
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    child: const Icon(
+                                      Icons.inventory_2_rounded,
+                                      color: _blue,
+                                      size: 22,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          '${product['name'] ?? 'Product'}',
+                                          style: const TextStyle(
+                                            fontSize: 15,
+                                            fontWeight: FontWeight.w800,
+                                            color: _ink,
+                                            letterSpacing: -0.2,
+                                          ),
+                                        ),
+                                        if (unit.isNotEmpty) ...[
+                                          const SizedBox(height: 3),
+                                          Text(
+                                            'Unit · $unit',
+                                            style: const TextStyle(
+                                              color: _muted,
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.w500,
+                                            ),
+                                          ),
+                                        ],
+                                      ],
+                                    ),
+                                  ),
+                                ],
                               ),
-                            ),
-                          ],
-                        ),
-                      );
-                    },
+                              const SizedBox(height: 12),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: _Metric(
+                                      label: 'Current',
+                                      value: _fmt(current),
+                                    ),
+                                  ),
+                                  Expanded(
+                                    child: _Metric(
+                                      label: 'Used',
+                                      value: _fmt(used),
+                                      color: const Color(0xFFDC2626),
+                                    ),
+                                  ),
+                                  Expanded(
+                                    child: _Metric(
+                                      label: 'Closing',
+                                      value: _fmt(closing),
+                                      color: closing < 0
+                                          ? const Color(0xFFDC2626)
+                                          : _emerald,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
                   ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SummaryCard extends StatelessWidget {
+  const _SummaryCard({
+    required this.label,
+    required this.value,
+    required this.icon,
+    required this.color,
+  });
+  final String label, value;
+  final IconData icon;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.15)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.18),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon, size: 17, color: color),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: const TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white70,
+                  ),
+                ),
+                Text(
+                  value,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.white,
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -339,10 +571,10 @@ class _Metric extends StatelessWidget {
   const _Metric({
     required this.label,
     required this.value,
-    this.color = const Color(0xFF374151),
+    this.color = _ink,
   });
   final String label;
-  final double value;
+  final String value;
   final Color color;
 
   @override
@@ -351,18 +583,70 @@ class _Metric extends StatelessWidget {
       children: [
         Text(
           label,
-          style: const TextStyle(color: Color(0xFF9CA3AF), fontSize: 11),
+          style: const TextStyle(
+            color: _muted,
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+          ),
         ),
-        const SizedBox(height: 2),
+        const SizedBox(height: 3),
         Text(
-          value.toStringAsFixed(2),
+          value,
           style: TextStyle(
             color: color,
-            fontSize: 14,
+            fontSize: 15,
             fontWeight: FontWeight.w800,
           ),
         ),
       ],
+    );
+  }
+}
+
+class _EmptyState extends StatelessWidget {
+  const _EmptyState();
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 64,
+              height: 64,
+              decoration: BoxDecoration(
+                color: const Color(0xFFEFF6FF),
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: const Color(0xFFBFDBFE)),
+              ),
+              child: const Icon(Icons.task_alt_rounded, color: _blue, size: 28),
+            ),
+            const SizedBox(height: 14),
+            const Text(
+              'Nothing to close',
+              style: TextStyle(
+                color: _ink,
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 6),
+            const Text(
+              'No pending usage for this date.\nRecord usage first, then come back.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: _muted,
+                fontSize: 13,
+                height: 1.4,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

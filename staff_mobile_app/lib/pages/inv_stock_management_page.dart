@@ -1529,6 +1529,9 @@ class _GoodsReceivedSheetState extends State<_GoodsReceivedSheet> {
   String _productId = '';
   String _date = _today();
   bool _saving = false;
+  String _error = '';
+
+  static const _units = ['ml', 'g', 'kg', 'L', 'pcs'];
 
   @override
   void dispose() {
@@ -1538,9 +1541,65 @@ class _GoodsReceivedSheetState extends State<_GoodsReceivedSheet> {
     super.dispose();
   }
 
+  Map<String, dynamic>? get _selectedProduct {
+    if (_productId.isEmpty) return null;
+    for (final p in widget.products) {
+      if ('${p['id']}' == _productId) return p;
+    }
+    return null;
+  }
+
+  String get _unit {
+    final raw = '${_selectedProduct?['unit'] ?? ''}';
+    return _units.contains(raw) ? raw : (raw.isEmpty ? 'pcs' : raw);
+  }
+
+  Future<void> _pickProduct() async {
+    final picked = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _ProductPickerSheet(
+        products: widget.products,
+        selectedId: _productId,
+      ),
+    );
+    if (picked == null || !mounted) return;
+    setState(() {
+      _productId = picked;
+      final p = _selectedProduct;
+      if (p != null) {
+        final cost = _number(p['cost_price']);
+        _cost.text = cost == 0 ? '' : '$cost';
+      }
+    });
+  }
+
+  Future<void> _pickDate() async {
+    final initial = DateTime.tryParse(_date) ?? DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: initial,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2035),
+    );
+    if (picked == null) return;
+    setState(() {
+      _date =
+          '${picked.year}-${picked.month.toString().padLeft(2, '0')}-${picked.day.toString().padLeft(2, '0')}';
+    });
+  }
+
   Future<void> _save() async {
+    if (_productId.isEmpty) {
+      setState(() => _error = 'Select a product');
+      return;
+    }
     if (!_key.currentState!.validate()) return;
-    setState(() => _saving = true);
+    setState(() {
+      _saving = true;
+      _error = '';
+    });
     final ok = await AppStateScope.of(context).receiveInventoryGoods(
       branchId: widget.branchId,
       receivedDate: _date,
@@ -1549,80 +1608,430 @@ class _GoodsReceivedSheetState extends State<_GoodsReceivedSheet> {
           'product_id': int.tryParse(_productId) ?? _productId,
           'quantity_received': _number(_qty.text),
           'unit_cost': _number(_cost.text),
+          'unit': _unit,
         },
       ],
       notes: _notes.text,
     );
     if (!mounted) return;
-    setState(() => _saving = false);
     if (ok) {
       Navigator.of(context).pop(true);
     } else {
-      _showError(context);
+      setState(() {
+        _error =
+            AppStateScope.of(context).lastError ?? 'Goods received failed.';
+        _saving = false;
+      });
     }
   }
 
+  Widget _label(String text) => Padding(
+        padding: const EdgeInsets.only(bottom: 6),
+        child: Text(
+          text,
+          style: const TextStyle(
+            color: _muted,
+            fontSize: 11.5,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 0.5,
+          ),
+        ),
+      );
+
+  InputDecoration _deco(String hint, IconData icon, {bool required = false}) =>
+      InputDecoration(
+        hintText: required ? hint : '$hint (optional)',
+        hintStyle: const TextStyle(color: Color(0xFFB0B8B0), fontSize: 14),
+        prefixIcon: Icon(icon, color: _forest, size: 19),
+        filled: true,
+        fillColor: _canvas,
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: _border),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: _border),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: _forest, width: 1.8),
+        ),
+        focusedErrorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: _forest, width: 1.8),
+        ),
+        errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: Color(0xFFF43F5E)),
+        ),
+      );
+
   @override
   Widget build(BuildContext context) {
-    return _SheetShell(
-      title: 'Goods Received (GRN)',
-      saving: _saving,
-      onSave: _save,
-      saveLabel: 'Confirm & Increase Stock',
-      child: Form(
-        key: _key,
-        child: Column(
-          children: [
-            DropdownButtonFormField<String>(
-              initialValue: _productId.isEmpty ? null : _productId,
-              decoration: const InputDecoration(
-                labelText: 'Product',
-                border: OutlineInputBorder(),
+    final bottom = MediaQuery.of(context).viewInsets.bottom;
+    final product = _selectedProduct;
+    final stock = product == null
+        ? null
+        : _fmtQty(product['current_stock'], _unit);
+
+    return Container(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      child: SingleChildScrollView(
+        padding: EdgeInsets.fromLTRB(20, 0, 20, bottom + 28),
+        child: Form(
+          key: _key,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  margin: const EdgeInsets.only(top: 12, bottom: 18),
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE5E7EB),
+                    borderRadius: BorderRadius.circular(99),
+                  ),
+                ),
               ),
-              items: widget.products
-                  .map(
-                    (p) => DropdownMenuItem(
-                      value: '${p['id']}',
-                      child: Text('${p['name']}'),
+              Row(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFECFDF5),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFFA7F3D0)),
                     ),
-                  )
-                  .toList(),
-              onChanged: (v) => setState(() {
-                _productId = v ?? '';
-                final p = widget.products.firstWhere(
-                  (item) => '${item['id']}' == _productId,
-                  orElse: () => <String, dynamic>{},
-                );
-                _cost.text = '${p['cost_price'] ?? ''}';
-              }),
-              validator: (v) => v == null || v.isEmpty ? 'Required' : null,
-            ),
-            const SizedBox(height: 10),
-            _NumberField(
-              controller: _qty,
-              label: 'Quantity Received',
-              requiredPositive: true,
-            ),
-            const SizedBox(height: 10),
-            _NumberField(controller: _cost, label: 'Unit Cost'),
-            const SizedBox(height: 10),
-            TextFormField(
-              initialValue: _date,
-              decoration: const InputDecoration(
-                labelText: 'Received Date',
-                border: OutlineInputBorder(),
+                    child: const Icon(
+                      Icons.local_shipping_rounded,
+                      color: _forest,
+                      size: 18,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Goods Received',
+                          style: TextStyle(
+                            color: _ink,
+                            fontSize: 17,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -0.2,
+                          ),
+                        ),
+                        Text(
+                          'GRN — receive goods and increase stock',
+                          style: TextStyle(
+                            color: Color(0xFFADB5BD),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  GestureDetector(
+                    onTap: () => Navigator.of(context).pop(),
+                    child: Container(
+                      width: 32,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF3F4F6),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(
+                        Icons.close_rounded,
+                        size: 16,
+                        color: _muted,
+                      ),
+                    ),
+                  ),
+                ],
               ),
-              onChanged: (v) => _date = v,
-            ),
-            const SizedBox(height: 10),
-            TextFormField(
-              controller: _notes,
-              decoration: const InputDecoration(
-                labelText: 'Notes (optional)',
-                border: OutlineInputBorder(),
+              const SizedBox(height: 18),
+
+              if (_error.isNotEmpty)
+                Container(
+                  margin: const EdgeInsets.only(bottom: 14),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFEF2F2),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: const Color(0xFFFEE2E2)),
+                  ),
+                  child: Text(
+                    _error,
+                    style: const TextStyle(fontSize: 13, color: _red),
+                  ),
+                ),
+
+              _label('PRODUCT'),
+              Material(
+                color: _canvas,
+                borderRadius: BorderRadius.circular(12),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(12),
+                  onTap: _pickProduct,
+                  child: InputDecorator(
+                    decoration: _deco(
+                      widget.products.isEmpty
+                          ? 'No products loaded'
+                          : 'Tap to search · ${widget.products.length} products',
+                      Icons.inventory_2_outlined,
+                      required: true,
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            product == null
+                                ? (widget.products.isEmpty
+                                    ? 'No products loaded'
+                                    : 'Select product')
+                                : '${product['name']}',
+                            style: TextStyle(
+                              color: product == null
+                                  ? const Color(0xFFB0B8B0)
+                                  : _ink,
+                              fontSize: 14,
+                              fontWeight: product == null
+                                  ? FontWeight.w500
+                                  : FontWeight.w600,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const Icon(
+                          Icons.keyboard_arrow_down_rounded,
+                          color: Color(0xFF9CA3AF),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
               ),
-            ),
-          ],
+              if (stock != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  'Current stock · $stock',
+                  style: const TextStyle(
+                    color: Color(0xFF047857),
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+              const SizedBox(height: 14),
+
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    flex: 3,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _label('QUANTITY'),
+                        TextFormField(
+                          controller: _qty,
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
+                          decoration: _deco(
+                            'e.g. 10',
+                            Icons.numbers_rounded,
+                            required: true,
+                          ),
+                          validator: (v) => _number(v) <= 0
+                              ? 'Enter a positive quantity'
+                              : null,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    flex: 2,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _label('UNIT'),
+                        InputDecorator(
+                          decoration: _deco(
+                            product == null ? '—' : _unit,
+                            Icons.straighten_rounded,
+                          ),
+                          child: Text(
+                            product == null ? '—' : _unit,
+                            style: TextStyle(
+                              color: product == null
+                                  ? const Color(0xFFB0B8B0)
+                                  : _ink,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              if (product != null) ...[
+                const SizedBox(height: 6),
+                Text(
+                  'Receiving in $_unit (from product)',
+                  style: const TextStyle(
+                    color: _muted,
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+              const SizedBox(height: 14),
+
+              _label('UNIT COST'),
+              TextFormField(
+                controller: _cost,
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                decoration: _deco(
+                  _unit == 'pcs' ? 'Cost per piece' : 'Cost per $_unit',
+                  Icons.payments_outlined,
+                ),
+              ),
+              const SizedBox(height: 14),
+
+              _label('RECEIVED DATE'),
+              Material(
+                color: _canvas,
+                borderRadius: BorderRadius.circular(12),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(12),
+                  onTap: _pickDate,
+                  child: InputDecorator(
+                    decoration: _deco(_date, Icons.event_rounded, required: true),
+                    child: Text(
+                      _date,
+                      style: const TextStyle(
+                        color: _ink,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 14),
+
+              _label('NOTES'),
+              TextFormField(
+                controller: _notes,
+                maxLines: 2,
+                textCapitalization: TextCapitalization.sentences,
+                decoration: _deco(
+                  'Supplier / invoice note',
+                  Icons.notes_rounded,
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFECFDF5),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFA7F3D0)),
+                ),
+                child: Text(
+                  product == null
+                      ? 'Stock increases immediately when you confirm GRN.'
+                      : 'Confirming will add ${_qty.text.trim().isEmpty ? '…' : _qty.text.trim()} $_unit to ${product['name']}.',
+                  style: const TextStyle(
+                    color: Color(0xFF047857),
+                    fontSize: 12,
+                    height: 1.4,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 22),
+
+              Container(
+                height: 1,
+                color: _border,
+                margin: const EdgeInsets.only(bottom: 20),
+              ),
+
+              GestureDetector(
+                onTap: _saving ? null : _save,
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(vertical: 15),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [_forest, _emerald],
+                      begin: Alignment.centerLeft,
+                      end: Alignment.centerRight,
+                    ),
+                    borderRadius: BorderRadius.circular(14),
+                    boxShadow: [
+                      BoxShadow(
+                        color: _forest.withValues(alpha: 0.28),
+                        blurRadius: 14,
+                        offset: const Offset(0, 5),
+                      ),
+                    ],
+                  ),
+                  child: _saving
+                      ? const Center(
+                          child: SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              color: Colors.white,
+                              strokeWidth: 2,
+                            ),
+                          ),
+                        )
+                      : const Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.add_circle_rounded,
+                              color: Colors.white,
+                              size: 18,
+                            ),
+                            SizedBox(width: 9),
+                            Text(
+                              'Confirm & Increase Stock',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 15,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 0.2,
+                              ),
+                            ),
+                          ],
+                        ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -1645,6 +2054,7 @@ class _AdjustmentSheetState extends State<_AdjustmentSheet> {
   String _productId = '';
   String _direction = 'add';
   bool _saving = false;
+  String _error = '';
 
   @override
   void dispose() {
@@ -1653,9 +2063,38 @@ class _AdjustmentSheetState extends State<_AdjustmentSheet> {
     super.dispose();
   }
 
+  Map<String, dynamic>? get _selectedProduct {
+    if (_productId.isEmpty) return null;
+    for (final p in widget.products) {
+      if ('${p['id']}' == _productId) return p;
+    }
+    return null;
+  }
+
+  Future<void> _pickProduct() async {
+    final picked = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _ProductPickerSheet(
+        products: widget.products,
+        selectedId: _productId,
+      ),
+    );
+    if (picked == null || !mounted) return;
+    setState(() => _productId = picked);
+  }
+
   Future<void> _save() async {
+    if (_productId.isEmpty) {
+      setState(() => _error = 'Select a product');
+      return;
+    }
     if (!_key.currentState!.validate()) return;
-    setState(() => _saving = true);
+    setState(() {
+      _saving = true;
+      _error = '';
+    });
     final ok = await AppStateScope.of(context).adjustInventoryStock(
       branchId: widget.branchId,
       productId: _productId,
@@ -1664,190 +2103,569 @@ class _AdjustmentSheetState extends State<_AdjustmentSheet> {
       reason: _reason.text,
     );
     if (!mounted) return;
-    setState(() => _saving = false);
     if (ok) {
       Navigator.of(context).pop(true);
     } else {
-      _showError(context);
+      setState(() {
+        _error =
+            AppStateScope.of(context).lastError ?? 'Adjustment failed.';
+        _saving = false;
+      });
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return _SheetShell(
-      title: 'Stock Adjustment (+ / −)',
-      saving: _saving,
-      onSave: _save,
-      child: Form(
-        key: _key,
-        child: Column(
-          children: [
-            DropdownButtonFormField<String>(
-              initialValue: _productId.isEmpty ? null : _productId,
-              decoration: const InputDecoration(
-                labelText: 'Product',
-                border: OutlineInputBorder(),
+  Widget _label(String text) => Padding(
+        padding: const EdgeInsets.only(bottom: 6),
+        child: Text(
+          text,
+          style: const TextStyle(
+            color: _muted,
+            fontSize: 11.5,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 0.5,
+          ),
+        ),
+      );
+
+  InputDecoration _deco(String hint, IconData icon, {bool required = false}) =>
+      InputDecoration(
+        hintText: required ? hint : '$hint (optional)',
+        hintStyle: const TextStyle(color: Color(0xFFB0B8B0), fontSize: 14),
+        prefixIcon: Icon(icon, color: _forest, size: 19),
+        filled: true,
+        fillColor: _canvas,
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: _border),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: _border),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: _forest, width: 1.8),
+        ),
+        focusedErrorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: _forest, width: 1.8),
+        ),
+        errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: Color(0xFFF43F5E)),
+        ),
+      );
+
+  Widget _directionChip({
+    required String value,
+    required String label,
+    required IconData icon,
+    required Color color,
+  }) {
+    final selected = _direction == value;
+    return Expanded(
+      child: Material(
+        color: selected ? color.withValues(alpha: 0.12) : _canvas,
+        borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: () => setState(() => _direction = value),
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: selected ? color : _border,
+                width: selected ? 1.6 : 1,
               ),
-              items: widget.products
-                  .map(
-                    (p) => DropdownMenuItem(
-                      value: '${p['id']}',
-                      child: Text('${p['name']}'),
-                    ),
-                  )
-                  .toList(),
-              onChanged: (v) => setState(() => _productId = v ?? ''),
-              validator: (v) => v == null || v.isEmpty ? 'Required' : null,
             ),
-            const SizedBox(height: 10),
-            DropdownButtonFormField<String>(
-              initialValue: _direction,
-              decoration: const InputDecoration(
-                labelText: 'Direction',
-                border: OutlineInputBorder(),
-              ),
-              items: const [
-                DropdownMenuItem(value: 'add', child: Text('Add Stock (+)')),
-                DropdownMenuItem(
-                  value: 'remove',
-                  child: Text('Remove Stock (−)'),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(icon, size: 18, color: selected ? color : _muted),
+                const SizedBox(width: 7),
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 13.5,
+                    color: selected ? color : _ink,
+                  ),
                 ),
               ],
-              onChanged: (v) => setState(() => _direction = v ?? 'add'),
             ),
-            const SizedBox(height: 10),
-            _NumberField(
-              controller: _qty,
-              label: 'Quantity',
-              requiredPositive: true,
-            ),
-            const SizedBox(height: 10),
-            TextFormField(
-              controller: _reason,
-              decoration: const InputDecoration(
-                labelText: 'Reason',
-                hintText: 'Damage / expired / found stock',
-                border: OutlineInputBorder(),
-              ),
-              validator: (v) =>
-                  v == null || v.trim().isEmpty ? 'Required' : null,
-            ),
-          ],
+          ),
         ),
       ),
     );
   }
-}
-
-class _NumberField extends StatelessWidget {
-  const _NumberField({
-    required this.controller,
-    required this.label,
-    this.requiredPositive = false,
-  });
-  final TextEditingController controller;
-  final String label;
-  final bool requiredPositive;
-
-  @override
-  Widget build(BuildContext context) {
-    return TextFormField(
-      controller: controller,
-      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-      decoration: InputDecoration(
-        labelText: label,
-        border: const OutlineInputBorder(),
-      ),
-      validator: requiredPositive
-          ? (v) => _number(v) <= 0 ? 'Enter a positive quantity' : null
-          : null,
-    );
-  }
-}
-
-class _SheetShell extends StatelessWidget {
-  const _SheetShell({
-    required this.title,
-    required this.saving,
-    required this.onSave,
-    required this.child,
-    this.saveLabel = 'Save',
-  });
-  final String title;
-  final bool saving;
-  final VoidCallback onSave;
-  final Widget child;
-  final String saveLabel;
 
   @override
   Widget build(BuildContext context) {
     final bottom = MediaQuery.of(context).viewInsets.bottom;
+    final product = _selectedProduct;
+    final unit = product == null ? '' : '${product['unit'] ?? ''}';
+    final stock = product == null
+        ? null
+        : _fmtQty(product['current_stock'], unit);
+
     return Container(
       decoration: const BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
-      padding: EdgeInsets.fromLTRB(18, 14, 18, bottom + 22),
       child: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                margin: const EdgeInsets.only(bottom: 14),
-                decoration: BoxDecoration(
-                  color: _border,
-                  borderRadius: BorderRadius.circular(99),
-                ),
-              ),
-            ),
-            Text(
-              title,
-              style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w800,
-                color: _ink,
-                letterSpacing: -0.3,
-              ),
-            ),
-            const SizedBox(height: 16),
-            child,
-            const SizedBox(height: 18),
-            SizedBox(
-              width: double.infinity,
-              height: 48,
-              child: FilledButton(
-                style: FilledButton.styleFrom(
-                  backgroundColor: _emerald,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
+        padding: EdgeInsets.fromLTRB(20, 0, 20, bottom + 28),
+        child: Form(
+          key: _key,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  margin: const EdgeInsets.only(top: 12, bottom: 18),
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE5E7EB),
+                    borderRadius: BorderRadius.circular(99),
                   ),
                 ),
-                onPressed: saving ? null : onSave,
-                child: Text(
-                  saving ? 'Saving...' : saveLabel,
-                  style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
+              Row(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF3E8FF),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFFE9D5FF)),
+                    ),
+                    child: const Icon(
+                      Icons.tune_rounded,
+                      color: Color(0xFF7C3AED),
+                      size: 18,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Stock Adjustment',
+                          style: TextStyle(
+                            color: _ink,
+                            fontSize: 17,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -0.2,
+                          ),
+                        ),
+                        Text(
+                          'Immediate stock + or − with reason',
+                          style: TextStyle(
+                            color: Color(0xFFADB5BD),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  GestureDetector(
+                    onTap: () => Navigator.of(context).pop(),
+                    child: Container(
+                      width: 32,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF3F4F6),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(
+                        Icons.close_rounded,
+                        size: 16,
+                        color: _muted,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 18),
+
+              if (_error.isNotEmpty)
+                Container(
+                  margin: const EdgeInsets.only(bottom: 14),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFEF2F2),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: const Color(0xFFFEE2E2)),
+                  ),
+                  child: Text(
+                    _error,
+                    style: const TextStyle(fontSize: 13, color: _red),
+                  ),
+                ),
+
+              _label('PRODUCT'),
+              Material(
+                color: _canvas,
+                borderRadius: BorderRadius.circular(12),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(12),
+                  onTap: _pickProduct,
+                  child: InputDecorator(
+                    decoration: _deco(
+                      widget.products.isEmpty
+                          ? 'No products loaded'
+                          : 'Tap to search · ${widget.products.length} products',
+                      Icons.inventory_2_outlined,
+                      required: true,
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            product == null
+                                ? (widget.products.isEmpty
+                                    ? 'No products loaded'
+                                    : 'Select product')
+                                : '${product['name']}',
+                            style: TextStyle(
+                              color: product == null
+                                  ? const Color(0xFFB0B8B0)
+                                  : _ink,
+                              fontSize: 14,
+                              fontWeight: product == null
+                                  ? FontWeight.w500
+                                  : FontWeight.w600,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const Icon(
+                          Icons.keyboard_arrow_down_rounded,
+                          color: Color(0xFF9CA3AF),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
               ),
-            ),
-          ],
+              if (stock != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  'Current stock · $stock',
+                  style: const TextStyle(
+                    color: Color(0xFF047857),
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+              const SizedBox(height: 14),
+
+              _label('DIRECTION'),
+              Row(
+                children: [
+                  _directionChip(
+                    value: 'add',
+                    label: 'Add (+)',
+                    icon: Icons.add_circle_outline_rounded,
+                    color: const Color(0xFF059669),
+                  ),
+                  const SizedBox(width: 10),
+                  _directionChip(
+                    value: 'remove',
+                    label: 'Remove (−)',
+                    icon: Icons.remove_circle_outline_rounded,
+                    color: const Color(0xFFDC2626),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+
+              _label('QUANTITY'),
+              TextFormField(
+                controller: _qty,
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                decoration: _deco(
+                  unit.isEmpty ? 'e.g. 10' : 'e.g. 10 $unit',
+                  Icons.numbers_rounded,
+                  required: true,
+                ),
+                validator: (v) =>
+                    _number(v) <= 0 ? 'Enter a positive quantity' : null,
+              ),
+              const SizedBox(height: 14),
+
+              _label('REASON'),
+              TextFormField(
+                controller: _reason,
+                maxLines: 2,
+                textCapitalization: TextCapitalization.sentences,
+                decoration: _deco(
+                  'Damage / expired / found stock',
+                  Icons.notes_rounded,
+                  required: true,
+                ),
+                validator: (v) =>
+                    v == null || v.trim().isEmpty ? 'Reason is required' : null,
+              ),
+              const SizedBox(height: 16),
+
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF5F3FF),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFE9D5FF)),
+                ),
+                child: const Text(
+                  'Adjustments apply immediately — no Day End step. Use a clear reason for audit history.',
+                  style: TextStyle(
+                    color: Color(0xFF6D28D9),
+                    fontSize: 12,
+                    height: 1.4,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 22),
+
+              Container(
+                height: 1,
+                color: _border,
+                margin: const EdgeInsets.only(bottom: 20),
+              ),
+
+              GestureDetector(
+                onTap: _saving ? null : _save,
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(vertical: 15),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: _direction == 'remove'
+                          ? const [Color(0xFF9F1239), Color(0xFFDC2626)]
+                          : const [_forest, _emerald],
+                      begin: Alignment.centerLeft,
+                      end: Alignment.centerRight,
+                    ),
+                    borderRadius: BorderRadius.circular(14),
+                    boxShadow: [
+                      BoxShadow(
+                        color: (_direction == 'remove'
+                                ? const Color(0xFFDC2626)
+                                : _forest)
+                            .withValues(alpha: 0.28),
+                        blurRadius: 14,
+                        offset: const Offset(0, 5),
+                      ),
+                    ],
+                  ),
+                  child: _saving
+                      ? const Center(
+                          child: SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              color: Colors.white,
+                              strokeWidth: 2,
+                            ),
+                          ),
+                        )
+                      : Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              _direction == 'remove'
+                                  ? Icons.remove_circle_rounded
+                                  : Icons.add_circle_rounded,
+                              color: Colors.white,
+                              size: 18,
+                            ),
+                            const SizedBox(width: 9),
+                            Text(
+                              _direction == 'remove'
+                                  ? 'Remove Stock'
+                                  : 'Add Stock',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 15,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 0.2,
+                              ),
+                            ),
+                          ],
+                        ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 }
 
-void _showError(BuildContext context) {
-  ScaffoldMessenger.of(context).showSnackBar(
-    SnackBar(
-      content: Text(AppStateScope.of(context).lastError ?? 'Operation failed'),
-      behavior: SnackBarBehavior.floating,
-      backgroundColor: _forest,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-    ),
-  );
+class _ProductPickerSheet extends StatefulWidget {
+  const _ProductPickerSheet({
+    required this.products,
+    required this.selectedId,
+  });
+
+  final List<Map<String, dynamic>> products;
+  final String selectedId;
+
+  @override
+  State<_ProductPickerSheet> createState() => _ProductPickerSheetState();
 }
+
+class _ProductPickerSheetState extends State<_ProductPickerSheet> {
+  final _search = TextEditingController();
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
+  List<Map<String, dynamic>> get _filtered {
+    final q = _search.text.trim().toLowerCase();
+    if (q.isEmpty) return widget.products;
+    return widget.products.where((p) {
+      final name = '${p['name'] ?? ''}'.toLowerCase();
+      final sku = '${p['sku'] ?? ''}'.toLowerCase();
+      final brand = '${p['brand'] ?? ''}'.toLowerCase();
+      return name.contains(q) || sku.contains(q) || brand.contains(q);
+    }).toList();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottom = MediaQuery.of(context).viewInsets.bottom;
+    final items = _filtered;
+    return Container(
+      height: MediaQuery.of(context).size.height * 0.75,
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      padding: EdgeInsets.only(bottom: bottom),
+      child: Column(
+        children: [
+          const SizedBox(height: 10),
+          Container(
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: const Color(0xFFE5E7EB),
+              borderRadius: BorderRadius.circular(99),
+            ),
+          ),
+          const Padding(
+            padding: EdgeInsets.fromLTRB(20, 16, 20, 8),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'Select product',
+                style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w800,
+                  color: _ink,
+                ),
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
+            child: TextField(
+              controller: _search,
+              autofocus: true,
+              decoration: InputDecoration(
+                hintText: widget.products.isEmpty
+                    ? 'No products'
+                    : 'Search ${widget.products.length} products',
+                prefixIcon: const Icon(Icons.search_rounded, color: _forest),
+                filled: true,
+                fillColor: _canvas,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: _border),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: _border),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: _forest, width: 1.8),
+                ),
+              ),
+              onChanged: (_) => setState(() {}),
+            ),
+          ),
+          Expanded(
+            child: items.isEmpty
+                ? const Center(
+                    child: Text(
+                      'No matching products',
+                      style: TextStyle(
+                        color: _muted,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  )
+                : ListView.separated(
+                    itemCount: items.length,
+                    separatorBuilder: (_, __) =>
+                        const Divider(height: 1, color: Color(0xFFF3F4F6)),
+                    itemBuilder: (context, index) {
+                      final p = items[index];
+                      final id = '${p['id']}';
+                      final selected = id == widget.selectedId;
+                      final unit = '${p['unit'] ?? ''}';
+                      final stock = _fmtQty(p['current_stock'], unit);
+                      return ListTile(
+                        selected: selected,
+                        selectedTileColor: const Color(0xFFECFDF5),
+                        title: Text(
+                          '${p['name'] ?? 'Product'}',
+                          style: TextStyle(
+                            fontWeight:
+                                selected ? FontWeight.w800 : FontWeight.w600,
+                            color: _ink,
+                          ),
+                        ),
+                        subtitle: Text(
+                          'Stock · $stock',
+                          style: const TextStyle(
+                            color: _muted,
+                            fontSize: 12.5,
+                          ),
+                        ),
+                        trailing: selected
+                            ? const Icon(
+                                Icons.check_circle_rounded,
+                                color: _emerald,
+                              )
+                            : null,
+                        onTap: () => Navigator.pop(context, id),
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+

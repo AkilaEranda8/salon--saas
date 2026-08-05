@@ -18,6 +18,7 @@ class StaffUser {
     Map<String, bool>? mobileFeatures,
     Map<String, bool>? tenantFeatures,
     this.role = 'staff',
+    this.jobTitle,
     this.branchId,
     this.linkedStaffId,
     this.tenantSlug,
@@ -37,6 +38,8 @@ class StaffUser {
   /// Platform-admin tenant feature flags from auth `tenant.effective_features`.
   final Map<String, bool> tenantFeatures;
   final String role;
+  /// Job title from linked Staff.role_title (e.g. Stylist) — not access role.
+  final String? jobTitle;
   final String? branchId;
   /// Staff table id from GET /api/auth/me → staffProfile (for commission, etc.).
   final String? linkedStaffId;

@@ -57,6 +57,7 @@ const { ensureFcmTokenTenantIds } = require('./services/ensureFcmTokenTenantIds'
 const { runWalkInQueueServicesMigration } = require('./services/walkInQueueServicesMigration');
 const ensureWhatsAppSchema = require('./services/ensureWhatsAppSchema');
 const ensureAiCrmSchema = require('./services/ensureAiCrmSchema');
+const ensureMobileOffersSchema = require('./services/ensureMobileOffersSchema');
 const { restoreSessionsOnBoot } = require('./services/whatsappWebService');
 const { ensureServiceDurationDefaults } = require('./services/ensureServiceDurationDefaults');
 const platformGuard = require('./middleware/platformGuard');
@@ -236,6 +237,7 @@ app.use('/api/expenses',     require('./routes/expenses'));
 app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/packages',     require('./routes/packages'));
 app.use('/api/discounts',    require('./routes/discounts'));
+app.use('/api/mobile-offers', require('./routes/mobileOffers'));
 app.use('/api/fcm-token',    require('./routes/fcmToken'));
 app.use('/api/support',      require('./routes/support'));
 
@@ -434,6 +436,7 @@ connectWithRetry().then(async () => {
   await runWalkInQueueServicesMigration();
   await ensureWhatsAppSchema();
   await ensureAiCrmSchema();
+  await ensureMobileOffersSchema();
   ensureWalkInCustomersForAllTenants().catch((e) =>
     console.warn('[WalkInCustomer] seed failed:', e.message)
   );

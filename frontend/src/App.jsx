@@ -87,6 +87,7 @@ import CrmWhatsAppCloudPage  from './pages/crm/CrmWhatsAppCloudPage';
 import CrmKnowledgePage      from './pages/crm/CrmKnowledgePage';
 import CrmRulesPage          from './pages/crm/CrmRulesPage';
 import CrmAiCostPage         from './pages/crm/CrmAiCostPage';
+import CrmAiTrainingPage     from './pages/crm/CrmAiTrainingPage';
 import DomainSettingsPage  from './pages/DomainSettingsPage';
 import ThemeOptionsPage from './pages/ThemeOptionsPage';
 import TableCraftDemoPage from './pages/TableCraftDemoPage';
@@ -455,6 +456,13 @@ function AppShellRoutes() {
               <RoleRoute roles={['superadmin', 'admin', 'manager', 'staff']}>
                 <FeatureRoute feature="whatsapp_ai_crm" title="CRM Leads">
                   <CrmLeadsPage />
+                </FeatureRoute>
+              </RoleRoute>
+            } />
+            <Route path="/crm/ai-training" element={
+              <RoleRoute roles={['superadmin', 'admin']}>
+                <FeatureRoute feature="whatsapp_ai_crm" title="AI Training">
+                  <CrmAiTrainingPage />
                 </FeatureRoute>
               </RoleRoute>
             } />

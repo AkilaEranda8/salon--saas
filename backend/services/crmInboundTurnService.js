@@ -270,6 +270,27 @@ async function processInboundAiTurn(jobData) {
     console.warn('[inbound] memory load', e.message);
   }
 
+  // Recent thread for multi-turn context (exclude the inbound we just inserted)
+  let recentMessages = [];
+  try {
+    const hist = await CrmMessage.findAll({
+      where: { tenant_id: tenantId, conversation_id: conversation.id },
+      order: [['id', 'DESC']],
+      limit: 16,
+      attributes: ['id', 'direction', 'sender_type', 'body'],
+    });
+    recentMessages = hist
+      .filter((m) => !inboundMsg || m.id !== inboundMsg.id)
+      .reverse()
+      .map((m) => ({
+        role: m.direction === 'inbound' ? 'user' : 'assistant',
+        content: String(m.body || '').slice(0, 500),
+      }))
+      .filter((m) => m.content);
+  } catch (e) {
+    console.warn('[inbound] history load', e.message);
+  }
+
   let kbHints = null;
   try {
     const { hasTenantFeature } = require('../utils/tenantFeatures');
@@ -305,6 +326,7 @@ async function processInboundAiTurn(jobData) {
       model: settings.model,
       kbHints,
       rulesBlock: rulesBlock || undefined,
+      recentMessages,
       customerContext: {
         name: lead.name || jobData.name || null,
         leadId: lead.id,
@@ -532,16 +554,47 @@ async function processInboundAiTurn(jobData) {
   }
 
   if (replyText && !priorOut) {
-    const outJobId = waMessageId ? `wa-out-${tenantId}-${waMessageId}` : undefined;
-    await enqueue(QUEUE_NAMES.WA_OUTBOUND, {
-      tenant_id: tenantId,
-      conversation_id: conversation.id,
-      phone: lead.phone || phone,
-      message: replyText,
-      crm_message_id: outboundMsg?.id || null,
-      sender_type: 'ai',
-      replyJid: jobData.replyJid || jobData.reply_jid || inboundMsg?.meta?.reply_jid || null,
-    }, { name: 'ai-reply', jobId: outJobId });
+    // Skip enqueue if we already sent the exact same AI text moments ago (retry/dup path)
+    let tooSoon = false;
+    if (outboundMsg?.id) {
+      try {
+        const { Op } = require('sequelize');
+        const recentSame = await CrmMessage.findOne({
+          where: {
+            tenant_id: tenantId,
+            conversation_id: conversation.id,
+            direction: 'outbound',
+            sender_type: 'ai',
+            body: replyText,
+            id: { [Op.ne]: outboundMsg.id },
+            delivery_status: { [Op.in]: ['pending', 'sent', 'delivered'] },
+            createdAt: { [Op.gte]: new Date(Date.now() - 45000) },
+          },
+          order: [['id', 'DESC']],
+        });
+        tooSoon = !!recentSame;
+      } catch (e) {
+        console.warn('[inbound] dup outbound check', e.message);
+      }
+    }
+
+    if (tooSoon) {
+      console.warn('[inbound] skip duplicate outbound enqueue', { conversationId: conversation.id });
+      if (outboundMsg) {
+        await outboundMsg.update({ delivery_status: 'skipped_dup' }).catch(() => {});
+      }
+    } else {
+      const outJobId = waMessageId ? `wa-out-${tenantId}-${waMessageId}` : undefined;
+      await enqueue(QUEUE_NAMES.WA_OUTBOUND, {
+        tenant_id: tenantId,
+        conversation_id: conversation.id,
+        phone: lead.phone || phone,
+        message: replyText,
+        crm_message_id: outboundMsg?.id || null,
+        sender_type: 'ai',
+        replyJid: jobData.replyJid || jobData.reply_jid || inboundMsg?.meta?.reply_jid || null,
+      }, { name: 'ai-reply', jobId: outJobId });
+    }
   }
 
   return {
@@ -565,6 +618,25 @@ function isUniqueViolation(err) {
 async function enqueueInboundTurn(data) {
   const tenantId = data.tenantId || data.tenant_id;
   const waMessageId = data.waMessageId || data.wa_message_id;
+  const phone = String(data.phone || '').replace(/\D/g, '').slice(-12);
+  const bodyNorm = String(data.message || '').trim().toLowerCase().replace(/\s+/g, ' ').slice(0, 200);
+
+  // Baileys can emit the same customer text twice with different message ids —
+  // debounce identical content per phone for a few seconds.
+  if (tenantId && phone && bodyNorm) {
+    const redis = getRedis();
+    if (redis) {
+      const { createHash } = require('crypto');
+      const h = createHash('sha1').update(bodyNorm).digest('hex').slice(0, 16);
+      const key = cacheKey(tenantId, 'crm', 'inbound_debounce', `${phone}:${h}`);
+      const got = await redis.set(key, waMessageId || '1', 'EX', 12, 'NX');
+      if (!got) {
+        console.log('[inbound] debounce skip duplicate body', { tenantId, phone, waMessageId });
+        return null;
+      }
+    }
+  }
+
   return enqueue(QUEUE_NAMES.WA_INBOUND_AI, data, {
     name: 'inbound-turn',
     jobId: waMessageId ? `wa-in-${tenantId}-${waMessageId}` : undefined,

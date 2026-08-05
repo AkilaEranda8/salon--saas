@@ -93,44 +93,79 @@ async function handleOutbound(job) {
     throw new UnrecoverableError('tenant_id, phone, message required for wa-outbound');
   }
 
+  // Prevent BullMQ retries from double-sending the same outbound
+  const redis = getRedis();
+  const dedupeKey = d.crm_message_id
+    ? `crm:wa-out:sent:${tenantId}:${d.crm_message_id}`
+    : `crm:wa-out:sent:${tenantId}:${d.conversation_id || 'x'}:${Buffer.from(String(message)).toString('base64').slice(0, 48)}`;
+  if (redis) {
+    const claimed = await redis.set(dedupeKey, '1', 'EX', 120, 'NX');
+    if (!claimed) {
+      return { skipped: true, reason: 'already_sent_dedupe', dedupeKey };
+    }
+  }
+
+  // If CRM row already marked sent, do not send again on retry
+  if (d.crm_message_id) {
+    const existing = await CrmMessage.findByPk(d.crm_message_id);
+    if (existing && ['sent', 'delivered', 'read'].includes(String(existing.delivery_status || ''))) {
+      return { skipped: true, reason: 'already_marked_sent', crm_message_id: d.crm_message_id };
+    }
+  }
+
+  const markSent = async (waMessageId = null) => {
+    if (!d.crm_message_id) return;
+    try {
+      const patch = { delivery_status: 'sent' };
+      if (waMessageId) patch.wa_message_id = waMessageId;
+      await CrmMessage.update(patch, { where: { id: d.crm_message_id, tenant_id: tenantId } });
+    } catch (err) {
+      console.warn('[worker] mark sent failed (WA already delivered)', err.message);
+    }
+  };
+
   const waba = await getWabaByTenant(tenantId);
   if (waba && waba.enabled) {
-    const result = await sendCloudText({
-      tenantId,
-      to: phone,
-      body: message,
-      wabaRow: waba,
-    });
-
-    if (d.crm_message_id && result.waMessageId) {
-      await CrmMessage.update(
-        { wa_message_id: result.waMessageId, delivery_status: 'sent' },
-        { where: { id: d.crm_message_id, tenant_id: tenantId } }
-      );
-    } else if (d.conversation_id && result.waMessageId) {
-      const latest = await CrmMessage.findOne({
-        where: {
-          tenant_id: tenantId,
-          conversation_id: d.conversation_id,
-          direction: 'outbound',
-          sender_type: d.sender_type || 'ai',
-        },
-        order: [['id', 'DESC']],
+    try {
+      const result = await sendCloudText({
+        tenantId,
+        to: phone,
+        body: message,
+        wabaRow: waba,
       });
-      if (latest && !latest.wa_message_id) {
-        await latest.update({
-          wa_message_id: result.waMessageId,
-          delivery_status: 'sent',
-        });
+      await markSent(result.waMessageId || null);
+      if (!d.crm_message_id && d.conversation_id && result.waMessageId) {
+        try {
+          const latest = await CrmMessage.findOne({
+            where: {
+              tenant_id: tenantId,
+              conversation_id: d.conversation_id,
+              direction: 'outbound',
+              sender_type: d.sender_type || 'ai',
+            },
+            order: [['id', 'DESC']],
+          });
+          if (latest && !latest.wa_message_id) {
+            await latest.update({
+              wa_message_id: result.waMessageId,
+              delivery_status: 'sent',
+            });
+          }
+        } catch (e) {
+          console.warn('[worker] late outbound meta', e.message);
+        }
       }
+      return { channel: 'cloud', ...result };
+    } catch (err) {
+      if (redis) await redis.del(dedupeKey).catch(() => {});
+      throw err;
     }
-
-    return { channel: 'cloud', ...result };
   }
 
   // Fallback: Baileys QR lives in the API process — call backend over HTTP
   const secret = serviceSecret();
   if (!secret) {
+    if (redis) await redis.del(dedupeKey).catch(() => {});
     console.warn('[worker] wa-outbound skipped — no service secret for QR send', { tenantId });
     return { skipped: true, reason: 'no_service_secret' };
   }
@@ -153,17 +188,15 @@ async function handleOutbound(job) {
     });
     const body = await r.json().catch(() => ({}));
     if (!r.ok || !body.ok) {
+      if (redis) await redis.del(dedupeKey).catch(() => {});
       console.warn('[worker] wa-outbound QR via API failed', { tenantId, status: r.status, body });
+      // Do not throw — avoid retry storms that re-send later when QR recovers mid-flight
       return { skipped: true, reason: body.reason || 'qr_api_failed', status: r.status };
     }
-    if (d.crm_message_id) {
-      await CrmMessage.update(
-        { delivery_status: 'sent' },
-        { where: { id: d.crm_message_id, tenant_id: tenantId } }
-      );
-    }
+    await markSent(body.waMessageId || body.id || null);
     return { channel: 'qr', via: 'backend_api', ...body };
   } catch (err) {
+    if (redis) await redis.del(dedupeKey).catch(() => {});
     console.error('[worker] wa-outbound QR API error', err.message);
     return { skipped: true, reason: 'qr_api_error', error: err.message };
   }

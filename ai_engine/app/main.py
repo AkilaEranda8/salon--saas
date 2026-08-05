@@ -54,6 +54,8 @@ class TurnRequest(BaseModel):
     customerContext: Optional[dict[str, Any]] = None
     kbHints: Optional[dict[str, Any]] = None
     rulesBlock: Optional[str] = None
+    # Prior CRM thread turns: [{role: user|assistant, content: str}, ...]
+    recentMessages: Optional[list[dict[str, Any]]] = None
 
 
 class UsageOut(BaseModel):
@@ -446,6 +448,11 @@ async def turns(
         "Prefer salon knowledge snippets for FAQs/policies. "
         "Keep replies under 120 words unless a rule says otherwise. "
         "Do not invent prices or policies. "
+        "CONVERSATION CONTINUITY (mandatory): You will receive recent chat history. "
+        "Do NOT restart with a full welcome if you already greeted them. "
+        "If they only say hi/hello again, reply briefly (e.g. 'Hi again! How can I help?') "
+        "and ask what they need — booking, services, offers, or hours. "
+        "Never send the exact same welcome paragraph twice in a row. "
         "SERVICE LISTING RULE (mandatory): Never dump all services when asked vaguely. "
         "Ask what type they need, then show only matching services. "
         "Full catalogue ONLY if they clearly ask for all services / okkom / සියලු. "
@@ -476,24 +483,44 @@ async def turns(
     system = "\n\n".join(system_parts)
 
     if not api_key:
+        already_greeted = any(
+            isinstance(m, dict) and m.get("role") == "assistant"
+            for m in (body.recentMessages or [])
+        )
         return TurnResponse(
             replyText=(
-                f"Hi! Welcome to {brand}. "
-                "Say *book* to reserve a service, or ask about our FAQs. "
-                "(AI provider key not configured — limited replies.)"
+                "Hi again! How can I help — booking, services, or something else?"
+                if already_greeted
+                else (
+                    f"Hi! Welcome to {brand}. "
+                    "Say *book* to reserve a service, or ask about our FAQs. "
+                    "(AI provider key not configured — limited replies.)"
+                )
             ),
             actions=actions,
             usage=None,
         )
 
+    chat_messages: list[dict[str, str]] = [{"role": "system", "content": system}]
+    for m in body.recentMessages or []:
+        if not isinstance(m, dict):
+            continue
+        role = str(m.get("role") or "").strip().lower()
+        content = str(m.get("content") or "").strip()
+        if not content:
+            continue
+        if role in ("user", "customer"):
+            chat_messages.append({"role": "user", "content": content[:800]})
+        elif role in ("assistant", "ai", "agent", "system"):
+            # Prior AI/agent replies as assistant turns
+            chat_messages.append({"role": "assistant", "content": content[:800]})
+    chat_messages.append({"role": "user", "content": body.message})
+
     try:
         provider = get_provider(provider_name)
         result = await provider.complete(
             CompletionRequest(
-                messages=[
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": body.message},
-                ],
+                messages=chat_messages,
                 model=model,
                 api_key=api_key,
             )

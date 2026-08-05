@@ -85,6 +85,24 @@ export default function CrmInboxPage() {
     }
   };
 
+  const deleteConv = async () => {
+    if (!selectedId) return;
+    const phone = detail?.conversation?.phone || selectedId;
+    if (!window.confirm(`Delete this chat (${phone})?\n\nAll messages in this thread will be removed. The lead record is kept.`)) {
+      return;
+    }
+    try {
+      await api.delete(`/crm/conversations/${selectedId}`);
+      toast.success('Chat deleted');
+      setSelectedId(null);
+      setDetail(null);
+      setReply('');
+      loadList();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Delete failed');
+    }
+  };
+
   const markAllRead = async () => {
     try {
       const { data } = await api.post('/crm/conversations/mark-all-read');
@@ -229,6 +247,18 @@ export default function CrmInboxPage() {
                 <button type="button" onClick={release} style={btnStyle(C)}>Release to AI</button>
                 <button type="button" onClick={closeConv} style={btnStyle(C)} disabled={conv?.status === 'closed'}>
                   Close
+                </button>
+                <button
+                  type="button"
+                  onClick={deleteConv}
+                  style={{
+                    ...btnStyle(C),
+                    border: '1px solid #EF4444',
+                    color: '#EF4444',
+                    background: 'transparent',
+                  }}
+                >
+                  Delete
                 </button>
               </div>
               <div style={{ flex: 1, overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>

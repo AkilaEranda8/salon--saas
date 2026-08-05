@@ -211,6 +211,65 @@ const closeConversation = async (req, res) => {
   }
 };
 
+/** DELETE /api/crm/conversations/:id — remove chat thread + messages (lead kept) */
+const deleteConversation = async (req, res) => {
+  try {
+    const tenantId = tid(req);
+    const conv = await CrmConversation.findOne({ where: { id: req.params.id, tenant_id: tenantId } });
+    if (!conv) return res.status(404).json({ message: 'Conversation not found' });
+
+    const conversationId = conv.id;
+    const phone = conv.phone;
+    const { sequelize } = require('../config/database');
+    const {
+      CrmBookingRequest,
+      CrmAiMemory,
+      CrmFollowUpJob,
+      AiUsage,
+    } = require('../models');
+
+    await sequelize.transaction(async (t) => {
+      await CrmMessage.destroy({
+        where: { conversation_id: conversationId, tenant_id: tenantId },
+        transaction: t,
+      });
+      await CrmBookingRequest.destroy({
+        where: { conversation_id: conversationId, tenant_id: tenantId },
+        transaction: t,
+      }).catch(() => {});
+      await CrmAiMemory.destroy({
+        where: { conversation_id: conversationId, tenant_id: tenantId },
+        transaction: t,
+      }).catch(() => {});
+      // Keep usage/follow-up history but detach from deleted thread
+      await CrmFollowUpJob.update(
+        { conversation_id: null },
+        { where: { conversation_id: conversationId, tenant_id: tenantId }, transaction: t }
+      ).catch(() => {});
+      await AiUsage.update(
+        { conversation_id: null },
+        { where: { conversation_id: conversationId, tenant_id: tenantId }, transaction: t }
+      ).catch(() => {});
+      await conv.destroy({ transaction: t });
+    });
+
+    await CrmAuditLog.create({
+      tenant_id: tenantId,
+      actor_type: 'user',
+      actor_id: req.user?.id || null,
+      action: 'conversation_deleted',
+      entity_type: 'conversation',
+      entity_id: conversationId,
+      meta: { phone },
+    }).catch(() => {});
+
+    return res.json({ message: 'Conversation deleted', id: conversationId });
+  } catch (err) {
+    console.error('[crm] deleteConversation', err);
+    return res.status(500).json({ message: err.message || 'Server error' });
+  }
+};
+
 /** POST /api/crm/conversations/:id/claim — human takes over */
 const claimConversation = async (req, res) => {
   try {
@@ -345,6 +404,7 @@ module.exports = {
   getConversation,
   markAllRead,
   closeConversation,
+  deleteConversation,
   claimConversation,
   releaseConversation,
   agentReply,

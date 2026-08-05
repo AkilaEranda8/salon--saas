@@ -29,6 +29,8 @@ const DEFAULT_SETTINGS = {
   recurring_reminder_sms:     true,
   recurring_reminder_whatsapp: true,
   staff_appt_assigned_whatsapp: true,
+  advance_payment_sms:        true,
+  advance_payment_whatsapp:   true,
 };
 
 const SETTINGS_FIELDS = Object.keys(DEFAULT_SETTINGS);
@@ -719,6 +721,14 @@ const DEFAULT_TEMPLATES = {
     },
     sms: {
       body: `{branch_name} receipt: Hi {customer_name}, paid {amount} for {service_name} on {date}.{loyalty_section}`,
+    },
+  },
+  advance_payment: {
+    whatsapp: {
+      body: `💳 *{branch_name} — Advance Received*\n\nHi {customer_name}!\n\nWe received your advance of *{amount}* ({method}).\n\n💇 {service_name}\n📅 {date} {time}\n🏠 {branch_name}\n\nThank you!`,
+    },
+    sms: {
+      body: `{branch_name}: Hi {customer_name}, advance {amount} received for {service_name} on {date} {time}. Thank you!`,
     },
   },
   loyalty_points: {

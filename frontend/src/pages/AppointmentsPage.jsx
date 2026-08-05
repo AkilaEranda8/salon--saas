@@ -143,6 +143,7 @@ const EMPTY = {
   is_recurring: false,
   recurrence_frequency: 'weekly',
   recurring_next_date: '',
+  recurring_sms_time: '08:00',
   recurring_message_template_ids: [],
 };
 const LIMIT = 20;
@@ -596,6 +597,7 @@ export default function AppointmentsPage() {
   const [paymentDiscounts, setPaymentDiscounts] = useState([]);
   const [paymentRecurring, setPaymentRecurring] = useState(false);
   const [paymentRecurringDate, setPaymentRecurringDate] = useState(defaultRecurringNextDate());
+  const [paymentRecurringTime, setPaymentRecurringTime] = useState('08:00');
   const [paymentRecurringTemplateIds, setPaymentRecurringTemplateIds] = useState([]);
   const [recurringTemplates, setRecurringTemplates] = useState([]);
   const [apptServiceIds, setApptServiceIds] = useState([]);
@@ -769,6 +771,9 @@ export default function AppointmentsPage() {
       sourceRow.recurring_next_date
       || defaultRecurringNextDate(sourceRow.date?.slice(0, 10)),
     );
+    setPaymentRecurringTime(
+      (sourceRow.recurring_sms_time || sourceRow.time || '08:00').toString().slice(0, 5),
+    );
     setPaymentRecurringTemplateIds(
       Array.isArray(sourceRow.recurring_message_template_ids)
         ? sourceRow.recurring_message_template_ids.map(String)
@@ -940,6 +945,8 @@ export default function AppointmentsPage() {
           loyalty_discount: 0,
           is_recurring: paymentRecurring,
           recurring_next_date: paymentRecurring ? paymentRecurringDate : null,
+          appointment_time: paymentRecurring ? paymentRecurringTime : undefined,
+          recurring_sms_time: paymentRecurring ? paymentRecurringTime : undefined,
           recurring_message_template_ids: paymentRecurring ? paymentRecurringTemplateIds : [],
           replace_appointment_payments: settleAdvance,
           ...(paymentDiscountId ? { discount_id: Number(paymentDiscountId) } : {}),
@@ -971,6 +978,8 @@ export default function AppointmentsPage() {
           ...(paymentRecurring ? {
             is_recurring: true,
             recurring_next_date: paymentRecurringDate,
+            recurring_sms_time: paymentRecurringTime,
+            appointment_time: paymentRecurringTime,
             recurring_message_template_ids: paymentRecurringTemplateIds,
           } : {}),
         });
@@ -1026,6 +1035,7 @@ export default function AppointmentsPage() {
       is_recurring: Boolean(row.is_recurring),
       recurrence_frequency: row.recurrence_frequency || 'weekly',
       recurring_next_date: row.recurring_next_date || defaultRecurringNextDate(row.date?.slice(0, 10)),
+      recurring_sms_time: (row.recurring_sms_time || row.time || '08:00').toString().slice(0, 5),
       recurring_message_template_ids: Array.isArray(row.recurring_message_template_ids)
         ? row.recurring_message_template_ids.map(String)
         : (row.recurring_message_template_id ? [String(row.recurring_message_template_id)] : []),
@@ -1127,6 +1137,9 @@ export default function AppointmentsPage() {
             is_recurring: !!form.is_recurring,
             recurrence_frequency: form.is_recurring ? (form.recurrence_frequency || 'weekly') : null,
             recurring_next_date: form.is_recurring ? (form.recurring_next_date || null) : null,
+            recurring_sms_time: form.is_recurring
+              ? (form.recurring_sms_time || form.time || '08:00')
+              : null,
             recurring_message_template_ids: form.is_recurring
               ? (form.recurring_message_template_ids || [])
               : null,
@@ -1183,6 +1196,9 @@ export default function AppointmentsPage() {
           is_recurring: !!form.is_recurring,
           recurrence_frequency: form.is_recurring ? (form.recurrence_frequency || 'weekly') : null,
           recurring_next_date: form.is_recurring ? (form.recurring_next_date || null) : null,
+          recurring_sms_time: form.is_recurring
+            ? (form.recurring_sms_time || form.time || '08:00')
+            : null,
           recurring_message_template_ids: form.is_recurring
             ? (form.recurring_message_template_ids || [])
             : null,
@@ -1246,6 +1262,9 @@ export default function AppointmentsPage() {
         is_recurring: !!form.is_recurring,
         recurrence_frequency: form.is_recurring ? (form.recurrence_frequency || 'weekly') : null,
         recurring_next_date: form.is_recurring ? (form.recurring_next_date || null) : null,
+        recurring_sms_time: form.is_recurring
+          ? (form.recurring_sms_time || form.time || '08:00')
+          : null,
         recurring_message_template_ids: form.is_recurring
           ? (form.recurring_message_template_ids || [])
           : null,
@@ -2427,7 +2446,7 @@ export default function AppointmentsPage() {
               </>
             )}
 
-            <ApptSection title="Recurring" desc="Auto-book next visit when completed" dark={isDark}>
+            <ApptSection title="Recurring" desc="Schedule reminder SMS only — does not auto-book" dark={isDark}>
               <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
                 <input
                   type="checkbox"
@@ -2442,7 +2461,7 @@ export default function AppointmentsPage() {
                   }))}
                   style={{ width: 18, height: 18, accentColor: '#2563EB' }}
                 />
-                <span style={{ fontSize: 14, fontWeight: 600, color: isDark ? '#E2E8F0' : '#0F172A' }}>Repeat this appointment</span>
+                <span style={{ fontSize: 14, fontWeight: 600, color: isDark ? '#E2E8F0' : '#0F172A' }}>Send reminder SMS on a later date</span>
               </label>
               {form.is_recurring && (
                 <>
@@ -2450,8 +2469,15 @@ export default function AppointmentsPage() {
                     value={form.recurring_next_date || defaultRecurringNextDate(form.date)}
                     minDate={form.date || undefined}
                     onChange={(date) => setForm((f) => ({ ...f, recurring_next_date: date }))}
-                    label="Next appointment date"
+                    label="Reminder date"
                   />
+                  <FormGroup label="SMS send time">
+                    <Input
+                      type="time"
+                      value={(form.recurring_sms_time || form.time || '08:00').toString().slice(0, 5)}
+                      onChange={(e) => setForm((f) => ({ ...f, recurring_sms_time: e.target.value }))}
+                    />
+                  </FormGroup>
                   <FormGroup label="Reminder messages">
                     <RecurringTemplateCheckboxes
                       templates={recurringTemplates}
@@ -2618,8 +2644,8 @@ export default function AppointmentsPage() {
                     style={{ marginTop:3, width:16, height:16, accentColor:'#2563EB' }}
                   />
                   <span>
-                    <div style={{ fontWeight:700, fontSize:14, color:isDark?'#E2E8F0':'#101828' }}>Recurring Appointment</div>
-                    <div style={{ fontSize:12, color:isDark?'#94A3B8':'#667085', marginTop:2 }}>Book the next appointment on the selected date</div>
+                    <div style={{ fontWeight:700, fontSize:14, color:isDark?'#E2E8F0':'#101828' }}>Recurring reminder</div>
+                    <div style={{ fontSize:12, color:isDark?'#94A3B8':'#667085', marginTop:2 }}>SMS only on the selected day & time — does not book an appointment</div>
                   </span>
                 </label>
                 {paymentRecurring && (
@@ -2628,8 +2654,15 @@ export default function AppointmentsPage() {
                       value={paymentRecurringDate}
                       minDate={today}
                       onChange={setPaymentRecurringDate}
-                      label="Next appointment date"
+                      label="Reminder date"
                     />
+                    <FormGroup label="SMS send time">
+                      <Input
+                        type="time"
+                        value={(paymentRecurringTime || '08:00').slice(0, 5)}
+                        onChange={(e) => setPaymentRecurringTime(e.target.value)}
+                      />
+                    </FormGroup>
                     <FormGroup label="Reminder messages">
                       <RecurringTemplateCheckboxes
                         templates={recurringTemplates}

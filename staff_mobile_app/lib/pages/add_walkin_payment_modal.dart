@@ -31,6 +31,7 @@ class AddWalkInPaymentModalResult {
     this.promoDiscount = '0',
     this.isRecurring = false,
     this.recurringNextDate = '',
+    this.appointmentTime = '08:00',
     this.recurringMessageTemplateIds = const [],
     this.staffId = '',
     this.helpers = const [],
@@ -49,6 +50,7 @@ class AddWalkInPaymentModalResult {
   final String promoDiscount;
   final bool isRecurring;
   final String recurringNextDate;
+  final String appointmentTime;
   final List<String> recurringMessageTemplateIds;
   final String staffId;
   final List<Map<String, dynamic>> helpers;
@@ -147,6 +149,7 @@ class _AddWalkInPaymentModalState extends State<AddWalkInPaymentModal> {
   List<PaymentHelperDraft> _helpers = [];
   bool _isRecurring = false;
   String _recurringNextDate = defaultRecurringNextDate();
+  String _recurringSmsTime = '08:00';
   List<String> _recurringTemplateIds = [];
   List<RecurringTemplateOption> _recurringTemplates = const [];
   bool _loadingTemplates = false;
@@ -339,6 +342,7 @@ class _AddWalkInPaymentModalState extends State<AddWalkInPaymentModal> {
       promoDiscount:   promo.toStringAsFixed(2),
       isRecurring: widget.recurringAllowed && _isRecurring,
       recurringNextDate: _recurringNextDate,
+      appointmentTime: _recurringSmsTime,
       recurringMessageTemplateIds: List<String>.from(_recurringTemplateIds),
       staffId: _mainStaffId.trim(),
       helpers: helpersApiPayload(_helpers),
@@ -699,12 +703,14 @@ class _AddWalkInPaymentModalState extends State<AddWalkInPaymentModal> {
                 RecurringBookingSection(
                   enabled: _isRecurring,
                   nextDate: _recurringNextDate,
+                  smsTime: _recurringSmsTime,
                   selectedTemplateIds: _recurringTemplateIds,
                   templates: _recurringTemplates,
                   loadingTemplates: _loadingTemplates,
                   accentColor: _pGreen,
                   onEnabledChanged: (v) => setState(() => _isRecurring = v),
                   onNextDateChanged: (v) => setState(() => _recurringNextDate = v),
+                  onSmsTimeChanged: (v) => setState(() => _recurringSmsTime = v),
                   onTemplateIdsChanged: (ids) =>
                       setState(() => _recurringTemplateIds = ids),
                 ),

@@ -333,12 +333,18 @@ const create = async (req, res) => {
         transaction: t,
       });
       if (appt) {
+        const { normalizeTime, cancelLinkedNextAppointment } = require('../services/recurringService');
+        const smsTime = appointment_time
+          ? normalizeTime(appointment_time)
+          : (appt.recurring_sms_time || appt.time || null);
         await appt.update({
           is_recurring: Boolean(is_recurring),
           recurrence_frequency: is_recurring ? 'weekly' : null,
           recurring_next_date: is_recurring
             ? (recurring_next_date || appt.recurring_next_date || null)
             : null,
+          recurring_sms_time: is_recurring ? smsTime : null,
+          recurring_sms_sent_at: is_recurring ? null : appt.recurring_sms_sent_at,
           recurring_message_template_id: is_recurring && Number.isInteger(recurringTemplateId) && recurringTemplateId > 0
             ? recurringTemplateId
             : null,
@@ -346,6 +352,9 @@ const create = async (req, res) => {
             ? recurringTemplateIds
             : null,
         }, { transaction: t });
+        if (is_recurring) {
+          await cancelLinkedNextAppointment(appt, { transaction: t });
+        }
       }
     } else if (is_recurring && !resolvedAppointmentId) {
       let resolvedPhone = phone || null;

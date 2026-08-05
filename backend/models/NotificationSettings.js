@@ -179,6 +179,17 @@ const NotificationSettings = sequelize.define('NotificationSettings', {
     defaultValue: true,
     allowNull: false,
   },
+  /** Customer SMS/WhatsApp when advance deposit is collected on booking */
+  advance_payment_sms: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: true,
+    allowNull: false,
+  },
+  advance_payment_whatsapp: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: true,
+    allowNull: false,
+  },
 }, {
   tableName: 'notification_settings',
   timestamps: true,

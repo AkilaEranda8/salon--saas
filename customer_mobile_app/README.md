@@ -13,20 +13,27 @@ Hexaone single-salon customer app (Flutter): phone OTP login, book appointments,
 ```bash
 cd customer_mobile_app
 flutter pub get
-flutter run --dart-define=API_BASE_URL=https://api.salon.hexalyte.com --dart-define=TENANT_ID=1
+flutter run
+```
+
+Default tenant is **28**. Override if needed:
+
+```bash
+flutter run --dart-define=API_BASE_URL=https://api.salon.hexalyte.com --dart-define=TENANT_ID=28
 ```
 
 Optional brand label:
 
 ```bash
-flutter run --dart-define=API_BASE_URL=https://api.salon.hexalyte.com --dart-define=TENANT_ID=1 --dart-define=BRAND_NAME=Hexaone
+flutter run --dart-define=BRAND_NAME=Hexaone
 ```
 
 Local backend example:
 
 ```bash
-flutter run --dart-define=API_BASE_URL=http://10.0.2.2:3000 --dart-define=TENANT_ID=1
+flutter run --dart-define=API_BASE_URL=http://10.0.2.2:3000 --dart-define=TENANT_ID=28
 ```
+
 
 (`10.0.2.2` is the Android emulator host loopback.)
 

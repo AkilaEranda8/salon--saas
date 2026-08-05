@@ -7,7 +7,7 @@ class AppConfig {
 
   static const String tenantId = String.fromEnvironment(
     'TENANT_ID',
-    defaultValue: '',
+    defaultValue: '28',
   );
 
   static const String brandName = String.fromEnvironment(

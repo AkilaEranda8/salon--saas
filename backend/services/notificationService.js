@@ -120,6 +120,9 @@ const DEFAULT_FLAGS = {
   recurring_reminder_whatsapp: true,
   // Notify assigned staff when a booking is created/confirmed
   staff_appt_assigned_whatsapp: true,
+  // Customer SMS/WhatsApp when advance (deposit) is collected on booking
+  advance_payment_sms:       true,
+  advance_payment_whatsapp:  true,
 };
 
 function resolveNotifyTenantId(explicit, ...sources) {
@@ -921,6 +924,73 @@ async function notifyPaymentReceipt(payment, branch, service, customer, tenantId
   }
 }
 
+/**
+ * Customer SMS/WhatsApp when an advance (deposit) is taken on an appointment booking.
+ */
+async function notifyAdvancePayment({
+  payment,
+  appointment,
+  branch,
+  service,
+  customer,
+  method,
+  tenantId,
+} = {}) {
+  const tid = resolveNotifyTenantId(tenantId, payment, appointment, branch, customer);
+  const flags = await getChannelFlags(tid);
+  const phone = appointment?.phone || customer?.phone || null;
+  if (!phone) return;
+
+  const amountNum = parseFloat(payment?.total_amount || 0);
+  const amount = `Rs. ${amountNum.toFixed(2)}`;
+  const date = appointment?.date || payment?.date || new Date().toISOString().slice(0, 10);
+  const time = appointment?.time ? String(appointment.time).slice(0, 5) : '';
+  const customerName = appointment?.customer_name || customer?.name || payment?.customer_name || 'Customer';
+  const serviceName = service?.name || 'Service';
+  const branchName = branch?.name || 'Salon';
+  const payMethod = method || (payment?.splits?.[0]?.method) || 'Cash';
+
+  const vars = {
+    customer_name: customerName,
+    amount,
+    method: payMethod,
+    date,
+    time,
+    service_name: serviceName,
+    branch_name: branchName,
+  };
+  const meta = {
+    customer_name: customerName,
+    event_type: 'advance_payment',
+    branch_id: branch?.id || appointment?.branch_id || payment?.branch_id,
+    tenant_id: tid,
+  };
+
+  if (flags.advance_payment_whatsapp !== false) {
+    try {
+      const tpl = await getTemplate('advance_payment', 'whatsapp', tid);
+      const msg = tpl
+        ? interpolate(tpl.body, vars)
+        : `💳 *${branchName} — Advance Received*\n\nHi ${customerName}!\n\nWe received your advance of *${amount}* (${payMethod}).\n\n💇 ${serviceName}\n📅 ${date}${time ? ` ${time}` : ''}\n🏠 ${branchName}\n\nThank you!`;
+      await sendWhatsApp({ to: phone, message: msg, meta, tenantId: tid });
+    } catch (err) {
+      console.error('[notifyAdvancePayment] WhatsApp failed:', err.message);
+    }
+  }
+
+  if (flags.advance_payment_sms !== false) {
+    try {
+      const tpl = await getTemplate('advance_payment', 'sms', tid);
+      const smsMsg = tpl
+        ? interpolate(tpl.body, vars)
+        : `${branchName}: Hi ${customerName}, advance ${amount} received for ${serviceName} on ${date}${time ? ` ${time}` : ''}. Thank you!`;
+      await sendSMS({ to: phone, message: smsMsg, meta, tenantId: tid });
+    } catch (err) {
+      console.error('[notifyAdvancePayment] SMS failed:', err.message);
+    }
+  }
+}
+
 // ── 3. Loyalty Points Update ──────────────────────────────────────────────────
 async function notifyLoyaltyPoints(customer, pointsEarned, totalPoints, branch, tenantId) {
   const tid = resolveNotifyTenantId(tenantId, customer, branch);
@@ -1097,6 +1167,7 @@ module.exports = {
   notifyStaffAppointmentAssigned,
   notifyAppointmentCompleted,
   notifyPaymentReceipt,
+  notifyAdvancePayment,
   notifyLoyaltyPoints,
   notifyWalkInCheckIn,
   notifyWalkInServing,

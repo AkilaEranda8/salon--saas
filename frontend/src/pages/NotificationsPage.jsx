@@ -70,7 +70,7 @@ function notifColors(isDark) {
   };
 }
 
-const EVENTS = ['customer_registered','appointment_confirmed','staff_appointment_assigned','appointment_completed','recurring_reminder','payment_receipt','loyalty_points','walk_in_checkin','walk_in_serving','walk_in_completed','test','review_request','staff_earnings_pdf_test','staff_monthly_earnings'];
+const EVENTS = ['customer_registered','appointment_confirmed','staff_appointment_assigned','appointment_completed','recurring_reminder','payment_receipt','advance_payment','loyalty_points','walk_in_checkin','walk_in_serving','walk_in_completed','test','review_request','staff_earnings_pdf_test','staff_monthly_earnings'];
 const EVENT_LABELS = {
   customer_registered: 'Customer Registered',
   appointment_confirmed: 'Appointment Confirmed',
@@ -78,6 +78,7 @@ const EVENT_LABELS = {
   appointment_completed: 'Appointment Completed',
   recurring_reminder: 'Recurring Visit Reminder',
   payment_receipt: 'Payment Receipt',
+  advance_payment: 'Advance Payment',
   loyalty_points: 'Loyalty Points',
   walk_in_checkin: 'Walk-In — Check-In',
   walk_in_serving: 'Walk-In — Now Serving',
@@ -93,6 +94,7 @@ const TEMPLATE_EVENT_ORDER = [
   'appointment_completed',
   'recurring_reminder',
   'payment_receipt',
+  'advance_payment',
   'loyalty_points',
   'walk_in_checkin',
   'walk_in_serving',
@@ -133,6 +135,12 @@ const TEMPLATE_VARIABLES = {
     ['loyalty_section', 'Loyalty block (auto)'],
     ['ticket_line', 'Walk-in ticket line'],
     ['payment_methods', 'Payment methods'],
+  ],
+  advance_payment: [
+    ['date', 'Date'],
+    ['time', 'Time'],
+    ['amount', 'Advance Amount'],
+    ['method', 'Payment Method'],
   ],
   loyalty_points: [
     ['points_earned', 'Points Earned'],
@@ -182,6 +190,7 @@ const EVENT_CHANNELS = {
   appointment_completed:['whatsapp','sms'],
   recurring_reminder:['whatsapp','sms'],
   payment_receipt:['email','whatsapp','sms'],
+  advance_payment:['whatsapp','sms'],
   loyalty_points:['whatsapp','sms'],
   walk_in_checkin:['whatsapp','sms'],
   walk_in_serving:['whatsapp','sms'],
@@ -195,6 +204,7 @@ const SETTINGS_KEY = {
   recurring_reminder_sms:'recurring_reminder_sms',
   recurring_reminder_whatsapp:'recurring_reminder_whatsapp',
   payment_receipt_email:'payment_receipt_email', payment_receipt_whatsapp:'payment_receipt_whatsapp', payment_receipt_sms:'payment_receipt_sms',
+  advance_payment_sms:'advance_payment_sms', advance_payment_whatsapp:'advance_payment_whatsapp',
   loyalty_points_whatsapp:'loyalty_points_whatsapp', loyalty_points_sms:'loyalty_points_sms',
   walk_in_checkin_whatsapp:'walkin_checkin_whatsapp',
   walk_in_checkin_sms:'walkin_checkin_sms',

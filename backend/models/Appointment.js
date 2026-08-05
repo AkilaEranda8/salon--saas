@@ -83,6 +83,11 @@ const Appointment = sequelize.define('Appointment', {
     type: DataTypes.DATEONLY,
     allowNull: true,
   },
+  /** Preferred clock time (Asia/Colombo) to send the recurring reminder SMS. */
+  recurring_sms_time: {
+    type: DataTypes.TIME,
+    allowNull: true,
+  },
   recurrence_parent_id: {
     type: DataTypes.INTEGER,
     allowNull: true,

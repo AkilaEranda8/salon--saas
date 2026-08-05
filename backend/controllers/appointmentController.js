@@ -8,7 +8,7 @@ const {
   notifyWaitlistSlotAvailable,
   notifyStaffAppointmentAssigned,
 } = require('../services/notificationService');
-const { createNextRecurring } = require('../services/recurringService');
+const { cancelLinkedNextAppointment, normalizeTime } = require('../services/recurringService');
 const { notifyBranch, notifyStaffUser } = require('../services/fcmService');
 const { tenantWhere, byIdWhere, resolveTenantId } = require('../utils/tenantScope');
 const { notesUsesPackage, usesPackageBooking, parsePackageIdFromNotes, resolvePackageBundlePrice } = require('../utils/packageNotes');
@@ -261,6 +261,36 @@ const recordAdvancePayment = async ({
     });
   }
 
+  // Customer SMS/WhatsApp for advance (non-blocking)
+  setImmediate(async () => {
+    try {
+      const { Branch, Service, Customer } = require('../models');
+      const { notifyAdvancePayment } = require('../services/notificationService');
+      const tid = resolveTenantId(req);
+      const [branch, service, customer] = await Promise.all([
+        Branch.findByPk(branch_id, { attributes: ['id', 'name', 'phone'] }),
+        service_id
+          ? Service.findByPk(service_id, { attributes: ['id', 'name'] })
+          : Promise.resolve(null),
+        customer_id
+          ? Customer.findByPk(customer_id, { attributes: ['id', 'name', 'phone'] })
+          : Promise.resolve(null),
+      ]);
+      const freshAppt = await appointment.reload().catch(() => appointment);
+      await notifyAdvancePayment({
+        payment,
+        appointment: freshAppt,
+        branch,
+        service,
+        customer,
+        method: advanceMethod,
+        tenantId: tid,
+      });
+    } catch (err) {
+      console.error('[appointments] advance payment notify failed:', err.message);
+    }
+  });
+
   return payment;
 };
 
@@ -471,10 +501,14 @@ const create = async (req, res) => {
     const recurringTplIds = Array.isArray(recurring_message_template_ids)
       ? [...new Set(recurring_message_template_ids.map(Number).filter((id) => Number.isInteger(id) && id > 0))]
       : null;
+    const bodySmsTime = req.body.recurring_sms_time || req.body.appointment_time || null;
     const recurringFields = {
       is_recurring: is_recurring || false,
       recurrence_frequency: is_recurring ? (recurrence_frequency || 'weekly') : null,
       recurring_next_date: is_recurring ? (recurring_next_date || null) : null,
+      recurring_sms_time: is_recurring
+        ? normalizeTime(bodySmsTime || time)
+        : null,
       recurring_message_template_id: is_recurring && Number.isInteger(recurringTplId) && recurringTplId > 0
         ? recurringTplId
         : null,
@@ -780,16 +814,24 @@ const update = async (req, res) => {
     const allowed = [
       'staff_id', 'service_id', 'customer_name', 'phone', 'date', 'time',
       'amount', 'notes', 'is_recurring', 'recurrence_frequency', 'recurring_next_date',
-      'recurring_message_template_id', 'recurring_message_template_ids',
+      'recurring_sms_time', 'recurring_message_template_id', 'recurring_message_template_ids',
     ];
     const updates = {};
     for (const field of allowed) {
       if (req.body[field] !== undefined) updates[field] = req.body[field];
     }
+    if (req.body.appointment_time !== undefined && updates.recurring_sms_time === undefined) {
+      updates.recurring_sms_time = req.body.appointment_time;
+    }
     if (updates.time !== undefined) {
       const t = String(updates.time || '').trim();
       const m = t.match(/^(\d{1,2}):(\d{2})/);
       updates.time = m ? `${String(m[1]).padStart(2, '0')}:${m[2]}` : t.slice(0, 5);
+    }
+    if (updates.recurring_sms_time !== undefined) {
+      updates.recurring_sms_time = updates.recurring_sms_time
+        ? normalizeTime(updates.recurring_sms_time)
+        : null;
     }
 
     if (updates.date !== undefined || updates.time !== undefined) {
@@ -811,6 +853,7 @@ const update = async (req, res) => {
     if (updates.is_recurring === false) {
       updates.recurrence_frequency = null;
       updates.recurring_next_date = null;
+      updates.recurring_sms_time = null;
       updates.recurring_message_template_id = null;
       updates.recurring_message_template_ids = null;
     }
@@ -987,12 +1030,13 @@ const changeStatus = async (req, res) => {
       });
     }
 
-    // Auto-create next recurring appointment when completed
+    // Recurring is reminder-only — do not auto-book the next appointment.
     if (status === 'completed' && appt.is_recurring) {
-      setImmediate(() => createNextRecurring(appt, {
-        nextDate: appt.recurring_next_date || undefined,
-        skipNotify: true,
-      }));
+      setImmediate(() => {
+        cancelLinkedNextAppointment(appt).catch((e) =>
+          console.error('[appointments] cancel linked recurring next failed:', e.message),
+        );
+      });
     }
 
     return res.json(appt);
@@ -1053,16 +1097,24 @@ const listRecurring = async (req, res) => {
       });
 
       const allInChain = [parent, ...children];
-      const nextScheduled = allInChain.find((a) => ['pending', 'confirmed'].includes(a.status));
       const completedCount = allInChain.filter((a) => a.status === 'completed').length;
+      const nextDate = parent.recurring_next_date || null;
+      const nextTime = parent.recurring_sms_time || parent.time || null;
+      const bookedNext = allInChain.find((a) => ['pending', 'confirmed'].includes(a.status));
+      const nextScheduled = nextDate && !parent.recurring_sms_sent_at
+        ? { id: parent.id, date: nextDate, time: nextTime, reminder_only: true }
+        : (bookedNext
+          ? { id: bookedNext.id, date: bookedNext.date, time: bookedNext.time }
+          : null);
 
       return {
         parent: parent.toJSON(),
         children,
         totalBookings: allInChain.length,
         completedCount,
-        nextScheduled: nextScheduled ? { id: nextScheduled.id, date: nextScheduled.date, time: nextScheduled.time } : null,
-        isActive: parent.is_recurring,
+        nextScheduled,
+        isActive: Boolean(parent.is_recurring && nextDate && !parent.recurring_sms_sent_at)
+          || Boolean(bookedNext),
       };
     }));
 

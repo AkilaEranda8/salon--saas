@@ -178,7 +178,7 @@ class _PaymentsPageState extends State<PaymentsPage> {
       discountId:     payload.discountId.isEmpty ? null : payload.discountId,
       isRecurring:    payload.isRecurring,
       recurringNextDate: payload.isRecurring ? payload.recurringNextDate : null,
-      appointmentTime: payload.isRecurring ? '10:00' : null,
+      appointmentTime: payload.isRecurring ? payload.appointmentTime : null,
       recurringMessageTemplateIds:
           payload.isRecurring ? payload.recurringMessageTemplateIds : null,
     );

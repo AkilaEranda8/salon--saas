@@ -26,7 +26,7 @@ const NotificationLog = sequelize.define('NotificationLog', {
       'review_request', 'password_reset', 'custom_marketing',
       'appointment_completed', 'walk_in_checkin', 'walk_in_serving', 'walk_in_completed',
       'recurring_reminder', 'offer_sms', 'office_sms',
-      'staff_appointment_assigned',
+      'staff_appointment_assigned', 'advance_payment',
     ),
     allowNull: false,
   },

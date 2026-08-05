@@ -38,7 +38,7 @@ const EMPTY_FORM = {
   splits:[{ method:'Cash', amount:'' }],
   is_recurring: true,
   recurring_next_date: '',
-  appointment_time: '10:00',
+  appointment_time: '08:00',
   recurring_message_template_ids: [],
 };
 
@@ -842,7 +842,7 @@ export default function PaymentsPage() {
       branch_id: user?.branchId || filterBranch || '',
       is_recurring: !!recurringAllowed,
       recurring_next_date: defaultRecurringNextDate(),
-      appointment_time: '10:00',
+      appointment_time: '08:00',
     });
     setFormErr('');
     setCustPackages([]);
@@ -1005,7 +1005,8 @@ export default function PaymentsPage() {
       if (!editId && recurringAllowed && is_recurring) {
         payload.is_recurring = true;
         payload.recurring_next_date = recurring_next_date || defaultRecurringNextDate();
-        payload.appointment_time = appointment_time || '10:00';
+        payload.appointment_time = appointment_time || '08:00';
+        payload.recurring_sms_time = appointment_time || '08:00';
         payload.recurring_message_template_ids = recurring_message_template_ids;
       }
       if (editId) {
@@ -1328,19 +1329,19 @@ export default function PaymentsPage() {
                       style={{ marginTop: 3, width: 16, height: 16, accentColor: '#2563EB' }}
                     />
                     <span>
-                      <div style={{ fontWeight: 700, fontSize: 14, color: isDark ? '#E2E8F0' : '#101828' }}>Recurring</div>
+                      <div style={{ fontWeight: 700, fontSize: 14, color: isDark ? '#E2E8F0' : '#101828' }}>Recurring reminder</div>
                       <div style={{ fontSize: 12, color: isDark ? '#94A3B8' : '#667085', marginTop: 2 }}>
-                        Book next visit — SMS is sent on the selected day
+                        SMS only on the selected day & time — does not book an appointment
                       </div>
                     </span>
                   </label>
                   {form.is_recurring && (
                     <>
                       <div style={{ marginTop: 10 }}>
-                        <FormGroup label="Preferred time">
+                        <FormGroup label="SMS send time">
                           <Input
                             type="time"
-                            value={(form.appointment_time || '10:00').slice(0, 5)}
+                            value={(form.appointment_time || '08:00').slice(0, 5)}
                             onChange={(e) => setForm((f) => ({ ...f, appointment_time: e.target.value }))}
                           />
                         </FormGroup>

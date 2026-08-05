@@ -487,7 +487,7 @@ class _WalkInPageState extends State<WalkInPage> {
           payload.discountId.isNotEmpty ? payload.discountId : null,
       isRecurring: payload.isRecurring,
       recurringNextDate: payload.isRecurring ? payload.recurringNextDate : null,
-      appointmentTime: payload.isRecurring ? '10:00' : null,
+      appointmentTime: payload.isRecurring ? payload.appointmentTime : null,
       recurringMessageTemplateIds:
           payload.isRecurring ? payload.recurringMessageTemplateIds : null,
     );

@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/recurring_template_option.dart';
 
-/// Toggle + next-visit date + SMS/WhatsApp template checkboxes for recurring bookings.
+/// Toggle + reminder date/time + SMS/WhatsApp template checkboxes.
 class RecurringBookingSection extends StatelessWidget {
   const RecurringBookingSection({
     required this.enabled,
@@ -12,20 +12,24 @@ class RecurringBookingSection extends StatelessWidget {
     required this.onEnabledChanged,
     required this.onNextDateChanged,
     required this.onTemplateIdsChanged,
+    this.smsTime = '08:00',
+    this.onSmsTimeChanged,
     this.loadingTemplates = false,
     this.accentColor = const Color(0xFF2563EB),
     this.minDate,
-    this.label = 'Recurring',
+    this.label = 'Recurring reminder',
     super.key,
   });
 
   final bool enabled;
   final String nextDate;
+  final String smsTime;
   final List<String> selectedTemplateIds;
   final List<RecurringTemplateOption> templates;
   final ValueChanged<bool> onEnabledChanged;
   final ValueChanged<String> onNextDateChanged;
   final ValueChanged<List<String>> onTemplateIdsChanged;
+  final ValueChanged<String>? onSmsTimeChanged;
   final bool loadingTemplates;
   final Color accentColor;
   final DateTime? minDate;
@@ -55,6 +59,23 @@ class RecurringBookingSection extends StatelessWidget {
     final m = picked.month.toString().padLeft(2, '0');
     final d = picked.day.toString().padLeft(2, '0');
     onNextDateChanged('$y-$m-$d');
+  }
+
+  Future<void> _pickTime(BuildContext context) async {
+    if (onSmsTimeChanged == null) return;
+    final parts = smsTime.split(':');
+    final initial = TimeOfDay(
+      hour: int.tryParse(parts.isNotEmpty ? parts[0] : '8') ?? 8,
+      minute: int.tryParse(parts.length > 1 ? parts[1] : '0') ?? 0,
+    );
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: initial,
+    );
+    if (picked == null) return;
+    final h = picked.hour.toString().padLeft(2, '0');
+    final m = picked.minute.toString().padLeft(2, '0');
+    onSmsTimeChanged!('$h:$m');
   }
 
   void _toggleTemplate(RecurringTemplateOption template) {
@@ -107,7 +128,7 @@ class RecurringBookingSection extends StatelessWidget {
                     ),
                     const SizedBox(height: 2),
                     const Text(
-                      'Book the next visit and send day-of reminders',
+                      'SMS reminder only — does not book an appointment',
                       style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 11.5),
                     ),
                   ],
@@ -124,7 +145,7 @@ class RecurringBookingSection extends StatelessWidget {
           if (enabled) ...[
             const SizedBox(height: 10),
             const Text(
-              'NEXT VISIT DATE',
+              'REMINDER DATE',
               style: TextStyle(
                 color: Color(0xFF6B7280),
                 fontSize: 11.5,
@@ -163,9 +184,50 @@ class RecurringBookingSection extends StatelessWidget {
                 ),
               ),
             ),
+            const SizedBox(height: 10),
+            const Text(
+              'SMS SEND TIME',
+              style: TextStyle(
+                color: Color(0xFF6B7280),
+                fontSize: 11.5,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.5,
+              ),
+            ),
+            const SizedBox(height: 6),
+            InkWell(
+              onTap: onSmsTimeChanged == null ? null : () => _pickTime(context),
+              borderRadius: BorderRadius.circular(12),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFE5E7EB)),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.schedule_rounded, color: accentColor, size: 18),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        smsTime.isEmpty ? '08:00' : smsTime,
+                        style: const TextStyle(
+                          color: Color(0xFF111827),
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    const Icon(Icons.chevron_right_rounded, color: Color(0xFF9CA3AF)),
+                  ],
+                ),
+              ),
+            ),
             const SizedBox(height: 4),
             const Text(
-              'SMS will be sent on this selected day.',
+              'Message is sent at this time on the reminder date (Sri Lanka time).',
               style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 11.5),
             ),
             const SizedBox(height: 12),

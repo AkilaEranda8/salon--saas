@@ -661,6 +661,7 @@ class MobileApi {
     String? phone,
     bool? isRecurring,
     String? recurringNextDate,
+    String? appointmentTime,
     List<String>? recurringMessageTemplateIds,
     /// When settling an advance, pass combined splits (advance + remaining).
     List<Map<String, dynamic>>? splits,
@@ -708,6 +709,10 @@ class MobileApi {
           recurringNextDate != null &&
           recurringNextDate.trim().isNotEmpty)
         'recurring_next_date': recurringNextDate.trim(),
+      if (isRecurring == true &&
+          appointmentTime != null &&
+          appointmentTime.trim().isNotEmpty)
+        'appointment_time': appointmentTime.trim(),
       if (isRecurring == true)
         'recurring_message_template_ids':
             (recurringMessageTemplateIds ?? const <String>[])

@@ -1,7 +1,7 @@
 const { sequelize } = require('../config/database');
 const { DataTypes } = require('sequelize');
 
-/** Adds recurring appointment columns when missing. Safe on every startup. */
+/** Adds recurring reminder columns when missing. Safe on every startup. */
 async function ensureAppointmentRecurringSmsColumn() {
   try {
     const qi = sequelize.getQueryInterface();
@@ -19,6 +19,13 @@ async function ensureAppointmentRecurringSmsColumn() {
         allowNull: true,
       });
       console.log('[migration] appointments.recurring_next_date added');
+    }
+    if (!table.recurring_sms_time) {
+      await qi.addColumn('appointments', 'recurring_sms_time', {
+        type: DataTypes.TIME,
+        allowNull: true,
+      });
+      console.log('[migration] appointments.recurring_sms_time added');
     }
   } catch (err) {
     console.error('[migration] ensureAppointmentRecurringSmsColumn error:', err.message);

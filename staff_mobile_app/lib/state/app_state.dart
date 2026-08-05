@@ -1345,6 +1345,7 @@ class AppState extends ChangeNotifier {
     String? phone,
     bool isRecurring = false,
     String? recurringNextDate,
+    String? appointmentTime,
     List<String>? recurringMessageTemplateIds,
   }) async {
     final token = _currentUser?.authToken;
@@ -1454,6 +1455,7 @@ class AppState extends ChangeNotifier {
         discountId: discountId,
         isRecurring: isRecurring,
         recurringNextDate: recurringNextDate,
+        appointmentTime: appointmentTime,
         recurringMessageTemplateIds: recurringMessageTemplateIds,
         splits: splitsPayload,
         replaceAppointmentPayments: settleAdvance,

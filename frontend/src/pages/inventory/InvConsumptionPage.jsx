@@ -337,7 +337,7 @@ export default function InvConsumptionPage() {
             >
               {filteredProducts.length === 0 ? (
                 <div style={{ padding: 16, fontSize: 13, color: 'var(--app-text-muted, #98A2B3)' }}>
-                  {products.length ? 'No products match your search.' : 'No consumable products in this branch — add one on the Products tab first.'}
+                  {products.length ? 'No products match your search.' : 'No usable products in this branch — add one on the Products tab first.'}
                 </div>
               ) : filteredProducts.map((p) => {
                 const key = String(p.id);

@@ -7,7 +7,7 @@ const {
   InvConsumption, InvDayEndBatch, InvDayEndBatchItem,
   InvStockAdjustment, Branch, Staff, Service, Customer, User,
 } = require('../models');
-const { applyStockChange, sequelize } = require('../services/invStockService');
+const { applyStockChange, sequelize, isUsableProductType } = require('../services/invStockService');
 
 const {
   toDec, branchScope, requireBranchId, localToday,
@@ -54,8 +54,8 @@ const createConsumption = async (req, res) => {
     if (Number(product.branch_id) !== branchId) {
       return res.status(400).json({ message: 'Product does not belong to the selected branch.' });
     }
-    if (product.product_type !== 'consumable') {
-      return res.status(400).json({ message: 'Equipment cannot be consumed. Only consumable products can be recorded.' });
+    if (!isUsableProductType(product.product_type)) {
+      return res.status(400).json({ message: 'Equipment cannot be consumed. Only usable products can be recorded.' });
     }
 
     const qty = toDec(req.body.quantity_used);
@@ -221,7 +221,7 @@ const dayEndConfirm = async (req, res) => {
         transaction: t,
         lock: t.LOCK.UPDATE,
       });
-      if (!product || product.product_type !== 'consumable') continue;
+      if (!product || !isUsableProductType(product.product_type)) continue;
 
       await InvDayEndBatchItem.create({
         day_end_batch_id: batch.id,

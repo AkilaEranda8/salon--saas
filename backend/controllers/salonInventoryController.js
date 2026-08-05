@@ -73,7 +73,12 @@ const listProducts = async (req, res) => {
     const offset = (page - 1) * limit;
     const where = branchScope(req);
     if (req.query.status) where.status = req.query.status;
-    if (req.query.product_type) where.product_type = req.query.product_type;
+    if (req.query.product_type === 'consumable' || req.query.usable === 'true' || req.query.usable === '1') {
+      // Mobile/web Record Usage: include chemical, accessories, retail — exclude equipment only.
+      where.product_type = { [Op.ne]: 'equipment' };
+    } else if (req.query.product_type) {
+      where.product_type = req.query.product_type;
+    }
     if (req.query.category_id) where.category_id = Number(req.query.category_id);
     if (req.query.q) {
       where[Op.or] = [

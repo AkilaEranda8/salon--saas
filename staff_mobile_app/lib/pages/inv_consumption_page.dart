@@ -117,9 +117,7 @@ class _InvConsumptionPageState extends State<InvConsumptionPage> {
         )
             .where(
               (p) =>
-                  '${p['product_type'] ?? 'consumable'}'
-                      .toLowerCase() ==
-                  'consumable',
+                  '${p['product_type'] ?? ''}'.toLowerCase() != 'equipment',
             )
             .toList();
       }
@@ -194,9 +192,7 @@ class _InvConsumptionPageState extends State<InvConsumptionPage> {
           _products = List<Map<String, dynamic>>.from(results[0] as List)
               .where(
                 (p) =>
-                    '${p['product_type'] ?? 'consumable'}'
-                        .toLowerCase() ==
-                    'consumable',
+                    '${p['product_type'] ?? ''}'.toLowerCase() != 'equipment',
               )
               .toList();
           _services = List<SalonService>.from(results[1] as List)
@@ -214,7 +210,7 @@ class _InvConsumptionPageState extends State<InvConsumptionPage> {
 
     if (!mounted) return;
     if (_products.isEmpty) {
-      _toast('No Consumable products found for this branch.');
+      _toast('No usable products found for this branch.');
       return;
     }
 

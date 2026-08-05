@@ -5,16 +5,26 @@ import { useAuth } from '../../context/AuthContext';
 export const INV_API = '/salon-inventory';
 export const UNITS = ['ml', 'g', 'kg', 'L', 'pcs'];
 
-/** Only consumables can be used up at Day End; equipment is tracked but never consumed. */
+/** Only equipment is excluded from usage; chemical/accessories/retail/consumable are usable. */
 export const PRODUCT_TYPES = [
   { value: 'consumable', label: 'Consumable' },
+  { value: 'chemical', label: 'Chemical' },
+  { value: 'accessories', label: 'Accessories' },
+  { value: 'retail', label: 'Retail' },
   { value: 'equipment', label: 'Equipment' },
 ];
 
 export const typeColor = {
   consumable: '#2563EB',
+  chemical: '#7C3AED',
+  accessories: '#0D9488',
+  retail: '#DB2777',
   equipment: '#D97706',
 };
+
+export function isUsableProductType(type) {
+  return String(type || '').toLowerCase() !== 'equipment';
+}
 
 export const MOVEMENT_TYPES = [
   { value: 'opening', label: 'Opening stock' },

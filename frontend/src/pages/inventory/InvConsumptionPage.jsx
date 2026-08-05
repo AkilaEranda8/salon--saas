@@ -38,7 +38,7 @@ export default function InvConsumptionPage() {
     try {
       const [c, p, s, cust, svc] = await Promise.all([
         api.get(`${INV_API}/consumptions`, { params: { status: status || undefined, branchId: branchId || undefined } }),
-        api.get(`${INV_API}/products`, { params: { limit: 200, status: 'active', product_type: 'consumable', branchId: branchId || undefined } }),
+        api.get(`${INV_API}/products`, { params: { limit: 5000, status: 'active', branchId: branchId || undefined } }),
         loadStaff().catch(() => []),
         api.get('/customers', { params: { limit: 500, ...(branchId ? { branchId } : {}) } }).then((r) => (
           Array.isArray(r.data) ? r.data : (r.data?.data ?? [])

@@ -96,7 +96,10 @@ class _InvConsumptionPageState extends State<InvConsumptionPage> {
             status: _status.isEmpty ? null : _status,
             date: _date,
           )),
-      safe(() => app.loadInventoryProducts(branchId: _branchId)),
+      safe(() => app.loadInventoryProducts(
+            branchId: _branchId,
+            consumableOnly: false,
+          )),
       safe(() => app.loadStaffList(branchId: _branchId)),
       safe(() => app.loadServices()),
       safe(() => app.loadCustomers()),
@@ -112,14 +115,8 @@ class _InvConsumptionPageState extends State<InvConsumptionPage> {
         _rows = List<Map<String, dynamic>>.from(results[0] as List);
       }
       if (results[1] != null) {
-        _products = List<Map<String, dynamic>>.from(
-          results[1] as List,
-        )
-            .where(
-              (p) =>
-                  '${p['product_type'] ?? ''}'.toLowerCase() != 'equipment',
-            )
-            .toList();
+        // Show every active product in the branch inventory table (chemical, consumable, etc.).
+        _products = List<Map<String, dynamic>>.from(results[1] as List);
       }
       if (results[2] != null) {
         _staff = List<StaffMember>.from(results[2] as List);
@@ -184,17 +181,15 @@ class _InvConsumptionPageState extends State<InvConsumptionPage> {
     // Always refresh products + services before opening the sheet.
     try {
       final results = await Future.wait([
-        app.loadInventoryProducts(branchId: _branchId),
+        app.loadInventoryProducts(
+          branchId: _branchId,
+          consumableOnly: false,
+        ),
         app.loadServices(),
       ]);
       if (mounted) {
         setState(() {
-          _products = List<Map<String, dynamic>>.from(results[0] as List)
-              .where(
-                (p) =>
-                    '${p['product_type'] ?? ''}'.toLowerCase() != 'equipment',
-              )
-              .toList();
+          _products = List<Map<String, dynamic>>.from(results[0] as List);
           _services = List<SalonService>.from(results[1] as List)
               .where((s) => s.isActive)
               .toList();
@@ -210,7 +205,7 @@ class _InvConsumptionPageState extends State<InvConsumptionPage> {
 
     if (!mounted) return;
     if (_products.isEmpty) {
-      _toast('No usable products found for this branch.');
+      _toast('No products found for this branch.');
       return;
     }
 

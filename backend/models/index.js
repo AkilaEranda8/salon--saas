@@ -62,6 +62,8 @@ const CrmAuditLog = require('./CrmAuditLog');
 const WhatsAppBusinessAccount = require('./WhatsAppBusinessAccount');
 const CrmKnowledgeArticle = require('./CrmKnowledgeArticle');
 const CrmFollowUpJob = require('./CrmFollowUpJob');
+const CrmAutomation = require('./CrmAutomation');
+const CrmAutomationExecution = require('./CrmAutomationExecution');
 const MobileOffer = require('./MobileOffer');
 
 // Salon Inventory (v2)
@@ -103,6 +105,12 @@ Tenant.hasMany(CrmKnowledgeArticle, { foreignKey: 'tenant_id', as: 'knowledgeArt
 CrmKnowledgeArticle.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
 Tenant.hasMany(CrmFollowUpJob, { foreignKey: 'tenant_id', as: 'crmFollowUpJobs' });
 CrmFollowUpJob.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
+Tenant.hasMany(CrmAutomation, { foreignKey: 'tenant_id', as: 'crmAutomations' });
+CrmAutomation.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
+CrmAutomation.hasMany(CrmAutomationExecution, { foreignKey: 'automation_id', as: 'executions' });
+CrmAutomationExecution.belongsTo(CrmAutomation, { foreignKey: 'automation_id', as: 'automation' });
+Tenant.hasMany(CrmAutomationExecution, { foreignKey: 'tenant_id', as: 'crmAutomationExecutions' });
+CrmAutomationExecution.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
 Tenant.hasMany(AiUsage, { foreignKey: 'tenant_id', as: 'aiUsage' });
 AiUsage.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
 Tenant.hasMany(AiCreditEntry, { foreignKey: 'tenant_id', as: 'aiCreditEntries' });
@@ -436,6 +444,8 @@ module.exports = {
   WhatsAppBusinessAccount,
   CrmKnowledgeArticle,
   CrmFollowUpJob,
+  CrmAutomation,
+  CrmAutomationExecution,
   MobileOffer,
   InvCategory,
   InvSupplier,

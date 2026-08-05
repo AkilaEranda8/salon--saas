@@ -120,6 +120,23 @@ const create = async (req, res) => {
       branch_id: effectiveBranchId,
       tenant_id: resolveTenantId(req),
     });
+
+    // Fire-and-forget welcome automation when enabled
+    try {
+      const tenantId = resolveTenantId(req);
+      const { getEnabledByType, enqueueRun } = require('../services/crmAutomationService');
+      const welcome = await getEnabledByType(tenantId, 'welcome_message');
+      if (welcome && cust.phone) {
+        await enqueueRun(tenantId, welcome.id, {
+          customerId: cust.id,
+          source: 'customer_registration',
+          actorId: req.user?.id || null,
+        });
+      }
+    } catch (e) {
+      console.warn('[customers] welcome automation', e.message);
+    }
+
     return res.status(201).json(cust);
   } catch (err) {
     if (err.name === 'SequelizeValidationError') {

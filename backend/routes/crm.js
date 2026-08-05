@@ -11,6 +11,7 @@ const wabaCtrl = require('../controllers/crmWhatsappController');
 const kbCtrl = require('../controllers/crmKnowledgeController');
 const analyticsCtrl = require('../controllers/crmAnalyticsController');
 const rulesCtrl = require('../controllers/crmRulesController');
+const automationCtrl = require('../controllers/crmAutomationController');
 
 const admin = [verifyToken, requireRole('superadmin', 'admin'), featureGate('whatsapp_ai_crm')];
 const kbAdmin = [verifyToken, requireRole('superadmin', 'admin'), featureGate('ai_knowledge_base')];
@@ -34,6 +35,16 @@ router.get('/analytics/ai-cost', ...admin, analyticsCtrl.getAiCostSummary);
 router.get('/analytics/overview', ...admin, analyticsCtrl.getCrmOverview);
 router.post('/analytics/ai-credits/topup', ...admin, analyticsCtrl.addAiCreditTopup);
 router.post('/analytics/ai-credits/set-balance', ...admin, analyticsCtrl.setAiCreditBalance);
+
+// ── Automations ──────────────────────────────────────────────────────────────
+router.get('/automations/dashboard', ...admin, automationCtrl.dashboard);
+router.get('/automations/history', ...admin, automationCtrl.history);
+router.get('/automations', ...admin, automationCtrl.list);
+router.post('/automations', ...admin, automationCtrl.create);
+router.get('/automations/:id', ...admin, automationCtrl.getOne);
+router.put('/automations/:id', ...admin, automationCtrl.update);
+router.delete('/automations/:id', ...admin, automationCtrl.remove);
+router.post('/automations/:id/run', ...admin, automationCtrl.runNow);
 
 // ── WhatsApp Cloud (WABA) ────────────────────────────────────────────────────
 router.get('/whatsapp-cloud', ...admin, wabaCtrl.getWabaSettings);

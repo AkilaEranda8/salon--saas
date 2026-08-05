@@ -365,6 +365,19 @@ async function handleFollowup(job) {
   if (d.job === 'tenant_abandoned' && d.tenantId) {
     return runAbandonedBookingNudges({ tenantId: d.tenantId });
   }
+  if (d.job === 'automation_run' && d.tenantId && d.automationId) {
+    const { executeAutomation } = require('../services/crmAutomationRunner');
+    return executeAutomation({
+      tenantId: d.tenantId,
+      automationId: d.automationId,
+      executionId: d.executionId || null,
+      customerId: d.customerId || null,
+    });
+  }
+  if (name === 'automation-tick' || d.job === 'automation_tick') {
+    const { tickScheduledAutomations } = require('../services/crmAutomationRunner');
+    return withReminderLock('automation_tick', 500, () => tickScheduledAutomations());
+  }
   return { skipped: true, reason: 'unknown_followup_job' };
 }
 

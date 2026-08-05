@@ -188,6 +188,14 @@ async function runDayBeforeReminders({ tenantId = null } = {}) {
       skipped += 1;
       continue;
     }
+    try {
+      const { shouldRunLegacy } = require('./crmAutomationRunner');
+      const ok = await shouldRunLegacy(waba.tenant_id, 'appointment_reminder');
+      if (!ok) {
+        skipped += 1;
+        continue;
+      }
+    } catch { /* automations optional */ }
 
     const appts = await Appointment.findAll({
       where: {
@@ -289,6 +297,11 @@ async function runAbandonedBookingNudges({ tenantId = null } = {}) {
   for (const lead of leads) {
     const tenant = await Tenant.findByPk(lead.tenant_id);
     if (!tenant || !hasTenantFeature(tenant, 'whatsapp_ai_crm')) continue;
+    try {
+      const { shouldRunLegacy } = require('./crmAutomationRunner');
+      const ok = await shouldRunLegacy(lead.tenant_id, 'abandoned_booking');
+      if (!ok) continue;
+    } catch { /* automations optional */ }
 
     const already = await CrmFollowUpJob.findOne({
       where: {
@@ -421,6 +434,16 @@ async function scheduleReminderRepeatableJobs() {
     {
       repeat: { pattern: '20 * * * *' },
       jobId: 'repeat:abandoned-nudges',
+      removeOnComplete: 100,
+      removeOnFail: 200,
+    }
+  );
+  await q.add(
+    'automation-tick',
+    { job: 'automation_tick' },
+    {
+      repeat: { pattern: '5 * * * *' },
+      jobId: 'repeat:automation-tick',
       removeOnComplete: 100,
       removeOnFail: 200,
     }

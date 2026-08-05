@@ -84,6 +84,86 @@ const updateLead = async (req, res) => {
   }
 };
 
+/** DELETE /api/crm/leads/:id — remove lead + related CRM chats (salon customer kept) */
+const deleteLead = async (req, res) => {
+  try {
+    const tenantId = tid(req);
+    const lead = await CrmLead.findOne({ where: { id: req.params.id, tenant_id: tenantId } });
+    if (!lead) return res.status(404).json({ message: 'Lead not found' });
+
+    const leadId = lead.id;
+    const phone = lead.phone;
+    const { sequelize } = require('../config/database');
+    const {
+      CrmBookingRequest,
+      CrmAiMemory,
+      CrmFollowUpJob,
+      AiUsage,
+    } = require('../models');
+
+    const convs = await CrmConversation.findAll({
+      where: { tenant_id: tenantId, lead_id: leadId },
+      attributes: ['id'],
+    });
+    const convIds = convs.map((c) => c.id);
+
+    await sequelize.transaction(async (t) => {
+      if (convIds.length) {
+        await CrmMessage.destroy({
+          where: { tenant_id: tenantId, conversation_id: { [Op.in]: convIds } },
+          transaction: t,
+        });
+        await CrmBookingRequest.destroy({
+          where: { tenant_id: tenantId, conversation_id: { [Op.in]: convIds } },
+          transaction: t,
+        }).catch(() => {});
+        await AiUsage.update(
+          { conversation_id: null },
+          { where: { tenant_id: tenantId, conversation_id: { [Op.in]: convIds } }, transaction: t }
+        ).catch(() => {});
+        await CrmConversation.destroy({
+          where: { tenant_id: tenantId, id: { [Op.in]: convIds } },
+          transaction: t,
+        });
+      }
+
+      await CrmBookingRequest.destroy({
+        where: { tenant_id: tenantId, lead_id: leadId },
+        transaction: t,
+      }).catch(() => {});
+      await CrmAiMemory.destroy({
+        where: { tenant_id: tenantId, lead_id: leadId },
+        transaction: t,
+      }).catch(() => {});
+      await CrmFollowUpJob.update(
+        { lead_id: null, conversation_id: null },
+        { where: { tenant_id: tenantId, lead_id: leadId }, transaction: t }
+      ).catch(() => {});
+
+      await lead.destroy({ transaction: t });
+    });
+
+    await CrmAuditLog.create({
+      tenant_id: tenantId,
+      actor_type: 'user',
+      actor_id: req.user?.id || null,
+      action: 'lead_deleted',
+      entity_type: 'lead',
+      entity_id: leadId,
+      meta: { phone, conversations_deleted: convIds.length },
+    }).catch(() => {});
+
+    return res.json({
+      message: 'Lead deleted',
+      id: leadId,
+      conversations_deleted: convIds.length,
+    });
+  } catch (err) {
+    console.error('[crm] deleteLead', err);
+    return res.status(500).json({ message: err.message || 'Server error' });
+  }
+};
+
 /** GET /api/crm/conversations */
 const listConversations = async (req, res) => {
   try {
@@ -400,6 +480,7 @@ const simulateInbound = async (req, res) => {
 module.exports = {
   listLeads,
   updateLead,
+  deleteLead,
   listConversations,
   getConversation,
   markAllRead,

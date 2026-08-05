@@ -171,6 +171,7 @@ router.post('/internal/whatsapp-qr-send', requireServiceAuth, async (req, res) =
 // ── Leads & Inbox ────────────────────────────────────────────────────────────
 router.get('/leads', ...staffInbox, crmCtrl.listLeads);
 router.patch('/leads/:id', ...staffInbox, crmCtrl.updateLead);
+router.delete('/leads/:id', ...staffInbox, crmCtrl.deleteLead);
 
 router.get('/conversations', ...staffInbox, crmCtrl.listConversations);
 router.post('/conversations/mark-all-read', ...staffInbox, crmCtrl.markAllRead);

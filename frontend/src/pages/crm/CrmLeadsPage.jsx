@@ -131,6 +131,25 @@ export default function CrmLeadsPage() {
     }
   };
 
+  const deleteLead = async (lead) => {
+    const label = lead.name || lead.phone || `#${lead.id}`;
+    if (!window.confirm(`Delete lead “${label}”?\n\nRelated CRM chats for this lead will also be removed. Salon customer record (if any) is kept.`)) {
+      return;
+    }
+    setSavingId(lead.id);
+    try {
+      await api.delete(`/crm/leads/${lead.id}`);
+      setLeads((prev) => prev.filter((l) => l.id !== lead.id));
+      setTotal((t) => Math.max(0, t - 1));
+      if (edit?.id === lead.id) setEdit(null);
+      toast.success('Lead deleted');
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Delete failed');
+    } finally {
+      setSavingId(null);
+    }
+  };
+
   const pages = Math.max(1, Math.ceil(total / limit));
   const inputStyle = {
     background: C.inputBg || C.cardBg,
@@ -274,10 +293,22 @@ export default function CrmLeadsPage() {
                         onClick={() => navigate('/crm/inbox')}
                         style={{
                           background: 'none', border: `1px solid ${C.border}`, borderRadius: 8,
-                          padding: '6px 10px', cursor: 'pointer', color: C.accent, fontWeight: 600,
+                          padding: '6px 10px', cursor: 'pointer', color: C.accent, fontWeight: 600, marginRight: 6,
                         }}
                       >
                         Inbox
+                      </button>
+                      <button
+                        type="button"
+                        disabled={savingId === lead.id}
+                        onClick={() => deleteLead(lead)}
+                        style={{
+                          background: 'none', border: '1px solid #EF4444', borderRadius: 8,
+                          padding: '6px 10px', cursor: savingId === lead.id ? 'wait' : 'pointer',
+                          color: '#EF4444', fontWeight: 600, opacity: savingId === lead.id ? 0.6 : 1,
+                        }}
+                      >
+                        Delete
                       </button>
                     </td>
                   </tr>

@@ -53,6 +53,11 @@ const Customer = sequelize.define('Customer', {
     type: DataTypes.DATEONLY,
     allowNull: true,
   },
+  dob: {
+    type: DataTypes.DATEONLY,
+    allowNull: true,
+    comment: 'Date of birth for birthday automations / marketing',
+  },
   tenant_id: {
     type: DataTypes.INTEGER,
     allowNull: true,

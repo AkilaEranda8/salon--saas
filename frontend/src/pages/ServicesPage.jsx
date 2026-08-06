@@ -54,16 +54,26 @@ export default function ServicesPage() {
 
   const load = useCallback(async () => {
     setLoading(true);
+    const unfiltered = filterCat === 'All' && filterSub === 'All';
     const params = {
-      limit: 200,
+      limit: unfiltered ? 500 : 200,
       ...(filterCat !== 'All' ? { category: filterCat } : {}),
       ...(filterCat !== 'All' && filterSub !== 'All' ? { subcategory: filterSub } : {}),
     };
-    const [filteredRes, allRes, catsRes] = await Promise.allSettled([
+
+    // Avoid duplicate /services calls when showing the full list (was 2× every load).
+    const requests = [
       api.get('/services', { params }),
-      api.get('/services', { params: { limit: 500 } }),
       api.get('/services/categories'),
-    ]);
+    ];
+    if (!unfiltered) {
+      requests.push(api.get('/services', { params: { limit: 500 } }));
+    }
+
+    const settled = await Promise.allSettled(requests);
+    const filteredRes = settled[0];
+    const catsRes = settled[1];
+    const allRes = unfiltered ? filteredRes : settled[2];
 
     if (filteredRes.status === 'fulfilled') {
       setServices(Array.isArray(filteredRes.value.data) ? filteredRes.value.data : (filteredRes.value.data?.data ?? []));
@@ -71,7 +81,7 @@ export default function ServicesPage() {
       setServices([]);
     }
 
-    const allRows = allRes.status === 'fulfilled'
+    const allRows = allRes?.status === 'fulfilled'
       ? (Array.isArray(allRes.value.data) ? allRes.value.data : (allRes.value.data?.data ?? []))
       : [];
     setAllSvcs(allRows);

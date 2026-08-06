@@ -68,7 +68,11 @@ function computeCommissionDetails({
   loyalty_discount = 0,
   promo_discount = 0,
   allowServiceOverrides = true,
-  /** When > 0, line/payment bases strictly below this earn Rs. 0 commission. */
+  /**
+   * When > 0, the whole bill (netTotal) is gated:
+   * netTotal ≤ min → Rs. 0 commission; netTotal ≥ min+1 → normal rates.
+   * Applied on payment total, not per service line (so 500+500=1000 still earns).
+   */
   minCommissionableAmount = 0,
 }) {
   if (!staff || staff.salary_type === 'salary_only') {
@@ -83,6 +87,7 @@ function computeCommissionDetails({
   const defaultType = staff.commission_type || 'percentage';
   const defaultVal = parseFloat(staff.commission_value) || 0;
   const minAmt = Math.max(0, parseFloat(minCommissionableAmount) || 0);
+  const billBelowMin = minAmt > 0 && netTotal <= minAmt;
 
   const specByService = new Map(
     (specializations || []).map((s) => [Number(s.service_id), s]),
@@ -92,8 +97,7 @@ function computeCommissionDetails({
   const breakdownLines = [];
 
   if (!ids.length) {
-    const belowMin = minAmt > 0 && netTotal < minAmt;
-    const lineCommission = belowMin
+    const lineCommission = billBelowMin
       ? 0
       : (defaultType === 'percentage' ? (netTotal * defaultVal) / 100 : defaultVal);
     breakdownLines.push({
@@ -106,7 +110,7 @@ function computeCommissionDetails({
       source: 'staff_default',
       sourceLabel: SOURCE_LABELS.staff_default,
       commission: Math.round(lineCommission * 100) / 100,
-      skippedUnderMin: belowMin || undefined,
+      skippedUnderMin: billBelowMin || undefined,
     });
     const total = Math.round(lineCommission * 100) / 100;
     return {
@@ -117,6 +121,7 @@ function computeCommissionDetails({
         loyaltyDiscount: parseFloat(loyalty_discount || 0),
         promoDiscount: parseFloat(promo_discount || 0),
         minCommissionableAmount: minAmt || undefined,
+        skippedUnderMin: billBelowMin || undefined,
         lines: breakdownLines,
         total,
       },
@@ -139,8 +144,7 @@ function computeCommissionDetails({
       defaultVal,
     });
     const lineBase = grossSum > 0 ? (line.price / grossSum) * netTotal : netTotal / lines.length;
-    const belowMin = minAmt > 0 && lineBase < minAmt;
-    const lineCommission = belowMin
+    const lineCommission = billBelowMin
       ? 0
       : (resolved.type === 'percentage'
         ? (lineBase * resolved.val) / 100
@@ -157,7 +161,7 @@ function computeCommissionDetails({
       source: resolved.source,
       sourceLabel: SOURCE_LABELS[resolved.source] || resolved.source,
       commission: roundedLine,
-      skippedUnderMin: belowMin || undefined,
+      skippedUnderMin: billBelowMin || undefined,
     });
   }
 
@@ -170,6 +174,7 @@ function computeCommissionDetails({
       loyaltyDiscount: parseFloat(loyalty_discount || 0),
       promoDiscount: parseFloat(promo_discount || 0),
       minCommissionableAmount: minAmt || undefined,
+      skippedUnderMin: billBelowMin || undefined,
       lines: breakdownLines,
       total,
     },

@@ -28,7 +28,7 @@ const FEATURE_CATALOG = [
   { key: 'franchise_commission', label: 'Franchise Commission', category: 'Team' },
   {
     key: 'skip_commission_under_500',
-    label: 'No Commission Under Rs. 500',
+    label: 'No Commission Up To Rs. 500',
     category: 'Team',
   },
 ];
@@ -89,7 +89,7 @@ function allowsServiceWiseOverrides(tenant) {
     || hasFranchiseCommission(tenant);
 }
 
-/** When enabled, payment/service amounts under Rs. 500 earn no commission. */
+/** When enabled, bill net total of Rs. 500 and below earns no commission (501+ does). */
 const COMMISSION_MIN_AMOUNT = 500;
 
 function getMinCommissionableAmount(tenant) {

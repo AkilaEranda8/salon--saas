@@ -88,6 +88,11 @@ class _CommissionPageState extends State<CommissionPage> {
     return r == 'superadmin' || r == 'admin' || r == 'manager';
   }
 
+  bool get _isManager {
+    final r = (AppStateScope.of(context).currentUser?.role ?? '').toLowerCase();
+    return r == 'manager';
+  }
+
   bool get _hasSalaryPart =>
       _salaryType == 'salary_only' ||
       _salaryType == 'salary_plus_commission' ||
@@ -828,11 +833,14 @@ class _CommissionPageState extends State<CommissionPage> {
                               label: _teamMode && _selectedStaffId == null
                                   ? '$_paymentCountStat appts'
                                   : '$_paymentCountStat payments'),
-                            const SizedBox(height: 6),
-                            _StatPill(
-                              icon: Icons.trending_up_rounded,
-                              label: 'Sales LKR ${_salesTotal.toStringAsFixed(0)}'),
-                            if (_commissionRate > 0) ...[
+                            // Managers: hide monthly total sales — daily sales live on Payments.
+                            if (!_isManager) ...[
+                              const SizedBox(height: 6),
+                              _StatPill(
+                                icon: Icons.trending_up_rounded,
+                                label: 'Sales LKR ${_salesTotal.toStringAsFixed(0)}'),
+                            ],
+                            if (!_isManager && _commissionRate > 0) ...[
                               const SizedBox(height: 6),
                               _StatPill(
                                 icon: Icons.percent_rounded,

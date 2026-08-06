@@ -72,6 +72,29 @@ class _PaymentsPageState extends State<PaymentsPage> {
     return '${now.year}-${now.month.toString().padLeft(2, '0')}';
   }
 
+  String _todayIso() {
+    final now = DateTime.now();
+    return '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+  }
+
+  bool get _isManager {
+    final r = (AppStateScope.of(context).currentUser?.role ?? '')
+        .trim()
+        .toLowerCase();
+    return r == 'manager';
+  }
+
+  /// Managers only see today's payments; admin/staff keep the month list.
+  List<PaymentRecord> get _visiblePayments {
+    if (!_isManager) return _payments;
+    final today = _todayIso();
+    return _payments.where((p) {
+      final d = p.date.trim();
+      if (d.length >= 10) return d.substring(0, 10) == today;
+      return d.startsWith(today);
+    }).toList();
+  }
+
   Future<void> _load() async {
     final app = AppStateScope.of(context);
     final uid = app.currentUser?.branchId;
@@ -206,9 +229,10 @@ class _PaymentsPageState extends State<PaymentsPage> {
 
   // ── Revenue summary ────────────────────────────────────────────────────────
   double get _totalRevenue =>
-      _payments.fold(0, (s, p) => s + p.netAmount);
+      _visiblePayments.fold(0.0, (s, p) => s + p.netAmount);
   double get _totalDiscount =>
-      _payments.fold(0, (s, p) => s + p.loyaltyDiscount + p.promoDiscount);
+      _visiblePayments.fold(
+          0.0, (s, p) => s + p.loyaltyDiscount + p.promoDiscount);
 
   @override
   Widget build(BuildContext context) {
@@ -293,23 +317,26 @@ class _PaymentsPageState extends State<PaymentsPage> {
   ]);
 
   // ── Body ──────────────────────────────────────────────────────────────────
-  Widget _buildBody(DateTime now) => Column(children: [
+  Widget _buildBody(DateTime now) {
+    final rows = _visiblePayments;
+    return Column(children: [
     _buildHeader(loading: false, now: now),
     Expanded(
-      child: _payments.isEmpty
+      child: rows.isEmpty
           ? _buildEmpty()
           : RefreshIndicator(
               color: _forest,
               onRefresh: () async => _refresh(),
               child: ListView.builder(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 88),
-                itemCount: _payments.length,
+                itemCount: rows.length,
                 itemBuilder: (ctx, i) =>
-                    _PaymentCard(payment: _payments[i], fmt: _fmt),
+                    _PaymentCard(payment: rows[i], fmt: _fmt),
               ),
             ),
     ),
   ]);
+  }
 
   // ── Empty state ────────────────────────────────────────────────────────────
   Widget _buildEmpty() => Center(child: Column(mainAxisSize: MainAxisSize.min,
@@ -326,8 +353,8 @@ class _PaymentsPageState extends State<PaymentsPage> {
             color: _forest, size: 30),
       ),
       const SizedBox(height: 16),
-      const Text('No payments this month',
-        style: TextStyle(color: _ink, fontSize: 16,
+      Text(_isManager ? 'No payments today' : 'No payments this month',
+        style: const TextStyle(color: _ink, fontSize: 16,
             fontWeight: FontWeight.w700)),
       const SizedBox(height: 6),
       const Text('Tap + to record a payment',
@@ -339,6 +366,14 @@ class _PaymentsPageState extends State<PaymentsPage> {
   Widget _buildHeader({required bool loading, DateTime? now}) {
     final month = now != null ? _monthName(now.month) : '';
     final year  = now?.year ?? 0;
+    final managerView = !loading && _isManager;
+    final periodLabel = managerView
+        ? (now == null
+            ? 'Today'
+            : '${now.day.toString().padLeft(2, '0')} ${month.substring(0, 3)} $year')
+        : (loading ? 'Loading…' : '$month $year');
+    final salesLabel = managerView ? 'Daily Sales' : 'Total Revenue';
+    final paymentCount = _visiblePayments.length;
     return Container(
       color: _canvas,
       child: SafeArea(
@@ -413,11 +448,14 @@ class _PaymentsPageState extends State<PaymentsPage> {
                 children: [
                   // Month label
                   Row(children: [
-                    const Icon(Icons.calendar_month_rounded,
+                    Icon(
+                        managerView
+                            ? Icons.today_rounded
+                            : Icons.calendar_month_rounded,
                         color: Colors.white60, size: 13),
                     const SizedBox(width: 5),
                     Text(
-                      loading ? 'Loading…' : '$month $year',
+                      loading ? 'Loading…' : periodLabel,
                       style: const TextStyle(
                         color: Colors.white60, fontSize: 12,
                         fontWeight: FontWeight.w600)),
@@ -431,8 +469,8 @@ class _PaymentsPageState extends State<PaymentsPage> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text('Total Revenue',
-                              style: TextStyle(
+                            Text(salesLabel,
+                              style: const TextStyle(
                                 color: Colors.white70, fontSize: 12,
                                 fontWeight: FontWeight.w600)),
                             const SizedBox(height: 4),
@@ -473,7 +511,7 @@ class _PaymentsPageState extends State<PaymentsPage> {
                         children: [
                           _StatPill(
                             icon: Icons.receipt_rounded,
-                            label: loading ? '—' : '${_payments.length} payments'),
+                            label: loading ? '—' : '$paymentCount payments'),
                           const SizedBox(height: 6),
                           if (!loading && _totalDiscount > 0)
                             _StatPill(

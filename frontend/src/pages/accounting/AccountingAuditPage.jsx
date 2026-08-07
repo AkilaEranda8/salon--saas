@@ -4,6 +4,7 @@ import api from '../../api/axios';
 import AccountingLayout from './AccountingLayout';
 import { ListRow, ListShell, StatusPill, TypeChip, ACCT } from './AccountingUI';
 import { StatCard, IconReceipt } from '../../components/ui/PageKit';
+import usePageTheme from '../../hooks/usePageTheme';
 
 const ACTION_COLORS = {
   post: ['#ECFDF5', '#047857'],
@@ -16,6 +17,7 @@ const ACTION_COLORS = {
 };
 
 export default function AccountingAuditPage() {
+  const { C } = usePageTheme();
   const [rows, setRows] = useState([]);
 
   useEffect(() => {
@@ -41,7 +43,7 @@ export default function AccountingAuditPage() {
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                 <TypeChip type={r.action} map={ACTION_COLORS} />
-                <span style={{ fontWeight: 700, color: '#101828', fontSize: 14 }}>{r.action}</span>
+                <span style={{ fontWeight: 700, color: C.text, fontSize: 14 }}>{r.action}</span>
               </div>
               <div style={{ fontSize: 12, color: '#98A2B3' }}>
                 {r.created_at || r.createdAt} · {r.entity_type} #{r.entity_id} · actor {r.actor_id || '—'}

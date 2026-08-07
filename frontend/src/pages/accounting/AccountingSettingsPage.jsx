@@ -7,7 +7,7 @@ import Button from '../../components/ui/Button';
 import {
   FormShell, ListRow, ListShell, SectionTitle, StatusPill, TypeChip, inputStyle, ACCT,
 } from './AccountingUI';
-import { StatCard, IconReceipt } from '../../components/ui/PageKit';
+import { StatCard, IconReceipt, IconPlus } from '../../components/ui/PageKit';
 
 const TYPE_COLORS = {
   asset: ['#EFF6FF', '#1D4ED8'],
@@ -17,10 +17,14 @@ const TYPE_COLORS = {
   expense: ['#FFF7ED', '#C2410C'],
 };
 
+const EMPTY_ACCT = { code: '', name: '', type: 'expense' };
+
 export default function AccountingSettingsPage() {
   const { C } = usePageTheme();
   const [settings, setSettings] = useState(null);
   const [accounts, setAccounts] = useState([]);
+  const [newAcct, setNewAcct] = useState(EMPTY_ACCT);
+  const [savingAcct, setSavingAcct] = useState(false);
 
   const load = async () => {
     try {
@@ -46,6 +50,25 @@ export default function AccountingSettingsPage() {
     }
   };
 
+  const addAccount = async (e) => {
+    e.preventDefault();
+    if (!newAcct.code.trim() || !newAcct.name.trim()) {
+      toast.error('Code and name required');
+      return;
+    }
+    setSavingAcct(true);
+    try {
+      await api.post('/accounting/accounts', newAcct);
+      toast.success('Account created');
+      setNewAcct(EMPTY_ACCT);
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Create failed');
+    } finally {
+      setSavingAcct(false);
+    }
+  };
+
   if (!settings) {
     return <AccountingLayout title="Settings"><div style={{ padding: 16, color: '#98A2B3' }}>Loading…</div></AccountingLayout>;
   }
@@ -53,9 +76,13 @@ export default function AccountingSettingsPage() {
   const fields = [
     ['default_cash_account_id', 'Default cash'],
     ['default_bank_account_id', 'Default bank'],
+    ['default_equity_account_id', 'Default equity'],
     ['default_revenue_account_id', 'Default revenue'],
     ['default_expense_account_id', 'Default expense'],
     ['default_payroll_account_id', 'Default payroll'],
+    ['default_advance_account_id', 'Staff advances (asset)'],
+    ['default_package_liability_id', 'Unearned packages'],
+    ['default_loyalty_liability_id', 'Loyalty liability'],
     ['default_ar_account_id', 'Default AR'],
     ['default_ap_account_id', 'Default AP'],
     ['default_petty_account_id', 'Default petty cash'],
@@ -105,12 +132,34 @@ export default function AccountingSettingsPage() {
         <Button onClick={save}>Save settings</Button>
       </FormShell>
 
+      <FormShell title="Add chart account" accent={ACCT.cyan} style={{ maxWidth: 560, marginBottom: 16 }}>
+        <form onSubmit={addAccount} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(120px,1fr))', gap: 10, alignItems: 'end' }}>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 11, fontWeight: 700, color: C.label }}>
+            Code
+            <input value={newAcct.code} onChange={(e) => setNewAcct({ ...newAcct, code: e.target.value })} style={inputStyle(C)} placeholder="5200" required />
+          </label>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 11, fontWeight: 700, color: C.label }}>
+            Name
+            <input value={newAcct.name} onChange={(e) => setNewAcct({ ...newAcct, name: e.target.value })} style={inputStyle(C)} placeholder="Marketing" required />
+          </label>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 11, fontWeight: 700, color: C.label }}>
+            Type
+            <select value={newAcct.type} onChange={(e) => setNewAcct({ ...newAcct, type: e.target.value })} style={inputStyle(C)}>
+              {['asset', 'liability', 'equity', 'revenue', 'expense'].map((t) => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </label>
+          <Button type="submit" disabled={savingAcct} style={{ display: 'flex', alignItems: 'center', gap: 6, height: 38 }}>
+            <IconPlus /> {savingAcct ? 'Saving…' : 'Add'}
+          </Button>
+        </form>
+      </FormShell>
+
       <SectionTitle color={ACCT.cyan}>Chart of accounts</SectionTitle>
       <ListShell empty="No accounts">
         {accounts.map((a) => (
           <ListRow key={a.id}>
             <div>
-              <div style={{ fontWeight: 700, color: '#101828', fontSize: 14 }}>
+              <div style={{ fontWeight: 700, color: C.text, fontSize: 14 }}>
                 <span style={{ color: ACCT.primary, marginRight: 8 }}>{a.code}</span>
                 {a.name}
               </div>

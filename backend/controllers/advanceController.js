@@ -112,6 +112,18 @@ const remove = async (req, res) => {
   try {
     const advance = await StaffAdvance.findOne({ where: byIdWhere(req, req.params.id) });
     if (!advance) return res.status(404).json({ message: 'Advance not found.' });
+    try {
+      const { voidJournalBySource } = require('../services/accountingEngine');
+      await voidJournalBySource({
+        tenantId: advance.tenant_id,
+        sourceType: 'staff_advance',
+        sourceId: advance.id,
+        userId: req.user?.id,
+        reason: `Advance #${advance.id} deleted`,
+      });
+    } catch (acctErr) {
+      console.warn('[accounting] advance void failed:', acctErr.message);
+    }
     await advance.destroy();
     return res.json({ message: 'Deleted.' });
   } catch (err) {

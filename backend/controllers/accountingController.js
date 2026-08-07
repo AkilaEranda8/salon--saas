@@ -1,6 +1,7 @@
 'use strict';
 
 const { Op } = require('sequelize');
+const { sequelize } = require('../config/database');
 const engine = require('../services/accountingEngine');
 const {
   AcctAccount,
@@ -17,6 +18,7 @@ const {
   StaffAdvance,
 } = require('../models');
 const { money } = require('../services/accountingEngine/balance');
+const { nextBankGlCode } = require('../services/accountingEngine/coa');
 
 function tid(req) {
   return req.userTenantId ?? req.tenant?.id;
@@ -51,12 +53,34 @@ const overview = async (req, res) => {
     const from = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
     const to = now.toISOString().slice(0, 10);
     const pl = await engine.profitAndLoss({ tenantId, from, to });
-    const cashBal = settings.default_cash_account_id
-      ? await engine.getAccountBalance({ tenantId, accountId: settings.default_cash_account_id, asOf: to })
-      : 0;
-    const bankBal = settings.default_bank_account_id
-      ? await engine.getAccountBalance({ tenantId, accountId: settings.default_bank_account_id, asOf: to })
-      : 0;
+
+    const bankRows = await AcctBankAccount.findAll({
+      where: { tenant_id: tenantId, is_active: true },
+    });
+    let cashBal = 0;
+    let bankBal = 0;
+    const seenGl = new Set();
+    for (const row of bankRows) {
+      if (seenGl.has(row.gl_account_id)) continue;
+      seenGl.add(row.gl_account_id);
+      const bal = await engine.getAccountBalance({
+        tenantId,
+        accountId: row.gl_account_id,
+        asOf: to,
+      });
+      if (row.is_cash) cashBal = money(cashBal + bal);
+      else bankBal = money(bankBal + bal);
+    }
+    // Fallback to defaults if no bank-account rows yet
+    if (!bankRows.length) {
+      cashBal = settings.default_cash_account_id
+        ? await engine.getAccountBalance({ tenantId, accountId: settings.default_cash_account_id, asOf: to })
+        : 0;
+      bankBal = settings.default_bank_account_id
+        ? await engine.getAccountBalance({ tenantId, accountId: settings.default_bank_account_id, asOf: to })
+        : 0;
+    }
+
     const arOpen = await AcctArInvoice.sum('amount', {
       where: { tenant_id: tenantId, status: 'open' },
     }) || 0;
@@ -284,6 +308,8 @@ const updateTax = async (req, res) => {
       'default_revenue_account_id', 'default_expense_account_id',
       'default_payroll_account_id', 'default_ar_account_id',
       'default_ap_account_id', 'default_petty_account_id',
+      'default_advance_account_id', 'default_package_liability_id',
+      'default_loyalty_liability_id', 'default_equity_account_id',
       'auto_post_payments', 'auto_post_expenses', 'auto_post_payroll',
     ];
     const patch = {};
@@ -390,11 +416,12 @@ const listBankAccounts = async (req, res) => {
     });
     const withBal = [];
     for (const r of rows) {
+      // Balance is GL only — opening_balance is posted into GL on create
       const bal = await engine.getAccountBalance({
         tenantId,
         accountId: r.gl_account_id,
       });
-      withBal.push({ ...r.toJSON(), balance: money(parseFloat(r.opening_balance || 0) + bal) });
+      withBal.push({ ...r.toJSON(), balance: money(bal) });
     }
     return res.json(withBal);
   } catch (err) {
@@ -405,6 +432,7 @@ const listBankAccounts = async (req, res) => {
 const createBankAccount = async (req, res) => {
   try {
     const tenantId = await ensure(req);
+    const settings = await engine.getSettings(tenantId);
     const {
       name, account_number, bank_name, gl_account_id, is_cash, opening_balance,
     } = req.body || {};
@@ -412,31 +440,79 @@ const createBankAccount = async (req, res) => {
       return res.status(400).json({ message: 'Account name is required.' });
     }
 
-    let glId = gl_account_id ? Number(gl_account_id) : null;
-    if (!glId) {
-      const settings = await engine.getSettings(tenantId);
-      glId = is_cash
-        ? settings?.default_cash_account_id
-        : settings?.default_bank_account_id;
-    }
-    if (!glId) {
-      return res.status(400).json({ message: 'Select a GL account (or open books so defaults exist).' });
-    }
+    const opening = money(opening_balance);
+    const cashFlag = !!is_cash;
 
-    const gl = await AcctAccount.findOne({ where: { id: glId, tenant_id: tenantId } });
-    if (!gl) return res.status(400).json({ message: 'GL account not found.' });
+    const result = await sequelize.transaction(async (transaction) => {
+      let glId = gl_account_id ? Number(gl_account_id) : null;
 
-    const row = await AcctBankAccount.create({
-      tenant_id: tenantId,
-      name: String(name).trim(),
-      account_number: account_number || null,
-      bank_name: bank_name || null,
-      gl_account_id: glId,
-      is_cash: !!is_cash,
-      opening_balance: money(opening_balance),
-      is_active: true,
+      if (glId) {
+        const taken = await AcctBankAccount.findOne({
+          where: { tenant_id: tenantId, gl_account_id: glId, is_active: true },
+          transaction,
+        });
+        if (taken) {
+          const err = new Error('That GL account is already linked to another cash/bank account. Leave GL blank to auto-create one.');
+          err.status = 400;
+          throw err;
+        }
+        const gl = await AcctAccount.findOne({ where: { id: glId, tenant_id: tenantId }, transaction });
+        if (!gl) {
+          const err = new Error('GL account not found.');
+          err.status = 400;
+          throw err;
+        }
+      } else {
+        const code = await nextBankGlCode(tenantId, { isCash: cashFlag, transaction });
+        const gl = await AcctAccount.create({
+          tenant_id: tenantId,
+          code,
+          name: String(name).trim(),
+          type: 'asset',
+          is_system: false,
+          is_active: true,
+        }, { transaction });
+        glId = gl.id;
+      }
+
+      const row = await AcctBankAccount.create({
+        tenant_id: tenantId,
+        name: String(name).trim(),
+        account_number: account_number || null,
+        bank_name: bank_name || null,
+        gl_account_id: glId,
+        is_cash: cashFlag,
+        opening_balance: opening,
+        is_active: true,
+      }, { transaction });
+
+      if (opening > 0) {
+        const equityId = settings.default_equity_account_id
+          || (await engine.getAccountByCode(tenantId, '3000', { transaction }))?.id;
+        if (!equityId) {
+          const err = new Error('Owner Equity account missing — cannot post opening balance.');
+          err.status = 400;
+          throw err;
+        }
+        await engine.postJournal({
+          tenantId,
+          date: new Date().toISOString().slice(0, 10),
+          memo: `Opening balance · ${row.name}`,
+          lines: [
+            { account_id: glId, debit: opening, credit: 0, memo: 'Opening' },
+            { account_id: equityId, debit: 0, credit: opening, memo: 'Opening equity' },
+          ],
+          userId: uid(req),
+          sourceType: 'bank_opening',
+          sourceId: row.id,
+          transaction,
+        });
+      }
+
+      return row;
     });
-    return res.status(201).json(row);
+
+    return res.status(201).json(result);
   } catch (err) {
     return handle(res, err);
   }
@@ -475,59 +551,107 @@ const createBankTxn = async (req, res) => {
       return res.status(400).json({ message: 'date, type, and amount required.' });
     }
 
-    let lines = [];
-    if (type === 'deposit') {
-      const other = counterparty_gl_account_id || settings.default_revenue_account_id;
-      lines = [
-        { account_id: bank.gl_account_id, debit: amt, credit: 0 },
-        { account_id: other, debit: 0, credit: amt },
-      ];
-    } else if (type === 'withdrawal') {
-      const other = counterparty_gl_account_id || settings.default_expense_account_id;
-      lines = [
-        { account_id: other, debit: amt, credit: 0 },
-        { account_id: bank.gl_account_id, debit: 0, credit: amt },
-      ];
-    } else if (type === 'transfer') {
-      const otherBank = await AcctBankAccount.findOne({
-        where: { id: transfer_bank_account_id, tenant_id: tenantId },
+    const equityDefault = settings.default_equity_account_id
+      || (await engine.getAccountByCode(tenantId, '3000'))?.id;
+
+    const out = await sequelize.transaction(async (transaction) => {
+      let otherBank = null;
+      let lines = [];
+      let counterparty = counterparty_gl_account_id ? Number(counterparty_gl_account_id) : null;
+
+      if (type === 'deposit') {
+        const other = counterparty || equityDefault || settings.default_revenue_account_id;
+        if (!other) {
+          const err = new Error('Select a counterparty GL (or configure Owner Equity).');
+          err.status = 400;
+          throw err;
+        }
+        counterparty = other;
+        lines = [
+          { account_id: bank.gl_account_id, debit: amt, credit: 0 },
+          { account_id: other, debit: 0, credit: amt },
+        ];
+      } else if (type === 'withdrawal') {
+        const other = counterparty || settings.default_expense_account_id;
+        if (!other) {
+          const err = new Error('Select a counterparty GL (or configure default expense).');
+          err.status = 400;
+          throw err;
+        }
+        counterparty = other;
+        lines = [
+          { account_id: other, debit: amt, credit: 0 },
+          { account_id: bank.gl_account_id, debit: 0, credit: amt },
+        ];
+      } else if (type === 'transfer') {
+        otherBank = await AcctBankAccount.findOne({
+          where: { id: transfer_bank_account_id, tenant_id: tenantId },
+          transaction,
+        });
+        if (!otherBank) {
+          const err = new Error('Select the destination bank account.');
+          err.status = 400;
+          throw err;
+        }
+        if (otherBank.id === bank.id) {
+          const err = new Error('Cannot transfer to the same account.');
+          err.status = 400;
+          throw err;
+        }
+        lines = [
+          { account_id: otherBank.gl_account_id, debit: amt, credit: 0 },
+          { account_id: bank.gl_account_id, debit: 0, credit: amt },
+        ];
+      } else {
+        const err = new Error('Invalid type.');
+        err.status = 400;
+        throw err;
+      }
+
+      const txn = await AcctBankTxn.create({
+        tenant_id: tenantId,
+        bank_account_id: bank.id,
+        date,
+        type,
+        amount: amt,
+        memo: memo || null,
+        counterparty_gl_account_id: counterparty || null,
+        transfer_bank_account_id: otherBank?.id || null,
+        journal_id: null,
+        created_by: uid(req),
+      }, { transaction });
+
+      const journal = await engine.postJournal({
+        tenantId,
+        date,
+        memo: memo || `Bank ${type}`,
+        lines,
+        userId: uid(req),
+        sourceType: 'bank_txn',
+        sourceId: txn.id,
+        transaction,
       });
-      if (!otherBank) return res.status(400).json({ message: 'transfer_bank_account_id required.' });
-      lines = [
-        { account_id: otherBank.gl_account_id, debit: amt, credit: 0 },
-        { account_id: bank.gl_account_id, debit: 0, credit: amt },
-      ];
-    } else {
-      return res.status(400).json({ message: 'Invalid type.' });
-    }
+      await txn.update({ journal_id: journal.id }, { transaction });
 
-    const journal = await engine.postJournal({
-      tenantId,
-      date,
-      memo: memo || `Bank ${type}`,
-      lines,
-      userId: uid(req),
-      sourceType: 'bank_txn',
-      sourceId: `pending-${Date.now()}`,
+      if (type === 'transfer' && otherBank) {
+        await AcctBankTxn.create({
+          tenant_id: tenantId,
+          bank_account_id: otherBank.id,
+          date,
+          type: 'deposit',
+          amount: amt,
+          memo: memo || `Transfer from ${bank.name}`,
+          counterparty_gl_account_id: null,
+          transfer_bank_account_id: bank.id,
+          journal_id: journal.id,
+          created_by: uid(req),
+        }, { transaction });
+      }
+
+      return { txn, journal };
     });
 
-    const txn = await AcctBankTxn.create({
-      tenant_id: tenantId,
-      bank_account_id: bank.id,
-      date,
-      type,
-      amount: amt,
-      memo: memo || null,
-      counterparty_gl_account_id: counterparty_gl_account_id || null,
-      transfer_bank_account_id: transfer_bank_account_id || null,
-      journal_id: journal.id,
-      created_by: uid(req),
-    });
-
-    // Fix source id to real txn id (void old key by updating journal source)
-    await journal.update({ source_id: String(txn.id) });
-
-    return res.status(201).json({ txn, journal });
+    return res.status(201).json(out);
   } catch (err) {
     return handle(res, err);
   }
@@ -588,27 +712,33 @@ const createPetty = async (req, res) => {
       return res.status(400).json({ message: 'Invalid type.' });
     }
 
-    const journal = await engine.postJournal({
-      tenantId,
-      date,
-      memo: memo || `Petty ${type}`,
-      lines,
-      userId: uid(req),
-      sourceType: 'petty_cash',
-      sourceId: `pending-${Date.now()}`,
+    const out = await sequelize.transaction(async (transaction) => {
+      const row = await AcctPettyCashTxn.create({
+        tenant_id: tenantId,
+        date,
+        type,
+        amount: amt,
+        memo: memo || null,
+        expense_gl_account_id: expense_gl_account_id || null,
+        journal_id: null,
+        created_by: uid(req),
+      }, { transaction });
+
+      const journal = await engine.postJournal({
+        tenantId,
+        date,
+        memo: memo || `Petty ${type}`,
+        lines,
+        userId: uid(req),
+        sourceType: 'petty_cash',
+        sourceId: row.id,
+        transaction,
+      });
+      await row.update({ journal_id: journal.id }, { transaction });
+      return { row, journal };
     });
-    const row = await AcctPettyCashTxn.create({
-      tenant_id: tenantId,
-      date,
-      type,
-      amount: amt,
-      memo: memo || null,
-      expense_gl_account_id: expense_gl_account_id || null,
-      journal_id: journal.id,
-      created_by: uid(req),
-    });
-    await journal.update({ source_id: String(row.id) });
-    return res.status(201).json({ row, journal });
+
+    return res.status(201).json(out);
   } catch (err) {
     return handle(res, err);
   }
@@ -644,32 +774,38 @@ const createAr = async (req, res) => {
     const revId = settings.default_revenue_account_id;
     if (!arId || !revId) return res.status(400).json({ message: 'AR/Revenue accounts missing.' });
 
-    const journal = await engine.postJournal({
-      tenantId,
-      date,
-      memo: memo || `AR ${invoice_no}`,
-      lines: [
-        { account_id: arId, debit: amt, credit: 0 },
-        { account_id: revId, debit: 0, credit: amt },
-      ],
-      userId: uid(req),
-      sourceType: 'ar_invoice',
-      sourceId: `pending-${Date.now()}`,
+    const row = await sequelize.transaction(async (transaction) => {
+      const created = await AcctArInvoice.create({
+        tenant_id: tenantId,
+        customer_id: customer_id || null,
+        customer_name: customer_name || null,
+        invoice_no,
+        date,
+        due_date: due_date || null,
+        amount: amt,
+        status: 'open',
+        memo: memo || null,
+        journal_id: null,
+        created_by: uid(req),
+      }, { transaction });
+
+      const journal = await engine.postJournal({
+        tenantId,
+        date,
+        memo: memo || `AR ${invoice_no}`,
+        lines: [
+          { account_id: arId, debit: amt, credit: 0 },
+          { account_id: revId, debit: 0, credit: amt },
+        ],
+        userId: uid(req),
+        sourceType: 'ar_invoice',
+        sourceId: created.id,
+        transaction,
+      });
+      await created.update({ journal_id: journal.id }, { transaction });
+      return created;
     });
-    const row = await AcctArInvoice.create({
-      tenant_id: tenantId,
-      customer_id: customer_id || null,
-      customer_name: customer_name || null,
-      invoice_no,
-      date,
-      due_date: due_date || null,
-      amount: amt,
-      status: 'open',
-      memo: memo || null,
-      journal_id: journal.id,
-      created_by: uid(req),
-    });
-    await journal.update({ source_id: String(row.id) });
+
     return res.status(201).json(row);
   } catch (err) {
     return handle(res, err);
@@ -683,13 +819,19 @@ const settleAr = async (req, res) => {
     const row = await AcctArInvoice.findOne({ where: { id: req.params.id, tenant_id: tenantId } });
     if (!row) return res.status(404).json({ message: 'Invoice not found.' });
     if (row.status !== 'open') return res.status(400).json({ message: 'Invoice not open.' });
+    const settleAcct = Number(req.body?.settlement_gl_account_id)
+      || settings.default_cash_account_id
+      || settings.default_bank_account_id;
+    if (!settleAcct || !settings.default_ar_account_id) {
+      return res.status(400).json({ message: 'Cash/Bank or AR account not configured.' });
+    }
     const amt = money(row.amount);
     const journal = await engine.postJournal({
       tenantId,
       date: req.body?.date || new Date().toISOString().slice(0, 10),
       memo: `Settle AR ${row.invoice_no}`,
       lines: [
-        { account_id: settings.default_cash_account_id, debit: amt, credit: 0 },
+        { account_id: settleAcct, debit: amt, credit: 0 },
         { account_id: settings.default_ar_account_id, debit: 0, credit: amt },
       ],
       userId: uid(req),
@@ -732,31 +874,37 @@ const createAp = async (req, res) => {
     const expId = settings.default_expense_account_id;
     if (!apId || !expId) return res.status(400).json({ message: 'AP/Expense accounts missing.' });
 
-    const journal = await engine.postJournal({
-      tenantId,
-      date,
-      memo: memo || `AP ${bill_no}`,
-      lines: [
-        { account_id: expId, debit: amt, credit: 0 },
-        { account_id: apId, debit: 0, credit: amt },
-      ],
-      userId: uid(req),
-      sourceType: 'ap_bill',
-      sourceId: `pending-${Date.now()}`,
+    const row = await sequelize.transaction(async (transaction) => {
+      const created = await AcctApBill.create({
+        tenant_id: tenantId,
+        supplier_name,
+        bill_no,
+        date,
+        due_date: due_date || null,
+        amount: amt,
+        status: 'open',
+        memo: memo || null,
+        journal_id: null,
+        created_by: uid(req),
+      }, { transaction });
+
+      const journal = await engine.postJournal({
+        tenantId,
+        date,
+        memo: memo || `AP ${bill_no}`,
+        lines: [
+          { account_id: expId, debit: amt, credit: 0 },
+          { account_id: apId, debit: 0, credit: amt },
+        ],
+        userId: uid(req),
+        sourceType: 'ap_bill',
+        sourceId: created.id,
+        transaction,
+      });
+      await created.update({ journal_id: journal.id }, { transaction });
+      return created;
     });
-    const row = await AcctApBill.create({
-      tenant_id: tenantId,
-      supplier_name,
-      bill_no,
-      date,
-      due_date: due_date || null,
-      amount: amt,
-      status: 'open',
-      memo: memo || null,
-      journal_id: journal.id,
-      created_by: uid(req),
-    });
-    await journal.update({ source_id: String(row.id) });
+
     return res.status(201).json(row);
   } catch (err) {
     return handle(res, err);
@@ -770,6 +918,12 @@ const settleAp = async (req, res) => {
     const row = await AcctApBill.findOne({ where: { id: req.params.id, tenant_id: tenantId } });
     if (!row) return res.status(404).json({ message: 'Bill not found.' });
     if (row.status !== 'open') return res.status(400).json({ message: 'Bill not open.' });
+    const settleAcct = Number(req.body?.settlement_gl_account_id)
+      || settings.default_cash_account_id
+      || settings.default_bank_account_id;
+    if (!settleAcct || !settings.default_ap_account_id) {
+      return res.status(400).json({ message: 'Cash/Bank or AP account not configured.' });
+    }
     const amt = money(row.amount);
     const journal = await engine.postJournal({
       tenantId,
@@ -777,7 +931,7 @@ const settleAp = async (req, res) => {
       memo: `Settle AP ${row.bill_no}`,
       lines: [
         { account_id: settings.default_ap_account_id, debit: amt, credit: 0 },
-        { account_id: settings.default_cash_account_id, debit: 0, credit: amt },
+        { account_id: settleAcct, debit: 0, credit: amt },
       ],
       userId: uid(req),
       sourceType: 'ap_settle',

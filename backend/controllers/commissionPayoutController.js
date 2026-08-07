@@ -101,6 +101,19 @@ const remove = async (req, res) => {
       { where: { staff_id: payout.staff_id, month: payout.month, status: 'deducted', ...tenantWhere(req) } }
     );
 
+    try {
+      const { voidJournalBySource } = require('../services/accountingEngine');
+      await voidJournalBySource({
+        tenantId: payout.tenant_id,
+        sourceType: 'commission_payout',
+        sourceId: payout.id,
+        userId: req.user?.id,
+        reason: `Payout #${payout.id} deleted`,
+      });
+    } catch (acctErr) {
+      console.warn('[accounting] payout void failed:', acctErr.message);
+    }
+
     await payout.destroy();
     return res.json({ message: 'Deleted.' });
   } catch (err) {

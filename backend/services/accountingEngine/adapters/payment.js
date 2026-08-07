@@ -8,11 +8,17 @@ const { hasTenantFeature } = require('../../../utils/tenantFeatures');
 
 function tenderToAccountId(method, settings) {
   const m = String(method || 'Cash').toLowerCase();
+  // Redemption: debit liability (not cash) — package/loyalty cash was already taken when sold/earned.
+  if (m.includes('package') || m.includes('prepaid') || m.includes('voucher')) {
+    return settings.default_package_liability_id || settings.default_revenue_account_id;
+  }
+  if (m.includes('loyalty') || m.includes('points') || m.includes('reward')) {
+    return settings.default_loyalty_liability_id || settings.default_revenue_account_id;
+  }
   if (m.includes('cash')) return settings.default_cash_account_id;
   if (m.includes('card') || m.includes('bank') || m.includes('online') || m.includes('transfer')) {
     return settings.default_bank_account_id || settings.default_cash_account_id;
   }
-  // Loyalty / package — treat as revenue contra via cash for simplicity (no cash movement)
   return settings.default_cash_account_id;
 }
 
@@ -54,7 +60,6 @@ async function postPaymentToGl(payment, { tenant, splits = [], userId = null, tr
     lines.push({ account_id: acct, debit: amt, credit: 0, memo: row.method || 'Tender' });
   }
 
-  // If no tender lines resolved, debit cash
   if (!lines.length) {
     lines.push({
       account_id: settings.default_cash_account_id,

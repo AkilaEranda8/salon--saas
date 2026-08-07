@@ -105,7 +105,7 @@ export default function AccountingArApPage() {
         {rows.map((r) => (
           <ListRow key={r.id}>
             <div>
-              <div style={{ fontWeight: 700, color: '#101828', fontSize: 14 }}>
+              <div style={{ fontWeight: 700, color: C.text, fontSize: 14 }}>
                 {tab === 'ar' ? r.invoice_no : r.bill_no} · {tab === 'ar' ? r.customer_name : r.supplier_name}
               </div>
               <div style={{ fontSize: 12, color: '#98A2B3', marginTop: 2 }}>

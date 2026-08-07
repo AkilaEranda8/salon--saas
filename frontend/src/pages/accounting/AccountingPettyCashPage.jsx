@@ -69,7 +69,7 @@ export default function AccountingPettyCashPage() {
         {rows.map((r) => (
           <ListRow key={r.id}>
             <div>
-              <div style={{ fontWeight: 700, color: '#101828' }}>
+              <div style={{ fontWeight: 700, color: C.text }}>
                 {r.date} · <span style={{ color: r.type === 'expense' ? ACCT.danger : ACCT.success }}>{formatLkr(r.amount)}</span>
               </div>
               <div style={{ fontSize: 12, color: '#98A2B3', marginTop: 2 }}>{r.memo || '—'}</div>

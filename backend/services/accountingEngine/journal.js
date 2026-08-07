@@ -209,9 +209,25 @@ async function listJournals(tenantId, { limit = 50, offset = 0, status, from, to
   });
 }
 
+async function voidJournalBySource({
+  tenantId, sourceType, sourceId, userId = null, reason = null, transaction = null,
+}) {
+  if (!sourceType || sourceId == null || sourceId === '') return null;
+  const existing = await findExistingSourceJournal(tenantId, sourceType, sourceId, { transaction });
+  if (!existing) return null;
+  return voidJournal({
+    tenantId,
+    journalId: existing.id,
+    userId,
+    reason: reason || `Void source ${sourceType}#${sourceId}`,
+    transaction,
+  });
+}
+
 module.exports = {
   postJournal,
   voidJournal,
+  voidJournalBySource,
   listJournals,
   findExistingSourceJournal,
   normalizeLines,

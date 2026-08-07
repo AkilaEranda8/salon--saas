@@ -17,7 +17,7 @@ router.patch('/accounts/:id', ...adm, ctrl.updateAccount);
 router.get('/journals', ...mgr, ctrl.listJournals);
 router.get('/journals/:id', ...mgr, ctrl.getJournal);
 router.post('/journals', ...mgr, ctrl.createJournal);
-router.post('/journals/:id/void', ...adm, ctrl.voidJournalCtrl);
+router.post('/journals/:id/void', ...mgr, ctrl.voidJournalCtrl);
 
 router.get('/reports/trial-balance', ...mgr, ctrl.trialBalance);
 router.get('/reports/profit-loss', ...mgr, ctrl.profitAndLoss);
@@ -25,7 +25,7 @@ router.get('/reports/balance-sheet', ...mgr, ctrl.balanceSheet);
 router.get('/reports/general-ledger', ...mgr, ctrl.generalLedger);
 
 router.get('/tax', ...mgr, ctrl.getTax);
-router.put('/tax', ...adm, ctrl.updateTax);
+router.put('/tax', ...mgr, ctrl.updateTax);
 router.get('/tax/summary', ...mgr, ctrl.taxSummary);
 
 router.get('/settings', ...mgr, ctrl.getSettings);

@@ -5,8 +5,10 @@ import AccountingLayout from './AccountingLayout';
 import Button from '../../components/ui/Button';
 import { ListRow, ListShell, StatusPill, ACCT } from './AccountingUI';
 import { StatCard, IconCalendar } from '../../components/ui/PageKit';
+import usePageTheme from '../../hooks/usePageTheme';
 
 export default function AccountingPeriodsPage() {
+  const { C } = usePageTheme();
   const [rows, setRows] = useState([]);
 
   const load = async () => {
@@ -44,7 +46,7 @@ export default function AccountingPeriodsPage() {
         {rows.map((p) => (
           <ListRow key={p.id}>
             <div>
-              <div style={{ fontWeight: 800, color: '#101828', fontSize: 15 }}>{p.period_key}</div>
+              <div style={{ fontWeight: 800, color: C.text, fontSize: 15 }}>{p.period_key}</div>
               <div style={{ marginTop: 6 }}><StatusPill status={p.status} /></div>
             </div>
             {p.status === 'open'

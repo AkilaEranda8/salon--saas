@@ -16,8 +16,8 @@ const IconTrend = () => (
 export default function AccountingReportsPage() {
   const [tab, setTab] = useState('tb');
   const [data, setData] = useState(null);
-  const from = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10);
-  const to = new Date().toISOString().slice(0, 10);
+  const [from, setFrom] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10));
+  const [to, setTo] = useState(() => new Date().toISOString().slice(0, 10));
 
   useEffect(() => {
     setData(null);
@@ -33,12 +33,22 @@ export default function AccountingReportsPage() {
         toast.error(err.response?.data?.message || 'Report failed');
       }
     })();
-  }, [tab]);
+  }, [tab, from, to]);
 
   const net = Number(data?.netIncome || 0);
 
   return (
     <AccountingLayout title="GL Reports">
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 12, alignItems: 'center' }}>
+        <label style={{ fontSize: 12, fontWeight: 700, color: '#667085', display: 'flex', gap: 6, alignItems: 'center' }}>
+          From
+          <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="pk-filter-control" />
+        </label>
+        <label style={{ fontSize: 12, fontWeight: 700, color: '#667085', display: 'flex', gap: 6, alignItems: 'center' }}>
+          {tab === 'bs' ? 'As of' : 'To'}
+          <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="pk-filter-control" />
+        </label>
+      </div>
       <SegmentTabs
         value={tab}
         onChange={setTab}

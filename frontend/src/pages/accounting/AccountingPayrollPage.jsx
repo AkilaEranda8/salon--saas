@@ -4,8 +4,10 @@ import api from '../../api/axios';
 import AccountingLayout, { formatLkr } from './AccountingLayout';
 import { ListRow, ListShell, SectionTitle, StatusPill, ACCT } from './AccountingUI';
 import { StatCard, IconDollar, IconUsers, IconReceipt } from '../../components/ui/PageKit';
+import usePageTheme from '../../hooks/usePageTheme';
 
 export default function AccountingPayrollPage() {
+  const { C } = usePageTheme();
   const [data, setData] = useState({ payouts: [], advances: [] });
 
   useEffect(() => {
@@ -36,7 +38,7 @@ export default function AccountingPayrollPage() {
         {(data.payouts || []).map((r) => (
           <ListRow key={r.id}>
             <div>
-              <div style={{ fontWeight: 700, color: '#101828' }}>
+              <div style={{ fontWeight: 700, color: C.text }}>
                 {r.date} · <span style={{ color: ACCT.warning }}>{formatLkr(r.amount)}</span>
               </div>
               <div style={{ fontSize: 12, color: '#98A2B3', marginTop: 2 }}>Staff #{r.staff_id}</div>
@@ -54,7 +56,7 @@ export default function AccountingPayrollPage() {
           {(data.advances || []).map((r) => (
             <ListRow key={r.id}>
               <div>
-                <div style={{ fontWeight: 700, color: '#101828' }}>
+                <div style={{ fontWeight: 700, color: C.text }}>
                   {r.date} · <span style={{ color: ACCT.purple }}>{formatLkr(r.amount)}</span>
                 </div>
                 <div style={{ fontSize: 12, color: '#98A2B3', marginTop: 2 }}>{r.status}</div>

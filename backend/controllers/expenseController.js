@@ -300,6 +300,18 @@ const remove = async (req, res) => {
     if (req.userBranchId && expense.branch_id !== req.userBranchId) {
       return res.status(403).json({ message: 'Access denied.' });
     }
+    try {
+      const { voidJournalBySource } = require('../services/accountingEngine');
+      await voidJournalBySource({
+        tenantId: expense.tenant_id,
+        sourceType: 'expense',
+        sourceId: expense.id,
+        userId: req.user?.id,
+        reason: `Expense #${expense.id} deleted`,
+      });
+    } catch (acctErr) {
+      console.warn('[accounting] expense void failed:', acctErr.message);
+    }
     await expense.destroy();
     return res.json({ message: 'Expense deleted.' });
   } catch (err) {

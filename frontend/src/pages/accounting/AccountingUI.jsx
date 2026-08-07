@@ -2,6 +2,8 @@
  * Shared Accounting UI primitives — matches Expenses / Commission page look
  * (StatCard-friendly panels, tinted badges, soft form shells — not plain white).
  */
+import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import usePageTheme from '../../hooks/usePageTheme';
 
 export const ACCT = {
@@ -296,3 +298,132 @@ export function TypeChip({ type, map }) {
     </span>
   );
 }
+
+export function MoneyText({ value, color, size = 14, weight = 700 }) {
+  return (
+    <span style={{ color: color || ACCT.primary, fontSize: size, fontWeight: weight, letterSpacing: '-0.02em', fontVariantNumeric: 'tabular-nums' }}>
+      {`Rs. ${Number(value || 0).toLocaleString('en-LK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+    </span>
+  );
+}
+
+export function ProgressRow({ label, value, max, color = ACCT.primary, format = (n) => n }) {
+  const { C } = usePageTheme();
+  const pct = max > 0 ? Math.min(100, (Math.abs(Number(value)) / max) * 100) : 0;
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+      <span style={{ fontSize: 13, color: C.label, minWidth: 88, fontWeight: 600 }}>{label}</span>
+      <div style={{ flex: 1, height: 8, background: C.isDark ? '#1E293B' : '#F1F5F9', borderRadius: 8, overflow: 'hidden' }}>
+        <div style={{
+          width: `${pct}%`, height: '100%', background: `linear-gradient(90deg, ${color}, ${color}CC)`,
+          borderRadius: 8, transition: 'width 0.45s ease',
+        }} />
+      </div>
+      <span style={{ fontWeight: 700, color, minWidth: 100, textAlign: 'right', fontSize: 13, fontVariantNumeric: 'tabular-nums' }}>
+        {format(value)}
+      </span>
+    </div>
+  );
+}
+
+export function QuickLink({ to, label, hint, color = ACCT.primary, icon }) {
+  const { C } = usePageTheme();
+  const [hov, setHov] = useState(false);
+  return (
+    <Link
+      to={to}
+      onMouseEnter={() => setHov(true)}
+      onMouseLeave={() => setHov(false)}
+      style={{
+        textDecoration: 'none',
+        display: 'flex', alignItems: 'center', gap: 12,
+        padding: '14px 16px',
+        borderRadius: 14,
+        border: `1.5px solid ${hov ? color : C.border}`,
+        background: hov
+          ? `linear-gradient(135deg, ${color}14 0%, ${color}06 100%)`
+          : C.cardBg,
+        boxShadow: hov ? `0 8px 20px ${color}22` : C.shadow,
+        transform: hov ? 'translateY(-2px)' : 'none',
+        transition: 'all 0.18s ease',
+      }}
+    >
+      <div style={{
+        width: 40, height: 40, borderRadius: 12, flexShrink: 0,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        background: `linear-gradient(135deg, ${color}22, ${color}10)`,
+        color, border: `1px solid ${color}28`,
+      }}>{icon}</div>
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontWeight: 800, color: C.text, fontSize: 13 }}>{label}</div>
+        {hint && <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>{hint}</div>}
+      </div>
+      <span style={{ marginLeft: 'auto', color, fontWeight: 800, fontSize: 16 }}>→</span>
+    </Link>
+  );
+}
+
+export function HeroBanner({ title, subtitle, accent = ACCT.primary, right, children }) {
+  const { C } = usePageTheme();
+  return (
+    <div style={{
+      marginBottom: 18,
+      padding: '18px 20px',
+      borderRadius: 16,
+      border: `1px solid ${C.border}`,
+      background: C.isDark
+        ? `linear-gradient(135deg, #1E293B 0%, #0F172A 60%, ${accent}22 100%)`
+        : `linear-gradient(135deg, #FFFFFF 0%, #F8FAFC 40%, ${accent}14 100%)`,
+      boxShadow: C.shadow,
+      display: 'flex', flexWrap: 'wrap', gap: 14, alignItems: 'center', justifyContent: 'space-between',
+    }}>
+      <div>
+        <div style={{
+          fontSize: 11, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase',
+          color: accent, marginBottom: 4,
+        }}>{title}</div>
+        {subtitle && <div style={{ fontSize: 15, fontWeight: 700, color: C.text }}>{subtitle}</div>}
+        {children}
+      </div>
+      {right}
+    </div>
+  );
+}
+
+export function SearchField({ value, onChange, placeholder = 'Search…' }) {
+  const { C } = usePageTheme();
+  return (
+    <div style={{ position: 'relative', flex: 1, minWidth: 180 }}>
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={C.muted} strokeWidth="2"
+        style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}>
+        <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+      </svg>
+      <input
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        style={{ ...inputStyle(C), width: '100%', paddingLeft: 36 }}
+      />
+    </div>
+  );
+}
+
+export function LoadingBlock({ rows = 4 }) {
+  const { C } = usePageTheme();
+  return (
+    <div style={{ display: 'grid', gap: 10 }}>
+      {Array.from({ length: rows }).map((_, i) => (
+        <div key={i} style={{
+          height: 52, borderRadius: 12, border: `1px solid ${C.border}`,
+          background: C.isDark
+            ? 'linear-gradient(90deg,#1E293B 25%,#334155 50%,#1E293B 75%)'
+            : 'linear-gradient(90deg,#F1F5F9 25%,#E2E8F0 50%,#F1F5F9 75%)',
+          backgroundSize: '200% 100%',
+          animation: 'acct-shimmer 1.2s ease infinite',
+        }} />
+      ))}
+      <style>{`@keyframes acct-shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }`}</style>
+    </div>
+  );
+}
+

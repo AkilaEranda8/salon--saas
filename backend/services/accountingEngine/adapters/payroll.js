@@ -38,9 +38,9 @@ async function postStaffAdvanceToGl(advance, { tenant, userId = null, transactio
 
   const amt = money(advance.amount);
   if (!(amt > 0)) return null;
-  const payroll = settings.default_payroll_account_id;
+  const advanceAcct = settings.default_advance_account_id || settings.default_payroll_account_id;
   const cash = settings.default_cash_account_id;
-  if (!payroll || !cash) return null;
+  if (!advanceAcct || !cash) return null;
 
   return postFromSource({
     tenantId: advance.tenant_id,
@@ -49,7 +49,7 @@ async function postStaffAdvanceToGl(advance, { tenant, userId = null, transactio
     date: advance.date,
     memo: `Staff advance #${advance.id}`,
     lines: [
-      { account_id: payroll, debit: amt, credit: 0, memo: 'Advance' },
+      { account_id: advanceAcct, debit: amt, credit: 0, memo: 'Staff advance receivable' },
       { account_id: cash, debit: 0, credit: amt, memo: 'Cash' },
     ],
     userId,

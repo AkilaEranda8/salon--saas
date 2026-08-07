@@ -267,24 +267,24 @@ class _AddApptSheetState extends State<_AddApptSheet> {
 
   Future<void> _loadCustomerPackages(String custId) async {
     if (custId.isEmpty) return;
-    setState(() {
-      _loadingPackages = true;
-      _customerPackages = [];
-      _selectedPkgId = '';
-      _selectedPkgName = '';
-    });
-    final app = AppStateScope.of(context);
-    final pkgs = await app.loadCustomerActivePackages(
-      custId,
-      redeemableOnly: true,
-    );
-    if (!mounted) return;
-    setState(() {
-      _customerPackages = pkgs;
-      _loadingPackages = false;
-    });
-    if (pkgs.isEmpty && (app.lastError ?? '').isNotEmpty) {
-      _snack(app.lastError!);
+    setState(() { _loadingPackages = true; _customerPackages = []; });
+    final app  = AppStateScope.of(context);
+    try {
+      final pkgs = await app.loadCustomerActivePackages(custId);
+      if (!mounted) return;
+      // Appointment picker: show redeemable/active packages first.
+      final usable = pkgs.where((p) {
+        final status = '${p['status'] ?? ''}'.toLowerCase();
+        if (status == 'expired' || status == 'completed') return false;
+        return true;
+      }).toList();
+      setState(() {
+        _customerPackages = usable.isNotEmpty ? usable : pkgs;
+        _loadingPackages = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() { _customerPackages = []; _loadingPackages = false; });
     }
   }
 
@@ -633,14 +633,7 @@ class _AddApptSheetState extends State<_AddApptSheet> {
                             'Name or phone', Icons.person_search_rounded),
                         onChanged: (v) {
                           _namCtrl.text = v;
-                          if (_custId.isNotEmpty) {
-                            setState(() {
-                              _custId = '';
-                              _customerPackages = [];
-                              _selectedPkgId = '';
-                              _selectedPkgName = '';
-                            });
-                          }
+                          _custId = '';
                           if (_registerMode || _registered) {
                             setState(() {
                               _registerMode = false;
@@ -817,7 +810,6 @@ class _AddApptSheetState extends State<_AddApptSheet> {
                             )
                           : DropdownButtonHideUnderline(
                               child: DropdownButton<String>(
-                                key: ValueKey('pkgs_${_customerPackages.length}_$_custId'),
                                 value: _selectedPkgId.isEmpty ? '' : _selectedPkgId,
                                 isExpanded: true,
                                 icon: const Icon(Icons.expand_more_rounded, color: _cMid, size: 20),
@@ -826,7 +818,7 @@ class _AddApptSheetState extends State<_AddApptSheet> {
                                     value: '',
                                     child: Text(
                                       _customerPackages.isEmpty
-                                          ? 'No redeemable packages'
+                                          ? 'No active packages'
                                           : 'No package / normal appointment',
                                       style: TextStyle(
                                         fontSize: 13,
@@ -837,9 +829,7 @@ class _AddApptSheetState extends State<_AddApptSheet> {
                                     ),
                                   ),
                                   ..._customerPackages.map((pkg) {
-                                    final pkgData = pkg['package'] is Map
-                                        ? Map<String, dynamic>.from(pkg['package'] as Map)
-                                        : <String, dynamic>{};
+                                    final pkgData = pkg['package'] as Map? ?? {};
                                     final name    = '${pkgData['name'] ?? 'Package'}';
                                     final rem     = pkg['sessions_remaining'];
                                     final label   = rem == null ? 'Unlimited' : '$rem left';
@@ -854,43 +844,16 @@ class _AddApptSheetState extends State<_AddApptSheet> {
                                 onChanged: _customerPackages.isEmpty ? null : (val) {
                                   final sel = _customerPackages.firstWhere(
                                     (p) => '${p['id']}' == val,
-                                    orElse: () => <String, dynamic>{},
+                                    orElse: () => {},
                                   );
                                   setState(() {
                                     _selectedPkgId = val ?? '';
                                     if (sel.isNotEmpty) {
-                                      final pkgData = sel['package'] is Map
-                                          ? Map<String, dynamic>.from(sel['package'] as Map)
-                                          : <String, dynamic>{};
+                                      final pkgData = sel['package'] as Map? ?? {};
                                       _selectedPkgName = '${pkgData['name'] ?? ''}';
                                       final price = pkgData['package_price'];
                                       if (price != null) {
                                         _amtCtrl.text = '$price';
-                                      }
-                                      // Preselect package services when available
-                                      final svcIds = pkgData['services'];
-                                      if (svcIds is List && svcIds.isNotEmpty) {
-                                        final ids = svcIds
-                                            .map((e) => '$e')
-                                            .where((id) => id.isNotEmpty && id != 'null')
-                                            .toList();
-                                        if (ids.isNotEmpty) {
-                                          _primaryServiceId = ids.first;
-                                          _extraServiceIds
-                                            ..clear()
-                                            ..addAll(ids.skip(1).where(
-                                              (id) => _services.any((s) => s.id == id && s.isActive),
-                                            ));
-                                          // Keep only active services for primary
-                                          if (!_services.any((s) => s.id == _primaryServiceId && s.isActive)) {
-                                            final activeId = ids.firstWhere(
-                                              (id) => _services.any((s) => s.id == id && s.isActive),
-                                              orElse: () => '',
-                                            );
-                                            _primaryServiceId = activeId.isEmpty ? null : activeId;
-                                          }
-                                          _syncAssignments();
-                                        }
                                       }
                                     } else {
                                       _selectedPkgName = '';

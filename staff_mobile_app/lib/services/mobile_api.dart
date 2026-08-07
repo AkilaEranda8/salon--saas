@@ -255,73 +255,32 @@ class MobileApi {
     return Customer.fromJson(body);
   }
 
-  /// Sold packages for a customer (payment + booking).
-  /// Tries full list first (web parity), then `/active`.
+  /// GET /api/packages/customer/:id — sold packages (fallback: /active).
   Future<List<Map<String, dynamic>>> fetchActivePackages({
     required String token,
     required String customerId,
-    bool redeemableOnly = false,
   }) async {
-    List<Map<String, dynamic>> parse(dynamic body) {
-      final List<dynamic> list = body is List
-          ? List<dynamic>.from(body)
-          : List<dynamic>.from((body as Map?)?['data'] as List? ?? const []);
-      return list
-          .whereType<Map>()
-          .map((e) => Map<String, dynamic>.from(e))
-          .toList();
-    }
-
-    final id = customerId.trim();
-    if (id.isEmpty) return const [];
+    List<Map<String, dynamic>> asMaps(List<dynamic> list) => list
+        .whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
 
     // Prefer full customer package list (matches web), then active-only.
+    // IMPORTANT: these endpoints return a JSON array — use _decodeList, not _decode.
     final primary = await http.get(
-      Uri.parse('$baseUrl/api/packages/customer/$id'),
+      Uri.parse('$baseUrl/api/packages/customer/$customerId'),
       headers: _authHeaders(token),
     );
-    List<Map<String, dynamic>> rows = const [];
     if (primary.statusCode < 400) {
-      rows = parse(_decode(primary.body));
-    } else {
-      final fallback = await http.get(
-        Uri.parse('$baseUrl/api/packages/customer/$id/active'),
-        headers: _authHeaders(token),
-      );
-      if (fallback.statusCode >= 400) {
-        throw Exception(
-          (_decode(fallback.body) as Map?)?['message'] ??
-              (_decode(primary.body) as Map?)?['message'] ??
-              'Packages load failed (${primary.statusCode})',
-        );
-      }
-      rows = parse(_decode(fallback.body));
+      return asMaps(_decodeList(primary.body));
     }
 
-    if (!redeemableOnly) return rows;
-    // Keep only packages that can be used for booking/payment now.
-    return rows.where((cp) {
-      final status = '${cp['status'] ?? ''}'.toLowerCase();
-      if (status == 'expired' || status == 'completed') return false;
-      if (status.isNotEmpty && status != 'active') return false;
-      final expiry = '${cp['expiry_date'] ?? ''}'.trim();
-      if (expiry.isNotEmpty) {
-        final day = expiry.length >= 10 ? expiry.substring(0, 10) : expiry;
-        final now = DateTime.now();
-        final today =
-            '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
-        if (day.compareTo(today) < 0) return false;
-      }
-      final total = num.tryParse('${cp['sessions_total'] ?? 0}') ?? 0;
-      final used = num.tryParse('${cp['sessions_used'] ?? 0}') ?? 0;
-      if (total > 0 && used >= total) return false;
-      final pkg = cp['package'];
-      if (pkg is! Map) return false;
-      final services = pkg['services'];
-      if (services is List) return services.isNotEmpty;
-      if (services is String) return services.trim().isNotEmpty;
-      return false;
-    }).toList();
+    final fallback = await http.get(
+      Uri.parse('$baseUrl/api/packages/customer/$customerId/active'),
+      headers: _authHeaders(token),
+    );
+    if (fallback.statusCode >= 400) return const [];
+    return asMaps(_decodeList(fallback.body));
   }
 
   Future<List<SalonService>> fetchServices({required String token}) async {

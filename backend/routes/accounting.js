@@ -36,7 +36,7 @@ router.post('/periods/:id/close', ...adm, ctrl.closePeriod);
 router.post('/periods/:id/reopen', ...adm, ctrl.reopenPeriod);
 
 router.get('/bank-accounts', ...mgr, ctrl.listBankAccounts);
-router.post('/bank-accounts', ...adm, ctrl.createBankAccount);
+router.post('/bank-accounts', ...mgr, ctrl.createBankAccount);
 router.get('/bank-txns', ...mgr, ctrl.listBankTxns);
 router.post('/bank-txns', ...mgr, ctrl.createBankTxn);
 

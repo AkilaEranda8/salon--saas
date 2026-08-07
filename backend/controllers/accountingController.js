@@ -405,16 +405,33 @@ const listBankAccounts = async (req, res) => {
 const createBankAccount = async (req, res) => {
   try {
     const tenantId = await ensure(req);
-    const { name, account_number, bank_name, gl_account_id, is_cash, opening_balance } = req.body || {};
-    if (!name || !gl_account_id) {
-      return res.status(400).json({ message: 'name and gl_account_id required.' });
+    const {
+      name, account_number, bank_name, gl_account_id, is_cash, opening_balance,
+    } = req.body || {};
+    if (!name || !String(name).trim()) {
+      return res.status(400).json({ message: 'Account name is required.' });
     }
+
+    let glId = gl_account_id ? Number(gl_account_id) : null;
+    if (!glId) {
+      const settings = await engine.getSettings(tenantId);
+      glId = is_cash
+        ? settings?.default_cash_account_id
+        : settings?.default_bank_account_id;
+    }
+    if (!glId) {
+      return res.status(400).json({ message: 'Select a GL account (or open books so defaults exist).' });
+    }
+
+    const gl = await AcctAccount.findOne({ where: { id: glId, tenant_id: tenantId } });
+    if (!gl) return res.status(400).json({ message: 'GL account not found.' });
+
     const row = await AcctBankAccount.create({
       tenant_id: tenantId,
-      name,
+      name: String(name).trim(),
       account_number: account_number || null,
       bank_name: bank_name || null,
-      gl_account_id,
+      gl_account_id: glId,
       is_cash: !!is_cash,
       opening_balance: money(opening_balance),
       is_active: true,

@@ -4,6 +4,10 @@ import api from '../../api/axios';
 import AccountingLayout, { formatLkr } from './AccountingLayout';
 import usePageTheme from '../../hooks/usePageTheme';
 import Button from '../../components/ui/Button';
+import {
+  FormShell, ListRow, ListShell, SegmentTabs, StatusPill, inputStyle, ACCT,
+} from './AccountingUI';
+import { StatCard, IconDollar, IconUsers, IconPlus } from '../../components/ui/PageKit';
 
 export default function AccountingArApPage() {
   const { C } = usePageTheme();
@@ -62,41 +66,61 @@ export default function AccountingArApPage() {
   };
 
   const rows = tab === 'ar' ? ar : ap;
+  const openAmt = rows.filter((r) => r.status === 'open').reduce((s, r) => s + Number(r.amount || 0), 0);
+  const openCount = rows.filter((r) => r.status === 'open').length;
 
   return (
     <AccountingLayout title="AR / AP">
-      <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-        <button type="button" onClick={() => setTab('ar')} style={tabBtn(C, tab === 'ar')}>Receivable</button>
-        <button type="button" onClick={() => setTab('ap')} style={tabBtn(C, tab === 'ap')}>Payable</button>
+      <SegmentTabs
+        value={tab}
+        onChange={setTab}
+        tabs={[
+          { key: 'ar', label: 'Receivable (AR)', color: ACCT.warning },
+          { key: 'ap', label: 'Payable (AP)', color: ACCT.danger },
+        ]}
+      />
+
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
+        <StatCard
+          label={tab === 'ar' ? 'Open AR' : 'Open AP'}
+          value={formatLkr(openAmt)}
+          color={tab === 'ar' ? ACCT.warning : ACCT.danger}
+          icon={<IconDollar />}
+        />
+        <StatCard label="Open docs" value={openCount} color={ACCT.primary} icon={<IconUsers />} />
+        <StatCard label="Total docs" value={rows.length} color={ACCT.slate} icon={<IconUsers />} />
       </div>
-      <form onSubmit={create} style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
-        <input placeholder={tab === 'ar' ? 'Customer' : 'Supplier'} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} style={inp(C)} />
-        <input placeholder="Doc no" value={form.no} onChange={(e) => setForm({ ...form, no: e.target.value })} style={inp(C)} />
-        <input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} style={inp(C)} />
-        <input type="number" step="0.01" placeholder="Amount" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} style={inp(C)} />
-        <Button type="submit">Add</Button>
-      </form>
-      <div style={{ background: C.cardBg, border: `1px solid ${C.border}`, borderRadius: 12 }}>
+
+      <FormShell title={tab === 'ar' ? 'New customer invoice' : 'New supplier bill'} accent={tab === 'ar' ? ACCT.warning : ACCT.danger}>
+        <form onSubmit={create} style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'end' }}>
+          <input placeholder={tab === 'ar' ? 'Customer name' : 'Supplier name'} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} style={{ ...inputStyle(C), minWidth: 160 }} required />
+          <input placeholder="Doc no (optional)" value={form.no} onChange={(e) => setForm({ ...form, no: e.target.value })} style={inputStyle(C)} />
+          <input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} style={inputStyle(C)} />
+          <input type="number" step="0.01" placeholder="Amount" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} style={inputStyle(C)} required />
+          <Button type="submit" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><IconPlus /> Add</Button>
+        </form>
+      </FormShell>
+
+      <ListShell empty="No documents" emptySub="Add an invoice or bill above">
         {rows.map((r) => (
-          <div key={r.id} style={{ padding: 12, borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <ListRow key={r.id}>
             <div>
-              <div style={{ fontWeight: 700, color: C.text }}>
+              <div style={{ fontWeight: 700, color: '#101828', fontSize: 14 }}>
                 {tab === 'ar' ? r.invoice_no : r.bill_no} · {tab === 'ar' ? r.customer_name : r.supplier_name}
               </div>
-              <div style={{ fontSize: 12, color: C.muted }}>{r.date} · {formatLkr(r.amount)} · {r.status}</div>
+              <div style={{ fontSize: 12, color: '#98A2B3', marginTop: 2 }}>
+                {r.date} · <span style={{ fontWeight: 700, color: tab === 'ar' ? ACCT.warning : ACCT.danger }}>{formatLkr(r.amount)}</span>
+              </div>
             </div>
-            {r.status === 'open' && <Button variant="secondary" onClick={() => settle(r.id)}>Mark paid</Button>}
-          </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <StatusPill status={r.status} />
+              {r.status === 'open' && (
+                <Button variant="secondary" onClick={() => settle(r.id)} style={{ fontSize: 12 }}>Mark paid</Button>
+              )}
+            </div>
+          </ListRow>
         ))}
-        {!rows.length && <div style={{ padding: 16, color: C.muted }}>No documents.</div>}
-      </div>
+      </ListShell>
     </AccountingLayout>
   );
-}
-
-function tabBtn(C, on) {
-  return { padding: '6px 12px', borderRadius: 8, border: `1px solid ${C.border}`, background: on ? '#2563EB' : C.cardBg, color: on ? '#fff' : C.text, fontWeight: 600, cursor: 'pointer' };
-}
-function inp(C) {
-  return { padding: '8px 10px', borderRadius: 8, border: `1px solid ${C.border}`, background: C.isDark ? '#0F172A' : '#fff', color: C.text };
 }

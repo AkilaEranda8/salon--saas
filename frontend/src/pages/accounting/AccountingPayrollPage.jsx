@@ -2,10 +2,10 @@ import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
 import api from '../../api/axios';
 import AccountingLayout, { formatLkr } from './AccountingLayout';
-import usePageTheme from '../../hooks/usePageTheme';
+import { ListRow, ListShell, SectionTitle, StatusPill, ACCT } from './AccountingUI';
+import { StatCard, IconDollar, IconUsers, IconReceipt } from '../../components/ui/PageKit';
 
 export default function AccountingPayrollPage() {
-  const { C } = usePageTheme();
   const [data, setData] = useState({ payouts: [], advances: [] });
 
   useEffect(() => {
@@ -19,28 +19,53 @@ export default function AccountingPayrollPage() {
     })();
   }, []);
 
+  const payoutTotal = (data.payouts || []).reduce((s, r) => s + Number(r.amount || 0), 0);
+  const advanceTotal = (data.advances || []).reduce((s, r) => s + Number(r.amount || 0), 0);
+  const glPosted = [...(data.payouts || []), ...(data.advances || [])].filter((r) => r.gl_posted).length;
+
   return (
     <AccountingLayout title="Payroll">
-      <h3 style={{ color: C.text }}>Commission payouts</h3>
-      <List C={C} rows={data.payouts} label={(r) => `${r.date} · ${formatLkr(r.amount)} · staff #${r.staff_id}`} />
-      <h3 style={{ color: C.text, marginTop: 16 }}>Staff advances</h3>
-      <List C={C} rows={data.advances} label={(r) => `${r.date} · ${formatLkr(r.amount)} · ${r.status}`} />
-    </AccountingLayout>
-  );
-}
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
+        <StatCard label="Commission payouts" value={formatLkr(payoutTotal)} color={ACCT.warning} icon={<IconDollar />} />
+        <StatCard label="Advances" value={formatLkr(advanceTotal)} color={ACCT.purple} icon={<IconUsers />} />
+        <StatCard label="GL posted" value={glPosted} color={ACCT.success} icon={<IconReceipt />} />
+      </div>
 
-function List({ C, rows, label }) {
-  return (
-    <div style={{ background: C.cardBg, border: `1px solid ${C.border}`, borderRadius: 12 }}>
-      {(rows || []).map((r) => (
-        <div key={r.id} style={{ padding: 12, borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between' }}>
-          <span style={{ color: C.text }}>{label(r)}</span>
-          <span style={{ fontSize: 12, fontWeight: 700, color: r.gl_posted ? '#059669' : '#D97706' }}>
-            {r.gl_posted ? 'GL posted' : 'Not in GL'}
-          </span>
-        </div>
-      ))}
-      {!rows?.length && <div style={{ padding: 16, color: C.muted }}>None.</div>}
-    </div>
+      <SectionTitle color={ACCT.warning}>Commission payouts</SectionTitle>
+      <ListShell empty="No payouts" emptySub="Payouts from Commission page appear here">
+        {(data.payouts || []).map((r) => (
+          <ListRow key={r.id}>
+            <div>
+              <div style={{ fontWeight: 700, color: '#101828' }}>
+                {r.date} · <span style={{ color: ACCT.warning }}>{formatLkr(r.amount)}</span>
+              </div>
+              <div style={{ fontSize: 12, color: '#98A2B3', marginTop: 2 }}>Staff #{r.staff_id}</div>
+            </div>
+            <StatusPill status={r.gl_posted ? 'posted' : 'pending'}>
+              {r.gl_posted ? 'GL posted' : 'Not in GL'}
+            </StatusPill>
+          </ListRow>
+        ))}
+      </ListShell>
+
+      <div style={{ marginTop: 18 }}>
+        <SectionTitle color={ACCT.purple}>Staff advances</SectionTitle>
+        <ListShell empty="No advances" emptySub="Advances from Advances page appear here">
+          {(data.advances || []).map((r) => (
+            <ListRow key={r.id}>
+              <div>
+                <div style={{ fontWeight: 700, color: '#101828' }}>
+                  {r.date} · <span style={{ color: ACCT.purple }}>{formatLkr(r.amount)}</span>
+                </div>
+                <div style={{ fontSize: 12, color: '#98A2B3', marginTop: 2 }}>{r.status}</div>
+              </div>
+              <StatusPill status={r.gl_posted ? 'posted' : 'pending'}>
+                {r.gl_posted ? 'GL posted' : 'Not in GL'}
+              </StatusPill>
+            </ListRow>
+          ))}
+        </ListShell>
+      </div>
+    </AccountingLayout>
   );
 }

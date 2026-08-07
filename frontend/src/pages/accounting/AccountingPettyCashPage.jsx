@@ -4,6 +4,10 @@ import api from '../../api/axios';
 import AccountingLayout, { formatLkr } from './AccountingLayout';
 import usePageTheme from '../../hooks/usePageTheme';
 import Button from '../../components/ui/Button';
+import {
+  FormShell, ListRow, ListShell, StatusPill, inputStyle, ACCT, SectionTitle,
+} from './AccountingUI';
+import { StatCard, IconDollar, IconPlus } from '../../components/ui/PageKit';
 
 export default function AccountingPettyCashPage() {
   const { C } = usePageTheme();
@@ -36,31 +40,44 @@ export default function AccountingPettyCashPage() {
     }
   };
 
+  const expenses = rows.filter((r) => r.type === 'expense').reduce((s, r) => s + Number(r.amount || 0), 0);
+
   return (
     <AccountingLayout title="Petty Cash">
-      <div style={{ fontSize: 22, fontWeight: 800, color: C.text, marginBottom: 14 }}>Float: {formatLkr(balance)}</div>
-      <form onSubmit={submit} style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
-        <select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })} style={inp(C)}>
-          <option value="float_in">Float in</option>
-          <option value="float_out">Float out</option>
-          <option value="expense">Expense</option>
-        </select>
-        <input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} style={inp(C)} />
-        <input type="number" step="0.01" placeholder="Amount" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} style={inp(C)} />
-        <input placeholder="Memo" value={form.memo} onChange={(e) => setForm({ ...form, memo: e.target.value })} style={inp(C)} />
-        <Button type="submit">Add</Button>
-      </form>
-      <div style={{ background: C.cardBg, border: `1px solid ${C.border}`, borderRadius: 12 }}>
-        {rows.map((r) => (
-          <div key={r.id} style={{ padding: 12, borderBottom: `1px solid ${C.border}`, color: C.text }}>
-            {r.date} · {r.type} · {formatLkr(r.amount)} · {r.memo || '—'}
-          </div>
-        ))}
-        {!rows.length && <div style={{ padding: 16, color: C.muted }}>No petty cash entries.</div>}
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
+        <StatCard label="Float balance" value={formatLkr(balance)} color="#EA580C" icon={<IconDollar />} />
+        <StatCard label="Entries" value={rows.length} color={ACCT.primary} icon={<IconDollar />} />
+        <StatCard label="Expense total" value={formatLkr(expenses)} color={ACCT.danger} icon={<IconDollar />} />
       </div>
+
+      <FormShell title="Record petty cash movement" accent="#EA580C">
+        <form onSubmit={submit} style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'end' }}>
+          <select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })} style={inputStyle(C)}>
+            <option value="float_in">Float in</option>
+            <option value="float_out">Float out</option>
+            <option value="expense">Expense</option>
+          </select>
+          <input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} style={inputStyle(C)} />
+          <input type="number" step="0.01" placeholder="Amount" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} style={inputStyle(C)} />
+          <input placeholder="Memo" value={form.memo} onChange={(e) => setForm({ ...form, memo: e.target.value })} style={{ ...inputStyle(C), minWidth: 140 }} />
+          <Button type="submit" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><IconPlus /> Add</Button>
+        </form>
+      </FormShell>
+
+      <SectionTitle color="#EA580C">Petty cash log</SectionTitle>
+      <ListShell empty="No petty cash entries" emptySub="Add a float or expense above">
+        {rows.map((r) => (
+          <ListRow key={r.id}>
+            <div>
+              <div style={{ fontWeight: 700, color: '#101828' }}>
+                {r.date} · <span style={{ color: r.type === 'expense' ? ACCT.danger : ACCT.success }}>{formatLkr(r.amount)}</span>
+              </div>
+              <div style={{ fontSize: 12, color: '#98A2B3', marginTop: 2 }}>{r.memo || '—'}</div>
+            </div>
+            <StatusPill status={r.type} />
+          </ListRow>
+        ))}
+      </ListShell>
     </AccountingLayout>
   );
-}
-function inp(C) {
-  return { padding: '8px 10px', borderRadius: 8, border: `1px solid ${C.border}`, background: C.isDark ? '#0F172A' : '#fff', color: C.text };
 }

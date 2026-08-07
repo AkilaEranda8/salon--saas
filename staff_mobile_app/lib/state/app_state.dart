@@ -876,6 +876,7 @@ class AppState extends ChangeNotifier {
     required String paidAmount,
     String? discountId,
     String? walkinToken,
+    String? customerPackageId,
     bool isRecurring = false,
     String? recurringNextDate,
     String? appointmentTime,
@@ -904,6 +905,7 @@ class AppState extends ChangeNotifier {
         paidAmount: paidAmount,
         discountId: discountId,
         walkinToken: walkinToken,
+        customerPackageId: customerPackageId,
         isRecurring: isRecurring,
         recurringNextDate: recurringNextDate,
         appointmentTime: appointmentTime,
@@ -1343,6 +1345,7 @@ class AppState extends ChangeNotifier {
     String promoDiscount = '0',
     String? discountId,
     String? phone,
+    String? customerPackageId,
     bool isRecurring = false,
     String? recurringNextDate,
     String? appointmentTime,
@@ -1414,7 +1417,15 @@ class AppState extends ChangeNotifier {
         if (appointment.advanceSplits.isEmpty && advancePaid > 0) {
           pushSplit('Cash', advancePaid);
         }
-        if (collectNow > 0) pushSplit(method, collectNow);
+        if (collectNow > 0) {
+          final pkgId = (customerPackageId != null &&
+                  customerPackageId.trim().isNotEmpty &&
+                  method == 'Package')
+              ? (int.tryParse(customerPackageId.trim()) ??
+                  customerPackageId.trim())
+              : null;
+          pushSplit(method, collectNow, packageId: pkgId);
+        }
         splitsPayload = merged.values.toList();
         if (splitsPayload.isEmpty) {
           _lastError = 'Nothing to collect.';
@@ -1423,6 +1434,13 @@ class AppState extends ChangeNotifier {
       } else if (collectNow <= 0 && method != 'Package') {
         _lastError = 'Enter a valid amount.';
         return false;
+      } else {
+        // Normal collect — include package id when redeeming a customer package.
+        final pkgId = (customerPackageId != null && customerPackageId.trim().isNotEmpty)
+            ? (int.tryParse(customerPackageId.trim()) ?? customerPackageId.trim())
+            : null;
+        pushSplit(method, collectNow > 0 ? collectNow : 0, packageId: pkgId);
+        splitsPayload = merged.values.toList();
       }
 
       final resolvedStaffId = (staffId != null && staffId.trim().isNotEmpty)

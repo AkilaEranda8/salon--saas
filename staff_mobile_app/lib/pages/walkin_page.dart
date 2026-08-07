@@ -455,6 +455,7 @@ class _WalkInPageState extends State<WalkInPage> {
     final payload = await AddWalkInPaymentModal.show(
       context,
       customerName: e.customerName,
+      customerId: e.customerId,
       serviceName: e.serviceName,
       initialAmount: initialPay,
       services: _services,
@@ -475,6 +476,7 @@ class _WalkInPageState extends State<WalkInPage> {
       serviceIds:     payIds.length > 1 ? payIds : null,
       staffId:        payload.staffId.isEmpty ? null : payload.staffId,
       helpers:        payload.helpers.isEmpty ? null : payload.helpers,
+      customerId:     e.customerId.isEmpty ? null : e.customerId,
       customerName:   e.customerName,
       phone:          e.phone.trim().isEmpty ? null : e.phone.trim(),
       walkinToken:    e.token.trim().isEmpty ? null : e.token.trim(),
@@ -485,6 +487,9 @@ class _WalkInPageState extends State<WalkInPage> {
       paidAmount:     payload.amount,
       discountId:
           payload.discountId.isNotEmpty ? payload.discountId : null,
+      customerPackageId: payload.customerPackageId.isEmpty
+          ? null
+          : payload.customerPackageId,
       isRecurring: payload.isRecurring,
       recurringNextDate: payload.isRecurring ? payload.recurringNextDate : null,
       appointmentTime: payload.isRecurring ? payload.appointmentTime : null,

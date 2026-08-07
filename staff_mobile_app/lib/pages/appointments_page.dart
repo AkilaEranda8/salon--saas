@@ -11,6 +11,7 @@ import '../models/staff_user.dart';
 import '../services/mobile_api.dart';
 import '../state/app_state.dart';
 import '../utils/appointment_notes.dart';
+import '../utils/package_helpers.dart';
 import '../widgets/payment_helper_staff_section.dart';
 import '../widgets/recurring_booking_section.dart';
 import '../widgets/walk_in_service_dropdown_section.dart';
@@ -447,6 +448,8 @@ class _ApptState extends State<AppointmentsPage> with SingleTickerProviderStateM
       appointmentTime: result.isRecurring ? result.appointmentTime : null,
       recurringMessageTemplateIds:
           result.isRecurring ? result.recurringMessageTemplateIds : null,
+      customerPackageId:
+          result.customerPackageId.isEmpty ? null : result.customerPackageId,
     );
     if (!mounted) return;
     if (!success) { _toast(app.lastError ?? 'Payment failed'); return; }
@@ -1677,6 +1680,7 @@ class _PayResult {
     this.recurringMessageTemplateIds = const [],
     this.staffId = '',
     this.helpers = const [],
+    this.customerPackageId = '',
   });
   /// Net collected (after promo).
   final String amount;
@@ -1692,6 +1696,7 @@ class _PayResult {
   final List<String> recurringMessageTemplateIds;
   final String staffId;
   final List<Map<String, dynamic>> helpers;
+  final String customerPackageId;
 }
 
 class _PaySheet extends StatefulWidget {
@@ -1753,6 +1758,9 @@ class _PaySheetState extends State<_PaySheet> {
   List<String> _recurringTemplateIds = [];
   List<RecurringTemplateOption> _recurringTemplates = const [];
   bool _loadingTemplates = false;
+  List<Map<String, dynamic>> _customerPackages = [];
+  bool _loadingPackages = false;
+  String _selectedPackageId = '';
 
   @override
   void initState() {
@@ -1776,6 +1784,73 @@ class _PaySheetState extends State<_PaySheet> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _recalc();
       if (widget.recurringAllowed) _loadRecurringTemplates();
+      if (a.customerId.trim().isNotEmpty) _loadCustomerPackages(a.customerId);
+    });
+  }
+
+  Future<void> _loadCustomerPackages(String custId) async {
+    final api = widget.mobileApi;
+    if (api == null || widget.token.isEmpty || custId.trim().isEmpty) return;
+    setState(() {
+      _loadingPackages = true;
+      _customerPackages = [];
+      _selectedPackageId = '';
+    });
+    try {
+      final rows = await api.fetchActivePackages(
+        token: widget.token,
+        customerId: custId.trim(),
+      );
+      if (!mounted) return;
+      setState(() {
+        _customerPackages = rows;
+        _loadingPackages = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _customerPackages = [];
+        _loadingPackages = false;
+      });
+    }
+  }
+
+  void _applyPackage(String packageId) {
+    if (packageId.isEmpty) {
+      setState(() {
+        _selectedPackageId = '';
+        if (_method == 'Package') _method = 'Cash';
+      });
+      _recalc();
+      return;
+    }
+    Map<String, dynamic>? cp;
+    for (final p in _customerPackages) {
+      if ('${p['id']}' == packageId) {
+        cp = p;
+        break;
+      }
+    }
+    if (cp == null || !packageCanRedeemNow(cp)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('This package cannot be used right now.')),
+      );
+      return;
+    }
+    final ids = resolvePackageServiceIds(cp, widget.services);
+    final bundle = getPackageBundlePrice(cp);
+    setState(() {
+      _selectedPackageId = packageId;
+      _method = 'Package';
+      _discountId = '';
+      if (ids.isNotEmpty) {
+        _primaryServiceId = ids.first;
+        _extraServiceIds
+          ..clear()
+          ..addAll(ids.skip(1));
+      }
+      _calcTotal = bundle > 0 ? bundle.toStringAsFixed(0) : '0';
+      _amtCtrl.text = _calcTotal;
     });
   }
 
@@ -1887,6 +1962,12 @@ class _PaySheetState extends State<_PaySheet> {
       );
       return;
     }
+    if (_method == 'Package' && _selectedPackageId.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Select a customer package for Package payment')),
+      );
+      return;
+    }
     if (_mainStaffId.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Select main staff')),
@@ -1916,6 +1997,7 @@ class _PaySheetState extends State<_PaySheet> {
       recurringMessageTemplateIds: List<String>.from(_recurringTemplateIds),
       staffId: _mainStaffId.trim(),
       helpers: helpersApiPayload(_helpers),
+      customerPackageId: _selectedPackageId.trim(),
     ));
   }
 
@@ -2254,6 +2336,81 @@ class _PaySheetState extends State<_PaySheet> {
 
             const SizedBox(height: 14),
 
+            if (widget.appointment.customerId.trim().isNotEmpty) ...[
+              _label('CUSTOMER PACKAGE'),
+              if (_loadingPackages)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 10),
+                  child: Row(children: [
+                    SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: _pGreen,
+                      ),
+                    ),
+                    SizedBox(width: 10),
+                    Text(
+                      'Loading packages…',
+                      style: TextStyle(fontSize: 13, color: Color(0xFF9CA3AF)),
+                    ),
+                  ]),
+                )
+              else
+                DropdownButtonFormField<String>(
+                  initialValue:
+                      _selectedPackageId.isEmpty ? '' : _selectedPackageId,
+                  isExpanded: true,
+                  decoration: _deco(
+                    _customerPackages.isEmpty
+                        ? 'No packages for this customer'
+                        : 'Select package (optional)',
+                    Icons.card_giftcard_rounded,
+                  ),
+                  items: [
+                    DropdownMenuItem(
+                      value: '',
+                      child: Text(
+                        _customerPackages.isEmpty
+                            ? 'No active packages'
+                            : 'No package — pay normally',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: _customerPackages.isEmpty
+                              ? const Color(0xFFD1D5DB)
+                              : const Color(0xFF6B7280),
+                        ),
+                      ),
+                    ),
+                    ..._customerPackages.map((pkg) {
+                      final id = '${pkg['id']}';
+                      final can = packageCanRedeemNow(pkg);
+                      return DropdownMenuItem<String>(
+                        value: id,
+                        enabled: can,
+                        child: Text(
+                          can
+                              ? formatCustomerPackageLabel(pkg)
+                              : '${formatCustomerPackageLabel(pkg)} — unavailable',
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: can
+                                ? const Color(0xFF111827)
+                                : const Color(0xFF9CA3AF),
+                          ),
+                        ),
+                      );
+                    }),
+                  ],
+                  onChanged: _customerPackages.isEmpty
+                      ? null
+                      : (v) => _applyPackage(v ?? ''),
+                ),
+              const SizedBox(height: 14),
+            ],
+
             // ── Payment method ─────────────────────────────────────────
             _label('PAYMENT METHOD'),
             Wrap(
@@ -2262,7 +2419,28 @@ class _PaySheetState extends State<_PaySheet> {
               children: _methods.map((m) {
                 final sel = _method == m;
                 return GestureDetector(
-                  onTap: () => setState(() => _method = m),
+                  onTap: () {
+                    if (m == 'Package' && _selectedPackageId.isEmpty) {
+                      for (final p in _customerPackages) {
+                        if (packageCanRedeemNow(p)) {
+                          _applyPackage('${p['id']}');
+                          return;
+                        }
+                      }
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text(
+                            'No redeemable packages for this customer',
+                          ),
+                        ),
+                      );
+                      return;
+                    }
+                    setState(() {
+                      _method = m;
+                      if (m != 'Package') _selectedPackageId = '';
+                    });
+                  },
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 130),
                     padding: const EdgeInsets.symmetric(

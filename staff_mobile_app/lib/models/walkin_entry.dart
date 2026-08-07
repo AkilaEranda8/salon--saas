@@ -12,6 +12,7 @@ class WalkInEntry {
     required this.staffName,
     required this.estimatedWait,
     required this.note,
+    this.customerId = '',
     this.totalAmount = 0,
     this.walkInServicesPayload,
     this.createdAt,
@@ -29,6 +30,8 @@ class WalkInEntry {
   final String staffName;
   final int estimatedWait;
   final String note;
+  /// Linked CRM customer when check-in selected an existing client.
+  final String customerId;
   /// Sum of selected services (from API `total_amount`).
   final double totalAmount;
 
@@ -80,6 +83,9 @@ class WalkInEntry {
   factory WalkInEntry.fromJson(Map<String, dynamic> json) {
     final service = json['service'] is Map ? Map<String, dynamic>.from(json['service']) : const <String, dynamic>{};
     final staff = json['staff'] is Map ? Map<String, dynamic>.from(json['staff']) : const <String, dynamic>{};
+    final customerMap = json['customer'] is Map
+        ? Map<String, dynamic>.from(json['customer'])
+        : const <String, dynamic>{};
     final rawTotal = json['total_amount'];
     final total = rawTotal is num
         ? rawTotal.toDouble()
@@ -127,6 +133,7 @@ class WalkInEntry {
       staffName: '${staff['name'] ?? ''}',
       estimatedWait: int.tryParse('${json['estimated_wait'] ?? 0}') ?? 0,
       note: '${json['note'] ?? ''}',
+      customerId: '${json['customer_id'] ?? customerMap['id'] ?? ''}',
       totalAmount: total,
       walkInServicesPayload: linesPayload,
       createdAt: created,
@@ -146,6 +153,7 @@ class WalkInEntry {
       'staff_id': staffId.isEmpty ? null : (sid ?? staffId),
       'estimated_wait': estimatedWait,
       'note': note,
+      'customer_id': customerId.isEmpty ? null : (int.tryParse(customerId) ?? customerId),
       'total_amount': totalAmount,
       'service': {
         'id': int.tryParse(serviceId) ?? serviceId,

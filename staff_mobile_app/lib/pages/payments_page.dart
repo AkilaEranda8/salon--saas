@@ -199,6 +199,8 @@ class _PaymentsPageState extends State<PaymentsPage> {
       method:         payload.method,
       paidAmount:     payload.paidAmount,
       discountId:     payload.discountId.isEmpty ? null : payload.discountId,
+      customerPackageId:
+          payload.customerPackageId.isEmpty ? null : payload.customerPackageId,
       isRecurring:    payload.isRecurring,
       recurringNextDate: payload.isRecurring ? payload.recurringNextDate : null,
       appointmentTime: payload.isRecurring ? payload.appointmentTime : null,

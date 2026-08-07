@@ -255,24 +255,36 @@ class MobileApi {
     return Customer.fromJson(body);
   }
 
-  /// GET /api/packages/customer/:id/active — active packages for a customer.
+  /// GET /api/packages/customer/:id — sold packages for payment (fallback: /active).
   Future<List<Map<String, dynamic>>> fetchActivePackages({
     required String token,
     required String customerId,
   }) async {
-    final response = await http.get(
+    Future<List<Map<String, dynamic>>> parse(dynamic body) async {
+      final List<dynamic> list = body is List
+          ? List<dynamic>.from(body)
+          : List<dynamic>.from((body as Map?)?['data'] as List? ?? const []);
+      return list
+          .whereType<Map>()
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList();
+    }
+
+    // Prefer full customer package list (matches web Payments), then active-only.
+    final primary = await http.get(
+      Uri.parse('$baseUrl/api/packages/customer/$customerId'),
+      headers: _authHeaders(token),
+    );
+    if (primary.statusCode < 400) {
+      return parse(_decode(primary.body));
+    }
+
+    final fallback = await http.get(
       Uri.parse('$baseUrl/api/packages/customer/$customerId/active'),
       headers: _authHeaders(token),
     );
-    final body = _decode(response.body);
-    if (response.statusCode >= 400) return const [];
-    final List<dynamic> list = body is List
-        ? List<dynamic>.from(body as List)
-        : List<dynamic>.from((body as Map?)?['data'] as List? ?? const []);
-    return list
-        .whereType<Map>()
-        .map((e) => Map<String, dynamic>.from(e))
-        .toList();
+    if (fallback.statusCode >= 400) return const [];
+    return parse(_decode(fallback.body));
   }
 
   Future<List<SalonService>> fetchServices({required String token}) async {
@@ -773,6 +785,7 @@ class MobileApi {
     required String paidAmount,
     String? discountId,
     String? walkinToken,
+    String? customerPackageId,
     bool isRecurring = false,
     String? recurringNextDate,
     String? appointmentTime,
@@ -806,7 +819,13 @@ class MobileApi {
         'loyalty_discount': double.tryParse(loyaltyDiscount.trim()) ?? 0,
         'promo_discount': double.tryParse(promoDiscount.trim()) ?? 0,
         'splits': [
-          {'method': method, 'amount': paid},
+          {
+            'method': method,
+            'amount': paid,
+            if (customerPackageId != null && customerPackageId.trim().isNotEmpty)
+              'customer_package_id':
+                  int.tryParse(customerPackageId.trim()) ?? customerPackageId.trim(),
+          },
         ],
         if (isRecurring) 'is_recurring': true,
         if (isRecurring &&

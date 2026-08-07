@@ -11,6 +11,7 @@ import '../models/staff_member.dart';
 import '../widgets/payment_helper_staff_section.dart';
 import '../widgets/recurring_booking_section.dart';
 import '../widgets/walk_in_service_dropdown_section.dart';
+import '../utils/package_helpers.dart';
 
 // ── Sentinel id used to represent "Register new customer" option ──────────────
 const String _kNewCustId = '__register_new__';
@@ -40,6 +41,7 @@ class AddPaymentModalResult {
     this.appointmentTime = '08:00',
     this.recurringMessageTemplateIds = const [],
     this.helpers = const [],
+    this.customerPackageId = '',
   });
 
   final String branchId;
@@ -59,6 +61,8 @@ class AddPaymentModalResult {
   final String appointmentTime;
   final List<String> recurringMessageTemplateIds;
   final List<Map<String, dynamic>> helpers;
+  /// Customer package row id when method is Package.
+  final String customerPackageId;
 }
 
 class AddPaymentModal extends StatefulWidget {
@@ -168,6 +172,9 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
   List<Customer> _remoteCustomers = const [];
   bool _searchingCustomers = false;
   Timer? _customerSearchTimer;
+  List<Map<String, dynamic>> _customerPackages = [];
+  bool _loadingPackages = false;
+  String _selectedPackageId = '';
 
   @override
   void initState() {
@@ -227,6 +234,87 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
         });
         _customerNameCtrl.value = _customerNameCtrl.value;
       }
+    });
+  }
+
+  Future<void> _loadCustomerPackages(String custId) async {
+    final api = widget.mobileApi;
+    if (api == null || widget.token.isEmpty || custId.trim().isEmpty) {
+      setState(() {
+        _customerPackages = [];
+        _selectedPackageId = '';
+        _loadingPackages = false;
+      });
+      return;
+    }
+    setState(() {
+      _loadingPackages = true;
+      _customerPackages = [];
+      _selectedPackageId = '';
+    });
+    try {
+      final rows = await api.fetchActivePackages(
+        token: widget.token,
+        customerId: custId.trim(),
+      );
+      if (!mounted) return;
+      setState(() {
+        _customerPackages = rows;
+        _loadingPackages = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _customerPackages = [];
+        _loadingPackages = false;
+      });
+    }
+  }
+
+  void _clearPackageSelection({bool keepMethod = false}) {
+    setState(() {
+      _selectedPackageId = '';
+      if (!keepMethod && _method == 'Package') _method = 'Cash';
+    });
+  }
+
+  void _applyPackage(String packageId) {
+    if (packageId.isEmpty) {
+      _clearPackageSelection();
+      _recalcTotal();
+      return;
+    }
+    Map<String, dynamic>? cp;
+    for (final p in _customerPackages) {
+      if ('${p['id']}' == packageId) {
+        cp = p;
+        break;
+      }
+    }
+    if (cp == null || !packageCanRedeemNow(cp)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('This package cannot be used right now.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+    final ids = resolvePackageServiceIds(cp, widget.services);
+    final bundle = getPackageBundlePrice(cp);
+    setState(() {
+      _selectedPackageId = packageId;
+      _method = 'Package';
+      _discountId = '';
+      if (ids.isNotEmpty) {
+        _primaryServiceId = ids.first;
+        _extraServiceIds
+          ..clear()
+          ..addAll(ids.skip(1));
+      }
+      _totalAmountCtrl.text =
+          bundle > 0 ? bundle.toStringAsFixed(0) : '0';
+      _applyNetToPaid();
     });
   }
 
@@ -331,6 +419,7 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
         _registering     = false;
         _newPhoneCtrl.clear();
       });
+      _loadCustomerPackages(newCust.id);
     } else {
       setState(() => _registering = false);
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
@@ -366,6 +455,15 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Select main staff.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+    if (_method == 'Package' && _selectedPackageId.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Select a customer package for Package payment'),
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -408,6 +506,7 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
       recurringNextDate: _recurringNextDate,
       appointmentTime: _recurringSmsTime,
       recurringMessageTemplateIds: List<String>.from(_recurringTemplateIds),
+      customerPackageId: _selectedPackageId.trim(),
     );
 
     if (_method == 'LankaQR') {
@@ -628,6 +727,8 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
                       _customerId   = '';
                       _linkedCustomer = null;
                       _customerNameCtrl.text = c.name;
+                      _customerPackages = [];
+                      _selectedPackageId = '';
                     });
                     return;
                   }
@@ -637,6 +738,7 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
                     _registerMode   = false;
                     _customerNameCtrl.text = c.name;
                   });
+                  _loadCustomerPackages(c.id);
                 },
                 fieldViewBuilder: (ctx, ctrl, fn, _) {
                   return TextFormField(
@@ -656,6 +758,9 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
                           _linkedCustomer = null;
                           _customerId     = '';
                           _registerMode   = false;
+                          _customerPackages = [];
+                          _selectedPackageId = '';
+                          if (_method == 'Package') _method = 'Cash';
                         });
                       }
                     },
@@ -941,6 +1046,85 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
 
               const SizedBox(height: 12),
 
+              // ── Customer package ─────────────────────────────────────
+              if (_customerId.trim().isNotEmpty) ...[
+                _label('CUSTOMER PACKAGE'),
+                if (_loadingPackages)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 10),
+                    child: Row(children: [
+                      SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: _pGreen,
+                        ),
+                      ),
+                      SizedBox(width: 10),
+                      Text(
+                        'Loading packages…',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Color(0xFF9CA3AF),
+                        ),
+                      ),
+                    ]),
+                  )
+                else
+                  DropdownButtonFormField<String>(
+                    initialValue:
+                        _selectedPackageId.isEmpty ? '' : _selectedPackageId,
+                    isExpanded: true,
+                    decoration: _deco(
+                      _customerPackages.isEmpty
+                          ? 'No packages for this customer'
+                          : 'Select package (optional)',
+                      Icons.card_giftcard_rounded,
+                    ),
+                    items: [
+                      DropdownMenuItem(
+                        value: '',
+                        child: Text(
+                          _customerPackages.isEmpty
+                              ? 'No active packages'
+                              : 'No package — pay normally',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: _customerPackages.isEmpty
+                                ? const Color(0xFFD1D5DB)
+                                : const Color(0xFF6B7280),
+                          ),
+                        ),
+                      ),
+                      ..._customerPackages.map((pkg) {
+                        final id = '${pkg['id']}';
+                        final can = packageCanRedeemNow(pkg);
+                        return DropdownMenuItem<String>(
+                          value: id,
+                          enabled: can,
+                          child: Text(
+                            can
+                                ? formatCustomerPackageLabel(pkg)
+                                : '${formatCustomerPackageLabel(pkg)} — unavailable',
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: can
+                                  ? const Color(0xFF111827)
+                                  : const Color(0xFF9CA3AF),
+                            ),
+                          ),
+                        );
+                      }),
+                    ],
+                    onChanged: _customerPackages.isEmpty
+                        ? null
+                        : (v) => _applyPackage(v ?? ''),
+                  ),
+                const SizedBox(height: 12),
+              ],
+
               // ── Payment method chips ──────────────────────────────────
               _label('PAYMENT METHOD'),
               Wrap(
@@ -949,7 +1133,33 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
                 children: _methods.map((m) {
                   final sel = _method == m;
                   return GestureDetector(
-                    onTap: () => setState(() => _method = m),
+                    onTap: () {
+                      if (m == 'Package' && _selectedPackageId.isEmpty) {
+                        if (_customerPackages.isEmpty) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                'No redeemable packages for this customer',
+                              ),
+                              behavior: SnackBarBehavior.floating,
+                            ),
+                          );
+                          return;
+                        }
+                        // Prefer first redeemable package.
+                        for (final p in _customerPackages) {
+                          if (packageCanRedeemNow(p)) {
+                            _applyPackage('${p['id']}');
+                            return;
+                          }
+                        }
+                        return;
+                      }
+                      setState(() {
+                        _method = m;
+                        if (m != 'Package') _selectedPackageId = '';
+                      });
+                    },
                     child: AnimatedContainer(
                       duration: const Duration(milliseconds: 130),
                       padding: const EdgeInsets.symmetric(

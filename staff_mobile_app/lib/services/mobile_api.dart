@@ -266,7 +266,7 @@ class MobileApi {
         .toList();
 
     // Prefer full customer package list (matches web), then active-only.
-    // IMPORTANT: these endpoints return a JSON array — use _decodeList, not _decode.
+    // These endpoints return a JSON array — must use _decodeList (not _decode).
     final primary = await http.get(
       Uri.parse('$baseUrl/api/packages/customer/$customerId'),
       headers: _authHeaders(token),
@@ -279,8 +279,23 @@ class MobileApi {
       Uri.parse('$baseUrl/api/packages/customer/$customerId/active'),
       headers: _authHeaders(token),
     );
-    if (fallback.statusCode >= 400) return const [];
-    return asMaps(_decodeList(fallback.body));
+    if (fallback.statusCode < 400) {
+      return asMaps(_decodeList(fallback.body));
+    }
+
+    final errBody = _decode(fallback.body);
+    final msg = '${errBody['message'] ?? ''}'.trim();
+    if (fallback.statusCode == 403 || primary.statusCode == 403) {
+      throw Exception(msg.isNotEmpty
+          ? msg
+          : 'Packages feature is not enabled for this salon.');
+    }
+    if (fallback.statusCode == 404 || primary.statusCode == 404) {
+      throw Exception(msg.isNotEmpty ? msg : 'Customer not found.');
+    }
+    throw Exception(
+      msg.isNotEmpty ? msg : 'Packages load failed (${fallback.statusCode})',
+    );
   }
 
   Future<List<SalonService>> fetchServices({required String token}) async {

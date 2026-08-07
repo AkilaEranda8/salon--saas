@@ -258,17 +258,112 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
         customerId: custId.trim(),
       );
       if (!mounted) return;
+      // Prefer packages that can still be redeemed; keep others visible as disabled.
+      final redeemable =
+          rows.where(packageCanRedeemNow).toList(growable: false);
       setState(() {
-        _customerPackages = rows;
+        _customerPackages = redeemable.isNotEmpty ? redeemable : rows;
         _loadingPackages = false;
       });
-    } catch (_) {
+    } catch (e) {
       if (!mounted) return;
       setState(() {
         _customerPackages = [];
         _loadingPackages = false;
       });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            e.toString().replaceFirst('Exception: ', ''),
+          ),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
     }
+  }
+
+  Widget _buildPackagePicker() {
+    if (_customerId.trim().isEmpty) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 12),
+        _label('CUSTOMER PACKAGE'),
+        if (_loadingPackages)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 10),
+            child: Row(children: [
+              SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: _pGreen,
+                ),
+              ),
+              SizedBox(width: 10),
+              Text(
+                'Loading packages…',
+                style: TextStyle(fontSize: 13, color: Color(0xFF9CA3AF)),
+              ),
+            ]),
+          )
+        else
+          DropdownButtonFormField<String>(
+            key: ValueKey(
+              'pay_pkgs_${_customerId}_${_customerPackages.length}',
+            ),
+            initialValue:
+                _selectedPackageId.isEmpty ? '' : _selectedPackageId,
+            isExpanded: true,
+            decoration: _deco(
+              _customerPackages.isEmpty
+                  ? 'No packages for this customer'
+                  : 'Select package (optional)',
+              Icons.card_giftcard_rounded,
+            ),
+            items: [
+              DropdownMenuItem(
+                value: '',
+                child: Text(
+                  _customerPackages.isEmpty
+                      ? 'No packages found'
+                      : 'No package — pay normally',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: _customerPackages.isEmpty
+                        ? const Color(0xFFD1D5DB)
+                        : const Color(0xFF6B7280),
+                  ),
+                ),
+              ),
+              ..._customerPackages.map((pkg) {
+                final id = '${pkg['id']}';
+                final can = packageCanRedeemNow(pkg);
+                return DropdownMenuItem<String>(
+                  value: id,
+                  enabled: can,
+                  child: Text(
+                    can
+                        ? formatCustomerPackageLabel(pkg)
+                        : '${formatCustomerPackageLabel(pkg)} — unavailable',
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: can
+                          ? const Color(0xFF111827)
+                          : const Color(0xFF9CA3AF),
+                    ),
+                  ),
+                );
+              }),
+            ],
+            onChanged: _customerPackages.isEmpty
+                ? null
+                : (v) => _applyPackage(v ?? ''),
+          ),
+      ],
+    );
   }
 
   void _clearPackageSelection({bool keepMethod = false}) {
@@ -897,6 +992,9 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
                 ),
               ],
 
+              // Packages appear right under customer so staff can see them.
+              _buildPackagePicker(),
+
               const SizedBox(height: 12),
 
               PaymentHelperStaffSection(
@@ -1045,85 +1143,6 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
                 ),
 
               const SizedBox(height: 12),
-
-              // ── Customer package ─────────────────────────────────────
-              if (_customerId.trim().isNotEmpty) ...[
-                _label('CUSTOMER PACKAGE'),
-                if (_loadingPackages)
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 10),
-                    child: Row(children: [
-                      SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: _pGreen,
-                        ),
-                      ),
-                      SizedBox(width: 10),
-                      Text(
-                        'Loading packages…',
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: Color(0xFF9CA3AF),
-                        ),
-                      ),
-                    ]),
-                  )
-                else
-                  DropdownButtonFormField<String>(
-                    initialValue:
-                        _selectedPackageId.isEmpty ? '' : _selectedPackageId,
-                    isExpanded: true,
-                    decoration: _deco(
-                      _customerPackages.isEmpty
-                          ? 'No packages for this customer'
-                          : 'Select package (optional)',
-                      Icons.card_giftcard_rounded,
-                    ),
-                    items: [
-                      DropdownMenuItem(
-                        value: '',
-                        child: Text(
-                          _customerPackages.isEmpty
-                              ? 'No active packages'
-                              : 'No package — pay normally',
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: _customerPackages.isEmpty
-                                ? const Color(0xFFD1D5DB)
-                                : const Color(0xFF6B7280),
-                          ),
-                        ),
-                      ),
-                      ..._customerPackages.map((pkg) {
-                        final id = '${pkg['id']}';
-                        final can = packageCanRedeemNow(pkg);
-                        return DropdownMenuItem<String>(
-                          value: id,
-                          enabled: can,
-                          child: Text(
-                            can
-                                ? formatCustomerPackageLabel(pkg)
-                                : '${formatCustomerPackageLabel(pkg)} — unavailable',
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: can
-                                  ? const Color(0xFF111827)
-                                  : const Color(0xFF9CA3AF),
-                            ),
-                          ),
-                        );
-                      }),
-                    ],
-                    onChanged: _customerPackages.isEmpty
-                        ? null
-                        : (v) => _applyPackage(v ?? ''),
-                  ),
-                const SizedBox(height: 12),
-              ],
 
               // ── Payment method chips ──────────────────────────────────
               _label('PAYMENT METHOD'),

@@ -1802,16 +1802,23 @@ class _PaySheetState extends State<_PaySheet> {
         customerId: custId.trim(),
       );
       if (!mounted) return;
+      final redeemable =
+          rows.where(packageCanRedeemNow).toList(growable: false);
       setState(() {
-        _customerPackages = rows;
+        _customerPackages = redeemable.isNotEmpty ? redeemable : rows;
         _loadingPackages = false;
       });
-    } catch (_) {
+    } catch (e) {
       if (!mounted) return;
       setState(() {
         _customerPackages = [];
         _loadingPackages = false;
       });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.toString().replaceFirst('Exception: ', '')),
+        ),
+      );
     }
   }
 
@@ -2359,6 +2366,9 @@ class _PaySheetState extends State<_PaySheet> {
                 )
               else
                 DropdownButtonFormField<String>(
+                  key: ValueKey(
+                    'appt_pay_pkgs_${widget.appointment.customerId}_${_customerPackages.length}',
+                  ),
                   initialValue:
                       _selectedPackageId.isEmpty ? '' : _selectedPackageId,
                   isExpanded: true,

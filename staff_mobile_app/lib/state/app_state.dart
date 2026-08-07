@@ -692,16 +692,19 @@ class AppState extends ChangeNotifier {
   }
 
   Future<List<Map<String, dynamic>>> loadCustomerActivePackages(
-    String customerId,
-  ) async {
+    String customerId, {
+    bool redeemableOnly = true,
+  }) async {
     final token = _currentUser?.authToken;
     if (token == null || token.isEmpty || customerId.isEmpty) return const [];
     try {
       return await _api.fetchActivePackages(
         token: token,
         customerId: customerId,
+        redeemableOnly: redeemableOnly,
       );
-    } catch (_) {
+    } catch (e) {
+      _lastError = e.toString().replaceFirst('Exception: ', '');
       return const [];
     }
   }

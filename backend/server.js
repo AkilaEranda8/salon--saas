@@ -57,6 +57,7 @@ const { ensureFcmTokenTenantIds } = require('./services/ensureFcmTokenTenantIds'
 const { runWalkInQueueServicesMigration } = require('./services/walkInQueueServicesMigration');
 const ensureWhatsAppSchema = require('./services/ensureWhatsAppSchema');
 const ensureAiCrmSchema = require('./services/ensureAiCrmSchema');
+const ensureAccountingSchema = require('./services/ensureAccountingSchema');
 const ensureMobileOffersSchema = require('./services/ensureMobileOffersSchema');
 const { restoreSessionsOnBoot } = require('./services/whatsappWebService');
 const { ensureServiceDurationDefaults } = require('./services/ensureServiceDurationDefaults');
@@ -262,6 +263,7 @@ app.use('/api/advances',            require('./routes/advances'));
 app.use('/api/commission-payouts',  require('./routes/commissionPayouts'));
 app.use('/api/crm',          require('./routes/crm'));
 app.use('/api/crm-integration', require('./routes/crmIntegration'));
+app.use('/api/accounting',   require('./routes/accounting'));
 
 // ── 404 handler ───────────────────────────────────────────────────────────────
 app.use((_req, res) => res.status(404).json({ message: 'Route not found.' }));
@@ -436,6 +438,7 @@ connectWithRetry().then(async () => {
   await runWalkInQueueServicesMigration();
   await ensureWhatsAppSchema();
   await ensureAiCrmSchema();
+  await ensureAccountingSchema();
   await ensureMobileOffersSchema();
   ensureWalkInCustomersForAllTenants().catch((e) =>
     console.warn('[WalkInCustomer] seed failed:', e.message)

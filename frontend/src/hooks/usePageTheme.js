@@ -18,6 +18,7 @@ export function pageColors(isDark) {
   const s = getSurface(isDark);
   return {
     primary: '#2563EB',
+    isDark,
     border: s.border,
     borderLight: s.borderSubtle,
     text: s.text,

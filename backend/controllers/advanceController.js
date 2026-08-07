@@ -56,6 +56,13 @@ const create = async (req, res) => {
       tenant_id:  req.userTenantId ?? req.tenant?.id ?? null,
     });
 
+    try {
+      const { postStaffAdvanceToGl } = require('../services/accountingEngine');
+      await postStaffAdvanceToGl(advance, { tenant: req.tenant, userId: req.user?.id });
+    } catch (acctErr) {
+      console.warn('[accounting] advance post failed:', acctErr.message);
+    }
+
     const result = await StaffAdvance.findOne({
       where: { id: advance.id },
       include: [

@@ -89,6 +89,17 @@ import CrmRulesPage          from './pages/crm/CrmRulesPage';
 import CrmAiCostPage         from './pages/crm/CrmAiCostPage';
 import CrmAiTrainingPage     from './pages/crm/CrmAiTrainingPage';
 import CrmAutomationsPage    from './pages/crm/CrmAutomationsPage';
+import AccountingOverviewPage from './pages/accounting/AccountingOverviewPage';
+import AccountingJournalsPage from './pages/accounting/AccountingJournalsPage';
+import AccountingReportsPage from './pages/accounting/AccountingReportsPage';
+import AccountingArApPage from './pages/accounting/AccountingArApPage';
+import AccountingCashBankPage from './pages/accounting/AccountingCashBankPage';
+import AccountingTaxPage from './pages/accounting/AccountingTaxPage';
+import AccountingPettyCashPage from './pages/accounting/AccountingPettyCashPage';
+import AccountingPayrollPage from './pages/accounting/AccountingPayrollPage';
+import AccountingPeriodsPage from './pages/accounting/AccountingPeriodsPage';
+import AccountingAuditPage from './pages/accounting/AccountingAuditPage';
+import AccountingSettingsPage from './pages/accounting/AccountingSettingsPage';
 import DomainSettingsPage  from './pages/DomainSettingsPage';
 import ThemeOptionsPage from './pages/ThemeOptionsPage';
 import TableCraftDemoPage from './pages/TableCraftDemoPage';
@@ -499,6 +510,83 @@ function AppShellRoutes() {
               <RoleRoute roles={['superadmin', 'admin']}>
                 <FeatureRoute feature="whatsapp_ai_crm" title="AI Cost">
                   <CrmAiCostPage />
+                </FeatureRoute>
+              </RoleRoute>
+            } />
+            <Route path="/accounting" element={
+              <RoleRoute roles={['superadmin', 'admin', 'manager']}>
+                <FeatureRoute feature="accounting" title="Accounting">
+                  <AccountingOverviewPage />
+                </FeatureRoute>
+              </RoleRoute>
+            } />
+            <Route path="/accounting/journals" element={
+              <RoleRoute roles={['superadmin', 'admin', 'manager']}>
+                <FeatureRoute feature="accounting" title="GL Journals">
+                  <AccountingJournalsPage />
+                </FeatureRoute>
+              </RoleRoute>
+            } />
+            <Route path="/accounting/reports" element={
+              <RoleRoute roles={['superadmin', 'admin', 'manager']}>
+                <FeatureRoute feature="accounting" title="GL Reports">
+                  <AccountingReportsPage />
+                </FeatureRoute>
+              </RoleRoute>
+            } />
+            <Route path="/accounting/ar-ap" element={
+              <RoleRoute roles={['superadmin', 'admin', 'manager']}>
+                <FeatureRoute feature="accounting" title="AR / AP">
+                  <AccountingArApPage />
+                </FeatureRoute>
+              </RoleRoute>
+            } />
+            <Route path="/accounting/cash-bank" element={
+              <RoleRoute roles={['superadmin', 'admin', 'manager']}>
+                <FeatureRoute feature="accounting" title="Cash & Bank">
+                  <AccountingCashBankPage />
+                </FeatureRoute>
+              </RoleRoute>
+            } />
+            <Route path="/accounting/tax" element={
+              <RoleRoute roles={['superadmin', 'admin', 'manager']}>
+                <FeatureRoute feature="accounting" title="VAT / Tax">
+                  <AccountingTaxPage />
+                </FeatureRoute>
+              </RoleRoute>
+            } />
+            <Route path="/accounting/petty-cash" element={
+              <RoleRoute roles={['superadmin', 'admin', 'manager']}>
+                <FeatureRoute feature="accounting" title="Petty Cash">
+                  <AccountingPettyCashPage />
+                </FeatureRoute>
+              </RoleRoute>
+            } />
+            <Route path="/accounting/payroll" element={
+              <RoleRoute roles={['superadmin', 'admin', 'manager']}>
+                <FeatureRoute feature="accounting" title="Payroll">
+                  <AccountingPayrollPage />
+                </FeatureRoute>
+              </RoleRoute>
+            } />
+            <Route path="/accounting/periods" element={
+              <RoleRoute roles={['superadmin', 'admin']}>
+                <FeatureRoute feature="accounting" title="Periods">
+                  <AccountingPeriodsPage />
+                </FeatureRoute>
+              </RoleRoute>
+            } />
+            <Route path="/accounting/audit" element={
+              <RoleRoute roles={['superadmin', 'admin']}>
+                <FeatureRoute feature="accounting" title="Audit Trail">
+                  <AccountingAuditPage />
+                </FeatureRoute>
+              </RoleRoute>
+            } />
+            <Route path="/accounting/settings" element={
+              <RoleRoute roles={['superadmin', 'admin']}>
+                <FeatureRoute feature="accounting" title="Accounting Settings">
+                  <AccountingSettingsPage />
                 </FeatureRoute>
               </RoleRoute>
             } />

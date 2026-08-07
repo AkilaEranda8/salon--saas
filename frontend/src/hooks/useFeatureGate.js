@@ -21,6 +21,7 @@ const PLAN_FEATURES = {
     inventory: true, discounts: false, recurring: false, custom_domain: false,
     consent_forms: true, offer_sms: false, multi_branch: false,
     reviews: true, expenses: true, service_wise_commission: false, franchise_commission: false,
+    accounting: false,
   },
   basic: {
     ai_chat: false, whatsapp_ai_crm: false, ai_knowledge_base: false,
@@ -29,6 +30,7 @@ const PLAN_FEATURES = {
     inventory: true, discounts: true, recurring: true, custom_domain: false,
     consent_forms: true, offer_sms: true, multi_branch: false,
     reviews: true, expenses: true, service_wise_commission: false, franchise_commission: false,
+    accounting: false,
   },
   pro: {
     ai_chat: true, whatsapp_ai_crm: true, ai_knowledge_base: true,
@@ -37,6 +39,7 @@ const PLAN_FEATURES = {
     inventory: true, discounts: true, recurring: true, custom_domain: false,
     consent_forms: true, offer_sms: true, multi_branch: true,
     reviews: true, expenses: true, service_wise_commission: false, franchise_commission: false,
+    accounting: true,
   },
   enterprise: {
     ai_chat: true, whatsapp_ai_crm: true, ai_knowledge_base: true,
@@ -45,6 +48,7 @@ const PLAN_FEATURES = {
     inventory: true, discounts: true, recurring: true, custom_domain: true,
     consent_forms: true, offer_sms: true, multi_branch: true,
     reviews: true, expenses: true, service_wise_commission: false, franchise_commission: false,
+    accounting: true,
   },
 };
 
@@ -78,6 +82,7 @@ const FEATURE_LABELS = {
   expenses: 'Expense Tracking',
   service_wise_commission: 'Service-Wise Commission',
   franchise_commission: 'Franchise Commission',
+  accounting: 'Accounting',
 };
 
 function getMinPlan(feature) {

@@ -257,6 +257,12 @@ const create = async (req, res) => {
       created_by:     req.user?.id   || null,
       tenant_id:      tenantId,
     });
+    try {
+      const { postExpenseToGl } = require('../services/accountingEngine');
+      await postExpenseToGl(expense, { tenant: req.tenant, userId: req.user?.id });
+    } catch (acctErr) {
+      console.warn('[accounting] expense post failed:', acctErr.message);
+    }
     return res.status(201).json(expense);
   } catch (err) {
     console.error(err);

@@ -62,6 +62,13 @@ const create = async (req, res) => {
       tenant_id: req.userTenantId ?? req.tenant?.id ?? null,
     });
 
+    try {
+      const { postCommissionPayoutToGl } = require('../services/accountingEngine');
+      await postCommissionPayoutToGl(payout, { tenant: req.tenant, userId: req.user?.id });
+    } catch (acctErr) {
+      console.warn('[accounting] payout post failed:', acctErr.message);
+    }
+
     // Auto-mark this staff's pending advances for the same month as 'deducted'
     await StaffAdvance.update(
       { status: 'deducted' },

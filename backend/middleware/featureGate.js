@@ -23,6 +23,7 @@ const FEATURE_LABELS = {
   offer_sms: 'Offer SMS',
   multi_branch: 'Multi-Branch',
   service_wise_commission: 'Service-Wise Commission',
+  accounting: 'Accounting',
 };
 
 async function logTenantMismatch(req, jwtTenantId, slugTenantId, feature) {

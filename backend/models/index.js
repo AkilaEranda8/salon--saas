@@ -66,6 +66,19 @@ const CrmAutomation = require('./CrmAutomation');
 const CrmAutomationExecution = require('./CrmAutomationExecution');
 const MobileOffer = require('./MobileOffer');
 
+// Accounting
+const AcctAccount = require('./AcctAccount');
+const AcctPeriod = require('./AcctPeriod');
+const AcctJournal = require('./AcctJournal');
+const AcctJournalLine = require('./AcctJournalLine');
+const AcctTaxSetting = require('./AcctTaxSetting');
+const AcctBankAccount = require('./AcctBankAccount');
+const AcctBankTxn = require('./AcctBankTxn');
+const AcctPettyCashTxn = require('./AcctPettyCashTxn');
+const AcctArInvoice = require('./AcctArInvoice');
+const AcctApBill = require('./AcctApBill');
+const AcctAuditLog = require('./AcctAuditLog');
+
 // Salon Inventory (v2)
 const InvCategory = require('./InvCategory');
 const InvSupplier = require('./InvSupplier');
@@ -379,6 +392,20 @@ InvStockCount.hasMany(InvStockCountItem, { foreignKey: 'stock_count_id', as: 'it
 InvStockCountItem.belongsTo(InvStockCount, { foreignKey: 'stock_count_id', as: 'stockCount' });
 InvStockCountItem.belongsTo(InvProduct, { foreignKey: 'product_id', as: 'product' });
 
+// Accounting associations
+AcctAccount.hasMany(AcctJournalLine, { foreignKey: 'account_id', as: 'lines' });
+AcctJournalLine.belongsTo(AcctAccount, { foreignKey: 'account_id', as: 'account' });
+AcctJournal.hasMany(AcctJournalLine, { foreignKey: 'journal_id', as: 'lines' });
+AcctJournalLine.belongsTo(AcctJournal, { foreignKey: 'journal_id', as: 'journal' });
+AcctJournal.belongsTo(AcctPeriod, { foreignKey: 'period_id', as: 'period' });
+AcctPeriod.hasMany(AcctJournal, { foreignKey: 'period_id', as: 'journals' });
+AcctBankAccount.belongsTo(AcctAccount, { foreignKey: 'gl_account_id', as: 'glAccount' });
+AcctBankTxn.belongsTo(AcctBankAccount, { foreignKey: 'bank_account_id', as: 'bankAccount' });
+AcctBankTxn.belongsTo(AcctJournal, { foreignKey: 'journal_id', as: 'journal' });
+AcctPettyCashTxn.belongsTo(AcctJournal, { foreignKey: 'journal_id', as: 'journal' });
+AcctArInvoice.belongsTo(AcctJournal, { foreignKey: 'journal_id', as: 'journal' });
+AcctApBill.belongsTo(AcctJournal, { foreignKey: 'journal_id', as: 'journal' });
+
 module.exports = {
   Tenant,
   Subscription,
@@ -447,6 +474,17 @@ module.exports = {
   CrmAutomation,
   CrmAutomationExecution,
   MobileOffer,
+  AcctAccount,
+  AcctPeriod,
+  AcctJournal,
+  AcctJournalLine,
+  AcctTaxSetting,
+  AcctBankAccount,
+  AcctBankTxn,
+  AcctPettyCashTxn,
+  AcctArInvoice,
+  AcctApBill,
+  AcctAuditLog,
   InvCategory,
   InvSupplier,
   InvProduct,

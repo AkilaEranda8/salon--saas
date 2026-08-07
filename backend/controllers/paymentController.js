@@ -441,6 +441,18 @@ const create = async (req, res) => {
     }));
     await PaymentSplit.bulkCreate(splitRows, { transaction: t });
 
+    try {
+      const { postPaymentToGl } = require('../services/accountingEngine');
+      await postPaymentToGl(payment, {
+        tenant: req.tenant,
+        splits,
+        userId: req.user?.id,
+        transaction: t,
+      });
+    } catch (acctErr) {
+      console.warn('[accounting] payment post failed:', acctErr.message);
+    }
+
     // Redeem package sessions for 'Package' splits
     for (const s of splits) {
       if (s.method === 'Package' && s.customer_package_id) {

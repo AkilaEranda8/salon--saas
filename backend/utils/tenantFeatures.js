@@ -31,6 +31,7 @@ const FEATURE_CATALOG = [
     label: 'No Commission Up To Rs. 500',
     category: 'Team',
   },
+  { key: 'accounting', label: 'Accounting', category: 'Analytics' },
 ];
 
 const FEATURE_KEYS = new Set(FEATURE_CATALOG.map((f) => f.key));

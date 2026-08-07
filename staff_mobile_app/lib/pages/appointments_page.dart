@@ -393,9 +393,16 @@ class _ApptState extends State<AppointmentsPage> with SingleTickerProviderStateM
       }
     }
     final initialAmt = () {
-      final gross = a.displayAmount > 0 ? a.displayAmount : 0.0;
+      final pkgId = AppointmentNotes.parsePackageId(a.notes);
+      // Prefer stored appointment amount (package offer when booked with package).
+      final gross = a.amount > 0
+          ? a.amount
+          : (a.displayAmount > 0 ? a.displayAmount : 0.0);
       final paid = a.advancePaid > 0 ? a.advancePaid : 0.0;
       final due = (gross - paid).clamp(0, double.infinity);
+      if (pkgId != null && pkgId.isNotEmpty && gross > 0) {
+        return due > 0 ? due.toStringAsFixed(0) : (paid > 0 ? '0' : gross.toStringAsFixed(0));
+      }
       if (due > 0) return due.toStringAsFixed(0);
       if (paid > 0) return '0';
       return gross > 0 ? gross.toStringAsFixed(0) : '';
@@ -1734,14 +1741,13 @@ class _PaySheetState extends State<_PaySheet> {
   static const _pBorder = Color(0xFFE5E7EB);
 
   static const _methods = [
-    'Cash', 'Card', 'Online Transfer', 'Loyalty Points', 'Package',
+    'Cash', 'Card', 'Online Transfer', 'Loyalty Points',
   ];
   static const _methodIcons = <String, IconData>{
     'Cash':            Icons.payments_rounded,
     'Card':            Icons.credit_card_rounded,
     'Online Transfer': Icons.account_balance_rounded,
     'Loyalty Points':  Icons.stars_rounded,
-    'Package':         Icons.card_giftcard_rounded,
   };
 
   String? _primaryServiceId;
@@ -1759,8 +1765,13 @@ class _PaySheetState extends State<_PaySheet> {
   List<RecurringTemplateOption> _recurringTemplates = const [];
   bool _loadingTemplates = false;
   List<Map<String, dynamic>> _customerPackages = [];
+  List<Map<String, dynamic>> _packageTemplates = [];
   bool _loadingPackages = false;
+  bool _linkingPackage = false;
+  String _selectedTemplateId = '';
   String _selectedPackageId = '';
+  double? _packageOfferPrice;
+  int _packagesLoadGen = 0;
 
   @override
   void initState() {
@@ -1768,9 +1779,16 @@ class _PaySheetState extends State<_PaySheet> {
     final preStrs = widget.preSelected.map((e) => e.toString()).toList();
     _primaryServiceId = preStrs.isNotEmpty ? preStrs.first : null;
     if (preStrs.length > 1) _extraServiceIds.addAll(preStrs.sublist(1));
+    final a = widget.appointment;
+    final pkgHint = AppointmentNotes.parsePackageId(a.notes);
+    // Lock package offer from appointment amount when notes reference a package.
+    if (pkgHint != null &&
+        pkgHint.isNotEmpty &&
+        a.amount > 0) {
+      _packageOfferPrice = a.amount;
+    }
     _calcTotal = widget.initialAmount;
     _amtCtrl = TextEditingController(text: widget.initialAmount);
-    final a = widget.appointment;
     _mainStaffId = a.staffId;
     _isRecurring = a.isRecurring;
     if (a.recurringNextDate.isNotEmpty) {
@@ -1782,7 +1800,8 @@ class _PaySheetState extends State<_PaySheet> {
     }
     _recurringTemplateIds = List<String>.from(a.recurringMessageTemplateIds);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _recalc();
+      if (!mounted) return;
+      _recalc();
       if (widget.recurringAllowed) _loadRecurringTemplates();
       if (a.customerId.trim().isNotEmpty) _loadCustomerPackages(a.customerId);
     });
@@ -1791,27 +1810,36 @@ class _PaySheetState extends State<_PaySheet> {
   Future<void> _loadCustomerPackages(String custId) async {
     final api = widget.mobileApi;
     if (api == null || widget.token.isEmpty || custId.trim().isEmpty) return;
+    final gen = ++_packagesLoadGen;
     setState(() {
       _loadingPackages = true;
       _customerPackages = [];
-      _selectedPackageId = '';
+      _packageTemplates = [];
     });
     try {
-      final rows = await api.fetchActivePackages(
-        token: widget.token,
-        customerId: custId.trim(),
-      );
-      if (!mounted) return;
-      final redeemable =
-          rows.where(packageCanRedeemNow).toList(growable: false);
+      final branch = widget.appointment.branchId.trim();
+      final results = await Future.wait([
+        api.fetchPackageTemplates(
+          token: widget.token,
+          branchId: branch.isEmpty ? null : branch,
+        ),
+        api.fetchActivePackages(
+          token: widget.token,
+          customerId: custId.trim(),
+        ),
+      ]);
+      if (!mounted || gen != _packagesLoadGen) return;
       setState(() {
-        _customerPackages = redeemable.isNotEmpty ? redeemable : rows;
+        _packageTemplates = filterBookablePackageTemplates(results[0]);
+        _customerPackages = results[1];
         _loadingPackages = false;
       });
+      await _restorePackageFromAppointment();
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || gen != _packagesLoadGen) return;
       setState(() {
         _customerPackages = [];
+        _packageTemplates = [];
         _loadingPackages = false;
       });
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1822,43 +1850,172 @@ class _PaySheetState extends State<_PaySheet> {
     }
   }
 
-  void _applyPackage(String packageId) {
-    if (packageId.isEmpty) {
-      setState(() {
-        _selectedPackageId = '';
-        if (_method == 'Package') _method = 'Cash';
-      });
-      _recalc();
-      return;
-    }
+  /// Pre-select package + offer total from appointment notes.
+  Future<void> _restorePackageFromAppointment() async {
+    final cpId =
+        (AppointmentNotes.parsePackageId(widget.appointment.notes) ?? '')
+            .trim();
+    if (cpId.isEmpty) return;
+
     Map<String, dynamic>? cp;
     for (final p in _customerPackages) {
-      if ('${p['id']}' == packageId) {
+      if ('${p['id']}' == cpId) {
         cp = p;
         break;
       }
     }
-    if (cp == null || !packageCanRedeemNow(cp)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('This package cannot be used right now.')),
-      );
+
+    var templateId =
+        '${cp?['package_id'] ?? packageOf(cp ?? {})?['id'] ?? ''}'.trim();
+    Map<String, dynamic>? tpl;
+    if (templateId.isNotEmpty) {
+      for (final p in _packageTemplates) {
+        if ('${p['id']}' == templateId) {
+          tpl = p;
+          break;
+        }
+      }
+    }
+    if (tpl == null) {
+      for (final p in _packageTemplates) {
+        if ('${p['id']}' == cpId) {
+          tpl = p;
+          templateId = cpId;
+          break;
+        }
+      }
+    }
+
+    final serviceIds = cp != null
+        ? resolvePackageServiceIds(cp, widget.services)
+        : (tpl != null
+            ? resolveTemplateServiceIds(tpl, widget.services)
+            : <String>[]);
+    final bundleFromPkg = cp != null
+        ? getPackageBundlePrice(cp)
+        : (tpl != null ? getTemplateBundlePrice(tpl) : 0.0);
+    final apptAmount = widget.appointment.amount;
+    final double bundle = bundleFromPkg > 0
+        ? bundleFromPkg
+        : (apptAmount > 0 ? apptAmount : 0.0);
+
+    if (!mounted) return;
+    if (serviceIds.isEmpty && !(bundle > 0)) return;
+
+    final templateInList = templateId.isNotEmpty &&
+        _packageTemplates.any((p) => '${p['id']}' == templateId);
+
+    setState(() {
+      if (templateInList) _selectedTemplateId = templateId;
+      _selectedPackageId = cp != null ? cpId : '';
+      if (_method == 'Package') _method = 'Cash';
+      _discountId = '';
+      _packageOfferPrice = bundle > 0 ? bundle : _packageOfferPrice;
+      if (serviceIds.isNotEmpty) {
+        applyResolvedServiceIds(
+          ids: serviceIds,
+          setPrimary: (v) => _primaryServiceId = v,
+          extras: _extraServiceIds,
+        );
+      }
+    });
+    _recalc();
+  }
+
+  Future<void> _applyTemplate(String templateId) async {
+    if (templateId.isEmpty) {
+      setState(() {
+        _selectedPackageId = '';
+        _selectedTemplateId = '';
+        _packageOfferPrice = null;
+      });
+      _recalc();
       return;
     }
-    final ids = resolvePackageServiceIds(cp, widget.services);
-    final bundle = getPackageBundlePrice(cp);
-    setState(() {
-      _selectedPackageId = packageId;
-      _method = 'Package';
-      _discountId = '';
-      if (ids.isNotEmpty) {
-        _primaryServiceId = ids.first;
-        _extraServiceIds
-          ..clear()
-          ..addAll(ids.skip(1));
+    Map<String, dynamic>? tpl;
+    for (final p in _packageTemplates) {
+      if ('${p['id']}' == templateId) {
+        tpl = p;
+        break;
       }
+    }
+    if (tpl == null) return;
+
+    final selected = tpl;
+    final ids = resolveTemplateServiceIds(selected, widget.services);
+    final bundle = getTemplateBundlePrice(selected);
+    setState(() {
+      _selectedTemplateId = templateId;
+      if (_method == 'Package') _method = 'Cash';
+      _discountId = '';
+      _packageOfferPrice = bundle > 0 ? bundle : null;
+      applyResolvedServiceIds(
+        ids: ids,
+        setPrimary: (v) => _primaryServiceId = v,
+        extras: _extraServiceIds,
+      );
       _calcTotal = bundle > 0 ? bundle.toStringAsFixed(0) : '0';
       _amtCtrl.text = _calcTotal;
+      _linkingPackage = true;
     });
+
+    final api = widget.mobileApi;
+    final custId = widget.appointment.customerId.trim();
+    if (api == null || widget.token.isEmpty || custId.isEmpty) {
+      setState(() => _linkingPackage = false);
+      return;
+    }
+    try {
+      var cp = findCustomerPackageForTemplate(_customerPackages, templateId);
+      if (cp == null || !packageCanRedeemNow(cp)) {
+        final branch = widget.appointment.branchId.trim();
+        cp = await api.purchasePackage(
+          token: widget.token,
+          customerId: custId,
+          packageId: templateId,
+          branchId: branch.isEmpty ? null : branch,
+        );
+        final refreshed = await api.fetchActivePackages(
+          token: widget.token,
+          customerId: custId,
+        );
+        if (mounted) {
+          setState(() => _customerPackages = refreshed);
+          cp = findCustomerPackageForTemplate(refreshed, templateId) ?? cp;
+        }
+      }
+      if (!mounted) return;
+      setState(() {
+        _selectedPackageId = '${cp?['id'] ?? ''}'.trim();
+        _linkingPackage = false;
+        applyResolvedServiceIds(
+          ids: ids,
+          setPrimary: (v) => _primaryServiceId = v,
+          extras: _extraServiceIds,
+        );
+        _packageOfferPrice = bundle > 0 ? bundle : null;
+        _calcTotal = bundle > 0 ? bundle.toStringAsFixed(0) : '0';
+        _amtCtrl.text = _calcTotal;
+      });
+      if (_selectedPackageId.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not link package to this customer.')),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _selectedTemplateId = '';
+        _selectedPackageId = '';
+        _packageOfferPrice = null;
+        _linkingPackage = false;
+        if (_method == 'Package') _method = 'Cash';
+      });
+      _recalc();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+      );
+    }
   }
 
   Future<void> _loadRecurringTemplates() async {
@@ -1894,6 +2051,8 @@ class _PaySheetState extends State<_PaySheet> {
   }
 
   double _grossFromSelection() {
+    final offer = _packageOfferPrice;
+    if (offer != null && offer > 0) return offer;
     var sum = 0.0;
     for (final id in _orderedServiceIds()) {
       for (final sv in widget.services) {
@@ -1932,14 +2091,13 @@ class _PaySheetState extends State<_PaySheet> {
   }
 
   void _recalc() {
-    final sum = _grossFromSelection();
-    final val = sum > 0 ? sum.toStringAsFixed(0) : '';
+    final gross = _grossFromSelection();
     final promo = _computedPromo();
     final advance = widget.appointment.advancePaid;
-    final net = (sum - promo - advance).clamp(0, double.infinity);
+    final net = (gross - promo - advance).clamp(0, double.infinity);
     setState(() {
-      _calcTotal = val;
-      if (sum > 0 || advance > 0) {
+      _calcTotal = gross > 0 ? gross.toStringAsFixed(0) : '';
+      if (gross > 0 || advance > 0) {
         _amtCtrl.text = net > 0 ? net.toStringAsFixed(0) : '0';
       } else {
         _amtCtrl.text = '';
@@ -1948,6 +2106,19 @@ class _PaySheetState extends State<_PaySheet> {
   }
 
   void _confirm() {
+    if (_linkingPackage) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please wait — linking package…')),
+      );
+      return;
+    }
+    if (_selectedTemplateId.isNotEmpty && _selectedPackageId.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Package is still linking. Try again in a moment.')),
+      );
+      return;
+    }
     final ids = _orderedServiceIds();
     if (ids.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1957,7 +2128,7 @@ class _PaySheetState extends State<_PaySheet> {
     }
     final paid = double.tryParse(_amtCtrl.text.trim()) ?? 0;
     final advance = widget.appointment.advancePaid;
-    if (paid < 0 || (paid == 0 && !(advance > 0) && _method != 'Package')) {
+    if (paid < 0 || (paid == 0 && !(advance > 0))) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Enter a valid amount')),
       );
@@ -1966,12 +2137,6 @@ class _PaySheetState extends State<_PaySheet> {
     if (widget.recurringAllowed && _isRecurring && _recurringNextDate.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Select the next recurring visit date')),
-      );
-      return;
-    }
-    if (_method == 'Package' && _selectedPackageId.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Select a customer package for Package payment')),
       );
       return;
     }
@@ -1989,7 +2154,9 @@ class _PaySheetState extends State<_PaySheet> {
       );
       return;
     }
-    final gross = _grossFromSelection();
+    final gross = (_packageOfferPrice != null && _packageOfferPrice! > 0)
+        ? _packageOfferPrice!
+        : _grossFromSelection();
     final promo = _computedPromo();
     Navigator.of(context).pop(_PayResult(
       amount: _amtCtrl.text.trim().isEmpty ? '0' : _amtCtrl.text.trim(),
@@ -2039,7 +2206,10 @@ class _PaySheetState extends State<_PaySheet> {
   @override
   Widget build(BuildContext context) {
     final bottom = MediaQuery.of(context).viewInsets.bottom;
-    final activeServices = widget.services.where((s) => s.isActive).toList();
+    final activeServices = servicesForPackagePicker(
+      widget.services,
+      _orderedServiceIds(),
+    );
     final name = widget.appointment.customerName;
     final initials = name.trim().isNotEmpty
         ? name.trim().split(' ').map((e) => e.isNotEmpty ? e[0].toUpperCase() : '').take(2).join()
@@ -2231,13 +2401,29 @@ class _PaySheetState extends State<_PaySheet> {
 
             // ── Services ───────────────────────────────────────────────
             WalkInServiceDropdownSection(
+              key: ValueKey(
+                'appt_pay_svc_${_orderedServiceIds().join(',')}',
+              ),
               activeServices: activeServices,
               primaryServiceId: _primaryServiceId,
               orderedServiceIds: _orderedServiceIds(),
               onPrimaryChanged: (v) {
                 setState(() {
+                  final prev = _primaryServiceId;
+                  if (v == null) {
+                    _primaryServiceId = null;
+                    _recalc();
+                    return;
+                  }
+                  // Keep other package services — demote previous primary.
+                  if (prev != null &&
+                      prev.isNotEmpty &&
+                      prev != v &&
+                      !_extraServiceIds.contains(prev)) {
+                    _extraServiceIds.insert(0, prev);
+                  }
+                  _extraServiceIds.remove(v);
                   _primaryServiceId = v;
-                  _extraServiceIds.clear();
                   _recalc();
                 });
               },
@@ -2344,12 +2530,12 @@ class _PaySheetState extends State<_PaySheet> {
             const SizedBox(height: 14),
 
             if (widget.appointment.customerId.trim().isNotEmpty) ...[
-              _label('CUSTOMER PACKAGE'),
-              if (_loadingPackages)
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 10),
+              _label('PACKAGE'),
+              if (_loadingPackages || _linkingPackage)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 10),
                   child: Row(children: [
-                    SizedBox(
+                    const SizedBox(
                       width: 16,
                       height: 16,
                       child: CircularProgressIndicator(
@@ -2357,24 +2543,29 @@ class _PaySheetState extends State<_PaySheet> {
                         color: _pGreen,
                       ),
                     ),
-                    SizedBox(width: 10),
+                    const SizedBox(width: 10),
                     Text(
-                      'Loading packages…',
-                      style: TextStyle(fontSize: 13, color: Color(0xFF9CA3AF)),
+                      _linkingPackage
+                          ? 'Linking package…'
+                          : 'Loading packages…',
+                      style: const TextStyle(
+                          fontSize: 13, color: Color(0xFF9CA3AF)),
                     ),
                   ]),
                 )
               else
                 DropdownButtonFormField<String>(
                   key: ValueKey(
-                    'appt_pay_pkgs_${widget.appointment.customerId}_${_customerPackages.length}',
+                    'appt_pay_pkgs_${widget.appointment.customerId}_${_packageTemplates.length}_$_selectedTemplateId',
                   ),
-                  initialValue:
-                      _selectedPackageId.isEmpty ? '' : _selectedPackageId,
+                  initialValue: safePackageTemplateDropdownValue(
+                    _selectedTemplateId,
+                    _packageTemplates,
+                  ),
                   isExpanded: true,
                   decoration: _deco(
-                    _customerPackages.isEmpty
-                        ? 'No packages for this customer'
+                    _packageTemplates.isEmpty
+                        ? 'No packages — create one on web first'
                         : 'Select package (optional)',
                     Icons.card_giftcard_rounded,
                   ),
@@ -2382,41 +2573,31 @@ class _PaySheetState extends State<_PaySheet> {
                     DropdownMenuItem(
                       value: '',
                       child: Text(
-                        _customerPackages.isEmpty
-                            ? 'No active packages'
+                        _packageTemplates.isEmpty
+                            ? 'No packages available'
                             : 'No package — pay normally',
                         style: TextStyle(
                           fontSize: 13,
-                          color: _customerPackages.isEmpty
+                          color: _packageTemplates.isEmpty
                               ? const Color(0xFFD1D5DB)
                               : const Color(0xFF6B7280),
                         ),
                       ),
                     ),
-                    ..._customerPackages.map((pkg) {
-                      final id = '${pkg['id']}';
-                      final can = packageCanRedeemNow(pkg);
+                    ..._packageTemplates.map((pkg) {
                       return DropdownMenuItem<String>(
-                        value: id,
-                        enabled: can,
+                        value: '${pkg['id']}',
                         child: Text(
-                          can
-                              ? formatCustomerPackageLabel(pkg)
-                              : '${formatCustomerPackageLabel(pkg)} — unavailable',
+                          formatPackageTemplateLabel(pkg),
                           overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: can
-                                ? const Color(0xFF111827)
-                                : const Color(0xFF9CA3AF),
-                          ),
+                          style: const TextStyle(fontSize: 13),
                         ),
                       );
                     }),
                   ],
-                  onChanged: _customerPackages.isEmpty
+                  onChanged: _packageTemplates.isEmpty
                       ? null
-                      : (v) => _applyPackage(v ?? ''),
+                      : (v) => _applyTemplate(v ?? ''),
                 ),
               const SizedBox(height: 14),
             ],
@@ -2430,26 +2611,7 @@ class _PaySheetState extends State<_PaySheet> {
                 final sel = _method == m;
                 return GestureDetector(
                   onTap: () {
-                    if (m == 'Package' && _selectedPackageId.isEmpty) {
-                      for (final p in _customerPackages) {
-                        if (packageCanRedeemNow(p)) {
-                          _applyPackage('${p['id']}');
-                          return;
-                        }
-                      }
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text(
-                            'No redeemable packages for this customer',
-                          ),
-                        ),
-                      );
-                      return;
-                    }
-                    setState(() {
-                      _method = m;
-                      if (m != 'Package') _selectedPackageId = '';
-                    });
+                    setState(() => _method = m);
                   },
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 130),

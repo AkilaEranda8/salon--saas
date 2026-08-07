@@ -8,6 +8,7 @@ import 'helapay_qr_screen.dart';
 import '../widgets/payment_helper_staff_section.dart';
 import '../widgets/recurring_booking_section.dart';
 import '../widgets/walk_in_service_dropdown_section.dart';
+import '../utils/appointment_notes.dart';
 import '../utils/package_helpers.dart';
 
 // ── Palette ───────────────────────────────────────────────────────────────────
@@ -70,9 +71,12 @@ class AddWalkInPaymentModal extends StatefulWidget {
     this.customerName = '',
     this.customerId = '',
     this.serviceName = '',
+    this.initialNote = '',
+    this.initialCustomerPackageId = '',
     this.discounts = const [],
     this.mobileApi,
     this.token = '',
+    this.branchId,
     this.recurringAllowed = false,
     super.key,
   });
@@ -86,9 +90,13 @@ class AddWalkInPaymentModal extends StatefulWidget {
   final String customerName;
   final String customerId;
   final String serviceName;
+  /// Walk-in note — may contain `Package: #id - name` from check-in.
+  final String initialNote;
+  final String initialCustomerPackageId;
   final List<Map<String, dynamic>> discounts;
   final MobileApi? mobileApi;
   final String token;
+  final String? branchId;
   final bool recurringAllowed;
 
   static Future<AddWalkInPaymentModalResult?> show(
@@ -101,9 +109,12 @@ class AddWalkInPaymentModal extends StatefulWidget {
     String customerName = '',
     String customerId = '',
     String serviceName = '',
+    String initialNote = '',
+    String initialCustomerPackageId = '',
     List<Map<String, dynamic>> discounts = const [],
     MobileApi? mobileApi,
     String token = '',
+    String? branchId,
     bool recurringAllowed = false,
   }) {
     return showModalBottomSheet<AddWalkInPaymentModalResult>(
@@ -119,9 +130,12 @@ class AddWalkInPaymentModal extends StatefulWidget {
         customerName: customerName,
         customerId: customerId,
         serviceName: serviceName,
+        initialNote: initialNote,
+        initialCustomerPackageId: initialCustomerPackageId,
         discounts: discounts,
         mobileApi: mobileApi,
         token: token,
+        branchId: branchId,
         recurringAllowed: recurringAllowed,
       ),
     );
@@ -134,7 +148,7 @@ class AddWalkInPaymentModal extends StatefulWidget {
 
 class _AddWalkInPaymentModalState extends State<AddWalkInPaymentModal> {
   static const _methods = [
-    'Cash', 'Card', 'Online Transfer', 'LankaQR', 'Loyalty Points', 'Package',
+    'Cash', 'Card', 'Online Transfer', 'LankaQR', 'Loyalty Points',
   ];
   static const _methodIcons = <String, IconData>{
     'Cash':            Icons.payments_rounded,
@@ -142,7 +156,6 @@ class _AddWalkInPaymentModalState extends State<AddWalkInPaymentModal> {
     'Online Transfer': Icons.account_balance_rounded,
     'LankaQR':         Icons.qr_code_rounded,
     'Loyalty Points':  Icons.stars_rounded,
-    'Package':         Icons.card_giftcard_rounded,
   };
 
   final _formKey = GlobalKey<FormState>();
@@ -161,17 +174,35 @@ class _AddWalkInPaymentModalState extends State<AddWalkInPaymentModal> {
   List<RecurringTemplateOption> _recurringTemplates = const [];
   bool _loadingTemplates = false;
   List<Map<String, dynamic>> _customerPackages = [];
+  List<Map<String, dynamic>> _packageTemplates = [];
   bool _loadingPackages = false;
+  bool _linkingPackage = false;
+  String _selectedTemplateId = '';
   String _selectedPackageId = '';
+  double? _packageOfferPrice;
+  int _packagesLoadGen = 0;
 
   @override
   void initState() {
     super.initState();
     _hydrateSelection();
     _mainStaffId = widget.initialStaffId;
-    _amtCtrl = TextEditingController(text: '0');
+    final initial = widget.initialAmount.trim();
+    final initialOffer = double.tryParse(initial);
+    final hasPkgHint = widget.initialCustomerPackageId.trim().isNotEmpty ||
+        (AppointmentNotes.parsePackageId(widget.initialNote) ?? '')
+            .isNotEmpty;
+    if (hasPkgHint && initialOffer != null && initialOffer > 0) {
+      _packageOfferPrice = initialOffer;
+    }
+    _amtCtrl = TextEditingController(
+      text: initial.isNotEmpty ? initial : '0',
+    );
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _syncAmountFromServices();
+      if (!mounted) return;
+      if (_packageOfferPrice == null) {
+        _syncAmountFromServices();
+      }
       if (widget.recurringAllowed) _loadRecurringTemplates();
       if (widget.customerId.trim().isNotEmpty) {
         _loadCustomerPackages(widget.customerId);
@@ -182,27 +213,36 @@ class _AddWalkInPaymentModalState extends State<AddWalkInPaymentModal> {
   Future<void> _loadCustomerPackages(String custId) async {
     final api = widget.mobileApi;
     if (api == null || widget.token.isEmpty || custId.trim().isEmpty) return;
+    final gen = ++_packagesLoadGen;
     setState(() {
       _loadingPackages = true;
       _customerPackages = [];
-      _selectedPackageId = '';
+      _packageTemplates = [];
     });
     try {
-      final rows = await api.fetchActivePackages(
-        token: widget.token,
-        customerId: custId.trim(),
-      );
-      if (!mounted) return;
-      final redeemable =
-          rows.where(packageCanRedeemNow).toList(growable: false);
+      final branch = (widget.branchId ?? '').trim();
+      final results = await Future.wait([
+        api.fetchPackageTemplates(
+          token: widget.token,
+          branchId: branch.isEmpty ? null : branch,
+        ),
+        api.fetchActivePackages(
+          token: widget.token,
+          customerId: custId.trim(),
+        ),
+      ]);
+      if (!mounted || gen != _packagesLoadGen) return;
       setState(() {
-        _customerPackages = redeemable.isNotEmpty ? redeemable : rows;
+        _packageTemplates = filterBookablePackageTemplates(results[0]);
+        _customerPackages = results[1];
         _loadingPackages = false;
       });
+      await _restorePackageFromWalkIn();
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || gen != _packagesLoadGen) return;
       setState(() {
         _customerPackages = [];
+        _packageTemplates = [];
         _loadingPackages = false;
       });
       ScaffoldMessenger.of(context).showSnackBar(
@@ -213,42 +253,181 @@ class _AddWalkInPaymentModalState extends State<AddWalkInPaymentModal> {
     }
   }
 
-  void _applyPackage(String packageId) {
-    if (packageId.isEmpty) {
-      setState(() {
-        _selectedPackageId = '';
-        if (_method == 'Package') _method = 'Cash';
-      });
-      _syncAmountFromServices();
-      return;
-    }
+  /// Pre-select package services + offer amount from the walk-in check-in.
+  Future<void> _restorePackageFromWalkIn() async {
+    final cpId = widget.initialCustomerPackageId.trim().isNotEmpty
+        ? widget.initialCustomerPackageId.trim()
+        : (AppointmentNotes.parsePackageId(widget.initialNote) ?? '').trim();
+    if (cpId.isEmpty) return;
+
     Map<String, dynamic>? cp;
     for (final p in _customerPackages) {
-      if ('${p['id']}' == packageId) {
+      if ('${p['id']}' == cpId) {
         cp = p;
         break;
       }
     }
-    if (cp == null || !packageCanRedeemNow(cp)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('This package cannot be used right now.')),
-      );
+
+    var templateId =
+        '${cp?['package_id'] ?? packageOf(cp ?? {})?['id'] ?? ''}'.trim();
+    Map<String, dynamic>? tpl;
+    if (templateId.isNotEmpty) {
+      for (final p in _packageTemplates) {
+        if ('${p['id']}' == templateId) {
+          tpl = p;
+          break;
+        }
+      }
+    }
+    // Note may store template id when CP row is missing.
+    if (tpl == null) {
+      for (final p in _packageTemplates) {
+        if ('${p['id']}' == cpId) {
+          tpl = p;
+          templateId = cpId;
+          break;
+        }
+      }
+    }
+
+    final serviceIds = cp != null
+        ? resolvePackageServiceIds(cp, widget.services)
+        : (tpl != null
+            ? resolveTemplateServiceIds(tpl, widget.services)
+            : <String>[]);
+    final bundleFromPkg = cp != null
+        ? getPackageBundlePrice(cp)
+        : (tpl != null ? getTemplateBundlePrice(tpl) : 0.0);
+    final initialOffer = double.tryParse(widget.initialAmount.trim()) ?? 0.0;
+    final double bundle = bundleFromPkg > 0
+        ? bundleFromPkg
+        : (initialOffer > 0 ? initialOffer : 0.0);
+
+    if (!mounted) return;
+    if (serviceIds.isEmpty && !(bundle > 0)) return;
+
+    final templateInList = templateId.isNotEmpty &&
+        _packageTemplates.any((p) => '${p['id']}' == templateId);
+
+    setState(() {
+      if (templateInList) _selectedTemplateId = templateId;
+      // Only set CP id when we found a sold package row (not a bare template id).
+      _selectedPackageId = cp != null ? cpId : '';
+      if (_method == 'Package') _method = 'Cash';
+      _discountId = '';
+      _packageOfferPrice = bundle > 0 ? bundle : null;
+      if (serviceIds.isNotEmpty) {
+        applyResolvedServiceIds(
+          ids: serviceIds,
+          setPrimary: (v) => _primaryServiceId = v,
+          extras: _extraServiceIds,
+        );
+      }
+      if (bundle > 0) {
+        _amtCtrl.text = bundle.toStringAsFixed(0);
+      }
+    });
+  }
+
+  Future<void> _applyTemplate(String templateId) async {
+    if (templateId.isEmpty) {
+      setState(() {
+        _selectedPackageId = '';
+        _selectedTemplateId = '';
+        _packageOfferPrice = null;
+      });
+      _syncAmountFromServices();
       return;
     }
-    final ids = resolvePackageServiceIds(cp, widget.services);
-    final bundle = getPackageBundlePrice(cp);
-    setState(() {
-      _selectedPackageId = packageId;
-      _method = 'Package';
-      _discountId = '';
-      if (ids.isNotEmpty) {
-        _primaryServiceId = ids.first;
-        _extraServiceIds
-          ..clear()
-          ..addAll(ids.skip(1));
+    Map<String, dynamic>? tpl;
+    for (final p in _packageTemplates) {
+      if ('${p['id']}' == templateId) {
+        tpl = p;
+        break;
       }
+    }
+    if (tpl == null) return;
+
+    final selected = tpl;
+    final ids = resolveTemplateServiceIds(selected, widget.services);
+    final bundle = getTemplateBundlePrice(selected);
+    setState(() {
+      _selectedTemplateId = templateId;
+      if (_method == 'Package') _method = 'Cash';
+      _discountId = '';
+      _packageOfferPrice = bundle > 0 ? bundle : null;
+      applyResolvedServiceIds(
+        ids: ids,
+        setPrimary: (v) => _primaryServiceId = v,
+        extras: _extraServiceIds,
+      );
       _amtCtrl.text = bundle > 0 ? bundle.toStringAsFixed(0) : '0';
+      _linkingPackage = true;
     });
+
+    final api = widget.mobileApi;
+    if (api == null || widget.token.isEmpty || widget.customerId.trim().isEmpty) {
+      setState(() => _linkingPackage = false);
+      return;
+    }
+    try {
+      var cp = findCustomerPackageForTemplate(_customerPackages, templateId);
+      if (cp == null || !packageCanRedeemNow(cp)) {
+        cp = await api.purchasePackage(
+          token: widget.token,
+          customerId: widget.customerId.trim(),
+          packageId: templateId,
+        );
+        final refreshed = await api.fetchActivePackages(
+          token: widget.token,
+          customerId: widget.customerId.trim(),
+        );
+        if (mounted) {
+          setState(() => _customerPackages = refreshed);
+          cp = findCustomerPackageForTemplate(refreshed, templateId) ?? cp;
+        }
+      }
+      if (!mounted) return;
+      setState(() {
+        _selectedPackageId = '${cp?['id'] ?? ''}'.trim();
+        _linkingPackage = false;
+        // Re-lock after async link — all package services + offer price.
+        applyResolvedServiceIds(
+          ids: ids,
+          setPrimary: (v) => _primaryServiceId = v,
+          extras: _extraServiceIds,
+        );
+        _packageOfferPrice = bundle > 0 ? bundle : null;
+        _amtCtrl.text = bundle > 0 ? bundle.toStringAsFixed(0) : '0';
+      });
+      if (_selectedPackageId.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not link package to this customer.')),
+        );
+      }
+      if (ids.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Package selected, but its services were not found in this salon list.',
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _selectedTemplateId = '';
+        _selectedPackageId = '';
+        _packageOfferPrice = null;
+        _linkingPackage = false;
+        if (_method == 'Package') _method = 'Cash';
+      });
+      _syncAmountFromServices();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+      );
+    }
   }
 
   Future<void> _loadRecurringTemplates() async {
@@ -294,6 +473,8 @@ class _AddWalkInPaymentModalState extends State<AddWalkInPaymentModal> {
   }
 
   double _totalSelectedAmount() {
+    final offer = _packageOfferPrice;
+    if (offer != null && offer > 0) return offer;
     var sum = 0.0;
     for (final id in _orderedSelectedServiceIds()) {
       for (final s in widget.services) {
@@ -335,6 +516,13 @@ class _AddWalkInPaymentModalState extends State<AddWalkInPaymentModal> {
   }
 
   void _syncAmountFromServices() {
+    final offer = _packageOfferPrice;
+    if (offer != null && offer > 0) {
+      final promo = _computedPromo();
+      final net = (offer - promo).clamp(0, double.infinity);
+      _amtCtrl.text = net > 0 ? net.toStringAsFixed(0) : '0';
+      return;
+    }
     if (_orderedSelectedServiceIds().isEmpty) {
       _amtCtrl.text = '0';
       return;
@@ -361,6 +549,7 @@ class _AddWalkInPaymentModalState extends State<AddWalkInPaymentModal> {
         _primaryServiceId = null;
         return;
       }
+      _extraServiceIds.remove(v);
       if (prev != null && prev.isNotEmpty && prev != v) {
         _extraServiceIds.insert(0, prev);
       }
@@ -389,6 +578,19 @@ class _AddWalkInPaymentModalState extends State<AddWalkInPaymentModal> {
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
+    if (_linkingPackage) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please wait — linking package…')),
+      );
+      return;
+    }
+    if (_selectedTemplateId.isNotEmpty && _selectedPackageId.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Package is still linking. Try again in a moment.')),
+      );
+      return;
+    }
     if (_orderedSelectedServiceIds().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Select at least one service')),
@@ -398,12 +600,6 @@ class _AddWalkInPaymentModalState extends State<AddWalkInPaymentModal> {
     if (widget.recurringAllowed && _isRecurring && _recurringNextDate.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Select the next recurring visit date')),
-      );
-      return;
-    }
-    if (_method == 'Package' && _selectedPackageId.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Select a customer package for Package payment')),
       );
       return;
     }
@@ -421,7 +617,9 @@ class _AddWalkInPaymentModalState extends State<AddWalkInPaymentModal> {
       );
       return;
     }
-    final gross  = _totalSelectedAmount();
+    final gross = (_packageOfferPrice != null && _packageOfferPrice! > 0)
+        ? _packageOfferPrice!
+        : _totalSelectedAmount();
     final promo  = _computedPromo();
     final result = AddWalkInPaymentModalResult(
       method:          _method,
@@ -482,7 +680,10 @@ class _AddWalkInPaymentModalState extends State<AddWalkInPaymentModal> {
   @override
   Widget build(BuildContext context) {
     final bottom = MediaQuery.of(context).viewInsets.bottom;
-    final activeServices = widget.services.where((s) => s.isActive).toList();
+    final activeServices = servicesForPackagePicker(
+      widget.services,
+      _orderedSelectedServiceIds(),
+    );
     final name = widget.customerName;
     final initials = name.trim().isNotEmpty
         ? name.trim().split(' ').map((e) => e.isNotEmpty ? e[0].toUpperCase() : '').take(2).join()
@@ -626,6 +827,9 @@ class _AddWalkInPaymentModalState extends State<AddWalkInPaymentModal> {
               const SizedBox(height: 18),
 
               WalkInServiceDropdownSection(
+                key: ValueKey(
+                  'walkin_svc_${_orderedSelectedServiceIds().join(',')}',
+                ),
                 activeServices: activeServices,
                 primaryServiceId: _primaryServiceId,
                 orderedServiceIds: _orderedSelectedServiceIds(),
@@ -747,12 +951,12 @@ class _AddWalkInPaymentModalState extends State<AddWalkInPaymentModal> {
               const SizedBox(height: 16),
 
               if (widget.customerId.trim().isNotEmpty) ...[
-                _label('CUSTOMER PACKAGE'),
-                if (_loadingPackages)
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 10),
+                _label('PACKAGE'),
+                if (_loadingPackages || _linkingPackage)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 10),
                     child: Row(children: [
-                      SizedBox(
+                      const SizedBox(
                         width: 16,
                         height: 16,
                         child: CircularProgressIndicator(
@@ -760,24 +964,29 @@ class _AddWalkInPaymentModalState extends State<AddWalkInPaymentModal> {
                           color: _pGreen,
                         ),
                       ),
-                      SizedBox(width: 10),
+                      const SizedBox(width: 10),
                       Text(
-                        'Loading packages…',
-                        style: TextStyle(fontSize: 13, color: Color(0xFF9CA3AF)),
+                        _linkingPackage
+                            ? 'Linking package…'
+                            : 'Loading packages…',
+                        style: const TextStyle(
+                            fontSize: 13, color: Color(0xFF9CA3AF)),
                       ),
                     ]),
                   )
                 else
                   DropdownButtonFormField<String>(
                     key: ValueKey(
-                      'walkin_pkgs_${widget.customerId}_${_customerPackages.length}',
+                      'walkin_pkgs_${widget.customerId}_${_packageTemplates.length}_$_selectedTemplateId',
                     ),
-                    initialValue:
-                        _selectedPackageId.isEmpty ? '' : _selectedPackageId,
+                    initialValue: safePackageTemplateDropdownValue(
+                      _selectedTemplateId,
+                      _packageTemplates,
+                    ),
                     isExpanded: true,
                     decoration: InputDecoration(
-                      hintText: _customerPackages.isEmpty
-                          ? 'No packages for this customer'
+                      hintText: _packageTemplates.isEmpty
+                          ? 'No packages — create one on web first'
                           : 'Select package (optional)',
                       prefixIcon: const Icon(Icons.card_giftcard_rounded,
                           color: _pGreen, size: 19),
@@ -796,29 +1005,24 @@ class _AddWalkInPaymentModalState extends State<AddWalkInPaymentModal> {
                       DropdownMenuItem(
                         value: '',
                         child: Text(
-                          _customerPackages.isEmpty
-                              ? 'No active packages'
+                          _packageTemplates.isEmpty
+                              ? 'No packages available'
                               : 'No package — pay normally',
                         ),
                       ),
-                      ..._customerPackages.map((pkg) {
-                        final id = '${pkg['id']}';
-                        final can = packageCanRedeemNow(pkg);
+                      ..._packageTemplates.map((pkg) {
                         return DropdownMenuItem<String>(
-                          value: id,
-                          enabled: can,
+                          value: '${pkg['id']}',
                           child: Text(
-                            can
-                                ? formatCustomerPackageLabel(pkg)
-                                : '${formatCustomerPackageLabel(pkg)} — unavailable',
+                            formatPackageTemplateLabel(pkg),
                             overflow: TextOverflow.ellipsis,
                           ),
                         );
                       }),
                     ],
-                    onChanged: _customerPackages.isEmpty
+                    onChanged: _packageTemplates.isEmpty
                         ? null
-                        : (v) => _applyPackage(v ?? ''),
+                        : (v) => _applyTemplate(v ?? ''),
                   ),
                 const SizedBox(height: 16),
               ],
@@ -831,26 +1035,7 @@ class _AddWalkInPaymentModalState extends State<AddWalkInPaymentModal> {
                   final sel = _method == m;
                   return GestureDetector(
                     onTap: () {
-                      if (m == 'Package' && _selectedPackageId.isEmpty) {
-                        for (final p in _customerPackages) {
-                          if (packageCanRedeemNow(p)) {
-                            _applyPackage('${p['id']}');
-                            return;
-                          }
-                        }
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text(
-                              'No redeemable packages for this customer',
-                            ),
-                          ),
-                        );
-                        return;
-                      }
-                      setState(() {
-                        _method = m;
-                        if (m != 'Package') _selectedPackageId = '';
-                      });
+                      setState(() => _method = m);
                     },
                     child: AnimatedContainer(
                       duration: const Duration(milliseconds: 130),

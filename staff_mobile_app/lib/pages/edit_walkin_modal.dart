@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/customer.dart';
 import '../models/salon_service.dart';
 import '../models/walkin_entry.dart';
+import '../utils/appointment_notes.dart';
 import '../widgets/walk_in_service_dropdown_section.dart';
 import 'add_walkin_modal.dart';
 
@@ -66,6 +67,7 @@ class _EditWalkInModalState extends State<EditWalkInModal> {
 
   String? _primaryServiceId;
   final List<String> _extraServiceIds = [];
+  double? _packageOfferPrice;
 
   String _branchDisplayName() {
     final bid = widget.entry.branchId;
@@ -98,6 +100,12 @@ class _EditWalkInModalState extends State<EditWalkInModal> {
       _primaryServiceId = list.first;
       _extraServiceIds.addAll(list.length > 1 ? list.sublist(1) : []);
     }
+    final pkgHint = AppointmentNotes.parsePackageId(e.note);
+    if (pkgHint != null &&
+        pkgHint.isNotEmpty &&
+        e.totalAmount > 0) {
+      _packageOfferPrice = e.totalAmount;
+    }
   }
 
   @override
@@ -115,6 +123,8 @@ class _EditWalkInModalState extends State<EditWalkInModal> {
   }
 
   double _totalSelectedAmount() {
+    final offer = _packageOfferPrice;
+    if (offer != null && offer > 0) return offer;
     var sum = 0.0;
     for (final id in _orderedSelectedServiceIds()) {
       for (final s in widget.services) {
@@ -142,6 +152,7 @@ class _EditWalkInModalState extends State<EditWalkInModal> {
         _primaryServiceId = null;
         return;
       }
+      _extraServiceIds.remove(v);
       if (prev != null && prev.isNotEmpty && prev != v) {
         _extraServiceIds.insert(0, prev);
       }
@@ -200,6 +211,11 @@ class _EditWalkInModalState extends State<EditWalkInModal> {
       serviceId:    ids.first.trim(),
       serviceIds:   List<String>.from(ids),
       note:         _noteForApi(),
+      customerId:   widget.entry.customerId,
+      customerPackageId:
+          AppointmentNotes.parsePackageId(_noteForApi()) ??
+              AppointmentNotes.parsePackageId(widget.entry.note) ??
+              '',
     ));
   }
 

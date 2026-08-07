@@ -272,6 +272,8 @@ class _WalkInPageState extends State<WalkInPage> {
       services: _services,
       customers: customers,
       initialBranchId: uid,
+      mobileApi: app.api,
+      token: app.currentUser?.authToken ?? '',
       onRegisterNewCustomer: (name, phone, branchId) =>
           AppStateScope.of(context).registerCustomer(
             name: name,
@@ -288,6 +290,10 @@ class _WalkInPageState extends State<WalkInPage> {
       serviceIds:   payload.serviceIds,
       phone:        payload.phone,
       note:         payload.note,
+      customerId:   payload.customerId.isEmpty ? null : payload.customerId,
+      customerPackageId: payload.customerPackageId.isEmpty
+          ? null
+          : payload.customerPackageId,
     );
     if (!mounted) return;
     if (created == null) {
@@ -458,6 +464,8 @@ class _WalkInPageState extends State<WalkInPage> {
       customerId: e.customerId,
       serviceName: e.serviceName,
       initialAmount: initialPay,
+      initialNote: e.note,
+      initialCustomerPackageId: AppointmentNotes.parsePackageId(e.note) ?? '',
       services: _services,
       selectedServiceIds: selectedForModal,
       staff: staff,
@@ -465,6 +473,7 @@ class _WalkInPageState extends State<WalkInPage> {
       discounts: discounts,
       mobileApi: app.api,
       token: app.currentUser?.authToken ?? '',
+      branchId: bid.isEmpty ? null : bid,
       recurringAllowed: true,
     );
     if (payload == null || !mounted) return;

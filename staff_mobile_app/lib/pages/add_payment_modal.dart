@@ -132,7 +132,7 @@ class AddPaymentModal extends StatefulWidget {
 
 class _AddPaymentModalState extends State<AddPaymentModal> {
   static const _methods = <String>[
-    'Cash', 'Card', 'Online Transfer', 'LankaQR', 'Loyalty Points', 'Package'
+    'Cash', 'Card', 'Online Transfer', 'LankaQR', 'Loyalty Points'
   ];
   static const _methodIcons = <String, IconData>{
     'Cash':            Icons.payments_rounded,
@@ -140,7 +140,6 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
     'Online Transfer': Icons.account_balance_rounded,
     'LankaQR':         Icons.qr_code_rounded,
     'Loyalty Points':  Icons.stars_rounded,
-    'Package':         Icons.card_giftcard_rounded,
   };
 
   final _formKey               = GlobalKey<FormState>();
@@ -173,8 +172,14 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
   bool _searchingCustomers = false;
   Timer? _customerSearchTimer;
   List<Map<String, dynamic>> _customerPackages = [];
+  List<Map<String, dynamic>> _packageTemplates = [];
   bool _loadingPackages = false;
+  bool _linkingPackage = false;
+  String _selectedTemplateId = '';
   String _selectedPackageId = '';
+  /// When set, totals use this offer price instead of summing services.
+  double? _packageOfferPrice;
+  int _packagesLoadGen = 0;
 
   @override
   void initState() {
@@ -242,33 +247,46 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
     if (api == null || widget.token.isEmpty || custId.trim().isEmpty) {
       setState(() {
         _customerPackages = [];
+        _packageTemplates = [];
         _selectedPackageId = '';
+        _selectedTemplateId = '';
+        _packageOfferPrice = null;
         _loadingPackages = false;
       });
       return;
     }
+    final gen = ++_packagesLoadGen;
     setState(() {
       _loadingPackages = true;
       _customerPackages = [];
+      _packageTemplates = [];
       _selectedPackageId = '';
+      _selectedTemplateId = '';
+      _packageOfferPrice = null;
     });
     try {
-      final rows = await api.fetchActivePackages(
-        token: widget.token,
-        customerId: custId.trim(),
-      );
-      if (!mounted) return;
-      // Prefer packages that can still be redeemed; keep others visible as disabled.
-      final redeemable =
-          rows.where(packageCanRedeemNow).toList(growable: false);
+      final results = await Future.wait([
+        api.fetchPackageTemplates(
+          token: widget.token,
+          branchId: _branchId,
+        ),
+        api.fetchActivePackages(
+          token: widget.token,
+          customerId: custId.trim(),
+        ),
+      ]);
+      if (!mounted || gen != _packagesLoadGen) return;
       setState(() {
-        _customerPackages = redeemable.isNotEmpty ? redeemable : rows;
+        _packageTemplates =
+            filterBookablePackageTemplates(results[0]);
+        _customerPackages = results[1];
         _loadingPackages = false;
       });
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || gen != _packagesLoadGen) return;
       setState(() {
         _customerPackages = [];
+        _packageTemplates = [];
         _loadingPackages = false;
       });
       ScaffoldMessenger.of(context).showSnackBar(
@@ -284,16 +302,17 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
 
   Widget _buildPackagePicker() {
     if (_customerId.trim().isEmpty) return const SizedBox.shrink();
+    final busy = _loadingPackages || _linkingPackage;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const SizedBox(height: 12),
-        _label('CUSTOMER PACKAGE'),
-        if (_loadingPackages)
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 10),
+        _label('PACKAGE'),
+        if (busy)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 10),
             child: Row(children: [
-              SizedBox(
+              const SizedBox(
                 width: 16,
                 height: 16,
                 child: CircularProgressIndicator(
@@ -301,24 +320,26 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
                   color: _pGreen,
                 ),
               ),
-              SizedBox(width: 10),
+              const SizedBox(width: 10),
               Text(
-                'Loading packages…',
-                style: TextStyle(fontSize: 13, color: Color(0xFF9CA3AF)),
+                _linkingPackage ? 'Linking package…' : 'Loading packages…',
+                style: const TextStyle(fontSize: 13, color: Color(0xFF9CA3AF)),
               ),
             ]),
           )
         else
           DropdownButtonFormField<String>(
             key: ValueKey(
-              'pay_pkgs_${_customerId}_${_customerPackages.length}',
+              'pay_pkgs_${_customerId}_${_packageTemplates.length}_$_selectedTemplateId',
             ),
-            initialValue:
-                _selectedPackageId.isEmpty ? '' : _selectedPackageId,
+            initialValue: safePackageTemplateDropdownValue(
+              _selectedTemplateId,
+              _packageTemplates,
+            ),
             isExpanded: true,
             decoration: _deco(
-              _customerPackages.isEmpty
-                  ? 'No packages for this customer'
+              _packageTemplates.isEmpty
+                  ? 'No packages — create one on web first'
                   : 'Select package (optional)',
               Icons.card_giftcard_rounded,
             ),
@@ -326,91 +347,153 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
               DropdownMenuItem(
                 value: '',
                 child: Text(
-                  _customerPackages.isEmpty
-                      ? 'No packages found'
+                  _packageTemplates.isEmpty
+                      ? 'No packages available'
                       : 'No package — pay normally',
                   style: TextStyle(
                     fontSize: 13,
-                    color: _customerPackages.isEmpty
+                    color: _packageTemplates.isEmpty
                         ? const Color(0xFFD1D5DB)
                         : const Color(0xFF6B7280),
                   ),
                 ),
               ),
-              ..._customerPackages.map((pkg) {
+              ..._packageTemplates.map((pkg) {
                 final id = '${pkg['id']}';
-                final can = packageCanRedeemNow(pkg);
                 return DropdownMenuItem<String>(
                   value: id,
-                  enabled: can,
                   child: Text(
-                    can
-                        ? formatCustomerPackageLabel(pkg)
-                        : '${formatCustomerPackageLabel(pkg)} — unavailable',
+                    formatPackageTemplateLabel(pkg),
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: can
-                          ? const Color(0xFF111827)
-                          : const Color(0xFF9CA3AF),
-                    ),
+                    style: const TextStyle(fontSize: 13),
                   ),
                 );
               }),
             ],
-            onChanged: _customerPackages.isEmpty
+            onChanged: _packageTemplates.isEmpty
                 ? null
-                : (v) => _applyPackage(v ?? ''),
+                : (v) => _applyTemplate(v ?? ''),
           ),
       ],
     );
   }
 
-  void _clearPackageSelection({bool keepMethod = false}) {
+  void _clearPackageSelection() {
     setState(() {
       _selectedPackageId = '';
-      if (!keepMethod && _method == 'Package') _method = 'Cash';
+      _selectedTemplateId = '';
+      _packageOfferPrice = null;
     });
   }
 
-  void _applyPackage(String packageId) {
-    if (packageId.isEmpty) {
+  Future<void> _applyTemplate(String templateId) async {
+    if (templateId.isEmpty) {
       _clearPackageSelection();
       _recalcTotal();
       return;
     }
-    Map<String, dynamic>? cp;
-    for (final p in _customerPackages) {
-      if ('${p['id']}' == packageId) {
-        cp = p;
+    Map<String, dynamic>? tpl;
+    for (final p in _packageTemplates) {
+      if ('${p['id']}' == templateId) {
+        tpl = p;
         break;
       }
     }
-    if (cp == null || !packageCanRedeemNow(cp)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('This package cannot be used right now.'),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-      return;
-    }
-    final ids = resolvePackageServiceIds(cp, widget.services);
-    final bundle = getPackageBundlePrice(cp);
+    if (tpl == null) return;
+
+    final ids = resolveTemplateServiceIds(tpl, widget.services);
+    final bundle = getTemplateBundlePrice(tpl);
     setState(() {
-      _selectedPackageId = packageId;
-      _method = 'Package';
+      _selectedTemplateId = templateId;
+      // Keep normal payment method (Cash/Card/…) — package is not a method.
+      if (_method == 'Package') _method = 'Cash';
       _discountId = '';
-      if (ids.isNotEmpty) {
-        _primaryServiceId = ids.first;
-        _extraServiceIds
-          ..clear()
-          ..addAll(ids.skip(1));
-      }
+      _packageOfferPrice = bundle > 0 ? bundle : null;
+      applyResolvedServiceIds(
+        ids: ids,
+        setPrimary: (v) => _primaryServiceId = v,
+        extras: _extraServiceIds,
+      );
       _totalAmountCtrl.text =
           bundle > 0 ? bundle.toStringAsFixed(0) : '0';
       _applyNetToPaid();
+      _linkingPackage = true;
     });
+
+    final api = widget.mobileApi;
+    if (api == null || widget.token.isEmpty || _customerId.trim().isEmpty) {
+      setState(() => _linkingPackage = false);
+      return;
+    }
+    try {
+      var cp = findCustomerPackageForTemplate(_customerPackages, templateId);
+      if (cp == null || !packageCanRedeemNow(cp)) {
+        cp = await api.purchasePackage(
+          token: widget.token,
+          customerId: _customerId.trim(),
+          packageId: templateId,
+          branchId: _branchId,
+        );
+        final refreshed = await api.fetchActivePackages(
+          token: widget.token,
+          customerId: _customerId.trim(),
+        );
+        if (mounted) {
+          setState(() => _customerPackages = refreshed);
+          cp = findCustomerPackageForTemplate(refreshed, templateId) ?? cp;
+        }
+      }
+      if (!mounted) return;
+      final cpId = '${cp['id'] ?? ''}'.trim();
+      setState(() {
+        _selectedPackageId = cpId;
+        _linkingPackage = false;
+        // Re-lock after async link — all package services + offer price.
+        applyResolvedServiceIds(
+          ids: ids,
+          setPrimary: (v) => _primaryServiceId = v,
+          extras: _extraServiceIds,
+        );
+        _packageOfferPrice = bundle > 0 ? bundle : null;
+        _totalAmountCtrl.text =
+            bundle > 0 ? bundle.toStringAsFixed(0) : '0';
+        _applyNetToPaid();
+      });
+      if (cpId.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not link package to this customer.'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+      if (ids.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Package selected, but its services were not found in this salon list.',
+            ),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _selectedTemplateId = '';
+        _selectedPackageId = '';
+        _packageOfferPrice = null;
+        _linkingPackage = false;
+        if (_method == 'Package') _method = 'Cash';
+      });
+      _recalcTotal();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.toString().replaceFirst('Exception: ', '')),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
   }
 
   Future<void> _loadRecurringTemplates() async {
@@ -487,6 +570,12 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
   }
 
   void _recalcTotal() {
+    final offer = _packageOfferPrice;
+    if (offer != null && offer > 0) {
+      _totalAmountCtrl.text = offer.toStringAsFixed(0);
+      _applyNetToPaid();
+      return;
+    }
     var total = 0.0;
     for (final id in _orderedServiceIds()) {
       for (final s in widget.services) {
@@ -526,6 +615,24 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
+    if (_linkingPackage) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please wait — linking package…'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+    if (_selectedTemplateId.isNotEmpty && _selectedPackageId.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Package is still linking. Try again in a moment.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
     if (_customerId.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -550,15 +657,6 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Select main staff.'),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-      return;
-    }
-    if (_method == 'Package' && _selectedPackageId.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Select a customer package for Package payment'),
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -673,7 +771,10 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
   @override
   Widget build(BuildContext context) {
     final bottom         = MediaQuery.of(context).viewInsets.bottom;
-    final activeServices = widget.services.where((s) => s.isActive).toList();
+    final activeServices = servicesForPackagePicker(
+      widget.services,
+      _orderedServiceIds(),
+    );
     final filteredStaff  = (_branchId == null || _branchId!.isEmpty)
         ? widget.staff
         : widget.staff.where((s) => s.branchId == _branchId).toList();
@@ -764,12 +865,17 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
                                 overflow: TextOverflow.ellipsis),
                           ))
                       .toList(),
-                  onChanged: (v) => setState(() {
-                    _branchId = v;
-                    _staffId = null;
-                    _helpers = [];
-                    _staffNameCtrl.clear();
-                  }),
+                  onChanged: (v) {
+                    setState(() {
+                      _branchId = v;
+                      _staffId = null;
+                      _helpers = [];
+                      _staffNameCtrl.clear();
+                    });
+                    if (_customerId.trim().isNotEmpty) {
+                      _loadCustomerPackages(_customerId);
+                    }
+                  },
                   validator: (v) =>
                       v == null || v.trim().isEmpty ? 'Branch required' : null,
                 ),
@@ -823,7 +929,10 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
                       _linkedCustomer = null;
                       _customerNameCtrl.text = c.name;
                       _customerPackages = [];
+                      _packageTemplates = [];
                       _selectedPackageId = '';
+                      _selectedTemplateId = '';
+                      _packageOfferPrice = null;
                     });
                     return;
                   }
@@ -854,8 +963,10 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
                           _customerId     = '';
                           _registerMode   = false;
                           _customerPackages = [];
+                          _packageTemplates = [];
                           _selectedPackageId = '';
-                          if (_method == 'Package') _method = 'Cash';
+                          _selectedTemplateId = '';
+                          _packageOfferPrice = null;
                         });
                       }
                     },
@@ -1022,12 +1133,26 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
 
               // ── Services (dropdowns — same pattern as Walk-in Collect Payment) ──
               WalkInServiceDropdownSection(
+                key: ValueKey(
+                  'pay_svc_${_orderedServiceIds().join(',')}',
+                ),
                 activeServices: activeServices,
                 primaryServiceId: _primaryServiceId,
                 orderedServiceIds: _orderedServiceIds(),
                 onPrimaryChanged: (v) {
                   setState(() {
-                    _primaryServiceId = v;
+                    final prev = _primaryServiceId;
+                    if (v == null) {
+                      _primaryServiceId = null;
+                    } else {
+                      _extraServiceIds.remove(v);
+                      if (prev != null &&
+                          prev.isNotEmpty &&
+                          prev != v) {
+                        _extraServiceIds.insert(0, prev);
+                      }
+                      _primaryServiceId = v;
+                    }
                     _recalcTotal();
                   });
                 },
@@ -1153,31 +1278,7 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
                   final sel = _method == m;
                   return GestureDetector(
                     onTap: () {
-                      if (m == 'Package' && _selectedPackageId.isEmpty) {
-                        if (_customerPackages.isEmpty) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text(
-                                'No redeemable packages for this customer',
-                              ),
-                              behavior: SnackBarBehavior.floating,
-                            ),
-                          );
-                          return;
-                        }
-                        // Prefer first redeemable package.
-                        for (final p in _customerPackages) {
-                          if (packageCanRedeemNow(p)) {
-                            _applyPackage('${p['id']}');
-                            return;
-                          }
-                        }
-                        return;
-                      }
-                      setState(() {
-                        _method = m;
-                        if (m != 'Package') _selectedPackageId = '';
-                      });
+                      setState(() => _method = m);
                     },
                     child: AnimatedContainer(
                       duration: const Duration(milliseconds: 130),

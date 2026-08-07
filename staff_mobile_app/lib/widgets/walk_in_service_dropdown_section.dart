@@ -51,6 +51,24 @@ class _WalkInServiceDropdownSectionState
     super.dispose();
   }
 
+  @override
+  void didUpdateWidget(covariant WalkInServiceDropdownSection oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Parent may auto-select services (e.g. package pick) — remount dropdowns.
+    final primaryChanged =
+        oldWidget.primaryServiceId != widget.primaryServiceId;
+    final orderedChanged = oldWidget.orderedServiceIds.join(',') !=
+        widget.orderedServiceIds.join(',');
+    if (primaryChanged || orderedChanged) {
+      _primaryDropdownKey++;
+      _extraDropdownKey++;
+      // Clear search so package services aren't hidden by an old filter.
+      if (_searchCtrl.text.isNotEmpty) {
+        _searchCtrl.clear();
+      }
+    }
+  }
+
   SalonService? _serviceById(String id) {
     for (final s in widget.activeServices) {
       if (s.id == id) return s;
@@ -290,66 +308,82 @@ class _WalkInServiceDropdownSectionState
             onChanged: w.onPrimaryChanged,
           ),
 
-        // ── Extra service pills ──────────────────────────────────────────────
+        // ── Extra selected services (full rows — package multi-select) ───────
         if (extraIds.isNotEmpty) ...[
           const SizedBox(height: 8),
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: List.generate(extraIds.length, (i) {
-              final s = _serviceById(extraIds[i]);
-              if (s == null) return const SizedBox.shrink();
-              return Container(
-                padding: const EdgeInsets.fromLTRB(10, 6, 6, 6),
-                decoration: BoxDecoration(
-                  color: accent.withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                    color: accent.withValues(alpha: 0.25),
-                    width: 1.2,
-                  ),
-                ),
-                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  Text(
-                    s.name,
-                    style: TextStyle(
-                      color: accent,
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                  Text(
-                    'LKR ${s.price.toStringAsFixed(0)}',
-                    style: TextStyle(
-                      color: muted,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                  const SizedBox(width: 2),
-                  GestureDetector(
-                    onTap: () => w.onRemoveExtraAt(i),
-                    child: Padding(
-                      padding: const EdgeInsets.all(3),
-                      child: Icon(
-                        Icons.close_rounded,
-                        size: 13,
-                        color: accent.withValues(alpha: 0.65),
+          ...List.generate(extraIds.length, (i) {
+            final extraId = extraIds[i];
+            final extraFiltered = _filteredServices(keepId: extraId);
+            final extraVal = extraFiltered.any((s) => s.id == extraId)
+                ? extraId
+                : null;
+            return Padding(
+              padding: EdgeInsets.only(bottom: i == extraIds.length - 1 ? 0 : 8),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: DropdownButtonFormField<String>(
+                      key: ValueKey('extra_${_extraDropdownKey}_${i}_$extraId'),
+                      initialValue: extraVal,
+                      isExpanded: true,
+                      decoration: _fieldDeco(
+                        hint: 'Additional service',
+                        icon: Icons.spa_outlined,
+                        accent: accent.withValues(alpha: 0.75),
+                        muted: muted,
+                        border: w.borderColor,
+                        bg: w.bgColor,
+                      ).copyWith(
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 11,
+                        ),
                       ),
+                      icon: Icon(
+                        Icons.keyboard_arrow_down_rounded,
+                        color: muted.withValues(alpha: 0.7),
+                        size: 22,
+                      ),
+                      items: extraFiltered
+                          .map(
+                            (s) => DropdownMenuItem(
+                              value: s.id,
+                              child: _serviceItem(s, muted, nameSize: 13),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (v) {
+                        if (v == null || v == extraId) return;
+                        w.onRemoveExtraAt(i);
+                        w.onAddExtra(v);
+                      },
                     ),
                   ),
-                ]),
-              );
-            }),
-          ),
+                  const SizedBox(width: 6),
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: IconButton(
+                      tooltip: 'Remove',
+                      onPressed: () => w.onRemoveExtraAt(i),
+                      style: IconButton.styleFrom(
+                        backgroundColor: accent.withValues(alpha: 0.08),
+                        foregroundColor: accent,
+                      ),
+                      icon: const Icon(Icons.close_rounded, size: 18),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }),
         ],
 
         // ── Add extra service ────────────────────────────────────────────────
         if (hasPrimary && filtered.isNotEmpty) ...[
           const SizedBox(height: 8),
           DropdownButtonFormField<String>(
-            key: ValueKey('extra_$_extraDropdownKey'),
+            key: ValueKey('extra_add_$_extraDropdownKey'),
             initialValue: null,
             isExpanded: true,
             decoration: _fieldDeco(
@@ -392,6 +426,18 @@ class _WalkInServiceDropdownSectionState
             child: Text(
               'Select at least one service',
               style: TextStyle(color: Colors.red.shade400, fontSize: 11.5),
+            ),
+          )
+        else if (w.helperText.trim().isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 8, left: 4),
+            child: Text(
+              w.helperText,
+              style: TextStyle(
+                color: muted.withValues(alpha: 0.85),
+                fontSize: 11.5,
+                fontWeight: FontWeight.w500,
+              ),
             ),
           ),
       ],

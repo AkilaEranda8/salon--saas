@@ -5,6 +5,7 @@ import '../models/salon_service.dart';
 import '../models/staff_member.dart';
 import '../state/app_state.dart';
 import '../utils/appointment_notes.dart';
+import '../utils/package_helpers.dart';
 import '../widgets/walk_in_service_dropdown_section.dart';
 
 // ── Sentinel id for "Register new customer" autocomplete option ──────────────
@@ -71,9 +72,14 @@ class _AddApptSheetState extends State<_AddApptSheet> {
   String _advanceMethod = 'Cash';
 
   List<Map<String, dynamic>> _customerPackages = [];
+  List<Map<String, dynamic>> _packageTemplates = [];
   String  _selectedPkgId   = '';
+  String  _selectedTemplateId = '';
   String  _selectedPkgName = '';
   bool    _loadingPackages  = false;
+  bool    _linkingPackage   = false;
+  double? _packageOfferPrice;
+  int     _packagesLoadGen  = 0;
 
   bool get _isSuper =>
       AppStateScope.of(context).currentUser?.role == 'superadmin';
@@ -217,6 +223,10 @@ class _AddApptSheetState extends State<_AddApptSheet> {
   }
 
   double get _calcTotal {
+    final offer = _packageOfferPrice;
+    if (offer != null && offer > 0) {
+      return offer;
+    }
     var sum = 0.0;
     for (final id in _orderedServiceIds()) {
       for (final s in _services) { if (s.id == id) sum += s.price; }
@@ -233,6 +243,7 @@ class _AddApptSheetState extends State<_AddApptSheet> {
     setState(() {
       final prev = _primaryServiceId;
       if (v == null) { _primaryServiceId = null; _syncAssignments(); _updateTotal(); return; }
+      _extraServiceIds.remove(v);
       if (prev != null && prev.isNotEmpty && prev != v) {
         _extraServiceIds.insert(0, prev);
       }
@@ -267,29 +278,120 @@ class _AddApptSheetState extends State<_AddApptSheet> {
 
   Future<void> _loadCustomerPackages(String custId) async {
     if (custId.isEmpty) return;
-    setState(() { _loadingPackages = true; _customerPackages = []; });
-    final app  = AppStateScope.of(context);
+    final gen = ++_packagesLoadGen;
+    setState(() {
+      _loadingPackages = true;
+      _customerPackages = [];
+      _packageTemplates = [];
+      _selectedPkgId = '';
+      _selectedTemplateId = '';
+      _selectedPkgName = '';
+      _packageOfferPrice = null;
+    });
+    final app = AppStateScope.of(context);
     try {
+      final branch = (_isSuper || (app.currentUser?.branchId ?? '').isEmpty)
+          ? _branchId
+          : (app.currentUser?.branchId ?? '');
+      final templates = await app.loadPackageTemplates(branchId: branch);
       final pkgs = await app.loadCustomerActivePackages(custId);
-      if (!mounted) return;
-      // Appointment picker: show redeemable/active packages first.
-      final usable = pkgs.where((p) {
-        final status = '${p['status'] ?? ''}'.toLowerCase();
-        if (status == 'expired' || status == 'completed') return false;
-        return true;
-      }).toList();
+      if (!mounted || gen != _packagesLoadGen) return;
       setState(() {
-        _customerPackages = usable.isNotEmpty ? usable : pkgs;
+        _packageTemplates = filterBookablePackageTemplates(templates);
+        _customerPackages = pkgs;
         _loadingPackages = false;
       });
     } catch (_) {
-      if (!mounted) return;
-      setState(() { _customerPackages = []; _loadingPackages = false; });
+      if (!mounted || gen != _packagesLoadGen) return;
+      setState(() {
+        _customerPackages = [];
+        _packageTemplates = [];
+        _loadingPackages = false;
+      });
     }
+  }
+
+  Future<void> _applyAppointmentTemplate(String templateId) async {
+    if (templateId.isEmpty) {
+      setState(() {
+        _selectedPkgId = '';
+        _selectedTemplateId = '';
+        _selectedPkgName = '';
+        _packageOfferPrice = null;
+      });
+      _updateTotal();
+      return;
+    }
+    Map<String, dynamic>? tpl;
+    for (final p in _packageTemplates) {
+      if ('${p['id']}' == templateId) {
+        tpl = p;
+        break;
+      }
+    }
+    if (tpl == null) return;
+
+    final selected = tpl;
+    final serviceIds = resolveTemplateServiceIds(selected, _services);
+    final price = getTemplateBundlePrice(selected);
+    setState(() {
+      _selectedTemplateId = templateId;
+      _selectedPkgName = '${selected['name'] ?? ''}';
+      _packageOfferPrice = price > 0 ? price : null;
+      applyResolvedServiceIds(
+        ids: serviceIds,
+        setPrimary: (v) => _primaryServiceId = v,
+        extras: _extraServiceIds,
+      );
+      _syncAssignments();
+      _linkingPackage = true;
+    });
+    _updateTotal();
+
+    final app = AppStateScope.of(context);
+    final branch = (_isSuper || (app.currentUser?.branchId ?? '').isEmpty)
+        ? _branchId
+        : (app.currentUser?.branchId ?? '');
+    final cp = await app.ensureCustomerPackageForTemplate(
+      customerId: _custId,
+      templateId: templateId,
+      branchId: branch,
+      existingCustomerPackages: _customerPackages,
+    );
+    if (!mounted) return;
+    if (cp == null) {
+      setState(() {
+        _selectedTemplateId = '';
+        _selectedPkgId = '';
+        _selectedPkgName = '';
+        _packageOfferPrice = null;
+        _linkingPackage = false;
+      });
+      _snack(app.lastError ?? 'Failed to link package to customer.');
+      _updateTotal();
+      return;
+    }
+    setState(() {
+      _selectedPkgId = '${cp['id']}';
+      _linkingPackage = false;
+      // Refresh owned list in background state
+      final existing = findCustomerPackageForTemplate(_customerPackages, templateId);
+      if (existing == null) {
+        _customerPackages = [..._customerPackages, cp];
+      }
+    });
   }
 
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
+    if (_linkingPackage) {
+      _snack('Please wait — linking package…');
+      return;
+    }
+    if (_selectedTemplateId.isNotEmpty && _selectedPkgId.trim().isEmpty) {
+      _snack('Package is still linking. Try again in a moment.');
+      return;
+    }
     if (_orderedServiceIds().isEmpty) {
       _snack('Select at least one service'); return;
     }
@@ -443,7 +545,10 @@ class _AddApptSheetState extends State<_AddApptSheet> {
   @override
   Widget build(BuildContext context) {
     final bottom = MediaQuery.of(context).viewInsets.bottom;
-    final active = _services.where((s) => s.isActive).toList();
+    final active = servicesForPackagePicker(
+      _services,
+      _orderedServiceIds(),
+    );
 
     return Container(
       decoration: const BoxDecoration(
@@ -620,8 +725,11 @@ class _AddApptSheetState extends State<_AddApptSheet> {
                         _registerMode    = false;
                         _registered      = false;
                         _selectedPkgId   = '';
+                        _selectedTemplateId = '';
                         _selectedPkgName = '';
+                        _packageOfferPrice = null;
                         _customerPackages = [];
+                        _packageTemplates = [];
                       });
                       _loadCustomerPackages(c.id);
                     },
@@ -785,82 +893,74 @@ class _AddApptSheetState extends State<_AddApptSheet> {
 
                   const SizedBox(height: 10),
 
-                  // Customer Package
-                  if (_custId.isNotEmpty) ...[  
-                    _label('CUSTOMER PACKAGE (OPTIONAL)'),
+                  // Package templates (same as web booking)
+                  if (_custId.isNotEmpty) ...[
+                    _label('PACKAGE (OPTIONAL)'),
                     Container(
                       decoration: BoxDecoration(
                         color: _cBg,
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
-                          color: _selectedPkgId.isNotEmpty ? _cMid : _cBorder,
-                          width: _selectedPkgId.isNotEmpty ? 1.8 : 1,
+                          color: _selectedTemplateId.isNotEmpty ? _cMid : _cBorder,
+                          width: _selectedTemplateId.isNotEmpty ? 1.8 : 1,
                         ),
                       ),
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
-                      child: _loadingPackages
-                          ? const Padding(
-                              padding: EdgeInsets.symmetric(vertical: 12),
+                      child: (_loadingPackages || _linkingPackage)
+                          ? Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 12),
                               child: Row(children: [
-                                SizedBox(width: 16, height: 16,
+                                const SizedBox(width: 16, height: 16,
                                     child: CircularProgressIndicator(strokeWidth: 2, color: _cMid)),
-                                SizedBox(width: 10),
-                                Text('Loading packages…', style: TextStyle(fontSize: 13, color: Color(0xFF9CA3AF))),
+                                const SizedBox(width: 10),
+                                Text(
+                                  _linkingPackage
+                                      ? 'Linking package…'
+                                      : 'Loading packages…',
+                                  style: const TextStyle(
+                                      fontSize: 13, color: Color(0xFF9CA3AF)),
+                                ),
                               ]),
                             )
                           : DropdownButtonHideUnderline(
                               child: DropdownButton<String>(
-                                value: _selectedPkgId.isEmpty ? '' : _selectedPkgId,
+                                value: safePackageTemplateDropdownValue(
+                                  _selectedTemplateId,
+                                  _packageTemplates,
+                                ),
                                 isExpanded: true,
-                                icon: const Icon(Icons.expand_more_rounded, color: _cMid, size: 20),
+                                icon: const Icon(Icons.expand_more_rounded,
+                                    color: _cMid, size: 20),
                                 items: [
                                   DropdownMenuItem(
                                     value: '',
                                     child: Text(
-                                      _customerPackages.isEmpty
-                                          ? 'No active packages'
+                                      _packageTemplates.isEmpty
+                                          ? 'No packages — create one on web first'
                                           : 'No package / normal appointment',
                                       style: TextStyle(
                                         fontSize: 13,
-                                        color: _customerPackages.isEmpty
+                                        color: _packageTemplates.isEmpty
                                             ? const Color(0xFFD1D5DB)
                                             : const Color(0xFF6B7280),
                                       ),
                                     ),
                                   ),
-                                  ..._customerPackages.map((pkg) {
-                                    final pkgData = pkg['package'] as Map? ?? {};
-                                    final name    = '${pkgData['name'] ?? 'Package'}';
-                                    final rem     = pkg['sessions_remaining'];
-                                    final label   = rem == null ? 'Unlimited' : '$rem left';
+                                  ..._packageTemplates.map((pkg) {
                                     return DropdownMenuItem<String>(
                                       value: '${pkg['id']}',
-                                      child: Text('$name · $label',
-                                          overflow: TextOverflow.ellipsis,
-                                          style: const TextStyle(fontSize: 13)),
+                                      child: Text(
+                                        formatPackageTemplateLabel(pkg),
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(fontSize: 13),
+                                      ),
                                     );
                                   }),
                                 ],
-                                onChanged: _customerPackages.isEmpty ? null : (val) {
-                                  final sel = _customerPackages.firstWhere(
-                                    (p) => '${p['id']}' == val,
-                                    orElse: () => {},
-                                  );
-                                  setState(() {
-                                    _selectedPkgId = val ?? '';
-                                    if (sel.isNotEmpty) {
-                                      final pkgData = sel['package'] as Map? ?? {};
-                                      _selectedPkgName = '${pkgData['name'] ?? ''}';
-                                      final price = pkgData['package_price'];
-                                      if (price != null) {
-                                        _amtCtrl.text = '$price';
-                                      }
-                                    } else {
-                                      _selectedPkgName = '';
-                                      _updateTotal();
-                                    }
-                                  });
-                                },
+                                onChanged: _packageTemplates.isEmpty
+                                    ? null
+                                    : (val) =>
+                                        _applyAppointmentTemplate(val ?? ''),
                               ),
                             ),
                     ),
@@ -869,6 +969,9 @@ class _AddApptSheetState extends State<_AddApptSheet> {
 
                   // Services (dropdown)
                   WalkInServiceDropdownSection(
+                    key: ValueKey(
+                      'appt_svc_${_orderedServiceIds().join(',')}',
+                    ),
                     activeServices: active,
                     primaryServiceId: _primaryServiceId,
                     orderedServiceIds: _orderedServiceIds(),
@@ -1250,8 +1353,12 @@ class _AddApptSheetState extends State<_AddApptSheet> {
                                                   fontSize: 13)),
                                         ))
                                     .toList(),
-                                onChanged: (v) =>
-                                    setState(() => _branchId = v ?? ''),
+                                onChanged: (v) {
+                                  setState(() => _branchId = v ?? '');
+                                  if (_custId.trim().isNotEmpty) {
+                                    _loadCustomerPackages(_custId);
+                                  }
+                                },
                                 validator: (v) =>
                                     v == null || v.isEmpty ? 'Required' : null,
                               ),

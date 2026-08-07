@@ -21,6 +21,19 @@ class AppointmentNotes {
         .trim();
   }
 
+  /// Customer-package row id from a `Package: #123 - Name` note line.
+  static String? parsePackageId(String notes) {
+    for (final line in notes.split('\n')) {
+      if (!RegExp(r'^\s*package\s*[:\-]?\s*', caseSensitive: false)
+          .hasMatch(line)) {
+        continue;
+      }
+      final match = RegExp(r'#(\d+)').firstMatch(line);
+      if (match != null) return match.group(1);
+    }
+    return null;
+  }
+
   static List<String> parseAdditionalServiceNames(String notes) {
     for (final line in notes.split('\n')) {
       if (line.trim().startsWith(extraServicesPrefix)) {

@@ -19,6 +19,7 @@ import '../models/walkin_entry.dart';
 import '../services/mobile_api.dart';
 import '../services/notification_service.dart';
 import '../utils/appointment_notes.dart';
+import '../utils/package_helpers.dart';
 
 String _userFacingApiError(Object e) {
   final s = e.toString();
@@ -692,20 +693,70 @@ class AppState extends ChangeNotifier {
   }
 
   Future<List<Map<String, dynamic>>> loadCustomerActivePackages(
-    String customerId, {
-    bool redeemableOnly = true,
-  }) async {
+    String customerId,
+  ) async {
     final token = _currentUser?.authToken;
     if (token == null || token.isEmpty || customerId.isEmpty) return const [];
     try {
       return await _api.fetchActivePackages(
         token: token,
         customerId: customerId,
-        redeemableOnly: redeemableOnly,
+      );
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> loadPackageTemplates({
+    String? branchId,
+  }) async {
+    final token = _currentUser?.authToken;
+    if (token == null || token.isEmpty) return const [];
+    try {
+      return await _api.fetchPackageTemplates(
+        token: token,
+        branchId: branchId,
+      );
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  /// Reuse an active sold package for this template, or purchase it.
+  Future<Map<String, dynamic>?> ensureCustomerPackageForTemplate({
+    required String customerId,
+    required String templateId,
+    String? branchId,
+    List<Map<String, dynamic>>? existingCustomerPackages,
+  }) async {
+    final token = _currentUser?.authToken;
+    if (token == null ||
+        token.isEmpty ||
+        customerId.isEmpty ||
+        templateId.isEmpty) {
+      return null;
+    }
+    try {
+      var owned = existingCustomerPackages;
+      owned ??= await _api.fetchActivePackages(
+        token: token,
+        customerId: customerId,
+      );
+      for (final cp in owned) {
+        final pid = '${cp['package_id'] ?? (cp['package'] is Map ? cp['package']['id'] : '')}';
+        if (pid == templateId && packageCanRedeemNow(cp)) {
+          return cp;
+        }
+      }
+      return await _api.purchasePackage(
+        token: token,
+        customerId: customerId,
+        packageId: templateId,
+        branchId: branchId,
       );
     } catch (e) {
       _lastError = e.toString().replaceFirst('Exception: ', '');
-      return const [];
+      return null;
     }
   }
 
@@ -979,6 +1030,8 @@ class AppState extends ChangeNotifier {
     String? phone,
     String? note,
     String? staffId,
+    String? customerId,
+    String? customerPackageId,
   }) async {
     final token = _currentUser?.authToken;
     if (token == null || token.isEmpty) {
@@ -995,6 +1048,8 @@ class AppState extends ChangeNotifier {
         phone: phone,
         note: note,
         staffId: staffId,
+        customerId: customerId,
+        customerPackageId: customerPackageId,
       );
     } catch (e) {
       _lastError = e.toString().replaceFirst('Exception: ', '');
@@ -1422,8 +1477,7 @@ class AppState extends ChangeNotifier {
         }
         if (collectNow > 0) {
           final pkgId = (customerPackageId != null &&
-                  customerPackageId.trim().isNotEmpty &&
-                  method == 'Package')
+                  customerPackageId.trim().isNotEmpty)
               ? (int.tryParse(customerPackageId.trim()) ??
                   customerPackageId.trim())
               : null;

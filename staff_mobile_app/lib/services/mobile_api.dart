@@ -255,16 +255,76 @@ class MobileApi {
     return Customer.fromJson(body);
   }
 
+  List<Map<String, dynamic>> _asMaps(List<dynamic> list) => list
+      .whereType<Map>()
+      .map((e) => Map<String, dynamic>.from(e))
+      .toList();
+
+  /// GET /api/packages — catalog templates (JSON array).
+  Future<List<Map<String, dynamic>>> fetchPackageTemplates({
+    required String token,
+    String? branchId,
+  }) async {
+    final q = <String, String>{'activeOnly': 'true'};
+    final bid = (branchId ?? '').trim();
+    if (bid.isNotEmpty) q['branchId'] = bid;
+    final uri = Uri.parse('$baseUrl/api/packages').replace(queryParameters: q);
+    final response = await http.get(uri, headers: _authHeaders(token));
+    if (response.statusCode < 400) {
+      return _asMaps(_decodeList(response.body));
+    }
+    final errBody = _decode(response.body);
+    final msg = '${errBody['message'] ?? ''}'.trim();
+    if (response.statusCode == 403) {
+      throw Exception(msg.isNotEmpty
+          ? msg
+          : 'Packages feature is not enabled for this salon.');
+    }
+    throw Exception(
+      msg.isNotEmpty ? msg : 'Packages load failed (${response.statusCode})',
+    );
+  }
+
+  /// POST /api/packages/purchase — sell a template to a customer.
+  Future<Map<String, dynamic>> purchasePackage({
+    required String token,
+    required String customerId,
+    required String packageId,
+    String? branchId,
+    String paymentMethod = 'Cash',
+  }) async {
+    final body = <String, dynamic>{
+      'customer_id': int.tryParse(customerId) ?? customerId,
+      'package_id': int.tryParse(packageId) ?? packageId,
+      'payment_method': paymentMethod,
+    };
+    final bid = (branchId ?? '').trim();
+    if (bid.isNotEmpty) {
+      body['branch_id'] = int.tryParse(bid) ?? bid;
+    }
+    final response = await http.post(
+      Uri.parse('$baseUrl/api/packages/purchase'),
+      headers: _authHeaders(token),
+      body: jsonEncode(body),
+    );
+    final decoded = _decode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(decoded['message'] ?? 'Package purchase failed');
+    }
+    // Purchase may return a map; some proxies wrap in data.
+    if (decoded.isNotEmpty) return decoded;
+    final list = _decodeList(response.body);
+    if (list.isNotEmpty && list.first is Map) {
+      return Map<String, dynamic>.from(list.first as Map);
+    }
+    return {};
+  }
+
   /// GET /api/packages/customer/:id — sold packages (fallback: /active).
   Future<List<Map<String, dynamic>>> fetchActivePackages({
     required String token,
     required String customerId,
   }) async {
-    List<Map<String, dynamic>> asMaps(List<dynamic> list) => list
-        .whereType<Map>()
-        .map((e) => Map<String, dynamic>.from(e))
-        .toList();
-
     // Prefer full customer package list (matches web), then active-only.
     // These endpoints return a JSON array — must use _decodeList (not _decode).
     final primary = await http.get(
@@ -272,7 +332,7 @@ class MobileApi {
       headers: _authHeaders(token),
     );
     if (primary.statusCode < 400) {
-      return asMaps(_decodeList(primary.body));
+      return _asMaps(_decodeList(primary.body));
     }
 
     final fallback = await http.get(
@@ -280,7 +340,7 @@ class MobileApi {
       headers: _authHeaders(token),
     );
     if (fallback.statusCode < 400) {
-      return asMaps(_decodeList(fallback.body));
+      return _asMaps(_decodeList(fallback.body));
     }
 
     final errBody = _decode(fallback.body);
@@ -1119,6 +1179,8 @@ class MobileApi {
     String? phone,
     String? note,
     String? staffId,
+    String? customerId,
+    String? customerPackageId,
   }) async {
     final primaryNum = int.tryParse(serviceId.trim()) ?? 0;
     var ids = serviceIds == null || serviceIds.isEmpty
@@ -1143,6 +1205,11 @@ class MobileApi {
       if (note != null && note.trim().isNotEmpty) 'note': note.trim(),
       if (staffId != null && staffId.trim().isNotEmpty)
         'staffId': int.tryParse(staffId) ?? staffId,
+      if (customerId != null && customerId.trim().isNotEmpty)
+        'customerId': int.tryParse(customerId.trim()) ?? customerId.trim(),
+      if (customerPackageId != null && customerPackageId.trim().isNotEmpty)
+        'customerPackageId':
+            int.tryParse(customerPackageId.trim()) ?? customerPackageId.trim(),
     };
     final response = await http.post(
       Uri.parse('$baseUrl/api/walkin/checkin'),

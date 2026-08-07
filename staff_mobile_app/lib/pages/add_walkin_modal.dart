@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 
 import '../models/customer.dart';
 import '../models/salon_service.dart';
+import '../services/mobile_api.dart';
+import '../utils/appointment_notes.dart';
+import '../utils/package_helpers.dart';
 import '../widgets/walk_in_service_dropdown_section.dart';
-
-/// Same as web `WalkInPage.jsx` — extra services go in `note`; API stores one `service_id`.
-const String _kAdditionalServicesLinePrefix = 'Additional services:';
 
 /// Sentinel id for the "Register new customer" autocomplete option.
 const String _kWalkInNewCustId = '__walkin_register_new__';
@@ -29,6 +29,8 @@ class AddWalkInModalResult {
     required this.serviceId,
     required this.serviceIds,
     required this.note,
+    this.customerId = '',
+    this.customerPackageId = '',
   });
 
   final String branchId;
@@ -38,6 +40,8 @@ class AddWalkInModalResult {
   /// Ordered selection (primary first) — used by API to save `total_amount`.
   final List<String> serviceIds;
   final String note;
+  final String customerId;
+  final String customerPackageId;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -48,6 +52,8 @@ class AddWalkInModal extends StatefulWidget {
     this.customers = const [],
     this.initialBranchId,
     this.onRegisterNewCustomer,
+    this.mobileApi,
+    this.token = '',
     super.key,
   });
 
@@ -57,6 +63,8 @@ class AddWalkInModal extends StatefulWidget {
   final String? initialBranchId;
   /// Called when user taps "Add & Register". Returns created [Customer] or null.
   final Future<Customer?> Function(String name, String phone, String? branchId)? onRegisterNewCustomer;
+  final MobileApi? mobileApi;
+  final String token;
 
   static Future<AddWalkInModalResult?> show(
     BuildContext context, {
@@ -65,6 +73,8 @@ class AddWalkInModal extends StatefulWidget {
     List<Customer> customers = const [],
     String? initialBranchId,
     Future<Customer?> Function(String name, String phone, String? branchId)? onRegisterNewCustomer,
+    MobileApi? mobileApi,
+    String token = '',
   }) {
     return showModalBottomSheet<AddWalkInModalResult>(
       context: context,
@@ -76,6 +86,8 @@ class AddWalkInModal extends StatefulWidget {
         customers: customers,
         initialBranchId: initialBranchId,
         onRegisterNewCustomer: onRegisterNewCustomer,
+        mobileApi: mobileApi,
+        token: token,
       ),
     );
   }
@@ -93,6 +105,17 @@ class _AddWalkInModalState extends State<AddWalkInModal> {
   String? _branchId;
   String? _primaryServiceId;
   final List<String> _extraServiceIds = [];
+  String _customerId = '';
+
+  List<Map<String, dynamic>> _customerPackages = [];
+  List<Map<String, dynamic>> _packageTemplates = [];
+  bool _loadingPackages = false;
+  bool _linkingPackage = false;
+  String _selectedTemplateId = '';
+  String _selectedPackageId = '';
+  String _selectedPkgName = '';
+  double? _packageOfferPrice;
+  int _packagesLoadGen = 0;
 
   bool _registerMode = false;
   bool _registering  = false;
@@ -118,6 +141,9 @@ class _AddWalkInModalState extends State<AddWalkInModal> {
 
   void _onBranchPicked(String? v) {
     setState(() => _branchId = v);
+    if (_customerId.trim().isNotEmpty) {
+      _loadPackagesForCustomer(_customerId);
+    }
   }
 
   List<String> _orderedSelectedServiceIds() {
@@ -126,8 +152,12 @@ class _AddWalkInModalState extends State<AddWalkInModal> {
     return [p, ..._extraServiceIds];
   }
 
-  /// Sum of selected service prices (matches API `total_amount` for multi-service).
+  /// Package offer price when selected; otherwise sum of service prices.
   double _totalSelectedAmount() {
+    final offer = _packageOfferPrice;
+    if (offer != null && offer > 0) {
+      return offer;
+    }
     var sum = 0.0;
     for (final id in _orderedSelectedServiceIds()) {
       for (final s in widget.services) {
@@ -138,6 +168,153 @@ class _AddWalkInModalState extends State<AddWalkInModal> {
       }
     }
     return sum;
+  }
+
+  Future<void> _loadPackagesForCustomer(String custId) async {
+    final api = widget.mobileApi;
+    if (api == null || widget.token.isEmpty || custId.trim().isEmpty) {
+      setState(() {
+        _customerPackages = [];
+        _packageTemplates = [];
+        _selectedPackageId = '';
+        _selectedTemplateId = '';
+        _selectedPkgName = '';
+        _packageOfferPrice = null;
+        _loadingPackages = false;
+      });
+      return;
+    }
+    final gen = ++_packagesLoadGen;
+    setState(() {
+      _loadingPackages = true;
+      _customerPackages = [];
+      _packageTemplates = [];
+      _selectedPackageId = '';
+      _selectedTemplateId = '';
+      _selectedPkgName = '';
+      _packageOfferPrice = null;
+    });
+    try {
+      final results = await Future.wait([
+        api.fetchPackageTemplates(
+          token: widget.token,
+          branchId: _branchId,
+        ),
+        api.fetchActivePackages(
+          token: widget.token,
+          customerId: custId.trim(),
+        ),
+      ]);
+      if (!mounted || gen != _packagesLoadGen) return;
+      setState(() {
+        _packageTemplates = filterBookablePackageTemplates(results[0]);
+        _customerPackages = results[1];
+        _loadingPackages = false;
+      });
+    } catch (e) {
+      if (!mounted || gen != _packagesLoadGen) return;
+      setState(() {
+        _customerPackages = [];
+        _packageTemplates = [];
+        _loadingPackages = false;
+      });
+    }
+  }
+
+  Future<void> _applyTemplate(String templateId) async {
+    if (templateId.isEmpty) {
+      setState(() {
+        _selectedPackageId = '';
+        _selectedTemplateId = '';
+        _selectedPkgName = '';
+        _packageOfferPrice = null;
+      });
+      return;
+    }
+    Map<String, dynamic>? tpl;
+    for (final p in _packageTemplates) {
+      if ('${p['id']}' == templateId) {
+        tpl = p;
+        break;
+      }
+    }
+    if (tpl == null) return;
+
+    final selected = tpl;
+    final ids = resolveTemplateServiceIds(selected, widget.services);
+    final bundle = getTemplateBundlePrice(selected);
+    setState(() {
+      _selectedTemplateId = templateId;
+      _selectedPkgName = '${selected['name'] ?? ''}';
+      _packageOfferPrice = bundle > 0 ? bundle : null;
+      applyResolvedServiceIds(
+        ids: ids,
+        setPrimary: (v) => _primaryServiceId = v,
+        extras: _extraServiceIds,
+      );
+      _linkingPackage = true;
+    });
+
+    final api = widget.mobileApi;
+    if (api == null ||
+        widget.token.isEmpty ||
+        _customerId.trim().isEmpty) {
+      setState(() => _linkingPackage = false);
+      return;
+    }
+    try {
+      var cp = findCustomerPackageForTemplate(_customerPackages, templateId);
+      if (cp == null || !packageCanRedeemNow(cp)) {
+        cp = await api.purchasePackage(
+          token: widget.token,
+          customerId: _customerId.trim(),
+          packageId: templateId,
+          branchId: _branchId,
+        );
+        final refreshed = await api.fetchActivePackages(
+          token: widget.token,
+          customerId: _customerId.trim(),
+        );
+        if (mounted) {
+          setState(() => _customerPackages = refreshed);
+          cp = findCustomerPackageForTemplate(refreshed, templateId) ?? cp;
+        }
+      }
+      if (!mounted) return;
+      setState(() {
+        _selectedPackageId = '${cp?['id'] ?? ''}'.trim();
+        _linkingPackage = false;
+        applyResolvedServiceIds(
+          ids: ids,
+          setPrimary: (v) => _primaryServiceId = v,
+          extras: _extraServiceIds,
+        );
+        _packageOfferPrice = bundle > 0 ? bundle : null;
+      });
+      if (_selectedPackageId.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not link package to this customer.'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _selectedTemplateId = '';
+        _selectedPackageId = '';
+        _selectedPkgName = '';
+        _packageOfferPrice = null;
+        _linkingPackage = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.toString().replaceFirst('Exception: ', '')),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
   }
 
   void _removeExtraAt(int index) {
@@ -155,6 +332,7 @@ class _AddWalkInModalState extends State<AddWalkInModal> {
         _primaryServiceId = null;
         return;
       }
+      _extraServiceIds.remove(v);
       if (prev != null && prev.isNotEmpty && prev != v) {
         _extraServiceIds.insert(0, prev);
       }
@@ -174,27 +352,29 @@ class _AddWalkInModalState extends State<AddWalkInModal> {
   }
 
   String _noteForApi() {
-    final base = _noteCtrl.text
-        .split('\n')
-        .where((l) => !l.trim().startsWith(_kAdditionalServicesLinePrefix))
-        .join('\n')
-        .trim();
     final ordered = _orderedSelectedServiceIds();
-    if (ordered.length <= 1) return base;
-    final extraNames = ordered
-        .skip(1)
-        .map((sid) {
-          for (final s in widget.services) {
-            if (s.id == sid) return s.name;
-          }
-          return '';
-        })
-        .where((n) => n.trim().isNotEmpty)
-        .toList();
-    if (extraNames.isEmpty) return base;
-    final extraLine = '$_kAdditionalServicesLinePrefix ${extraNames.join(', ')}';
-    if (base.isEmpty) return extraLine;
-    return '$base\n$extraLine';
+    final extraNames = ordered.length <= 1
+        ? <String>[]
+        : ordered
+            .skip(1)
+            .map((sid) {
+              for (final s in widget.services) {
+                if (s.id == sid) return s.name;
+              }
+              return '';
+            })
+            .where((n) => n.trim().isNotEmpty)
+            .toList();
+    return AppointmentNotes.combineNotesWithPackage(
+      baseNotes: _noteCtrl.text.trim(),
+      extraServiceNames: extraNames,
+      packageId: _selectedPackageId.trim().isEmpty
+          ? null
+          : _selectedPackageId.trim(),
+      packageName: _selectedPkgName.trim().isEmpty
+          ? null
+          : _selectedPkgName.trim(),
+    );
   }
 
   Future<void> _doRegister() async {
@@ -210,9 +390,11 @@ class _AddWalkInModalState extends State<AddWalkInModal> {
         _registered   = true;
         _registerMode = false;
         _registering  = false;
+        _customerId   = newCust.id;
         _nameCtrl.text  = newCust.name;
         _phoneCtrl.text = newCust.phone.isNotEmpty ? newCust.phone : _phoneCtrl.text;
       });
+      _loadPackagesForCustomer(newCust.id);
     } else {
       setState(() => _registering = false);
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
@@ -224,14 +406,37 @@ class _AddWalkInModalState extends State<AddWalkInModal> {
 
   void _submit() {
     if (!_formKey.currentState!.validate()) return;
+    if (_linkingPackage) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Please wait — linking package…'),
+        behavior: SnackBarBehavior.floating,
+      ));
+      return;
+    }
+    if (_selectedTemplateId.isNotEmpty && _selectedPackageId.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Package is still linking. Try again in a moment.'),
+        behavior: SnackBarBehavior.floating,
+      ));
+      return;
+    }
     final ids = _orderedSelectedServiceIds();
+    if (ids.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Select at least one service'),
+        behavior: SnackBarBehavior.floating,
+      ));
+      return;
+    }
     Navigator.of(context).pop(AddWalkInModalResult(
       branchId:     (_branchId ?? '').trim(),
       customerName: _nameCtrl.text.trim(),
       phone:        _phoneCtrl.text.trim(),
-      serviceId:    ids.isEmpty ? '' : ids.first.trim(),
+      serviceId:    ids.first.trim(),
       serviceIds:   List<String>.from(ids),
       note:         _noteForApi(),
+      customerId:   _customerId.trim(),
+      customerPackageId: _selectedPackageId.trim(),
     ));
   }
 
@@ -275,8 +480,10 @@ class _AddWalkInModalState extends State<AddWalkInModal> {
   @override
   Widget build(BuildContext context) {
     final bottom = MediaQuery.of(context).viewInsets.bottom;
-    final activeServices =
-        widget.services.where((s) => s.isActive).toList();
+    final activeServices = servicesForPackagePicker(
+      widget.services,
+      _orderedSelectedServiceIds(),
+    );
 
     return Container(
       decoration: const BoxDecoration(
@@ -414,16 +621,25 @@ class _AddWalkInModalState extends State<AddWalkInModal> {
                     setState(() {
                       _registerMode = true;
                       _registered   = false;
+                      _customerId   = '';
                       _nameCtrl.text = c.name;
+                      _packageTemplates = [];
+                      _customerPackages = [];
+                      _selectedPackageId = '';
+                      _selectedTemplateId = '';
+                      _selectedPkgName = '';
+                      _packageOfferPrice = null;
                     });
                     return;
                   }
                   setState(() {
                     _nameCtrl.text  = c.name;
                     _phoneCtrl.text = c.phone;
+                    _customerId     = c.id;
                     _registerMode   = false;
                     _registered     = false;
                   });
+                  _loadPackagesForCustomer(c.id);
                 },
                 fieldViewBuilder: (ctx, ctrl, fn, _) {
                   if (_nameCtrl.text.isNotEmpty &&
@@ -442,10 +658,17 @@ class _AddWalkInModalState extends State<AddWalkInModal> {
                         required: true),
                     onChanged: (v) {
                       _nameCtrl.text = v;
-                      if (_registerMode || _registered) {
+                      if (_registerMode || _registered || _customerId.isNotEmpty) {
                         setState(() {
                           _registerMode = false;
                           _registered   = false;
+                          _customerId   = '';
+                          _packageTemplates = [];
+                          _customerPackages = [];
+                          _selectedPackageId = '';
+                          _selectedTemplateId = '';
+                          _selectedPkgName = '';
+                          _packageOfferPrice = null;
                         });
                       }
                     },
@@ -603,7 +826,7 @@ class _AddWalkInModalState extends State<AddWalkInModal> {
 
               const SizedBox(height: 14),
 
-              // ── Branch (then services) ───────────────────────────────
+              // ── Branch (then package + services) ─────────────────────
               if (widget.branches.isNotEmpty) ...[
                 _label('BRANCH'),
                 DropdownButtonFormField<String>(
@@ -628,7 +851,84 @@ class _AddWalkInModalState extends State<AddWalkInModal> {
                 const SizedBox(height: 14),
               ],
 
+              // ── Package (optional) ───────────────────────────────────
+              if (_customerId.trim().isNotEmpty) ...[
+                _label('PACKAGE (OPTIONAL)'),
+                if (_loadingPackages || _linkingPackage)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    child: Row(children: [
+                      const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: _cForest,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Text(
+                        _linkingPackage
+                            ? 'Linking package…'
+                            : 'Loading packages…',
+                        style: const TextStyle(
+                            fontSize: 13, color: Color(0xFF9CA3AF)),
+                      ),
+                    ]),
+                  )
+                else
+                  DropdownButtonFormField<String>(
+                    key: ValueKey(
+                      'walkin_new_pkgs_${_customerId}_${_packageTemplates.length}_$_selectedTemplateId',
+                    ),
+                    initialValue: safePackageTemplateDropdownValue(
+                      _selectedTemplateId,
+                      _packageTemplates,
+                    ),
+                    isExpanded: true,
+                    decoration: _deco(
+                      _packageTemplates.isEmpty
+                          ? 'No packages — create one on web first'
+                          : 'Select package (optional)',
+                      Icons.card_giftcard_rounded,
+                    ),
+                    items: [
+                      DropdownMenuItem(
+                        value: '',
+                        child: Text(
+                          _packageTemplates.isEmpty
+                              ? 'No packages available'
+                              : 'No package — pay normally',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: _packageTemplates.isEmpty
+                                ? const Color(0xFFD1D5DB)
+                                : const Color(0xFF6B7280),
+                          ),
+                        ),
+                      ),
+                      ..._packageTemplates.map((pkg) {
+                        return DropdownMenuItem<String>(
+                          value: '${pkg['id']}',
+                          child: Text(
+                            formatPackageTemplateLabel(pkg),
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 13),
+                          ),
+                        );
+                      }),
+                    ],
+                    onChanged: _packageTemplates.isEmpty
+                        ? null
+                        : (v) => _applyTemplate(v ?? ''),
+                  ),
+                const SizedBox(height: 14),
+              ],
+
               WalkInServiceDropdownSection(
+                key: ValueKey(
+                  'walkin_new_svc_${_orderedSelectedServiceIds().join(',')}',
+                ),
                 activeServices: activeServices,
                 primaryServiceId: _primaryServiceId,
                 orderedServiceIds: _orderedSelectedServiceIds(),
@@ -636,8 +936,9 @@ class _AddWalkInModalState extends State<AddWalkInModal> {
                 onAddExtra: _onAddExtraFromDropdown,
                 onRemoveExtraAt: _removeExtraAt,
                 label: 'SERVICES',
-                helperText:
-                    'Pick the main service; add lines below — you can add the same service more than once.',
+                helperText: _selectedTemplateId.isNotEmpty
+                    ? 'Package services selected — total uses offer price.'
+                    : 'Pick the main service; add lines below — you can add the same service more than once.',
                 accentColor: _cForest,
                 borderColor: _cBorder,
                 bgColor: _cBg,
@@ -680,7 +981,9 @@ class _AddWalkInModalState extends State<AddWalkInModal> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'Total amount',
+                              _selectedTemplateId.isNotEmpty
+                                  ? 'Package offer price'
+                                  : 'Total amount',
                               style: TextStyle(
                                 color: _cMuted.withValues(alpha: 0.95),
                                 fontSize: 11.5,

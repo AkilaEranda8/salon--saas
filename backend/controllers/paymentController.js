@@ -453,9 +453,9 @@ const create = async (req, res) => {
       console.warn('[accounting] payment post failed:', acctErr.message);
     }
 
-    // Redeem package sessions for 'Package' splits
+    // Redeem package sessions when a customer package is linked (any pay method).
     for (const s of splits) {
-      if (s.method === 'Package' && s.customer_package_id) {
+      if (s.customer_package_id) {
         try {
           await redeemPackageForPayment({
             req,
@@ -470,7 +470,7 @@ const create = async (req, res) => {
           await t.rollback();
           return res.status(pkgErr.status || 400).json({ message: pkgErr.message || 'Package redemption failed.' });
         }
-      } else if (s.method === 'Package' && !s.customer_package_id) {
+      } else if (s.method === 'Package') {
         await t.rollback();
         return res.status(400).json({ message: 'Select a customer package when using Package payment method.' });
       }

@@ -427,3 +427,31 @@ export function LoadingBlock({ rows = 4 }) {
   );
 }
 
+/** Consistent modal form field label wrapper */
+export function Field({ label, children, required, full }) {
+  const { C } = usePageTheme();
+  return (
+    <label style={{
+      display: 'flex', flexDirection: 'column', gap: 6,
+      gridColumn: full ? '1 / -1' : undefined,
+    }}>
+      <span style={{ fontSize: 12, fontWeight: 700, color: C.label }}>
+        {label}{required ? <span style={{ color: ACCT.danger }}> *</span> : null}
+      </span>
+      {children}
+    </label>
+  );
+}
+
+export function ModalGrid({ children, cols = 2 }) {
+  return (
+    <div style={{
+      display: 'grid',
+      gridTemplateColumns: `repeat(auto-fit, minmax(${cols === 1 ? '100%' : '180px'}, 1fr))`,
+      gap: 14,
+    }}>
+      {children}
+    </div>
+  );
+}
+

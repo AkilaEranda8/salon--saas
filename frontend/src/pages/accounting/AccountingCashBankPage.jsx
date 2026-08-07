@@ -5,10 +5,10 @@ import AccountingLayout, { formatLkr } from './AccountingLayout';
 import usePageTheme from '../../hooks/usePageTheme';
 import Button from '../../components/ui/Button';
 import {
-  FormShell, ListRow, ListShell, StatusPill, SoftPanel, inputStyle, ACCT, SectionTitle,
-  HeroBanner, MoneyText,
+  ListRow, ListShell, StatusPill, SoftPanel, inputStyle, ACCT, SectionTitle,
+  HeroBanner, MoneyText, Field, ModalGrid,
 } from './AccountingUI';
-import { StatCard, IconDollar, IconPlus } from '../../components/ui/PageKit';
+import { StatCard, IconDollar, IconPlus, PKModal } from '../../components/ui/PageKit';
 
 const IconBank = () => (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -17,13 +17,18 @@ const IconBank = () => (
 );
 
 const emptyAcct = {
-  name: '',
-  bank_name: '',
-  account_number: '',
-  is_cash: false,
-  gl_account_id: '',
-  opening_balance: '0',
+  name: '', bank_name: '', account_number: '', is_cash: false, gl_account_id: '', opening_balance: '0',
 };
+
+const emptyTxn = () => ({
+  bank_account_id: '',
+  type: 'deposit',
+  amount: '',
+  date: new Date().toISOString().slice(0, 10),
+  memo: '',
+  counterparty_gl_account_id: '',
+  transfer_bank_account_id: '',
+});
 
 export default function AccountingCashBankPage() {
   const { C } = usePageTheme();
@@ -34,15 +39,8 @@ export default function AccountingCashBankPage() {
   const [showTxnForm, setShowTxnForm] = useState(false);
   const [acctForm, setAcctForm] = useState(emptyAcct);
   const [savingAcct, setSavingAcct] = useState(false);
-  const [form, setForm] = useState({
-    bank_account_id: '',
-    type: 'deposit',
-    amount: '',
-    date: new Date().toISOString().slice(0, 10),
-    memo: '',
-    counterparty_gl_account_id: '',
-    transfer_bank_account_id: '',
-  });
+  const [savingTxn, setSavingTxn] = useState(false);
+  const [form, setForm] = useState(emptyTxn());
 
   const load = async () => {
     try {
@@ -65,8 +63,19 @@ export default function AccountingCashBankPage() {
   };
   useEffect(() => { load(); }, []);
 
-  const submitAccount = async (e) => {
-    e.preventDefault();
+  const openAcctModal = () => {
+    setAcctForm(emptyAcct);
+    setShowAcctForm(true);
+  };
+  const openTxnModal = () => {
+    setForm({
+      ...emptyTxn(),
+      bank_account_id: accounts[0] ? String(accounts[0].id) : '',
+    });
+    setShowTxnForm(true);
+  };
+
+  const submitAccount = async () => {
     if (!acctForm.name.trim()) {
       toast.error('Account name is required');
       return;
@@ -83,6 +92,7 @@ export default function AccountingCashBankPage() {
       });
       toast.success('Bank account added');
       setAcctForm(emptyAcct);
+      setShowAcctForm(false);
       setForm((f) => ({ ...f, bank_account_id: String(created.id) }));
       await load();
     } catch (err) {
@@ -92,8 +102,7 @@ export default function AccountingCashBankPage() {
     }
   };
 
-  const submit = async (e) => {
-    e.preventDefault();
+  const submitTxn = async () => {
     if (!form.bank_account_id) {
       toast.error('Add a bank account first');
       return;
@@ -102,6 +111,11 @@ export default function AccountingCashBankPage() {
       toast.error('Select destination account');
       return;
     }
+    if (!(Number(form.amount) > 0)) {
+      toast.error('Enter amount');
+      return;
+    }
+    setSavingTxn(true);
     try {
       await api.post('/accounting/bank-txns', {
         bank_account_id: Number(form.bank_account_id),
@@ -110,17 +124,17 @@ export default function AccountingCashBankPage() {
         date: form.date,
         memo: form.memo,
         counterparty_gl_account_id: form.counterparty_gl_account_id
-          ? Number(form.counterparty_gl_account_id)
-          : null,
+          ? Number(form.counterparty_gl_account_id) : null,
         transfer_bank_account_id: form.transfer_bank_account_id
-          ? Number(form.transfer_bank_account_id)
-          : null,
+          ? Number(form.transfer_bank_account_id) : null,
       });
       toast.success('Saved');
-      setForm((f) => ({ ...f, amount: '', memo: '' }));
+      setShowTxnForm(false);
       load();
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed');
+    } finally {
+      setSavingTxn(false);
     }
   };
 
@@ -132,11 +146,9 @@ export default function AccountingCashBankPage() {
       title="Cash & Bank"
       actions={(
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <Button variant="secondary" onClick={() => setShowAcctForm((v) => !v)} style={{ fontSize: 12 }}>
-            {showAcctForm ? 'Hide account form' : 'Add account'}
-          </Button>
-          <Button variant="primary" onClick={() => setShowTxnForm((v) => !v)} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
-            <IconPlus /> {showTxnForm ? 'Hide txn' : 'Add txn'}
+          <Button variant="secondary" onClick={openAcctModal} style={{ fontSize: 12 }}>Add account</Button>
+          <Button variant="primary" onClick={openTxnModal} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+            <IconPlus /> Add txn
           </Button>
         </div>
       )}
@@ -154,94 +166,11 @@ export default function AccountingCashBankPage() {
         <StatCard label="Accounts" value={accounts.length} color={ACCT.cyan} icon={<IconBank />} />
       </div>
 
-      {showAcctForm && (
-        <FormShell title="Add bank / cash account" accent={ACCT.primary}>
-          <form onSubmit={submitAccount} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(150px,1fr))', gap: 10, alignItems: 'end' }}>
-            <label style={lab(C)}>
-              Account name *
-              <input
-                placeholder="e.g. HNB Current"
-                value={acctForm.name}
-                onChange={(e) => setAcctForm({ ...acctForm, name: e.target.value })}
-                style={inputStyle(C)}
-                required
-              />
-            </label>
-            <label style={lab(C)}>
-              Type
-              <select
-                value={acctForm.is_cash ? 'cash' : 'bank'}
-                onChange={(e) => setAcctForm({ ...acctForm, is_cash: e.target.value === 'cash' })}
-                style={inputStyle(C)}
-              >
-                <option value="bank">Bank</option>
-                <option value="cash">Cash</option>
-              </select>
-            </label>
-            {!acctForm.is_cash && (
-              <>
-                <label style={lab(C)}>
-                  Bank name
-                  <input
-                    placeholder="e.g. HNB"
-                    value={acctForm.bank_name}
-                    onChange={(e) => setAcctForm({ ...acctForm, bank_name: e.target.value })}
-                    style={inputStyle(C)}
-                  />
-                </label>
-                <label style={lab(C)}>
-                  Account number
-                  <input
-                    placeholder="Optional"
-                    value={acctForm.account_number}
-                    onChange={(e) => setAcctForm({ ...acctForm, account_number: e.target.value })}
-                    style={inputStyle(C)}
-                  />
-                </label>
-              </>
-            )}
-            <label style={lab(C)}>
-              Link GL (optional)
-              <select
-                value={acctForm.gl_account_id}
-                onChange={(e) => setAcctForm({ ...acctForm, gl_account_id: e.target.value })}
-                style={inputStyle(C)}
-              >
-                <option value="">Auto-create unique GL</option>
-                {glAccounts.filter((g) => g.type === 'asset').map((g) => (
-                  <option key={g.id} value={g.id}>{g.code} {g.name}</option>
-                ))}
-              </select>
-            </label>
-            <label style={lab(C)}>
-              Opening balance
-              <input
-                type="number"
-                step="0.01"
-                value={acctForm.opening_balance}
-                onChange={(e) => setAcctForm({ ...acctForm, opening_balance: e.target.value })}
-                style={inputStyle(C)}
-              />
-            </label>
-            <Button type="submit" disabled={savingAcct} style={{ display: 'flex', alignItems: 'center', gap: 6, height: 38 }}>
-              <IconPlus /> {savingAcct ? 'Saving…' : 'Add account'}
-            </Button>
-          </form>
-          <div style={{ fontSize: 12, color: C.muted, marginTop: 10 }}>
-            Opening balance posts to Owner Equity. Leave GL blank so each account gets its own ledger (avoids double-counting).
-          </div>
-        </FormShell>
-      )}
-
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(200px,1fr))', gap: 12, marginBottom: 16 }}>
         {accounts.map((a) => (
-          <SoftPanel
-            key={a.id}
-            accent={a.is_cash ? ACCT.success : ACCT.primary}
-            bodyStyle={{ paddingTop: 12 }}
-          >
+          <SoftPanel key={a.id} accent={a.is_cash ? ACCT.success : ACCT.primary} bodyStyle={{ paddingTop: 12 }}>
             <div style={{ fontWeight: 700, color: C.text, fontSize: 14 }}>{a.name}</div>
-            <div style={{ marginTop: 6, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            <div style={{ marginTop: 6 }}>
               <StatusPill status={a.is_cash ? 'deposit' : 'open'}>{a.is_cash ? 'Cash' : 'Bank'}</StatusPill>
             </div>
             {(a.bank_name || a.account_number) && (
@@ -257,59 +186,13 @@ export default function AccountingCashBankPage() {
         ))}
         {!accounts.length && (
           <div style={{ gridColumn: '1 / -1', padding: 16, color: '#98A2B3', fontSize: 13 }}>
-            No cash/bank accounts yet — use Add account.
+            No cash/bank accounts yet — click Add account.
           </div>
         )}
       </div>
 
-      {showTxnForm && (
-      <FormShell title="Add bank / cash transaction" accent={ACCT.success}>
-        <form onSubmit={submit} style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'end' }}>
-          <select value={form.bank_account_id} onChange={(e) => setForm({ ...form, bank_account_id: e.target.value })} style={inputStyle(C)} required>
-            <option value="">Select account</option>
-            {accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
-          </select>
-          <select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })} style={inputStyle(C)}>
-            <option value="deposit">Deposit</option>
-            <option value="withdrawal">Withdrawal</option>
-            <option value="transfer">Transfer</option>
-          </select>
-          {form.type === 'transfer' ? (
-            <select
-              value={form.transfer_bank_account_id}
-              onChange={(e) => setForm({ ...form, transfer_bank_account_id: e.target.value })}
-              style={inputStyle(C)}
-              required
-            >
-              <option value="">To account</option>
-              {accounts.filter((a) => String(a.id) !== String(form.bank_account_id)).map((a) => (
-                <option key={a.id} value={a.id}>{a.name}</option>
-              ))}
-            </select>
-          ) : (
-            <select
-              value={form.counterparty_gl_account_id}
-              onChange={(e) => setForm({ ...form, counterparty_gl_account_id: e.target.value })}
-              style={inputStyle(C)}
-            >
-              <option value="">
-                {form.type === 'deposit' ? 'Counterparty · Owner Equity (default)' : 'Counterparty · Expense (default)'}
-              </option>
-              {glAccounts.map((g) => (
-                <option key={g.id} value={g.id}>{g.code} {g.name} ({g.type})</option>
-              ))}
-            </select>
-          )}
-          <input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} style={inputStyle(C)} />
-          <input type="number" step="0.01" placeholder="Amount" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} style={inputStyle(C)} required />
-          <input placeholder="Memo" value={form.memo} onChange={(e) => setForm({ ...form, memo: e.target.value })} style={{ ...inputStyle(C), minWidth: 140 }} />
-          <Button type="submit" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><IconPlus /> Add txn</Button>
-        </form>
-      </FormShell>
-      )}
-
       <SectionTitle color={ACCT.success}>Recent transactions</SectionTitle>
-      <ListShell empty="No transactions" emptySub="Record a deposit or withdrawal above">
+      <ListShell empty="No transactions" emptySub="Click Add txn to record a deposit, withdrawal, or transfer">
         {txns.map((t) => (
           <ListRow key={t.id}>
             <div>
@@ -320,10 +203,114 @@ export default function AccountingCashBankPage() {
           </ListRow>
         ))}
       </ListShell>
+
+      <PKModal
+        open={showAcctForm}
+        onClose={() => setShowAcctForm(false)}
+        title="Add bank / cash account"
+        size="md"
+        footer={(
+          <>
+            <Button variant="secondary" onClick={() => setShowAcctForm(false)}>Cancel</Button>
+            <Button variant="primary" loading={savingAcct} onClick={submitAccount}>Add account</Button>
+          </>
+        )}
+      >
+        <ModalGrid>
+          <Field label="Account name" required full>
+            <input placeholder="e.g. HNB Current" value={acctForm.name} onChange={(e) => setAcctForm({ ...acctForm, name: e.target.value })} style={{ ...inputStyle(C), width: '100%' }} />
+          </Field>
+          <Field label="Type" required>
+            <select value={acctForm.is_cash ? 'cash' : 'bank'} onChange={(e) => setAcctForm({ ...acctForm, is_cash: e.target.value === 'cash' })} style={{ ...inputStyle(C), width: '100%' }}>
+              <option value="bank">Bank</option>
+              <option value="cash">Cash</option>
+            </select>
+          </Field>
+          <Field label="Opening balance">
+            <input type="number" step="0.01" value={acctForm.opening_balance} onChange={(e) => setAcctForm({ ...acctForm, opening_balance: e.target.value })} style={{ ...inputStyle(C), width: '100%' }} />
+          </Field>
+          {!acctForm.is_cash && (
+            <>
+              <Field label="Bank name">
+                <input placeholder="e.g. HNB" value={acctForm.bank_name} onChange={(e) => setAcctForm({ ...acctForm, bank_name: e.target.value })} style={{ ...inputStyle(C), width: '100%' }} />
+              </Field>
+              <Field label="Account number">
+                <input placeholder="Optional" value={acctForm.account_number} onChange={(e) => setAcctForm({ ...acctForm, account_number: e.target.value })} style={{ ...inputStyle(C), width: '100%' }} />
+              </Field>
+            </>
+          )}
+          <Field label="Link GL (optional)" full>
+            <select value={acctForm.gl_account_id} onChange={(e) => setAcctForm({ ...acctForm, gl_account_id: e.target.value })} style={{ ...inputStyle(C), width: '100%' }}>
+              <option value="">Auto-create unique GL</option>
+              {glAccounts.filter((g) => g.type === 'asset').map((g) => (
+                <option key={g.id} value={g.id}>{g.code} {g.name}</option>
+              ))}
+            </select>
+          </Field>
+        </ModalGrid>
+        <div style={{ fontSize: 12, color: C.muted, marginTop: 12 }}>
+          Opening balance posts to Owner Equity. Leave GL blank for a unique ledger.
+        </div>
+      </PKModal>
+
+      <PKModal
+        open={showTxnForm}
+        onClose={() => setShowTxnForm(false)}
+        title="Add bank / cash transaction"
+        size="md"
+        footer={(
+          <>
+            <Button variant="secondary" onClick={() => setShowTxnForm(false)}>Cancel</Button>
+            <Button variant="primary" loading={savingTxn} onClick={submitTxn}>Save txn</Button>
+          </>
+        )}
+      >
+        <ModalGrid>
+          <Field label="Account" required>
+            <select value={form.bank_account_id} onChange={(e) => setForm({ ...form, bank_account_id: e.target.value })} style={{ ...inputStyle(C), width: '100%' }}>
+              <option value="">Select account</option>
+              {accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+            </select>
+          </Field>
+          <Field label="Type" required>
+            <select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })} style={{ ...inputStyle(C), width: '100%' }}>
+              <option value="deposit">Deposit</option>
+              <option value="withdrawal">Withdrawal</option>
+              <option value="transfer">Transfer</option>
+            </select>
+          </Field>
+          <Field label="Date" required>
+            <input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} style={{ ...inputStyle(C), width: '100%' }} />
+          </Field>
+          <Field label="Amount" required>
+            <input type="number" step="0.01" placeholder="0.00" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} style={{ ...inputStyle(C), width: '100%' }} />
+          </Field>
+          {form.type === 'transfer' ? (
+            <Field label="To account" required full>
+              <select value={form.transfer_bank_account_id} onChange={(e) => setForm({ ...form, transfer_bank_account_id: e.target.value })} style={{ ...inputStyle(C), width: '100%' }}>
+                <option value="">Select destination</option>
+                {accounts.filter((a) => String(a.id) !== String(form.bank_account_id)).map((a) => (
+                  <option key={a.id} value={a.id}>{a.name}</option>
+                ))}
+              </select>
+            </Field>
+          ) : (
+            <Field label="Counterparty GL" full>
+              <select value={form.counterparty_gl_account_id} onChange={(e) => setForm({ ...form, counterparty_gl_account_id: e.target.value })} style={{ ...inputStyle(C), width: '100%' }}>
+                <option value="">
+                  {form.type === 'deposit' ? 'Owner Equity (default)' : 'Expense (default)'}
+                </option>
+                {glAccounts.map((g) => (
+                  <option key={g.id} value={g.id}>{g.code} {g.name} ({g.type})</option>
+                ))}
+              </select>
+            </Field>
+          )}
+          <Field label="Memo" full>
+            <input placeholder="Optional note" value={form.memo} onChange={(e) => setForm({ ...form, memo: e.target.value })} style={{ ...inputStyle(C), width: '100%' }} />
+          </Field>
+        </ModalGrid>
+      </PKModal>
     </AccountingLayout>
   );
-}
-
-function lab(C) {
-  return { display: 'flex', flexDirection: 'column', gap: 4, fontSize: 11, fontWeight: 700, color: C.label };
 }

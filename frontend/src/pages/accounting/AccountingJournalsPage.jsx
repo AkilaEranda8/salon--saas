@@ -4,11 +4,11 @@ import api from '../../api/axios';
 import AccountingLayout, { formatLkr } from './AccountingLayout';
 import usePageTheme from '../../hooks/usePageTheme';
 import Button from '../../components/ui/Button';
+import { StatCard, IconReceipt, IconPlus, PKModal } from '../../components/ui/PageKit';
 import {
-  FormShell, ListShell, StatusPill, SoftPanel, inputStyle, ACCT, SectionTitle,
-  SearchField, MoneyText, TypeChip,
+  ListShell, StatusPill, SoftPanel, inputStyle, ACCT, SectionTitle,
+  SearchField, MoneyText, TypeChip, Field, ModalGrid,
 } from './AccountingUI';
-import { StatCard, IconReceipt, IconPlus } from '../../components/ui/PageKit';
 
 const SOURCE_COLORS = {
   payment: ['#ECFDF5', '#047857'],
@@ -31,7 +31,16 @@ export default function AccountingJournalsPage() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [openForm, setOpenForm] = useState(false);
   const [openId, setOpenId] = useState(null);
+  const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
+    date: new Date().toISOString().slice(0, 10),
+    memo: '',
+    debitAccount: '',
+    creditAccount: '',
+    amount: '',
+  });
+
+  const emptyForm = () => ({
     date: new Date().toISOString().slice(0, 10),
     memo: '',
     debitAccount: '',
@@ -54,13 +63,13 @@ export default function AccountingJournalsPage() {
 
   useEffect(() => { load(); }, []);
 
-  const submit = async (e) => {
-    e.preventDefault();
+  const submit = async () => {
     const amt = Number(form.amount);
     if (!form.debitAccount || !form.creditAccount || !(amt > 0)) {
       toast.error('Fill debit, credit, and amount');
       return;
     }
+    setSaving(true);
     try {
       await api.post('/accounting/journals', {
         date: form.date,
@@ -71,11 +80,13 @@ export default function AccountingJournalsPage() {
         ],
       });
       toast.success('Journal posted');
-      setForm((f) => ({ ...f, memo: '', amount: '' }));
+      setForm(emptyForm());
       setOpenForm(false);
       load();
     } catch (err) {
       toast.error(err.response?.data?.message || 'Post failed');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -115,10 +126,10 @@ export default function AccountingJournalsPage() {
       actions={(
         <Button
           variant="primary"
-          onClick={() => setOpenForm((v) => !v)}
+          onClick={() => { setForm(emptyForm()); setOpenForm(true); }}
           style={{ display: 'flex', alignItems: 'center', gap: 6 }}
         >
-          <IconPlus /> {openForm ? 'Hide form' : 'Post journal'}
+          <IconPlus /> Post journal
         </Button>
       )}
     >
@@ -128,41 +139,42 @@ export default function AccountingJournalsPage() {
         <StatCard label="Voided" value={voided} color={ACCT.danger} icon={<IconReceipt />} />
       </div>
 
-      {openForm && (
-        <FormShell title="Post manual journal" accent={ACCT.purple}>
-          <form onSubmit={submit} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(150px,1fr))', gap: 10, alignItems: 'end' }}>
-            <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 11, fontWeight: 700, color: C.label }}>
-              Date
-              <input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} style={inputStyle(C)} />
-            </label>
-            <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 11, fontWeight: 700, color: C.label }}>
-              Memo
-              <input placeholder="What is this for?" value={form.memo} onChange={(e) => setForm({ ...form, memo: e.target.value })} style={inputStyle(C)} />
-            </label>
-            <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 11, fontWeight: 700, color: C.label }}>
-              Debit
-              <select value={form.debitAccount} onChange={(e) => setForm({ ...form, debitAccount: e.target.value })} style={inputStyle(C)}>
-                <option value="">Select account</option>
-                {accounts.map((a) => <option key={a.id} value={a.id}>{a.code} {a.name}</option>)}
-              </select>
-            </label>
-            <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 11, fontWeight: 700, color: C.label }}>
-              Credit
-              <select value={form.creditAccount} onChange={(e) => setForm({ ...form, creditAccount: e.target.value })} style={inputStyle(C)}>
-                <option value="">Select account</option>
-                {accounts.map((a) => <option key={a.id} value={a.id}>{a.code} {a.name}</option>)}
-              </select>
-            </label>
-            <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 11, fontWeight: 700, color: C.label }}>
-              Amount
-              <input type="number" step="0.01" placeholder="0.00" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} style={inputStyle(C)} />
-            </label>
-            <Button type="submit" style={{ display: 'flex', alignItems: 'center', gap: 6, height: 38 }}>
-              <IconPlus /> Post journal
-            </Button>
-          </form>
-        </FormShell>
-      )}
+      <PKModal
+        open={openForm}
+        onClose={() => setOpenForm(false)}
+        title="Post manual journal"
+        size="md"
+        footer={(
+          <>
+            <Button variant="secondary" onClick={() => setOpenForm(false)}>Cancel</Button>
+            <Button variant="primary" loading={saving} onClick={submit}>Post journal</Button>
+          </>
+        )}
+      >
+        <ModalGrid>
+          <Field label="Date" required>
+            <input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} style={{ ...inputStyle(C), width: '100%' }} />
+          </Field>
+          <Field label="Amount" required>
+            <input type="number" step="0.01" placeholder="0.00" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} style={{ ...inputStyle(C), width: '100%' }} />
+          </Field>
+          <Field label="Debit account" required full>
+            <select value={form.debitAccount} onChange={(e) => setForm({ ...form, debitAccount: e.target.value })} style={{ ...inputStyle(C), width: '100%' }}>
+              <option value="">Select account</option>
+              {accounts.map((a) => <option key={a.id} value={a.id}>{a.code} {a.name}</option>)}
+            </select>
+          </Field>
+          <Field label="Credit account" required full>
+            <select value={form.creditAccount} onChange={(e) => setForm({ ...form, creditAccount: e.target.value })} style={{ ...inputStyle(C), width: '100%' }}>
+              <option value="">Select account</option>
+              {accounts.map((a) => <option key={a.id} value={a.id}>{a.code} {a.name}</option>)}
+            </select>
+          </Field>
+          <Field label="Memo" full>
+            <input placeholder="What is this for?" value={form.memo} onChange={(e) => setForm({ ...form, memo: e.target.value })} style={{ ...inputStyle(C), width: '100%' }} />
+          </Field>
+        </ModalGrid>
+      </PKModal>
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 12, alignItems: 'center' }}>
         <SearchField value={q} onChange={setQ} placeholder="Search memo, source, id…" />

@@ -5,18 +5,22 @@ import AccountingLayout, { formatLkr } from './AccountingLayout';
 import usePageTheme from '../../hooks/usePageTheme';
 import Button from '../../components/ui/Button';
 import {
-  FormShell, ListRow, ListShell, SegmentTabs, StatusPill, inputStyle, ACCT,
+  ListRow, ListShell, SegmentTabs, StatusPill, inputStyle, ACCT, Field, ModalGrid,
 } from './AccountingUI';
-import { StatCard, IconDollar, IconUsers, IconPlus } from '../../components/ui/PageKit';
+import { StatCard, IconDollar, IconUsers, IconPlus, PKModal } from '../../components/ui/PageKit';
+
+const emptyForm = () => ({
+  name: '', no: '', date: new Date().toISOString().slice(0, 10), amount: '',
+});
 
 export default function AccountingArApPage() {
   const { C } = usePageTheme();
   const [tab, setTab] = useState('ar');
   const [ar, setAr] = useState([]);
   const [ap, setAp] = useState([]);
-  const [form, setForm] = useState({
-    name: '', no: '', date: new Date().toISOString().slice(0, 10), amount: '',
-  });
+  const [open, setOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState(emptyForm());
 
   const load = async () => {
     try {
@@ -29,8 +33,12 @@ export default function AccountingArApPage() {
   };
   useEffect(() => { load(); }, []);
 
-  const create = async (e) => {
-    e.preventDefault();
+  const create = async () => {
+    if (!form.name.trim() || !(Number(form.amount) > 0)) {
+      toast.error('Name and amount required');
+      return;
+    }
+    setSaving(true);
     try {
       if (tab === 'ar') {
         await api.post('/accounting/ar', {
@@ -48,10 +56,13 @@ export default function AccountingArApPage() {
         });
       }
       toast.success('Created');
-      setForm((f) => ({ ...f, name: '', no: '', amount: '' }));
+      setForm(emptyForm());
+      setOpen(false);
       load();
     } catch (err) {
       toast.error(err.response?.data?.message || 'Create failed');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -70,7 +81,18 @@ export default function AccountingArApPage() {
   const openCount = rows.filter((r) => r.status === 'open').length;
 
   return (
-    <AccountingLayout title="AR / AP">
+    <AccountingLayout
+      title="AR / AP"
+      actions={(
+        <Button
+          variant="primary"
+          onClick={() => { setForm(emptyForm()); setOpen(true); }}
+          style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+        >
+          <IconPlus /> {tab === 'ar' ? 'Add invoice' : 'Add bill'}
+        </Button>
+      )}
+    >
       <SegmentTabs
         value={tab}
         onChange={setTab}
@@ -91,17 +113,7 @@ export default function AccountingArApPage() {
         <StatCard label="Total docs" value={rows.length} color={ACCT.slate} icon={<IconUsers />} />
       </div>
 
-      <FormShell title={tab === 'ar' ? 'New customer invoice' : 'New supplier bill'} accent={tab === 'ar' ? ACCT.warning : ACCT.danger}>
-        <form onSubmit={create} style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'end' }}>
-          <input placeholder={tab === 'ar' ? 'Customer name' : 'Supplier name'} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} style={{ ...inputStyle(C), minWidth: 160 }} required />
-          <input placeholder="Doc no (optional)" value={form.no} onChange={(e) => setForm({ ...form, no: e.target.value })} style={inputStyle(C)} />
-          <input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} style={inputStyle(C)} />
-          <input type="number" step="0.01" placeholder="Amount" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} style={inputStyle(C)} required />
-          <Button type="submit" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><IconPlus /> Add</Button>
-        </form>
-      </FormShell>
-
-      <ListShell empty="No documents" emptySub="Add an invoice or bill above">
+      <ListShell empty="No documents" emptySub={`Click Add ${tab === 'ar' ? 'invoice' : 'bill'} to create one`}>
         {rows.map((r) => (
           <ListRow key={r.id}>
             <div>
@@ -121,6 +133,36 @@ export default function AccountingArApPage() {
           </ListRow>
         ))}
       </ListShell>
+
+      <PKModal
+        open={open}
+        onClose={() => setOpen(false)}
+        title={tab === 'ar' ? 'New customer invoice' : 'New supplier bill'}
+        size="md"
+        footer={(
+          <>
+            <Button variant="secondary" onClick={() => setOpen(false)}>Cancel</Button>
+            <Button variant="primary" loading={saving} onClick={create}>
+              {tab === 'ar' ? 'Add invoice' : 'Add bill'}
+            </Button>
+          </>
+        )}
+      >
+        <ModalGrid>
+          <Field label={tab === 'ar' ? 'Customer name' : 'Supplier name'} required full>
+            <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} style={{ ...inputStyle(C), width: '100%' }} placeholder={tab === 'ar' ? 'Customer' : 'Supplier'} />
+          </Field>
+          <Field label="Doc no (optional)">
+            <input value={form.no} onChange={(e) => setForm({ ...form, no: e.target.value })} style={{ ...inputStyle(C), width: '100%' }} placeholder="Auto if blank" />
+          </Field>
+          <Field label="Date" required>
+            <input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} style={{ ...inputStyle(C), width: '100%' }} />
+          </Field>
+          <Field label="Amount" required full>
+            <input type="number" step="0.01" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} style={{ ...inputStyle(C), width: '100%' }} placeholder="0.00" />
+          </Field>
+        </ModalGrid>
+      </PKModal>
     </AccountingLayout>
   );
 }

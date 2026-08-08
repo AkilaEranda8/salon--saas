@@ -18,6 +18,7 @@ const SOURCE_COLORS = {
   petty_cash: ['#FFFBEB', '#B45309'],
   commission_payout: ['#FDF2F8', '#BE185D'],
   staff_advance: ['#EEF2FF', '#4338CA'],
+  staff_advance_recovery: ['#E0E7FF', '#3730A3'],
   ar_invoice: ['#FEF3C7', '#B45309'],
   ap_bill: ['#FEE2E2', '#B91C1C'],
   manual: ['#F1F5F9', '#475467'],

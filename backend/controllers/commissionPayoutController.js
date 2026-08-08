@@ -62,18 +62,29 @@ const create = async (req, res) => {
       tenant_id: req.userTenantId ?? req.tenant?.id ?? null,
     });
 
+    // Pending advances for this month are recovered against the payout (salary/commission net).
+    const pendingAdvances = await StaffAdvance.findAll({
+      where: { staff_id, month, status: 'pending', ...tenantWhere(req) },
+    });
+    const advanceCleared = pendingAdvances.reduce((s, a) => s + Number(a.amount || 0), 0);
+
     try {
       const { postCommissionPayoutToGl } = require('../services/accountingEngine');
-      await postCommissionPayoutToGl(payout, { tenant: req.tenant, userId: req.user?.id });
+      await postCommissionPayoutToGl(payout, {
+        tenant: req.tenant,
+        userId: req.user?.id,
+        advanceCleared,
+      });
     } catch (acctErr) {
       console.warn('[accounting] payout post failed:', acctErr.message);
     }
 
-    // Auto-mark this staff's pending advances for the same month as 'deducted'
-    await StaffAdvance.update(
-      { status: 'deducted' },
-      { where: { staff_id, month, status: 'pending', ...tenantWhere(req) } }
-    );
+    if (pendingAdvances.length) {
+      await StaffAdvance.update(
+        { status: 'deducted' },
+        { where: { id: pendingAdvances.map((a) => a.id), ...tenantWhere(req) } }
+      );
+    }
 
     const result = await CommissionPayout.findOne({
       where: { id: payout.id },

@@ -83,5 +83,35 @@ check('500 bill gate scenario lines balance with VAT', () => {
   ]);
 });
 
+const { buildCommissionPayoutLines } = require('../services/accountingEngine/adapters/payroll');
+
+check('payout lines: cash only', () => {
+  const lines = buildCommissionPayoutLines({
+    payrollAccountId: 1,
+    cashAccountId: 2,
+    cashAmount: 4000,
+    advanceCleared: 0,
+  });
+  assertBalanced(lines);
+  assert.strictEqual(lines.length, 2);
+  assert.strictEqual(lines[0].debit, 4000);
+  assert.strictEqual(lines[1].credit, 4000);
+});
+
+check('payout lines: cash + advance recovery (salary/commission net)', () => {
+  const lines = buildCommissionPayoutLines({
+    payrollAccountId: 1,
+    cashAccountId: 2,
+    advanceAccountId: 3,
+    cashAmount: 4000,
+    advanceCleared: 1000,
+  });
+  assertBalanced(lines);
+  assert.strictEqual(lines.length, 3);
+  assert.strictEqual(lines[0].debit, 5000);
+  assert.strictEqual(lines[1].credit, 1000);
+  assert.strictEqual(lines[2].credit, 4000);
+});
+
 console.log(`\n${passed} accounting engine checks passed`);
 if (process.exitCode) process.exit(1);

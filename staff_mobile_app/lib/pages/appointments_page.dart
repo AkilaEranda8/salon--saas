@@ -12,6 +12,7 @@ import '../services/mobile_api.dart';
 import '../state/app_state.dart';
 import '../utils/appointment_notes.dart';
 import '../utils/package_helpers.dart';
+import '../widgets/app_toast.dart';
 import '../widgets/payment_helper_staff_section.dart';
 import '../widgets/recurring_booking_section.dart';
 import '../widgets/walk_in_service_dropdown_section.dart';
@@ -135,15 +136,20 @@ class _ApptState extends State<AppointmentsPage> with SingleTickerProviderStateM
     return { for (final s in _kFilters) s: list.where((a) => a.status.toLowerCase() == s).length };
   }
 
-  void _toast(String m) {
+  void _toast(String m, {bool success = false}) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(m, style: const TextStyle(fontWeight: FontWeight.w600)),
-      backgroundColor: _forest,
-      behavior: SnackBarBehavior.floating,
-      margin: const EdgeInsets.all(16),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-    ));
+    final lower = m.toLowerCase();
+    final isSuccess = success ||
+        lower.contains('recorded') ||
+        lower.contains('deleted') ||
+        lower.contains('saved') ||
+        lower.contains('updated');
+    AppToast.show(
+      context,
+      m,
+      kind: isSuccess ? AppToastKind.success : AppToastKind.error,
+      title: isSuccess ? 'Success' : null,
+    );
   }
 
   Future<void> _goNew() async {
@@ -1842,10 +1848,10 @@ class _PaySheetState extends State<_PaySheet> {
         _packageTemplates = [];
         _loadingPackages = false;
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(e.toString().replaceFirst('Exception: ', '')),
-        ),
+      AppToast.error(
+        context,
+        e.toString().replaceFirst('Exception: ', ''),
+        title: 'Packages',
       );
     }
   }
@@ -1998,9 +2004,7 @@ class _PaySheetState extends State<_PaySheet> {
         _amtCtrl.text = _calcTotal;
       });
       if (_selectedPackageId.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not link package to this customer.')),
-        );
+        AppToast.error(context, 'Could not link package to this customer.');
       }
     } catch (e) {
       if (!mounted) return;
@@ -2012,8 +2016,9 @@ class _PaySheetState extends State<_PaySheet> {
         if (_method == 'Package') _method = 'Cash';
       });
       _recalc();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+      AppToast.error(
+        context,
+        e.toString().replaceFirst('Exception: ', ''),
       );
     }
   }
@@ -2107,50 +2112,41 @@ class _PaySheetState extends State<_PaySheet> {
 
   void _confirm() {
     if (_linkingPackage) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please wait — linking package…')),
-      );
+      AppToast.info(context, 'Please wait — linking package…',
+          title: 'One moment');
       return;
     }
     if (_selectedTemplateId.isNotEmpty && _selectedPackageId.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text('Package is still linking. Try again in a moment.')),
+      AppToast.warning(
+        context,
+        'Package is still linking. Try again in a moment.',
+        title: 'Almost ready',
       );
       return;
     }
     final ids = _orderedServiceIds();
     if (ids.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Select at least one service')),
-      );
+      AppToast.error(context, 'Select at least one service');
       return;
     }
     final paid = double.tryParse(_amtCtrl.text.trim()) ?? 0;
     final advance = widget.appointment.advancePaid;
     if (paid < 0 || (paid == 0 && !(advance > 0))) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Enter a valid amount')),
-      );
+      AppToast.error(context, 'Enter a valid amount');
       return;
     }
     if (widget.recurringAllowed && _isRecurring && _recurringNextDate.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Select the next recurring visit date')),
-      );
+      AppToast.error(context, 'Select the next recurring visit date');
       return;
     }
     if (_mainStaffId.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Select main staff')),
-      );
+      AppToast.error(context, 'Select main staff');
       return;
     }
     if (!helpersDraftValid(_helpers)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Each helper needs a staff member and commission value.'),
-        ),
+      AppToast.error(
+        context,
+        'Each helper needs a staff member and commission value.',
       );
       return;
     }
@@ -2895,8 +2891,7 @@ class _EditorState extends State<_EditorDialog> {
           onPressed: () async {
             if (!_fk.currentState!.validate()) return;
             if (_sids.isEmpty) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Select at least one service')));
+              AppToast.error(context, 'Select at least one service');
               return;
             }
             final app    = AppStateScope.of(context);
@@ -2919,8 +2914,7 @@ class _EditorState extends State<_EditorDialog> {
             );
             if (!context.mounted) return;
             if (!ok) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text(app.lastError ?? 'Save failed')));
+              AppToast.error(context, app.lastError ?? 'Save failed');
               return;
             }
             Navigator.pop(context, true);

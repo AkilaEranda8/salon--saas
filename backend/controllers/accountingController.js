@@ -963,7 +963,7 @@ const payrollSummary = async (req, res) => {
     const posted = await AcctJournal.findAll({
       where: {
         tenant_id: tenantId,
-        source_type: { [Op.in]: ['commission_payout', 'staff_advance'] },
+        source_type: { [Op.in]: ['commission_payout', 'staff_advance', 'staff_advance_recovery'] },
         status: 'posted',
       },
       attributes: ['source_type', 'source_id', 'id'],
@@ -977,6 +977,7 @@ const payrollSummary = async (req, res) => {
       advances: advances.map((a) => ({
         ...a.toJSON(),
         gl_posted: postedSet.has(`staff_advance:${a.id}`),
+        gl_recovered: postedSet.has(`staff_advance_recovery:${a.id}`),
       })),
     });
   } catch (err) {

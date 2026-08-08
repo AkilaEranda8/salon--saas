@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../models/customer.dart';
@@ -6,6 +8,7 @@ import '../models/staff_member.dart';
 import '../state/app_state.dart';
 import '../utils/appointment_notes.dart';
 import '../utils/package_helpers.dart';
+import '../widgets/app_toast.dart';
 import '../widgets/walk_in_service_dropdown_section.dart';
 
 // ── Sentinel id for "Register new customer" autocomplete option ──────────────
@@ -56,6 +59,10 @@ class _AddApptSheetState extends State<_AddApptSheet> {
   List<Map<String, String>> _branches  = [];
   List<StaffMember>         _staff     = [];
   List<Customer>            _customers = [];
+  List<Customer>            _remoteCustomers = [];
+  bool                      _searchingCustomers = false;
+  Timer?                    _customerSearchTimer;
+  TextEditingController?   _autoNameCtrl;
 
   String _branchId = '';
   String _staffId  = '';
@@ -80,6 +87,10 @@ class _AddApptSheetState extends State<_AddApptSheet> {
   bool    _linkingPackage   = false;
   double? _packageOfferPrice;
   int     _packagesLoadGen  = 0;
+  int     _packageLinkGen   = 0;
+  int     _customerSearchGen = 0;
+  /// Template service ids last applied — used to detect manual service edits.
+  List<String> _packageServiceSnapshot = const [];
 
   bool get _isSuper =>
       AppStateScope.of(context).currentUser?.role == 'superadmin';
@@ -116,6 +127,150 @@ class _AddApptSheetState extends State<_AddApptSheet> {
     }
     if (!mounted) return;
     setState(() => _loading = false);
+  }
+
+  List<Customer> get _customerPool {
+    final map = <String, Customer>{};
+    for (final c in [..._customers, ..._remoteCustomers]) {
+      if (c.id.isNotEmpty) map[c.id] = c;
+    }
+    return map.values.toList();
+  }
+
+  static String _digitsOnly(String s) =>
+      s.replaceAll(RegExp(r'[^\d]'), '');
+
+  bool _customerMatchesQuery(Customer c, String q) {
+    if (q.isEmpty) return true;
+    final qq = q.replaceAll(RegExp(r'\s'), '');
+    final phoneCompact = c.phone.replaceAll(RegExp(r'\s'), '').toLowerCase();
+    final phoneDigits = _digitsOnly(c.phone);
+    final qDigits = _digitsOnly(q);
+    return c.name.toLowerCase().contains(q) ||
+        phoneCompact.contains(qq) ||
+        c.phone.toLowerCase().contains(q) ||
+        (qDigits.length >= 3 && phoneDigits.contains(qDigits));
+  }
+
+  void _scheduleCustomerSearch(String raw) {
+    _customerSearchTimer?.cancel();
+    final q = raw.trim();
+    if (q.length < 2) {
+      if (_remoteCustomers.isNotEmpty || _searchingCustomers) {
+        setState(() {
+          _remoteCustomers = const [];
+          _searchingCustomers = false;
+        });
+      }
+      return;
+    }
+    final gen = ++_customerSearchGen;
+    setState(() => _searchingCustomers = true);
+    _customerSearchTimer = Timer(const Duration(milliseconds: 280), () async {
+      final app = AppStateScope.of(context);
+      final token = app.currentUser?.authToken ?? '';
+      if (token.isEmpty) {
+        if (mounted && gen == _customerSearchGen) {
+          setState(() => _searchingCustomers = false);
+        }
+        return;
+      }
+      try {
+        final rows = await app.api.fetchCustomers(
+          token: token,
+          search: q,
+          limit: 40,
+        );
+        if (!mounted || gen != _customerSearchGen) return;
+        setState(() {
+          _remoteCustomers = rows;
+          _searchingCustomers = false;
+        });
+        final ctrl = _autoNameCtrl;
+        if (ctrl != null) ctrl.value = ctrl.value;
+      } catch (_) {
+        if (!mounted || gen != _customerSearchGen) return;
+        setState(() {
+          _remoteCustomers = const [];
+          _searchingCustomers = false;
+        });
+        final ctrl = _autoNameCtrl;
+        if (ctrl != null) ctrl.value = ctrl.value;
+      }
+    });
+  }
+
+  void _clearPackageSelection({bool clearServices = false}) {
+    _selectedPkgId = '';
+    _selectedTemplateId = '';
+    _selectedPkgName = '';
+    _packageOfferPrice = null;
+    _packageServiceSnapshot = const [];
+    _linkingPackage = false;
+    _packageLinkGen++;
+    if (clearServices) {
+      _primaryServiceId = null;
+      _extraServiceIds.clear();
+      _syncAssignments();
+    }
+  }
+
+  void _clearCustomerLinkedState() {
+    _custId = '';
+    _packagesLoadGen++;
+    _clearPackageSelection();
+    _customerPackages = [];
+    _packageTemplates = [];
+    _loadingPackages = false;
+  }
+
+  /// If services were changed after a package pick, drop package pricing/id.
+  void _invalidatePackageIfServicesChanged() {
+    if (_selectedTemplateId.isEmpty && _selectedPkgId.isEmpty) return;
+    if (_packageServiceSnapshot.isEmpty) return;
+    final current = _orderedServiceIds();
+    if (current.length != _packageServiceSnapshot.length) {
+      _clearPackageSelection();
+      return;
+    }
+    for (var i = 0; i < current.length; i++) {
+      if (current[i] != _packageServiceSnapshot[i]) {
+        _clearPackageSelection();
+        return;
+      }
+    }
+  }
+
+  Future<void> _reloadStaffForBranch(String branchId) async {
+    final app = AppStateScope.of(context);
+    try {
+      final staff = await app.loadStaffList(
+        branchId: branchId.isEmpty ? null : branchId,
+      );
+      if (!mounted) return;
+      setState(() {
+        _staff = staff;
+        final ids = staff.map((s) => s.id).toSet();
+        if (_staffId.isNotEmpty && !ids.contains(_staffId)) {
+          _staffId = '';
+        }
+        for (final entry in _serviceAssignments.entries) {
+          final sid = (entry.value['staff_id'] ?? '').trim();
+          if (sid.isNotEmpty && !ids.contains(sid)) {
+            entry.value['staff_id'] = '';
+          }
+        }
+      });
+    } catch (_) {}
+  }
+
+  bool _isPastSlot(String date, String time) {
+    final d = date.trim();
+    final t = time.trim();
+    if (d.isEmpty || t.isEmpty) return false;
+    final parsed = DateTime.tryParse('$d ${t.length == 5 ? '$t:00' : t}');
+    if (parsed == null) return false;
+    return parsed.isBefore(DateTime.now().subtract(const Duration(minutes: 1)));
   }
 
   Future<void> _pickDate() async {
@@ -242,12 +397,19 @@ class _AddApptSheetState extends State<_AddApptSheet> {
   void _onPrimaryChanged(String? v) {
     setState(() {
       final prev = _primaryServiceId;
-      if (v == null) { _primaryServiceId = null; _syncAssignments(); _updateTotal(); return; }
+      if (v == null) {
+        _primaryServiceId = null;
+        _invalidatePackageIfServicesChanged();
+        _syncAssignments();
+        _updateTotal();
+        return;
+      }
       _extraServiceIds.remove(v);
       if (prev != null && prev.isNotEmpty && prev != v) {
         _extraServiceIds.insert(0, prev);
       }
       _primaryServiceId = v;
+      _invalidatePackageIfServicesChanged();
       _syncAssignments();
       _updateTotal();
     });
@@ -261,6 +423,7 @@ class _AddApptSheetState extends State<_AddApptSheet> {
       } else {
         _extraServiceIds.add(id);
       }
+      _invalidatePackageIfServicesChanged();
       _syncAssignments();
       _updateTotal();
     });
@@ -271,6 +434,7 @@ class _AddApptSheetState extends State<_AddApptSheet> {
       if (index >= 0 && index < _extraServiceIds.length) {
         _extraServiceIds.removeAt(index);
       }
+      _invalidatePackageIfServicesChanged();
       _syncAssignments();
       _updateTotal();
     });
@@ -314,10 +478,7 @@ class _AddApptSheetState extends State<_AddApptSheet> {
   Future<void> _applyAppointmentTemplate(String templateId) async {
     if (templateId.isEmpty) {
       setState(() {
-        _selectedPkgId = '';
-        _selectedTemplateId = '';
-        _selectedPkgName = '';
-        _packageOfferPrice = null;
+        _clearPackageSelection();
       });
       _updateTotal();
       return;
@@ -334,10 +495,13 @@ class _AddApptSheetState extends State<_AddApptSheet> {
     final selected = tpl;
     final serviceIds = resolveTemplateServiceIds(selected, _services);
     final price = getTemplateBundlePrice(selected);
+    final custIdAtStart = _custId.trim();
+    final linkGen = ++_packageLinkGen;
     setState(() {
       _selectedTemplateId = templateId;
       _selectedPkgName = '${selected['name'] ?? ''}';
       _packageOfferPrice = price > 0 ? price : null;
+      _packageServiceSnapshot = List<String>.from(serviceIds);
       applyResolvedServiceIds(
         ids: serviceIds,
         setPrimary: (v) => _primaryServiceId = v,
@@ -348,24 +512,29 @@ class _AddApptSheetState extends State<_AddApptSheet> {
     });
     _updateTotal();
 
+    if (custIdAtStart.isEmpty) {
+      setState(() => _linkingPackage = false);
+      _snack('Select a customer before applying a package.');
+      return;
+    }
+
     final app = AppStateScope.of(context);
     final branch = (_isSuper || (app.currentUser?.branchId ?? '').isEmpty)
         ? _branchId
         : (app.currentUser?.branchId ?? '');
     final cp = await app.ensureCustomerPackageForTemplate(
-      customerId: _custId,
+      customerId: custIdAtStart,
       templateId: templateId,
       branchId: branch,
       existingCustomerPackages: _customerPackages,
     );
     if (!mounted) return;
+    if (linkGen != _packageLinkGen || _custId.trim() != custIdAtStart) {
+      return;
+    }
     if (cp == null) {
       setState(() {
-        _selectedTemplateId = '';
-        _selectedPkgId = '';
-        _selectedPkgName = '';
-        _packageOfferPrice = null;
-        _linkingPackage = false;
+        _clearPackageSelection(clearServices: true);
       });
       _snack(app.lastError ?? 'Failed to link package to customer.');
       _updateTotal();
@@ -374,22 +543,25 @@ class _AddApptSheetState extends State<_AddApptSheet> {
     setState(() {
       _selectedPkgId = '${cp['id']}';
       _linkingPackage = false;
-      // Refresh owned list in background state
-      final existing = findCustomerPackageForTemplate(_customerPackages, templateId);
-      if (existing == null) {
+      final existing =
+          findCustomerPackageForTemplate(_customerPackages, templateId);
+      if (existing == null || !packageCanRedeemNow(existing)) {
         _customerPackages = [..._customerPackages, cp];
       }
     });
   }
 
   Future<void> _save() async {
+    if (_saving) return;
     if (!_formKey.currentState!.validate()) return;
     if (_linkingPackage) {
-      _snack('Please wait — linking package…');
+      _snack('Please wait — linking package…',
+          kind: AppToastKind.info, title: 'One moment');
       return;
     }
     if (_selectedTemplateId.isNotEmpty && _selectedPkgId.trim().isEmpty) {
-      _snack('Package is still linking. Try again in a moment.');
+      _snack('Package is still linking. Try again in a moment.',
+          kind: AppToastKind.warning, title: 'Almost ready');
       return;
     }
     if (_orderedServiceIds().isEmpty) {
@@ -426,6 +598,10 @@ class _AddApptSheetState extends State<_AddApptSheet> {
           _snack('Set date and time for $label');
           return;
         }
+        if (_isPastSlot('${a['date']}', '${a['time']}')) {
+          _snack('Cannot book a past date/time');
+          return;
+        }
       }
       items = _orderedServiceIds().map((id) {
         final a = _serviceAssignments[id] ?? {};
@@ -440,11 +616,20 @@ class _AddApptSheetState extends State<_AddApptSheet> {
     } else {
       if (_date.isEmpty) { _snack('Pick a date'); return; }
       if (_time.isEmpty) { _snack('Pick a time'); return; }
+      if (_isPastSlot(_date, _time)) {
+        _snack('Cannot book a past date/time');
+        return;
+      }
     }
 
     final pkgNote = _selectedPkgId.isNotEmpty
         ? '${AppointmentNotes.packagePrefix} #$_selectedPkgId - $_selectedPkgName'
         : '';
+
+    // Multi-booking ignores amount override for non-package — send package offer only.
+    final amountOverride = (_packageOfferPrice != null && _packageOfferPrice! > 0)
+        ? _packageOfferPrice!.toStringAsFixed(0)
+        : (_multiBooking ? null : _amtCtrl.text.trim());
 
     setState(() => _saving = true);
     final ok = await app.saveAppointment(
@@ -458,10 +643,12 @@ class _AddApptSheetState extends State<_AddApptSheet> {
       staffId: _staffId,
       baseNotes: pkgNote,
       status: '',
-      amountOverride: _amtCtrl.text.trim(),
+      amountOverride: amountOverride,
       bookingItems: items,
       advanceAmount: _collectAdvance && advanceNum > 0 ? advanceNum : null,
       advanceMethod: _collectAdvance ? _advanceMethod : null,
+      customerPackageId:
+          _selectedPkgId.trim().isEmpty ? null : _selectedPkgId.trim(),
     );
     if (!mounted) return;
     setState(() => _saving = false);
@@ -469,18 +656,31 @@ class _AddApptSheetState extends State<_AddApptSheet> {
     Navigator.of(context).pop(true);
   }
 
-  void _snack(String msg) =>
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(msg)));
+  void _snack(
+    String msg, {
+    AppToastKind kind = AppToastKind.error,
+    String? title,
+  }) {
+    if (!mounted) return;
+    AppToast.show(context, msg, kind: kind, title: title);
+  }
 
   Future<void> _doRegister() async {
     final app  = AppStateScope.of(context);
     final name = _namCtrl.text.trim();
-    if (name.isEmpty) return;
+    final phone = _phCtrl.text.trim();
+    if (name.isEmpty) {
+      _snack('Enter customer name');
+      return;
+    }
+    if (phone.isEmpty) {
+      _snack('Phone is required to register a customer');
+      return;
+    }
     setState(() => _registering = true);
     final newCust = await app.registerCustomer(
       name: name,
-      phone: _phCtrl.text.trim(),
+      phone: phone,
       branchId: _branchId.isEmpty ? null : _branchId,
     );
     if (!mounted) return;
@@ -493,7 +693,9 @@ class _AddApptSheetState extends State<_AddApptSheet> {
         _registered   = true;
         _registerMode = false;
         _registering  = false;
+        _clearPackageSelection();
       });
+      await _loadCustomerPackages(newCust.id);
     } else {
       setState(() => _registering = false);
       _snack(app.lastError ?? 'Failed to register customer');
@@ -502,6 +704,7 @@ class _AddApptSheetState extends State<_AddApptSheet> {
 
   @override
   void dispose() {
+    _customerSearchTimer?.cancel();
     _namCtrl.dispose(); _phCtrl.dispose(); _amtCtrl.dispose(); _advAmtCtrl.dispose();
     super.dispose();
   }
@@ -682,26 +885,33 @@ class _AddApptSheetState extends State<_AddApptSheet> {
                   Autocomplete<Customer>(
                     optionsBuilder: (val) {
                       final q   = val.text.trim().toLowerCase();
+                      final all = _customerPool;
                       List<Customer> matches;
                       if (q.isEmpty) {
-                        matches = _customers.take(10).toList();
+                        matches = all.take(10).toList();
                       } else {
-                        matches = _customers
-                            .where((c) =>
-                                c.name.toLowerCase().contains(q) ||
-                                c.phone.contains(q))
+                        matches = all
+                            .where((c) => _customerMatchesQuery(c, q))
                             .take(15)
                             .toList();
                       }
-                      final hasExact = _customers
-                          .any((c) => c.name.toLowerCase() == q);
-                      if (q.length >= 2 && !hasExact) {
+                      final qDigits = _digitsOnly(q);
+                      final looksLikePhone = qDigits.length >= 3 &&
+                          qDigits.length >= (q.length * 0.6).floor();
+                      final hasExact = all.any(
+                          (c) => c.name.toLowerCase() == q);
+                      if (q.length >= 2 &&
+                          !hasExact &&
+                          !_searchingCustomers &&
+                          (!looksLikePhone || matches.isEmpty)) {
                         matches = [
                           ...matches,
                           Customer(
                               id: _kApptNewCustId,
-                              name: val.text.trim(),
-                              phone: '',
+                              name: looksLikePhone && matches.isEmpty
+                                  ? 'New customer'
+                                  : val.text.trim(),
+                              phone: looksLikePhone ? qDigits : '',
                               email: ''),
                         ];
                       }
@@ -713,8 +923,13 @@ class _AddApptSheetState extends State<_AddApptSheet> {
                         setState(() {
                           _registerMode = true;
                           _registered   = false;
-                          _custId       = '';
-                          _namCtrl.text = c.name;
+                          _clearCustomerLinkedState();
+                          _namCtrl.text = c.name == 'New customer'
+                              ? ''
+                              : c.name;
+                          if (c.phone.isNotEmpty) {
+                            _phCtrl.text = c.phone;
+                          }
                         });
                         return;
                       }
@@ -724,30 +939,33 @@ class _AddApptSheetState extends State<_AddApptSheet> {
                         _custId          = c.id;
                         _registerMode    = false;
                         _registered      = false;
-                        _selectedPkgId   = '';
-                        _selectedTemplateId = '';
-                        _selectedPkgName = '';
-                        _packageOfferPrice = null;
+                        _clearPackageSelection();
                         _customerPackages = [];
                         _packageTemplates = [];
                       });
                       _loadCustomerPackages(c.id);
                     },
                     fieldViewBuilder: (ctx, ctrl, fn, _) {
-                      ctrl.text = _namCtrl.text;
+                      _autoNameCtrl = ctrl;
+                      if (ctrl.text != _namCtrl.text) {
+                        ctrl.text = _namCtrl.text;
+                      }
                       return TextFormField(
                         controller: ctrl, focusNode: fn,
+                        keyboardType: TextInputType.text,
                         decoration: _deco(
                             'Name or phone', Icons.person_search_rounded),
                         onChanged: (v) {
                           _namCtrl.text = v;
-                          _custId = '';
-                          if (_registerMode || _registered) {
-                            setState(() {
+                          setState(() {
+                            _clearCustomerLinkedState();
+                            if (_registerMode || _registered) {
                               _registerMode = false;
                               _registered   = false;
-                            });
-                          }
+                            }
+                          });
+                          _updateTotal();
+                          _scheduleCustomerSearch(v);
                         },
                         validator: (v) => v == null || v.trim().isEmpty
                             ? 'Required' : null,
@@ -780,15 +998,19 @@ class _AddApptSheetState extends State<_AddApptSheet> {
                                         color: Color(0xFF15803D)),
                                   ),
                                   title: Text(
-                                    'Register "${c.name}" as new customer',
+                                    c.phone.isNotEmpty
+                                        ? 'No match — register with this phone'
+                                        : 'Register "${c.name}" as new customer',
                                     style: const TextStyle(
                                         fontWeight: FontWeight.w700,
                                         fontSize: 13,
                                         color: Color(0xFF15803D)),
                                   ),
-                                  subtitle: const Text(
-                                      'Add phone below, then register',
-                                      style: TextStyle(fontSize: 11)),
+                                  subtitle: Text(
+                                      c.phone.isNotEmpty
+                                          ? 'Phone ${c.phone} — add name, then register'
+                                          : 'Add phone below, then register',
+                                      style: const TextStyle(fontSize: 11)),
                                   onTap: () => onSel(c),
                                 );
                               }
@@ -1024,7 +1246,24 @@ class _AddApptSheetState extends State<_AddApptSheet> {
                         activeThumbColor: _cMid,
                         onChanged: (v) => setState(() {
                           _multiBooking = v;
-                          if (v) _syncAssignments();
+                          if (v) {
+                            _syncAssignments();
+                          } else {
+                            // Seed shared date/time/staff from first assignment.
+                            final ids = _orderedServiceIds();
+                            if (ids.isNotEmpty) {
+                              final a = _serviceAssignments[ids.first] ?? {};
+                              if ((a['date'] ?? '').isNotEmpty) {
+                                _date = a['date']!;
+                              }
+                              if ((a['time'] ?? '').isNotEmpty) {
+                                _time = a['time']!;
+                              }
+                              if ((a['staff_id'] ?? '').isNotEmpty) {
+                                _staffId = a['staff_id']!;
+                              }
+                            }
+                          }
                         }),
                       ),
                     ]),
@@ -1066,7 +1305,15 @@ class _AddApptSheetState extends State<_AddApptSheet> {
                                       fontWeight: FontWeight.w700)),
                             const SizedBox(height: 8),
                             DropdownButtonFormField<String>(
-                              initialValue: staffVal,
+                              key: ValueKey(
+                                  'multi_staff_${id}_${_staff.length}_${a['staff_id'] ?? ''}'),
+                              initialValue: (() {
+                                final raw = staffVal ?? '';
+                                if (raw.isEmpty) return '';
+                                return _staff.any((s) => s.id == raw)
+                                    ? raw
+                                    : '';
+                              })(),
                               isExpanded: true,
                               decoration: _deco('Staff', Icons.badge_outlined),
                               items: [
@@ -1225,6 +1472,7 @@ class _AddApptSheetState extends State<_AddApptSheet> {
                             keyboardType: TextInputType.number,
                             decoration: _deco(
                                 'Advance amount', Icons.payments_outlined),
+                            onChanged: (_) => setState(() {}),
                           ),
                           const SizedBox(height: 8),
                           DropdownButtonFormField<String>(
@@ -1311,7 +1559,13 @@ class _AddApptSheetState extends State<_AddApptSheet> {
                           children: [
                             _label('STAFF'),
                             DropdownButtonFormField<String>(
-                              initialValue: _staffId.isEmpty ? null : _staffId,
+                              key: ValueKey(
+                                  'staff_${_branchId}_${_staff.length}_$_staffId'),
+                              initialValue: _staffId.isEmpty
+                                  ? ''
+                                  : (_staff.any((s) => s.id == _staffId)
+                                      ? _staffId
+                                      : ''),
                               isExpanded: true,
                               decoration: _deco('Any', Icons.badge_outlined),
                               items: [
@@ -1354,7 +1608,9 @@ class _AddApptSheetState extends State<_AddApptSheet> {
                                         ))
                                     .toList(),
                                 onChanged: (v) {
-                                  setState(() => _branchId = v ?? '');
+                                  final next = v ?? '';
+                                  setState(() => _branchId = next);
+                                  _reloadStaffForBranch(next);
                                   if (_custId.trim().isNotEmpty) {
                                     _loadCustomerPackages(_custId);
                                   }

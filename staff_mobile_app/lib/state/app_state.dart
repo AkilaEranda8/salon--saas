@@ -452,7 +452,10 @@ class AppState extends ChangeNotifier {
     String? branchId,
   }) async {
     final token = _currentUser?.authToken;
-    if (token == null || token.isEmpty) return null;
+    if (token == null || token.isEmpty) {
+      _lastError = 'Missing auth token (cannot register customer).';
+      return null;
+    }
     try {
       final effectiveBranchId = (branchId ?? _currentUser?.branchId)?.trim();
       final customer = await _api.createCustomer(
@@ -467,7 +470,8 @@ class AppState extends ChangeNotifier {
       _customers.insert(0, customer);
       notifyListeners();
       return customer;
-    } catch (_) {
+    } catch (e) {
+      _lastError = e.toString().replaceFirst('Exception: ', '');
       return null;
     }
   }
@@ -1220,9 +1224,11 @@ class AppState extends ChangeNotifier {
     List<Map<String, dynamic>>? bookingItems,
     double? advanceAmount,
     String? advanceMethod,
+    String? customerPackageId,
   }) async {
     if (!hasPermission(StaffPermission.canAddAppointments) ||
         _currentUser == null) {
+      _lastError = 'You do not have permission to add appointments.';
       return false;
     }
     final token = _currentUser?.authToken;
@@ -1305,6 +1311,7 @@ class AppState extends ChangeNotifier {
           items: effectiveItems,
           advanceAmount: advanceAmount,
           advanceMethod: advanceMethod,
+          customerPackageId: customerPackageId,
         );
       } else {
         final primary = orderedServiceIds.first;
@@ -1342,6 +1349,7 @@ class AppState extends ChangeNotifier {
           recurringMessageTemplateIds: recurringMessageTemplateIds,
           advanceAmount: advanceAmount,
           advanceMethod: advanceMethod,
+          customerPackageId: customerPackageId,
         );
       }
       await reloadAppointments();

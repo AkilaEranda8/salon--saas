@@ -566,6 +566,7 @@ class MobileApi {
     List<Map<String, dynamic>>? items,
     double? advanceAmount,
     String? advanceMethod,
+    String? customerPackageId,
   }) async {
     final useItems = items != null && items.isNotEmpty;
     final bodyMap = <String, dynamic>{
@@ -575,6 +576,9 @@ class MobileApi {
         'customer_id': int.tryParse(customerId) ?? customerId,
       if (phone != null && phone.trim().isNotEmpty) 'phone': phone.trim(),
       if (notes != null && notes.trim().isNotEmpty) 'notes': notes.trim(),
+      if (customerPackageId != null && customerPackageId.trim().isNotEmpty)
+        'customer_package_id':
+            int.tryParse(customerPackageId.trim()) ?? customerPackageId.trim(),
       'is_recurring': isRecurring,
       if (isRecurring) 'recurrence_frequency': 'weekly',
       if (isRecurring &&

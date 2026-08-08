@@ -42,7 +42,57 @@ function toJid(phone) {
   // WhatsApp LID identifiers are long numeric IDs (not E.164 phones)
   if (digits.length >= 14) return `${digits}@lid`;
   if (digits.startsWith('0')) digits = `94${digits.slice(1)}`;
+  // Local 9-digit mobiles (7xxxxxxxx) → LK country code
+  if (digits.length === 9 && digits.startsWith('7')) digits = `94${digits}`;
   return `${digits}@s.whatsapp.net`;
+}
+
+/** Recent outbound payloads so Baileys can re-encrypt on decrypt-retry. */
+const recentOutboundByKey = new Map(); // `${jid}|${id}` → message content
+const RECENT_OUTBOUND_MAX = 200;
+
+function cacheOutboundMessage(jid, id, content) {
+  if (!jid || !id || !content) return;
+  const key = `${jid}|${id}`;
+  recentOutboundByKey.set(key, content);
+  if (recentOutboundByKey.size > RECENT_OUTBOUND_MAX) {
+    const first = recentOutboundByKey.keys().next().value;
+    recentOutboundByKey.delete(first);
+  }
+}
+
+function getCachedOutboundMessage(key) {
+  if (!key?.remoteJid || !key?.id) return undefined;
+  return recentOutboundByKey.get(`${key.remoteJid}|${key.id}`);
+}
+
+/**
+ * Resolve a reliable send JID.
+ * Prefer verified PN from onWhatsApp — guessing @lid / raw digits often causes
+ * recipient "Waiting for this message" placeholders.
+ */
+async function resolveSendJid(sock, phone, meta = {}) {
+  if (meta.replyJid && !isLidJid(meta.replyJid)) return meta.replyJid;
+  if (meta.jid && !isLidJid(meta.jid)) return meta.jid;
+
+  let digits = String(phone || '').replace(/\D/g, '');
+  if (digits.startsWith('0')) digits = `94${digits.slice(1)}`;
+  if (digits.length === 9 && digits.startsWith('7')) digits = `94${digits}`;
+
+  if (digits && sock?.onWhatsApp) {
+    try {
+      const results = await sock.onWhatsApp(digits);
+      const hit = Array.isArray(results) ? results.find((r) => r?.exists && r?.jid) : null;
+      if (hit?.jid) return hit.jid;
+    } catch (err) {
+      console.warn('[WhatsApp] onWhatsApp resolve failed:', err.message);
+    }
+  }
+
+  // Last resort: known reply JID (even @lid) or constructed PN JID
+  if (meta.replyJid) return meta.replyJid;
+  if (meta.jid) return meta.jid;
+  return toJid(phone);
 }
 
 /**
@@ -162,6 +212,9 @@ async function startSession(tenantId, audit = {}) {
     browser: ['HEXAONE', 'Chrome', '1.0.0'],
     syncFullHistory: false,
     markOnlineOnConnect: false,
+    // Lets Baileys re-send ciphertext when recipient requests decrypt retry
+    // (reduces permanent "Waiting for this message" placeholders).
+    getMessage: async (key) => getCachedOutboundMessage(key),
   });
 
   activeSockets.set(tid, sock);
@@ -326,14 +379,40 @@ async function sendViaQr(tenantId, phone, message, meta = {}) {
   }
   if (!isConnected(tid)) return { used: false };
   const sock = activeSockets.get(tid);
-  // Prefer explicit reply JID (required for @lid chats); fall back to phone→PN JID.
-  const jid = meta.replyJid || meta.jid || toJid(phone);
-  if (!jid || !sock) return { used: false };
+  if (!sock) return { used: false };
+
+  let jid = await resolveSendJid(sock, phone, meta);
+  if (!jid) return { used: false };
+
+  // Prefer PN chats for proactive staff/customer alerts — @lid outbound is
+  // a frequent cause of permanent "Waiting for this message" on recipients.
+  if (isLidJid(jid) && !meta.allowLid) {
+    const verified = await resolveSendJid(sock, phone, {});
+    if (verified && !isLidJid(verified)) {
+      console.warn(`[WhatsApp] Replacing @lid with verified PN ${verified}`);
+      jid = verified;
+    } else {
+      const pnFallback = toJid(phone);
+      if (pnFallback && !isLidJid(pnFallback)) {
+        console.warn(`[WhatsApp] Replacing @lid with constructed PN ${pnFallback}`);
+        jid = pnFallback;
+      }
+    }
+  }
 
   let status = 'sent';
   let errorMsg = null;
+  let waMessageId = null;
+  const content = { conversation: String(message || '') };
   try {
-    await sock.sendMessage(jid, { text: message });
+    const sent = await sock.sendMessage(jid, { text: message });
+    waMessageId = sent?.key?.id || null;
+    if (waMessageId) {
+      cacheOutboundMessage(jid, waMessageId, content);
+      if (sent?.key?.remoteJid) {
+        cacheOutboundMessage(sent.key.remoteJid, waMessageId, content);
+      }
+    }
     await storeMessage({
       tenantId: tid,
       direction: 'out',
@@ -343,6 +422,7 @@ async function sendViaQr(tenantId, phone, message, meta = {}) {
       status: 'sent',
       event_type: meta.event_type || null,
       customer_name: meta.customer_name || null,
+      wa_message_id: waMessageId,
     });
   } catch (err) {
     status = 'failed';
@@ -359,7 +439,7 @@ async function sendViaQr(tenantId, phone, message, meta = {}) {
     });
     throw err;
   }
-  return { used: true, status, error: errorMsg, jid };
+  return { used: true, status, error: errorMsg, jid, wa_message_id: waMessageId };
 }
 
 async function listMessages(tenantId, { page = 1, limit = 50 } = {}) {

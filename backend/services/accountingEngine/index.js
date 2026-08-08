@@ -25,4 +25,6 @@ module.exports = {
   postExpenseToGl: expenseAdapter.postExpenseToGl,
   postCommissionPayoutToGl: payrollAdapter.postCommissionPayoutToGl,
   postStaffAdvanceToGl: payrollAdapter.postStaffAdvanceToGl,
+  postAdvanceRecoveryToGl: payrollAdapter.postAdvanceRecoveryToGl,
+  buildCommissionPayoutLines: payrollAdapter.buildCommissionPayoutLines,
 };

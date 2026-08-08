@@ -62,7 +62,9 @@ export default function AccountingPayrollPage() {
                 <div style={{ fontSize: 12, color: '#98A2B3', marginTop: 2 }}>{r.status}</div>
               </div>
               <StatusPill status={r.gl_posted ? 'posted' : 'pending'}>
-                {r.gl_posted ? 'GL posted' : 'Not in GL'}
+                {r.gl_posted
+                  ? (r.status === 'deducted' || r.gl_recovered ? 'GL posted · recovered' : 'GL posted')
+                  : 'Not in GL'}
               </StatusPill>
             </ListRow>
           ))}

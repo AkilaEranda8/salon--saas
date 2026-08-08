@@ -86,6 +86,12 @@ const markDeducted = async (req, res) => {
       return res.status(400).json({ message: 'Already marked as deducted.' });
     }
     await advance.update({ status: 'deducted' });
+    try {
+      const { postAdvanceRecoveryToGl } = require('../services/accountingEngine');
+      await postAdvanceRecoveryToGl(advance, { tenant: req.tenant, userId: req.user?.id });
+    } catch (acctErr) {
+      console.warn('[accounting] advance recovery post failed:', acctErr.message);
+    }
     return res.json(advance);
   } catch (err) {
     console.error(err);
@@ -99,6 +105,18 @@ const revertPending = async (req, res) => {
     if (!advance) return res.status(404).json({ message: 'Advance not found.' });
     if (advance.status === 'pending') {
       return res.status(400).json({ message: 'Already pending.' });
+    }
+    try {
+      const { voidJournalBySource } = require('../services/accountingEngine');
+      await voidJournalBySource({
+        tenantId: advance.tenant_id,
+        sourceType: 'staff_advance_recovery',
+        sourceId: advance.id,
+        userId: req.user?.id,
+        reason: `Advance #${advance.id} reverted to pending`,
+      });
+    } catch (acctErr) {
+      console.warn('[accounting] advance recovery void failed:', acctErr.message);
     }
     await advance.update({ status: 'pending' });
     return res.json(advance);
@@ -114,6 +132,15 @@ const remove = async (req, res) => {
     if (!advance) return res.status(404).json({ message: 'Advance not found.' });
     try {
       const { voidJournalBySource } = require('../services/accountingEngine');
+      if (advance.status === 'deducted') {
+        await voidJournalBySource({
+          tenantId: advance.tenant_id,
+          sourceType: 'staff_advance_recovery',
+          sourceId: advance.id,
+          userId: req.user?.id,
+          reason: `Advance #${advance.id} deleted (recovery)`,
+        });
+      }
       await voidJournalBySource({
         tenantId: advance.tenant_id,
         sourceType: 'staff_advance',

@@ -11,6 +11,7 @@ import {
 } from '../components/ui/PageKit';
 
 const CATS    = ['Rent','Utilities','Supplies','Salary','Marketing','Maintenance','Other'];
+const CUSTOM_CAT = '__custom__';
 const METHODS = ['cash','bank_transfer','cheque','card'];
 const CAT_COLOR = { Rent:'#2563EB', Utilities:'#7C3AED', Supplies:'#D97706', Salary:'#059669', Marketing:'#EA580C', Maintenance:'#0284C7', Other:'#64748B' };
 const CAT_BG    = { Rent:'#EFF6FF', Utilities:'#F5F3FF', Supplies:'#FFFBEB', Salary:'#ECFDF5', Marketing:'#FFF7ED', Maintenance:'#F0F9FF', Other:'#F8FAFC' };
@@ -34,6 +35,8 @@ export default function ExpensesPage() {
   const [form, setForm]         = useState(EMPTY);
   const [saving, setSaving]     = useState(false);
   const [formErr, setFormErr]   = useState('');
+  const [customCategory, setCustomCategory] = useState(false);
+  const [customCatName, setCustomCatName]   = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -56,21 +59,62 @@ export default function ExpensesPage() {
   }, [filterBranch, filterMonth]);
   useEffect(() => { load(); }, [load]);
 
-  const openAdd  = () => { setEditItem(null); setForm({ ...EMPTY, branch_id: user?.branch_id||'', date: today }); setFormErr(''); setShowForm(true); };
-  const openEdit = row => { setEditItem(row); setForm({ ...row, date: row.date?.slice(0,10)||today }); setFormErr(''); setShowForm(true); };
+  const openAdd  = () => {
+    setEditItem(null);
+    setForm({ ...EMPTY, branch_id: user?.branch_id||'', date: today });
+    setCustomCategory(false);
+    setCustomCatName('');
+    setFormErr('');
+    setShowForm(true);
+  };
+  const openEdit = row => {
+    setEditItem(row);
+    setForm({ ...row, date: row.date?.slice(0,10)||today });
+    const isPreset = CATS.includes(row.category);
+    setCustomCategory(!isPreset);
+    setCustomCatName(isPreset ? '' : (row.category || ''));
+    setFormErr('');
+    setShowForm(true);
+  };
+
+  const categoryOptions = (() => {
+    const set = new Set(CATS);
+    for (const i of items) {
+      if (i?.category) set.add(String(i.category));
+    }
+    if (editItem?.category) set.add(String(editItem.category));
+    const list = [...set];
+    list.sort((a, b) => {
+      const ai = CATS.indexOf(a);
+      const bi = CATS.indexOf(b);
+      if (ai >= 0 && bi >= 0) return ai - bi;
+      if (ai >= 0) return -1;
+      if (bi >= 0) return 1;
+      return a.localeCompare(b);
+    });
+    return list;
+  })();
 
   const handleSave = async () => {
+    const category = customCategory ? customCatName.trim() : String(form.category || '').trim();
     if (!form.title || !form.amount) return setFormErr('Title and amount are required');
+    if (!category) return setFormErr('Enter a category name');
+    if (category.length > 80) return setFormErr('Category must be 80 characters or less');
     setSaving(true);
     try {
-      editItem ? await api.put(`/expenses/${editItem.id}`, form) : await api.post('/expenses', form);
+      const payload = { ...form, category };
+      editItem ? await api.put(`/expenses/${editItem.id}`, payload) : await api.post('/expenses', payload);
       setShowForm(false); load();
     } catch (e) { setFormErr(e.response?.data?.message || 'Save failed'); }
     setSaving(false);
   };
   const handleDelete = async id => { if (!window.confirm('Delete this expense?')) return; await api.delete(`/expenses/${id}`); load(); };
 
-  const catTotals = CATS.reduce((acc, c) => { acc[c] = items.filter(i=>i.category===c).reduce((s,i)=>s+Number(i.amount||0),0); return acc; }, {});
+  const allCatsForTotals = [...new Set([...CATS, ...items.map(i => i.category).filter(Boolean)])];
+  const catTotals = allCatsForTotals.reduce((acc, c) => {
+    acc[c] = items.filter(i => i.category === c).reduce((s, i) => s + Number(i.amount || 0), 0);
+    return acc;
+  }, {});
   const totalExp  = items.reduce((s, i) => s+Number(i.amount||0), 0);
 
   const columns = [
@@ -186,11 +230,11 @@ export default function ExpensesPage() {
           </div>
           <div style={{ background:'#fff', borderRadius:14, padding:20, border:'1px solid #EAECF0', boxShadow:'0 1px 4px rgba(16,24,40,0.04)' }}>
             <h4 style={{ margin:'0 0 14px', fontSize:14, fontWeight:700, color:'#475467', fontFamily:"'Inter',sans-serif" }}>By Category</h4>
-            {CATS.filter(c => catTotals[c]>0).map(c => (
+            {allCatsForTotals.filter(c => catTotals[c]>0).map(c => (
               <div key={c} style={{ display:'flex', alignItems:'center', gap:8, marginBottom:10 }}>
-                <span style={{ padding:'2px 8px', borderRadius:6, fontSize:11, fontWeight:700, background:CAT_BG[c], color:CAT_COLOR[c], minWidth:80, textAlign:'center' }}>{c}</span>
+                <span style={{ padding:'2px 8px', borderRadius:6, fontSize:11, fontWeight:700, background:CAT_BG[c]||'#F2F4F7', color:CAT_COLOR[c]||'#475467', minWidth:80, textAlign:'center' }}>{c}</span>
                 <div style={{ flex:1, height:6, background:'#F1F5F9', borderRadius:6, overflow:'hidden' }}>
-                  <div style={{ width:`${totalExp>0?(catTotals[c]/totalExp)*100:0}%`, height:'100%', background:CAT_COLOR[c], borderRadius:6, transition:'width 0.4s' }} />
+                  <div style={{ width:`${totalExp>0?(catTotals[c]/totalExp)*100:0}%`, height:'100%', background:CAT_COLOR[c]||'#64748B', borderRadius:6, transition:'width 0.4s' }} />
                 </div>
                 <span style={{ fontWeight:600, fontSize:13, color:'#101828', minWidth:80, textAlign:'right' }}>Rs. {Number(catTotals[c]).toLocaleString()}</span>
               </div>
@@ -224,9 +268,36 @@ export default function ExpensesPage() {
         <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
           {canPickBranch && <FormGroup label="Branch"><Select value={form.branch_id||''} onChange={e => setForm(f=>({...f, branch_id:e.target.value}))}><option value="">Select branch</option>{branches.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}</Select></FormGroup>}
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
-            <FormGroup label="Category"><Select value={form.category} onChange={e => setForm(f=>({...f, category:e.target.value}))}>{CATS.map(c=><option key={c} value={c}>{c}</option>)}</Select></FormGroup>
+            <FormGroup label="Category">
+              <Select
+                value={customCategory ? CUSTOM_CAT : (form.category || '')}
+                onChange={e => {
+                  const v = e.target.value;
+                  if (v === CUSTOM_CAT) {
+                    setCustomCategory(true);
+                  } else {
+                    setCustomCategory(false);
+                    setCustomCatName('');
+                    setForm(f => ({ ...f, category: v }));
+                  }
+                }}
+              >
+                {categoryOptions.map(c => <option key={c} value={c}>{c}</option>)}
+                <option value={CUSTOM_CAT}>+ Add new category</option>
+              </Select>
+            </FormGroup>
             <FormGroup label="Date"><Input type="date" value={form.date||''} onChange={e => setForm(f=>({...f, date:e.target.value}))} /></FormGroup>
           </div>
+          {customCategory && (
+            <FormGroup label="New category name" required>
+              <Input
+                value={customCatName}
+                onChange={e => setCustomCatName(e.target.value)}
+                placeholder="e.g. Transport, Cleaning…"
+                maxLength={80}
+              />
+            </FormGroup>
+          )}
           <FormGroup label="Title" required><Input value={form.title||''} onChange={e => setForm(f=>({...f, title:e.target.value}))} placeholder="e.g. Monthly Rent" /></FormGroup>
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
             <FormGroup label="Amount (Rs.)" required><Input type="number" value={form.amount||''} onChange={e => setForm(f=>({...f, amount:e.target.value}))} /></FormGroup>

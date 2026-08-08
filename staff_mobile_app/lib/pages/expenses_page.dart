@@ -13,7 +13,8 @@ const Color _muted   = Color(0xFF6B7280);
 const Color _red     = Color(0xFFDC2626);
 
 // ── Category metadata ─────────────────────────────────────────────────────────
-const _cats = ['Rent', 'Utilities', 'Supplies', 'Salary', 'Marketing', 'Maintenance', 'Other'];
+const _presetCats = ['Rent', 'Utilities', 'Supplies', 'Salary', 'Marketing', 'Maintenance', 'Other'];
+const _customCatValue = '__custom__';
 const _methods = ['cash', 'bank_transfer', 'cheque', 'card'];
 
 Color _catColor(String c) {
@@ -51,6 +52,7 @@ class _ExpensesPageState extends State<ExpensesPage> {
   List<Map<String, dynamic>> _expenses = [];
   List<Map<String, String>>  _branches = [];
   bool   _loading = true;
+  bool   _loadQueued = false;
   String _search  = '';
   String _month   = _currentMonth();
 
@@ -60,12 +62,18 @@ class _ExpensesPageState extends State<ExpensesPage> {
   }
 
   @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    _load();
+  void initState() {
+    super.initState();
+    // Load once after first frame — do NOT load in didChangeDependencies:
+    // AppState.notifyListeners (e.g. loadBranches) would re-trigger it forever.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _load();
+    });
   }
 
   Future<void> _load() async {
+    if (_loadQueued) return;
+    _loadQueued = true;
     setState(() => _loading = true);
     try {
       final app = AppStateScope.of(context);
@@ -81,6 +89,7 @@ class _ExpensesPageState extends State<ExpensesPage> {
       }
     } catch (_) {}
     if (mounted) setState(() => _loading = false);
+    _loadQueued = false;
   }
 
   List<Map<String, dynamic>> get _filtered {
@@ -96,12 +105,27 @@ class _ExpensesPageState extends State<ExpensesPage> {
   double get _total => _expenses.fold(0, (s, e) => s + (double.tryParse('${e['amount']}') ?? 0));
 
   void _openAddSheet() {
+    final knownCats = <String>{..._presetCats};
+    for (final e in _expenses) {
+      final c = '${e['category'] ?? ''}'.trim();
+      if (c.isNotEmpty) knownCats.add(c);
+    }
+    final catList = knownCats.toList()
+      ..sort((a, b) {
+        final ai = _presetCats.indexOf(a);
+        final bi = _presetCats.indexOf(b);
+        if (ai >= 0 && bi >= 0) return ai.compareTo(bi);
+        if (ai >= 0) return -1;
+        if (bi >= 0) return 1;
+        return a.toLowerCase().compareTo(b.toLowerCase());
+      });
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (_) => _AddExpenseSheet(
         branches: _branches,
+        categories: catList,
         defaultBranchId: AppStateScope.of(context).currentUser?.branchId ?? '',
         onSaved: _load,
       ),
@@ -399,10 +423,12 @@ class _Badge extends StatelessWidget {
 class _AddExpenseSheet extends StatefulWidget {
   const _AddExpenseSheet({
     required this.branches,
+    required this.categories,
     required this.defaultBranchId,
     required this.onSaved,
   });
   final List<Map<String, String>> branches;
+  final List<String> categories;
   final String defaultBranchId;
   final VoidCallback onSaved;
 
@@ -416,8 +442,10 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
   final _paidToCtrl  = TextEditingController();
   final _receiptCtrl = TextEditingController();
   final _notesCtrl   = TextEditingController();
+  final _customCatCtrl = TextEditingController();
 
   String _category      = 'Supplies';
+  bool   _customCategory = false;
   String _method        = 'cash';
   String _date          = _today();
   String _branchId      = '';
@@ -429,10 +457,27 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
     return '${n.year}-${n.month.toString().padLeft(2, '0')}-${n.day.toString().padLeft(2, '0')}';
   }
 
+  List<String> get _categoryOptions {
+    final set = <String>{..._presetCats, ...widget.categories};
+    final list = set.toList()
+      ..sort((a, b) {
+        final ai = _presetCats.indexOf(a);
+        final bi = _presetCats.indexOf(b);
+        if (ai >= 0 && bi >= 0) return ai.compareTo(bi);
+        if (ai >= 0) return -1;
+        if (bi >= 0) return 1;
+        return a.toLowerCase().compareTo(b.toLowerCase());
+      });
+    return list;
+  }
+
   @override
   void initState() {
     super.initState();
     _branchId = widget.defaultBranchId;
+    if (!_categoryOptions.contains(_category) && _categoryOptions.isNotEmpty) {
+      _category = _categoryOptions.first;
+    }
   }
 
   @override
@@ -442,21 +487,36 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
     _paidToCtrl.dispose();
     _receiptCtrl.dispose();
     _notesCtrl.dispose();
+    _customCatCtrl.dispose();
     super.dispose();
+  }
+
+  String get _resolvedCategory {
+    if (_customCategory) return _customCatCtrl.text.trim();
+    return _category.trim();
   }
 
   Future<void> _save() async {
     final title  = _titleCtrl.text.trim();
     final amount = double.tryParse(_amountCtrl.text.trim());
+    final category = _resolvedCategory;
     if (title.isEmpty || amount == null || _branchId.isEmpty) {
       setState(() => _error = 'Branch, title and amount are required.');
+      return;
+    }
+    if (category.isEmpty) {
+      setState(() => _error = 'Enter a category name.');
+      return;
+    }
+    if (category.length > 80) {
+      setState(() => _error = 'Category must be 80 characters or less.');
       return;
     }
     setState(() { _saving = true; _error = ''; });
     final app = AppStateScope.of(context);
     final ok = await app.addExpense(
       branchId:      _branchId,
-      category:      _category,
+      category:      category,
       title:         title,
       amount:        amount,
       date:          _date,
@@ -532,9 +592,32 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
                 children: [
                   _label('Category'),
                   _dropdown(
-                    value: _category,
-                    items: _cats.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
-                    onChanged: (v) => setState(() => _category = v ?? _category),
+                    value: _customCategory
+                        ? _customCatValue
+                        : (_categoryOptions.contains(_category)
+                            ? _category
+                            : (_categoryOptions.isNotEmpty
+                                ? _categoryOptions.first
+                                : 'Other')),
+                    items: [
+                      ..._categoryOptions.map(
+                        (c) => DropdownMenuItem(value: c, child: Text(c)),
+                      ),
+                      const DropdownMenuItem(
+                        value: _customCatValue,
+                        child: Text('+ Add new category'),
+                      ),
+                    ],
+                    onChanged: (v) {
+                      if (v == _customCatValue) {
+                        setState(() => _customCategory = true);
+                      } else {
+                        setState(() {
+                          _customCategory = false;
+                          _category = v ?? _category;
+                        });
+                      }
+                    },
                   ),
                 ],
               )),
@@ -573,6 +656,11 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
                 ],
               )),
             ]),
+            if (_customCategory) ...[
+              const SizedBox(height: 14),
+              _label('New category name *'),
+              _field(_customCatCtrl, 'e.g. Transport, Cleaning…'),
+            ],
             const SizedBox(height: 14),
 
             // Title

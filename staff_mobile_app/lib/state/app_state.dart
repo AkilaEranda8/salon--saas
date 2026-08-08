@@ -2167,7 +2167,7 @@ class AppState extends ChangeNotifier {
         .toList();
   }
 
-  /// POST /api/expenses — superadmin only.
+  /// POST /api/expenses — superadmin / admin / manager.
   Future<bool> addExpense({
     required String branchId,
     required String category,

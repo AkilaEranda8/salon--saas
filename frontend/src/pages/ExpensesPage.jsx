@@ -20,7 +20,7 @@ const EMPTY = { branch_id:'', category:'Supplies', title:'', amount:'', date: ne
 export default function ExpensesPage() {
   const { user }     = useAuth();
   const canEdit      = ['superadmin','admin','manager'].includes(user?.role);
-  const canAdd       = user?.role === 'superadmin';
+  const canAdd       = ['superadmin', 'admin', 'manager'].includes(user?.role);
   const canPickBranch = ['superadmin', 'admin'].includes(user?.role);
   const today    = new Date().toISOString().slice(0,10);
   const curMonth = today.slice(0,7);

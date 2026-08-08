@@ -1706,7 +1706,7 @@ class MobileApi {
     return body;
   }
 
-  /// POST /api/expenses — create a new expense (superadmin only).
+  /// POST /api/expenses — create a new expense (superadmin / admin / manager).
   Future<Map<String, dynamic>> createExpense({
     required String token,
     required String branchId,

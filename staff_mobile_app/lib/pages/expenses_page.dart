@@ -135,7 +135,8 @@ class _ExpensesPageState extends State<ExpensesPage> {
   @override
   Widget build(BuildContext context) {
     final app        = AppStateScope.of(context);
-    final isSA       = app.currentUser?.role == 'superadmin';
+    final role = (app.currentUser?.role ?? '').toLowerCase();
+    final canAdd = role == 'superadmin' || role == 'admin' || role == 'manager';
     final filtered   = _filtered;
 
     return Scaffold(
@@ -153,7 +154,7 @@ class _ExpensesPageState extends State<ExpensesPage> {
           ),
         ],
       ),
-      floatingActionButton: isSA
+      floatingActionButton: canAdd
           ? FloatingActionButton.extended(
               backgroundColor: _emerald,
               foregroundColor: Colors.white,

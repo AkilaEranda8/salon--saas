@@ -47,6 +47,8 @@
 	<true/>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Hexaone uses your location to confirm you are at the salon when marking attendance.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Hexaone uses the camera to scan customer check-in QR codes.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>Hexaone uses your location to confirm you are at the salon when marking attendance.</string>
 </dict>

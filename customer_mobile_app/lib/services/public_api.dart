@@ -200,6 +200,16 @@ class PublicApi {
     return CustomerProfile.fromJson(Map<String, dynamic>.from(_decode(res) as Map));
   }
 
+  /// Short-lived salon check-in QR (`code` to encode in the QR image).
+  Future<Map<String, dynamic>> getCheckInQr(String token) async {
+    final res = await http.get(
+      _u('/customer-portal/qr-code'),
+      headers: _headers(token: token),
+    );
+    if (res.statusCode >= 400) _throw(res);
+    return Map<String, dynamic>.from(_decode(res) as Map);
+  }
+
   Future<List<BookingItem>> getBookings(String token) async {
     final res = await http.get(_u('/customer-portal/bookings'), headers: _headers(token: token));
     if (res.statusCode >= 400) _throw(res);

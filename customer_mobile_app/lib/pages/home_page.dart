@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../config.dart';
 import '../models/models.dart';
@@ -7,6 +6,7 @@ import '../state/app_state.dart';
 import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 import '../widgets/common.dart';
+import 'check_in_qr_page.dart';
 import 'login_page.dart';
 import 'session_gate.dart';
 
@@ -92,12 +92,6 @@ class _HomePageState extends State<HomePage> {
     return 'there';
   }
 
-  Future<void> _openProfileOrLogin() async {
-    final ok = await ensureLoggedIn(context);
-    if (!ok || !mounted) return;
-    widget.onOpenProfile();
-  }
-
   Future<void> _openAppointments() async {
     final ok = await ensureLoggedIn(context);
     if (!ok || !mounted) return;
@@ -111,263 +105,240 @@ class _HomePageState extends State<HomePage> {
         widget.brandName.isEmpty ? AppConfig.brandName : widget.brandName;
     final pts = state.profile?.loyaltyPoints ?? 0;
     final tier = _tierFor(pts);
-    final topInset = MediaQuery.paddingOf(context).top;
 
-    return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: SystemUiOverlayStyle.light,
-      child: DecoratedBox(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              Color(0xFF1A1614),
-              Color(0xFF1A1614),
-              Color(0xFFF7F2EC),
-              AppColors.surface,
-            ],
-            stops: [0.0, 0.18, 0.18, 1.0],
+    // Header + footer live in HomeShell — this page is content only.
+    return ColoredBox(
+      color: AppColors.surface,
+      child: RefreshIndicator(
+        color: AppColors.blush,
+        displacement: 40,
+        onRefresh: () async {
+          await _load();
+          if (state.isLoggedIn) await state.refreshProfile();
+        },
+        child: CustomScrollView(
+          physics: const AlwaysScrollableScrollPhysics(
+            parent: BouncingScrollPhysics(),
           ),
-        ),
-        child: RefreshIndicator(
-          color: AppColors.blush,
-          displacement: 48,
-          onRefresh: () async {
-            await _load();
-            if (state.isLoggedIn) await state.refreshProfile();
-          },
-          child: CustomScrollView(
-            physics: const AlwaysScrollableScrollPhysics(
-              parent: BouncingScrollPhysics(),
+          slivers: [
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _subtitleForNow(),
+                      style: const TextStyle(
+                        color: AppColors.muted,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                        letterSpacing: 0.2,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Hello, $_greetingName',
+                      style: Theme.of(context).textTheme.headlineLarge?.copyWith(
+                            color: AppColors.ink,
+                            fontSize: 32,
+                            height: 1.1,
+                            letterSpacing: -0.8,
+                          ),
+                    ),
+                  ],
+                ),
+              ),
             ),
-            slivers: [
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: EdgeInsets.fromLTRB(20, topInset + 8, 20, 0),
-                  child: _TopBar(
-                    brandName: brand,
-                    onProfile: _openProfileOrLogin,
-                  ),
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+                child: _LoyaltyCard(
+                  brandName: brand,
+                  points: pts,
+                  tierName: tier,
+                  loggedIn: state.isLoggedIn,
+                  onTap: () async {
+                    if (!state.isLoggedIn) {
+                      await Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const LoginPage(),
+                        ),
+                      );
+                      return;
+                    }
+                    final ok = await ensureLoggedIn(context);
+                    if (!ok || !mounted) return;
+                    final nav = Navigator.of(context);
+                    await nav.push(
+                      MaterialPageRoute(builder: (_) => const CheckInQrPage()),
+                    );
+                  },
                 ),
               ),
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 22, 20, 0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        _subtitleForNow(),
-                        style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.55),
-                          fontSize: 13,
-                          fontWeight: FontWeight.w500,
-                          letterSpacing: 0.2,
+            ),
+            // Content sheet
+            SliverToBoxAdapter(
+              child: Container(
+                margin: const EdgeInsets.only(top: 24),
+                decoration: const BoxDecoration(
+                  color: AppColors.washTop,
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const SizedBox(height: 8),
+                    Center(
+                      child: Container(
+                        width: 36,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: AppColors.line,
+                          borderRadius: BorderRadius.circular(4),
                         ),
                       ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Hello, $_greetingName',
-                        style: Theme.of(context)
-                            .textTheme
-                            .headlineLarge
-                            ?.copyWith(
-                              color: Colors.white,
-                              fontSize: 32,
-                              height: 1.1,
-                              letterSpacing: -0.8,
-                            ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
-                  child: _LoyaltyCard(
-                    brandName: brand,
-                    points: pts,
-                    tierName: tier,
-                    loggedIn: state.isLoggedIn,
-                    onTap: () async {
-                      if (!state.isLoggedIn) {
-                        await Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => const LoginPage(),
-                          ),
-                        );
-                        return;
-                      }
-                      widget.onOpenProfile();
-                    },
-                  ),
-                ),
-              ),
-              // Light content sheet
-              SliverToBoxAdapter(
-                child: Container(
-                  margin: const EdgeInsets.only(top: 24),
-                  decoration: const BoxDecoration(
-                    color: Color(0xFFF7F2EC),
-                    borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      const SizedBox(height: 8),
-                      Center(
-                        child: Container(
-                          width: 36,
-                          height: 4,
-                          decoration: BoxDecoration(
-                            color: AppColors.line,
-                            borderRadius: BorderRadius.circular(4),
-                          ),
+                    ),
+                    if (_loading)
+                      const Padding(
+                        padding: EdgeInsets.fromLTRB(20, 24, 20, 40),
+                        child: Column(
+                          children: [
+                            SoftSkeleton(height: 110),
+                            SizedBox(height: 16),
+                            SoftSkeleton(height: 150),
+                          ],
                         ),
-                      ),
-                      if (_loading)
-                        const Padding(
-                          padding: EdgeInsets.fromLTRB(20, 24, 20, 40),
-                          child: Column(
-                            children: [
-                              SoftSkeleton(height: 110),
-                              SizedBox(height: 16),
-                              SoftSkeleton(height: 150),
-                            ],
-                          ),
-                        )
-                      else if (_error != null &&
-                          _offers.isEmpty &&
-                          _services.isEmpty)
+                      )
+                    else if (_error != null &&
+                        _offers.isEmpty &&
+                        _services.isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 24, 20, 40),
+                        child: EmptyState(
+                          title: 'Couldn’t load home',
+                          subtitle: _error!,
+                          actionLabel: 'Retry',
+                          onAction: _load,
+                          icon: Icons.wifi_off_outlined,
+                        ),
+                      )
+                    else ...[
+                      if (!_promoDismissed && _offers.isNotEmpty)
                         Padding(
-                          padding: const EdgeInsets.fromLTRB(20, 24, 20, 40),
-                          child: EmptyState(
-                            title: 'Couldn’t load home',
-                            subtitle: _error!,
-                            actionLabel: 'Retry',
-                            onAction: _load,
-                            icon: Icons.wifi_off_outlined,
-                          ),
-                        )
-                      else ...[
-                        if (!_promoDismissed && _offers.isNotEmpty)
-                          Padding(
-                            padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
-                            child: _PromoBanner(
-                              offer: _offers.first,
-                              onDismiss: () =>
-                                  setState(() => _promoDismissed = true),
-                              onTap: widget.onOpenOffers,
-                            ),
-                          ),
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(20, 26, 12, 0),
-                          child: _SectionHeader(
-                            title: 'Deals for you',
+                          padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+                          child: _PromoBanner(
+                            offer: _offers.first,
+                            onDismiss: () =>
+                                setState(() => _promoDismissed = true),
                             onTap: widget.onOpenOffers,
                           ),
                         ),
-                        SizedBox(
-                          height: 196,
-                          child: _offers.isEmpty
-                              ? const Padding(
-                                  padding: EdgeInsets.fromLTRB(20, 14, 20, 0),
-                                  child: _EmptyDealHint(),
-                                )
-                              : ListView.separated(
-                                  scrollDirection: Axis.horizontal,
-                                  padding:
-                                      const EdgeInsets.fromLTRB(20, 14, 20, 0),
-                                  itemCount: _offers.length,
-                                  separatorBuilder: (_, _) =>
-                                      const SizedBox(width: 14),
-                                  itemBuilder: (context, i) {
-                                    return TweenAnimationBuilder<double>(
-                                      tween: Tween(begin: 0, end: 1),
-                                      duration:
-                                          Duration(milliseconds: 320 + i * 55),
-                                      curve: AppMotion.easeOut,
-                                      builder: (context, t, child) => Opacity(
-                                        opacity: t,
-                                        child: Transform.translate(
-                                          offset: Offset((1 - t) * 18, 0),
-                                          child: child,
-                                        ),
-                                      ),
-                                      child: _DealCard(
-                                        offer: _offers[i],
-                                        onTap: widget.onOpenOffers,
-                                      ),
-                                    );
-                                  },
-                                ),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 26, 12, 0),
+                        child: _SectionHeader(
+                          title: 'Deals for you',
+                          onTap: widget.onOpenOffers,
                         ),
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(20, 28, 20, 0),
-                          child: Row(
-                            children: [
-                              Text(
-                                'Book a service',
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .headlineSmall
-                                    ?.copyWith(
-                                      fontSize: 22,
-                                      letterSpacing: -0.4,
+                      ),
+                      SizedBox(
+                        height: 196,
+                        child: _offers.isEmpty
+                            ? const Padding(
+                                padding: EdgeInsets.fromLTRB(20, 14, 20, 0),
+                                child: _EmptyDealHint(),
+                              )
+                            : ListView.separated(
+                                scrollDirection: Axis.horizontal,
+                                padding:
+                                    const EdgeInsets.fromLTRB(20, 14, 20, 0),
+                                itemCount: _offers.length,
+                                separatorBuilder: (_, _) =>
+                                    const SizedBox(width: 14),
+                                itemBuilder: (context, i) {
+                                  return TweenAnimationBuilder<double>(
+                                    tween: Tween(begin: 0, end: 1),
+                                    duration:
+                                        Duration(milliseconds: 320 + i * 55),
+                                    curve: AppMotion.easeOut,
+                                    builder: (context, t, child) => Opacity(
+                                      opacity: t,
+                                      child: Transform.translate(
+                                        offset: Offset((1 - t) * 18, 0),
+                                        child: child,
+                                      ),
                                     ),
+                                    child: _DealCard(
+                                      offer: _offers[i],
+                                      onTap: widget.onOpenOffers,
+                                    ),
+                                  );
+                                },
                               ),
-                              const Spacer(),
-                              TextButton(
-                                onPressed: widget.onOpenBook,
-                                style: TextButton.styleFrom(
-                                  foregroundColor: AppColors.blushDeep,
-                                  padding: EdgeInsets.zero,
-                                  minimumSize: Size.zero,
-                                  tapTargetSize:
-                                      MaterialTapTargetSize.shrinkWrap,
-                                ),
-                                child: const Text(
-                                  'See all',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.w700,
-                                    fontSize: 13,
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 28, 20, 0),
+                        child: Row(
+                          children: [
+                            Text(
+                              'Book a service',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .headlineSmall
+                                  ?.copyWith(
+                                    fontSize: 22,
+                                    letterSpacing: -0.4,
                                   ),
+                            ),
+                            const Spacer(),
+                            TextButton(
+                              onPressed: widget.onOpenBook,
+                              style: TextButton.styleFrom(
+                                foregroundColor: AppColors.blushDeep,
+                                padding: EdgeInsets.zero,
+                                minimumSize: Size.zero,
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              ),
+                              child: const Text(
+                                'See all',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 13,
                                 ),
                               ),
-                            ],
-                          ),
+                            ),
+                          ],
                         ),
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
-                          child: Wrap(
-                            spacing: 10,
-                            runSpacing: 10,
-                            children: [
-                              for (final cat in _categories.take(8))
-                                _CategoryChip(
-                                  label: cat,
-                                  icon: _iconForCategory(cat),
-                                  onTap: widget.onOpenBook,
-                                ),
-                            ],
-                          ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
+                        child: Wrap(
+                          spacing: 10,
+                          runSpacing: 10,
+                          children: [
+                            for (final cat in _categories.take(8))
+                              _CategoryChip(
+                                label: cat,
+                                icon: _iconForCategory(cat),
+                                onTap: widget.onOpenBook,
+                              ),
+                          ],
                         ),
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(20, 28, 20, 110),
-                          child: _QuickRow(
-                            onBook: widget.onOpenBook,
-                            onAppointments: _openAppointments,
-                            onOffers: widget.onOpenOffers,
-                          ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 28, 20, 110),
+                        child: _QuickRow(
+                          onBook: widget.onOpenBook,
+                          onAppointments: _openAppointments,
+                          onOffers: widget.onOpenOffers,
                         ),
-                      ],
+                      ),
                     ],
-                  ),
+                  ],
                 ),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -403,69 +374,6 @@ IconData _iconForCategory(String cat) {
   return Icons.content_cut_rounded;
 }
 
-class _TopBar extends StatelessWidget {
-  const _TopBar({required this.brandName, required this.onProfile});
-
-  final String brandName;
-  final VoidCallback onProfile;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        _HeaderIconButton(
-          icon: Icons.person_outline_rounded,
-          onTap: onProfile,
-        ),
-        Expanded(
-          child: Text(
-            brandName,
-            textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: -0.4,
-                  fontSize: 18,
-                ),
-          ),
-        ),
-        _HeaderIconButton(
-          icon: Icons.notifications_none_rounded,
-          onTap: () {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('No new notifications')),
-            );
-          },
-        ),
-      ],
-    );
-  }
-}
-
-class _HeaderIconButton extends StatelessWidget {
-  const _HeaderIconButton({required this.icon, required this.onTap});
-
-  final IconData icon;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.white.withValues(alpha: 0.1),
-      shape: const CircleBorder(),
-      child: InkWell(
-        customBorder: const CircleBorder(),
-        onTap: onTap,
-        child: SizedBox(
-          width: 42,
-          height: 42,
-          child: Icon(icon, color: Colors.white, size: 22),
-        ),
-      ),
-    );
-  }
-}
-
 class _LoyaltyCard extends StatelessWidget {
   const _LoyaltyCard({
     required this.brandName,
@@ -495,14 +403,12 @@ class _LoyaltyCard extends StatelessWidget {
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
               colors: [
-                Color(0xFF2C2420),
-                Color(0xFF4A3530),
-                Color(0xFF6B4542),
+                Color(0xFFFFF5F4),
+                AppColors.blushSoft,
+                Color(0xFFF3E4E0),
               ],
             ),
-            border: Border.all(
-              color: Colors.white.withValues(alpha: 0.08),
-            ),
+            border: Border.all(color: AppColors.line),
           ),
           child: Padding(
             padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
@@ -522,8 +428,8 @@ class _LoyaltyCard extends StatelessWidget {
                     const SizedBox(width: 8),
                     Text(
                       brandName.toUpperCase(),
-                      style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.75),
+                      style: const TextStyle(
+                        color: AppColors.blushDeep,
                         fontWeight: FontWeight.w700,
                         fontSize: 11,
                         letterSpacing: 1.2,
@@ -531,17 +437,17 @@ class _LoyaltyCard extends StatelessWidget {
                     ),
                     const Spacer(),
                     Text(
-                      loggedIn ? 'Open profile' : 'Sign in',
-                      style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.65),
+                      loggedIn ? 'Check-in QR' : 'Sign in',
+                      style: const TextStyle(
+                        color: AppColors.inkSoft,
                         fontSize: 12,
                         fontWeight: FontWeight.w500,
                       ),
                     ),
                     Icon(
-                      Icons.arrow_outward_rounded,
+                      loggedIn ? Icons.qr_code_2_rounded : Icons.arrow_outward_rounded,
                       size: 16,
-                      color: Colors.white.withValues(alpha: 0.65),
+                      color: AppColors.inkSoft,
                     ),
                   ],
                 ),
@@ -553,10 +459,10 @@ class _LoyaltyCard extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
+                          const Text(
                             'POINTS',
                             style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.45),
+                              color: AppColors.muted,
                               fontSize: 11,
                               fontWeight: FontWeight.w600,
                               letterSpacing: 1.0,
@@ -566,7 +472,7 @@ class _LoyaltyCard extends StatelessWidget {
                           Text(
                             loggedIn ? '$points' : '—',
                             style: const TextStyle(
-                              color: Colors.white,
+                              color: AppColors.ink,
                               fontSize: 36,
                               fontWeight: FontWeight.w600,
                               height: 1,
@@ -582,16 +488,17 @@ class _LoyaltyCard extends StatelessWidget {
                         vertical: 10,
                       ),
                       decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.1),
+                        color: Colors.white.withValues(alpha: 0.75),
                         borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: AppColors.line),
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
+                          const Text(
                             'TIER',
                             style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.45),
+                              color: AppColors.muted,
                               fontSize: 10,
                               fontWeight: FontWeight.w600,
                               letterSpacing: 0.8,
@@ -601,7 +508,7 @@ class _LoyaltyCard extends StatelessWidget {
                           Text(
                             loggedIn ? tierName : 'Guest',
                             style: const TextStyle(
-                              color: Colors.white,
+                              color: AppColors.ink,
                               fontSize: 16,
                               fontWeight: FontWeight.w700,
                             ),
@@ -647,8 +554,9 @@ class _PromoBanner extends StatelessWidget {
                 gradient: const LinearGradient(
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
-                  colors: [Color(0xFF1A1614), Color(0xFFA85D60)],
+                  colors: [Color(0xFFFFF5F4), AppColors.blushSoft],
                 ),
+                border: Border.all(color: AppColors.line),
               ),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(22),
@@ -666,13 +574,14 @@ class _PromoBanner extends StatelessWidget {
                                 vertical: 3,
                               ),
                               decoration: BoxDecoration(
-                                color: Colors.white.withValues(alpha: 0.14),
+                                color: Colors.white,
                                 borderRadius: BorderRadius.circular(6),
+                                border: Border.all(color: AppColors.line),
                               ),
                               child: const Text(
                                 'FEATURED',
                                 style: TextStyle(
-                                  color: Colors.white,
+                                  color: AppColors.blushDeep,
                                   fontSize: 10,
                                   fontWeight: FontWeight.w700,
                                   letterSpacing: 0.8,
@@ -685,7 +594,7 @@ class _PromoBanner extends StatelessWidget {
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
-                                color: Colors.white,
+                                color: AppColors.ink,
                                 fontWeight: FontWeight.w700,
                                 fontSize: 16,
                                 height: 1.2,
@@ -697,8 +606,8 @@ class _PromoBanner extends StatelessWidget {
                               offer.body,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                color: Colors.white.withValues(alpha: 0.75),
+                              style: const TextStyle(
+                                color: AppColors.inkSoft,
                                 fontSize: 12,
                               ),
                             ),
@@ -727,14 +636,14 @@ class _PromoBanner extends StatelessWidget {
           top: 8,
           right: 8,
           child: Material(
-            color: Colors.black.withValues(alpha: 0.28),
+            color: Colors.white,
             shape: const CircleBorder(),
             child: InkWell(
               customBorder: const CircleBorder(),
               onTap: onDismiss,
               child: const Padding(
                 padding: EdgeInsets.all(5),
-                child: Icon(Icons.close_rounded, size: 15, color: Colors.white),
+                child: Icon(Icons.close_rounded, size: 15, color: AppColors.inkSoft),
               ),
             ),
           ),

@@ -20,6 +20,7 @@ import 'reminders_page.dart';
 import 'services_page.dart';
 import 'staff_page.dart';
 import 'walkin_page.dart';
+import 'qr_checkin_scan_page.dart';
 
 class HomePage extends StatelessWidget {
   const HomePage({super.key});
@@ -93,6 +94,19 @@ class HomePage extends StatelessWidget {
             onTap: () {
               Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const WalkInPage()),
+              );
+            },
+          ),
+          const SizedBox(height: 8),
+          _actionTile(
+            context: context,
+            title: 'Scan check-in QR',
+            subtitle: 'Scan customer app QR to check in',
+            icon: Icons.qr_code_scanner_outlined,
+            enabled: true,
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const QrCheckInScanPage()),
               );
             },
           ),

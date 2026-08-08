@@ -6,6 +6,79 @@ const {
   sortWalkInFirst,
   WALK_IN_CUSTOMER_NAME,
 } = require('../services/ensureWalkInCustomer');
+const {
+  verifyCheckInQr,
+  buildPhoneVariants,
+  issueCheckInQr,
+  STAFF_DEFAULT_TTL_SEC,
+  STAFF_MAX_TTL_SEC,
+} = require('../services/customerQrService');
+
+const todayYmd = () => new Date().toISOString().slice(0, 10);
+
+async function loadQrCustomerContext(req, payload) {
+  const tenantId = resolveTenantId(req);
+  if (tenantId && Number(payload.tenantId) !== Number(tenantId)) {
+    const err = new Error('QR belongs to a different salon.');
+    err.status = 403;
+    throw err;
+  }
+
+  const variants = buildPhoneVariants(payload.phone);
+  const phoneWhere = { phone: { [Op.or]: variants } };
+  const scope = { ...tenantWhere(req), ...phoneWhere };
+
+  let customer = null;
+  if (payload.customerId) {
+    customer = await Customer.findOne({
+      where: { ...tenantWhere(req), id: payload.customerId },
+      attributes: ['id', 'name', 'phone', 'email', 'loyalty_points', 'branch_id'],
+    });
+  }
+  if (!customer) {
+    customer = await Customer.findOne({
+      where: scope,
+      attributes: ['id', 'name', 'phone', 'email', 'loyalty_points', 'branch_id'],
+      order: [['updatedAt', 'DESC']],
+    });
+  }
+
+  const appointments = await Appointment.findAll({
+    where: {
+      ...scope,
+      date: todayYmd(),
+      status: { [Op.in]: ['pending', 'confirmed', 'in_service'] },
+    },
+    include: [
+      { model: Service, as: 'service', attributes: ['id', 'name', 'duration_minutes', 'price'] },
+      { model: Branch, as: 'branch', attributes: ['id', 'name'] },
+    ],
+    order: [['time', 'ASC']],
+  });
+
+  return {
+    customer: customer
+      ? {
+          id: customer.id,
+          name: customer.name,
+          phone: customer.phone,
+          email: customer.email,
+          loyalty_points: customer.loyalty_points || 0,
+          branch_id: customer.branch_id,
+        }
+      : {
+          id: null,
+          name: payload.name || 'Customer',
+          phone: payload.phone,
+          email: null,
+          loyalty_points: 0,
+          branch_id: null,
+        },
+    appointments,
+    phone: payload.phone,
+    tenant_id: payload.tenantId,
+  };
+}
 
 /**
  * Branch filter for customers:
@@ -244,4 +317,153 @@ const loyalty = async (req, res) => {
   }
 };
 
-module.exports = { list, getOne, create, update, remove, loyalty };
+/** POST /api/customers/qr/resolve — staff scans customer check-in QR */
+const qrResolve = async (req, res) => {
+  try {
+    const payload = verifyCheckInQr(req.body?.code || req.body?.token || req.body?.qr);
+    const ctx = await loadQrCustomerContext(req, payload);
+    return res.json({
+      ok: true,
+      customer: ctx.customer,
+      appointments: ctx.appointments,
+      phone: ctx.phone,
+      tenant_id: ctx.tenant_id,
+    });
+  } catch (err) {
+    const status = err.status || 500;
+    if (status >= 500) console.error('customers.qrResolve error:', err);
+    return res.status(status).json({ message: err.message || 'Failed to resolve QR.' });
+  }
+};
+
+/**
+ * GET /api/customers/:id/checkin-qr — staff issues printable / downloadable check-in QR.
+ * Optional query: ttlDays (1–365, default 90).
+ */
+const issueCheckinQr = async (req, res) => {
+  try {
+    const cust = await Customer.findOne({
+      where: byIdWhere(req, req.params.id),
+      attributes: ['id', 'name', 'phone', 'loyalty_points', 'branch_id'],
+    });
+    if (!cust) return res.status(404).json({ message: 'Customer not found.' });
+    if (!cust.phone) {
+      return res.status(400).json({ message: 'Customer phone is required to create a check-in QR.' });
+    }
+
+    const tenantId = resolveTenantId(req) || cust.tenant_id;
+    if (!tenantId) {
+      return res.status(400).json({ message: 'tenantId is required.' });
+    }
+
+    let ttlDays = parseInt(req.query.ttlDays ?? req.query.ttl_days ?? '90', 10);
+    if (!Number.isInteger(ttlDays) || ttlDays < 1) ttlDays = 90;
+    if (ttlDays > 365) ttlDays = 365;
+    const ttlSec = Math.min(ttlDays * 24 * 60 * 60, STAFF_MAX_TTL_SEC) || STAFF_DEFAULT_TTL_SEC;
+
+    const issued = issueCheckInQr({
+      phone: cust.phone,
+      tenantId,
+      customerId: cust.id,
+      name: cust.name,
+      ttlSec,
+      maxTtlSec: STAFF_MAX_TTL_SEC,
+    });
+
+    return res.json({
+      code: issued.code,
+      expires_at: issued.expires_at,
+      expires_in: issued.expires_in,
+      ttl_days: ttlDays,
+      customer: {
+        id: cust.id,
+        name: cust.name,
+        phone: cust.phone,
+        loyalty_points: cust.loyalty_points || 0,
+      },
+    });
+  } catch (err) {
+    const status = err.status || 500;
+    if (status >= 500) console.error('customers.issueCheckinQr error:', err);
+    return res.status(status).json({ message: err.message || 'Failed to create check-in QR.' });
+  }
+};
+
+/**
+ * POST /api/customers/qr/checkin — mark today's appointment as arrived (confirmed).
+ * Body: { code, appointmentId? }
+ */
+const qrCheckin = async (req, res) => {
+  try {
+    const payload = verifyCheckInQr(req.body?.code || req.body?.token || req.body?.qr);
+    const ctx = await loadQrCustomerContext(req, payload);
+
+    let appointmentId = parseInt(req.body?.appointmentId ?? req.body?.appointment_id, 10);
+    if (!Number.isInteger(appointmentId) || appointmentId <= 0) {
+      const first = ctx.appointments.find((a) => ['pending', 'confirmed'].includes(a.status));
+      appointmentId = first ? Number(first.id) : null;
+    }
+
+    if (!appointmentId) {
+      return res.status(404).json({
+        message: 'No active appointment found for today. Add a walk-in or book first.',
+        customer: ctx.customer,
+        appointments: ctx.appointments,
+      });
+    }
+
+    const appt = await Appointment.findOne({
+      where: { ...tenantWhere(req), id: appointmentId },
+      include: [
+        { model: Service, as: 'service', attributes: ['id', 'name', 'duration_minutes', 'price'] },
+        { model: Branch, as: 'branch', attributes: ['id', 'name'] },
+      ],
+    });
+    if (!appt) return res.status(404).json({ message: 'Appointment not found.' });
+
+    const variants = buildPhoneVariants(payload.phone);
+    const apptVariants = buildPhoneVariants(appt.phone);
+    const phoneMatch = variants.some((v) => apptVariants.includes(v));
+    const customerMatch =
+      ctx.customer.id != null && Number(appt.customer_id) === Number(ctx.customer.id);
+    if (!phoneMatch && !customerMatch) {
+      return res.status(403).json({ message: 'Appointment does not match this QR customer.' });
+    }
+
+    if (req.userBranchId && Number(appt.branch_id) !== Number(req.userBranchId)) {
+      return res.status(403).json({ message: 'Access denied for this branch.' });
+    }
+
+    if (['completed', 'cancelled'].includes(appt.status)) {
+      return res.status(400).json({ message: `Cannot check in a ${appt.status} appointment.` });
+    }
+
+    // pending → confirmed (arrived). confirmed / in_service left as-is.
+    if (appt.status === 'pending') {
+      await appt.update({ status: 'confirmed' });
+      await appt.reload({
+        include: [
+          { model: Service, as: 'service', attributes: ['id', 'name', 'duration_minutes', 'price'] },
+          { model: Branch, as: 'branch', attributes: ['id', 'name'] },
+        ],
+      });
+    }
+
+    return res.json({
+      ok: true,
+      checked_in: true,
+      customer: ctx.customer,
+      appointment: appt,
+      appointments: ctx.appointments.map((a) => (Number(a.id) === Number(appt.id) ? appt : a)),
+    });
+  } catch (err) {
+    const status = err.status || 500;
+    if (status >= 500) console.error('customers.qrCheckin error:', err);
+    return res.status(status).json({ message: err.message || 'Failed to check in.' });
+  }
+};
+
+module.exports = {
+  list, getOne, create, update, remove, loyalty,
+  qrResolve, qrCheckin, issueCheckinQr,
+};

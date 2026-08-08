@@ -2,10 +2,13 @@ import 'package:flutter/material.dart';
 
 import '../config.dart';
 import '../state/app_state.dart';
-import '../theme/app_theme.dart';
+import '../widgets/app_loading.dart';
 import '../widgets/common.dart';
 import 'home_shell.dart';
 import 'login_page.dart';
+
+/// Keep the Lottie splash visible at least this long.
+const Duration _kMinSplash = Duration(milliseconds: 2800);
 
 class SessionGate extends StatefulWidget {
   const SessionGate({super.key});
@@ -15,27 +18,29 @@ class SessionGate extends StatefulWidget {
 }
 
 class _SessionGateState extends State<SessionGate> {
+  bool _minSplashDone = false;
+
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      AppStateScope.of(context).bootstrap();
-    });
+    WidgetsBinding.instance.addPostFrameCallback((_) => _start());
+  }
+
+  Future<void> _start() async {
+    final boot = AppStateScope.of(context).bootstrap();
+    final wait = Future<void>.delayed(_kMinSplash);
+    await Future.wait([boot, wait]);
+    if (!mounted) return;
+    setState(() => _minSplashDone = true);
   }
 
   @override
   Widget build(BuildContext context) {
     final state = AppStateScope.of(context);
+    final showSplash = state.booting || !_minSplashDone;
 
-    if (state.booting) {
-      return const AtmosphereBackground(
-        child: Scaffold(
-          backgroundColor: Colors.transparent,
-          body: Center(
-            child: CircularProgressIndicator(color: AppColors.blush),
-          ),
-        ),
-      );
+    if (showSplash) {
+      return const AppLoadingScreen();
     }
 
     if (state.bootError != null && !state.hasTenant) {
@@ -51,8 +56,6 @@ class _SessionGateState extends State<SessionGate> {
       );
     }
 
-    // Guests can book/view offers; logged-in users land on home.
-    // Always show home shell — auth gated per tab.
     return HomeShell(
       brandName: AppConfig.brandName,
       initiallyLoggedIn: state.isLoggedIn,

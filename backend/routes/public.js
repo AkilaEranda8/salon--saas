@@ -726,6 +726,62 @@ router.get('/customer-portal/me', portalAuth, async (req, res) => {
   }
 });
 
+/** GET /api/public/customer-portal/qr-code — short-lived salon check-in QR */
+router.get('/customer-portal/qr-code', portalAuth, async (req, res) => {
+  try {
+    const { issueCheckInQr } = require('../services/customerQrService');
+    const tenantId = req.portalTenantId || resolvePortalTenantId(req);
+    if (!tenantId) {
+      return res.status(400).json({ message: 'tenantId is required for check-in QR.' });
+    }
+
+    const variants = buildPhoneVariants(req.portalPhone);
+    const customer = await Customer.findOne({
+      where: {
+        tenant_id: tenantId,
+        phone: { [Op.or]: variants },
+      },
+      attributes: ['id', 'name', 'phone'],
+      order: [['updatedAt', 'DESC']],
+    });
+
+    let displayName = customer?.name || null;
+    if (!displayName) {
+      const latestAppt = await Appointment.findOne({
+        where: {
+          tenant_id: tenantId,
+          phone: { [Op.or]: variants },
+        },
+        attributes: ['customer_name'],
+        order: [['createdAt', 'DESC']],
+      });
+      displayName = latestAppt?.customer_name || 'Customer';
+    }
+
+    const issued = issueCheckInQr({
+      phone: req.portalPhone,
+      tenantId,
+      customerId: customer?.id || null,
+      name: displayName,
+    });
+
+    return res.json({
+      code: issued.code,
+      expires_at: issued.expires_at,
+      expires_in: issued.expires_in,
+      customer: {
+        id: customer?.id || null,
+        name: displayName,
+        phone: req.portalPhone,
+      },
+    });
+  } catch (err) {
+    const status = err.status || 500;
+    if (status >= 500) console.error('portal.qrCode error:', err);
+    return res.status(status).json({ message: err.message || 'Failed to create check-in QR.' });
+  }
+});
+
 router.get('/customer-portal/bookings', portalAuth, async (req, res) => {
   try {
     const variants = buildPhoneVariants(req.portalPhone);

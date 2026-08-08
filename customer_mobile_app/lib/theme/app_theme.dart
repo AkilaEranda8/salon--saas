@@ -1,24 +1,24 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-/// Quiet salon palette — charcoal ink + muted blush accent.
+/// Light salon palette — soft cream surfaces + blush accent (no dark chrome).
 class AppColors {
-  static const ink = Color(0xFF1A1614);
-  static const inkSoft = Color(0xFF4A433C);
-  static const muted = Color(0xFF8A8278);
-  static const line = Color(0xFFE8E2DA);
-  static const surface = Color(0xFFFFFBF7);
+  static const ink = Color(0xFF3D342F);
+  static const inkSoft = Color(0xFF6B5E55);
+  static const muted = Color(0xFF9A8F86);
+  static const line = Color(0xFFEDE6DF);
+  static const surface = Color(0xFFFFFCF9);
   static const card = Color(0xFFFFFFFF);
-  static const blush = Color(0xFFC4787A);
-  static const blushDeep = Color(0xFFA85D60);
-  static const blushSoft = Color(0xFFF7E8E8);
-  static const washTop = Color(0xFFF3EBE4);
-  static const washBottom = Color(0xFFFFFBF7);
-  static const success = Color(0xFF2F6B4F);
-  static const successSoft = Color(0xFFE8F3EC);
-  static const warning = Color(0xFF9A6B2F);
-  static const warningSoft = Color(0xFFF8F0E4);
-  static const danger = Color(0xFFA33B3B);
+  static const blush = Color(0xFFD4898B);
+  static const blushDeep = Color(0xFFB86B6E);
+  static const blushSoft = Color(0xFFF9EEEE);
+  static const washTop = Color(0xFFF8F1EB);
+  static const washBottom = Color(0xFFFFFCF9);
+  static const success = Color(0xFF3D7A5C);
+  static const successSoft = Color(0xFFEAF5EF);
+  static const warning = Color(0xFFB07D3A);
+  static const warningSoft = Color(0xFFF9F1E6);
+  static const danger = Color(0xFFC45A5A);
 }
 
 class AppTheme {
@@ -32,9 +32,10 @@ class AppTheme {
       scaffoldBackgroundColor: AppColors.surface,
       colorScheme: ColorScheme.fromSeed(
         seedColor: AppColors.blush,
+        brightness: Brightness.light,
         primary: AppColors.blush,
         onPrimary: Colors.white,
-        secondary: AppColors.ink,
+        secondary: AppColors.inkSoft,
         surface: AppColors.surface,
         error: AppColors.danger,
       ),
@@ -95,7 +96,7 @@ class AppTheme {
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: Colors.white.withValues(alpha: 0.85),
+        fillColor: Colors.white,
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
@@ -125,7 +126,7 @@ class AppTheme {
       ),
       snackBarTheme: SnackBarThemeData(
         behavior: SnackBarBehavior.floating,
-        backgroundColor: AppColors.ink,
+        backgroundColor: AppColors.inkSoft,
         contentTextStyle: body.bodyMedium?.copyWith(color: Colors.white),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),

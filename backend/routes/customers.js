@@ -7,6 +7,9 @@ const router = Router();
 router.use(verifyToken, branchAccess);
 
 router.get('/',                    ctrl.list);
+router.post('/qr/resolve',         ctrl.qrResolve);
+router.post('/qr/checkin',         ctrl.qrCheckin);
+router.get('/:id/checkin-qr',      ctrl.issueCheckinQr);
 router.get('/:id',                 ctrl.getOne);
 router.post('/',                   ctrl.create);
 router.put('/:id',                 ctrl.update);

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import QRCode from 'qrcode';
 import { useAuth } from '../context/AuthContext';
 import { useFeatureGate } from '../hooks/useFeatureGate';
 import api from '../api/axios';
@@ -63,6 +64,10 @@ export default function CustomersPage() {
   const [formErr, setFormErr]       = useState('');
   const [custPayments, setCustPayments] = useState([]);
   const [custPayLoading, setCustPayLoading] = useState(false);
+  const [qrLoading, setQrLoading] = useState(false);
+  const [qrErr, setQrErr] = useState('');
+  const [qrDataUrl, setQrDataUrl] = useState('');
+  const [qrMeta, setQrMeta] = useState(null);
   const [showLoyaltyRules, setShowLoyaltyRules] = useState(false);
   const [loyaltyRules, setLoyaltyRules] = useState(DEFAULT_LOYALTY_RULES);
   const [loyaltyLoading, setLoyaltyLoading] = useState(false);
@@ -102,12 +107,62 @@ export default function CustomersPage() {
   const openProfile = row => {
     setProfileItem(row);
     setCustPayments([]);
+    setQrDataUrl('');
+    setQrMeta(null);
+    setQrErr('');
     setShowProfile(true);
     setCustPayLoading(true);
     api.get('/payments', { params: { customerId: row.id, limit: 50 } })
       .then(r => setCustPayments(Array.isArray(r.data?.data) ? r.data.data : []))
       .catch(() => {})
       .finally(() => setCustPayLoading(false));
+    loadCustomerQr(row.id);
+  };
+
+  const loadCustomerQr = async (customerId) => {
+    if (!customerId) return;
+    setQrLoading(true);
+    setQrErr('');
+    try {
+      const { data } = await api.get(`/customers/${customerId}/checkin-qr`, {
+        params: { ttlDays: 90 },
+      });
+      const code = String(data?.code || '').trim();
+      if (!code) throw new Error('No QR code returned');
+      const dataUrl = await QRCode.toDataURL(code, {
+        width: 360,
+        margin: 2,
+        errorCorrectionLevel: 'M',
+        color: { dark: '#101828', light: '#FFFFFF' },
+      });
+      setQrDataUrl(dataUrl);
+      setQrMeta({
+        expiresAt: data.expires_at,
+        ttlDays: data.ttl_days,
+        name: data.customer?.name,
+        phone: data.customer?.phone,
+      });
+    } catch (e) {
+      setQrDataUrl('');
+      setQrMeta(null);
+      setQrErr(e.response?.data?.message || e.message || 'Failed to load check-in QR.');
+    } finally {
+      setQrLoading(false);
+    }
+  };
+
+  const downloadCustomerQr = () => {
+    if (!qrDataUrl || !profileItem) return;
+    const safe = String(profileItem.name || 'customer')
+      .replace(/[^\w\-]+/g, '_')
+      .replace(/_+/g, '_')
+      .slice(0, 40);
+    const a = document.createElement('a');
+    a.href = qrDataUrl;
+    a.download = `checkin-qr-${safe || profileItem.id}.png`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
   };
 
   const handleSave = async () => {
@@ -429,6 +484,46 @@ export default function CustomersPage() {
                 Branch: <strong>{p.branch.name}</strong>
               </div>
             )}
+
+            {/* Check-in QR — printable / downloadable */}
+            <div style={{ marginTop: 20 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: '#98A2B3', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 10 }}>
+                Check-in QR
+              </div>
+              <div style={{ background: '#F9FAFB', border: '1px solid #EAECF0', borderRadius: 12, padding: 16 }}>
+                {qrLoading ? (
+                  <div style={{ textAlign: 'center', padding: 24, color: '#98A2B3', fontSize: 13 }}>Generating QR…</div>
+                ) : qrErr ? (
+                  <div>
+                    <div style={{ color: '#DC2626', fontSize: 13, marginBottom: 10 }}>{qrErr}</div>
+                    <Button variant="secondary" onClick={() => loadCustomerQr(p.id)}>Retry</Button>
+                  </div>
+                ) : qrDataUrl ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
+                    <img
+                      src={qrDataUrl}
+                      alt="Customer check-in QR"
+                      style={{ width: 200, height: 200, borderRadius: 8, background: '#fff', border: '1px solid #EAECF0' }}
+                    />
+                    <div style={{ textAlign: 'center', fontSize: 12, color: '#667085' }}>
+                      Staff scan this to check the customer in.
+                      {qrMeta?.expiresAt && (
+                        <div style={{ marginTop: 4 }}>
+                          Valid until {new Date(qrMeta.expiresAt).toLocaleDateString('en-GB', {
+                            day: '2-digit', month: 'short', year: 'numeric',
+                          })}
+                          {qrMeta.ttlDays ? ` (${qrMeta.ttlDays} days)` : ''}
+                        </div>
+                      )}
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center' }}>
+                      <Button variant="primary" onClick={downloadCustomerQr}>Download PNG</Button>
+                      <Button variant="secondary" onClick={() => loadCustomerQr(p.id)}>Regenerate</Button>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            </div>
 
             {/* Payment History */}
             <div style={{ marginTop: 20 }}>

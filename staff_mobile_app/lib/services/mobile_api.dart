@@ -1544,6 +1544,44 @@ class MobileApi {
     return body;
   }
 
+  /// POST /api/customers/qr/resolve — identify customer from check-in QR.
+  Future<Map<String, dynamic>> resolveCustomerQr({
+    required String token,
+    required String code,
+  }) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/api/customers/qr/resolve'),
+      headers: _authHeaders(token),
+      body: jsonEncode({'code': code.trim()}),
+    );
+    final body = _decode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['message'] ?? 'QR resolve failed');
+    }
+    return body;
+  }
+
+  /// POST /api/customers/qr/checkin — mark today's appointment as arrived.
+  Future<Map<String, dynamic>> checkInCustomerQr({
+    required String token,
+    required String code,
+    int? appointmentId,
+  }) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/api/customers/qr/checkin'),
+      headers: _authHeaders(token),
+      body: jsonEncode({
+        'code': code.trim(),
+        'appointmentId': ?appointmentId,
+      }),
+    );
+    final body = _decode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['message'] ?? 'QR check-in failed');
+    }
+    return body;
+  }
+
   /// GET /api/users — list all users (superadmin/admin only).
   Future<List<Map<String, dynamic>>> fetchUsers({required String token}) async {
     final uri = Uri.parse(

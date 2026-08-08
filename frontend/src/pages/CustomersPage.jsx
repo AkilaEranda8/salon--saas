@@ -11,6 +11,7 @@ import {
   FilterBar, DataTable,
 } from '../components/ui/PageKit';
 import { LOYALTY_TIERS, getTier, getNextTier, loyaltyTierCounts } from '../utils/loyaltyTiers';
+import { phoneSearchTokens } from '../utils/phoneMatch';
 
 const EMPTY      = { name: '', phone: '', email: '', branch_id: '' };
 const DEFAULT_LOYALTY_RULES = {
@@ -185,7 +186,11 @@ export default function CustomersPage() {
     {
       id: 'name',
       header: 'Customer',
-      accessorFn: row => `${row.name || ''} ${row.phone || ''} ${row.email || ''}`.trim(),
+      // Include 0… / 94… phone variants so table search finds either format.
+      accessorFn: row => {
+        const tokens = phoneSearchTokens(row.phone).join(' ');
+        return `${row.name || ''} ${row.email || ''} ${tokens}`.trim().toLowerCase();
+      },
       meta: { width: '22%' },
       cell: ({ row: { original: row } }) => {
         const tier = getTier(row.loyalty_points || 0);

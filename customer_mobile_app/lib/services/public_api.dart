@@ -141,16 +141,22 @@ class PublicApi {
     return Map<String, dynamic>.from(_decode(res) as Map? ?? {});
   }
 
-  Future<void> requestPortalOtp(String phone) async {
+  Future<Map<String, dynamic>> requestPortalOtp(String phone) async {
     final res = await http.post(
       _u('/customer-portal/request-otp'),
       headers: _headers(),
-      body: jsonEncode({'phone': phone}),
+      body: jsonEncode({
+        'phone': phone.trim(),
+        if (tenantId != null) 'tenantId': tenantId,
+      }),
     );
     if (res.statusCode >= 400) _throw(res);
+    final body = _decode(res);
+    if (body is Map) return Map<String, dynamic>.from(body);
+    return {'message': 'OTP sent successfully.'};
   }
 
-  Future<void> registerPortal({
+  Future<Map<String, dynamic>> registerPortal({
     required String name,
     required String phone,
     String? email,
@@ -159,20 +165,27 @@ class PublicApi {
       _u('/customer-portal/register'),
       headers: _headers(),
       body: jsonEncode({
-        'name': name,
-        'phone': phone,
-        if (email != null && email.isNotEmpty) 'email': email,
+        'name': name.trim(),
+        'phone': phone.trim(),
+        if (email != null && email.isNotEmpty) 'email': email.trim(),
         if (tenantId != null) 'tenantId': tenantId,
       }),
     );
     if (res.statusCode >= 400) _throw(res);
+    final body = _decode(res);
+    if (body is Map) return Map<String, dynamic>.from(body);
+    return {'message': 'OTP sent.'};
   }
 
   Future<String> verifyPortalOtp({required String phone, required String otp}) async {
     final res = await http.post(
       _u('/customer-portal/verify-otp'),
       headers: _headers(),
-      body: jsonEncode({'phone': phone, 'otp': otp}),
+      body: jsonEncode({
+        'phone': phone.trim(),
+        'otp': otp.trim(),
+        if (tenantId != null) 'tenantId': tenantId,
+      }),
     );
     if (res.statusCode >= 400) _throw(res);
     final body = Map<String, dynamic>.from(_decode(res) as Map);

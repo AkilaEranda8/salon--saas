@@ -947,7 +947,8 @@ export function DataTable({
         header,
         enableSorting: col.enableSorting ?? (col.id !== 'actions' && col.id !== '_rowNum'),
         ...(facetIds.has(colId) ? { filterFn: 'equals' } : {}),
-        ...(searchIds.has(colId) ? { filterFn: 'includesString' } : {}),
+        // Keep column-provided filterFn; otherwise default string includes for search cols.
+        ...(searchIds.has(colId) && !col.filterFn ? { filterFn: 'includesString' } : {}),
       };
     });
     const hasIndexCol = base.some(c => c.id === 'rank' || c.id === '_rowNum' || c.header === '#');

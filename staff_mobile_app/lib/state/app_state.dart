@@ -426,17 +426,18 @@ class AppState extends ChangeNotifier {
     return true;
   }
 
+  /// Loads every customer for the logged-in tenant (all branches).
+  /// Booking / payment / walk-in pickers need the full DB list, not a branch slice.
   Future<List<Customer>> loadCustomers({bool allBranches = true}) async {
-    if (!hasPermission(StaffPermission.canViewCustomers)) return const [];
     final token = _currentUser?.authToken;
     if (token == null || token.isEmpty) {
       throw Exception('Missing auth token (cannot load customers).');
     }
-    // Inventory / booking pickers need the full salon customer list (tenant-wide).
+    // Always tenant-wide unless caller explicitly wants one branch.
     final loaded = await _api.fetchCustomers(
       token: token,
       branchId: allBranches ? null : _currentUser?.branchId,
-      limit: 500,
+      limit: 1000,
     );
     _customers
       ..clear()

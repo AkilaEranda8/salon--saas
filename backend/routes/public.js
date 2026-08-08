@@ -298,10 +298,28 @@ const buildPhoneVariants = (phone = '') => {
   const digits = normalizePhoneDigits(phone);
   if (!digits) return [];
   const set = new Set([digits]);
-  if (digits.startsWith('0')) set.add(`94${digits.slice(1)}`);
-  if (digits.startsWith('94')) set.add(`0${digits.slice(2)}`);
+  if (digits.startsWith('0') && digits.length > 1) {
+    set.add(digits.slice(1));
+    set.add(`94${digits.slice(1)}`);
+  }
+  if (digits.startsWith('94') && digits.length > 2) {
+    set.add(digits.slice(2));
+    set.add(`0${digits.slice(2)}`);
+  }
   return Array.from(set);
 };
+
+const resolvePortalTenantId = (req) => {
+  const raw = req.body?.tenantId ?? req.query?.tenantId ?? req.headers['x-tenant-id'];
+  const n = parseInt(raw, 10);
+  if (Number.isInteger(n) && n > 0) return n;
+  const fromScope = Number(req.tenant?.id);
+  if (Number.isInteger(fromScope) && fromScope > 0) return fromScope;
+  return null;
+};
+
+const portalOtpKey = (tenantId, phone) =>
+  `portal:${tenantId || 0}:${normalizePhoneDigits(phone)}`;
 
 const bookingOtpKey = (normalized) => `booking:${normalized}`;
 
@@ -473,6 +491,9 @@ const portalAuth = (req, res, next) => {
       return res.status(401).json({ message: 'Invalid portal token.' });
     }
     req.portalPhone = decoded.phone;
+    req.portalTenantId = decoded.tenantId
+      ? Number(decoded.tenantId)
+      : null;
     return next();
   } catch (_err) {
     return res.status(401).json({ message: 'Invalid or expired portal token.' });
@@ -482,26 +503,57 @@ const portalAuth = (req, res, next) => {
 router.post('/customer-portal/request-otp', async (req, res) => {
   try {
     const { phone } = req.body || {};
+    const tenantId = resolvePortalTenantId(req);
     const normalized = normalizePhoneDigits(phone);
-    if (!normalized) return res.status(400).json({ message: 'Phone is required.' });
+    if (!normalized || normalized.length < 9) {
+      return res.status(400).json({ message: 'Enter a valid phone number.' });
+    }
+    if (!tenantId) {
+      return res.status(400).json({ message: 'tenantId is required.' });
+    }
 
     const variants = buildPhoneVariants(normalized);
+    const phoneWhere = { phone: { [Op.or]: variants } };
     const [apptCount, customerCount] = await Promise.all([
-      Appointment.count({ where: { phone: { [Op.or]: variants } } }),
-      Customer.count({ where: { phone: { [Op.or]: variants } } }),
+      Appointment.count({ where: { ...phoneWhere, tenant_id: tenantId } }),
+      Customer.count({ where: { ...phoneWhere, tenant_id: tenantId } }),
     ]);
     if (!apptCount && !customerCount) {
-      return res.status(404).json({ message: 'No account found for this phone number. Please register first.' });
+      return res.status(404).json({
+        message: 'No account found for this phone number. Please register first.',
+      });
     }
 
     const code = String(Math.floor(100000 + Math.random() * 900000));
-    otpStore.set(normalized, { code, expiresAt: Date.now() + OTP_TTL_MS, attempts: 0 });
+    otpStore.set(portalOtpKey(tenantId, normalized), {
+      code,
+      expiresAt: Date.now() + OTP_TTL_MS,
+      attempts: 0,
+      tenantId,
+      phone: normalized,
+    });
 
-    const sms = `HEXAONE OTP: ${code}. Valid for 5 minutes.`;
-    await sendSMS({ to: normalized, message: sms, meta: { event_type: 'portal_otp' } });
+    const salonName = await resolveTenantSmsName(tenantId);
+    let smsOk = true;
+    try {
+      await sendSMS({
+        to: normalized,
+        message: `${salonName} OTP: ${code}. Valid for 5 minutes.`,
+        meta: { event_type: 'portal_otp', tenant_id: tenantId },
+      });
+    } catch (smsErr) {
+      smsOk = false;
+      console.error('portal.requestOtp SMS error:', smsErr);
+    }
 
-    const response = { message: 'OTP sent successfully.' };
-    if (process.env.NODE_ENV !== 'production') response.debug_otp = code;
+    const response = {
+      message: smsOk
+        ? 'OTP sent successfully.'
+        : 'OTP created. SMS could not be delivered — check debug code if shown.',
+    };
+    if (process.env.NODE_ENV !== 'production' || process.env.PORTAL_DEBUG_OTP === '1') {
+      response.debug_otp = code;
+    }
     return res.json(response);
   } catch (err) {
     console.error('portal.requestOtp error:', err);
@@ -512,40 +564,70 @@ router.post('/customer-portal/request-otp', async (req, res) => {
 // ── POST /api/public/customer-portal/register — new customer self-registration ─
 router.post('/customer-portal/register', async (req, res) => {
   try {
-    const { name, phone, email, tenantId } = req.body || {};
+    const { name, phone, email } = req.body || {};
+    const tenantId = resolvePortalTenantId(req);
     const normalized = normalizePhoneDigits(phone);
-    if (!normalized || !String(name || '').trim()) {
-      return res.status(400).json({ message: 'Name and phone number are required.' });
+    if (!normalized || normalized.length < 9 || !String(name || '').trim()) {
+      return res.status(400).json({ message: 'Name and a valid phone number are required.' });
+    }
+    if (!tenantId) {
+      return res.status(400).json({ message: 'tenantId is required.' });
     }
 
     const variants = buildPhoneVariants(normalized);
-    let customer = await Customer.findOne({ where: { phone: { [Op.or]: variants } } });
+    let customer = await Customer.findOne({
+      where: { tenant_id: tenantId, phone: { [Op.or]: variants } },
+    });
 
-    const parsedTenantId = tenantId ? parseInt(tenantId, 10) : null;
-    const tenantIdVal = Number.isInteger(parsedTenantId) && parsedTenantId > 0 ? parsedTenantId : null;
+    // Prefer local 0… format for new rows
+    const storePhone = normalized.startsWith('94') && normalized.length >= 11
+      ? `0${normalized.slice(2)}`
+      : normalized;
 
     if (!customer) {
       customer = await Customer.create({
         name: String(name).trim(),
-        phone: normalized,
+        phone: storePhone,
         email: email ? String(email).trim() : null,
-        tenant_id: tenantIdVal,
+        tenant_id: tenantId,
       });
     } else {
       const updates = {};
       if (!String(customer.name || '').trim() && name) updates.name = String(name).trim();
       if (!String(customer.email || '').trim() && email) updates.email = String(email).trim();
-      if (!customer.tenant_id && tenantIdVal) updates.tenant_id = tenantIdVal;
       if (Object.keys(updates).length) await customer.update(updates);
     }
 
     const code = String(Math.floor(100000 + Math.random() * 900000));
-    otpStore.set(normalized, { code, expiresAt: Date.now() + OTP_TTL_MS, attempts: 0 });
+    otpStore.set(portalOtpKey(tenantId, normalized), {
+      code,
+      expiresAt: Date.now() + OTP_TTL_MS,
+      attempts: 0,
+      tenantId,
+      phone: normalized,
+    });
 
-    await sendSMS({ to: normalized, message: `Your verification code is: ${code}. Valid for 5 minutes.`, meta: { event_type: 'portal_register_otp' } });
+    const salonName = await resolveTenantSmsName(tenantId);
+    let smsOk = true;
+    try {
+      await sendSMS({
+        to: normalized,
+        message: `${salonName} verification code: ${code}. Valid for 5 minutes.`,
+        meta: { event_type: 'portal_register_otp', tenant_id: tenantId },
+      });
+    } catch (smsErr) {
+      smsOk = false;
+      console.error('portal.register SMS error:', smsErr);
+    }
 
-    const response = { message: 'OTP sent to your phone. Please verify to complete registration.' };
-    if (process.env.NODE_ENV !== 'production') response.debug_otp = code;
+    const response = {
+      message: smsOk
+        ? 'OTP sent to your phone. Please verify to complete registration.'
+        : 'Account ready. SMS could not be delivered — check debug code if shown.',
+    };
+    if (process.env.NODE_ENV !== 'production' || process.env.PORTAL_DEBUG_OTP === '1') {
+      response.debug_otp = code;
+    }
     return res.json(response);
   } catch (err) {
     console.error('portal.register error:', err);
@@ -556,31 +638,54 @@ router.post('/customer-portal/register', async (req, res) => {
 router.post('/customer-portal/verify-otp', async (req, res) => {
   try {
     const { phone, otp } = req.body || {};
+    const tenantId = resolvePortalTenantId(req);
     const normalized = normalizePhoneDigits(phone);
-    if (!normalized || !otp) return res.status(400).json({ message: 'Phone and OTP are required.' });
+    if (!normalized || !otp) {
+      return res.status(400).json({ message: 'Phone and OTP are required.' });
+    }
+    if (!tenantId) {
+      return res.status(400).json({ message: 'tenantId is required.' });
+    }
 
-    const row = otpStore.get(normalized);
+    const key = portalOtpKey(tenantId, normalized);
+    // Also accept OTP stored under alternate 0/94 form of the same number
+    const altKeys = buildPhoneVariants(normalized).map((v) => portalOtpKey(tenantId, v));
+    let row = null;
+    let usedKey = key;
+    for (const k of [key, ...altKeys]) {
+      const found = otpStore.get(k);
+      if (found) {
+        row = found;
+        usedKey = k;
+        break;
+      }
+    }
+
     if (!row || Date.now() > row.expiresAt) {
-      otpStore.delete(normalized);
+      otpStore.delete(usedKey);
       return res.status(400).json({ message: 'OTP expired. Please request a new code.' });
     }
     if (row.attempts >= 5) {
-      otpStore.delete(normalized);
+      otpStore.delete(usedKey);
       return res.status(429).json({ message: 'Too many invalid attempts. Request a new OTP.' });
     }
     if (String(otp) !== String(row.code)) {
       row.attempts += 1;
-      otpStore.set(normalized, row);
+      otpStore.set(usedKey, row);
       return res.status(401).json({ message: 'Invalid OTP.' });
     }
-    otpStore.delete(normalized);
+    otpStore.delete(usedKey);
 
     const token = jwt.sign(
-      { type: 'customer_portal', phone: normalized },
+      { type: 'customer_portal', phone: normalized, tenantId },
       process.env.JWT_SECRET,
-      { expiresIn: '24h' }
+      { expiresIn: '30d' }
     );
-    return res.json({ token });
+    return res.json({
+      token,
+      phone: normalized,
+      tenantId,
+    });
   } catch (err) {
     console.error('portal.verifyOtp error:', err);
     return res.status(500).json({ message: 'Failed to verify OTP.' });
@@ -590,15 +695,20 @@ router.post('/customer-portal/verify-otp', async (req, res) => {
 router.get('/customer-portal/me', portalAuth, async (req, res) => {
   try {
     const variants = buildPhoneVariants(req.portalPhone);
+    const phoneWhere = { phone: { [Op.or]: variants } };
+    const tenantFilter = req.portalTenantId
+      ? { tenant_id: req.portalTenantId }
+      : {};
+
     const [appointments, customers] = await Promise.all([
       Appointment.findAll({
-        where: { phone: { [Op.or]: variants } },
+        where: { ...phoneWhere, ...tenantFilter },
         attributes: ['customer_name'],
         order: [['createdAt', 'DESC']],
         limit: 1,
       }),
       Customer.findAll({
-        where: { phone: { [Op.or]: variants } },
+        where: { ...phoneWhere, ...tenantFilter },
         attributes: ['id', 'name', 'phone', 'loyalty_points'],
       }),
     ]);
@@ -608,6 +718,7 @@ router.get('/customer-portal/me', portalAuth, async (req, res) => {
       name: latestAppt?.customer_name || customers[0]?.name || 'Customer',
       phone: req.portalPhone,
       loyalty_points: totalPoints,
+      tenant_id: req.portalTenantId || null,
     });
   } catch (err) {
     console.error('portal.me error:', err);
@@ -618,8 +729,12 @@ router.get('/customer-portal/me', portalAuth, async (req, res) => {
 router.get('/customer-portal/bookings', portalAuth, async (req, res) => {
   try {
     const variants = buildPhoneVariants(req.portalPhone);
+    const where = {
+      phone: { [Op.or]: variants },
+      ...(req.portalTenantId ? { tenant_id: req.portalTenantId } : {}),
+    };
     const bookings = await Appointment.findAll({
-      where: { phone: { [Op.or]: variants } },
+      where,
       include: [
         { model: Branch, as: 'branch', attributes: ['id', 'name', 'color'] },
         { model: Service, as: 'service', attributes: ['id', 'name', 'price', 'duration_minutes'] },

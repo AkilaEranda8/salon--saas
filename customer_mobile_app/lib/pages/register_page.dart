@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
+import '../config.dart';
 import '../state/app_state.dart';
+import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
+import '../widgets/auth_chrome.dart';
 import '../widgets/common.dart';
 
 class RegisterPage extends StatefulWidget {
@@ -12,45 +14,67 @@ class RegisterPage extends StatefulWidget {
   State<RegisterPage> createState() => _RegisterPageState();
 }
 
-class _RegisterPageState extends State<RegisterPage> {
+class _RegisterPageState extends State<RegisterPage>
+    with SingleTickerProviderStateMixin {
   final _name = TextEditingController();
   final _phone = TextEditingController();
   final _email = TextEditingController();
   final _otp = TextEditingController();
+  final _otpFocus = FocusNode();
   bool _otpSent = false;
   bool _loading = false;
   String? _error;
+  String? _debugOtp;
+  late final AnimationController _enter;
+
+  @override
+  void initState() {
+    super.initState();
+    _enter = AnimationController(vsync: this, duration: AppMotion.slow)..forward();
+  }
 
   @override
   void dispose() {
+    _enter.dispose();
     _name.dispose();
     _phone.dispose();
     _email.dispose();
     _otp.dispose();
+    _otpFocus.dispose();
     super.dispose();
   }
 
   Future<void> _register() async {
     final name = _name.text.trim();
     final phone = _phone.text.trim();
-    if (name.isEmpty || phone.isEmpty) {
-      setState(() => _error = 'Name and phone are required.');
+    if (name.isEmpty || phone.replaceAll(RegExp(r'\D'), '').length < 9) {
+      setState(() => _error = 'Name and a valid phone number are required.');
+      return;
+    }
+    if (AppConfig.tenantIdInt == null) {
+      setState(() => _error = 'App is not configured with a salon (TENANT_ID).');
       return;
     }
     setState(() {
       _loading = true;
       _error = null;
+      _debugOtp = null;
     });
     try {
-      await AppStateScope.of(context).api.registerPortal(
+      final res = await AppStateScope.of(context).api.registerPortal(
             name: name,
             phone: phone,
             email: _email.text.trim(),
           );
       if (!mounted) return;
+      final debug = '${res['debug_otp'] ?? ''}'.trim();
       setState(() {
         _otpSent = true;
         _loading = false;
+        _debugOtp = debug.isEmpty ? null : debug;
+      });
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _otpFocus.requestFocus();
       });
     } catch (e) {
       if (!mounted) return;
@@ -88,65 +112,135 @@ class _RegisterPageState extends State<RegisterPage> {
     }
   }
 
+  void _editDetails() {
+    setState(() {
+      _otpSent = false;
+      _otp.clear();
+      _error = null;
+      _debugOtp = null;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
-    return AtmosphereBackground(
-      child: Scaffold(
-        backgroundColor: Colors.transparent,
-        appBar: AppBar(title: const Text('Create account')),
-        body: SafeArea(
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(24, 8, 24, 32),
-            children: [
-              Text(
-                'Join with your phone',
-                style: Theme.of(context).textTheme.headlineMedium,
+    final brand = AppConfig.brandName;
+
+    return AuthChrome(
+      onClose: () => Navigator.of(context).pop(false),
+      child: AppMotion.fadeSlide(
+        animation: _enter,
+        begin: const Offset(0, 0.035),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            AuthBrandMark(brandName: brand),
+            const SizedBox(height: 28),
+            Text(
+              _otpSent ? 'Verify your number' : 'Create your account',
+              style: Theme.of(context).textTheme.headlineLarge?.copyWith(
+                    fontSize: 34,
+                    height: 1.1,
+                    letterSpacing: -0.6,
+                  ),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              _otpSent
+                  ? 'Enter the code we sent to ${_phone.text.trim()}.'
+                  : 'A few details — then a one-time code to confirm your phone.',
+              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                    color: AppColors.inkSoft,
+                    height: 1.45,
+                  ),
+            ),
+            const SizedBox(height: 36),
+            AnimatedSwitcher(
+              duration: AppMotion.normal,
+              switchInCurve: AppMotion.easeOut,
+              switchOutCurve: AppMotion.easeOut,
+              transitionBuilder: (child, anim) => FadeTransition(
+                opacity: anim,
+                child: SlideTransition(
+                  position: Tween<Offset>(
+                    begin: const Offset(0.02, 0.04),
+                    end: Offset.zero,
+                  ).animate(anim),
+                  child: child,
+                ),
               ),
+              child: _otpSent
+                  ? KeyedSubtree(
+                      key: const ValueKey('otp'),
+                      child: AuthOtpField(
+                        controller: _otp,
+                        focusNode: _otpFocus,
+                        onSubmitted: _loading ? null : _verify,
+                      ),
+                    )
+                  : KeyedSubtree(
+                      key: const ValueKey('form'),
+                      child: Column(
+                        children: [
+                          TextField(
+                            controller: _name,
+                            textCapitalization: TextCapitalization.words,
+                            textInputAction: TextInputAction.next,
+                            decoration: const InputDecoration(
+                              labelText: 'Full name',
+                              hintText: 'Your name',
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+                          AuthPhoneField(
+                            controller: _phone,
+                            enabled: !_loading,
+                          ),
+                          const SizedBox(height: 14),
+                          TextField(
+                            controller: _email,
+                            keyboardType: TextInputType.emailAddress,
+                            textInputAction: TextInputAction.done,
+                            decoration: const InputDecoration(
+                              labelText: 'Email (optional)',
+                              hintText: 'you@email.com',
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+            ),
+            if (_error != null) ...[
+              const SizedBox(height: 14),
+              AuthErrorBanner(message: _error!),
+            ],
+            if (_debugOtp != null) ...[
               const SizedBox(height: 8),
               Text(
-                'We’ll send a one-time code to verify your number.',
-                style: Theme.of(context).textTheme.bodyMedium,
-              ),
-              const SizedBox(height: 28),
-              if (!_otpSent) ...[
-                TextField(
-                  controller: _name,
-                  textCapitalization: TextCapitalization.words,
-                  decoration: const InputDecoration(labelText: 'Full name'),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _phone,
-                  keyboardType: TextInputType.phone,
-                  inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9+\s]'))],
-                  decoration: const InputDecoration(labelText: 'Phone number'),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _email,
-                  keyboardType: TextInputType.emailAddress,
-                  decoration: const InputDecoration(labelText: 'Email (optional)'),
-                ),
-              ] else ...[
-                TextField(
-                  controller: _otp,
-                  keyboardType: TextInputType.number,
-                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                  decoration: const InputDecoration(labelText: 'OTP code'),
-                ),
-              ],
-              if (_error != null) ...[
-                const SizedBox(height: 12),
-                Text(_error!, style: const TextStyle(color: AppColors.danger, fontSize: 13)),
-              ],
-              const SizedBox(height: 24),
-              AppButton(
-                label: _otpSent ? 'Verify & continue' : 'Send OTP',
-                loading: _loading,
-                onPressed: _otpSent ? _verify : _register,
+                'Dev OTP: $_debugOtp',
+                style: const TextStyle(color: AppColors.muted, fontSize: 12),
               ),
             ],
-          ),
+            const SizedBox(height: 28),
+            AppButton(
+              label: _otpSent ? 'Verify & continue' : 'Send code',
+              loading: _loading,
+              onPressed: _otpSent ? _verify : _register,
+            ),
+            if (_otpSent) ...[
+              const SizedBox(height: 12),
+              AppButton(
+                label: 'Edit details',
+                secondary: true,
+                onPressed: _loading ? null : _editDetails,
+              ),
+            ],
+            const SizedBox(height: 40),
+            AuthFooterLink(
+              prompt: 'Already have an account?',
+              action: 'Sign in',
+              onTap: () => Navigator.of(context).pop(false),
+            ),
+          ],
         ),
       ),
     );

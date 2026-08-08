@@ -1,12 +1,10 @@
 import 'package:flutter/material.dart';
 
 import '../config.dart';
-import '../state/app_state.dart';
 import '../theme/app_theme.dart';
-import '../widgets/common.dart';
 import 'appointments_page.dart';
 import 'book/book_flow_page.dart';
-import 'login_page.dart';
+import 'home_page.dart';
 import 'offers_page.dart';
 import 'profile_page.dart';
 import 'session_gate.dart';
@@ -28,85 +26,150 @@ class HomeShell extends StatefulWidget {
 class _HomeShellState extends State<HomeShell> {
   int _index = 0;
 
+  void _go(int i) => setState(() => _index = i);
+
   Future<void> _onTap(int i) async {
-    if (i == 1 || i == 3) {
+    if (i == 3) {
       final ok = await ensureLoggedIn(context);
       if (!ok) return;
     }
-    setState(() => _index = i);
+    _go(i);
   }
 
   @override
   Widget build(BuildContext context) {
-    final pages = [
+    final brand = widget.brandName.isEmpty ? AppConfig.brandName : widget.brandName;
+
+    final pages = <Widget>[
+      HomePage(
+        brandName: brand,
+        onOpenBook: () => _go(1),
+        onOpenOffers: () => _go(2),
+        onOpenProfile: () async {
+          final ok = await ensureLoggedIn(context);
+          if (ok && mounted) _go(3);
+        },
+        onOpenAppointments: () async {
+          final nav = Navigator.of(context);
+          final ok = await ensureLoggedIn(context);
+          if (!mounted || !ok) return;
+          await nav.push(
+            MaterialPageRoute(builder: (_) => const AppointmentsPage()),
+          );
+        },
+      ),
       const BookFlowPage(),
-      const AppointmentsPage(),
       const OffersPage(),
       const ProfilePage(),
     ];
 
-    return AtmosphereBackground(
-      child: Scaffold(
-        backgroundColor: Colors.transparent,
-        body: SafeArea(
-          bottom: false,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+    return Scaffold(
+      backgroundColor: AppColors.surface,
+      extendBody: true,
+      body: IndexedStack(
+        index: _index,
+        children: [
+          pages[0],
+          SafeArea(child: pages[1]),
+          SafeArea(child: pages[2]),
+          SafeArea(child: pages[3]),
+        ],
+      ),
+      bottomNavigationBar: SafeArea(
+        top: false,
+        minimum: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(color: AppColors.line),
+          ),
+          child: Row(
             children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 12, 20, 4),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        widget.brandName.isEmpty ? AppConfig.brandName : widget.brandName,
-                        style: Theme.of(context).textTheme.headlineSmall,
-                      ),
-                    ),
-                    if (!AppStateScope.of(context).isLoggedIn)
-                      TextButton(
-                        onPressed: () async {
-                          await Navigator.of(context).push(
-                            MaterialPageRoute(builder: (_) => const LoginPage()),
-                          );
-                        },
-                        child: const Text(
-                          'Sign in',
-                          style: TextStyle(
-                            color: AppColors.blushDeep,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
+              _NavItem(
+                icon: Icons.home_outlined,
+                activeIcon: Icons.home_rounded,
+                label: 'Home',
+                selected: _index == 0,
+                onTap: () => _onTap(0),
               ),
-              Expanded(
-                child: IndexedStack(
-                  index: _index,
-                  children: pages,
-                ),
+              _NavItem(
+                icon: Icons.calendar_month_outlined,
+                activeIcon: Icons.calendar_month_rounded,
+                label: 'Book',
+                selected: _index == 1,
+                onTap: () => _onTap(1),
+              ),
+              _NavItem(
+                icon: Icons.local_offer_outlined,
+                activeIcon: Icons.local_offer_rounded,
+                label: 'Offers',
+                selected: _index == 2,
+                onTap: () => _onTap(2),
+              ),
+              _NavItem(
+                icon: Icons.person_outline_rounded,
+                activeIcon: Icons.person_rounded,
+                label: 'Profile',
+                selected: _index == 3,
+                onTap: () => _onTap(3),
               ),
             ],
           ),
         ),
-        bottomNavigationBar: Container(
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            border: Border(top: BorderSide(color: AppColors.line)),
+      ),
+    );
+  }
+}
+
+class _NavItem extends StatelessWidget {
+  const _NavItem({
+    required this.icon,
+    required this.activeIcon,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final IconData activeIcon;
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOutCubic,
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          decoration: BoxDecoration(
+            color: selected ? AppColors.ink : Colors.transparent,
+            borderRadius: BorderRadius.circular(16),
           ),
-          child: SafeArea(
-            top: false,
-            child: BottomNavigationBar(
-              currentIndex: _index,
-              onTap: _onTap,
-              items: const [
-                BottomNavigationBarItem(icon: Icon(Icons.calendar_month_outlined), label: 'Book'),
-                BottomNavigationBarItem(icon: Icon(Icons.event_note_outlined), label: 'Appointments'),
-                BottomNavigationBarItem(icon: Icon(Icons.local_offer_outlined), label: 'Offers'),
-                BottomNavigationBarItem(icon: Icon(Icons.person_outline), label: 'Profile'),
-              ],
-            ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                selected ? activeIcon : icon,
+                size: 21,
+                color: selected ? Colors.white : AppColors.muted,
+              ),
+              const SizedBox(height: 3),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                  color: selected ? Colors.white : AppColors.muted,
+                ),
+              ),
+            ],
           ),
         ),
       ),

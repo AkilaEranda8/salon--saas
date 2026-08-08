@@ -188,19 +188,23 @@ class MobileApi {
         .toList();
   }
 
+  /// Fetches customers for the auth token's tenant.
+  /// Omitting [branchId] returns every customer in that tenant (all branches).
   Future<List<Customer>> fetchCustomers({
     required String token,
     String? branchId,
     String? search,
-    int limit = 500,
+    int limit = 1000,
   }) async {
     final all = <Customer>[];
     var page = 1;
     var total = 1 << 30;
+    // Backend caps page size at 2000; keep requests reasonable.
+    final pageSize = limit.clamp(1, 2000);
 
-    while (all.length < total) {
+    while (all.length < total && page <= 50) {
       final qp = <String, String>{
-        'limit': '$limit',
+        'limit': '$pageSize',
         'page': '$page',
         if (branchId != null && branchId.isNotEmpty) 'branchId': branchId,
         if (search != null && search.trim().isNotEmpty) 'search': search.trim(),
@@ -223,7 +227,7 @@ class MobileApi {
         total = all.length + rows.length;
       }
       all.addAll(rows);
-      if (rows.isEmpty || rows.length < limit) break;
+      if (rows.isEmpty || rows.length < pageSize) break;
       page += 1;
       // When searching, one page is enough
       if (search != null && search.trim().isNotEmpty) break;

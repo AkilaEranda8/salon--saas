@@ -1,4 +1,4 @@
-const { Op } = require('sequelize');
+const { Op, fn, col, where: sqlWhere } = require('sequelize');
 const { Customer, Branch, Appointment, Service } = require('../models');
 const { tenantWhere, byIdWhere, resolveTenantId } = require('../utils/tenantScope');
 const {
@@ -29,13 +29,44 @@ const getCustomerListWhere = (req) => {
 
   const q = String(req.query.search || req.query.q || '').trim();
   if (q) {
-    and.push({
-      [Op.or]: [
-        { name:  { [Op.like]: `%${q}%` } },
-        { phone: { [Op.like]: `%${q}%` } },
-        { email: { [Op.like]: `%${q}%` } },
-      ],
-    });
+    const or = [
+      { name:  { [Op.like]: `%${q}%` } },
+      { phone: { [Op.like]: `%${q}%` } },
+      { email: { [Op.like]: `%${q}%` } },
+    ];
+
+    // Digit-normalized phone search (spaces/dashes and 0 / 94 prefixes).
+    // e.g. query 0712438116 matches stored 94712438116.
+    const digits = q.replace(/\D/g, '');
+    if (digits.length >= 3) {
+      const phoneNorm = fn(
+        'REPLACE',
+        fn('REPLACE', fn('REPLACE', col('Customer.phone'), ' ', ''), '-', ''),
+        '+',
+        ''
+      );
+      let core = digits;
+      if (core.startsWith('94') && core.length >= 11) core = core.slice(2);
+      else if (core.startsWith('0') && core.length >= 9) core = core.slice(1);
+
+      const variants = new Set([digits, core]);
+      if (core) {
+        variants.add(`0${core}`);
+        variants.add(`94${core}`);
+        if (core.length >= 9) variants.add(core.slice(-9));
+      }
+      if (digits.startsWith('0') && digits.length > 1) variants.add(digits.slice(1));
+      if (digits.startsWith('94') && digits.length > 2) variants.add(digits.slice(2));
+      if (digits.length >= 9) variants.add(digits.slice(-9));
+
+      for (const v of variants) {
+        if (v.length >= 3) {
+          or.push(sqlWhere(phoneNorm, { [Op.like]: `%${v}%` }));
+        }
+      }
+    }
+
+    and.push({ [Op.or]: or });
   }
 
   if (and.length === 1) Object.assign(where, and[0]);
@@ -61,6 +92,8 @@ const list = async (req, res) => {
       where,
       limit,
       offset,
+      distinct: true,
+      col: 'id',
       order: [
         // Walk-in Customer always first within the page
         [Customer.sequelize.literal(

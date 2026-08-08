@@ -44,6 +44,7 @@ class _AddApptSheet extends StatefulWidget {
 class _AddApptSheetState extends State<_AddApptSheet> {
   final _formKey      = GlobalKey<FormState>();
   final _namCtrl      = TextEditingController();
+  final _customerFocus = FocusNode();
   final _phCtrl       = TextEditingController();
   final _amtCtrl      = TextEditingController();
   final _advAmtCtrl   = TextEditingController();
@@ -62,7 +63,6 @@ class _AddApptSheetState extends State<_AddApptSheet> {
   List<Customer>            _remoteCustomers = [];
   bool                      _searchingCustomers = false;
   Timer?                    _customerSearchTimer;
-  TextEditingController?   _autoNameCtrl;
 
   String _branchId = '';
   String _staffId  = '';
@@ -109,7 +109,21 @@ class _AddApptSheetState extends State<_AddApptSheet> {
     setState(() { _loading = true; _error = null; });
     try {
       _services = await app.loadServices();
-      try { _customers = await app.loadCustomers(); } catch (_) {}
+      // Full tenant customer list from DB (all branches) for picker + phone search.
+      try {
+        _customers = await app.loadCustomers(allBranches: true);
+      } catch (e) {
+        final token = app.currentUser?.authToken ?? '';
+        if (token.isNotEmpty) {
+          try {
+            _customers = await app.api.fetchCustomers(token: token, limit: 1000);
+          } catch (_) {
+            _error = e.toString().replaceFirst('Exception: ', '');
+          }
+        } else {
+          _error = e.toString().replaceFirst('Exception: ', '');
+        }
+      }
       final ub = app.currentUser?.branchId ?? '';
       _branchId = ub;
       if (_isSuper || ub.isEmpty) {
@@ -146,10 +160,20 @@ class _AddApptSheetState extends State<_AddApptSheet> {
     final phoneCompact = c.phone.replaceAll(RegExp(r'\s'), '').toLowerCase();
     final phoneDigits = _digitsOnly(c.phone);
     final qDigits = _digitsOnly(q);
-    return c.name.toLowerCase().contains(q) ||
-        phoneCompact.contains(qq) ||
-        c.phone.toLowerCase().contains(q) ||
-        (qDigits.length >= 3 && phoneDigits.contains(qDigits));
+    if (c.name.toLowerCase().contains(q)) return true;
+    if (phoneCompact.contains(qq) || c.phone.toLowerCase().contains(q)) {
+      return true;
+    }
+    if (qDigits.length >= 3 && phoneDigits.contains(qDigits)) return true;
+    // Match local mobile suffixes (ignore 0 / 94 prefix differences).
+    if (qDigits.length >= 7 && phoneDigits.length >= 7) {
+      final qTail = qDigits.length >= 9 ? qDigits.substring(qDigits.length - 9) : qDigits;
+      final pTail = phoneDigits.length >= 9
+          ? phoneDigits.substring(phoneDigits.length - 9)
+          : phoneDigits;
+      if (pTail.contains(qTail) || qTail.contains(pTail)) return true;
+    }
+    return false;
   }
 
   void _scheduleCustomerSearch(String raw) {
@@ -176,26 +200,34 @@ class _AddApptSheetState extends State<_AddApptSheet> {
         return;
       }
       try {
+        // Prefer digit query for phone-shaped input so API LIKE matches DB formats.
+        final digits = _digitsOnly(q);
+        final looksLikePhone =
+            digits.length >= 3 && digits.length >= (q.length * 0.6).floor();
+        final searchQ = looksLikePhone ? digits : q;
         final rows = await app.api.fetchCustomers(
           token: token,
-          search: q,
-          limit: 40,
+          search: searchQ,
+          limit: 50,
         );
         if (!mounted || gen != _customerSearchGen) return;
         setState(() {
           _remoteCustomers = rows;
           _searchingCustomers = false;
         });
-        final ctrl = _autoNameCtrl;
-        if (ctrl != null) ctrl.value = ctrl.value;
+        // Nudge RawAutocomplete to rebuild options.
+        if (_namCtrl.text == raw) {
+          _namCtrl.value = _namCtrl.value;
+        }
       } catch (_) {
         if (!mounted || gen != _customerSearchGen) return;
         setState(() {
           _remoteCustomers = const [];
           _searchingCustomers = false;
         });
-        final ctrl = _autoNameCtrl;
-        if (ctrl != null) ctrl.value = ctrl.value;
+        if (_namCtrl.text == raw) {
+          _namCtrl.value = _namCtrl.value;
+        }
       }
     });
   }
@@ -705,6 +737,7 @@ class _AddApptSheetState extends State<_AddApptSheet> {
   @override
   void dispose() {
     _customerSearchTimer?.cancel();
+    _customerFocus.dispose();
     _namCtrl.dispose(); _phCtrl.dispose(); _amtCtrl.dispose(); _advAmtCtrl.dispose();
     super.dispose();
   }
@@ -882,17 +915,19 @@ class _AddApptSheetState extends State<_AddApptSheet> {
                     ),
                   ],
 
-                  Autocomplete<Customer>(
+                  RawAutocomplete<Customer>(
+                    textEditingController: _namCtrl,
+                    focusNode: _customerFocus,
                     optionsBuilder: (val) {
                       final q   = val.text.trim().toLowerCase();
                       final all = _customerPool;
                       List<Customer> matches;
                       if (q.isEmpty) {
-                        matches = all.take(10).toList();
+                        matches = all.take(12).toList();
                       } else {
                         matches = all
                             .where((c) => _customerMatchesQuery(c, q))
-                            .take(15)
+                            .take(20)
                             .toList();
                       }
                       final qDigits = _digitsOnly(q);
@@ -946,17 +981,13 @@ class _AddApptSheetState extends State<_AddApptSheet> {
                       _loadCustomerPackages(c.id);
                     },
                     fieldViewBuilder: (ctx, ctrl, fn, _) {
-                      _autoNameCtrl = ctrl;
-                      if (ctrl.text != _namCtrl.text) {
-                        ctrl.text = _namCtrl.text;
-                      }
                       return TextFormField(
-                        controller: ctrl, focusNode: fn,
+                        controller: ctrl,
+                        focusNode: fn,
                         keyboardType: TextInputType.text,
                         decoration: _deco(
                             'Name or phone', Icons.person_search_rounded),
                         onChanged: (v) {
-                          _namCtrl.text = v;
                           setState(() {
                             _clearCustomerLinkedState();
                             if (_registerMode || _registered) {
@@ -978,7 +1009,7 @@ class _AddApptSheetState extends State<_AddApptSheet> {
                         borderRadius: BorderRadius.circular(14),
                         child: ConstrainedBox(
                           constraints: const BoxConstraints(
-                              maxHeight: 200, maxWidth: 400),
+                              maxHeight: 220, maxWidth: 400),
                           child: ListView.builder(
                             shrinkWrap: true,
                             padding: const EdgeInsets.symmetric(vertical: 6),

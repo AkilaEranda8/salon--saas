@@ -142,8 +142,8 @@ router.get('/services', async (req, res) => {
     const tenantWhr = tenantId ? { tenant_id: tenantId } : {};
 
     const services = await Service.findAll({
-      where: { is_active: true, ...tenantWhr },
-      attributes: ['id', 'name', 'category', 'duration_minutes', 'description'],
+      where: { is_active: true, available_online: true, ...tenantWhr },
+      attributes: ['id', 'name', 'category', 'duration_minutes', 'description', 'price', 'image_url'],
       order: [['category', 'ASC'], ['name', 'ASC']],
     });
     res.json(services);
@@ -1151,7 +1151,12 @@ router.post('/bookings', async (req, res) => {
 
     const [services, staffRows] = await Promise.all([
       Service.findAll({
-        where: { id: serviceIds, is_active: true, tenant_id: bookingTenantId },
+        where: {
+          id: serviceIds,
+          is_active: true,
+          available_online: true,
+          tenant_id: bookingTenantId,
+        },
         attributes: ['id', 'name', 'price', 'duration_minutes'],
       }),
       Staff.findAll({
@@ -1161,7 +1166,9 @@ router.post('/bookings', async (req, res) => {
     ]);
 
     if (services.length !== serviceIds.length) {
-      return res.status(404).json({ message: 'One or more selected services were not found' });
+      return res.status(404).json({
+        message: 'One or more selected services were not found or are not available for online booking',
+      });
     }
     if (staffRows.length !== staffIds.length) {
       return res.status(404).json({ message: 'One or more selected staff were not found or are not available for online booking' });

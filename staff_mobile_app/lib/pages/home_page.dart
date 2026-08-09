@@ -87,6 +87,19 @@ class HomePage extends StatelessWidget {
           const SizedBox(height: 8),
           _actionTile(
             context: context,
+            title: 'Scan check-in QR',
+            subtitle: 'Scan customer QR to check in',
+            icon: Icons.qr_code_scanner_outlined,
+            enabled: true,
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const QrCheckInScanPage()),
+              );
+            },
+          ),
+          const SizedBox(height: 8),
+          _actionTile(
+            context: context,
             title: 'Walk-in',
             subtitle: 'Manage walk-in queue',
             icon: Icons.directions_walk_outlined,
@@ -94,19 +107,6 @@ class HomePage extends StatelessWidget {
             onTap: () {
               Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const WalkInPage()),
-              );
-            },
-          ),
-          const SizedBox(height: 8),
-          _actionTile(
-            context: context,
-            title: 'Scan check-in QR',
-            subtitle: 'Scan customer app QR to check in',
-            icon: Icons.qr_code_scanner_outlined,
-            enabled: true,
-            onTap: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const QrCheckInScanPage()),
               );
             },
           ),

@@ -25,6 +25,7 @@ import 'staff_page.dart';
 import 'expenses_page.dart';
 import 'inventory_page.dart';
 import 'walkin_page.dart';
+import 'qr_checkin_scan_page.dart';
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 const _bg = Color(0xFFF2F5F2);
@@ -320,6 +321,13 @@ class _DashboardPageState extends State<DashboardPage>
 
   Widget _buildActions(AppState s) {
     final items = [
+      _NavData(
+        'Scan QR',
+        Icons.qr_code_scanner_rounded,
+        [const Color(0xFF1B3A2D), const Color(0xFFC9956C)],
+        const QrCheckInScanPage(),
+        ok: true,
+      ),
       _NavData(
         'Appointments',
         Icons.calendar_month_rounded,

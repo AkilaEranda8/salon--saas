@@ -51,6 +51,9 @@ class AddWalkInModal extends StatefulWidget {
     required this.services,
     this.customers = const [],
     this.initialBranchId,
+    this.initialCustomerId = '',
+    this.initialCustomerName = '',
+    this.initialPhone = '',
     this.onRegisterNewCustomer,
     this.mobileApi,
     this.token = '',
@@ -61,6 +64,10 @@ class AddWalkInModal extends StatefulWidget {
   final List<SalonService> services;
   final List<Customer> customers;
   final String? initialBranchId;
+  /// Prefill from QR / existing customer (skips re-typing name & phone).
+  final String initialCustomerId;
+  final String initialCustomerName;
+  final String initialPhone;
   /// Called when user taps "Add & Register". Returns created [Customer] or null.
   final Future<Customer?> Function(String name, String phone, String? branchId)? onRegisterNewCustomer;
   final MobileApi? mobileApi;
@@ -72,6 +79,9 @@ class AddWalkInModal extends StatefulWidget {
     required List<SalonService> services,
     List<Customer> customers = const [],
     String? initialBranchId,
+    String initialCustomerId = '',
+    String initialCustomerName = '',
+    String initialPhone = '',
     Future<Customer?> Function(String name, String phone, String? branchId)? onRegisterNewCustomer,
     MobileApi? mobileApi,
     String token = '',
@@ -85,6 +95,9 @@ class AddWalkInModal extends StatefulWidget {
         services: services,
         customers: customers,
         initialBranchId: initialBranchId,
+        initialCustomerId: initialCustomerId,
+        initialCustomerName: initialCustomerName,
+        initialPhone: initialPhone,
         onRegisterNewCustomer: onRegisterNewCustomer,
         mobileApi: mobileApi,
         token: token,
@@ -128,6 +141,19 @@ class _AddWalkInModalState extends State<AddWalkInModal> {
     if ((_branchId == null || _branchId!.trim().isEmpty) &&
         widget.branches.length == 1) {
       _branchId = widget.branches.first['id'];
+    }
+
+    final preName = widget.initialCustomerName.trim();
+    final prePhone = widget.initialPhone.trim();
+    final preId = widget.initialCustomerId.trim();
+    if (preName.isNotEmpty) _nameCtrl.text = preName;
+    if (prePhone.isNotEmpty) _phoneCtrl.text = prePhone;
+    if (preId.isNotEmpty && preId != 'null') {
+      _customerId = preId;
+      _registered = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _loadPackagesForCustomer(preId);
+      });
     }
   }
 

@@ -143,7 +143,7 @@ router.get('/services', async (req, res) => {
 
     const services = await Service.findAll({
       where: { is_active: true, available_online: true, ...tenantWhr },
-      attributes: ['id', 'name', 'category', 'duration_minutes', 'description', 'price', 'image_url'],
+      attributes: ['id', 'name', 'category', 'duration_minutes', 'description', 'price'],
       order: [['category', 'ASC'], ['name', 'ASC']],
     });
     res.json(services);

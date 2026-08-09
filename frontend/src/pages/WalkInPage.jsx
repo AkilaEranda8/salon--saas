@@ -423,6 +423,8 @@ export default function WalkInPage() {
   const [paymentEntry,   setPaymentEntry]   = useState(null);
   const [paymentMethod,  setPaymentMethod]  = useState('Cash');
   const [paymentAmount,  setPaymentAmount]  = useState('');
+  const [paymentSubtotal, setPaymentSubtotal] = useState('');
+  const [paymentServicePrices, setPaymentServicePrices] = useState({});
   const [paymentSaving,  setPaymentSaving]  = useState(false);
   const [paymentError,   setPaymentError]   = useState('');
   const [paymentOk,      setPaymentOk]      = useState(false);
@@ -591,6 +593,28 @@ export default function WalkInPage() {
     const svc = services.find((x) => Number(x.id) === Number(sid));
     return sum + Number(svc?.price || 0);
   }, 0);
+  const seedServicePrices = (ids, prev = {}) => {
+    const next = {};
+    ids.forEach((sid) => {
+      const key = Number(sid);
+      if (prev[key] !== undefined && prev[key] !== null && prev[key] !== '') {
+        next[key] = prev[key];
+      } else {
+        const s = services.find((x) => Number(x.id) === key);
+        next[key] = Number(s?.price || 0);
+      }
+    });
+    return next;
+  };
+  const calcCustomServiceTotal = (ids, priceMap = paymentServicePrices) => ids.reduce((sum, sid) => {
+    const key = Number(sid);
+    const override = priceMap[key];
+    if (override !== undefined && override !== null && override !== '') {
+      return sum + (Number(override) || 0);
+    }
+    const s = services.find((x) => Number(x.id) === key);
+    return sum + Number(s?.price || 0);
+  }, 0);
   const openPayment = async (entry) => {
     const ids = getWalkInOrderedServiceIds(entry, services);
     setPaymentEntry(entry);
@@ -599,6 +623,7 @@ export default function WalkInPage() {
     setPaymentError('');
     setPaymentOk(false);
     setPaymentServices(ids);
+    setPaymentServicePrices(seedServicePrices(ids));
     setPaymentCustPackages([]);
     setPaymentCustPackageId('');
     setPaymentCustomerId(null);
@@ -653,6 +678,18 @@ export default function WalkInPage() {
     const nid = Number(id);
     setPaymentServices((prev) => {
       const next = prev.includes(nid) ? prev.filter((x) => x !== nid) : [...prev, nid];
+      setPaymentServicePrices((prices) => seedServicePrices(next, prices));
+      return next;
+    });
+  };
+  const setWalkInServicePrice = (id, value) => {
+    const key = Number(id);
+    setPaymentServicePrices((prev) => {
+      const next = { ...prev, [key]: value };
+      if (!(paymentMethod === 'Package' && paymentCustPackageId)) {
+        const total = calcCustomServiceTotal(paymentServices, next);
+        setPaymentSubtotal(total > 0 ? String(total) : '');
+      }
       return next;
     });
   };
@@ -662,17 +699,29 @@ export default function WalkInPage() {
     if (paymentMethod === 'Package' && paymentCustPackageId) {
       const cp = paymentCustPackages.find((p) => String(p.id) === String(paymentCustPackageId));
       const bundle = getPackageBundlePrice(cp);
+      setPaymentSubtotal(bundle > 0 ? String(bundle) : '0');
       setPaymentAmount(bundle > 0 ? String(bundle) : '0');
       return;
     }
-    const gross = calcServiceTotal(paymentServices);
+    setPaymentServicePrices((prev) => {
+      const seeded = seedServicePrices(paymentServices, prev);
+      const total = calcCustomServiceTotal(paymentServices, seeded);
+      setPaymentSubtotal(total > 0 ? String(total) : '');
+      return seeded;
+    });
+  }, [paymentEntry, paymentServices, paymentMethod, paymentCustPackageId, paymentCustPackages]);
+
+  useEffect(() => {
+    if (!paymentEntry) return;
+    if (paymentMethod === 'Package' && paymentCustPackageId) return;
+    const gross = Number(paymentSubtotal) || 0;
     const sel = paymentDiscountId
       ? paymentDiscounts.find((d) => String(d.id) === String(paymentDiscountId))
       : null;
     const promo = sel ? computePromoFromDiscount(sel, gross) : 0;
     const net = Math.max(0, gross - promo);
     setPaymentAmount(net > 0 ? String(net) : '');
-  }, [paymentEntry, paymentServices, paymentDiscountId, paymentDiscounts, services, paymentMethod, paymentCustPackageId]);
+  }, [paymentEntry, paymentSubtotal, paymentDiscountId, paymentDiscounts, paymentMethod, paymentCustPackageId]);
   const applyPaymentPackage = (customerPackageId) => {
     if (!customerPackageId) {
       setPaymentCustPackageId('');
@@ -817,7 +866,7 @@ export default function WalkInPage() {
       const cp = paymentMethod === 'Package' && paymentCustPackageId
         ? paymentCustPackages.find((p) => String(p.id) === String(paymentCustPackageId))
         : null;
-      const subtotal = cp ? getPackageBundlePrice(cp) : calcServiceTotal(paymentServices);
+      const subtotal = cp ? getPackageBundlePrice(cp) : (Number(paymentSubtotal) || Number(paymentAmount) || 0);
       const collectAmount = cp
         ? (subtotal > 0 ? subtotal : Number(paymentAmount) || 0)
         : Number(paymentAmount);
@@ -1303,7 +1352,7 @@ export default function WalkInPage() {
 
   const branchName = branches.find((b) => String(b.id) === String(selectedBranch))?.name || '';
 
-  const paymentListTotal = calcServiceTotal(paymentServices);
+  const paymentListTotal = calcCustomServiceTotal(paymentServices);
   const paymentSelectedCp = paymentCustPackageId
     ? paymentCustPackages.find((p) => String(p.id) === String(paymentCustPackageId))
     : null;
@@ -1967,14 +2016,24 @@ export default function WalkInPage() {
               <div>
                 <div style={{ border: `1px solid ${isDark ? '#334155' : '#E5EAF0'}`, borderRadius: 12, overflow: 'hidden', background: isDark ? '#0F172A' : '#fff' }}>
                   {services.filter((s) => paymentServices.includes(Number(s.id))).map((s, idx, arr) => (
-                    <div key={s.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', borderBottom: idx !== arr.length - 1 ? `1px solid ${isDark ? '#334155' : '#EEF2F6'}` : 'none' }}>
+                    <div key={s.id} style={{ display: 'grid', gridTemplateColumns: paymentUsesPackage ? '1fr auto auto' : '1fr auto 110px', alignItems: 'center', gap: 10, padding: '10px 12px', borderBottom: idx !== arr.length - 1 ? `1px solid ${isDark ? '#334155' : '#EEF2F6'}` : 'none' }}>
                       <div style={{ fontSize: 14, fontWeight: 700, color: C.title }}>{s.name}</div>
                       <div style={{ fontSize: 12, color: C.muted, fontWeight: 600 }}>{s.duration_minutes || 30} min</div>
-                      <div style={{ fontSize: 16, color: '#059669', fontWeight: 800 }}>Rs. {Number(s.price || 0).toLocaleString()}</div>
+                      {paymentUsesPackage ? (
+                        <div style={{ fontSize: 16, color: '#059669', fontWeight: 800 }}>Rs. {Number(s.price || 0).toLocaleString()}</div>
+                      ) : (
+                        <Input
+                          type="number"
+                          value={paymentServicePrices[Number(s.id)] ?? Number(s.price || 0)}
+                          onChange={(e) => setWalkInServicePrice(s.id, e.target.value)}
+                          style={{ padding: '6px 8px', fontWeight: 700, color: '#059669', textAlign: 'right' }}
+                          title="Change this service price"
+                        />
+                      )}
                     </div>
                   ))}
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: isDark ? '#1E293B' : '#F8FAFC', borderTop: `1px solid ${isDark ? '#334155' : '#EEF2F6'}` }}>
-                    <span style={{ fontWeight: 700, color: C.title }}>{paymentUsesPackage ? 'List value' : 'Subtotal'}</span>
+                    <span style={{ fontWeight: 700, color: C.title }}>{paymentUsesPackage ? 'List value' : 'Services total'}</span>
                     <span style={{
                       fontSize: 16,
                       fontWeight: 800,
@@ -1984,6 +2043,18 @@ export default function WalkInPage() {
                       Rs. {paymentListTotal.toLocaleString()}
                     </span>
                   </div>
+                  {!paymentUsesPackage && (
+                    <div style={{ padding: '10px 12px', borderTop: `1px solid ${isDark ? '#334155' : '#EEF2F6'}` }}>
+                      <Label>Bill total (Rs.) — edit to charge a different price</Label>
+                      <Input
+                        type="number"
+                        value={paymentSubtotal}
+                        onChange={(e) => setPaymentSubtotal(e.target.value)}
+                        style={{ width: '100%', marginTop: 4 }}
+                        placeholder="0"
+                      />
+                    </div>
+                  )}
                   {paymentUsesPackage && paymentBundlePrice > 0 && (
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 12px', background: isDark ? '#172554' : '#EFF6FF', borderTop: `1px solid ${isDark ? '#334155' : '#EEF2F6'}` }}>
                       <span style={{ fontWeight: 600, color: isDark ? '#93C5FD' : '#1D4ED8', fontSize: 13 }}>Bundle price (final)</span>
@@ -1991,7 +2062,7 @@ export default function WalkInPage() {
                     </div>
                   )}
                   {!paymentUsesPackage && (() => {
-                    const g = calcServiceTotal(paymentServices);
+                    const g = Number(paymentSubtotal) || 0;
                     const sd = paymentDiscountId ? paymentDiscounts.find((d) => String(d.id) === String(paymentDiscountId)) : null;
                     const pr = sd ? computePromoFromDiscount(sd, g) : 0;
                     return pr > 0 ? (

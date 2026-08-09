@@ -1759,9 +1759,10 @@ class _PaySheetState extends State<_PaySheet> {
 
   String? _primaryServiceId;
   final List<String> _extraServiceIds = [];
+  late final TextEditingController _totalCtrl;
   late final TextEditingController _amtCtrl;
+  final Map<String, TextEditingController> _servicePriceCtrls = {};
   String _method = 'Cash';
-  String _calcTotal = '';
   String _discountId = '';
   String _mainStaffId = '';
   List<PaymentHelperDraft> _helpers = [];
@@ -1794,7 +1795,7 @@ class _PaySheetState extends State<_PaySheet> {
         a.amount > 0) {
       _packageOfferPrice = a.amount;
     }
-    _calcTotal = widget.initialAmount;
+    _totalCtrl = TextEditingController(text: widget.initialAmount);
     _amtCtrl = TextEditingController(text: widget.initialAmount);
     _mainStaffId = a.staffId;
     _isRecurring = a.isRecurring;
@@ -1961,8 +1962,8 @@ class _PaySheetState extends State<_PaySheet> {
         setPrimary: (v) => _primaryServiceId = v,
         extras: _extraServiceIds,
       );
-      _calcTotal = bundle > 0 ? bundle.toStringAsFixed(0) : '0';
-      _amtCtrl.text = _calcTotal;
+      _totalCtrl.text = bundle > 0 ? bundle.toStringAsFixed(0) : '0';
+      _amtCtrl.text = _totalCtrl.text;
       _linkingPackage = true;
     });
 
@@ -2001,8 +2002,8 @@ class _PaySheetState extends State<_PaySheet> {
           extras: _extraServiceIds,
         );
         _packageOfferPrice = bundle > 0 ? bundle : null;
-        _calcTotal = bundle > 0 ? bundle.toStringAsFixed(0) : '0';
-        _amtCtrl.text = _calcTotal;
+        _totalCtrl.text = bundle > 0 ? bundle.toStringAsFixed(0) : '0';
+        _amtCtrl.text = _totalCtrl.text;
       });
       if (_selectedPackageId.isEmpty) {
         AppToast.error(context, 'Could not link package to this customer.');
@@ -2046,7 +2047,12 @@ class _PaySheetState extends State<_PaySheet> {
 
   @override
   void dispose() {
+    _totalCtrl.dispose();
     _amtCtrl.dispose();
+    for (final c in _servicePriceCtrls.values) {
+      c.dispose();
+    }
+    _servicePriceCtrls.clear();
     super.dispose();
   }
 
@@ -2056,16 +2062,51 @@ class _PaySheetState extends State<_PaySheet> {
     return [p, ..._extraServiceIds];
   }
 
-  double _grossFromSelection() {
-    final offer = _packageOfferPrice;
-    if (offer != null && offer > 0) return offer;
-    var sum = 0.0;
-    for (final id in _orderedServiceIds()) {
-      for (final sv in widget.services) {
-        if (sv.id == id) sum += sv.price;
+  double _catalogPriceFor(String id) {
+    for (final sv in widget.services) {
+      if (sv.id == id) return sv.price;
+    }
+    return 0;
+  }
+
+  void _syncServicePriceCtrls({bool resetValues = false}) {
+    final ids = _orderedServiceIds();
+    for (final id in ids) {
+      final catalog = _catalogPriceFor(id);
+      final text = catalog > 0 ? catalog.toStringAsFixed(0) : '0';
+      if (!_servicePriceCtrls.containsKey(id)) {
+        _servicePriceCtrls[id] = TextEditingController(text: text);
+      } else if (resetValues) {
+        _servicePriceCtrls[id]!.text = text;
       }
     }
+    final stale = _servicePriceCtrls.keys
+        .where((k) => !ids.contains(k))
+        .toList();
+    for (final k in stale) {
+      _servicePriceCtrls.remove(k)?.dispose();
+    }
+  }
+
+  /// Package offer, else sum of per-service (editable) prices.
+  double _catalogGross() {
+    final offer = _packageOfferPrice;
+    if (offer != null && offer > 0) return offer;
+    _syncServicePriceCtrls();
+    var sum = 0.0;
+    for (final id in _orderedServiceIds()) {
+      sum += double.tryParse(_servicePriceCtrls[id]?.text.trim() ?? '') ?? 0;
+    }
     return sum;
+  }
+
+  /// Bill total staff can override (not locked to catalog).
+  double _billGross() {
+    final offer = _packageOfferPrice;
+    if (offer != null && offer > 0) return offer;
+    final typed = double.tryParse(_totalCtrl.text.trim());
+    if (typed != null && typed >= 0) return typed;
+    return _catalogGross();
   }
 
   double _computedPromo() {
@@ -2078,7 +2119,7 @@ class _PaySheetState extends State<_PaySheet> {
       }
     }
     if (d == null) return 0;
-    final total = _grossFromSelection();
+    final total = _billGross();
     final minBill = double.tryParse('${d['min_bill'] ?? 0}') ?? 0;
     if (total < minBill) return 0;
     final type = '${d['discount_type'] ?? 'percent'}';
@@ -2096,13 +2137,19 @@ class _PaySheetState extends State<_PaySheet> {
     return (off * 100).round() / 100;
   }
 
-  void _recalc() {
-    final gross = _grossFromSelection();
+  void _applyPaidFromBill({bool resetTotalFromCatalog = false}) {
+    if (resetTotalFromCatalog) {
+      _syncServicePriceCtrls(resetValues: true);
+      final catalog = _catalogGross();
+      _totalCtrl.text = catalog > 0 ? catalog.toStringAsFixed(0) : '';
+    } else {
+      _syncServicePriceCtrls();
+    }
+    final gross = _billGross();
     final promo = _computedPromo();
     final advance = widget.appointment.advancePaid;
     final net = (gross - promo - advance).clamp(0, double.infinity);
     setState(() {
-      _calcTotal = gross > 0 ? gross.toStringAsFixed(0) : '';
       if (gross > 0 || advance > 0) {
         _amtCtrl.text = net > 0 ? net.toStringAsFixed(0) : '0';
       } else {
@@ -2110,6 +2157,14 @@ class _PaySheetState extends State<_PaySheet> {
       }
     });
   }
+
+  void _onServicePriceEdited() {
+    final sum = _catalogGross();
+    _totalCtrl.text = sum > 0 ? sum.toStringAsFixed(0) : '';
+    _applyPaidFromBill();
+  }
+
+  void _recalc() => _applyPaidFromBill(resetTotalFromCatalog: true);
 
   void _confirm() {
     if (_linkingPackage) {
@@ -2151,15 +2206,16 @@ class _PaySheetState extends State<_PaySheet> {
       );
       return;
     }
-    final gross = (_packageOfferPrice != null && _packageOfferPrice! > 0)
-        ? _packageOfferPrice!
-        : _grossFromSelection();
+    final gross = _billGross();
     final promo = _computedPromo();
+    final totalText = _totalCtrl.text.trim().isNotEmpty
+        ? _totalCtrl.text.trim()
+        : (gross > 0 ? gross.toStringAsFixed(0) : '0');
     Navigator.of(context).pop(_PayResult(
       amount: _amtCtrl.text.trim().isEmpty ? '0' : _amtCtrl.text.trim(),
       method: _method,
       serviceIds: ids,
-      subtotal: gross > 0 ? gross.toStringAsFixed(0) : _calcTotal,
+      subtotal: totalText,
       discountId: _discountId,
       promoDiscount: promo.toStringAsFixed(2),
       isRecurring: widget.recurringAllowed && _isRecurring,
@@ -2329,7 +2385,7 @@ class _PaySheetState extends State<_PaySheet> {
                     ],
                   ),
                 ),
-                if (_calcTotal.isNotEmpty)
+                if (_totalCtrl.text.trim().isNotEmpty)
                   Container(
                     padding: const EdgeInsets.symmetric(
                         horizontal: 10, vertical: 6),
@@ -2337,7 +2393,7 @@ class _PaySheetState extends State<_PaySheet> {
                       color: _pGreen,
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    child: Text('LKR $_calcTotal',
+                    child: Text('LKR ${_totalCtrl.text.trim()}',
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 12,
@@ -2450,6 +2506,68 @@ class _PaySheetState extends State<_PaySheet> {
               mutedColor: const Color(0xFF6B7280),
             ),
 
+            if (_orderedServiceIds().isNotEmpty &&
+                !(_packageOfferPrice != null && _packageOfferPrice! > 0)) ...[
+              const SizedBox(height: 10),
+              _label('SERVICE PRICES (LKR)'),
+              ...() {
+                _syncServicePriceCtrls();
+                return _orderedServiceIds().map((id) {
+                  SalonService? svc;
+                  for (final s in widget.services) {
+                    if (s.id == id) {
+                      svc = s;
+                      break;
+                    }
+                  }
+                  final ctrl = _servicePriceCtrls[id]!;
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            svc?.name ?? 'Service',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 13.5,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFF111827),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        SizedBox(
+                          width: 110,
+                          child: TextField(
+                            controller: ctrl,
+                            keyboardType: TextInputType.number,
+                            textAlign: TextAlign.right,
+                            onChanged: (_) => _onServicePriceEdited(),
+                            decoration: _deco('Price', Icons.payments_outlined)
+                                .copyWith(
+                              contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 10, vertical: 10),
+                              prefixIcon: null,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                });
+              }(),
+              Text(
+                'Change each service price when you add it — total updates automatically.',
+                style: TextStyle(
+                  fontSize: 11.5,
+                  color: Colors.grey.shade600,
+                  height: 1.3,
+                ),
+              ),
+            ],
+
             const SizedBox(height: 14),
             _label('PROMO DISCOUNT'),
             DropdownButtonFormField<String>(
@@ -2474,35 +2592,28 @@ class _PaySheetState extends State<_PaySheet> {
               ],
               onChanged: (v) {
                 setState(() => _discountId = v ?? '');
-                _recalc();
+                _applyPaidFromBill(resetTotalFromCatalog: false);
               },
             ),
 
             const SizedBox(height: 14),
 
-            // ── Amount row ─────────────────────────────────────────────
+            // ── Amount row (bill total is editable — not locked to catalog) ─
             Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _label('TOTAL (LKR)'),
-                    Container(
-                      height: 50,
-                      decoration: BoxDecoration(
-                        color: _pGreenL,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: _pGreenB),
-                      ),
-                      child: Center(
-                        child: Text(
-                          _calcTotal.isNotEmpty ? _calcTotal : '—',
-                          style: TextStyle(
-                            color: _calcTotal.isNotEmpty
-                                ? _pGreen
-                                : const Color(0xFFADB5BD),
-                            fontSize: 16,
-                            fontWeight: FontWeight.w800)),
+                    TextField(
+                      controller: _totalCtrl,
+                      keyboardType: TextInputType.number,
+                      enabled: !(_packageOfferPrice != null &&
+                          _packageOfferPrice! > 0),
+                      onChanged: (_) => _applyPaidFromBill(),
+                      decoration: _deco(
+                        'Change price if needed',
+                        Icons.receipt_long_rounded,
                       ),
                     ),
                   ],
@@ -2523,6 +2634,15 @@ class _PaySheetState extends State<_PaySheet> {
                 ),
               ),
             ]),
+            const SizedBox(height: 6),
+            Text(
+              'Service list prices are suggestions — edit Total to charge a different amount.',
+              style: TextStyle(
+                fontSize: 11.5,
+                color: Colors.grey.shade600,
+                height: 1.3,
+              ),
+            ),
 
             const SizedBox(height: 14),
 

@@ -149,6 +149,7 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
   final _totalAmountCtrl       = TextEditingController();
   final _paidAmountCtrl        = TextEditingController();
   final _newPhoneCtrl          = TextEditingController();
+  final Map<String, TextEditingController> _servicePriceCtrls = {};
 
   String? _branchId;
   String _customerId = '';
@@ -525,6 +526,10 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
     _totalAmountCtrl.dispose();
     _paidAmountCtrl.dispose();
     _newPhoneCtrl.dispose();
+    for (final c in _servicePriceCtrls.values) {
+      c.dispose();
+    }
+    _servicePriceCtrls.clear();
     super.dispose();
   }
 
@@ -569,21 +574,50 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
     return [p, ..._extraServiceIds];
   }
 
-  void _recalcTotal() {
+  double _catalogPriceFor(String id) {
+    for (final s in widget.services) {
+      if (s.id == id) return s.price;
+    }
+    return 0;
+  }
+
+  void _syncServicePriceCtrls({bool resetValues = false}) {
+    final ids = _orderedServiceIds();
+    for (final id in ids) {
+      final catalog = _catalogPriceFor(id);
+      final text = catalog > 0 ? catalog.toStringAsFixed(0) : '0';
+      if (!_servicePriceCtrls.containsKey(id)) {
+        _servicePriceCtrls[id] = TextEditingController(text: text);
+      } else if (resetValues) {
+        _servicePriceCtrls[id]!.text = text;
+      }
+    }
+    final stale =
+        _servicePriceCtrls.keys.where((k) => !ids.contains(k)).toList();
+    for (final k in stale) {
+      _servicePriceCtrls.remove(k)?.dispose();
+    }
+  }
+
+  void _recalcTotal({bool resetLinePrices = true}) {
     final offer = _packageOfferPrice;
     if (offer != null && offer > 0) {
       _totalAmountCtrl.text = offer.toStringAsFixed(0);
       _applyNetToPaid();
       return;
     }
+    _syncServicePriceCtrls(resetValues: resetLinePrices);
     var total = 0.0;
     for (final id in _orderedServiceIds()) {
-      for (final s in widget.services) {
-        if (s.id == id) total += s.price;
-      }
+      total += double.tryParse(_servicePriceCtrls[id]?.text.trim() ?? '') ?? 0;
     }
     _totalAmountCtrl.text = total > 0 ? total.toStringAsFixed(0) : '';
     _applyNetToPaid();
+  }
+
+  void _onServicePriceEdited() {
+    _recalcTotal(resetLinePrices: false);
+    setState(() {});
   }
 
   Future<void> _doRegister() async {
@@ -1184,6 +1218,60 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
                 mutedColor: const Color(0xFF6B7280),
               ),
 
+              if (_orderedServiceIds().isNotEmpty &&
+                  !(_packageOfferPrice != null && _packageOfferPrice! > 0)) ...[
+                const SizedBox(height: 10),
+                _label('SERVICE PRICES (LKR)'),
+                ...() {
+                  _syncServicePriceCtrls();
+                  return _orderedServiceIds().map((id) {
+                    SalonService? svc;
+                    for (final s in widget.services) {
+                      if (s.id == id) {
+                        svc = s;
+                        break;
+                      }
+                    }
+                    final ctrl = _servicePriceCtrls[id]!;
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              svc?.name ?? 'Service',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 13.5,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF111827),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          SizedBox(
+                            width: 110,
+                            child: TextField(
+                              controller: ctrl,
+                              keyboardType: TextInputType.number,
+                              textAlign: TextAlign.right,
+                              onChanged: (_) => _onServicePriceEdited(),
+                              decoration: _deco('Price', Icons.payments_outlined)
+                                  .copyWith(
+                                contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 10, vertical: 10),
+                                prefixIcon: null,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  });
+                }(),
+              ],
+
               const SizedBox(height: 12),
 
               // ── Amount row ───────────────────────────────────────────
@@ -1197,7 +1285,7 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
                         controller: _totalAmountCtrl,
                         keyboardType: TextInputType.number,
                         decoration: _deco(
-                            'Total', Icons.receipt_long_rounded),
+                            'Change price if needed', Icons.receipt_long_rounded),
                         onChanged: (_) => setState(_applyNetToPaid),
                         validator: (v) {
                           if (_orderedServiceIds().isEmpty) {
@@ -1211,6 +1299,15 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
                           }
                           return null;
                         },
+                      ),
+                      const SizedBox(height: 4),
+                      const Text(
+                        'List prices are suggestions — edit Total to charge a different amount.',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Color(0xFF6B7280),
+                          height: 1.25,
+                        ),
                       ),
                     ],
                   ),

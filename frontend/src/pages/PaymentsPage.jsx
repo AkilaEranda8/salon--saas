@@ -728,6 +728,7 @@ export default function PaymentsPage() {
   const [showInvoice, setShowInvoice] = useState(false);
   const [invoiceItem, setInvoiceItem] = useState(null);
   const [form, setForm]           = useState(EMPTY_FORM);
+  const [servicePrices, setServicePrices] = useState({});
   const [saving, setSaving]       = useState(false);
   const [formErr, setFormErr]     = useState('');
   const [qrModal, setQrModal]     = useState(null); // { amount, reference, splitIdx }
@@ -848,6 +849,7 @@ export default function PaymentsPage() {
     setCustPackages([]);
     setFormPackageId('');
     setFormHelpers([]);
+    setServicePrices({});
     setShowForm(true);
   };
   const applyFormPackage = (packageId) => {
@@ -1369,29 +1371,74 @@ export default function PaymentsPage() {
 
           {/* Right column */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            <PaySection title="Services" desc="Select one or more services — total auto-calculates" dark={isDark}>
+            <PaySection title="Services" desc="Select services — change each service price after adding" dark={isDark}>
               <ServiceMultiSelect
                 dark={isDark}
                 services={services.filter(s => s.is_active !== false)}
                 selected={form.service_ids}
                 onChange={ids => {
-                  const svcs = services.filter(s => ids.includes(Number(s.id)));
-                  const total = svcs.reduce((sum, s) => sum + Number(s.price || 0), 0);
                   if (formPackageId) return;
-                  setForm(f => ({
-                    ...f,
-                    service_ids: ids,
-                    total_amount: total > 0 ? String(total) : '',
-                    splits: total > 0 && f.splits.length === 1
-                      ? [{ ...f.splits[0], amount: String(total) }]
-                      : f.splits,
-                  }));
+                  setServicePrices((prev) => {
+                    const next = {};
+                    ids.forEach((sid) => {
+                      const key = Number(sid);
+                      if (prev[key] !== undefined && prev[key] !== null && prev[key] !== '') {
+                        next[key] = prev[key];
+                      } else {
+                        const s = services.find((x) => Number(x.id) === key);
+                        next[key] = Number(s?.price || 0);
+                      }
+                    });
+                    const total = ids.reduce((sum, sid) => sum + (Number(next[Number(sid)]) || 0), 0);
+                    setForm((f) => ({
+                      ...f,
+                      service_ids: ids,
+                      total_amount: total > 0 ? String(total) : '',
+                      splits: total > 0 && f.splits.length === 1
+                        ? [{ ...f.splits[0], amount: String(total) }]
+                        : f.splits,
+                    }));
+                    return next;
+                  });
                 }}
               />
+              {!formPackageId && form.service_ids.length > 0 && (
+                <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {form.service_ids.map((sid) => {
+                    const s = services.find((x) => Number(x.id) === Number(sid));
+                    if (!s) return null;
+                    return (
+                      <div key={sid} style={{ display: 'grid', gridTemplateColumns: '1fr 120px', gap: 10, alignItems: 'center' }}>
+                        <span style={{ fontSize: 13, fontWeight: 600, color: isDark ? '#E2E8F0' : '#0F172A' }}>{s.name}</span>
+                        <Input
+                          type="number"
+                          value={servicePrices[Number(sid)] ?? Number(s.price || 0)}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setServicePrices((prev) => {
+                              const next = { ...prev, [Number(sid)]: val };
+                              const total = form.service_ids.reduce((sum, id) => sum + (Number(next[Number(id)]) || 0), 0);
+                              setForm((f) => ({
+                                ...f,
+                                total_amount: total > 0 ? String(total) : '',
+                                splits: f.splits.length === 1
+                                  ? [{ ...f.splits[0], amount: total > 0 ? String(total) : f.splits[0].amount }]
+                                  : f.splits,
+                              }));
+                              return next;
+                            });
+                          }}
+                          style={{ textAlign: 'right', fontWeight: 700, color: '#059669' }}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
               {form.service_ids.length > 0 && (
                 <div style={{
                   display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8,
-                  padding: '10px 12px', borderRadius: 10,
+                  padding: '10px 12px', borderRadius: 10, marginTop: 10,
                   background: isDark ? 'rgba(5,150,105,0.12)' : '#ECFDF5',
                   border: `1px solid ${isDark ? '#065F46' : '#6EE7B7'}`,
                 }}>
@@ -1414,14 +1461,14 @@ export default function PaymentsPage() {
                         Bundle {formatPackageBillAmount(packageBundlePrice)}
                       </>
                     ) : (
-                      <>Rs. {serviceListTotal.toLocaleString()}</>
+                      <>Rs. {Number(form.total_amount || 0).toLocaleString()}</>
                     )}
                   </span>
                 </div>
               )}
             </PaySection>
 
-            <PaySection title="Amount & Discounts" desc="Bill total, loyalty points, and promo codes" dark={isDark}>
+            <PaySection title="Amount & Discounts" desc="Edit bill total to charge any price — not locked to catalog" dark={isDark}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 <FormGroup label={formPackageId ? 'Bundle price (Rs.)' : 'Total Amount (Rs.)'} required>
                   <Input
@@ -1429,6 +1476,7 @@ export default function PaymentsPage() {
                     value={formPackageId ? String(packageBundlePrice || 0) : (form.total_amount || '')}
                     onChange={e => setForm(f => ({ ...f, total_amount: e.target.value }))}
                     disabled={!!formPackageId}
+                    placeholder="Change price if needed"
                   />
                 </FormGroup>
                 <FormGroup label="Loyalty Discount (Rs.)">

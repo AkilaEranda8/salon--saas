@@ -589,10 +589,12 @@ export default function AppointmentsPage() {
   const [paymentAppt, setPaymentAppt]     = useState(null);
   const [paymentMethod, setPaymentMethod] = useState('Cash');
   const [paymentAmt, setPaymentAmt]       = useState('');
+  const [paymentSubtotal, setPaymentSubtotal] = useState('');
   const [paymentSaving, setPaymentSaving] = useState(false);
   const [paymentErr, setPaymentErr]       = useState('');
   const [paymentOk, setPaymentOk]         = useState(false);
   const [paymentServices, setPaymentServices] = useState([]);
+  const [paymentServicePrices, setPaymentServicePrices] = useState({});
   const [paymentDiscountId, setPaymentDiscountId] = useState('');
   const [paymentDiscounts, setPaymentDiscounts] = useState([]);
   const [paymentRecurring, setPaymentRecurring] = useState(false);
@@ -740,6 +742,28 @@ export default function AppointmentsPage() {
   }, [showForm, form.branch_id, user?.branch_id]);
 
   const calcServiceTotal = (ids) => ids.reduce((sum, sid) => { const s = services.find(x => Number(x.id) === Number(sid)); return sum + Number(s?.price || 0); }, 0);
+  const calcCustomServiceTotal = (ids, priceMap = paymentServicePrices) => ids.reduce((sum, sid) => {
+    const key = Number(sid);
+    const override = priceMap[key];
+    if (override !== undefined && override !== null && override !== '') {
+      return sum + (Number(override) || 0);
+    }
+    const s = services.find((x) => Number(x.id) === key);
+    return sum + Number(s?.price || 0);
+  }, 0);
+  const seedServicePrices = (ids, prev = {}) => {
+    const next = {};
+    ids.forEach((sid) => {
+      const key = Number(sid);
+      if (prev[key] !== undefined && prev[key] !== null && prev[key] !== '') {
+        next[key] = prev[key];
+      } else {
+        const s = services.find((x) => Number(x.id) === key);
+        next[key] = Number(s?.price || 0);
+      }
+    });
+    return next;
+  };
   const getBookingBundlePrice = () => {
     if (bookingCustPackageId) {
       return getPackageBundlePrice(bookingCustPackages.find((cp) => String(cp.id) === String(bookingCustPackageId)));
@@ -781,6 +805,7 @@ export default function AppointmentsPage() {
     );
     const ids = getInitialPaymentServiceIds(sourceRow, services);
     setPaymentServices(ids);
+    setPaymentServicePrices(seedServicePrices(ids));
     setPaymentMethod('Cash');
     setPaymentDiscountId('');
     setPaymentErr('');
@@ -829,6 +854,18 @@ export default function AppointmentsPage() {
     const nid = Number(id);
     setPaymentServices((prev) => {
       const next = prev.includes(nid) ? prev.filter((x) => x !== nid) : [...prev, nid];
+      setPaymentServicePrices((prices) => seedServicePrices(next, prices));
+      return next;
+    });
+  };
+  const setPaymentServicePrice = (id, value) => {
+    const key = Number(id);
+    setPaymentServicePrices((prev) => {
+      const next = { ...prev, [key]: value };
+      if (!(paymentMethod === 'Package' && paymentCustPackageId)) {
+        const total = calcCustomServiceTotal(paymentServices, next);
+        setPaymentSubtotal(total > 0 ? String(total) : '');
+      }
       return next;
     });
   };
@@ -840,10 +877,22 @@ export default function AppointmentsPage() {
       const bundle = getPackageBundlePrice(cp);
       const alreadyPaid = Number(paymentAppt.advance_paid || paymentAppt.amount_paid || 0);
       const due = Math.max(0, (bundle > 0 ? bundle : 0) - alreadyPaid);
+      setPaymentSubtotal(bundle > 0 ? String(bundle) : '');
       setPaymentAmt(String(due));
       return;
     }
-    const gross = calcServiceTotal(paymentServices);
+    setPaymentServicePrices((prev) => {
+      const seeded = seedServicePrices(paymentServices, prev);
+      const total = calcCustomServiceTotal(paymentServices, seeded);
+      setPaymentSubtotal(total > 0 ? String(total) : '');
+      return seeded;
+    });
+  }, [showPayment, paymentAppt, paymentServices, paymentMethod, paymentCustPackageId, paymentCustPackages]);
+
+  useEffect(() => {
+    if (!showPayment || !paymentAppt) return;
+    if (paymentMethod === 'Package' && paymentCustPackageId) return;
+    const gross = Number(paymentSubtotal) || 0;
     const sel = paymentDiscountId
       ? paymentDiscounts.find((d) => String(d.id) === String(paymentDiscountId))
       : null;
@@ -851,7 +900,7 @@ export default function AppointmentsPage() {
     const alreadyPaid = Number(paymentAppt.advance_paid || paymentAppt.amount_paid || 0);
     const net = Math.max(0, gross - promo - alreadyPaid);
     setPaymentAmt(net > 0 ? String(net) : (alreadyPaid > 0 ? '0' : ''));
-  }, [showPayment, paymentAppt, paymentServices, paymentDiscountId, paymentDiscounts, services, paymentMethod, paymentCustPackageId]);
+  }, [showPayment, paymentAppt, paymentSubtotal, paymentDiscountId, paymentDiscounts, paymentMethod, paymentCustPackageId]);
   const handlePayment = async () => {
     if (paymentAppt?.status !== 'in_service') {
       return setPaymentErr('Payment can be collected only when status is In Service.');
@@ -883,7 +932,7 @@ export default function AppointmentsPage() {
     try {
       const subtotal = paymentMethod === 'Package' && paymentCustPackageId
         ? getPackageBundlePrice(paymentCustPackages.find((p) => String(p.id) === String(paymentCustPackageId)))
-        : calcServiceTotal(paymentServices);
+        : (Number(paymentSubtotal) || Number(paymentAmt) || 0);
       const collectNow = Number(paymentAmt) || 0;
       const alreadyPaidAmt = Number(paymentAppt.advance_paid || 0);
       const settleAdvance = alreadyPaidAmt > 0;
@@ -1599,7 +1648,7 @@ export default function AppointmentsPage() {
 
   const bookingUsesPackage = !!(bookingPackageTemplateId || bookingCustPackageId);
   const bookingBundlePrice = getBookingBundlePrice();
-  const paymentListTotal = calcServiceTotal(paymentServices);
+  const paymentListTotal = calcCustomServiceTotal(paymentServices);
   const paymentSelectedCp = paymentCustPackageId
     ? paymentCustPackages.find((p) => String(p.id) === String(paymentCustPackageId))
     : null;
@@ -2706,12 +2755,24 @@ export default function AppointmentsPage() {
                     }
                     return filtered.map((s, idx, arr) => {
                       const active = paymentServices.includes(Number(s.id));
+                      const priceVal = paymentServicePrices[Number(s.id)];
                       return (
-                        <label key={s.id} style={{ display:'grid', gridTemplateColumns:'24px 1fr auto', alignItems:'center', gap:10, padding:'9px 12px', borderBottom:idx!==arr.length-1?`1px solid ${isDark?'#334155':'#EEF2F6'}`:'none', background:active?(isDark?'#1e3a5f':'#F0F9FF'):'transparent', cursor:'pointer' }}>
-                          <input type="checkbox" checked={active} onChange={() => togglePaymentService(s.id)} style={{ width:16, height:16, accentColor:'#2563EB' }} />
+                        <div key={s.id} style={{ display:'grid', gridTemplateColumns: active ? '24px 1fr 110px' : '24px 1fr auto', alignItems:'center', gap:10, padding:'9px 12px', borderBottom:idx!==arr.length-1?`1px solid ${isDark?'#334155':'#EEF2F6'}`:'none', background:active?(isDark?'#1e3a5f':'#F0F9FF'):'transparent' }}>
+                          <input type="checkbox" checked={active} onChange={() => togglePaymentService(s.id)} style={{ width:16, height:16, accentColor:'#2563EB', cursor:'pointer' }} />
                           <span style={{ fontSize:14, color:isDark?'#E2E8F0':'#0F172A', fontWeight:active?700:500 }}>{s.name}</span>
-                          <span style={{ fontSize:14, color:'#059669', fontWeight:800 }}>Rs.{Number(s.price||0).toLocaleString()}</span>
-                        </label>
+                          {active && !(paymentMethod === 'Package' && paymentCustPackageId) ? (
+                            <Input
+                              type="number"
+                              value={priceVal ?? Number(s.price || 0)}
+                              onChange={(e) => setPaymentServicePrice(s.id, e.target.value)}
+                              onClick={(e) => e.stopPropagation()}
+                              style={{ padding: '6px 8px', fontWeight: 700, color: '#059669', textAlign: 'right' }}
+                              title="Change this service price"
+                            />
+                          ) : (
+                            <span style={{ fontSize:14, color:'#059669', fontWeight:800 }}>Rs.{Number(s.price||0).toLocaleString()}</span>
+                          )}
+                        </div>
                       );
                     });
                   })()}
@@ -2719,17 +2780,31 @@ export default function AppointmentsPage() {
                 {paymentServices.length===0 && <div style={{ fontSize:12, color:'#DC2626', marginTop:4 }}>Select at least one service</div>}
               </FormGroup>
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14, alignItems:'start' }}>
-                <FormGroup label={paymentUsesPackage ? 'Bundle price (Rs.)' : 'Subtotal (Rs.)'}>
-                  <div style={{ padding:'10px 12px', background:isDark?'#1E293B':'#F9FAFB', borderRadius:10, border:`1px solid ${isDark?'#334155':'#E5E7EB'}` }}>
-                    {paymentUsesPackage && paymentListTotal > 0 && (
-                      <div style={{ fontSize: 11, color: isDark ? '#94A3B8' : '#64748B', textDecoration: 'line-through', marginBottom: 4 }}>
-                        List Rs. {paymentListTotal.toLocaleString()}
+                <FormGroup label={paymentUsesPackage ? 'Bundle price (Rs.)' : 'Bill total (Rs.)'} required>
+                  {paymentUsesPackage ? (
+                    <div style={{ padding:'10px 12px', background:isDark?'#1E293B':'#F9FAFB', borderRadius:10, border:`1px solid ${isDark?'#334155':'#E5E7EB'}` }}>
+                      {paymentListTotal > 0 && (
+                        <div style={{ fontSize: 11, color: isDark ? '#94A3B8' : '#64748B', textDecoration: 'line-through', marginBottom: 4 }}>
+                          List Rs. {paymentListTotal.toLocaleString()}
+                        </div>
+                      )}
+                      <div style={{ fontWeight:800, color:'#059669' }}>
+                        Rs. {paymentBundlePrice.toLocaleString()}
                       </div>
-                    )}
-                    <div style={{ fontWeight:800, color:'#059669' }}>
-                      Rs. {(paymentUsesPackage ? paymentBundlePrice : paymentListTotal).toLocaleString()}
                     </div>
-                  </div>
+                  ) : (
+                    <>
+                      <Input
+                        type="number"
+                        value={paymentSubtotal}
+                        onChange={(e) => setPaymentSubtotal(e.target.value)}
+                        placeholder="0"
+                      />
+                      <div style={{ fontSize: 11, color: isDark ? '#94A3B8' : '#64748B', marginTop: 6 }}>
+                        Edit each selected service price above, or change the bill total here.
+                      </div>
+                    </>
+                  )}
                 </FormGroup>
                 {paymentDiscounts.length > 0 && paymentMethod !== 'Package' && !paymentCustPackageId && (
                   <FormGroup label="Promo discount">

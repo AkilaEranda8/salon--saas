@@ -159,7 +159,9 @@ class _AddWalkInPaymentModalState extends State<AddWalkInPaymentModal> {
   };
 
   final _formKey = GlobalKey<FormState>();
+  late final TextEditingController _totalCtrl;
   late final TextEditingController _amtCtrl;
+  final Map<String, TextEditingController> _servicePriceCtrls = {};
   String _method = 'Cash';
   String _discountId = '';
 
@@ -195,6 +197,9 @@ class _AddWalkInPaymentModalState extends State<AddWalkInPaymentModal> {
     if (hasPkgHint && initialOffer != null && initialOffer > 0) {
       _packageOfferPrice = initialOffer;
     }
+    _totalCtrl = TextEditingController(
+      text: initial.isNotEmpty ? initial : '0',
+    );
     _amtCtrl = TextEditingController(
       text: initial.isNotEmpty ? initial : '0',
     );
@@ -324,6 +329,7 @@ class _AddWalkInPaymentModalState extends State<AddWalkInPaymentModal> {
         );
       }
       if (bundle > 0) {
+        _totalCtrl.text = bundle.toStringAsFixed(0);
         _amtCtrl.text = bundle.toStringAsFixed(0);
       }
     });
@@ -361,7 +367,8 @@ class _AddWalkInPaymentModalState extends State<AddWalkInPaymentModal> {
         setPrimary: (v) => _primaryServiceId = v,
         extras: _extraServiceIds,
       );
-      _amtCtrl.text = bundle > 0 ? bundle.toStringAsFixed(0) : '0';
+      _totalCtrl.text = bundle > 0 ? bundle.toStringAsFixed(0) : '0';
+      _amtCtrl.text = _totalCtrl.text;
       _linkingPackage = true;
     });
 
@@ -398,7 +405,8 @@ class _AddWalkInPaymentModalState extends State<AddWalkInPaymentModal> {
           extras: _extraServiceIds,
         );
         _packageOfferPrice = bundle > 0 ? bundle : null;
-        _amtCtrl.text = bundle > 0 ? bundle.toStringAsFixed(0) : '0';
+        _totalCtrl.text = bundle > 0 ? bundle.toStringAsFixed(0) : '0';
+        _amtCtrl.text = _totalCtrl.text;
       });
       if (_selectedPackageId.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -472,19 +480,48 @@ class _AddWalkInPaymentModalState extends State<AddWalkInPaymentModal> {
     return [p, ..._extraServiceIds];
   }
 
-  double _totalSelectedAmount() {
-    final offer = _packageOfferPrice;
-    if (offer != null && offer > 0) return offer;
-    var sum = 0.0;
-    for (final id in _orderedSelectedServiceIds()) {
-      for (final s in widget.services) {
-        if (s.id == id) {
-          sum += s.price;
-          break;
-        }
+  double _catalogPriceFor(String id) {
+    for (final s in widget.services) {
+      if (s.id == id) return s.price;
+    }
+    return 0;
+  }
+
+  void _syncServicePriceCtrls({bool resetValues = false}) {
+    final ids = _orderedSelectedServiceIds();
+    for (final id in ids) {
+      final catalog = _catalogPriceFor(id);
+      final text = catalog > 0 ? catalog.toStringAsFixed(0) : '0';
+      if (!_servicePriceCtrls.containsKey(id)) {
+        _servicePriceCtrls[id] = TextEditingController(text: text);
+      } else if (resetValues) {
+        _servicePriceCtrls[id]!.text = text;
       }
     }
+    final stale =
+        _servicePriceCtrls.keys.where((k) => !ids.contains(k)).toList();
+    for (final k in stale) {
+      _servicePriceCtrls.remove(k)?.dispose();
+    }
+  }
+
+  double _catalogSelectedAmount() {
+    final offer = _packageOfferPrice;
+    if (offer != null && offer > 0) return offer;
+    _syncServicePriceCtrls();
+    var sum = 0.0;
+    for (final id in _orderedSelectedServiceIds()) {
+      sum += double.tryParse(_servicePriceCtrls[id]?.text.trim() ?? '') ?? 0;
+    }
     return sum;
+  }
+
+  double _billGross() {
+    final offer = _packageOfferPrice;
+    if (offer != null && offer > 0) return offer;
+    final typed = double.tryParse(_totalCtrl.text.trim());
+    if (typed != null && typed >= 0) return typed;
+    return _catalogSelectedAmount();
   }
 
   double _computedPromo() {
@@ -497,7 +534,7 @@ class _AddWalkInPaymentModalState extends State<AddWalkInPaymentModal> {
       }
     }
     if (d == null) return 0;
-    final total = _totalSelectedAmount();
+    final total = _billGross();
     final minBill = double.tryParse('${d['min_bill'] ?? 0}') ?? 0;
     if (total < minBill) return 0;
     final type = '${d['discount_type'] ?? 'percent'}';
@@ -515,22 +552,38 @@ class _AddWalkInPaymentModalState extends State<AddWalkInPaymentModal> {
     return (off * 100).round() / 100;
   }
 
-  void _syncAmountFromServices() {
+  void _syncAmountFromServices({bool resetTotalFromCatalog = true}) {
     final offer = _packageOfferPrice;
     if (offer != null && offer > 0) {
+      _totalCtrl.text = offer.toStringAsFixed(0);
       final promo = _computedPromo();
       final net = (offer - promo).clamp(0, double.infinity);
       _amtCtrl.text = net > 0 ? net.toStringAsFixed(0) : '0';
       return;
     }
-    if (_orderedSelectedServiceIds().isEmpty) {
-      _amtCtrl.text = '0';
-      return;
+    if (resetTotalFromCatalog) {
+      _syncServicePriceCtrls(resetValues: true);
+      if (_orderedSelectedServiceIds().isEmpty) {
+        _totalCtrl.text = '0';
+        _amtCtrl.text = '0';
+        return;
+      }
+      final catalog = _catalogSelectedAmount();
+      _totalCtrl.text = catalog > 0 ? catalog.toStringAsFixed(0) : '0';
+    } else {
+      _syncServicePriceCtrls();
     }
-    final gross = _totalSelectedAmount();
+    final gross = _billGross();
     final promo = _computedPromo();
     final net = (gross - promo).clamp(0, double.infinity);
     _amtCtrl.text = net > 0 ? net.toStringAsFixed(0) : '';
+  }
+
+  void _onServicePriceEdited() {
+    final sum = _catalogSelectedAmount();
+    _totalCtrl.text = sum > 0 ? sum.toStringAsFixed(0) : '0';
+    setState(() {});
+    _syncAmountFromServices(resetTotalFromCatalog: false);
   }
 
   void _removeExtraAt(int index) {
@@ -572,7 +625,12 @@ class _AddWalkInPaymentModalState extends State<AddWalkInPaymentModal> {
 
   @override
   void dispose() {
+    _totalCtrl.dispose();
     _amtCtrl.dispose();
+    for (final c in _servicePriceCtrls.values) {
+      c.dispose();
+    }
+    _servicePriceCtrls.clear();
     super.dispose();
   }
 
@@ -617,14 +675,15 @@ class _AddWalkInPaymentModalState extends State<AddWalkInPaymentModal> {
       );
       return;
     }
-    final gross = (_packageOfferPrice != null && _packageOfferPrice! > 0)
-        ? _packageOfferPrice!
-        : _totalSelectedAmount();
+    final gross = _billGross();
     final promo  = _computedPromo();
+    final totalText = _totalCtrl.text.trim().isNotEmpty
+        ? _totalCtrl.text.trim()
+        : (gross > 0 ? gross.toStringAsFixed(0) : '0');
     final result = AddWalkInPaymentModalResult(
       method:          _method,
       amount:          _amtCtrl.text.trim(),
-      subtotal:        gross > 0 ? gross.toStringAsFixed(0) : '0',
+      subtotal:        totalText,
       discountId:      _discountId,
       serviceIds:      List<String>.from(_orderedSelectedServiceIds()),
       loyaltyDiscount: '0',
@@ -845,6 +904,84 @@ class _AddWalkInPaymentModalState extends State<AddWalkInPaymentModal> {
                 mutedColor: _pMuted,
               ),
 
+              if (_orderedSelectedServiceIds().isNotEmpty &&
+                  !(_packageOfferPrice != null && _packageOfferPrice! > 0)) ...[
+                const SizedBox(height: 12),
+                _label('SERVICE PRICES (LKR)'),
+                ...() {
+                  _syncServicePriceCtrls();
+                  return _orderedSelectedServiceIds().map((id) {
+                    SalonService? svc;
+                    for (final s in widget.services) {
+                      if (s.id == id) {
+                        svc = s;
+                        break;
+                      }
+                    }
+                    final ctrl = _servicePriceCtrls[id]!;
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              svc?.name ?? 'Service',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 13.5,
+                                fontWeight: FontWeight.w600,
+                                color: _pInk,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          SizedBox(
+                            width: 110,
+                            child: TextField(
+                              controller: ctrl,
+                              keyboardType: TextInputType.number,
+                              textAlign: TextAlign.right,
+                              onChanged: (_) => _onServicePriceEdited(),
+                              decoration: InputDecoration(
+                                hintText: 'Price',
+                                hintStyle: const TextStyle(
+                                    color: Color(0xFFB0B8B0), fontSize: 13),
+                                filled: true,
+                                fillColor: _pBg,
+                                contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 10, vertical: 10),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                  borderSide: const BorderSide(color: _pBorder),
+                                ),
+                                enabledBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                  borderSide: const BorderSide(color: _pBorder),
+                                ),
+                                focusedBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                  borderSide: const BorderSide(
+                                      color: _pGreen, width: 1.8),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  });
+                }(),
+                const Text(
+                  'Change each service price when you add it — total updates automatically.',
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    color: Color(0xFF6B7280),
+                    height: 1.3,
+                  ),
+                ),
+              ],
+
               const SizedBox(height: 18),
               _label('DISCOUNT'),
               DropdownButtonFormField<String>(
@@ -891,11 +1028,76 @@ class _AddWalkInPaymentModalState extends State<AddWalkInPaymentModal> {
                   ],
                   onChanged: (v) {
                     setState(() => _discountId = v ?? '');
-                    _syncAmountFromServices();
+                    _syncAmountFromServices(resetTotalFromCatalog: false);
                   },
                 ),
 
               const SizedBox(height: 18),
+
+              _label('TOTAL (LKR)'),
+              TextFormField(
+                controller: _totalCtrl,
+                keyboardType: TextInputType.number,
+                enabled: !(_packageOfferPrice != null &&
+                    _packageOfferPrice! > 0),
+                onChanged: (_) {
+                  setState(() {});
+                  _syncAmountFromServices(resetTotalFromCatalog: false);
+                },
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: _pInk,
+                ),
+                decoration: InputDecoration(
+                  hintText: 'Change price if needed',
+                  hintStyle:
+                      const TextStyle(color: Color(0xFFB0B8B0), fontSize: 14),
+                  prefixIcon: const Icon(Icons.receipt_long_rounded,
+                      color: _pGreen, size: 20),
+                  filled: true,
+                  fillColor: _pBg,
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: _pBorder),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: _pBorder),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: _pGreen, width: 1.8),
+                  ),
+                  disabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: _pBorder),
+                  ),
+                ),
+                validator: (v) {
+                  if (_orderedSelectedServiceIds().isEmpty) {
+                    return 'Select a service';
+                  }
+                  if (v == null || v.trim().isEmpty) return 'Required';
+                  if ((double.tryParse(v.trim()) ?? 0) <= 0) {
+                    return 'Enter a valid amount';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                'Service list prices are suggestions — edit Total to charge a different amount.',
+                style: TextStyle(
+                  fontSize: 11.5,
+                  color: Color(0xFF6B7280),
+                  height: 1.3,
+                ),
+              ),
+
+              const SizedBox(height: 14),
 
               _label('PAID (LKR)'),
               TextFormField(

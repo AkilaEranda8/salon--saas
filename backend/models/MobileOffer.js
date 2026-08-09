@@ -24,6 +24,22 @@ const MobileOffer = sequelize.define('MobileOffer', {
     type: DataTypes.STRING(500),
     allowNull: true,
   },
+  category: {
+    type: DataTypes.STRING(80),
+    allowNull: true,
+  },
+  badge_text: {
+    type: DataTypes.STRING(40),
+    allowNull: true,
+  },
+  original_price: {
+    type: DataTypes.DECIMAL(10, 2),
+    allowNull: true,
+  },
+  offer_price: {
+    type: DataTypes.DECIMAL(10, 2),
+    allowNull: true,
+  },
   starts_at: {
     type: DataTypes.DATEONLY,
     allowNull: true,

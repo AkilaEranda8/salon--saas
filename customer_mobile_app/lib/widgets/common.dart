@@ -206,47 +206,151 @@ class ServiceTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final name = '${service.name}';
     final mins = service.durationMinutes as int? ?? 30;
-    final desc = service.description as String?;
+    final imageUrl = service.imageUrl?.toString();
+    final price = service.price is num
+        ? (service.price as num).toDouble()
+        : double.tryParse('${service.price ?? ''}');
+    final category = '${service.category ?? ''}';
 
     return Material(
-      color: selected ? AppColors.blushSoft : Colors.white,
-      borderRadius: BorderRadius.circular(18),
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(20),
+      clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(18),
-        child: Container(
-          padding: const EdgeInsets.all(16),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(18),
+            borderRadius: BorderRadius.circular(20),
             border: Border.all(
               color: selected ? AppColors.blush : AppColors.line,
-              width: selected ? 1.5 : 1,
+              width: selected ? 2 : 1,
             ),
           ),
-          child: Row(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                flex: 5,
+                child: Stack(
+                  fit: StackFit.expand,
                   children: [
-                    Text(name, style: Theme.of(context).textTheme.titleMedium),
-                    const SizedBox(height: 4),
-                    Text(
-                      '$mins min${desc != null && desc.isNotEmpty ? ' · $desc' : ''}',
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.bodySmall,
+                    if (imageUrl != null && imageUrl.isNotEmpty)
+                      Image.network(
+                        imageUrl,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, _, _) => _ServiceImageFallback(category: category),
+                      )
+                    else
+                      _ServiceImageFallback(category: category),
+                    if (selected)
+                      Container(
+                        color: AppColors.blush.withValues(alpha: 0.18),
+                      ),
+                    Positioned(
+                      top: 8,
+                      right: 8,
+                      child: Container(
+                        width: 26,
+                        height: 26,
+                        decoration: BoxDecoration(
+                          color: selected ? AppColors.blushDeep : Colors.white.withValues(alpha: 0.9),
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: selected ? AppColors.blushDeep : AppColors.line,
+                          ),
+                        ),
+                        child: Icon(
+                          selected ? Icons.check_rounded : Icons.add_rounded,
+                          size: 16,
+                          color: selected ? Colors.white : AppColors.inkSoft,
+                        ),
+                      ),
                     ),
                   ],
                 ),
               ),
-              Icon(
-                selected ? Icons.check_circle : Icons.circle_outlined,
-                color: selected ? AppColors.blushDeep : AppColors.muted,
+              Expanded(
+                flex: 4,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        name,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: AppColors.ink,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 13,
+                          height: 1.25,
+                        ),
+                      ),
+                      const Spacer(),
+                      Text(
+                        '$mins min',
+                        style: const TextStyle(
+                          color: AppColors.muted,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      if (price != null) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          'Rs. ${price % 1 == 0 ? price.toInt() : price.toStringAsFixed(0)}',
+                          style: const TextStyle(
+                            color: AppColors.blushDeep,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
               ),
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _ServiceImageFallback extends StatelessWidget {
+  const _ServiceImageFallback({required this.category});
+
+  final String category;
+
+  IconData get _icon {
+    final c = category.toLowerCase();
+    if (c.contains('hair')) return Icons.content_cut_rounded;
+    if (c.contains('nail')) return Icons.back_hand_outlined;
+    if (c.contains('skin') || c.contains('facial')) return Icons.spa_outlined;
+    if (c.contains('spa') || c.contains('massage')) return Icons.self_improvement_outlined;
+    if (c.contains('make')) return Icons.brush_outlined;
+    return Icons.spa_outlined;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            AppColors.washTop,
+            AppColors.blushSoft,
+            AppColors.washBottom,
+          ],
+        ),
+      ),
+      child: Center(
+        child: Icon(_icon, size: 36, color: AppColors.blushDeep.withValues(alpha: 0.75)),
       ),
     );
   }
@@ -326,7 +430,7 @@ class OfferCard extends StatelessWidget {
       width: double.infinity,
       decoration: const BoxDecoration(
         gradient: LinearGradient(
-          colors: [AppColors.blushSoft, Color(0xFFF3EBE4)],
+          colors: [AppColors.blushSoft, AppColors.washTop],
         ),
       ),
       child: const Align(

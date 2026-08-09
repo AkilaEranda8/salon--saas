@@ -278,51 +278,11 @@ class _HomePageState extends State<HomePage> {
                       ),
                       Padding(
                         padding: const EdgeInsets.fromLTRB(20, 28, 20, 0),
-                        child: Row(
-                          children: [
-                            Text(
-                              'Book a service',
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .headlineSmall
-                                  ?.copyWith(
-                                    fontSize: 22,
-                                    letterSpacing: -0.4,
-                                  ),
-                            ),
-                            const Spacer(),
-                            TextButton(
-                              onPressed: widget.onOpenBook,
-                              style: TextButton.styleFrom(
-                                foregroundColor: AppColors.blushDeep,
-                                padding: EdgeInsets.zero,
-                                minimumSize: Size.zero,
-                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                              ),
-                              child: const Text(
-                                'See all',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 13,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
-                        child: Wrap(
-                          spacing: 10,
-                          runSpacing: 10,
-                          children: [
-                            for (final cat in _categories.take(8))
-                              _CategoryChip(
-                                label: cat,
-                                icon: _iconForCategory(cat),
-                                onTap: widget.onOpenBook,
-                              ),
-                          ],
+                        child: _BookServiceSection(
+                          categories: _categories,
+                          services: _services,
+                          onOpenBook: widget.onOpenBook,
+                          iconForCategory: _iconForCategory,
                         ),
                       ),
                       Padding(
@@ -403,12 +363,13 @@ class _LoyaltyCard extends StatelessWidget {
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
               colors: [
-                Color(0xFFFFF5F4),
-                AppColors.blushSoft,
-                Color(0xFFF3E4E0),
+                AppColors.accentMid,
+                AppColors.blush,
+                AppColors.blushDeep,
+                AppColors.blushDeep,
               ],
+              stops: [0.0, 0.35, 0.72, 1.0],
             ),
-            border: Border.all(color: AppColors.line),
           ),
           child: Padding(
             padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
@@ -420,16 +381,16 @@ class _LoyaltyCard extends StatelessWidget {
                     Container(
                       width: 8,
                       height: 8,
-                      decoration: const BoxDecoration(
-                        color: AppColors.blush,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.95),
                         shape: BoxShape.circle,
                       ),
                     ),
                     const SizedBox(width: 8),
                     Text(
                       brandName.toUpperCase(),
-                      style: const TextStyle(
-                        color: AppColors.blushDeep,
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.92),
                         fontWeight: FontWeight.w700,
                         fontSize: 11,
                         letterSpacing: 1.2,
@@ -438,8 +399,8 @@ class _LoyaltyCard extends StatelessWidget {
                     const Spacer(),
                     Text(
                       loggedIn ? 'Check-in QR' : 'Sign in',
-                      style: const TextStyle(
-                        color: AppColors.inkSoft,
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.85),
                         fontSize: 12,
                         fontWeight: FontWeight.w500,
                       ),
@@ -447,7 +408,7 @@ class _LoyaltyCard extends StatelessWidget {
                     Icon(
                       loggedIn ? Icons.qr_code_2_rounded : Icons.arrow_outward_rounded,
                       size: 16,
-                      color: AppColors.inkSoft,
+                      color: Colors.white.withValues(alpha: 0.85),
                     ),
                   ],
                 ),
@@ -459,10 +420,10 @@ class _LoyaltyCard extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text(
+                          Text(
                             'POINTS',
                             style: TextStyle(
-                              color: AppColors.muted,
+                              color: Colors.white.withValues(alpha: 0.72),
                               fontSize: 11,
                               fontWeight: FontWeight.w600,
                               letterSpacing: 1.0,
@@ -472,7 +433,7 @@ class _LoyaltyCard extends StatelessWidget {
                           Text(
                             loggedIn ? '$points' : '—',
                             style: const TextStyle(
-                              color: AppColors.ink,
+                              color: Colors.white,
                               fontSize: 36,
                               fontWeight: FontWeight.w600,
                               height: 1,
@@ -488,17 +449,19 @@ class _LoyaltyCard extends StatelessWidget {
                         vertical: 10,
                       ),
                       decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.75),
+                        color: Colors.white.withValues(alpha: 0.18),
                         borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: AppColors.line),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.28),
+                        ),
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text(
+                          Text(
                             'TIER',
                             style: TextStyle(
-                              color: AppColors.muted,
+                              color: Colors.white.withValues(alpha: 0.7),
                               fontSize: 10,
                               fontWeight: FontWeight.w600,
                               letterSpacing: 0.8,
@@ -508,7 +471,7 @@ class _LoyaltyCard extends StatelessWidget {
                           Text(
                             loggedIn ? tierName : 'Guest',
                             style: const TextStyle(
-                              color: AppColors.ink,
+                              color: Colors.white,
                               fontSize: 16,
                               fontWeight: FontWeight.w700,
                             ),
@@ -554,7 +517,7 @@ class _PromoBanner extends StatelessWidget {
                 gradient: const LinearGradient(
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
-                  colors: [Color(0xFFFFF5F4), AppColors.blushSoft],
+                  colors: [AppColors.washTop, AppColors.blushSoft],
                 ),
                 border: Border.all(color: AppColors.line),
               ),
@@ -741,12 +704,12 @@ class _DealCard extends StatelessWidget {
                             vertical: 5,
                           ),
                           decoration: BoxDecoration(
-                            color: const Color(0xFFF5D76E),
+                            color: AppColors.gold,
                             borderRadius: BorderRadius.circular(8),
                           ),
-                          child: const Text(
-                            'Deal',
-                            style: TextStyle(
+                          child: Text(
+                            offer.displayBadge ?? 'Deal',
+                            style: const TextStyle(
                               color: AppColors.ink,
                               fontWeight: FontWeight.w800,
                               fontSize: 11,
@@ -786,7 +749,7 @@ class _DealCard extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [AppColors.blushSoft, Color(0xFFF3EBE4)],
+          colors: [AppColors.blushSoft, AppColors.washTop],
         ),
       ),
       child: const Center(
@@ -816,46 +779,333 @@ class _EmptyDealHint extends StatelessWidget {
   }
 }
 
-class _CategoryChip extends StatelessWidget {
-  const _CategoryChip({
-    required this.label,
-    required this.icon,
-    required this.onTap,
+class _BookServiceSection extends StatelessWidget {
+  const _BookServiceSection({
+    required this.categories,
+    required this.services,
+    required this.onOpenBook,
+    required this.iconForCategory,
   });
 
-  final String label;
-  final IconData icon;
+  final List<String> categories;
+  final List<SalonService> services;
+  final VoidCallback onOpenBook;
+  final IconData Function(String) iconForCategory;
+
+  int _countFor(String cat) {
+    final key = cat.trim().toLowerCase();
+    return services.where((s) {
+      final c = (s.category ?? '').trim().toLowerCase();
+      return c == key;
+    }).length;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cats = categories.take(8).toList();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Book a service',
+          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                fontSize: 22,
+                letterSpacing: -0.4,
+                color: AppColors.ink,
+              ),
+        ),
+        const SizedBox(height: 6),
+        const Text(
+          'Pick a category — we’ll guide you to a time.',
+          style: TextStyle(
+            color: AppColors.muted,
+            fontSize: 13.5,
+            height: 1.35,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        const SizedBox(height: 16),
+        TweenAnimationBuilder<double>(
+          tween: Tween(begin: 0, end: 1),
+          duration: AppMotion.normal,
+          curve: AppMotion.easeOut,
+          builder: (context, t, child) => Opacity(
+            opacity: t,
+            child: Transform.translate(
+              offset: Offset(0, (1 - t) * 12),
+              child: child,
+            ),
+          ),
+          child: _BookHeroCta(onTap: onOpenBook),
+        ),
+        const SizedBox(height: 18),
+        SizedBox(
+          height: 132,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            clipBehavior: Clip.none,
+            itemCount: cats.length + 1,
+            separatorBuilder: (_, _) => const SizedBox(width: 12),
+            itemBuilder: (context, i) {
+              if (i == cats.length) {
+                return TweenAnimationBuilder<double>(
+                  tween: Tween(begin: 0, end: 1),
+                  duration: Duration(milliseconds: 280 + i * 40),
+                  curve: AppMotion.easeOut,
+                  builder: (context, t, child) => Opacity(
+                    opacity: t,
+                    child: Transform.translate(
+                      offset: Offset((1 - t) * 16, 0),
+                      child: child,
+                    ),
+                  ),
+                  child: _BookSeeAllTile(onTap: onOpenBook),
+                );
+              }
+              final cat = cats[i];
+              final count = _countFor(cat);
+              return TweenAnimationBuilder<double>(
+                tween: Tween(begin: 0, end: 1),
+                duration: Duration(milliseconds: 280 + i * 40),
+                curve: AppMotion.easeOut,
+                builder: (context, t, child) => Opacity(
+                  opacity: t,
+                  child: Transform.translate(
+                    offset: Offset((1 - t) * 16, 0),
+                    child: child,
+                  ),
+                ),
+                child: _BookCategoryTile(
+                  label: cat,
+                  icon: iconForCategory(cat),
+                  count: count,
+                  onTap: onOpenBook,
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _BookHeroCta extends StatelessWidget {
+  const _BookHeroCta({required this.onTap});
+
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(16),
+      color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(12, 12, 16, 12),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
+        borderRadius: BorderRadius.circular(22),
+        child: Ink(
+          height: 92,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(22),
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                AppColors.accentMid,
+                AppColors.blush,
+                AppColors.blushDeep,
+              ],
+              stops: [0.0, 0.55, 1.0],
+            ),
+          ),
+          child: Stack(
             children: [
-              Container(
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(
-                  color: AppColors.blushSoft,
-                  borderRadius: BorderRadius.circular(11),
+              Positioned(
+                right: -18,
+                top: -24,
+                child: Container(
+                  width: 110,
+                  height: 110,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.white.withValues(alpha: 0.1),
+                  ),
                 ),
-                child: Icon(icon, color: AppColors.blushDeep, size: 18),
               ),
-              const SizedBox(width: 10),
+              Positioned(
+                right: 36,
+                bottom: -36,
+                child: Container(
+                  width: 88,
+                  height: 88,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.white.withValues(alpha: 0.08),
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(18, 16, 16, 16),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            'Book now',
+                            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 18,
+                                  letterSpacing: -0.3,
+                                ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Services · stylist · time',
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.88),
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Container(
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.28),
+                        ),
+                      ),
+                      child: const Icon(
+                        Icons.arrow_forward_rounded,
+                        color: Colors.white,
+                        size: 22,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _BookCategoryTile extends StatelessWidget {
+  const _BookCategoryTile({
+    required this.label,
+    required this.icon,
+    required this.count,
+    required this.onTap,
+  });
+
+  final String label;
+  final IconData icon;
+  final int count;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(20),
+        child: Ink(
+          width: 118,
+          decoration: BoxDecoration(
+            color: AppColors.card,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: AppColors.line),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 42,
+                  height: 42,
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [AppColors.blushSoft, AppColors.washTop],
+                    ),
+                    borderRadius: BorderRadius.circular(13),
+                  ),
+                  child: Icon(icon, color: AppColors.blushDeep, size: 20),
+                ),
+                const Spacer(),
+                Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.ink,
+                    letterSpacing: -0.2,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  count > 0 ? '$count services' : 'Explore',
+                  style: const TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w500,
+                    color: AppColors.muted,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _BookSeeAllTile extends StatelessWidget {
+  const _BookSeeAllTile({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(20),
+        child: Ink(
+          width: 104,
+          decoration: BoxDecoration(
+            color: AppColors.blushSoft,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: AppColors.blush.withValues(alpha: 0.22)),
+          ),
+          child: const Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.grid_view_rounded, color: AppColors.blushDeep, size: 22),
+              SizedBox(height: 10),
               Text(
-                label,
-                style: const TextStyle(
+                'See all',
+                style: TextStyle(
                   fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.ink,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.blushDeep,
                 ),
               ),
             ],
@@ -891,8 +1141,8 @@ class _QuickRow extends StatelessWidget {
         const SizedBox(width: 10),
         Expanded(
           child: _QuickTile(
-            icon: Icons.event_note_outlined,
-            label: 'Visits',
+            icon: Icons.history_rounded,
+            label: 'History',
             onTap: onAppointments,
           ),
         ),

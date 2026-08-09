@@ -113,11 +113,13 @@ class PublicApi {
     required String phone,
     String? email,
     String? notes,
-    required int serviceId,
+    required List<int> serviceIds,
     required int staffId,
     required String date,
     required String time,
   }) async {
+    final ids = serviceIds.where((id) => id > 0).toList();
+    if (ids.isEmpty) throw Exception('Select at least one service');
     final res = await http.post(
       _u('/bookings'),
       headers: _headers(),
@@ -127,14 +129,11 @@ class PublicApi {
         'phone': phone,
         if (email != null && email.isNotEmpty) 'email': email,
         if (notes != null && notes.isNotEmpty) 'notes': notes,
-        'items': [
-          {
-            'service_id': serviceId,
-            'staff_id': staffId,
-            'date': date,
-            'time': time,
-          }
-        ],
+        // Same stylist + start time; backend books services back-to-back.
+        'service_ids': ids,
+        'staff_id': staffId,
+        'date': date,
+        'time': time,
       }),
     );
     if (res.statusCode >= 400) _throw(res);
@@ -216,6 +215,16 @@ class PublicApi {
     final body = _decode(res);
     final list = body is List ? body : <dynamic>[];
     return list.whereType<Map>().map((e) => BookingItem.fromJson(Map<String, dynamic>.from(e))).toList();
+  }
+
+  Future<CustomerHistory> getHistory(String token) async {
+    final res = await http.get(_u('/customer-portal/history'), headers: _headers(token: token));
+    if (res.statusCode >= 400) _throw(res);
+    final body = _decode(res);
+    if (body is! Map) {
+      return CustomerHistory(visits: const [], usedProducts: const [], usedProductsSummary: const []);
+    }
+    return CustomerHistory.fromJson(Map<String, dynamic>.from(body));
   }
 
   Future<void> rebook({

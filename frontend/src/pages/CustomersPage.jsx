@@ -13,6 +13,7 @@ import {
 } from '../components/ui/PageKit';
 import { LOYALTY_TIERS, getTier, getNextTier, loyaltyTierCounts } from '../utils/loyaltyTiers';
 import { phoneSearchTokens } from '../utils/phoneMatch';
+import { isWalkInCustomer } from '../utils/walkInCustomer';
 
 const EMPTY      = { name: '', phone: '', email: '', branch_id: '' };
 const DEFAULT_LOYALTY_RULES = {
@@ -64,6 +65,8 @@ export default function CustomersPage() {
   const [formErr, setFormErr]       = useState('');
   const [custPayments, setCustPayments] = useState([]);
   const [custPayLoading, setCustPayLoading] = useState(false);
+  const [custDetail, setCustDetail] = useState(null);
+  const [custDetailLoading, setCustDetailLoading] = useState(false);
   const [qrLoading, setQrLoading] = useState(false);
   const [qrErr, setQrErr] = useState('');
   const [qrDataUrl, setQrDataUrl] = useState('');
@@ -107,20 +110,44 @@ export default function CustomersPage() {
   const openProfile = row => {
     setProfileItem(row);
     setCustPayments([]);
+    setCustDetail(null);
     setQrDataUrl('');
     setQrMeta(null);
     setQrErr('');
     setShowProfile(true);
     setCustPayLoading(true);
+    setCustDetailLoading(true);
     api.get('/payments', { params: { customerId: row.id, limit: 50 } })
       .then(r => setCustPayments(Array.isArray(r.data?.data) ? r.data.data : []))
       .catch(() => {})
       .finally(() => setCustPayLoading(false));
-    loadCustomerQr(row.id);
+    api.get(`/customers/${row.id}`)
+      .then(r => setCustDetail(r.data || null))
+      .catch(() => setCustDetail(null))
+      .finally(() => setCustDetailLoading(false));
+    loadCustomerQr(row);
   };
 
-  const loadCustomerQr = async (customerId) => {
+  const loadCustomerQr = async (customerOrId) => {
+    const customer = typeof customerOrId === 'object' && customerOrId
+      ? customerOrId
+      : (profileItem?.id === customerOrId ? profileItem : { id: customerOrId });
+    const customerId = customer?.id;
     if (!customerId) return;
+
+    const phone = String(customer?.phone || '').trim();
+    if (!phone) {
+      setQrDataUrl('');
+      setQrMeta(null);
+      setQrLoading(false);
+      setQrErr(
+        isWalkInCustomer(customer)
+          ? 'Walk-in Customer has no phone — check-in QR needs a customer with a phone number.'
+          : 'Add a phone number to this customer before generating a check-in QR.',
+      );
+      return;
+    }
+
     setQrLoading(true);
     setQrErr('');
     try {
@@ -485,6 +512,104 @@ export default function CustomersPage() {
               </div>
             )}
 
+            {/* Visit history */}
+            <div style={{ marginTop: 20 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: '#98A2B3', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 10 }}>
+                Recent visits
+              </div>
+              {custDetailLoading ? (
+                <div style={{ textAlign: 'center', padding: 16, color: '#98A2B3', fontSize: 13 }}>Loading…</div>
+              ) : !(custDetail?.appointments?.length) ? (
+                <div style={{ textAlign: 'center', padding: 16, color: '#98A2B3', fontSize: 13 }}>No visits found</div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {custDetail.appointments.slice(0, 10).map((a) => (
+                    <div key={a.id} style={{ background: '#F9FAFB', borderRadius: 10, padding: '10px 14px', border: '1px solid #EAECF0' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                        <div>
+                          <div style={{ fontWeight: 600, fontSize: 13, color: '#101828' }}>
+                            {a.service?.name || 'Service'}
+                          </div>
+                          <div style={{ fontSize: 11, color: '#98A2B3', marginTop: 2 }}>
+                            {a.date ? new Date(a.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : ''}
+                            {a.time ? ` · ${String(a.time).slice(0, 5)}` : ''}
+                            {a.staff?.name ? ` · ${a.staff.name}` : ''}
+                          </div>
+                        </div>
+                        <span style={{
+                          alignSelf: 'flex-start',
+                          fontSize: 11,
+                          fontWeight: 700,
+                          textTransform: 'capitalize',
+                          color: '#475467',
+                          background: '#EEF2F6',
+                          borderRadius: 6,
+                          padding: '2px 8px',
+                        }}>
+                          {a.status || '—'}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Previously used products */}
+            <div style={{ marginTop: 20 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: '#98A2B3', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 10 }}>
+                Previously used products
+              </div>
+              {custDetailLoading ? (
+                <div style={{ textAlign: 'center', padding: 16, color: '#98A2B3', fontSize: 13 }}>Loading…</div>
+              ) : !(custDetail?.used_products_summary?.length) ? (
+                <div style={{ textAlign: 'center', padding: 16, color: '#98A2B3', fontSize: 13 }}>
+                  No products recorded for this customer yet.
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {custDetail.used_products_summary.map((prod) => (
+                    <div key={prod.product_id} style={{ background: '#F9FAFB', borderRadius: 10, padding: '10px 14px', border: '1px solid #EAECF0' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'flex-start' }}>
+                        <div>
+                          <div style={{ fontWeight: 600, fontSize: 13, color: '#101828' }}>{prod.name}</div>
+                          <div style={{ fontSize: 11, color: '#98A2B3', marginTop: 2 }}>
+                            {prod.product_type || 'product'}
+                            {prod.sku ? ` · ${prod.sku}` : ''}
+                            {' · '}used {prod.times_used}×
+                            {prod.total_qty != null ? ` · ${Number(prod.total_qty)} ${prod.unit || ''}` : ''}
+                          </div>
+                        </div>
+                        <div style={{ fontSize: 11, color: '#667085', whiteSpace: 'nowrap' }}>
+                          {prod.last_used
+                            ? new Date(prod.last_used).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+                            : ''}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {!custDetailLoading && Array.isArray(custDetail?.used_products) && custDetail.used_products.length > 0 && (
+                <div style={{ marginTop: 12 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: '#98A2B3', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
+                    Recent usage log
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {custDetail.used_products.slice(0, 12).map((row) => (
+                      <div key={row.id} style={{ fontSize: 12, color: '#475467', padding: '6px 10px', background: '#FFF', borderRadius: 8, border: '1px solid #F2F4F7' }}>
+                        <strong style={{ color: '#101828' }}>{row.product?.name || 'Product'}</strong>
+                        {' · '}{Number(row.quantity_used)} {row.unit}
+                        {row.service?.name ? ` · ${row.service.name}` : ''}
+                        {row.staff?.name ? ` · ${row.staff.name}` : ''}
+                        {row.consumption_date ? ` · ${new Date(row.consumption_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}` : ''}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
             {/* Check-in QR — printable / downloadable */}
             <div style={{ marginTop: 20 }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: '#98A2B3', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 10 }}>
@@ -495,8 +620,10 @@ export default function CustomersPage() {
                   <div style={{ textAlign: 'center', padding: 24, color: '#98A2B3', fontSize: 13 }}>Generating QR…</div>
                 ) : qrErr ? (
                   <div>
-                    <div style={{ color: '#DC2626', fontSize: 13, marginBottom: 10 }}>{qrErr}</div>
-                    <Button variant="secondary" onClick={() => loadCustomerQr(p.id)}>Retry</Button>
+                    <div style={{ color: String(p.phone || '').trim() ? '#DC2626' : '#667085', fontSize: 13, marginBottom: 10 }}>{qrErr}</div>
+                    {String(p.phone || '').trim() ? (
+                      <Button variant="secondary" onClick={() => loadCustomerQr(p)}>Retry</Button>
+                    ) : null}
                   </div>
                 ) : qrDataUrl ? (
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
@@ -518,7 +645,7 @@ export default function CustomersPage() {
                     </div>
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center' }}>
                       <Button variant="primary" onClick={downloadCustomerQr}>Download PNG</Button>
-                      <Button variant="secondary" onClick={() => loadCustomerQr(p.id)}>Regenerate</Button>
+                      <Button variant="secondary" onClick={() => loadCustomerQr(p)}>Regenerate</Button>
                     </div>
                   </div>
                 ) : null}

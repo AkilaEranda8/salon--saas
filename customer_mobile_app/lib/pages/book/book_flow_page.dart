@@ -21,10 +21,12 @@ class _BookFlowPageState extends State<BookFlowPage> {
   List<SalonStaff> _staff = [];
   List<String> _slots = [];
   String? _category;
-  SalonService? _service;
+  final List<SalonService> _selectedServices = [];
   SalonStaff? _staffMember;
   DateTime _day = DateTime.now().add(const Duration(days: 1));
   String? _slot;
+  bool _showCalendar = false;
+  DateTime _calendarMonth = DateTime(DateTime.now().year, DateTime.now().month);
   final _name = TextEditingController();
   final _phone = TextEditingController();
   final _otp = TextEditingController();
@@ -34,6 +36,38 @@ class _BookFlowPageState extends State<BookFlowPage> {
   bool _busy = false;
   bool _success = false;
   String? _error;
+
+  static const _maxServices = 6;
+
+  bool get _hasSelection => _selectedServices.isNotEmpty;
+
+  int get _totalDuration =>
+      _selectedServices.fold<int>(0, (sum, s) => sum + (s.durationMinutes > 0 ? s.durationMinutes : 30));
+
+  double get _totalPrice =>
+      _selectedServices.fold<double>(0, (sum, s) => sum + (s.price ?? 0));
+
+  String get _servicesLabel {
+    if (_selectedServices.isEmpty) return '—';
+    if (_selectedServices.length == 1) return _selectedServices.first.name;
+    return _selectedServices.map((s) => s.name).join(', ');
+  }
+
+  void _toggleService(SalonService s) {
+    setState(() {
+      final i = _selectedServices.indexWhere((e) => e.id == s.id);
+      if (i >= 0) {
+        _selectedServices.removeAt(i);
+      } else {
+        if (_selectedServices.length >= _maxServices) {
+          _error = 'You can select up to $_maxServices services.';
+          return;
+        }
+        _selectedServices.add(s);
+        _error = null;
+      }
+    });
+  }
 
   @override
   void initState() {
@@ -97,7 +131,7 @@ class _BookFlowPageState extends State<BookFlowPage> {
   }
 
   Future<void> _loadStaff() async {
-    if (_service == null) return;
+    if (!_hasSelection) return;
     setState(() {
       _busy = true;
       _error = null;
@@ -106,15 +140,21 @@ class _BookFlowPageState extends State<BookFlowPage> {
     });
     try {
       final date = DateFormat('yyyy-MM-dd').format(_day);
-      final rows = await AppStateScope.of(context).api.getStaff(
-            serviceId: _service!.id,
-            date: date,
-          );
+      // Load all online staff for the day, then keep those who can do every selected service.
+      final rows = await AppStateScope.of(context).api.getStaff(date: date);
       if (!mounted) return;
+      final needed = _selectedServices.map((s) => s.id).toSet();
+      final matched = rows.where((st) {
+        if (st.serviceIds.isEmpty) return false;
+        return needed.every(st.serviceIds.contains);
+      }).toList();
       setState(() {
-        _staff = rows;
+        _staff = matched;
         _busy = false;
         _step = 2;
+        if (matched.isEmpty) {
+          _error = 'No stylist can do all selected services. Try fewer services.';
+        }
       });
     } catch (e) {
       if (!mounted) return;
@@ -126,7 +166,7 @@ class _BookFlowPageState extends State<BookFlowPage> {
   }
 
   Future<void> _loadSlots() async {
-    if (_service == null || _staffMember == null) return;
+    if (!_hasSelection || _staffMember == null) return;
     setState(() {
       _busy = true;
       _error = null;
@@ -138,13 +178,13 @@ class _BookFlowPageState extends State<BookFlowPage> {
       final rows = await AppStateScope.of(context).api.getAvailability(
             staffId: _staffMember!.id,
             date: date,
-            duration: _service!.durationMinutes,
+            duration: _totalDuration,
           );
       if (!mounted) return;
       setState(() {
         _slots = rows;
         _busy = false;
-        _step = 3;
+        if (_step < 3) _step = 3;
       });
     } catch (e) {
       if (!mounted) return;
@@ -172,7 +212,7 @@ class _BookFlowPageState extends State<BookFlowPage> {
       setState(() => _error = 'Name and phone are required.');
       return;
     }
-    if (_service == null || _staffMember == null || _slot == null) return;
+    if (!_hasSelection || _staffMember == null || _slot == null) return;
 
     setState(() {
       _busy = true;
@@ -218,7 +258,7 @@ class _BookFlowPageState extends State<BookFlowPage> {
       await api.createBooking(
         customerName: name,
         phone: phone,
-        serviceId: _service!.id,
+        serviceIds: _selectedServices.map((s) => s.id).toList(),
         staffId: _staffMember!.id,
         date: DateFormat('yyyy-MM-dd').format(_day),
         time: _slot!,
@@ -241,7 +281,7 @@ class _BookFlowPageState extends State<BookFlowPage> {
   void _reset() {
     setState(() {
       _step = 1;
-      _service = null;
+      _selectedServices.clear();
       _staffMember = null;
       _slot = null;
       _slots = [];
@@ -319,48 +359,89 @@ class _BookFlowPageState extends State<BookFlowPage> {
   Widget _serviceStep() {
     final cats = _categories;
     final items = _filteredServices;
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
-      children: [
-        const StepHeader(
-          step: 1,
-          total: 4,
-          title: 'Choose a service',
-          subtitle: 'All active salon services are listed below.',
-        ),
-        const SizedBox(height: 16),
-        if (cats.length > 1)
-          SizedBox(
-            height: 40,
-            child: ListView(
-              scrollDirection: Axis.horizontal,
+    return CustomScrollView(
+      slivers: [
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _chip('All', _category == null, () => setState(() => _category = null)),
-                ...cats.map((c) => _chip(c, _category == c, () => setState(() => _category = c))),
+                const StepHeader(
+                  step: 1,
+                  total: 4,
+                  title: 'Choose services',
+                  subtitle: 'Tap to select one or more treatments.',
+                ),
+                if (_hasSelection) ...[
+                  const SizedBox(height: 12),
+                  _SelectedSummary(
+                    count: _selectedServices.length,
+                    minutes: _totalDuration,
+                    price: _totalPrice,
+                  ),
+                ],
+                const SizedBox(height: 16),
+                if (cats.length > 1)
+                  SizedBox(
+                    height: 40,
+                    child: ListView(
+                      scrollDirection: Axis.horizontal,
+                      children: [
+                        _chip('All', _category == null, () => setState(() => _category = null)),
+                        ...cats.map((c) => _chip(c, _category == c, () => setState(() => _category = c))),
+                      ],
+                    ),
+                  ),
+                const SizedBox(height: 14),
               ],
             ),
           ),
-        const SizedBox(height: 12),
-        ...List.generate(items.length, (i) {
-          final s = items[i];
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 10),
-            child: TweenAnimationBuilder<double>(
-              tween: Tween(begin: 0, end: 1),
-              duration: Duration(milliseconds: 220 + i * 40),
-              curve: AppMotion.easeOut,
-              builder: (context, t, child) => Opacity(
-                opacity: t,
-                child: Transform.translate(offset: Offset(0, (1 - t) * 10), child: child),
+        ),
+        if (items.isEmpty)
+          const SliverFillRemaining(
+            hasScrollBody: false,
+            child: EmptyState(
+              title: 'No services',
+              subtitle: 'Try another category.',
+              icon: Icons.content_cut_outlined,
+            ),
+          )
+        else
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+            sliver: SliverGrid(
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 2,
+                mainAxisSpacing: 12,
+                crossAxisSpacing: 12,
+                childAspectRatio: 0.72,
               ),
-              child: ServiceTile(
-                service: s,
-                selected: _service?.id == s.id,
-                onTap: () => setState(() => _service = s),
+              delegate: SliverChildBuilderDelegate(
+                (context, i) {
+                  final s = items[i];
+                  return TweenAnimationBuilder<double>(
+                    tween: Tween(begin: 0, end: 1),
+                    duration: Duration(milliseconds: 220 + i * 35),
+                    curve: AppMotion.easeOut,
+                    builder: (context, t, child) => Opacity(
+                      opacity: t,
+                      child: Transform.translate(
+                        offset: Offset(0, (1 - t) * 12),
+                        child: child,
+                      ),
+                    ),
+                    child: ServiceTile(
+                      service: s,
+                      selected: _selectedServices.any((e) => e.id == s.id),
+                      onTap: () => _toggleService(s),
+                    ),
+                  );
+                },
+                childCount: items.length,
               ),
             ),
-          );
-        }),
+          ),
       ],
     );
   }
@@ -389,8 +470,19 @@ class _BookFlowPageState extends State<BookFlowPage> {
           step: 2,
           total: 4,
           title: 'Choose a stylist',
-          subtitle: 'Only staff available for this service are shown.',
+          subtitle: 'Staff who can do all selected services.',
         ),
+        if (_hasSelection) ...[
+          const SizedBox(height: 10),
+          Text(
+            _servicesLabel,
+            style: const TextStyle(
+              color: AppColors.inkSoft,
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
         const SizedBox(height: 16),
         if (_busy)
           const Center(child: Padding(
@@ -400,7 +492,7 @@ class _BookFlowPageState extends State<BookFlowPage> {
         else if (_staff.isEmpty)
           const EmptyState(
             title: 'No stylists available',
-            subtitle: 'Try another service or a different day.',
+            subtitle: 'Try fewer services or another day.',
             icon: Icons.person_off_outlined,
           )
         else
@@ -455,67 +547,343 @@ class _BookFlowPageState extends State<BookFlowPage> {
   }
 
   Widget _timeStep() {
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
-      children: [
-        const StepHeader(
-          step: 3,
-          total: 4,
-          title: 'Pick a time',
-          subtitle: 'Choose a date, then an open slot.',
+    final today = DateTime.now();
+    final start = DateTime(today.year, today.month, today.day);
+    final days = List<DateTime>.generate(14, (i) => start.add(Duration(days: i)));
+    final groups = _groupSlots(_slots);
+
+    return CustomScrollView(
+      slivers: [
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const StepHeader(
+                  step: 3,
+                  total: 4,
+                  title: 'Pick a time',
+                  subtitle: 'Choose a day, then an open slot.',
+                ),
+                const SizedBox(height: 14),
+                _TimeMetaBar(
+                  stylist: _staffMember?.name ?? 'Stylist',
+                  minutes: _totalDuration,
+                  serviceCount: _selectedServices.length,
+                ),
+                const SizedBox(height: 20),
+                Row(
+                  children: [
+                    const Text(
+                      'DATE',
+                      style: TextStyle(
+                        color: AppColors.muted,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 1.0,
+                      ),
+                    ),
+                    const Spacer(),
+                    Material(
+                      color: _showCalendar ? AppColors.blushSoft : Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      child: InkWell(
+                        onTap: () {
+                          setState(() {
+                            _showCalendar = !_showCalendar;
+                            if (_showCalendar) {
+                              _calendarMonth = DateTime(_day.year, _day.month);
+                            }
+                          });
+                        },
+                        borderRadius: BorderRadius.circular(12),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: _showCalendar ? AppColors.blush : AppColors.line,
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.calendar_month_rounded,
+                                size: 16,
+                                color: _showCalendar ? AppColors.blushDeep : AppColors.inkSoft,
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                _showCalendar ? 'Hide' : 'Calendar',
+                                style: TextStyle(
+                                  color: _showCalendar ? AppColors.blushDeep : AppColors.inkSoft,
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+              ],
+            ),
+          ),
         ),
-        const SizedBox(height: 12),
-        ListTile(
-          contentPadding: EdgeInsets.zero,
-          title: Text(DateFormat('EEEE, d MMM yyyy').format(_day)),
-          trailing: const Icon(Icons.calendar_today_outlined),
-          onTap: () async {
-            final picked = await showDatePicker(
-              context: context,
-              initialDate: _day,
-              firstDate: DateTime.now(),
-              lastDate: DateTime.now().add(const Duration(days: 90)),
-            );
-            if (picked != null) {
-              setState(() => _day = picked);
-              await _loadSlots();
-            }
-          },
+        if (_showCalendar)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+              child: _MonthCalendar(
+                month: _calendarMonth,
+                selected: _day,
+                firstDate: start,
+                lastDate: start.add(const Duration(days: 90)),
+                onMonthChanged: (m) => setState(() => _calendarMonth = m),
+                onDaySelected: (d) async {
+                  if (_sameDay(d, _day)) return;
+                  setState(() {
+                    _day = d;
+                    _slot = null;
+                    _slots = [];
+                    _calendarMonth = DateTime(d.year, d.month);
+                  });
+                  await _loadSlots();
+                },
+              ),
+            ),
+          ),
+        SliverToBoxAdapter(
+          child: SizedBox(
+            height: 84,
+            child: ListView.separated(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              scrollDirection: Axis.horizontal,
+              itemCount: days.length,
+              separatorBuilder: (_, _) => const SizedBox(width: 10),
+              itemBuilder: (context, i) {
+                final d = days[i];
+                final selected = _sameDay(d, _day);
+                return _DateChip(
+                  day: d,
+                  selected: selected,
+                  onTap: () async {
+                    if (selected) return;
+                    setState(() {
+                      _day = d;
+                      _slot = null;
+                      _slots = [];
+                      _calendarMonth = DateTime(d.year, d.month);
+                    });
+                    await _loadSlots();
+                  },
+                );
+              },
+            ),
+          ),
+        ),
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 22, 20, 8),
+            child: Row(
+              children: [
+                const Text(
+                  'AVAILABLE TIMES',
+                  style: TextStyle(
+                    color: AppColors.muted,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.0,
+                  ),
+                ),
+                const Spacer(),
+                if (!_busy && _slots.isNotEmpty)
+                  Text(
+                    '${_slots.length} slots',
+                    style: const TextStyle(
+                      color: AppColors.inkSoft,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+              ],
+            ),
+          ),
         ),
         if (_busy)
-          const Padding(
-            padding: EdgeInsets.all(24),
-            child: Center(child: CircularProgressIndicator(color: AppColors.blush)),
+          const SliverToBoxAdapter(
+            child: Padding(
+              padding: EdgeInsets.symmetric(vertical: 40),
+              child: Center(child: CircularProgressIndicator(color: AppColors.blush)),
+            ),
           )
         else if (_slots.isEmpty)
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 24),
-            child: Text('No open slots on this day. Try another date.'),
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 40),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.fromLTRB(18, 22, 18, 22),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: AppColors.line),
+                ),
+                child: const Column(
+                  children: [
+                    Icon(Icons.event_busy_outlined, color: AppColors.muted, size: 32),
+                    SizedBox(height: 10),
+                    Text(
+                      'No open slots this day',
+                      style: TextStyle(
+                        color: AppColors.ink,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 15,
+                      ),
+                    ),
+                    SizedBox(height: 4),
+                    Text(
+                      'Try another date above.',
+                      style: TextStyle(color: AppColors.muted, fontSize: 13),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           )
         else
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: _slots.map((s) {
-              final selected = _slot == s;
-              return ChoiceChip(
-                label: Text(s),
-                selected: selected,
-                onSelected: (_) => setState(() => _slot = s),
-                selectedColor: AppColors.blushSoft,
-                labelStyle: TextStyle(
-                  color: selected ? AppColors.blushDeep : AppColors.ink,
-                  fontWeight: FontWeight.w600,
+          ...groups.entries.map((entry) {
+            return SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 4, 20, 14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(entry.value.$1, size: 16, color: AppColors.blushDeep),
+                        const SizedBox(width: 8),
+                        Text(
+                          entry.key,
+                          style: const TextStyle(
+                            color: AppColors.inkSoft,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 10,
+                      runSpacing: 10,
+                      children: entry.value.$2.map((s) {
+                        final selected = _slot == s;
+                        return _TimeSlotChip(
+                          label: _formatSlotLabel(s),
+                          selected: selected,
+                          onTap: () => setState(() => _slot = s),
+                        );
+                      }).toList(),
+                    ),
+                  ],
                 ),
-              );
-            }).toList(),
+              ),
+            );
+          }),
+        if (_slot != null)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [AppColors.washTop, AppColors.blushSoft],
+                  ),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: AppColors.blush.withValues(alpha: 0.35)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.schedule_rounded, color: AppColors.blushDeep, size: 20),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        '${DateFormat('EEE, d MMM').format(_day)} · ${_formatSlotLabel(_slot!)}',
+                        style: const TextStyle(
+                          color: AppColors.blushDeep,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           ),
-        if (_error != null) ...[
-          const SizedBox(height: 8),
-          Text(_error!, style: const TextStyle(color: AppColors.danger, fontSize: 13)),
-        ],
+        if (_error != null)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+              child: Text(_error!, style: const TextStyle(color: AppColors.danger, fontSize: 13)),
+            ),
+          ),
+        const SliverToBoxAdapter(child: SizedBox(height: 28)),
       ],
     );
+  }
+
+  bool _sameDay(DateTime a, DateTime b) =>
+      a.year == b.year && a.month == b.month && a.day == b.day;
+
+  /// Groups slots into Morning / Afternoon / Evening.
+  Map<String, (IconData, List<String>)> _groupSlots(List<String> slots) {
+    final morning = <String>[];
+    final afternoon = <String>[];
+    final evening = <String>[];
+    for (final s in slots) {
+      final mins = _slotMinutes(s);
+      if (mins == null) {
+        afternoon.add(s);
+      } else if (mins < 12 * 60) {
+        morning.add(s);
+      } else if (mins < 17 * 60) {
+        afternoon.add(s);
+      } else {
+        evening.add(s);
+      }
+    }
+    final out = <String, (IconData, List<String>)>{};
+    if (morning.isNotEmpty) out['Morning'] = (Icons.wb_sunny_outlined, morning);
+    if (afternoon.isNotEmpty) out['Afternoon'] = (Icons.wb_twilight_outlined, afternoon);
+    if (evening.isNotEmpty) out['Evening'] = (Icons.nights_stay_outlined, evening);
+    return out;
+  }
+
+  int? _slotMinutes(String raw) {
+    final m = RegExp(r'^(\d{1,2}):(\d{2})').firstMatch(raw.trim());
+    if (m == null) return null;
+    final h = int.tryParse(m.group(1)!);
+    final min = int.tryParse(m.group(2)!);
+    if (h == null || min == null) return null;
+    return h * 60 + min;
+  }
+
+  String _formatSlotLabel(String raw) {
+    final mins = _slotMinutes(raw);
+    if (mins == null) return raw;
+    final h24 = mins ~/ 60;
+    final m = mins % 60;
+    final period = h24 >= 12 ? 'PM' : 'AM';
+    final h12 = h24 % 12 == 0 ? 12 : h24 % 12;
+    return '$h12:${m.toString().padLeft(2, '0')} $period';
   }
 
   Widget _confirmStep() {
@@ -539,7 +907,16 @@ class _BookFlowPageState extends State<BookFlowPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _row('Service', _service?.name ?? '—'),
+              _row(
+                _selectedServices.length > 1 ? 'Services' : 'Service',
+                _servicesLabel,
+              ),
+              _row('Duration', '$_totalDuration min'),
+              if (_totalPrice > 0)
+                _row(
+                  'Total',
+                  'Rs. ${_totalPrice % 1 == 0 ? _totalPrice.toInt() : _totalPrice.toStringAsFixed(0)}',
+                ),
               _row('Stylist', _staffMember?.name ?? '—'),
               _row('When', '${DateFormat('EEE d MMM').format(_day)} · ${_slot ?? '—'}'),
             ],
@@ -595,8 +972,10 @@ class _BookFlowPageState extends State<BookFlowPage> {
 
     switch (_step) {
       case 1:
-        label = 'Continue';
-        onPressed = _service == null || _busy ? null : _loadStaff;
+        label = _hasSelection
+            ? 'Continue (${_selectedServices.length})'
+            : 'Continue';
+        onPressed = !_hasSelection || _busy ? null : _loadStaff;
         break;
       case 2:
         label = 'Continue';
@@ -637,6 +1016,400 @@ class _BookFlowPageState extends State<BookFlowPage> {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MonthCalendar extends StatelessWidget {
+  const _MonthCalendar({
+    required this.month,
+    required this.selected,
+    required this.firstDate,
+    required this.lastDate,
+    required this.onMonthChanged,
+    required this.onDaySelected,
+  });
+
+  final DateTime month;
+  final DateTime selected;
+  final DateTime firstDate;
+  final DateTime lastDate;
+  final ValueChanged<DateTime> onMonthChanged;
+  final ValueChanged<DateTime> onDaySelected;
+
+  bool _sameDay(DateTime a, DateTime b) =>
+      a.year == b.year && a.month == b.month && a.day == b.day;
+
+  @override
+  Widget build(BuildContext context) {
+    final firstOfMonth = DateTime(month.year, month.month);
+    // Monday-based week index: Mon=0 … Sun=6
+    final lead = (firstOfMonth.weekday + 6) % 7;
+    final daysInMonth = DateTime(month.year, month.month + 1, 0).day;
+    final cells = lead + daysInMonth;
+    final rows = ((cells + 6) ~/ 7);
+    final minMonth = DateTime(firstDate.year, firstDate.month);
+    final maxMonth = DateTime(lastDate.year, lastDate.month);
+    final canPrev = DateTime(month.year, month.month).isAfter(minMonth);
+    final canNext = DateTime(month.year, month.month).isBefore(maxMonth);
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppColors.line),
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              _CalNavBtn(
+                icon: Icons.chevron_left_rounded,
+                enabled: canPrev,
+                onTap: canPrev
+                    ? () => onMonthChanged(DateTime(month.year, month.month - 1))
+                    : null,
+              ),
+              Expanded(
+                child: Text(
+                  DateFormat('MMMM yyyy').format(month),
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: AppColors.ink,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 15,
+                  ),
+                ),
+              ),
+              _CalNavBtn(
+                icon: Icons.chevron_right_rounded,
+                enabled: canNext,
+                onTap: canNext
+                    ? () => onMonthChanged(DateTime(month.year, month.month + 1))
+                    : null,
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: const ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su']
+                .map(
+                  (d) => Expanded(
+                    child: Center(
+                      child: Text(
+                        d,
+                        style: TextStyle(
+                          color: AppColors.muted,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ),
+                )
+                .toList(),
+          ),
+          const SizedBox(height: 8),
+          for (var r = 0; r < rows; r++)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Row(
+                children: List.generate(7, (c) {
+                  final idx = r * 7 + c;
+                  final dayNum = idx - lead + 1;
+                  if (dayNum < 1 || dayNum > daysInMonth) {
+                    return const Expanded(child: SizedBox(height: 40));
+                  }
+                  final date = DateTime(month.year, month.month, dayNum);
+                  final enabled = !date.isBefore(firstDate) && !date.isAfter(lastDate);
+                  final isSelected = _sameDay(date, selected);
+                  final isToday = _sameDay(date, DateTime.now());
+                  return Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.all(2),
+                      child: Material(
+                        color: isSelected
+                            ? AppColors.blushDeep
+                            : isToday
+                                ? AppColors.blushSoft
+                                : Colors.transparent,
+                        shape: const CircleBorder(),
+                        child: InkWell(
+                          customBorder: const CircleBorder(),
+                          onTap: enabled ? () => onDaySelected(date) : null,
+                          child: SizedBox(
+                            height: 40,
+                            child: Center(
+                              child: Text(
+                                '$dayNum',
+                                style: TextStyle(
+                                  color: !enabled
+                                      ? AppColors.line
+                                      : isSelected
+                                          ? Colors.white
+                                          : AppColors.ink,
+                                  fontWeight: isSelected || isToday
+                                      ? FontWeight.w800
+                                      : FontWeight.w600,
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                }),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CalNavBtn extends StatelessWidget {
+  const _CalNavBtn({
+    required this.icon,
+    required this.enabled,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final bool enabled;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: AppColors.washTop,
+      shape: const CircleBorder(),
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: onTap,
+        child: SizedBox(
+          width: 36,
+          height: 36,
+          child: Icon(
+            icon,
+            color: enabled ? AppColors.ink : AppColors.line,
+            size: 22,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _TimeMetaBar extends StatelessWidget {
+  const _TimeMetaBar({
+    required this.stylist,
+    required this.minutes,
+    required this.serviceCount,
+  });
+
+  final String stylist;
+  final int minutes;
+  final int serviceCount;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.line),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: AppColors.blushSoft,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Icon(Icons.person_outline_rounded, color: AppColors.blushDeep, size: 20),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  stylist,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: AppColors.ink,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '$serviceCount service${serviceCount == 1 ? '' : 's'} · $minutes min',
+                  style: const TextStyle(color: AppColors.muted, fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DateChip extends StatelessWidget {
+  const _DateChip({
+    required this.day,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final DateTime day;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final today = DateTime.now();
+    final isToday =
+        day.year == today.year && day.month == today.month && day.day == today.day;
+    return Material(
+      color: selected ? AppColors.blushDeep : Colors.white,
+      borderRadius: BorderRadius.circular(18),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
+        child: Container(
+          width: 64,
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: selected ? AppColors.blushDeep : AppColors.line,
+              width: selected ? 1.5 : 1,
+            ),
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                isToday ? 'Today' : DateFormat('E').format(day),
+                style: TextStyle(
+                  color: selected ? Colors.white.withValues(alpha: 0.85) : AppColors.muted,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                '${day.day}',
+                style: TextStyle(
+                  color: selected ? Colors.white : AppColors.ink,
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                  height: 1,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                DateFormat('MMM').format(day),
+                style: TextStyle(
+                  color: selected ? Colors.white.withValues(alpha: 0.8) : AppColors.inkSoft,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _TimeSlotChip extends StatelessWidget {
+  const _TimeSlotChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: selected ? AppColors.blushDeep : Colors.white,
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: selected ? AppColors.blushDeep : AppColors.line,
+              width: selected ? 1.5 : 1,
+            ),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              color: selected ? Colors.white : AppColors.ink,
+              fontWeight: FontWeight.w700,
+              fontSize: 13,
+              letterSpacing: 0.1,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SelectedSummary extends StatelessWidget {
+  const _SelectedSummary({
+    required this.count,
+    required this.minutes,
+    required this.price,
+  });
+
+  final int count;
+  final int minutes;
+  final double price;
+
+  @override
+  Widget build(BuildContext context) {
+    final priceLabel = price > 0
+        ? ' · Rs. ${price % 1 == 0 ? price.toInt() : price.toStringAsFixed(0)}'
+        : '';
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppColors.blushSoft,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.blush.withValues(alpha: 0.35)),
+      ),
+      child: Text(
+        '$count selected · $minutes min$priceLabel',
+        style: const TextStyle(
+          color: AppColors.blushDeep,
+          fontWeight: FontWeight.w700,
+          fontSize: 13,
         ),
       ),
     );

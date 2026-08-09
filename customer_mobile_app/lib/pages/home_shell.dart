@@ -4,8 +4,8 @@ import '../config.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_bottom_nav.dart';
 import '../widgets/app_header.dart';
-import 'appointments_page.dart';
 import 'book/book_flow_page.dart';
+import 'history_page.dart';
 import 'home_page.dart';
 import 'offers_page.dart';
 import 'profile_page.dart';
@@ -82,7 +82,7 @@ class _HomeShellState extends State<HomeShell> {
           final ok = await ensureLoggedIn(context);
           if (!mounted || !ok) return;
           await nav.push(
-            MaterialPageRoute(builder: (_) => const AppointmentsPage()),
+            MaterialPageRoute(builder: (_) => const HistoryPage()),
           );
         },
       ),

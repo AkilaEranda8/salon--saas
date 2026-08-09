@@ -277,8 +277,8 @@ class _AppointmentsPageState extends State<AppointmentsPage> {
           children: const [
             SizedBox(height: 80),
             EmptyState(
-              title: 'No appointments yet',
-              subtitle: 'Book a service and your visits will show up here.',
+              title: 'No visits yet',
+              subtitle: 'Book a service and your history will show up here.',
               icon: Icons.event_available_outlined,
             ),
           ],
@@ -369,8 +369,6 @@ class _AppointmentsPageState extends State<AppointmentsPage> {
       child: ListView(
         padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
         children: [
-          Text('Appointments', style: Theme.of(context).textTheme.headlineMedium),
-          const SizedBox(height: 8),
           section('Upcoming', upcoming),
           section('Past', past),
         ],

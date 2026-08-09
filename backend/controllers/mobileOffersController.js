@@ -35,7 +35,10 @@ const create = async (req, res) => {
     const tenantId = resolveTenantId(req);
     if (!tenantId) return res.status(400).json({ message: 'Tenant context required.' });
 
-    const { title, body, image_url, starts_at, ends_at, is_published } = req.body || {};
+    const {
+      title, body, image_url, category, badge_text,
+      original_price, offer_price, starts_at, ends_at, is_published,
+    } = req.body || {};
     if (!String(title || '').trim() || !String(body || '').trim()) {
       return res.status(400).json({ message: 'title and body are required.' });
     }
@@ -45,6 +48,10 @@ const create = async (req, res) => {
       title: String(title).trim(),
       body: String(body).trim(),
       image_url: image_url ? String(image_url).trim() : null,
+      category: category ? String(category).trim() : null,
+      badge_text: badge_text ? String(badge_text).trim() : null,
+      original_price: original_price === '' || original_price == null ? null : Number(original_price),
+      offer_price: offer_price === '' || offer_price == null ? null : Number(offer_price),
       starts_at: starts_at || null,
       ends_at: ends_at || null,
       is_published: !!is_published,
@@ -62,7 +69,10 @@ const update = async (req, res) => {
     const row = await MobileOffer.findOne({ where: byIdWhere(req, req.params.id) });
     if (!row) return res.status(404).json({ message: 'Offer not found.' });
 
-    const allowed = ['title', 'body', 'image_url', 'starts_at', 'ends_at', 'is_published'];
+    const allowed = [
+      'title', 'body', 'image_url', 'category', 'badge_text',
+      'original_price', 'offer_price', 'starts_at', 'ends_at', 'is_published',
+    ];
     const updates = {};
     for (const k of allowed) {
       if (req.body[k] !== undefined) updates[k] = req.body[k];
@@ -70,6 +80,10 @@ const update = async (req, res) => {
     if (updates.title != null) updates.title = String(updates.title).trim();
     if (updates.body != null) updates.body = String(updates.body).trim();
     if (updates.image_url === '') updates.image_url = null;
+    if (updates.category === '') updates.category = null;
+    if (updates.badge_text === '') updates.badge_text = null;
+    if (updates.original_price === '') updates.original_price = null;
+    if (updates.offer_price === '') updates.offer_price = null;
 
     await row.update(updates);
     return res.json(row);
@@ -106,7 +120,10 @@ const listPublic = async (req, res) => {
           { [Op.or]: [{ ends_at: null }, { ends_at: { [Op.gte]: today } }] },
         ],
       },
-      attributes: ['id', 'title', 'body', 'image_url', 'starts_at', 'ends_at', 'createdAt'],
+      attributes: [
+        'id', 'title', 'body', 'image_url', 'category', 'badge_text',
+        'original_price', 'offer_price', 'starts_at', 'ends_at', 'createdAt',
+      ],
       order: [['createdAt', 'DESC']],
       limit: 50,
     });

@@ -16,7 +16,7 @@ const CAT_COLOR = { Hair: '#2563EB', Beard: '#7C3AED', Skin: '#EA580C', Nail: '#
 const CAT_BG    = { Hair: '#EFF6FF', Beard: '#F5F3FF', Skin: '#FFF7ED', Nail: '#FFFBEB', Massage: '#ECFDF5', Other: '#F8FAFC' };
 const EMPTY = {
   name: '', category: '', subcategory: '', duration_minutes: 30, price: '',
-  description: '', is_active: true, available_online: true,
+  description: '', image_url: '', is_active: true, available_online: true,
   commission_type: 'percentage', commission_value: '',
 };
 
@@ -174,6 +174,7 @@ export default function ServicesPage() {
       duration_minutes: form.duration_minutes,
       price: form.price,
       description: form.description || '',
+      image_url: form.image_url?.trim() || null,
       is_active: form.is_active !== false,
       available_online: form.available_online !== false,
     };
@@ -433,6 +434,13 @@ export default function ServicesPage() {
             </p>
           )}
           <FormGroup label="Description"><Input value={form.description || ''} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} placeholder="Brief description" /></FormGroup>
+          <FormGroup label="Image URL (customer app card)">
+            <Input
+              value={form.image_url || ''}
+              onChange={(e) => setForm((f) => ({ ...f, image_url: e.target.value }))}
+              placeholder="https://… service photo"
+            />
+          </FormGroup>
           <label style={{
             display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer',
             padding: '12px 14px', borderRadius: 10, border: '1.5px solid #E4E7EC', background: '#F9FAFB',

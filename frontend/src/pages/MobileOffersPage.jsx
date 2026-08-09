@@ -14,6 +14,10 @@ const EMPTY = {
   title: '',
   body: '',
   image_url: '',
+  category: '',
+  badge_text: '',
+  original_price: '',
+  offer_price: '',
   starts_at: '',
   ends_at: '',
   is_published: false,
@@ -74,6 +78,10 @@ export default function MobileOffersPage() {
       title: row.title || '',
       body: row.body || '',
       image_url: row.image_url || '',
+      category: row.category || '',
+      badge_text: row.badge_text || '',
+      original_price: row.original_price != null ? String(row.original_price) : '',
+      offer_price: row.offer_price != null ? String(row.offer_price) : '',
       starts_at: row.starts_at ? String(row.starts_at).slice(0, 10) : '',
       ends_at: row.ends_at ? String(row.ends_at).slice(0, 10) : '',
       is_published: !!row.is_published,
@@ -94,6 +102,10 @@ export default function MobileOffersPage() {
         title: form.title.trim(),
         body: form.body.trim(),
         image_url: form.image_url.trim() || null,
+        category: form.category.trim() || null,
+        badge_text: form.badge_text.trim() || null,
+        original_price: form.original_price === '' ? null : Number(form.original_price),
+        offer_price: form.offer_price === '' ? null : Number(form.offer_price),
         starts_at: form.starts_at || null,
         ends_at: form.ends_at || null,
         is_published: !!form.is_published,
@@ -286,6 +298,22 @@ export default function MobileOffersPage() {
         <FormGroup label="Image URL (optional)">
           <Input value={form.image_url} onChange={(e) => setForm({ ...form, image_url: e.target.value })} placeholder="https://…" />
         </FormGroup>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <FormGroup label="Category">
+            <Input value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} placeholder="e.g. Hair, Packages" />
+          </FormGroup>
+          <FormGroup label="Badge text">
+            <Input value={form.badge_text} onChange={(e) => setForm({ ...form, badge_text: e.target.value })} placeholder="e.g. 25% off" />
+          </FormGroup>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <FormGroup label="Original price">
+            <Input type="number" min="0" step="0.01" value={form.original_price} onChange={(e) => setForm({ ...form, original_price: e.target.value })} placeholder="480" />
+          </FormGroup>
+          <FormGroup label="Offer price">
+            <Input type="number" min="0" step="0.01" value={form.offer_price} onChange={(e) => setForm({ ...form, offer_price: e.target.value })} placeholder="360" />
+          </FormGroup>
+        </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
           <FormGroup label="Starts">
             <Input type="date" value={form.starts_at} onChange={(e) => setForm({ ...form, starts_at: e.target.value })} />

@@ -1684,12 +1684,12 @@ class _GoodsReceivedSheetState extends State<_GoodsReceivedSheet> {
       ),
       child: SingleChildScrollView(
         padding: EdgeInsets.fromLTRB(20, 0, 20, bottom + 28),
-        child: Form(
-          key: _key,
-          child: Column(
+      child: Form(
+        key: _key,
+        child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
+          children: [
               Center(
                 child: Container(
                   margin: const EdgeInsets.only(top: 12, bottom: 18),
@@ -1846,7 +1846,7 @@ class _GoodsReceivedSheetState extends State<_GoodsReceivedSheet> {
                       children: [
                         _label('QUANTITY'),
                         TextFormField(
-                          controller: _qty,
+              controller: _qty,
                           keyboardType: const TextInputType.numberWithOptions(
                             decimal: true,
                           ),
@@ -1904,7 +1904,7 @@ class _GoodsReceivedSheetState extends State<_GoodsReceivedSheet> {
               const SizedBox(height: 14),
 
               _label('UNIT COST'),
-              TextFormField(
+            TextFormField(
                 controller: _cost,
                 keyboardType:
                     const TextInputType.numberWithOptions(decimal: true),
@@ -1938,8 +1938,8 @@ class _GoodsReceivedSheetState extends State<_GoodsReceivedSheet> {
               const SizedBox(height: 14),
 
               _label('NOTES'),
-              TextFormField(
-                controller: _notes,
+            TextFormField(
+              controller: _notes,
                 maxLines: 2,
                 textCapitalization: TextCapitalization.sentences,
                 decoration: _deco(
@@ -2218,12 +2218,12 @@ class _AdjustmentSheetState extends State<_AdjustmentSheet> {
       ),
       child: SingleChildScrollView(
         padding: EdgeInsets.fromLTRB(20, 0, 20, bottom + 28),
-        child: Form(
-          key: _key,
-          child: Column(
+      child: Form(
+        key: _key,
+        child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
+          children: [
               Center(
                 child: Container(
                   margin: const EdgeInsets.only(top: 12, bottom: 18),
@@ -2381,7 +2381,7 @@ class _AdjustmentSheetState extends State<_AdjustmentSheet> {
                   ),
                   const SizedBox(width: 10),
                   _directionChip(
-                    value: 'remove',
+                  value: 'remove',
                     label: 'Remove (−)',
                     icon: Icons.remove_circle_outline_rounded,
                     color: const Color(0xFFDC2626),
@@ -2392,7 +2392,7 @@ class _AdjustmentSheetState extends State<_AdjustmentSheet> {
 
               _label('QUANTITY'),
               TextFormField(
-                controller: _qty,
+              controller: _qty,
                 keyboardType:
                     const TextInputType.numberWithOptions(decimal: true),
                 decoration: _deco(
@@ -2406,16 +2406,16 @@ class _AdjustmentSheetState extends State<_AdjustmentSheet> {
               const SizedBox(height: 14),
 
               _label('REASON'),
-              TextFormField(
-                controller: _reason,
+            TextFormField(
+              controller: _reason,
                 maxLines: 2,
                 textCapitalization: TextCapitalization.sentences,
                 decoration: _deco(
                   'Damage / expired / found stock',
                   Icons.notes_rounded,
                   required: true,
-                ),
-                validator: (v) =>
+              ),
+              validator: (v) =>
                     v == null || v.trim().isEmpty ? 'Reason is required' : null,
               ),
               const SizedBox(height: 16),
@@ -2560,17 +2560,17 @@ class _ProductPickerSheetState extends State<_ProductPickerSheet> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       padding: EdgeInsets.only(bottom: bottom),
-      child: Column(
-        children: [
+        child: Column(
+          children: [
           const SizedBox(height: 10),
           Container(
-            width: 40,
-            height: 4,
-            decoration: BoxDecoration(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
               color: const Color(0xFFE5E7EB),
-              borderRadius: BorderRadius.circular(99),
-            ),
-          ),
+                  borderRadius: BorderRadius.circular(99),
+                ),
+              ),
           const Padding(
             padding: EdgeInsets.fromLTRB(20, 16, 20, 8),
             child: Align(
@@ -2579,8 +2579,8 @@ class _ProductPickerSheetState extends State<_ProductPickerSheet> {
                 'Select product',
                 style: TextStyle(
                   fontSize: 17,
-                  fontWeight: FontWeight.w800,
-                  color: _ink,
+                fontWeight: FontWeight.w800,
+                color: _ink,
                 ),
               ),
             ),
@@ -2598,7 +2598,7 @@ class _ProductPickerSheetState extends State<_ProductPickerSheet> {
                 filled: true,
                 fillColor: _canvas,
                 border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(12),
                   borderSide: const BorderSide(color: _border),
                 ),
                 enabledBorder: OutlineInputBorder(
@@ -2616,7 +2616,7 @@ class _ProductPickerSheetState extends State<_ProductPickerSheet> {
           Expanded(
             child: items.isEmpty
                 ? const Center(
-                    child: Text(
+                child: Text(
                       'No matching products',
                       style: TextStyle(
                         color: _muted,

@@ -15,6 +15,8 @@ const PaymentSplit = require('../models/PaymentSplit');
 const StaffSpecialization = require('../models/StaffSpecialization');
 const StaffOffDay = require('../models/StaffOffDay');
 const Attendance = require('../models/Attendance');
+const InvConsumption = require('../models/InvConsumption');
+const InvProduct = require('../models/InvProduct');
 const { sendSMS, getChannelFlags, getTemplate, interpolate, notifyStaffAppointmentAssigned } = require('../services/notificationService');
 const { getMaintenanceMode } = require('../services/systemSettings');
 const Tenant = require('../models/Tenant');
@@ -803,6 +805,130 @@ router.get('/customer-portal/bookings', portalAuth, async (req, res) => {
   } catch (err) {
     console.error('portal.bookings error:', err);
     return res.status(500).json({ message: 'Failed to load bookings.' });
+  }
+});
+
+/** Visits + products used during salon visits (for customer app History). */
+router.get('/customer-portal/history', portalAuth, async (req, res) => {
+  try {
+    const variants = buildPhoneVariants(req.portalPhone);
+    const phoneWhere = { phone: { [Op.or]: variants } };
+    const tenantScope = req.portalTenantId ? { tenant_id: req.portalTenantId } : {};
+
+    const visits = await Appointment.findAll({
+      where: { ...phoneWhere, ...tenantScope },
+      include: [
+        { model: Branch, as: 'branch', attributes: ['id', 'name', 'color'] },
+        { model: Service, as: 'service', attributes: ['id', 'name', 'price', 'duration_minutes'] },
+        { model: Staff, as: 'staff', attributes: ['id', 'name'] },
+      ],
+      order: [['date', 'DESC'], ['time', 'DESC']],
+      limit: 100,
+    });
+
+    const customers = await Customer.findAll({
+      where: { ...phoneWhere, ...tenantScope },
+      attributes: ['id'],
+      limit: 20,
+    });
+    const customerIds = customers.map((c) => c.id).filter(Boolean);
+
+    let used_products = [];
+    let used_products_summary = [];
+    if (customerIds.length) {
+      try {
+        const usedProductRows = await InvConsumption.findAll({
+          where: {
+            ...tenantScope,
+            customer_id: { [Op.in]: customerIds },
+            status: { [Op.ne]: 'cancelled' },
+          },
+          include: [
+            {
+              model: InvProduct,
+              as: 'product',
+              attributes: ['id', 'name', 'sku', 'product_type', 'unit'],
+              required: false,
+            },
+            {
+              model: Service,
+              as: 'service',
+              attributes: ['id', 'name'],
+              required: false,
+            },
+            {
+              model: Staff,
+              as: 'staff',
+              attributes: ['id', 'name'],
+              required: false,
+            },
+          ],
+          order: [['consumption_date', 'DESC'], ['id', 'DESC']],
+          limit: 80,
+        });
+
+        used_products = usedProductRows.map((row) => {
+          const j = row.toJSON();
+          return {
+            id: j.id,
+            consumption_date: j.consumption_date,
+            quantity_used: Number(j.quantity_used || 0),
+            unit: j.unit || j.product?.unit || 'pcs',
+            reason: j.reason || null,
+            status: j.status,
+            product: j.product
+              ? {
+                  id: j.product.id,
+                  name: j.product.name,
+                  sku: j.product.sku,
+                  product_type: j.product.product_type,
+                }
+              : null,
+            service: j.service ? { id: j.service.id, name: j.service.name } : null,
+            staff: j.staff ? { id: j.staff.id, name: j.staff.name } : null,
+          };
+        });
+
+        const summaryMap = new Map();
+        for (const row of used_products) {
+          const pid = row.product?.id;
+          if (!pid) continue;
+          const prev = summaryMap.get(pid);
+          if (!prev) {
+            summaryMap.set(pid, {
+              product_id: pid,
+              name: row.product.name,
+              sku: row.product.sku,
+              product_type: row.product.product_type,
+              unit: row.unit,
+              times_used: 1,
+              total_qty: row.quantity_used,
+              last_used: row.consumption_date,
+            });
+          } else {
+            prev.times_used += 1;
+            prev.total_qty += row.quantity_used;
+            if (String(row.consumption_date) > String(prev.last_used || '')) {
+              prev.last_used = row.consumption_date;
+            }
+          }
+        }
+        used_products_summary = Array.from(summaryMap.values()).sort((a, b) =>
+          String(b.last_used || '').localeCompare(String(a.last_used || ''))
+        );
+      } catch (invErr) {
+        console.warn('[portal.history] used products:', invErr.message);
+      }
+    }
+
+    return res.json({
+      visits,
+      used_products,
+      used_products_summary,
+    });
+  } catch (err) {
+    console.error('portal.history error:', err);
+    return res.status(500).json({ message: 'Failed to load history.' });
   }
 });
 

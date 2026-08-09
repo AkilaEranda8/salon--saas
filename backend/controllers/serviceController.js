@@ -40,6 +40,12 @@ function buildServicePayload(body = {}, tenant) {
   }
   if (body.price !== undefined) payload.price = body.price;
   if (body.description !== undefined) payload.description = body.description;
+  if (body.image_url !== undefined) {
+    const raw = body.image_url;
+    payload.image_url = raw == null || String(raw).trim() === ''
+      ? null
+      : String(raw).trim().slice(0, 500);
+  }
   if (body.is_active !== undefined) payload.is_active = body.is_active;
   if (body.available_online !== undefined) {
     payload.available_online = body.available_online === true

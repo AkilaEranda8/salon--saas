@@ -41,6 +41,10 @@ const Service = sequelize.define('Service', {
     type: DataTypes.TEXT,
     allowNull: true,
   },
+  image_url: {
+    type: DataTypes.STRING(500),
+    allowNull: true,
+  },
   is_active: {
     type: DataTypes.BOOLEAN,
     defaultValue: true,

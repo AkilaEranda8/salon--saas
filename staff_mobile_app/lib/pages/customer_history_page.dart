@@ -358,9 +358,54 @@ class _Body extends StatelessWidget {
             )
           else
             ...payments.map((pay) => _PaymentRow(pay: pay)),
+
+          const SizedBox(height: 24),
+
+          // ── Previously used products ─────────────────────────────────
+          _SectionTitle(
+            title: 'Used products',
+            sub: productSummary.isEmpty ? null : '(${productSummary.length})',
+          ),
+          const SizedBox(height: 10),
+          if (productSummary.isEmpty)
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: _surface,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: _border),
+              ),
+              child: const Center(
+                child: Text(
+                  'No products recorded for this customer yet.',
+                  style: TextStyle(color: _muted, fontSize: 13),
+                ),
+              ),
+            )
+          else
+            ...productSummary.map((p) => _ProductUsedRow(product: p)),
+
+          if (productLog.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            _SectionTitle(title: 'Recent product log', sub: '(latest)'),
+            const SizedBox(height: 10),
+            ...productLog.take(12).map((row) => _ProductLogRow(row: row)),
+          ],
         ],
       ),
     );
+  }
+
+  List<Map<String, dynamic>> get productSummary {
+    final list = detail['used_products_summary'];
+    if (list is! List) return const [];
+    return list.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+  }
+
+  List<Map<String, dynamic>> get productLog {
+    final list = detail['used_products'];
+    if (list is! List) return const [];
+    return list.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
   }
 }
 
@@ -651,6 +696,117 @@ class _PaymentRow extends StatelessWidget {
                 color: Color(0xFF059669)),
           ),
         ]),
+      ),
+    );
+  }
+}
+
+class _ProductUsedRow extends StatelessWidget {
+  const _ProductUsedRow({required this.product});
+  final Map<String, dynamic> product;
+
+  @override
+  Widget build(BuildContext context) {
+    final name = '${product['name'] ?? 'Product'}';
+    final type = '${product['product_type'] ?? ''}';
+    final times = int.tryParse('${product['times_used'] ?? 1}') ?? 1;
+    final qty = double.tryParse('${product['total_qty'] ?? 0}') ?? 0;
+    final unit = '${product['unit'] ?? ''}';
+    final last = '${product['last_used'] ?? ''}';
+    String lastLabel = last;
+    try {
+      if (last.isNotEmpty) {
+        final d = DateTime.parse(last);
+        const mo = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+        lastLabel = '${d.day} ${mo[d.month - 1]} ${d.year}';
+      }
+    } catch (_) {}
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: _surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: _border),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: const Color(0xFFECFDF5),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: const Icon(Icons.inventory_2_outlined, size: 18, color: _emerald),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(name, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: _ink)),
+                const SizedBox(height: 2),
+                Text(
+                  [
+                    if (type.isNotEmpty) type,
+                    'used ${times}x',
+                    if (qty > 0) '${qty % 1 == 0 ? qty.toInt() : qty} $unit',
+                  ].join(' · '),
+                  style: const TextStyle(fontSize: 11, color: _muted),
+                ),
+              ],
+            ),
+          ),
+          Text(lastLabel, style: const TextStyle(fontSize: 11, color: _muted)),
+        ],
+      ),
+    );
+  }
+}
+
+class _ProductLogRow extends StatelessWidget {
+  const _ProductLogRow({required this.row});
+  final Map<String, dynamic> row;
+
+  @override
+  Widget build(BuildContext context) {
+    final product = row['product'];
+    final name = product is Map ? '${product['name'] ?? 'Product'}' : 'Product';
+    final qty = double.tryParse('${row['quantity_used'] ?? 0}') ?? 0;
+    final unit = '${row['unit'] ?? ''}';
+    final service = row['service'];
+    final staff = row['staff'];
+    final serviceName = service is Map ? '${service['name'] ?? ''}' : '';
+    final staffName = staff is Map ? '${staff['name'] ?? ''}' : '';
+    final date = '${row['consumption_date'] ?? ''}';
+    String dateLabel = date;
+    try {
+      if (date.isNotEmpty) {
+        final d = DateTime.parse(date);
+        const mo = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+        dateLabel = '${d.day} ${mo[d.month - 1]}';
+      }
+    } catch (_) {}
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: _surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: _border),
+      ),
+      child: Text(
+        [
+          name,
+          '${qty % 1 == 0 ? qty.toInt() : qty} $unit',
+          if (serviceName.isNotEmpty) serviceName,
+          if (staffName.isNotEmpty) staffName,
+          if (dateLabel.isNotEmpty) dateLabel,
+        ].join(' · '),
+        style: const TextStyle(fontSize: 12, color: Color(0xFF374151), height: 1.35),
       ),
     );
   }

@@ -1,5 +1,5 @@
 const { Op, fn, col, where: sqlWhere } = require('sequelize');
-const { Customer, Branch, Appointment, Service } = require('../models');
+const { Customer, Branch, Appointment, Service, Staff, InvConsumption, InvProduct } = require('../models');
 const { tenantWhere, byIdWhere, resolveTenantId } = require('../utils/tenantScope');
 const {
   ensureWalkInCustomerForTenant,
@@ -193,16 +193,112 @@ const getOne = async (req, res) => {
         {
           model: Appointment,
           as: 'appointments',
-          limit: 10,
-          order: [['date', 'DESC']],
-          include: [{ model: Service, as: 'service', attributes: ['id', 'name'] }],
+          limit: 15,
+          separate: true,
+          order: [['date', 'DESC'], ['time', 'DESC']],
+          include: [
+            { model: Service, as: 'service', attributes: ['id', 'name'] },
+            { model: Staff, as: 'staff', attributes: ['id', 'name'], required: false },
+            { model: Branch, as: 'branch', attributes: ['id', 'name'], required: false },
+          ],
         },
       ],
     });
 
     if (!cust) return res.status(404).json({ message: 'Customer not found.' });
-    return res.json(cust);
+
+    // Previously used products (inventory consumptions linked to this customer).
+    let usedProductRows = [];
+    try {
+      usedProductRows = await InvConsumption.findAll({
+        where: {
+          ...tenantWhere(req),
+          customer_id: cust.id,
+          status: { [Op.ne]: 'cancelled' },
+        },
+        include: [
+          {
+            model: InvProduct,
+            as: 'product',
+            attributes: ['id', 'name', 'sku', 'product_type', 'unit'],
+            required: false,
+          },
+          {
+            model: Service,
+            as: 'service',
+            attributes: ['id', 'name'],
+            required: false,
+          },
+          {
+            model: Staff,
+            as: 'staff',
+            attributes: ['id', 'name'],
+            required: false,
+          },
+        ],
+        order: [['consumption_date', 'DESC'], ['id', 'DESC']],
+        limit: 80,
+      });
+    } catch (invErr) {
+      console.warn('[customers][getOne] used products:', invErr.message);
+    }
+
+    const used_products = usedProductRows.map((row) => {
+      const j = row.toJSON();
+      return {
+        id: j.id,
+        consumption_date: j.consumption_date,
+        quantity_used: Number(j.quantity_used || 0),
+        unit: j.unit || j.product?.unit || 'pcs',
+        reason: j.reason || null,
+        status: j.status,
+        product: j.product
+          ? {
+              id: j.product.id,
+              name: j.product.name,
+              sku: j.product.sku,
+              product_type: j.product.product_type,
+            }
+          : null,
+        service: j.service ? { id: j.service.id, name: j.service.name } : null,
+        staff: j.staff ? { id: j.staff.id, name: j.staff.name } : null,
+      };
+    });
+
+    // Aggregate unique products (most recent first).
+    const summaryMap = new Map();
+    for (const row of used_products) {
+      const pid = row.product?.id;
+      if (!pid) continue;
+      const prev = summaryMap.get(pid);
+      if (!prev) {
+        summaryMap.set(pid, {
+          product_id: pid,
+          name: row.product.name,
+          sku: row.product.sku,
+          product_type: row.product.product_type,
+          unit: row.unit,
+          times_used: 1,
+          total_qty: row.quantity_used,
+          last_used: row.consumption_date,
+        });
+      } else {
+        prev.times_used += 1;
+        prev.total_qty += row.quantity_used;
+        if (String(row.consumption_date) > String(prev.last_used || '')) {
+          prev.last_used = row.consumption_date;
+        }
+      }
+    }
+    const used_products_summary = Array.from(summaryMap.values())
+      .sort((a, b) => String(b.last_used || '').localeCompare(String(a.last_used || '')));
+
+    const payload = cust.toJSON();
+    payload.used_products = used_products;
+    payload.used_products_summary = used_products_summary;
+    return res.json(payload);
   } catch (err) {
+    console.error('[customers][getOne]', err);
     return res.status(500).json({ message: 'Server error.' });
   }
 };

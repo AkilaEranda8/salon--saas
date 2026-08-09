@@ -4,6 +4,7 @@ import '../state/app_state.dart';
 import '../theme/app_theme.dart';
 import '../widgets/common.dart';
 import 'check_in_qr_page.dart';
+import 'history_page.dart';
 import 'login_page.dart';
 
 class ProfilePage extends StatelessWidget {
@@ -38,7 +39,7 @@ class ProfilePage extends StatelessWidget {
               gradient: const LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
-                colors: [Color(0xFFFFF5F4), AppColors.blushSoft],
+                colors: [AppColors.washTop, AppColors.blushSoft],
               ),
               border: Border.all(color: AppColors.line),
             ),
@@ -83,6 +84,16 @@ class ProfilePage extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 16),
+          AppButton(
+            label: 'Visit history',
+            secondary: true,
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const HistoryPage()),
+              );
+            },
+          ),
+          const SizedBox(height: 12),
           AppButton(
             label: 'Show check-in QR',
             onPressed: () {

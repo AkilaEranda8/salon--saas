@@ -75,9 +75,9 @@ class _AuthAtmosphere extends StatelessWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            Color(0xFFF6EEE8),
+            AppColors.washTop,
             AppColors.surface,
-            Color(0xFFF8F3EE),
+            AppColors.washBottom,
           ],
           stops: [0.0, 0.45, 1.0],
         ),
@@ -97,7 +97,7 @@ class _AuthAtmosphere extends StatelessWidget {
             left: -90,
             child: _Blob(
               size: 280,
-              color: const Color(0xFFD4C4B0).withValues(alpha: 0.22),
+              color: AppColors.accentMid.withValues(alpha: 0.16),
             ),
           ),
           Positioned(
@@ -267,9 +267,9 @@ class AuthErrorBanner extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
-        color: const Color(0xFFFBEAEA),
+        color: AppColors.dangerSoft,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFF0C8C8)),
+        border: Border.all(color: AppColors.danger.withValues(alpha: 0.35)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,

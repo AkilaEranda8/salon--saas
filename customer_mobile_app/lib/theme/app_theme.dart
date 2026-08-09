@@ -1,24 +1,28 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-/// Light salon palette — soft cream surfaces + blush accent (no dark chrome).
+/// Cool spa palette — mist surfaces + eucalyptus accent (replaces cream/blush).
 class AppColors {
-  static const ink = Color(0xFF3D342F);
-  static const inkSoft = Color(0xFF6B5E55);
-  static const muted = Color(0xFF9A8F86);
-  static const line = Color(0xFFEDE6DF);
-  static const surface = Color(0xFFFFFCF9);
+  static const ink = Color(0xFF1C2B28);
+  static const inkSoft = Color(0xFF3D524C);
+  static const muted = Color(0xFF7A8F88);
+  static const line = Color(0xFFD8E3DF);
+  static const surface = Color(0xFFF5F8F7);
   static const card = Color(0xFFFFFFFF);
-  static const blush = Color(0xFFD4898B);
-  static const blushDeep = Color(0xFFB86B6E);
-  static const blushSoft = Color(0xFFF9EEEE);
-  static const washTop = Color(0xFFF8F1EB);
-  static const washBottom = Color(0xFFFFFCF9);
-  static const success = Color(0xFF3D7A5C);
-  static const successSoft = Color(0xFFEAF5EF);
-  static const warning = Color(0xFFB07D3A);
-  static const warningSoft = Color(0xFFF9F1E6);
-  static const danger = Color(0xFFC45A5A);
+  /// Primary accent (token name kept for call-site compatibility).
+  static const blush = Color(0xFF2F8A7B);
+  static const blushDeep = Color(0xFF216B5F);
+  static const blushSoft = Color(0xFFE3F2EE);
+  static const accentMid = Color(0xFF4AA896);
+  static const washTop = Color(0xFFE8F1EE);
+  static const washBottom = Color(0xFFF5F8F7);
+  static const success = Color(0xFF2D7A4F);
+  static const successSoft = Color(0xFFE6F4EC);
+  static const warning = Color(0xFFC4892A);
+  static const warningSoft = Color(0xFFF8F0E3);
+  static const danger = Color(0xFFC04B4B);
+  static const dangerSoft = Color(0xFFF8E8E8);
+  static const gold = Color(0xFFD4A84B);
 }
 
 class AppTheme {
@@ -96,7 +100,7 @@ class AppTheme {
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: Colors.white,
+        fillColor: AppColors.card,
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
@@ -118,7 +122,7 @@ class AppTheme {
         hintStyle: const TextStyle(color: AppColors.muted),
       ),
       bottomNavigationBarTheme: const BottomNavigationBarThemeData(
-        backgroundColor: Colors.white,
+        backgroundColor: AppColors.card,
         selectedItemColor: AppColors.blushDeep,
         unselectedItemColor: AppColors.muted,
         type: BottomNavigationBarType.fixed,

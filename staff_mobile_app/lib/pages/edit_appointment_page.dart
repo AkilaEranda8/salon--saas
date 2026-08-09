@@ -14,8 +14,9 @@ const Color _kGold  = Color(0xFFC9956C);
 const Color _kBg    = Color(0xFFF2F5F2);
 const Color _kBorder = Color(0xFFE5E7EB);
 
+// Completed is set only after Collect Payment — not selectable here.
 const List<String> _kStatuses = [
-  'pending', 'confirmed', 'in_service', 'completed', 'cancelled'
+  'pending', 'confirmed', 'in_service', 'cancelled'
 ];
 
 String _statusLabel(String s) {
@@ -92,7 +93,9 @@ class _EditAppointmentPageState extends State<EditAppointmentPage> {
     _notes.text        = AppointmentNotes.stripAdditionalServicesLine(a.notes);
     _branchId          = a.branchId.isNotEmpty ? a.branchId : widget.fixedBranchId;
     _staffId           = a.staffId;
-    _status            = _kStatuses.contains(a.status) ? a.status : 'pending';
+    _status            = a.status == 'completed'
+        ? 'completed'
+        : (_kStatuses.contains(a.status) ? a.status : 'pending');
     _initServiceIds(a);
   }
 
@@ -525,12 +528,41 @@ class _EditAppointmentPageState extends State<EditAppointmentPage> {
                   ],
                 ),
 
-                // ── 2. Status ───────────────────────────────────────────
+                // ── 2. Status (completed only via Collect Payment) ──────
                 const SizedBox(height: 12),
                 _section(
                   title: 'Status',
                   icon: Icons.flag_outlined,
                   children: [
+                    if (_status == 'completed')
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 14, vertical: 9),
+                        decoration: BoxDecoration(
+                          color: _kG900,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: _statusColor('completed')),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              width: 7,
+                              height: 7,
+                              decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: _statusColor('completed')),
+                            ),
+                            const SizedBox(width: 6),
+                            Text(_statusLabel('completed'),
+                                style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 13)),
+                          ],
+                        ),
+                      )
+                    else
                     Wrap(
                       spacing: 8,
                       runSpacing: 8,

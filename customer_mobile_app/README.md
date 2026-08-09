@@ -1,6 +1,6 @@
 # Customer Mobile App
 
-Hexaone single-salon customer app (Flutter): phone OTP login, book appointments, view history/rebook, loyalty profile, and in-app offers from salon admin.
+salon-larvendo single-salon customer app (Flutter): phone OTP login, book appointments, view history/rebook, loyalty profile, and in-app offers from salon admin.
 
 ## Requirements
 
@@ -25,7 +25,7 @@ flutter run --dart-define=API_BASE_URL=https://api.salon.hexalyte.com --dart-def
 Optional brand label:
 
 ```bash
-flutter run --dart-define=BRAND_NAME=Hexaone
+flutter run --dart-define=BRAND_NAME=salon-larvendo
 ```
 
 Local backend example:

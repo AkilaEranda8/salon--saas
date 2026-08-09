@@ -975,6 +975,23 @@ const changeStatus = async (req, res) => {
     if (deniedOwn) return res.status(deniedOwn.status).json({ message: deniedOwn.message });
 
     const previousStatus = appt.status;
+
+    // Completed only after collect payment (final paid row, not advance deposit).
+    if (status === 'completed' && previousStatus !== 'completed') {
+      const paidFinal = await Payment.count({
+        where: {
+          appointment_id: appt.id,
+          status: 'paid',
+          is_advance: false,
+        },
+      });
+      if (!paidFinal) {
+        return res.status(400).json({
+          message: 'Appointment can only be marked completed after collecting payment.',
+        });
+      }
+    }
+
     await appt.update({ status });
 
     // Customer notified on create — do not re-send when confirming (avoids duplicate SMS).

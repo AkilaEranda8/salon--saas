@@ -33,7 +33,7 @@ export default function ServicesPage() {
   const { allowed: franchiseCommission } = useFeatureGate('franchise_commission');
   const showServiceCommission = serviceWiseCommission || franchiseCommission;
   const { toast } = useToast();
-  const canEdit   = ['superadmin', 'admin'].includes(user?.role);
+  const canEdit   = ['superadmin', 'admin', 'manager'].includes(user?.role);
   const [services, setServices] = useState([]);
   const [allSvcs, setAllSvcs]   = useState([]);
   const [loading, setLoading]   = useState(true);

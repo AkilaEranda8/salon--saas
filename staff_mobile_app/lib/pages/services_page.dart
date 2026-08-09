@@ -58,7 +58,8 @@ class _ServicesPageState extends State<ServicesPage> {
     super.dispose();
   }
 
-  Future<void> _load() => AppStateScope.of(context).loadServices();
+  Future<void> _load() =>
+      AppStateScope.of(context).loadServices(onlyActive: false);
 
   void _refresh() => setState(() {
     _future = _load();
@@ -67,19 +68,22 @@ class _ServicesPageState extends State<ServicesPage> {
     _searching = false;
   });
 
-  Future<void> _addService() async {
-    final appState = AppStateScope.of(context);
+  List<String> _categoriesFrom(List<SalonService> services) {
     final cats = <String>{};
-    for (final s in appState.services) {
+    for (final s in services) {
       final c = s.category.trim();
       if (c.isNotEmpty) cats.add(c);
     }
     if (cats.isEmpty) cats.add('Other');
+    return cats.toList()..sort();
+  }
 
+  Future<void> _addService() async {
+    final appState = AppStateScope.of(context);
     final showCommission = appState.serviceWiseCommissionForUser;
     final payload = await AddServiceModal.show(
       context,
-      categories: cats.toList()..sort(),
+      categories: _categoriesFrom(appState.services),
       showServiceWiseCommission: showCommission,
     );
     if (payload == null || !mounted) return;
@@ -103,6 +107,47 @@ class _ServicesPageState extends State<ServicesPage> {
       ));
       return;
     }
+    setState(() => _future = _load());
+  }
+
+  Future<void> _editService(SalonService service) async {
+    final appState = AppStateScope.of(context);
+    final showCommission = appState.serviceWiseCommissionForUser;
+    final payload = await AddServiceModal.show(
+      context,
+      categories: _categoriesFrom(appState.services),
+      showServiceWiseCommission: showCommission,
+      initial: service,
+    );
+    if (payload == null || !mounted) return;
+
+    final ok = await appState.updateService(
+      serviceId: service.id,
+      name: payload.name,
+      category: payload.category,
+      durationMinutes: payload.durationMinutes,
+      price: payload.price,
+      description: payload.description,
+      isActive: payload.isActive,
+      commissionType: payload.commissionType,
+      commissionValue: payload.commissionValue,
+    );
+    if (!mounted) return;
+    if (!ok) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(appState.lastError ?? 'Failed to update service'),
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: _forest,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ));
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: const Text('Service updated'),
+      behavior: SnackBarBehavior.floating,
+      backgroundColor: _emerald,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+    ));
     setState(() => _future = _load());
   }
 
@@ -248,6 +293,7 @@ class _ServicesPageState extends State<ServicesPage> {
                   itemBuilder: (ctx, i) => _ServiceCard(
                     service: list[i],
                     showCommission: showCommission,
+                    onTap: () => _editService(list[i]),
                   ),
                 ),
               ),
@@ -528,9 +574,11 @@ class _ServiceCard extends StatelessWidget {
   const _ServiceCard({
     required this.service,
     this.showCommission = false,
+    this.onTap,
   });
   final SalonService service;
   final bool showCommission;
+  final VoidCallback? onTap;
 
   String? _commissionLabel() {
     if (!showCommission) return null;
@@ -546,7 +594,12 @@ class _ServiceCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final grad = _catColors(service.category);
 
-    return Container(
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
         color: _surface,
@@ -677,10 +730,16 @@ class _ServiceCard extends StatelessWidget {
                   fontSize: 18,
                   fontWeight: FontWeight.w900,
                   letterSpacing: -0.5)),
+              if (onTap != null) ...[
+                const SizedBox(height: 4),
+                const Icon(Icons.edit_rounded, size: 14, color: _muted),
+              ],
             ],
           ),
 
         ]),
+      ),
+    ),
       ),
     );
   }

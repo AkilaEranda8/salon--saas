@@ -362,9 +362,16 @@ class MobileApi {
     );
   }
 
-  Future<List<SalonService>> fetchServices({required String token}) async {
+  Future<List<SalonService>> fetchServices({
+    required String token,
+    bool onlyActive = true,
+  }) async {
+    final qp = <String, String>{
+      'limit': '500',
+      if (onlyActive) 'active': 'true',
+    };
     final response = await http.get(
-      Uri.parse('$baseUrl/api/services?limit=500&active=true'),
+      Uri.parse('$baseUrl/api/services').replace(queryParameters: qp),
       headers: _authHeaders(token),
     );
     final body = _decode(response.body);
@@ -508,6 +515,42 @@ class MobileApi {
     final body = _decode(response.body);
     if (response.statusCode >= 400) {
       throw Exception(body['message'] ?? 'Service create failed');
+    }
+  }
+
+  Future<void> updateService({
+    required String token,
+    required String serviceId,
+    required String name,
+    required String category,
+    required String durationMinutes,
+    required String price,
+    required String description,
+    bool? isActive,
+    String? commissionType,
+    String? commissionValue,
+  }) async {
+    final payload = <String, dynamic>{
+      'name': name.trim(),
+      'category': category.trim().isEmpty ? 'Other' : category.trim(),
+      'duration_minutes': int.tryParse(durationMinutes.trim()) ?? 30,
+      'price': double.tryParse(price.trim()) ?? 0,
+      'description': description.trim().isEmpty ? null : description.trim(),
+      ?'is_active': isActive,
+    };
+    if (commissionType != null) {
+      payload['commission_type'] = commissionType;
+      final raw = commissionValue?.trim() ?? '';
+      payload['commission_value'] = raw.isEmpty ? null : raw;
+    }
+    final response = await http.put(
+      Uri.parse('$baseUrl/api/services/$serviceId'),
+      headers: _authHeaders(token),
+      body: jsonEncode(payload),
+    );
+    final body = _decode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['message'] ?? 'Service update failed');
     }
   }
 

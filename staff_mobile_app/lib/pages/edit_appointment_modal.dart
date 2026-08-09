@@ -15,8 +15,9 @@ const Color _eLightB = Color(0xFFBFDBFE);
 const Color _eBorder = Color(0xFFE5E7EB);
 const Color _eBg     = Color(0xFFF9FAFB);
 
+// Completed is set only after Collect Payment — not selectable here.
 const List<String> _kStatuses = [
-  'pending', 'confirmed', 'in_service', 'completed', 'cancelled'
+  'pending', 'confirmed', 'in_service', 'cancelled'
 ];
 
 String _statusLabel(String s) {
@@ -128,7 +129,9 @@ class _EditApptSheetState extends State<_EditApptSheet> {
     _noteCtrl.text = AppointmentNotes.stripAdditionalServicesLine(a.notes);
     _branchId      = a.branchId.isNotEmpty ? a.branchId : widget.fixedBranchId;
     _staffId       = a.staffId;
-    _status        = _kStatuses.contains(a.status) ? a.status : 'pending';
+    _status        = a.status == 'completed'
+        ? 'completed'
+        : (_kStatuses.contains(a.status) ? a.status : 'pending');
     _initServiceIds(a);
   }
 
@@ -414,53 +417,80 @@ class _EditApptSheetState extends State<_EditApptSheet> {
 
               const SizedBox(height: 20),
 
-              // ── Status chips ──────────────────────────────────────────
+              // ── Status chips (completed only via Collect Payment) ─────
               _label('STATUS'),
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: _kStatuses.map((s) {
-                    final sel   = _status == s;
-                    final color = _statusColor(s);
-                    final bg    = _statusBg(s);
-                    return GestureDetector(
-                      onTap: () => setState(() => _status = s),
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 140),
-                        margin: const EdgeInsets.only(right: 7),
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 7),
-                        decoration: BoxDecoration(
-                          color: sel ? bg : const Color(0xFFF9FAFB),
-                          borderRadius: BorderRadius.circular(9),
-                          border: Border.all(
-                            color: sel
-                                ? color.withValues(alpha: 0.50)
-                                : _eBorder,
-                            width: sel ? 1.5 : 1,
+              if (_status == 'completed')
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                  decoration: BoxDecoration(
+                    color: _statusBg('completed'),
+                    borderRadius: BorderRadius.circular(9),
+                    border: Border.all(
+                      color: _statusColor('completed').withValues(alpha: 0.50),
+                      width: 1.5,
+                    ),
+                  ),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    Container(
+                      width: 7, height: 7,
+                      decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: _statusColor('completed')),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(_statusLabel('completed'),
+                        style: TextStyle(
+                            color: _statusColor('completed'),
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w700)),
+                  ]),
+                )
+              else
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: _kStatuses.map((s) {
+                      final sel   = _status == s;
+                      final color = _statusColor(s);
+                      final bg    = _statusBg(s);
+                      return GestureDetector(
+                        onTap: () => setState(() => _status = s),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 140),
+                          margin: const EdgeInsets.only(right: 7),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 7),
+                          decoration: BoxDecoration(
+                            color: sel ? bg : const Color(0xFFF9FAFB),
+                            borderRadius: BorderRadius.circular(9),
+                            border: Border.all(
+                              color: sel
+                                  ? color.withValues(alpha: 0.50)
+                                  : _eBorder,
+                              width: sel ? 1.5 : 1,
+                            ),
                           ),
+                          child: Row(mainAxisSize: MainAxisSize.min, children: [
+                            Container(
+                              width: 7, height: 7,
+                              decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: sel ? color : const Color(0xFFD1D5DB)),
+                            ),
+                            const SizedBox(width: 6),
+                            Text(_statusLabel(s),
+                                style: TextStyle(
+                                    color: sel
+                                        ? color
+                                        : const Color(0xFF9CA3AF),
+                                    fontSize: 12.5,
+                                    fontWeight: FontWeight.w700)),
+                          ]),
                         ),
-                        child: Row(mainAxisSize: MainAxisSize.min, children: [
-                          Container(
-                            width: 7, height: 7,
-                            decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: sel ? color : const Color(0xFFD1D5DB)),
-                          ),
-                          const SizedBox(width: 6),
-                          Text(_statusLabel(s),
-                              style: TextStyle(
-                                  color: sel
-                                      ? color
-                                      : const Color(0xFF9CA3AF),
-                                  fontSize: 12.5,
-                                  fontWeight: FontWeight.w700)),
-                        ]),
-                      ),
-                    );
-                  }).toList(),
+                      );
+                    }).toList(),
+                  ),
                 ),
-              ),
 
               const SizedBox(height: 14),
 

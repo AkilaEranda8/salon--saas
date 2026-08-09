@@ -5,6 +5,7 @@ class MobileFeatures {
   static const payments = 'payments';
   static const calendar = 'calendar';
   static const walkin = 'walkin';
+  static const qrCheckin = 'qr_checkin';
   static const staff = 'staff';
   static const commission = 'commission';
   static const attendance = 'attendance';
@@ -21,6 +22,7 @@ class MobileFeatures {
     payments,
     calendar,
     walkin,
+    qrCheckin,
     staff,
     commission,
     attendance,
@@ -38,6 +40,7 @@ class MobileFeatures {
     payments: 'Payments',
     calendar: 'Calendar',
     walkin: 'Walk-in',
+    qrCheckin: 'Scan check-in QR',
     staff: 'Staff',
     commission: 'Salary & Commission',
     attendance: 'Attendance',

@@ -19,8 +19,11 @@ class AppHeader extends StatelessWidget {
 
   String get _mark {
     final t = brandName.trim();
-    if (t.isEmpty) return 'H';
-    final parts = t.split(RegExp(r'\s+')).where((p) => p.isNotEmpty).toList();
+    if (t.isEmpty) return 'S';
+    final parts = t
+        .split(RegExp(r'[\s\-_]+'))
+        .where((p) => p.isNotEmpty)
+        .toList();
     if (parts.length >= 2) {
       return '${parts[0][0]}${parts[1][0]}'.toUpperCase();
     }

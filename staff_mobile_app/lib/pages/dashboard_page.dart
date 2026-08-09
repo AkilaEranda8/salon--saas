@@ -326,7 +326,7 @@ class _DashboardPageState extends State<DashboardPage>
         Icons.qr_code_scanner_rounded,
         [const Color(0xFF1B3A2D), const Color(0xFFC9956C)],
         const QrCheckInScanPage(),
-        ok: true,
+        ok: s.isFeatureEnabled(MobileFeatures.qrCheckin),
       ),
       _NavData(
         'Appointments',

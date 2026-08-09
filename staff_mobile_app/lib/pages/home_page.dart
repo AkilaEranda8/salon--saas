@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../models/mobile_feature.dart';
 import '../models/staff_user.dart';
 import '../state/app_state.dart';
 import 'add_item_page.dart';
@@ -90,7 +91,7 @@ class HomePage extends StatelessWidget {
             title: 'Scan check-in QR',
             subtitle: 'Scan customer QR to check in',
             icon: Icons.qr_code_scanner_outlined,
-            enabled: true,
+            enabled: appState.isFeatureEnabled(MobileFeatures.qrCheckin),
             onTap: () {
               Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const QrCheckInScanPage()),

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'config.dart';
 import 'pages/session_gate.dart';
 import 'state/app_state.dart';
 import 'theme/app_theme.dart';
@@ -30,7 +31,7 @@ class _CustomerAppState extends State<CustomerApp> {
     return AppStateScope(
       notifier: _state,
       child: MaterialApp(
-        title: 'Hexaone',
+        title: AppConfig.brandName,
         debugShowCheckedModeBanner: false,
         theme: AppTheme.light(),
         home: const SessionGate(),

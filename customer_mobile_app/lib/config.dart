@@ -12,7 +12,7 @@ class AppConfig {
 
   static const String brandName = String.fromEnvironment(
     'BRAND_NAME',
-    defaultValue: 'Hexaone',
+    defaultValue: 'salon-larvendo',
   );
 
   static int? get tenantIdInt {

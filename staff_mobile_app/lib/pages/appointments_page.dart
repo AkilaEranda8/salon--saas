@@ -1616,9 +1616,10 @@ class _StatusDialogState extends State<_StatusDialog> {
     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
     title: const Text('Change Status', style: TextStyle(fontWeight: FontWeight.w800)),
         content: DropdownButtonFormField<String>(
-      initialValue: _val,
+      initialValue: _kForms.contains(_val) ? _val : 'in_service',
       decoration: const InputDecoration(border: OutlineInputBorder()),
-      items: _kFilters.map((s) => DropdownMenuItem(value: s, child: Text(_sl(s)))).toList(),
+      // Completed only via Collect Payment — not a manual status.
+      items: _kForms.map((s) => DropdownMenuItem(value: s, child: Text(_sl(s)))).toList(),
       onChanged: (v) { if (v != null) { setState(() => _val = v); widget.onChanged(v); } },
     ),
         actions: [
@@ -2750,7 +2751,9 @@ class _EditorState extends State<_EditorDialog> {
       _amt.text   = a.displayAmount > 0 ? a.displayAmount.toStringAsFixed(0) : '';
       _note.text  = AppointmentNotes.stripAdditionalServicesLine(a.notes);
       _branchId   = a.branchId; _staffId = a.staffId;
-      _status     = _kForms.contains(a.status) ? a.status : 'pending';
+      _status     = a.status == 'completed'
+          ? 'completed'
+          : (_kForms.contains(a.status) ? a.status : 'pending');
       _initSids(a);
     } else {
       final d = DateTime.now();
@@ -2871,12 +2874,22 @@ class _EditorState extends State<_EditorDialog> {
               labelText: 'Amount (Rs.)', border: OutlineInputBorder())),
               if (widget.isEdit) ...[
                 const SizedBox(height: 8),
-                DropdownButtonFormField<String>(
-                  initialValue: _status,
-                  decoration: const InputDecoration(labelText: 'Status', border: OutlineInputBorder()),
-              items: _kForms.map((s) => DropdownMenuItem(value: s, child: Text(_sl(s)))).toList(),
-              onChanged: (v) => setState(() => _status = v ?? _status)),
-          ],
+                if (_status == 'completed')
+                  InputDecorator(
+                    decoration: const InputDecoration(
+                      labelText: 'Status',
+                      border: OutlineInputBorder(),
+                    ),
+                    child: Text(_sl('completed'),
+                        style: const TextStyle(fontWeight: FontWeight.w700)),
+                  )
+                else
+                  DropdownButtonFormField<String>(
+                    initialValue: _status,
+                    decoration: const InputDecoration(labelText: 'Status', border: OutlineInputBorder()),
+                    items: _kForms.map((s) => DropdownMenuItem(value: s, child: Text(_sl(s)))).toList(),
+                    onChanged: (v) => setState(() => _status = v ?? _status)),
+              ],
               const SizedBox(height: 8),
           TextFormField(controller: _note, maxLines: 2,
             decoration: const InputDecoration(labelText: 'Notes', border: OutlineInputBorder())),

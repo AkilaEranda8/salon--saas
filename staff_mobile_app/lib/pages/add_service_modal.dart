@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../models/salon_service.dart';
+
 // ── Palette ───────────────────────────────────────────────────────────────────
 const Color _cForest  = Color(0xFF1B3A2D);
 const Color _cEmerald = Color(0xFF2D6A4F);
@@ -20,6 +22,7 @@ class AddServiceModalResult {
     required this.description,
     this.commissionType,
     this.commissionValue,
+    this.isActive = true,
   });
 
   final String name;
@@ -29,6 +32,7 @@ class AddServiceModalResult {
   final String description;
   final String? commissionType;
   final String? commissionValue;
+  final bool isActive;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -36,16 +40,20 @@ class AddServiceModal extends StatefulWidget {
   const AddServiceModal({
     required this.categories,
     this.showServiceWiseCommission = false,
+    this.initial,
     super.key,
   });
 
   final List<String> categories;
   final bool showServiceWiseCommission;
+  /// When set, modal opens in edit mode.
+  final SalonService? initial;
 
   static Future<AddServiceModalResult?> show(
     BuildContext context, {
     required List<String> categories,
     bool showServiceWiseCommission = false,
+    SalonService? initial,
   }) {
     return showModalBottomSheet<AddServiceModalResult>(
       context: context,
@@ -54,6 +62,7 @@ class AddServiceModal extends StatefulWidget {
       builder: (_) => AddServiceModal(
         categories: categories,
         showServiceWiseCommission: showServiceWiseCommission,
+        initial: initial,
       ),
     );
   }
@@ -74,12 +83,44 @@ class _AddServiceModalState extends State<AddServiceModal> {
   late String _category;
   String _commissionType = 'percentage';
   bool _addingNewCat = false;
+  bool _isActive = true;
+
+  bool get _isEdit => widget.initial != null;
 
   @override
   void initState() {
     super.initState();
     final valid = widget.categories.where((c) => c.trim().isNotEmpty).toList();
-    _category = valid.isNotEmpty ? valid.first : 'Other';
+    final initial = widget.initial;
+    if (initial != null) {
+      _nameCtrl.text = initial.name;
+      _durationCtrl.text = '${initial.durationMinutes}';
+      _priceCtrl.text = initial.price.toStringAsFixed(
+        initial.price.truncateToDouble() == initial.price ? 0 : 2,
+      );
+      _descCtrl.text = initial.description;
+      _isActive = initial.isActive;
+      final cat = initial.category.trim().isEmpty ? 'Other' : initial.category.trim();
+      _category = valid.contains(cat)
+          ? cat
+          : (valid.isNotEmpty ? valid.first : cat);
+      if (!valid.contains(cat) && cat.isNotEmpty) {
+        // Keep service category even if not in dropdown list yet.
+        _category = cat;
+      }
+      if (initial.commissionType != null &&
+          initial.commissionType!.trim().isNotEmpty) {
+        _commissionType = initial.commissionType!;
+      }
+      if (initial.commissionValue != null) {
+        final v = initial.commissionValue!;
+        _commCtrl.text = v.truncateToDouble() == v
+            ? v.toStringAsFixed(0)
+            : v.toStringAsFixed(1);
+      }
+    } else {
+      _category = valid.isNotEmpty ? valid.first : 'Other';
+    }
   }
 
   @override
@@ -106,6 +147,7 @@ class _AddServiceModalState extends State<AddServiceModal> {
       description:     _descCtrl.text.trim(),
       commissionType:  widget.showServiceWiseCommission ? _commissionType : null,
       commissionValue: widget.showServiceWiseCommission ? _commCtrl.text.trim() : null,
+      isActive:        _isActive,
     ));
   }
 
@@ -187,19 +229,27 @@ class _AddServiceModalState extends State<AddServiceModal> {
                       color: _cForest, size: 18),
                 ),
                 const SizedBox(width: 12),
-                const Expanded(
+                Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('New Service',
-                        style: TextStyle(
+                      Text(
+                        _isEdit ? 'Edit Service' : 'New Service',
+                        style: const TextStyle(
                           color: _cInk, fontSize: 17,
                           fontWeight: FontWeight.w800,
-                          letterSpacing: -0.2)),
-                      Text('Fill in the service details below',
-                        style: TextStyle(
+                          letterSpacing: -0.2,
+                        ),
+                      ),
+                      Text(
+                        _isEdit
+                            ? 'Update service details below'
+                            : 'Fill in the service details below',
+                        style: const TextStyle(
                           color: Color(0xFFADB5BD), fontSize: 12,
-                          fontWeight: FontWeight.w500)),
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -271,23 +321,72 @@ class _AddServiceModalState extends State<AddServiceModal> {
                       : null,
                 )
               else
-                DropdownButtonFormField<String>(
-                  initialValue: _category,
-                  isExpanded: true,
-                  decoration: _deco('Select category',
-                      Icons.category_outlined, required: true),
-                  items: widget.categories
-                      .where((c) => c.trim().isNotEmpty)
-                      .map((c) => DropdownMenuItem(
-                            value: c,
-                            child: Text(c,
-                                overflow: TextOverflow.ellipsis),
-                          ))
-                      .toList(),
-                  onChanged: (v) {
-                    if (v != null) setState(() => _category = v);
+                Builder(
+                  builder: (context) {
+                    final opts = <String>{
+                      ...widget.categories.where((c) => c.trim().isNotEmpty),
+                      if (_category.trim().isNotEmpty) _category,
+                    }.toList()
+                      ..sort();
+                    final value = opts.contains(_category)
+                        ? _category
+                        : (opts.isNotEmpty ? opts.first : 'Other');
+                    return DropdownButtonFormField<String>(
+                      initialValue: value,
+                      isExpanded: true,
+                      decoration: _deco(
+                        'Select category',
+                        Icons.category_outlined,
+                        required: true,
+                      ),
+                      items: opts
+                          .map(
+                            (c) => DropdownMenuItem(
+                              value: c,
+                              child: Text(c, overflow: TextOverflow.ellipsis),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (v) {
+                        if (v != null) setState(() => _category = v);
+                      },
+                    );
                   },
                 ),
+
+              if (_isEdit) ...[
+                const SizedBox(height: 14),
+                _label('STATUS'),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: _cBg,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: _cBorder),
+                  ),
+                  child: SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(
+                      _isActive ? 'Active' : 'Inactive',
+                      style: const TextStyle(
+                        color: _cInk,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14,
+                      ),
+                    ),
+                    subtitle: Text(
+                      _isActive
+                          ? 'Visible for booking'
+                          : 'Hidden from booking lists',
+                      style: const TextStyle(color: _cMuted, fontSize: 12),
+                    ),
+                    value: _isActive,
+                    activeThumbColor: _cEmerald,
+                    onChanged: (v) => setState(() => _isActive = v),
+                  ),
+                ),
+              ],
 
               const SizedBox(height: 14),
 
@@ -464,17 +563,25 @@ class _AddServiceModalState extends State<AddServiceModal> {
                       color: _cForest.withValues(alpha: 0.28),
                       blurRadius: 14, offset: const Offset(0, 5))],
                   ),
-                  child: const Row(
+                  child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.check_circle_rounded,
-                          color: Colors.white, size: 18),
-                      SizedBox(width: 9),
-                      Text('Add Service',
-                        style: TextStyle(
+                      Icon(
+                        _isEdit
+                            ? Icons.save_rounded
+                            : Icons.check_circle_rounded,
+                        color: Colors.white,
+                        size: 18,
+                      ),
+                      const SizedBox(width: 9),
+                      Text(
+                        _isEdit ? 'Save changes' : 'Add Service',
+                        style: const TextStyle(
                           color: Colors.white, fontSize: 15,
                           fontWeight: FontWeight.w800,
-                          letterSpacing: 0.2)),
+                          letterSpacing: 0.2,
+                        ),
+                      ),
                     ],
                   ),
                 ),

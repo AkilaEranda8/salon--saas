@@ -508,17 +508,57 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  Future<List<SalonService>> loadServices() async {
+  Future<List<SalonService>> loadServices({bool onlyActive = true}) async {
     final token = _currentUser?.authToken;
     if (token == null || token.isEmpty) {
       throw Exception('Missing auth token (cannot load services).');
     }
-    final loaded = await _api.fetchServices(token: token);
+    final loaded = await _api.fetchServices(
+      token: token,
+      onlyActive: onlyActive,
+    );
     _services
       ..clear()
       ..addAll(loaded);
     notifyListeners();
     return services;
+  }
+
+  Future<bool> updateService({
+    required String serviceId,
+    required String name,
+    required String category,
+    required String durationMinutes,
+    required String price,
+    required String description,
+    bool? isActive,
+    String? commissionType,
+    String? commissionValue,
+  }) async {
+    final token = _currentUser?.authToken;
+    if (token == null || token.isEmpty) {
+      _lastError = 'Missing auth token (cannot update service).';
+      return false;
+    }
+    try {
+      await _api.updateService(
+        token: token,
+        serviceId: serviceId,
+        name: name,
+        category: category,
+        durationMinutes: durationMinutes,
+        price: price,
+        description: description,
+        isActive: isActive,
+        commissionType: serviceWiseCommissionForUser ? commissionType : null,
+        commissionValue: serviceWiseCommissionForUser ? commissionValue : null,
+      );
+      await loadServices(onlyActive: false);
+      return true;
+    } catch (e) {
+      _lastError = e.toString().replaceFirst('Exception: ', '');
+      return false;
+    }
   }
 
   Future<List<StaffMember>> loadStaffList({String? branchId}) async {

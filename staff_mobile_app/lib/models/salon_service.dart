@@ -5,6 +5,7 @@ class SalonService {
     required this.category,
     required this.price,
     required this.durationMinutes,
+    this.description = '',
     this.isActive = true,
     this.commissionType,
     this.commissionValue,
@@ -15,6 +16,7 @@ class SalonService {
   final String category;
   final double price;
   final int durationMinutes;
+  final String description;
   final bool isActive;
   final String? commissionType;
   final double? commissionValue;
@@ -34,6 +36,7 @@ class SalonService {
       category: '${json['category'] ?? 'Other'}',
       price: double.tryParse('${json['price'] ?? 0}') ?? 0,
       durationMinutes: rawDuration > 0 ? rawDuration : 30,
+      description: '${json['description'] ?? ''}',
       isActive: json['is_active'] != false,
       commissionType: json['commission_type']?.toString(),
       commissionValue: commVal,

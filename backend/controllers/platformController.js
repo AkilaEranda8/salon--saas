@@ -7,6 +7,7 @@ const { getApiMonitoringSnapshot } = require('../services/apiMonitoring');
 const { sendSMS, sendEmail } = require('../services/notificationService');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
 const { addTrialDays, addTrialDaysFromConfig, getTenantCaps, invalidateTrialDaysCache } = require('../utils/planConfig');
 const { slToday } = require('../utils/dateUtils');
 const { generateInvoicePdfBuffer, sendInvoiceEmail } = require('../services/invoiceDocumentService');
@@ -1354,14 +1355,21 @@ const impersonateTenant = async (req, res) => {
       tenantId:     tenant.id,
       tenantSlug:   tenant.slug,
       impersonated: true,
+      purpose:      'impersonation_exchange',
+      jti:          crypto.randomUUID(),
       byAdmin:      req.user?.username || 'platform_admin',
     };
 
-    // Short-lived token: 2 hours
-    const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '2h' });
+    // Short-lived one-time exchange token (session issued on redeem)
+    const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '30m' });
+
+    console.info(
+      `[impersonate] admin=${payload.byAdmin} tenant=${tenant.slug} user=${owner.username} jti=${payload.jti}`
+    );
 
     return res.json({
       token,
+      expiresIn: 1800,
       tenant: { id: tenant.id, name: tenant.name, slug: tenant.slug },
       user:   { id: owner.id, name: owner.name, username: owner.username },
     });

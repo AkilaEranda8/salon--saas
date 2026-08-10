@@ -3,18 +3,21 @@ FROM nginx:alpine
 # Copy built static files
 COPY . /usr/share/nginx/html
 
-# Nginx config: serve SPA with proper React Router support
+# Nginx config: static marketing site + explicit legal pages
 RUN printf 'server {\n\
     listen 80;\n\
     root /usr/share/nginx/html;\n\
     index index.html;\n\
     \n\
-    # React Router - all routes serve index.html\n\
+    location = /privacy { try_files /privacy.html =404; }\n\
+    location = /privacy-policy { try_files /privacy.html =404; }\n\
+    location = /terms { try_files /terms.html =404; }\n\
+    location = /terms-of-service { try_files /terms.html =404; }\n\
+    \n\
     location / {\n\
     try_files $uri $uri/ /index.html;\n\
     }\n\
     \n\
-    # Cache static assets 1 year\n\
     location ~* \\.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {\n\
     expires 1y;\n\
     add_header Cache-Control "public, immutable";\n\

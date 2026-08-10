@@ -531,8 +531,8 @@ export default function LoginPage({ platformMode = false }) {
 
     return (
       <>
-        <h1 className="lp-h1">{platformMode ? 'Platform sign in' : 'Welcome back'}</h1>
-        <p className="lp-h2">{platformMode ? 'Enter your platform admin credentials' : 'Sign in to your dashboard'}</p>
+        <h1 className="lp-h1">{platformMode ? 'Hexalyte Platform' : 'Welcome back'}</h1>
+        <p className="lp-h2">{platformMode ? 'Sign in to Hexalyte Salon platform administration' : 'Sign in to your Hexalyte Salon dashboard'}</p>
         {maintenance.enabled && <div className="lp-alert lp-alert-err">⚠️ {maintenance.message}</div>}
         {error && <div className="lp-alert lp-alert-err">{error}</div>}
         <form onSubmit={handleSubmit}>
@@ -601,14 +601,14 @@ export default function LoginPage({ platformMode = false }) {
           <div className="lp-hero-copy">
             <h2 className="lp-title">
               {platformMode ? (
-                <>Manage your <em>entire platform</em> from one place</>
+                <>Administer <em>Hexalyte Salon</em> across every tenant</>
               ) : (
                 <>Run your entire <em>salon</em> from one place</>
               )}
             </h2>
             <p className="lp-sub">
               {platformMode
-                ? 'Tenants, subscriptions, monitoring and system controls — built for scale.'
+                ? 'Official Hexalyte platform console — tenants, subscriptions, monitoring and system controls.'
                 : `${brandName} brings appointments, payments, inventory, CRM and analytics into a single powerful platform.`}
             </p>
           </div>
@@ -636,9 +636,15 @@ export default function LoginPage({ platformMode = false }) {
         <div className="lp-auth-inner">
           {renderForm()}
           <div className="lp-auth-foot">
-            Having trouble? Contact your system administrator
+            {platformMode ? 'Hexalyte Salon · Platform administration' : 'Having trouble? Contact your system administrator'}
             <br />
             <a href="/privacy">Privacy</a> · <a href="/terms">Terms</a>
+            {!platformMode && (
+              <>
+                <br />
+                <a href="https://salon.hexalyte.com" style={{ opacity: 0.85 }}>salon.hexalyte.com</a>
+              </>
+            )}
           </div>
         </div>
       </section>

@@ -106,6 +106,7 @@ import TableCraftDemoPage from './pages/TableCraftDemoPage';
 import TwoFactorPage from './pages/TwoFactorPage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
 import DocumentationPage from './pages/DocumentationPage';
+import LegalPage from './pages/LegalPage';
 
 // ── Branding seeder: apply tenant theme to ThemeContext on login ───────────
 const VALID_SIDEBAR_LAYOUTS = new Set([
@@ -734,6 +735,10 @@ export default function App() {
       <Route path="/token-display"  element={<TokenDisplayScreen />} />
       <Route path="/reset-password/:token" element={<ResetPasswordPage />} />
       <Route path="/maintenance"          element={<MaintenancePage />} />
+      <Route path="/privacy" element={<LegalPage kind="privacy" />} />
+      <Route path="/privacy-policy" element={<LegalPage kind="privacy" />} />
+      <Route path="/terms" element={<LegalPage kind="terms" />} />
+      <Route path="/terms-of-service" element={<LegalPage kind="terms" />} />
 
       {/* ── Protected shell ── */}
       <Route

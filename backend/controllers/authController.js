@@ -594,7 +594,7 @@ const forceChangePassword = async (req, res) => {
 };
 
 // ─── POST /api/auth/impersonate-session ──────────────────────────────────────
-// Exchanges a short-lived impersonation token (issued by platformController)
+// Exchanges a short-lived one-time impersonation token (issued by platformController)
 // for a real session cookie so the platform admin can browse as that tenant.
 const impersonateSession = async (req, res) => {
   try {
@@ -608,9 +608,17 @@ const impersonateSession = async (req, res) => {
       return res.status(401).json({ message: 'Invalid or expired impersonation token.' });
     }
 
-    if (!decoded.impersonated) {
-      return res.status(401).json({ message: 'Token is not an impersonation token.' });
+    if (!decoded.impersonated || decoded.purpose !== 'impersonation_exchange') {
+      return res.status(401).json({ message: 'Token is not an impersonation exchange token.' });
     }
+
+    const exchangeHash = crypto.createHash('sha256').update(impToken).digest('hex');
+    try {
+      const alreadyUsed = await RevokedToken.findByPk(exchangeHash);
+      if (alreadyUsed) {
+        return res.status(401).json({ message: 'Impersonation token already used.' });
+      }
+    } catch (_) { /* table missing — continue */ }
 
     const user = await User.findByPk(decoded.id, {
       attributes: { exclude: ['password'] },
@@ -622,8 +630,32 @@ const impersonateSession = async (req, res) => {
 
     if (!user) return res.status(404).json({ message: 'User not found.' });
 
-    // Re-issue the impersonation token as the session cookie (same expiry: 2h)
-    res.cookie('token', impToken, getCookieOptions(req));
+    // Burn the exchange token (one-time use)
+    try {
+      await RevokedToken.upsert({
+        token_hash: exchangeHash,
+        expires_at: new Date((decoded.exp || Math.floor(Date.now() / 1000) + 1800) * 1000),
+      });
+    } catch (_) { /* non-fatal */ }
+
+    const sessionPayload = {
+      id:           user.id,
+      username:     user.username,
+      role:         user.role,
+      branchId:     user.branch_id,
+      name:         user.name,
+      tenantId:     decoded.tenantId || user.tenant_id,
+      tenantSlug:   decoded.tenantSlug,
+      impersonated: true,
+      byAdmin:      decoded.byAdmin || 'platform_admin',
+      jti:          crypto.randomUUID(),
+    };
+    const sessionToken = jwt.sign(sessionPayload, process.env.JWT_SECRET, { expiresIn: '30m' });
+    res.cookie('token', sessionToken, getCookieOptions(req));
+
+    console.info(
+      `[impersonate-session] by=${sessionPayload.byAdmin} user=${user.username} tenant=${sessionPayload.tenantSlug || sessionPayload.tenantId}`
+    );
 
     const userJson = user.toJSON();
     if (userJson.tenant) userJson.tenant = enrichTenantPayload(user.tenant);

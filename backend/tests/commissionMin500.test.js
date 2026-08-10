@@ -36,7 +36,7 @@ function check(name, fn) {
   }
 }
 
-// ── Threshold on payment total ──────────────────────────────────────────────
+// ── Threshold on payment total (no service lines) ───────────────────────────
 check('499 → no commission (10%)', () => {
   assert.strictEqual(bill(pctStaff, 499).amount, 0);
 });
@@ -95,8 +95,8 @@ check('paid 700 - promo 100 = net 600 → 60', () => {
   assert.strictEqual(r.amount, 60);
 });
 
-// ── Multi-service: gate on BILL total, not per line ─────────────────────────
-check('500+500=1000 bill → earns (not zeroed per line)', () => {
+// ── Multi-service: gate PER LINE, not bill total ────────────────────────────
+check('500+500=1000 bill → 0 (each line ≤500)', () => {
   const r = computeCommissionDetails({
     staff: pctStaff,
     serviceIds: [1, 2],
@@ -107,13 +107,31 @@ check('500+500=1000 bill → earns (not zeroed per line)', () => {
     minCommissionableAmount: MIN,
   });
   assert.strictEqual(r.breakdown.netTotal, 1000);
-  assert.strictEqual(r.amount, 100);
-  assert.ok(!r.breakdown.skippedUnderMin);
-  assert.strictEqual(r.breakdown.lines[0].commission, 50);
-  assert.strictEqual(r.breakdown.lines[1].commission, 50);
+  assert.strictEqual(r.amount, 0);
+  assert.strictEqual(r.breakdown.skippedUnderMin, true);
+  assert.ok(r.breakdown.lines.every((l) => l.commission === 0 && l.skippedUnderMin));
 });
 
-check('300+200=500 bill → 0', () => {
+check('500+1000=1500 → commission only on 1000 line', () => {
+  const r = computeCommissionDetails({
+    staff: pctStaff,
+    serviceIds: [1, 2],
+    servicePrices: { 1: 500, 2: 1000 },
+    serviceNames: { 1: 'Low', 2: 'High' },
+    total_amount: 1500,
+    subtotal: 1500,
+    minCommissionableAmount: MIN,
+  });
+  assert.strictEqual(r.breakdown.netTotal, 1500);
+  assert.strictEqual(r.breakdown.lines[0].commission, 0);
+  assert.strictEqual(r.breakdown.lines[0].skippedUnderMin, true);
+  assert.strictEqual(r.breakdown.lines[1].commission, 100);
+  assert.ok(!r.breakdown.lines[1].skippedUnderMin);
+  assert.strictEqual(r.amount, 100);
+  assert.ok(!r.breakdown.skippedUnderMin);
+});
+
+check('300+200=500 bill → 0 (each line ≤500)', () => {
   const r = computeCommissionDetails({
     staff: pctStaff,
     serviceIds: [1, 2],
@@ -127,7 +145,7 @@ check('300+200=500 bill → 0', () => {
   assert.ok(r.breakdown.lines.every((l) => l.commission === 0 && l.skippedUnderMin));
 });
 
-check('400+101=501 bill → earns', () => {
+check('400+101=501 bill → 0 (each line still ≤500)', () => {
   const r = computeCommissionDetails({
     staff: pctStaff,
     serviceIds: [1, 2],
@@ -136,11 +154,26 @@ check('400+101=501 bill → earns', () => {
     subtotal: 501,
     minCommissionableAmount: MIN,
   });
-  assert.strictEqual(r.amount, 50.1);
+  assert.strictEqual(r.amount, 0);
+  assert.ok(r.breakdown.lines.every((l) => l.commission === 0 && l.skippedUnderMin));
+});
+
+check('600+400=1000 → commission only on 600 line', () => {
+  const r = computeCommissionDetails({
+    staff: pctStaff,
+    serviceIds: [1, 2],
+    servicePrices: { 1: 600, 2: 400 },
+    total_amount: 1000,
+    subtotal: 1000,
+    minCommissionableAmount: MIN,
+  });
+  assert.strictEqual(r.breakdown.lines[0].commission, 60);
+  assert.strictEqual(r.breakdown.lines[1].commission, 0);
+  assert.strictEqual(r.amount, 60);
 });
 
 // ── Service-wise rates ──────────────────────────────────────────────────────
-check('service catalogue rate respected when bill > 500', () => {
+check('service catalogue rate respected when line > 500', () => {
   const r = computeCommissionDetails({
     staff: pctStaff,
     allowServiceOverrides: true,
@@ -155,7 +188,7 @@ check('service catalogue rate respected when bill > 500', () => {
   assert.strictEqual(r.breakdown.lines[0].source, 'service_catalog');
 });
 
-check('staff override rate when bill > 500', () => {
+check('staff override rate when line > 500', () => {
   const r = computeCommissionDetails({
     staff: pctStaff,
     allowServiceOverrides: true,
@@ -170,7 +203,7 @@ check('staff override rate when bill > 500', () => {
   assert.strictEqual(r.breakdown.lines[0].source, 'staff_override');
 });
 
-check('service override ignored when bill ≤ 500', () => {
+check('service override ignored when line ≤ 500', () => {
   const r = computeCommissionDetails({
     staff: pctStaff,
     allowServiceOverrides: true,
@@ -195,7 +228,7 @@ check('helpers get 0 when main gross is 0 (bill ≤ 500)', () => {
   assert.strictEqual(split.mainNet, 0);
 });
 
-check('helpers split from main when bill > 500', () => {
+check('helpers split from main when commissionable lines earn', () => {
   const main = bill(pctStaff, 1000); // 100
   const split = computeHelperCommissionSplit(main.amount, [
     { staff_id: 9, commission_type: 'percentage_of_main', commission_value: 20 },
@@ -212,6 +245,23 @@ check('helper fixed from main when bill > 500', () => {
   ]);
   assert.strictEqual(split.helpersTotal, 30);
   assert.strictEqual(split.mainNet, 70);
+});
+
+check('helpers follow per-line main (500+1000 → main 100)', () => {
+  const main = computeCommissionDetails({
+    staff: pctStaff,
+    serviceIds: [1, 2],
+    servicePrices: { 1: 500, 2: 1000 },
+    total_amount: 1500,
+    subtotal: 1500,
+    minCommissionableAmount: MIN,
+  });
+  const split = computeHelperCommissionSplit(main.amount, [
+    { staff_id: 9, commission_type: 'percentage_of_main', commission_value: 20 },
+  ]);
+  assert.strictEqual(main.amount, 100);
+  assert.strictEqual(split.helpersTotal, 20);
+  assert.strictEqual(split.mainNet, 80);
 });
 
 // ── Feature flag helper ─────────────────────────────────────────────────────

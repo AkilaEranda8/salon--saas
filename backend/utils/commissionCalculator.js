@@ -69,9 +69,10 @@ function computeCommissionDetails({
   promo_discount = 0,
   allowServiceOverrides = true,
   /**
-   * When > 0, the whole bill (netTotal) is gated:
-   * netTotal ≤ min → Rs. 0 commission; netTotal ≥ min+1 → normal rates.
-   * Applied on payment total, not per service line (so 500+500=1000 still earns).
+   * When > 0, each service line is gated on its own net share (lineBase):
+   * lineBase ≤ min → Rs. 0 for that line; lineBase ≥ min+1 → normal rates.
+   * So 500 + 1000 only earns commission on the 1000 line.
+   * Payments with no service lines still gate on the whole bill netTotal.
    */
   minCommissionableAmount = 0,
 }) {
@@ -87,7 +88,7 @@ function computeCommissionDetails({
   const defaultType = staff.commission_type || 'percentage';
   const defaultVal = parseFloat(staff.commission_value) || 0;
   const minAmt = Math.max(0, parseFloat(minCommissionableAmount) || 0);
-  const billBelowMin = minAmt > 0 && netTotal <= minAmt;
+  const belowMin = (amount) => minAmt > 0 && amount <= minAmt;
 
   const specByService = new Map(
     (specializations || []).map((s) => [Number(s.service_id), s]),
@@ -97,6 +98,7 @@ function computeCommissionDetails({
   const breakdownLines = [];
 
   if (!ids.length) {
+    const billBelowMin = belowMin(netTotal);
     const lineCommission = billBelowMin
       ? 0
       : (defaultType === 'percentage' ? (netTotal * defaultVal) / 100 : defaultVal);
@@ -144,7 +146,8 @@ function computeCommissionDetails({
       defaultVal,
     });
     const lineBase = grossSum > 0 ? (line.price / grossSum) * netTotal : netTotal / lines.length;
-    const lineCommission = billBelowMin
+    const lineBelowMin = belowMin(lineBase);
+    const lineCommission = lineBelowMin
       ? 0
       : (resolved.type === 'percentage'
         ? (lineBase * resolved.val) / 100
@@ -161,11 +164,12 @@ function computeCommissionDetails({
       source: resolved.source,
       sourceLabel: SOURCE_LABELS[resolved.source] || resolved.source,
       commission: roundedLine,
-      skippedUnderMin: billBelowMin || undefined,
+      skippedUnderMin: lineBelowMin || undefined,
     });
   }
 
   const total = Math.round(commission * 100) / 100;
+  const allSkipped = breakdownLines.length > 0 && breakdownLines.every((l) => l.skippedUnderMin);
   return {
     amount: total,
     breakdown: {
@@ -174,7 +178,7 @@ function computeCommissionDetails({
       loyaltyDiscount: parseFloat(loyalty_discount || 0),
       promoDiscount: parseFloat(promo_discount || 0),
       minCommissionableAmount: minAmt || undefined,
-      skippedUnderMin: billBelowMin || undefined,
+      skippedUnderMin: allSkipped || undefined,
       lines: breakdownLines,
       total,
     },

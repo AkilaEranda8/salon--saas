@@ -108,7 +108,7 @@ class _DashboardPageState extends State<DashboardPage>
       await Future.wait([
         if (s.isFeatureEnabled(MobileFeatures.appointments) &&
             s.hasPermission(StaffPermission.canViewAppointments))
-          s.loadAppointments(date: today, limit: 100),
+          s.loadAppointments(date: today, limit: 200),
         if (s.isFeatureEnabled(MobileFeatures.customers) &&
             s.hasPermission(StaffPermission.canViewCustomers))
           s.loadCustomerCount(),
@@ -139,8 +139,15 @@ class _DashboardPageState extends State<DashboardPage>
     );
   }
 
-  void _go(Widget page) =>
-      Navigator.of(context).push(MaterialPageRoute(builder: (_) => page));
+  void _go(Widget page) {
+    Navigator.of(context)
+        .push(MaterialPageRoute(builder: (_) => page))
+        .then((_) {
+      if (!mounted) return;
+      // Keep dashboard Today list/count on today's appointments only.
+      unawaited(_refreshDashboard());
+    });
+  }
 
   static String _greeting() {
     final h = DateTime.now().hour;
@@ -222,11 +229,12 @@ class _DashboardPageState extends State<DashboardPage>
                       Row(
                         children: [
                           const Expanded(
-                            child: _SectionLabel(text: 'Recent Appointments'),
+                            child: _SectionLabel(text: "Today's Appointments"),
                           ),
                           _TextChip(
                             label: 'See all',
-                            onTap: () => _go(const AppointmentsPage()),
+                            onTap: () =>
+                                _go(AppointmentsPage(initialDate: _todayIso())),
                           ),
                         ],
                       ),
@@ -269,7 +277,7 @@ class _DashboardPageState extends State<DashboardPage>
           Icons.event_rounded,
           _g900,
           _g100,
-          onTap: () => _go(const AppointmentsPage()),
+          onTap: () => _go(AppointmentsPage(initialDate: _todayIso())),
         ),
       if (s.isFeatureEnabled(MobileFeatures.customers) &&
           s.hasPermission(StaffPermission.canViewCustomers))
@@ -333,7 +341,7 @@ class _DashboardPageState extends State<DashboardPage>
         'Appointments',
         Icons.calendar_month_rounded,
         [const Color(0xFF1B3A2D), const Color(0xFF2D6A4F)],
-        const AppointmentsPage(),
+        AppointmentsPage(initialDate: _todayIso()),
         ok:
             s.isFeatureEnabled(MobileFeatures.appointments) &&
             s.hasPermission(StaffPermission.canViewAppointments),
@@ -495,20 +503,32 @@ class _DashboardPageState extends State<DashboardPage>
   }
 
   Widget _apptList(AppState s) {
-    final list = s.appointments.toList()
+    final today = _todayIso();
+    final list = s.appointments
+        .where((a) => _dateKey(a.date) == today)
+        .toList()
       ..sort((a, b) => a.time.compareTo(b.time));
-    final top = list.take(4).toList();
-    if (top.isEmpty) {
+    if (list.isEmpty) {
       return _HintCard(
         icon: Icons.event_busy_rounded,
-        text: 'No appointments yet — tap Appointments to add one.',
+        text: 'No appointments today — tap Today or Appointments to add one.',
       );
     }
     return Column(
-      children: top
+      children: list
           .map((a) => _ApptCard(appt: a, services: s.services))
           .toList(),
     );
+  }
+
+  static String _dateKey(String raw) {
+    final s = raw.trim();
+    if (s.length >= 10 && RegExp(r'^\d{4}-\d{2}-\d{2}').hasMatch(s)) {
+      return s.substring(0, 10);
+    }
+    final parsed = DateTime.tryParse(s);
+    if (parsed == null) return s;
+    return '${parsed.year}-${parsed.month.toString().padLeft(2, '0')}-${parsed.day.toString().padLeft(2, '0')}';
   }
 }
 

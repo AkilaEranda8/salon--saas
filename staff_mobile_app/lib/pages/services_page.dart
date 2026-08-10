@@ -730,12 +730,36 @@ class _ServiceCard extends StatelessWidget {
                   fontSize: 18,
                   fontWeight: FontWeight.w900,
                   letterSpacing: -0.5)),
-              if (onTap != null) ...[
-                const SizedBox(height: 4),
-                const Icon(Icons.edit_rounded, size: 14, color: _muted),
-              ],
             ],
           ),
+
+          if (onTap != null) ...[
+            const SizedBox(width: 10),
+            // Edit action — matches Staff / Walk-in / web ActionBtn style
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFF7ED),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: const Color(0xFFD97706).withValues(alpha: 0.28),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFFD97706).withValues(alpha: 0.10),
+                    blurRadius: 6,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: const Icon(
+                Icons.edit_rounded,
+                size: 16,
+                color: Color(0xFFD97706),
+              ),
+            ),
+          ],
 
         ]),
       ),

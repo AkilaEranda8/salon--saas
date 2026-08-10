@@ -507,6 +507,54 @@ class MobileApi {
     return StaffMember.fromJson(Map<String, dynamic>.from(body));
   }
 
+  Future<StaffMember> fetchSalonStaffOne({
+    required String token,
+    required String staffId,
+  }) async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/api/staff/$staffId'),
+      headers: _authHeaders(token),
+    );
+    final body = _decode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['message'] ?? 'Staff load failed');
+    }
+    return StaffMember.fromJson(Map<String, dynamic>.from(body));
+  }
+
+  Future<void> uploadStaffPhoto({
+    required String token,
+    required String staffId,
+    required String filePath,
+  }) async {
+    final req = http.MultipartRequest(
+      'POST',
+      Uri.parse('$baseUrl/api/staff/$staffId/photo'),
+    );
+    req.headers.addAll(_authHeaders(token)..remove('Content-Type'));
+    req.files.add(await http.MultipartFile.fromPath('photo', filePath));
+    final streamed = await req.send();
+    final response = await http.Response.fromStream(streamed);
+    final body = _decode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['message'] ?? 'Photo upload failed');
+    }
+  }
+
+  Future<void> deleteStaffPhoto({
+    required String token,
+    required String staffId,
+  }) async {
+    final response = await http.delete(
+      Uri.parse('$baseUrl/api/staff/$staffId/photo'),
+      headers: _authHeaders(token),
+    );
+    if (response.statusCode >= 400) {
+      final body = _decode(response.body);
+      throw Exception(body['message'] ?? 'Photo remove failed');
+    }
+  }
+
   Future<void> createService({
     required String token,
     required String name,
@@ -584,6 +632,8 @@ class MobileApi {
     int limit = 20,
     String? status,
     String? date,
+    String? dateFrom,
+    String? dateTo,
   }) async {
     final qp = <String, String>{
       'page': '$page',
@@ -592,6 +642,14 @@ class MobileApi {
       if (staffId != null && staffId.isNotEmpty) 'staffId': staffId,
       if (status != null && status.isNotEmpty) 'status': status,
       if (date != null && date.isNotEmpty) 'date': date,
+      if ((date == null || date.isEmpty) &&
+          dateFrom != null &&
+          dateFrom.isNotEmpty)
+        'date_from': dateFrom,
+      if ((date == null || date.isEmpty) &&
+          dateTo != null &&
+          dateTo.isNotEmpty)
+        'date_to': dateTo,
     };
     final uri = Uri.parse(
       '$baseUrl/api/appointments',
@@ -708,6 +766,24 @@ class MobileApi {
     if (response.statusCode >= 400) {
       throw Exception(body['message'] ?? 'Appointment create failed');
     }
+  }
+
+  Future<Appointment> fetchAppointment({
+    required String token,
+    required String appointmentId,
+  }) async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/api/appointments/$appointmentId'),
+      headers: _authHeaders(token),
+    );
+    final body = _decode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['message'] ?? 'Appointment load failed');
+    }
+    final map = body['data'] is Map
+        ? Map<String, dynamic>.from(body['data'] as Map)
+        : Map<String, dynamic>.from(body);
+    return Appointment.fromJson(map);
   }
 
   Future<void> updateAppointment({

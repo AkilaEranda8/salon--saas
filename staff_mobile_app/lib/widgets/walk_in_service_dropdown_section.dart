@@ -157,44 +157,88 @@ class _WalkInServiceDropdownSectionState
     ]);
   }
 
-  Widget? _inlinePrice(String serviceId) {
+  Widget? _inlinePrice(String serviceId, {bool fullWidth = false}) {
     if (!widget.pricesEditable) return null;
     final ctrls = widget.priceControllers;
     if (ctrls == null) return null;
     final ctrl = ctrls[serviceId];
     if (ctrl == null) return null;
     final accent = widget.accentColor;
-    return SizedBox(
-      width: 108,
-      child: TextField(
-        controller: ctrl,
-        keyboardType: TextInputType.number,
-        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-        textAlign: TextAlign.right,
-        style: TextStyle(
-          fontSize: 14,
-          fontWeight: FontWeight.w800,
-          color: accent,
-        ),
-        onChanged: (_) => widget.onPriceEdited?.call(),
-        decoration: InputDecoration(
-          isDense: true,
-          prefixText: 'Rs ',
-          prefixStyle: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w700,
-            color: accent.withValues(alpha: 0.85),
-          ),
-          hintText: '0',
-          filled: true,
-          fillColor: widget.bgColor,
-          contentPadding:
-              const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
-          border: _border(widget.borderColor),
-          enabledBorder: _border(widget.borderColor),
-          focusedBorder: _border(accent, width: 1.8),
-        ),
+    final field = TextField(
+      controller: ctrl,
+      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      inputFormatters: [
+        FilteringTextInputFormatter.allow(RegExp(r'[\d.]')),
+      ],
+      textAlign: TextAlign.right,
+      style: TextStyle(
+        fontSize: 15,
+        fontWeight: FontWeight.w800,
+        color: accent,
       ),
+      onChanged: (_) => widget.onPriceEdited?.call(),
+      decoration: InputDecoration(
+        isDense: true,
+        labelText: fullWidth ? 'Price (Rs.)' : null,
+        labelStyle: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          color: widget.mutedColor,
+        ),
+        prefixText: 'Rs ',
+        prefixStyle: TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.w700,
+          color: accent.withValues(alpha: 0.85),
+        ),
+        hintText: '0',
+        filled: true,
+        fillColor: widget.bgColor,
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        border: _border(widget.borderColor),
+        enabledBorder: _border(widget.borderColor),
+        focusedBorder: _border(accent, width: 1.8),
+      ),
+    );
+    if (fullWidth) return field;
+    return SizedBox(width: 118, child: field);
+  }
+
+  Widget _serviceSelectRow({
+    required Widget dropdown,
+    required Widget? price,
+    Widget? trailing,
+  }) {
+    if (!widget.pricesEditable || price == null) {
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(child: dropdown),
+          if (trailing != null) ...[
+            const SizedBox(width: 4),
+            trailing,
+          ],
+        ],
+      );
+    }
+    // Collect-payment: price under the service — always visible on phone.
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(child: dropdown),
+            if (trailing != null) ...[
+              const SizedBox(width: 4),
+              trailing,
+            ],
+          ],
+        ),
+        const SizedBox(height: 8),
+        price,
+      ],
     );
   }
 
@@ -245,8 +289,6 @@ class _WalkInServiceDropdownSectionState
     final filtered = _filteredServices(keepId: w.primaryServiceId);
     final primaryVal = w.primaryServiceId;
     final hasPrimary = primaryVal != null && primaryVal.isNotEmpty;
-    final primaryPrice =
-        hasPrimary ? _inlinePrice(primaryVal) : null;
     final extraIds = w.orderedServiceIds.length > 1
         ? w.orderedServiceIds.sublist(1)
         : const <String>[];
@@ -309,46 +351,40 @@ class _WalkInServiceDropdownSectionState
             ),
           )
         else
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: DropdownButtonFormField<String>(
-                  key: ValueKey('primary_$_primaryDropdownKey'),
-                  initialValue: primaryVal != null &&
-                          filtered.any((s) => s.id == primaryVal)
-                      ? primaryVal
-                      : null,
-                  isExpanded: true,
-                  decoration: _fieldDeco(
-                    hint: 'Select service',
-                    icon: Icons.spa_outlined,
-                    accent: accent,
-                    muted: muted,
-                    border: w.borderColor,
-                    bg: w.bgColor,
-                  ),
-                  icon: Icon(
-                    Icons.keyboard_arrow_down_rounded,
-                    color: muted.withValues(alpha: 0.7),
-                    size: 22,
-                  ),
-                  items: filtered
-                      .map(
-                        (s) => DropdownMenuItem(
-                          value: s.id,
-                          child: _serviceItem(s, muted),
-                        ),
-                      )
-                      .toList(),
-                  onChanged: w.onPrimaryChanged,
-                ),
+          _serviceSelectRow(
+            price: hasPrimary
+                ? _inlinePrice(primaryVal, fullWidth: true)
+                : null,
+            dropdown: DropdownButtonFormField<String>(
+              key: ValueKey('primary_$_primaryDropdownKey'),
+              initialValue: primaryVal != null &&
+                      filtered.any((s) => s.id == primaryVal)
+                  ? primaryVal
+                  : null,
+              isExpanded: true,
+              decoration: _fieldDeco(
+                hint: 'Select service',
+                icon: Icons.spa_outlined,
+                accent: accent,
+                muted: muted,
+                border: w.borderColor,
+                bg: w.bgColor,
               ),
-              if (primaryPrice != null) ...[
-                const SizedBox(width: 8),
-                primaryPrice,
-              ],
-            ],
+              icon: Icon(
+                Icons.keyboard_arrow_down_rounded,
+                color: muted.withValues(alpha: 0.7),
+                size: 22,
+              ),
+              items: filtered
+                  .map(
+                    (s) => DropdownMenuItem(
+                      value: s.id,
+                      child: _serviceItem(s, muted),
+                    ),
+                  )
+                  .toList(),
+              onChanged: w.onPrimaryChanged,
+            ),
           ),
 
         if (extraIds.isNotEmpty) ...[
@@ -359,69 +395,60 @@ class _WalkInServiceDropdownSectionState
             final extraVal = extraFiltered.any((s) => s.id == extraId)
                 ? extraId
                 : null;
-            final price = _inlinePrice(extraId);
+            final price = _inlinePrice(extraId, fullWidth: true);
             return Padding(
               padding:
                   EdgeInsets.only(bottom: i == extraIds.length - 1 ? 0 : 8),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: DropdownButtonFormField<String>(
-                      key: ValueKey('extra_${_extraDropdownKey}_${i}_$extraId'),
-                      initialValue: extraVal,
-                      isExpanded: true,
-                      decoration: _fieldDeco(
-                        hint: 'Additional service',
-                        icon: Icons.spa_outlined,
-                        accent: accent.withValues(alpha: 0.75),
-                        muted: muted,
-                        border: w.borderColor,
-                        bg: w.bgColor,
-                      ).copyWith(
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 11,
+              child: _serviceSelectRow(
+                price: price,
+                trailing: Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: IconButton(
+                    tooltip: 'Remove',
+                    onPressed: () => w.onRemoveExtraAt(i),
+                    style: IconButton.styleFrom(
+                      backgroundColor: accent.withValues(alpha: 0.08),
+                      foregroundColor: accent,
+                    ),
+                    icon: const Icon(Icons.close_rounded, size: 18),
+                  ),
+                ),
+                dropdown: DropdownButtonFormField<String>(
+                  key: ValueKey('extra_${_extraDropdownKey}_${i}_$extraId'),
+                  initialValue: extraVal,
+                  isExpanded: true,
+                  decoration: _fieldDeco(
+                    hint: 'Additional service',
+                    icon: Icons.spa_outlined,
+                    accent: accent.withValues(alpha: 0.75),
+                    muted: muted,
+                    border: w.borderColor,
+                    bg: w.bgColor,
+                  ).copyWith(
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 11,
+                    ),
+                  ),
+                  icon: Icon(
+                    Icons.keyboard_arrow_down_rounded,
+                    color: muted.withValues(alpha: 0.7),
+                    size: 22,
+                  ),
+                  items: extraFiltered
+                      .map(
+                        (s) => DropdownMenuItem(
+                          value: s.id,
+                          child: _serviceItem(s, muted, nameSize: 13),
                         ),
-                      ),
-                      icon: Icon(
-                        Icons.keyboard_arrow_down_rounded,
-                        color: muted.withValues(alpha: 0.7),
-                        size: 22,
-                      ),
-                      items: extraFiltered
-                          .map(
-                            (s) => DropdownMenuItem(
-                              value: s.id,
-                              child: _serviceItem(s, muted, nameSize: 13),
-                            ),
-                          )
-                          .toList(),
-                      onChanged: (v) {
-                        if (v == null || v == extraId) return;
-                        w.onRemoveExtraAt(i);
-                        w.onAddExtra(v);
-                      },
-                    ),
-                  ),
-                  if (price != null) ...[
-                    const SizedBox(width: 8),
-                    price,
-                  ],
-                  const SizedBox(width: 4),
-                  Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: IconButton(
-                      tooltip: 'Remove',
-                      onPressed: () => w.onRemoveExtraAt(i),
-                      style: IconButton.styleFrom(
-                        backgroundColor: accent.withValues(alpha: 0.08),
-                        foregroundColor: accent,
-                      ),
-                      icon: const Icon(Icons.close_rounded, size: 18),
-                    ),
-                  ),
-                ],
+                      )
+                      .toList(),
+                  onChanged: (v) {
+                    if (v == null || v == extraId) return;
+                    w.onRemoveExtraAt(i);
+                    w.onAddExtra(v);
+                  },
+                ),
               ),
             );
           }),

@@ -652,7 +652,9 @@ export default function WalkInPage() {
               customerPackageId: String(pkgSel.id),
               customerPackages: pkgs,
               allServices: services,
-              onServices: setPaymentServices,
+              onServices: (pkgIds) => setPaymentServices((prev) => (
+                prev.length > 0 ? prev : pkgIds
+              )),
               onPackageId: setPaymentCustPackageId,
               onMethod: setPaymentMethod,
               onAmount: setPaymentAmount,

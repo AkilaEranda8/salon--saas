@@ -5,6 +5,7 @@ import '../models/salon_service.dart';
 import '../services/mobile_api.dart';
 import '../utils/appointment_notes.dart';
 import '../utils/package_helpers.dart';
+import '../utils/phone_validation.dart';
 import '../widgets/walk_in_service_dropdown_section.dart';
 
 /// Sentinel id for the "Register new customer" autocomplete option.
@@ -407,9 +408,27 @@ class _AddWalkInModalState extends State<AddWalkInModal> {
     final fn = widget.onRegisterNewCustomer;
     if (fn == null) return;
     final name = _nameCtrl.text.trim();
-    if (name.isEmpty) return;
+    if (name.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Enter customer name'),
+        behavior: SnackBarBehavior.floating,
+      ));
+      return;
+    }
+    final phoneErr = validateCustomerPhone(_phoneCtrl.text);
+    if (phoneErr != null) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(phoneErr),
+        behavior: SnackBarBehavior.floating,
+      ));
+      return;
+    }
     setState(() => _registering = true);
-    final newCust = await fn(name, _phoneCtrl.text.trim(), _branchId);
+    final newCust = await fn(
+      name,
+      normalizeCustomerPhone(_phoneCtrl.text),
+      _branchId,
+    );
     if (!mounted) return;
     if (newCust != null) {
       setState(() {
@@ -785,8 +804,15 @@ class _AddWalkInModalState extends State<AddWalkInModal> {
               TextFormField(
                 controller: _phoneCtrl,
                 keyboardType: TextInputType.phone,
-                decoration:
-                    _deco('e.g. 0771234567', Icons.phone_outlined),
+                decoration: _deco(
+                    'e.g. 0771234567', Icons.phone_outlined,
+                    required: true),
+                validator: (v) {
+                  if (_registerMode) return validateCustomerPhone(v);
+                  final t = (v ?? '').trim();
+                  if (t.isEmpty) return null;
+                  return validateCustomerPhone(v);
+                },
               ),
 
               // ── Register banner (shown after sentinel selected) ──────

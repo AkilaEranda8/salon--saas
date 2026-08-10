@@ -93,7 +93,7 @@ class WalkInEntry {
 
     List<Map<String, dynamic>>? linesPayload;
     var displayName = '${service['name'] ?? ''}';
-    final wiq = json['walkInServices'];
+    final wiq = json['queueServices'] ?? json['walkInServices'] ?? json['queue_services'];
     if (wiq is List && wiq.isNotEmpty) {
       linesPayload = wiq
           .whereType<Map>()

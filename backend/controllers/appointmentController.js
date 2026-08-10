@@ -331,15 +331,33 @@ const list = async (req, res) => {
     const where = getBranchWhere(req);
     if (req.query.status)  where.status   = req.query.status;
     if (req.query.staffId) where.staff_id = req.query.staffId;
-    if (req.query.date)    where.date     = req.query.date;
+
+    const ymd = (v) => {
+      const s = String(v || '').slice(0, 10);
+      return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : '';
+    };
+    const singleDate = ymd(req.query.date);
+    const dateFrom = ymd(req.query.date_from || req.query.dateFrom);
+    const dateTo = ymd(req.query.date_to || req.query.dateTo);
+    if (singleDate) {
+      where.date = singleDate;
+    } else if (dateFrom && dateTo) {
+      where.date = { [Op.between]: [dateFrom <= dateTo ? dateFrom : dateTo, dateFrom <= dateTo ? dateTo : dateFrom] };
+    } else if (dateFrom) {
+      where.date = { [Op.gte]: dateFrom };
+    } else if (dateTo) {
+      where.date = { [Op.lte]: dateTo };
+    }
+
     // Staff role: force own appointments only (ignore client staffId override)
     await applyStaffSelfScope(req, where);
 
+    const dayScoped = Boolean(singleDate || dateFrom || dateTo);
     const { count, rows } = await Appointment.findAndCountAll({
       where,
       limit,
       offset,
-      order: req.query.date && req.query.sort === 'time'
+      order: dayScoped && req.query.sort === 'time'
         ? [['time', String(req.query.order || 'asc').toLowerCase() === 'desc' ? 'DESC' : 'ASC']]
         : [['date', 'DESC'], ['time', 'DESC']],
       include: [

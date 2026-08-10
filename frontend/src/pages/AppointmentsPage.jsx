@@ -846,7 +846,10 @@ export default function AppointmentsPage() {
               customerPackageId: String(pkgSel.id),
               customerPackages: pkgs,
               allServices: services,
-              onServices: setPaymentServices,
+              // Keep appointment's booked services — package only sets method/amount.
+              onServices: (pkgIds) => setPaymentServices((prev) => (
+                prev.length > 0 ? prev : pkgIds
+              )),
               onPackageId: setPaymentCustPackageId,
               onMethod: setPaymentMethod,
               onAmount: setPaymentAmt,

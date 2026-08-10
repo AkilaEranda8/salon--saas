@@ -20,6 +20,7 @@ import '../services/mobile_api.dart';
 import '../services/notification_service.dart';
 import '../utils/appointment_notes.dart';
 import '../utils/package_helpers.dart';
+import '../utils/phone_validation.dart';
 
 String _userFacingApiError(Object e) {
   final s = e.toString();
@@ -111,6 +112,8 @@ class AppState extends ChangeNotifier {
   int _lastApptLimit = 200;
   String? _lastApptStatus;
   String? _lastApptDate;
+  String? _lastApptDateFrom;
+  String? _lastApptDateTo;
   String? _lastApptBranchId;
 
   List<StaffUser> get staffUsers => List.unmodifiable(_staffUsers);
@@ -492,12 +495,17 @@ class AppState extends ChangeNotifier {
       _lastError = 'Missing auth token (cannot register customer).';
       return null;
     }
+    final phoneErr = validateCustomerPhone(phone);
+    if (phoneErr != null) {
+      _lastError = phoneErr;
+      return null;
+    }
     try {
       final effectiveBranchId = (branchId ?? _currentUser?.branchId)?.trim();
       final customer = await _api.createCustomer(
         token: token,
         name: name,
-        phone: phone,
+        phone: normalizeCustomerPhone(phone),
         email: '',
         branchId: (effectiveBranchId == null || effectiveBranchId.isEmpty)
             ? null
@@ -523,12 +531,17 @@ class AppState extends ChangeNotifier {
       _lastError = 'Missing auth token (cannot add customer).';
       return false;
     }
+    final phoneErr = validateCustomerPhone(phone);
+    if (phoneErr != null) {
+      _lastError = phoneErr;
+      return false;
+    }
     try {
       final effectiveBranchId = (branchId ?? _currentUser?.branchId)?.trim();
       final customer = await _api.createCustomer(
         token: token,
         name: name,
-        phone: phone,
+        phone: normalizeCustomerPhone(phone),
         email: email,
         branchId: (effectiveBranchId == null || effectiveBranchId.isEmpty)
             ? null
@@ -654,15 +667,24 @@ class AppState extends ChangeNotifier {
     required String roleTitle,
     required String salaryType,
     required String branchId,
+    List<String> branchIds = const [],
     String? email,
     String? baseSalary,
     String? commissionType,
     String? commissionValue,
+    String? joinDate,
     Map<String, String> serviceCommissions = const {},
     bool isActive = true,
+    bool availableOnline = false,
+    Map<String, StaffDayHours>? workingHours,
+    List<StaffOffDay> offDays = const [],
     bool includeServiceWise = false,
   }) {
-    final branchNum = int.tryParse(branchId.trim());
+    final ids = <int>[];
+    for (final raw in (branchIds.isNotEmpty ? branchIds : [branchId])) {
+      final n = int.tryParse(raw.trim());
+      if (n != null && n > 0 && !ids.contains(n)) ids.add(n);
+    }
     final payload = <String, dynamic>{
       'name': name.trim(),
       'phone': phone.trim(),
@@ -670,7 +692,18 @@ class AppState extends ChangeNotifier {
       'role_title': roleTitle.trim(),
       'salary_type': salaryType,
       'is_active': isActive,
-      if (branchNum != null) 'branch_ids': [branchNum],
+      'available_online': availableOnline,
+      if (ids.isNotEmpty) 'branch_ids': ids,
+      if (joinDate != null && joinDate.trim().isNotEmpty)
+        'join_date': joinDate.trim().substring(0, 10),
+      if (workingHours != null)
+        'working_hours': {
+          for (final e in workingHours.entries) e.key: e.value.toJson(),
+        },
+      'off_days': offDays
+          .where((d) => d.date.trim().isNotEmpty)
+          .map((d) => d.toJson())
+          .toList(),
     };
     if (salaryType == 'salary_only' ||
         salaryType == 'salary_plus_commission' ||
@@ -718,12 +751,19 @@ class AppState extends ChangeNotifier {
     required String roleTitle,
     required String salaryType,
     required String branchId,
+    List<String> branchIds = const [],
     String? email,
     String? baseSalary,
     String? commissionType,
     String? commissionValue,
+    String? joinDate,
     Map<String, String> serviceCommissions = const {},
     bool isActive = true,
+    bool availableOnline = false,
+    Map<String, StaffDayHours>? workingHours,
+    List<StaffOffDay> offDays = const [],
+    String? photoPath,
+    bool removePhoto = false,
   }) async {
     final token = _currentUser?.authToken;
     if (token == null || token.isEmpty) {
@@ -738,14 +778,20 @@ class AppState extends ChangeNotifier {
         roleTitle: roleTitle,
         salaryType: salaryType,
         branchId: branchId,
+        branchIds: branchIds,
         email: email,
         baseSalary: baseSalary,
         commissionType: commissionType,
         commissionValue: commissionValue,
+        joinDate: joinDate,
         serviceCommissions: serviceCommissions,
         isActive: isActive,
+        availableOnline: availableOnline,
+        workingHours: workingHours,
+        offDays: offDays,
         includeServiceWise: includeServiceWise,
       );
+      String savedId = staffId ?? '';
       if (staffId != null && staffId.isNotEmpty) {
         await _api.updateSalonStaff(
           token: token,
@@ -753,13 +799,37 @@ class AppState extends ChangeNotifier {
           payload: payload,
         );
       } else {
-        await _api.createSalonStaff(token: token, payload: payload);
+        final created =
+            await _api.createSalonStaff(token: token, payload: payload);
+        savedId = created.id;
+      }
+      if (savedId.isNotEmpty) {
+        if (removePhoto) {
+          await _api.deleteStaffPhoto(token: token, staffId: savedId);
+        }
+        if (photoPath != null && photoPath.trim().isNotEmpty) {
+          await _api.uploadStaffPhoto(
+            token: token,
+            staffId: savedId,
+            filePath: photoPath.trim(),
+          );
+        }
       }
       await loadStaffList();
       return true;
     } catch (e) {
       _lastError = e.toString().replaceFirst('Exception: ', '');
       return false;
+    }
+  }
+
+  Future<StaffMember?> loadSalonStaffOne(String staffId) async {
+    final token = _currentUser?.authToken;
+    if (token == null || token.isEmpty || staffId.trim().isEmpty) return null;
+    try {
+      return await _api.fetchSalonStaffOne(token: token, staffId: staffId);
+    } catch (_) {
+      return null;
     }
   }
 
@@ -1215,6 +1285,8 @@ class AppState extends ChangeNotifier {
     int limit = 200,
     String? status,
     String? date,
+    String? dateFrom,
+    String? dateTo,
     String? branchId,
   }) async {
     if (!hasPermission(StaffPermission.canViewAppointments)) return const [];
@@ -1227,6 +1299,8 @@ class AppState extends ChangeNotifier {
     _lastApptLimit = limit;
     _lastApptStatus = status;
     _lastApptDate = date;
+    _lastApptDateFrom = dateFrom;
+    _lastApptDateTo = dateTo;
     _lastApptBranchId = effectiveBranch.isEmpty ? null : effectiveBranch;
 
     // Staff role: only own appointments (admin/manager/superadmin see branch/team)
@@ -1242,6 +1316,8 @@ class AppState extends ChangeNotifier {
       limit: limit,
       status: status,
       date: date,
+      dateFrom: dateFrom,
+      dateTo: dateTo,
     );
     _appointmentTotal = result.total;
     var rows = result.data;
@@ -1261,6 +1337,8 @@ class AppState extends ChangeNotifier {
       limit: _lastApptLimit,
       status: _lastApptStatus,
       date: _lastApptDate,
+      dateFrom: _lastApptDateFrom,
+      dateTo: _lastApptDateTo,
       branchId: _lastApptBranchId,
     );
   }

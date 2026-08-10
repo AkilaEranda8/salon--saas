@@ -308,6 +308,14 @@ const create = async (req, res) => {
     const { name, phone, email, branch_id } = req.body;
     if (!name) return res.status(400).json({ message: 'Customer name is required.' });
 
+    const digits = String(phone || '').replace(/\D/g, '');
+    if (!digits || digits.length < 9 || digits.length > 15) {
+      return res.status(400).json({ message: 'A valid phone number is required.' });
+    }
+    const storePhone = digits.startsWith('94') && digits.length >= 11
+      ? `0${digits.slice(2)}`
+      : (digits.length === 9 && digits.startsWith('7') ? `0${digits}` : digits);
+
     const effectiveBranchId = req.userBranchId || branch_id || req.user?.branchId || null;
     if (req.userBranchId && effectiveBranchId && Number(effectiveBranchId) !== Number(req.userBranchId)) {
       return res.status(403).json({ message: 'You can only create customers in your branch.' });
@@ -317,7 +325,7 @@ const create = async (req, res) => {
 
     const cust = await Customer.create({
       name,
-      phone,
+      phone: storePhone,
       email: emailNorm,
       branch_id: effectiveBranchId,
       tenant_id: resolveTenantId(req),

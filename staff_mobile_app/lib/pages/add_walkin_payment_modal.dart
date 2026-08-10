@@ -321,7 +321,8 @@ class _AddWalkInPaymentModalState extends State<AddWalkInPaymentModal> {
       if (_method == 'Package') _method = 'Cash';
       _discountId = '';
       _packageOfferPrice = bundle > 0 ? bundle : null;
-      if (serviceIds.isNotEmpty) {
+      final booked = _orderedSelectedServiceIds();
+      if (booked.isEmpty && serviceIds.isNotEmpty) {
         applyResolvedServiceIds(
           ids: serviceIds,
           setPrimary: (v) => _primaryServiceId = v,
@@ -592,7 +593,7 @@ class _AddWalkInPaymentModalState extends State<AddWalkInPaymentModal> {
         _extraServiceIds.removeAt(index);
       }
     });
-    _syncAmountFromServices();
+    _syncAmountFromServices(resetTotalFromCatalog: false);
   }
 
   void _onPrimaryDropdownChanged(String? v) {
@@ -608,7 +609,7 @@ class _AddWalkInPaymentModalState extends State<AddWalkInPaymentModal> {
       }
       _primaryServiceId = v;
     });
-    _syncAmountFromServices();
+    _syncAmountFromServices(resetTotalFromCatalog: false);
   }
 
   void _onAddExtraFromDropdown(String id) {
@@ -620,7 +621,7 @@ class _AddWalkInPaymentModalState extends State<AddWalkInPaymentModal> {
         _extraServiceIds.add(id);
       }
     });
-    _syncAmountFromServices();
+    _syncAmountFromServices(resetTotalFromCatalog: false);
   }
 
   @override
@@ -904,7 +905,7 @@ class _AddWalkInPaymentModalState extends State<AddWalkInPaymentModal> {
                 onRemoveExtraAt: _removeExtraAt,
                 label: 'SERVICES',
                 helperText:
-                    'Select services and set each price on the right.',
+                    'Select a service, then edit Price (Rs.) below it.',
                 accentColor: _pGreen,
                 borderColor: _pBorder,
                 bgColor: _pBg,

@@ -24,10 +24,43 @@ const Color _emerald  = Color(0xFF2D6A4F);   // _g700
 const Color _leaf     = Color(0xFF2D6A4F);   // _g700
 const Color _mint     = Color(0xFFD1FAE5);   // _g100
 const Color _gold     = Color(0xFFC9956C);   // _gold
-const Color _goldL    = Color(0xFFE8C49A);   // light gold
 const Color _canvas   = Color(0xFFF2F5F2);   // _bg
 const Color _surface  = Color(0xFFFFFFFF);
 const Color _border   = Color(0xFFE5E7EB);
+const Color _muted    = Color(0xFF6B7280);
+
+String _todayYmd([DateTime? d]) {
+  final n = d ?? DateTime.now();
+  return '${n.year}-${n.month.toString().padLeft(2, '0')}-${n.day.toString().padLeft(2, '0')}';
+}
+
+bool _isTodayYmd(String ymd) => ymd == _todayYmd();
+
+String _formatApptDateLabel(String ymd) {
+  if (_isTodayYmd(ymd)) return 'Today';
+  final p = DateTime.tryParse(ymd);
+  if (p == null) return ymd;
+  const months = [
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+  ];
+  return '${months[p.month - 1]} ${p.day}, ${p.year}';
+}
+
+String _formatApptRangeLabel(String from, String to) {
+  if (from == to) return _formatApptDateLabel(from);
+  final a = DateTime.tryParse(from);
+  final b = DateTime.tryParse(to);
+  if (a == null || b == null) return '$from – $to';
+  const months = [
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+  ];
+  final sameYear = a.year == b.year;
+  final left = '${months[a.month - 1]} ${a.day}${sameYear ? '' : ', ${a.year}'}';
+  final right = '${months[b.month - 1]} ${b.day}, ${b.year}';
+  return '$left – $right';
+}
 
 // ── Status metadata ───────────────────────────────────────────────────────────
 class _SM {
@@ -60,7 +93,11 @@ const List<String> _kForms    = ['pending', 'confirmed', 'in_service', 'cancelle
 
 // ─────────────────────────────────────────────────────────────────────────────
 class AppointmentsPage extends StatefulWidget {
-  const AppointmentsPage({super.key});
+  const AppointmentsPage({super.key, this.initialDate});
+
+  /// When set (e.g. from dashboard Today), pre-filter to this YYYY-MM-DD.
+  final String? initialDate;
+
   @override
   State<AppointmentsPage> createState() => _ApptState();
 }
@@ -71,7 +108,8 @@ class _ApptState extends State<AppointmentsPage> with SingleTickerProviderStateM
   int     _page    = 1;
   String  _q       = '';
   String  _fStatus = '';
-  String  _fDate   = '';
+  String  _fDateFrom = '';
+  String  _fDateTo   = '';
   String  _fBranch = '';
   late final AnimationController _fadeCtrl;
   late final Animation<double>   _fadeAnim;
@@ -79,9 +117,58 @@ class _ApptState extends State<AppointmentsPage> with SingleTickerProviderStateM
   @override
   void initState() {
     super.initState();
+    final seed = (widget.initialDate ?? '').trim();
+    final day = seed.isNotEmpty ? seed : _todayYmd();
+    _fDateFrom = day;
+    _fDateTo = day;
     _fadeCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 400));
     _fadeAnim = CurvedAnimation(parent: _fadeCtrl, curve: Curves.easeOut);
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+  }
+
+  bool get _viewingToday =>
+      _fDateFrom == _fDateTo && _isTodayYmd(_fDateFrom);
+
+  void _setFilterRange(String from, String to) {
+    var a = from;
+    var b = to;
+    if (a.compareTo(b) > 0) {
+      final t = a;
+      a = b;
+      b = t;
+    }
+    if (a == _fDateFrom && b == _fDateTo) return;
+    setState(() {
+      _fDateFrom = a;
+      _fDateTo = b;
+      _page = 1;
+    });
+    _load();
+  }
+
+  void _shiftFilterRange(int days) {
+    final start = DateTime.tryParse(_fDateFrom) ?? DateTime.now();
+    final end = DateTime.tryParse(_fDateTo) ?? start;
+    _setFilterRange(
+      _todayYmd(start.add(Duration(days: days))),
+      _todayYmd(end.add(Duration(days: days))),
+    );
+  }
+
+  Future<void> _pickFilterRange() async {
+    final now = DateTime.now();
+    final start = DateTime.tryParse(_fDateFrom) ?? now;
+    final end = DateTime.tryParse(_fDateTo) ?? start;
+    final picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2035),
+      initialDateRange: DateTimeRange(start: start, end: end),
+      helpText: 'Select date range',
+      saveText: 'Apply',
+    );
+    if (picked == null || !mounted) return;
+    _setFilterRange(_todayYmd(picked.start), _todayYmd(picked.end));
   }
 
   @override
@@ -99,12 +186,16 @@ class _ApptState extends State<AppointmentsPage> with SingleTickerProviderStateM
     setState(() { _loading = true; _err = null; });
     try {
       if (_isSuper) await app.loadBranches();
+      final sameDay = _fDateFrom == _fDateTo;
       await Future.wait([
         app.loadServices(),
         app.loadAppointments(
-          page: _page, limit: _kLimit,
+          page: _page,
+          limit: 100,
           status:   _fStatus.isEmpty ? null : _fStatus,
-          date:     _fDate.isEmpty   ? null : _fDate,
+          date:     sameDay ? _fDateFrom : null,
+          dateFrom: sameDay ? null : _fDateFrom,
+          dateTo:   sameDay ? null : _fDateTo,
           branchId: _isSuper ? (_fBranch.isEmpty ? null : _fBranch)
                              : app.currentUser?.branchId,
         ),
@@ -116,9 +207,28 @@ class _ApptState extends State<AppointmentsPage> with SingleTickerProviderStateM
     if (mounted) setState(() => _loading = false);
   }
 
+  String _apptDateKey(Appointment a) {
+    final d = a.date.trim();
+    if (d.length >= 10 && RegExp(r'^\d{4}-\d{2}-\d{2}').hasMatch(d)) {
+      return d.substring(0, 10);
+    }
+    final parsed = DateTime.tryParse(d);
+    if (parsed == null) return '';
+    return _todayYmd(parsed);
+  }
+
   List<Appointment> get _shown {
     final app = AppStateScope.of(context);
-    final raw = app.appointments;
+    var raw = app.appointments.toList();
+    final from = _fDateFrom.trim();
+    final to = _fDateTo.trim();
+    if (from.isNotEmpty && to.isNotEmpty) {
+      raw = raw.where((a) {
+        final key = _apptDateKey(a);
+        if (key.isEmpty) return false;
+        return key.compareTo(from) >= 0 && key.compareTo(to) <= 0;
+      }).toList();
+    }
     final catalog = app.services;
     final q = _q.trim().toLowerCase();
     if (q.isEmpty) return raw;
@@ -280,27 +390,34 @@ class _ApptState extends State<AppointmentsPage> with SingleTickerProviderStateM
                                 branches: app.branches,
                                 onChange: (v) { setState(() { _fBranch = v; _page = 1; }); _load(); },
                               ),
-                      const SizedBox(height: 12),
+                              const SizedBox(height: 12),
                             ],
-                            _SearchField(onChanged: (v) => setState(() => _q = v)),
+                            _DateFilterBar(
+                              from: _fDateFrom,
+                              to: _fDateTo,
+                              viewingToday: _viewingToday,
+                              onPrev: () => _shiftFilterRange(-1),
+                              onNext: () => _shiftFilterRange(1),
+                              onPick: _pickFilterRange,
+                              onToday: () {
+                                final t = _todayYmd();
+                                _setFilterRange(t, t);
+                              },
+                            ),
                             const SizedBox(height: 12),
                             _FilterChips(
                               selected: _fStatus, counts: cnts,
                               onSelect: (k) { setState(() { _fStatus = k; _page = 1; }); _load(); },
                             ),
                             const SizedBox(height: 12),
-                            _DatePicker(
-                              value: _fDate,
-                              onPick: (v) { setState(() { _fDate = v; _page = 1; }); _load(); },
-                              onClear: () { setState(() { _fDate = ''; _page = 1; }); _load(); },
-                            ),
+                            _SearchField(onChanged: (v) => setState(() => _q = v)),
                             const SizedBox(height: 20),
                           ]),
                         )),
                         if (list.isEmpty)
                           SliverFillRemaining(
                             hasScrollBody: false,
-                            child: _EmptyView(hasFilter: _fStatus.isNotEmpty || _fDate.isNotEmpty || _q.isNotEmpty),
+                            child: _EmptyView(hasFilter: _fStatus.isNotEmpty || !_viewingToday || _q.isNotEmpty),
                           )
                         else ...[
                           SliverPadding(
@@ -380,31 +497,49 @@ class _ApptState extends State<AppointmentsPage> with SingleTickerProviderStateM
     if (!mounted) return;
     final svcs = app.services;
 
-    final ids = <int>[];
-    if (a.serviceIds.isNotEmpty) {
-      for (final raw in a.serviceIds) {
-        final v = int.tryParse(raw);
-        if (v != null && !ids.contains(v)) ids.add(v);
+    // Always reload appointment so service_ids from junction table are present.
+    Appointment source = a;
+    final token = app.currentUser?.authToken ?? '';
+    if (token.isNotEmpty) {
+      try {
+        source = await app.api.fetchAppointment(
+          token: token,
+          appointmentId: a.id,
+        );
+      } catch (_) {
+        source = a;
       }
-    } else {
-      final sid = int.tryParse(a.serviceId);
-      if (sid != null) ids.add(sid);
-      for (final name in AppointmentNotes.parseAdditionalServiceNames(a.notes)) {
+    }
+    if (!mounted) return;
+
+    final ids = <int>[];
+    void addId(String raw) {
+      final v = int.tryParse(raw.trim());
+      if (v != null && v > 0 && !ids.contains(v)) ids.add(v);
+    }
+    for (final raw in source.serviceIds) {
+      addId(raw);
+    }
+    addId(source.serviceId);
+    if (ids.length <= 1) {
+      for (final name in AppointmentNotes.parseAdditionalServiceNames(source.notes)) {
+        final want = name.trim().toLowerCase();
+        if (want.isEmpty) continue;
         for (final s in svcs) {
-          if (s.name == name) {
-            final id = int.tryParse(s.id);
-            if (id != null && !ids.contains(id)) ids.add(id);
+          if (s.name.trim().toLowerCase() == want) {
+            addId(s.id);
+            break;
           }
         }
       }
     }
     final initialAmt = () {
-      final pkgId = AppointmentNotes.parsePackageId(a.notes);
+      final pkgId = AppointmentNotes.parsePackageId(source.notes);
       // Prefer stored appointment amount (package offer when booked with package).
-      final gross = a.amount > 0
-          ? a.amount
-          : (a.displayAmount > 0 ? a.displayAmount : 0.0);
-      final paid = a.advancePaid > 0 ? a.advancePaid : 0.0;
+      final gross = source.amount > 0
+          ? source.amount
+          : (source.displayAmount > 0 ? source.displayAmount : 0.0);
+      final paid = source.advancePaid > 0 ? source.advancePaid : 0.0;
       final due = (gross - paid).clamp(0, double.infinity);
       if (pkgId != null && pkgId.isNotEmpty && gross > 0) {
         return due > 0 ? due.toStringAsFixed(0) : (paid > 0 ? '0' : gross.toStringAsFixed(0));
@@ -414,8 +549,8 @@ class _ApptState extends State<AppointmentsPage> with SingleTickerProviderStateM
       return gross > 0 ? gross.toStringAsFixed(0) : '';
     }();
 
-    final branchKey = a.branchId.trim().isNotEmpty
-        ? a.branchId
+    final branchKey = source.branchId.trim().isNotEmpty
+        ? source.branchId
         : (app.currentUser?.branchId ?? '');
     var discounts = const <Map<String, dynamic>>[];
     if (branchKey.isNotEmpty) {
@@ -432,7 +567,7 @@ class _ApptState extends State<AppointmentsPage> with SingleTickerProviderStateM
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (_) => _PaySheet(
-        appointment: a,
+        appointment: source,
         services: svcs,
         preSelected: ids,
         initialAmount: initialAmt,
@@ -446,7 +581,7 @@ class _ApptState extends State<AppointmentsPage> with SingleTickerProviderStateM
 
     if (result == null || !mounted) return;
     final success = await app.collectAppointmentPayment(
-      appointment: a,
+      appointment: source,
       amount: result.amount,
       method: result.method,
       paymentServiceIds: result.serviceIds,
@@ -455,7 +590,7 @@ class _ApptState extends State<AppointmentsPage> with SingleTickerProviderStateM
       subtotal: result.subtotal,
       discountId: result.discountId.isNotEmpty ? result.discountId : null,
       promoDiscount: result.promoDiscount,
-      phone: a.phone.trim().isEmpty ? null : a.phone.trim(),
+      phone: source.phone.trim().isEmpty ? null : source.phone.trim(),
       isRecurring: result.isRecurring,
       recurringNextDate: result.isRecurring ? result.recurringNextDate : null,
       appointmentTime: result.isRecurring ? result.appointmentTime : null,
@@ -726,76 +861,131 @@ class _FilterChips extends StatelessWidget {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// DATE PICKER ROW
+// DATE FILTER BAR — range select (above search), Walk-in style chrome
 // ═════════════════════════════════════════════════════════════════════════════
-class _DatePicker extends StatelessWidget {
-  const _DatePicker({required this.value, required this.onPick, required this.onClear});
-  final String value;
-  final ValueChanged<String> onPick;
-  final VoidCallback onClear;
+class _DateFilterBar extends StatelessWidget {
+  const _DateFilterBar({
+    required this.from,
+    required this.to,
+    required this.viewingToday,
+    required this.onPrev,
+    required this.onNext,
+    required this.onPick,
+    required this.onToday,
+  });
+
+  final String from;
+  final String to;
+  final bool viewingToday;
+  final VoidCallback onPrev;
+  final VoidCallback onNext;
+  final VoidCallback onPick;
+  final VoidCallback onToday;
 
   @override
   Widget build(BuildContext context) {
-    final has = value.isNotEmpty;
+    final label = _formatApptRangeLabel(from, to);
     return Row(children: [
-      Expanded(child: GestureDetector(
-        onTap: () async {
-              final now = DateTime.now();
-              final d = await showDatePicker(
-            context: context, firstDate: DateTime(2020), lastDate: DateTime(2035),
-            initialDate: has ? DateTime.tryParse(value) ?? now : now,
-          );
-          if (d != null) {
-            onPick('${d.year}-${d.month.toString().padLeft(2,'0')}-${d.day.toString().padLeft(2,'0')}');
-          }
-        },
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-          decoration: BoxDecoration(
-            color: has ? _forest : _surface,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: has ? _forest : _border),
-            boxShadow: has ? [BoxShadow(color: _forest.withValues(alpha: 0.25),
-              blurRadius: 10, offset: const Offset(0, 4))] : [],
-          ),
-          child: Row(children: [
-            Container(
-              width: 30, height: 30,
-              decoration: BoxDecoration(
-                color: has ? _gold.withValues(alpha: 0.20) : _mint,
-                borderRadius: BorderRadius.circular(8)),
-              child: Icon(Icons.calendar_month_rounded, size: 15,
-                color: has ? _goldL : _leaf),
-            ),
-            const SizedBox(width: 10),
-            Expanded(child: Text(
-              has ? value : 'Filter by date',
-              style: TextStyle(
-                color: has ? Colors.white : const Color(0xFF9CA3AF),
-                fontSize: 13.5, fontWeight: FontWeight.w600),
-            )),
-            Icon(has ? Icons.check_circle_rounded : Icons.arrow_drop_down_rounded,
-              color: has ? _goldL : const Color(0xFFD1D5DB), size: 20),
-          ]),
-        ),
-      )),
-      if (has) ...[
-          const SizedBox(width: 8),
-        GestureDetector(
-          onTap: onClear,
+      _DateNavBtn(icon: Icons.chevron_left_rounded, onTap: onPrev),
+      const SizedBox(width: 8),
+      Expanded(
+        child: GestureDetector(
+          onTap: onPick,
           child: Container(
-            width: 46, height: 46,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
             decoration: BoxDecoration(
-              color: _surface, borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: _border)),
-            child: const Icon(Icons.close_rounded, size: 18,
-              color: Color(0xFF9CA3AF)),
+              color: viewingToday ? _forest : _surface,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: viewingToday ? _forest : _border),
+              boxShadow: viewingToday
+                  ? [
+                      BoxShadow(
+                        color: _forest.withValues(alpha: 0.22),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
+                      ),
+                    ]
+                  : [],
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.date_range_rounded,
+                  size: 16,
+                  color: viewingToday ? Colors.white70 : _forest,
+                ),
+                const SizedBox(width: 8),
+                Flexible(
+                  child: Text(
+                    label,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: viewingToday ? Colors.white : _ink,
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Icon(
+                  Icons.arrow_drop_down_rounded,
+                  color: viewingToday ? Colors.white70 : _muted,
+                  size: 22,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+      const SizedBox(width: 8),
+      _DateNavBtn(icon: Icons.chevron_right_rounded, onTap: onNext),
+      if (!viewingToday) ...[
+        const SizedBox(width: 8),
+        GestureDetector(
+          onTap: onToday,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+            decoration: BoxDecoration(
+              color: const Color(0xFFECFDF5),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: _emerald.withValues(alpha: 0.35)),
+            ),
+            child: const Text(
+              'Today',
+              style: TextStyle(
+                color: _emerald,
+                fontSize: 12.5,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
           ),
         ),
       ],
     ]);
   }
+}
+
+class _DateNavBtn extends StatelessWidget {
+  const _DateNavBtn({required this.icon, required this.onTap});
+
+  final IconData icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+        onTap: onTap,
+        child: Container(
+          width: 42,
+          height: 42,
+          decoration: BoxDecoration(
+            color: _surface,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: _border),
+          ),
+          child: Icon(icon, size: 22, color: _forest),
+        ),
+      );
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -1809,7 +1999,7 @@ class _PaySheetState extends State<_PaySheet> {
     _recurringTemplateIds = List<String>.from(a.recurringMessageTemplateIds);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      _recalc();
+      _recalc(resetLinePrices: true);
       if (widget.recurringAllowed) _loadRecurringTemplates();
       if (a.customerId.trim().isNotEmpty) _loadCustomerPackages(a.customerId);
     });
@@ -1919,7 +2109,9 @@ class _PaySheetState extends State<_PaySheet> {
       if (_method == 'Package') _method = 'Cash';
       _discountId = '';
       _packageOfferPrice = bundle > 0 ? bundle : _packageOfferPrice;
-      if (serviceIds.isNotEmpty) {
+      // Keep services already booked on the appointment — don't replace with package catalog.
+      final booked = _orderedServiceIds();
+      if (booked.isEmpty && serviceIds.isNotEmpty) {
         applyResolvedServiceIds(
           ids: serviceIds,
           setPrimary: (v) => _primaryServiceId = v,
@@ -1937,7 +2129,7 @@ class _PaySheetState extends State<_PaySheet> {
         _selectedTemplateId = '';
         _packageOfferPrice = null;
       });
-      _recalc();
+      _recalc(resetLinePrices: true);
       return;
     }
     Map<String, dynamic>? tpl;
@@ -2017,7 +2209,7 @@ class _PaySheetState extends State<_PaySheet> {
         _linkingPackage = false;
         if (_method == 'Package') _method = 'Cash';
       });
-      _recalc();
+      _recalc(resetLinePrices: true);
       AppToast.error(
         context,
         e.toString().replaceFirst('Exception: ', ''),
@@ -2164,7 +2356,8 @@ class _PaySheetState extends State<_PaySheet> {
     _applyPaidFromBill();
   }
 
-  void _recalc() => _applyPaidFromBill(resetTotalFromCatalog: true);
+  void _recalc({bool resetLinePrices = false}) =>
+      _applyPaidFromBill(resetTotalFromCatalog: resetLinePrices);
 
   void _confirm() {
     if (_linkingPackage) {
@@ -2506,7 +2699,7 @@ class _PaySheetState extends State<_PaySheet> {
                 });
               },
               label: 'SERVICES',
-              helperText: 'Primary first; add more services below.',
+              helperText: 'Select a service, then edit Price (Rs.) below it.',
               accentColor: _pGreen,
               borderColor: _pBorder,
               bgColor: _pBg,

@@ -8,6 +8,7 @@ import '../models/staff_member.dart';
 import '../state/app_state.dart';
 import '../utils/appointment_notes.dart';
 import '../utils/package_helpers.dart';
+import '../utils/phone_validation.dart';
 import '../widgets/app_toast.dart';
 import '../widgets/walk_in_service_dropdown_section.dart';
 
@@ -742,15 +743,16 @@ class _AddApptSheetState extends State<_AddApptSheet> {
   Future<void> _doRegister() async {
     final app  = AppStateScope.of(context);
     final name = _namCtrl.text.trim();
-    final phone = _phCtrl.text.trim();
+    final phoneErr = validateCustomerPhone(_phCtrl.text);
     if (name.isEmpty) {
       _snack('Enter customer name');
       return;
     }
-    if (phone.isEmpty) {
-      _snack('Phone is required to register a customer');
+    if (phoneErr != null) {
+      _snack(phoneErr);
       return;
     }
+    final phone = normalizeCustomerPhone(_phCtrl.text);
     setState(() => _registering = true);
     final newCust = await app.registerCustomer(
       name: name,
@@ -1126,6 +1128,13 @@ class _AddApptSheetState extends State<_AddApptSheet> {
                     keyboardType: TextInputType.phone,
                     decoration:
                         _deco('Phone number', Icons.call_outlined),
+                    validator: (v) {
+                      // Always required when registering a new customer.
+                      if (_registerMode) return validateCustomerPhone(v);
+                      final t = (v ?? '').trim();
+                      if (t.isEmpty) return null;
+                      return validateCustomerPhone(v);
+                    },
                   ),
 
                   // Register banner

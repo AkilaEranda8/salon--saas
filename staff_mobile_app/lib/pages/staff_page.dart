@@ -94,15 +94,35 @@ class _StaffPageState extends State<StaffPage> {
     }
     try {
       if (app.services.isEmpty) await app.loadServices();
+      await app.loadBranches();
     } catch (_) {}
     if (!mounted) return;
+
+    StaffMember? initial = edit;
+    if (edit != null) {
+      final full = await app.loadSalonStaffOne(edit.id);
+      if (!mounted) return;
+      if (full != null) initial = full;
+    }
+
+    final branches = app.branches
+        .map((b) => {
+              'id': '${b['id'] ?? ''}',
+              'name': '${b['name'] ?? ''}',
+            })
+        .where((b) => (b['id'] ?? '').isNotEmpty)
+        .toList();
+
     final payload = await AddStaffModal.show(
       context,
-      branchId: edit?.branchId.isNotEmpty == true ? edit!.branchId : branchId,
+      branchId: initial?.branchId.isNotEmpty == true
+          ? initial!.branchId
+          : branchId,
       services: app.services,
+      branches: branches,
       showServiceWiseCommission: app.serviceWiseCommissionForUser,
       defaultCommissionOnly: true,
-      initial: edit,
+      initial: initial,
     );
     if (payload == null || !mounted) return;
     final ok = await app.saveSalonStaff(
@@ -112,12 +132,19 @@ class _StaffPageState extends State<StaffPage> {
       roleTitle: payload.roleTitle,
       salaryType: payload.salaryType,
       branchId: payload.branchId,
+      branchIds: payload.branchIds,
       email: payload.email,
       baseSalary: payload.baseSalary,
       commissionType: payload.commissionType,
       commissionValue: payload.commissionValue,
+      joinDate: payload.joinDate,
       serviceCommissions: payload.serviceCommissions,
       isActive: payload.isActive,
+      availableOnline: payload.availableOnline,
+      workingHours: payload.workingHours,
+      offDays: payload.offDays,
+      photoPath: payload.photoPath,
+      removePhoto: payload.removePhoto,
     );
     if (!mounted) return;
     if (!ok) {

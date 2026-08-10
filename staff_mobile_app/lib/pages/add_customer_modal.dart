@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../utils/phone_validation.dart';
+
 // ── Palette ───────────────────────────────────────────────────────────────────
 const Color _cForest  = Color(0xFF1B3A2D);
 const Color _cEmerald = Color(0xFF2D6A4F);
@@ -81,7 +83,7 @@ class _AddCustomerModalState extends State<AddCustomerModal> {
     if (!_formKey.currentState!.validate()) return;
     Navigator.of(context).pop(AddCustomerModalResult(
       name:     _nameCtrl.text.trim(),
-      phone:    _phoneCtrl.text.trim(),
+      phone:    normalizeCustomerPhone(_phoneCtrl.text),
       email:    _emailCtrl.text.trim(),
       branchId: _branchId,
     ));
@@ -218,8 +220,7 @@ class _AddCustomerModalState extends State<AddCustomerModal> {
                 keyboardType: TextInputType.phone,
                 decoration: _deco('e.g. 0771234567',
                     Icons.phone_outlined, required: true),
-                validator: (v) =>
-                    (v == null || v.trim().isEmpty) ? 'Phone is required' : null,
+                validator: validateCustomerPhone,
               ),
 
               const SizedBox(height: 14),

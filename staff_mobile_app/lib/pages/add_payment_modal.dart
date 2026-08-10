@@ -12,6 +12,7 @@ import '../widgets/payment_helper_staff_section.dart';
 import '../widgets/recurring_booking_section.dart';
 import '../widgets/walk_in_service_dropdown_section.dart';
 import '../utils/package_helpers.dart';
+import '../utils/phone_validation.dart';
 
 // ── Sentinel id used to represent "Register new customer" option ──────────────
 const String _kNewCustId = '__register_new__';
@@ -625,8 +626,20 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
     if (fn == null) return;
     final name = _customerNameCtrl.text.trim();
     if (name.isEmpty) return;
+    final phoneErr = validateCustomerPhone(_newPhoneCtrl.text);
+    if (phoneErr != null) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(phoneErr),
+        behavior: SnackBarBehavior.floating,
+      ));
+      return;
+    }
     setState(() => _registering = true);
-    final newCust = await fn(name, _newPhoneCtrl.text.trim(), _branchId);
+    final newCust = await fn(
+      name,
+      normalizeCustomerPhone(_newPhoneCtrl.text),
+      _branchId,
+    );
     if (!mounted) return;
     if (newCust != null) {
       setState(() {
@@ -1102,8 +1115,9 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
                             controller: _newPhoneCtrl,
                             keyboardType: TextInputType.phone,
                             decoration: _deco(
-                                'Phone number (optional)',
+                                'Phone number',
                                 Icons.phone_outlined),
+                            validator: validateCustomerPhone,
                           ),
                         ),
                         const SizedBox(width: 8),
@@ -1194,7 +1208,7 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
                       }
                       _primaryServiceId = v;
                     }
-                    _recalcTotal();
+                    _recalcTotal(resetLinePrices: false);
                   });
                 },
                 onAddExtra: (id) {
@@ -1205,7 +1219,7 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
                     } else {
                       _extraServiceIds.add(id);
                     }
-                    _recalcTotal();
+                    _recalcTotal(resetLinePrices: false);
                   });
                 },
                 onRemoveExtraAt: (i) {
@@ -1213,12 +1227,11 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
                     if (i >= 0 && i < _extraServiceIds.length) {
                       _extraServiceIds.removeAt(i);
                     }
-                    _recalcTotal();
+                    _recalcTotal(resetLinePrices: false);
                   });
                 },
                 label: 'SERVICES',
-                helperText:
-                    'Select services and set each price on the right.',
+                helperText: 'Select a service, then edit Price (Rs.) below it.',
                 accentColor: _pGreen,
                 borderColor: _pBorder,
                 bgColor: _pBg,

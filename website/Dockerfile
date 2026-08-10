@@ -6,6 +6,7 @@ COPY . /usr/share/nginx/html
 # Nginx config: static marketing site + explicit legal pages
 RUN printf 'server {\n\
     listen 80;\n\
+    charset utf-8;\n\
     root /usr/share/nginx/html;\n\
     index index.html;\n\
     \n\

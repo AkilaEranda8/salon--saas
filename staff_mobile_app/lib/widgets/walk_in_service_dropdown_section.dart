@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../models/salon_service.dart';
 
 /// Primary + additional services using searchable dropdowns.
+/// Optional [priceControllers] show an inline LKR field beside each selected service.
 class WalkInServiceDropdownSection extends StatefulWidget {
   const WalkInServiceDropdownSection({
     super.key,
@@ -18,6 +20,9 @@ class WalkInServiceDropdownSection extends StatefulWidget {
     required this.borderColor,
     required this.bgColor,
     required this.mutedColor,
+    this.priceControllers,
+    this.onPriceEdited,
+    this.pricesEditable = false,
   });
 
   final List<SalonService> activeServices;
@@ -33,6 +38,11 @@ class WalkInServiceDropdownSection extends StatefulWidget {
   final Color borderColor;
   final Color bgColor;
   final Color mutedColor;
+
+  /// When [pricesEditable] is true, each selected service shows this controller.
+  final Map<String, TextEditingController>? priceControllers;
+  final VoidCallback? onPriceEdited;
+  final bool pricesEditable;
 
   @override
   State<WalkInServiceDropdownSection> createState() =>
@@ -54,7 +64,6 @@ class _WalkInServiceDropdownSectionState
   @override
   void didUpdateWidget(covariant WalkInServiceDropdownSection oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // Parent may auto-select services (e.g. package pick) — remount dropdowns.
     final primaryChanged =
         oldWidget.primaryServiceId != widget.primaryServiceId;
     final orderedChanged = oldWidget.orderedServiceIds.join(',') !=
@@ -62,7 +71,6 @@ class _WalkInServiceDropdownSectionState
     if (primaryChanged || orderedChanged) {
       _primaryDropdownKey++;
       _extraDropdownKey++;
-      // Clear search so package services aren't hidden by an old filter.
       if (_searchCtrl.text.isNotEmpty) {
         _searchCtrl.clear();
       }
@@ -88,8 +96,9 @@ class _WalkInServiceDropdownSectionState
             })
             .toList();
 
-    // Keep the currently selected value visible even if it doesn't match search.
-    if (keepId != null && keepId.isNotEmpty && !list.any((s) => s.id == keepId)) {
+    if (keepId != null &&
+        keepId.isNotEmpty &&
+        !list.any((s) => s.id == keepId)) {
       final keep = _serviceById(keepId);
       if (keep != null) list.insert(0, keep);
     }
@@ -127,6 +136,7 @@ class _WalkInServiceDropdownSectionState
   }
 
   Widget _serviceItem(SalonService s, Color muted, {double nameSize = 14}) {
+    final showListPrice = !widget.pricesEditable;
     return Row(children: [
       Expanded(
         child: Text(
@@ -135,15 +145,57 @@ class _WalkInServiceDropdownSectionState
           style: TextStyle(fontSize: nameSize, fontWeight: FontWeight.w600),
         ),
       ),
-      Text(
-        'LKR ${s.price.toStringAsFixed(0)}',
+      if (showListPrice)
+        Text(
+          'LKR ${s.price.toStringAsFixed(0)}',
+          style: TextStyle(
+            fontSize: 12,
+            color: muted,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+    ]);
+  }
+
+  Widget? _inlinePrice(String serviceId) {
+    if (!widget.pricesEditable) return null;
+    final ctrls = widget.priceControllers;
+    if (ctrls == null) return null;
+    final ctrl = ctrls[serviceId];
+    if (ctrl == null) return null;
+    final accent = widget.accentColor;
+    return SizedBox(
+      width: 108,
+      child: TextField(
+        controller: ctrl,
+        keyboardType: TextInputType.number,
+        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+        textAlign: TextAlign.right,
         style: TextStyle(
-          fontSize: 12,
-          color: muted,
-          fontWeight: FontWeight.w500,
+          fontSize: 14,
+          fontWeight: FontWeight.w800,
+          color: accent,
+        ),
+        onChanged: (_) => widget.onPriceEdited?.call(),
+        decoration: InputDecoration(
+          isDense: true,
+          prefixText: 'Rs ',
+          prefixStyle: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+            color: accent.withValues(alpha: 0.85),
+          ),
+          hintText: '0',
+          filled: true,
+          fillColor: widget.bgColor,
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+          border: _border(widget.borderColor),
+          enabledBorder: _border(widget.borderColor),
+          focusedBorder: _border(accent, width: 1.8),
         ),
       ),
-    ]);
+    );
   }
 
   @override
@@ -190,66 +242,47 @@ class _WalkInServiceDropdownSectionState
       );
     }
 
-    final primaryVal = w.primaryServiceId != null &&
-            w.activeServices.any((s) => s.id == w.primaryServiceId)
-        ? w.primaryServiceId
-        : null;
-    final hasPrimary = primaryVal != null;
-    final filtered = _filteredServices(keepId: primaryVal);
-    final q = _searchCtrl.text.trim();
-
+    final filtered = _filteredServices(keepId: w.primaryServiceId);
+    final primaryVal = w.primaryServiceId;
+    final hasPrimary = primaryVal != null && primaryVal.isNotEmpty;
+    final primaryPrice =
+        hasPrimary ? _inlinePrice(primaryVal) : null;
     final extraIds = w.orderedServiceIds.length > 1
         ? w.orderedServiceIds.sublist(1)
-        : <String>[];
+        : const <String>[];
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         labelWidget,
-
-        // ── Search ───────────────────────────────────────────────────────────
         TextField(
           controller: _searchCtrl,
-          onChanged: (_) {
-            setState(() {
-              _primaryDropdownKey++;
-              _extraDropdownKey++;
-            });
-          },
-          textInputAction: TextInputAction.search,
+          onChanged: (_) => setState(() {}),
           decoration: _fieldDeco(
             hint: 'Search services…',
             icon: Icons.search_rounded,
-            accent: accent.withValues(alpha: 0.85),
+            accent: accent,
             muted: muted,
             border: w.borderColor,
             bg: w.bgColor,
-            suffix: q.isEmpty
+            suffix: _searchCtrl.text.isEmpty
                 ? null
                 : IconButton(
-                    tooltip: 'Clear',
+                    icon: Icon(Icons.close_rounded, size: 18, color: muted),
                     onPressed: () {
                       _searchCtrl.clear();
-                      setState(() {
-                        _primaryDropdownKey++;
-                        _extraDropdownKey++;
-                      });
+                      setState(() {});
                     },
-                    icon: Icon(
-                      Icons.close_rounded,
-                      size: 18,
-                      color: muted.withValues(alpha: 0.7),
-                    ),
                   ),
           ),
         ),
-        if (q.isNotEmpty) ...[
+        if (_searchCtrl.text.trim().isNotEmpty) ...[
           const SizedBox(height: 6),
           Padding(
             padding: const EdgeInsets.only(left: 4),
             child: Text(
               filtered.isEmpty
-                  ? 'No services match “$q”'
+                  ? 'No services match “${_searchCtrl.text.trim()}”'
                   : '${filtered.length} match${filtered.length == 1 ? '' : 'es'}',
               style: TextStyle(
                 color: filtered.isEmpty ? Colors.red.shade400 : muted,
@@ -261,7 +294,6 @@ class _WalkInServiceDropdownSectionState
         ],
         const SizedBox(height: 8),
 
-        // ── Primary service dropdown ─────────────────────────────────────────
         if (filtered.isEmpty)
           Container(
             width: double.infinity,
@@ -277,38 +309,48 @@ class _WalkInServiceDropdownSectionState
             ),
           )
         else
-          DropdownButtonFormField<String>(
-            key: ValueKey('primary_$_primaryDropdownKey'),
-            initialValue: primaryVal != null &&
-                    filtered.any((s) => s.id == primaryVal)
-                ? primaryVal
-                : null,
-            isExpanded: true,
-            decoration: _fieldDeco(
-              hint: 'Select service',
-              icon: Icons.spa_outlined,
-              accent: accent,
-              muted: muted,
-              border: w.borderColor,
-              bg: w.bgColor,
-            ),
-            icon: Icon(
-              Icons.keyboard_arrow_down_rounded,
-              color: muted.withValues(alpha: 0.7),
-              size: 22,
-            ),
-            items: filtered
-                .map(
-                  (s) => DropdownMenuItem(
-                    value: s.id,
-                    child: _serviceItem(s, muted),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: DropdownButtonFormField<String>(
+                  key: ValueKey('primary_$_primaryDropdownKey'),
+                  initialValue: primaryVal != null &&
+                          filtered.any((s) => s.id == primaryVal)
+                      ? primaryVal
+                      : null,
+                  isExpanded: true,
+                  decoration: _fieldDeco(
+                    hint: 'Select service',
+                    icon: Icons.spa_outlined,
+                    accent: accent,
+                    muted: muted,
+                    border: w.borderColor,
+                    bg: w.bgColor,
                   ),
-                )
-                .toList(),
-            onChanged: w.onPrimaryChanged,
+                  icon: Icon(
+                    Icons.keyboard_arrow_down_rounded,
+                    color: muted.withValues(alpha: 0.7),
+                    size: 22,
+                  ),
+                  items: filtered
+                      .map(
+                        (s) => DropdownMenuItem(
+                          value: s.id,
+                          child: _serviceItem(s, muted),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: w.onPrimaryChanged,
+                ),
+              ),
+              if (primaryPrice != null) ...[
+                const SizedBox(width: 8),
+                primaryPrice,
+              ],
+            ],
           ),
 
-        // ── Extra selected services (full rows — package multi-select) ───────
         if (extraIds.isNotEmpty) ...[
           const SizedBox(height: 8),
           ...List.generate(extraIds.length, (i) {
@@ -317,8 +359,10 @@ class _WalkInServiceDropdownSectionState
             final extraVal = extraFiltered.any((s) => s.id == extraId)
                 ? extraId
                 : null;
+            final price = _inlinePrice(extraId);
             return Padding(
-              padding: EdgeInsets.only(bottom: i == extraIds.length - 1 ? 0 : 8),
+              padding:
+                  EdgeInsets.only(bottom: i == extraIds.length - 1 ? 0 : 8),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -360,9 +404,13 @@ class _WalkInServiceDropdownSectionState
                       },
                     ),
                   ),
-                  const SizedBox(width: 6),
+                  if (price != null) ...[
+                    const SizedBox(width: 8),
+                    price,
+                  ],
+                  const SizedBox(width: 4),
                   Padding(
-                    padding: const EdgeInsets.only(top: 6),
+                    padding: const EdgeInsets.only(top: 4),
                     child: IconButton(
                       tooltip: 'Remove',
                       onPressed: () => w.onRemoveExtraAt(i),
@@ -379,7 +427,6 @@ class _WalkInServiceDropdownSectionState
           }),
         ],
 
-        // ── Add extra service ────────────────────────────────────────────────
         if (hasPrimary && filtered.isNotEmpty) ...[
           const SizedBox(height: 8),
           DropdownButtonFormField<String>(
@@ -426,6 +473,18 @@ class _WalkInServiceDropdownSectionState
             child: Text(
               'Select at least one service',
               style: TextStyle(color: Colors.red.shade400, fontSize: 11.5),
+            ),
+          )
+        else if (w.pricesEditable)
+          Padding(
+            padding: const EdgeInsets.only(top: 8, left: 4),
+            child: Text(
+              'Select a service, then change its price on the right.',
+              style: TextStyle(
+                color: muted.withValues(alpha: 0.85),
+                fontSize: 11.5,
+                fontWeight: FontWeight.w500,
+              ),
             ),
           )
         else if (w.helperText.trim().isNotEmpty)

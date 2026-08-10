@@ -41,7 +41,10 @@ const String kStaffApiBaseUrl = String.fromEnvironment(
 );
 
 class AppState extends ChangeNotifier {
-  AppState() : _api = MobileApi(baseUrl: kStaffApiBaseUrl) {
+  AppState() : _api = MobileApi(baseUrl: kStaffApiBaseUrl);
+
+  /// Call after [Firebase.initializeApp] + [NotificationService.init].
+  void bindPushTokenRefresh() {
     NotificationService.instance.onTokenRefresh((newToken) {
       final token = _currentUser?.authToken;
       if (token != null && token.isNotEmpty) {
@@ -96,6 +99,7 @@ class AppState extends ChangeNotifier {
   final List<StaffMember> _salonStaff = [];
   final List<AppItem> _items = [];
   final List<Customer> _customers = [];
+  int _customerCount = 0;
   final List<Appointment> _appointments = [];
   final List<SalonService> _services = [];
   final List<Map<String, String>> _branches = [];
@@ -113,6 +117,9 @@ class AppState extends ChangeNotifier {
   List<StaffMember> get salonStaff => List.unmodifiable(_salonStaff);
   List<AppItem> get items => List.unmodifiable(_items);
   List<Customer> get customers => List.unmodifiable(_customers);
+  /// Prefer API total when known; falls back to loaded list length.
+  int get customerCount =>
+      _customerCount > 0 ? _customerCount : _customers.length;
   List<Appointment> get appointments => List.unmodifiable(_appointments);
   List<SalonService> get services => List.unmodifiable(_services);
   List<Map<String, String>> get branches => List.unmodifiable(_branches);
@@ -124,6 +131,8 @@ class AppState extends ChangeNotifier {
   bool get isLoggedIn => _currentUser != null;
 
   /// Restore session from device storage (call once at app start).
+  /// Returns as soon as the local user is hydrated so the UI can open;
+  /// `/me` and staff list refresh in the background.
   Future<void> loadPersistedSession() async {
     try {
       await loadBiometricPreference();
@@ -132,7 +141,7 @@ class AppState extends ChangeNotifier {
       if (savedSlug != null && savedSlug.isNotEmpty) {
         _api = MobileApi(baseUrl: kStaffApiBaseUrl, slug: savedSlug);
       }
-      // Try KC refresh token first for a fresh access token
+      // Fresh access token before any API calls from the dashboard.
       final savedRefresh = prefs.getString(_kRefreshTokenKey) ?? '';
       if (savedRefresh.isNotEmpty) {
         try {
@@ -162,16 +171,25 @@ class AppState extends ChangeNotifier {
         permissions: _permissionsFromRole(role),
         mobileFeatures: const {},
       );
-      try {
-        await loadStaffList();
-      } catch (_) {}
-      await _refreshCurrentUserFromServer();
-      if (_currentUser?.authToken != null) {
-        unawaited(_registerFcmToken(_currentUser!.authToken!));
-      }
       notifyListeners();
+
+      // Heavy / non-blocking work — do not hold the splash screen.
+      unawaited(_finishSessionRestoreInBackground());
     } catch (_) {
       await _clearPersistedSession();
+    }
+  }
+
+  Future<void> _finishSessionRestoreInBackground() async {
+    try {
+      await _refreshCurrentUserFromServer();
+    } catch (_) {}
+    try {
+      await loadStaffList();
+    } catch (_) {}
+    final token = _currentUser?.authToken;
+    if (token != null && token.isNotEmpty) {
+      unawaited(_registerFcmToken(token));
     }
   }
 
@@ -234,13 +252,14 @@ class AppState extends ChangeNotifier {
       }
       final user = Map<String, dynamic>.from(body['user'] as Map? ?? {});
       _currentUser = _staffUserFromApi(user, token: token);
-      try {
-        await loadStaffList();
-      } catch (_) {
-        // Keep login successful even if staff list fails to preload.
-      }
       await _persistSession(_currentUser!, refreshToken: refreshToken);
       unawaited(_registerFcmToken(token));
+      // Staff list is not needed to enter the app — load in background.
+      unawaited(() async {
+        try {
+          await loadStaffList();
+        } catch (_) {}
+      }());
       notifyListeners();
       return true;
     } catch (e) {
@@ -265,6 +284,7 @@ class AppState extends ChangeNotifier {
     }
     _currentUser = null;
     _customers.clear();
+    _customerCount = 0;
     _appointments.clear();
     _services.clear();
     _clearPersistedSession();
@@ -442,8 +462,23 @@ class AppState extends ChangeNotifier {
     _customers
       ..clear()
       ..addAll(loaded);
+    _customerCount = loaded.length;
     notifyListeners();
     return customers;
+  }
+
+  /// Dashboard-only: one lightweight request for the customer total.
+  Future<int> loadCustomerCount({bool allBranches = true}) async {
+    final token = _currentUser?.authToken;
+    if (token == null || token.isEmpty) {
+      throw Exception('Missing auth token (cannot load customer count).');
+    }
+    _customerCount = await _api.fetchCustomerCount(
+      token: token,
+      branchId: allBranches ? null : _currentUser?.branchId,
+    );
+    notifyListeners();
+    return _customerCount;
   }
 
   /// Creates a customer and returns the created [Customer] object (or null on failure).
@@ -1286,10 +1321,14 @@ class AppState extends ChangeNotifier {
     final lockedToSelf = !seesAllBranchAppointments && ownStaffId.isNotEmpty;
     final effectiveStaffId = lockedToSelf ? ownStaffId : staffId;
     var effectiveItems = bookingItems;
+    // Multi-booking: keep per-service staff picks. Only fill empty with self.
     if (lockedToSelf && bookingItems != null && bookingItems.isNotEmpty) {
       effectiveItems = bookingItems.map((raw) {
         final m = Map<String, dynamic>.from(raw);
-        m['staff_id'] = int.tryParse(ownStaffId) ?? ownStaffId;
+        final picked = '${m['staff_id'] ?? ''}'.trim();
+        if (picked.isEmpty) {
+          m['staff_id'] = int.tryParse(ownStaffId) ?? ownStaffId;
+        }
         return m;
       }).toList();
     }

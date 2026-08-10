@@ -2014,26 +2014,102 @@ export default function WalkInPage() {
                 </div>
               )}
               <div>
-                <div style={{ border: `1px solid ${isDark ? '#334155' : '#E5EAF0'}`, borderRadius: 12, overflow: 'hidden', background: isDark ? '#0F172A' : '#fff' }}>
-                  {services.filter((s) => paymentServices.includes(Number(s.id))).map((s, idx, arr) => (
-                    <div key={s.id} style={{ display: 'grid', gridTemplateColumns: paymentUsesPackage ? '1fr auto auto' : '1fr auto 110px', alignItems: 'center', gap: 10, padding: '10px 12px', borderBottom: idx !== arr.length - 1 ? `1px solid ${isDark ? '#334155' : '#EEF2F6'}` : 'none' }}>
-                      <div style={{ fontSize: 14, fontWeight: 700, color: C.title }}>{s.name}</div>
-                      <div style={{ fontSize: 12, color: C.muted, fontWeight: 600 }}>{s.duration_minutes || 30} min</div>
-                      {paymentUsesPackage ? (
-                        <div style={{ fontSize: 16, color: '#059669', fontWeight: 800 }}>Rs. {Number(s.price || 0).toLocaleString()}</div>
-                      ) : (
-                        <Input
-                          type="number"
-                          value={paymentServicePrices[Number(s.id)] ?? Number(s.price || 0)}
-                          onChange={(e) => setWalkInServicePrice(s.id, e.target.value)}
-                          style={{ padding: '6px 8px', fontWeight: 700, color: '#059669', textAlign: 'right' }}
-                          title="Change this service price"
-                        />
-                      )}
-                    </div>
-                  ))}
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: isDark ? '#1E293B' : '#F8FAFC', borderTop: `1px solid ${isDark ? '#334155' : '#EEF2F6'}` }}>
-                    <span style={{ fontWeight: 700, color: C.title }}>{paymentUsesPackage ? 'List value' : 'Services total'}</span>
+                <Label>Services *</Label>
+                <Input
+                  placeholder="Search to add a service…"
+                  value={paymentServiceSearch}
+                  onChange={(e) => setPaymentServiceSearch(e.target.value)}
+                  style={{ marginTop: 4, marginBottom: 8 }}
+                />
+                {paymentServices.length > 0 && (
+                  <div style={{ border: `1px solid ${isDark ? '#334155' : '#DCE6F3'}`, borderRadius: 12, overflow: 'hidden', marginBottom: 8, background: isDark ? '#0F172A' : '#fff' }}>
+                    {paymentServices.map((sid, idx) => {
+                      const s = services.find((x) => Number(x.id) === Number(sid));
+                      if (!s) return null;
+                      const pkgLock = paymentUsesPackage;
+                      return (
+                        <div
+                          key={sid}
+                          style={{
+                            display: 'grid',
+                            gridTemplateColumns: pkgLock ? '1fr auto auto' : '1fr 120px auto',
+                            alignItems: 'center',
+                            gap: 10,
+                            padding: '10px 12px',
+                            borderBottom: idx !== paymentServices.length - 1 ? `1px solid ${isDark ? '#334155' : '#EEF2F6'}` : 'none',
+                            background: isDark ? '#1e3a5f' : '#F0F9FF',
+                          }}
+                        >
+                          <span style={{ fontSize: 14, fontWeight: 700, color: C.title }}>{s.name}</span>
+                          {pkgLock ? (
+                            <span style={{ fontSize: 14, color: '#059669', fontWeight: 800 }}>Rs.{Number(s.price || 0).toLocaleString()}</span>
+                          ) : (
+                            <Input
+                              type="number"
+                              value={paymentServicePrices[Number(s.id)] ?? Number(s.price || 0)}
+                              onChange={(e) => setWalkInServicePrice(s.id, e.target.value)}
+                              style={{ padding: '6px 8px', fontWeight: 700, color: '#059669', textAlign: 'right' }}
+                              title="Change price"
+                            />
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => togglePaymentService(sid)}
+                            style={{ border: 'none', background: 'transparent', color: isDark ? '#94A3B8' : '#64748B', cursor: 'pointer', fontSize: 18, lineHeight: 1, padding: 4 }}
+                            title="Remove"
+                          >
+                            ×
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+                <div style={{
+                  border: `1px solid ${isDark ? '#334155' : '#DCE6F3'}`,
+                  borderRadius: 12, maxHeight: 180, overflowY: 'auto',
+                  background: isDark ? '#0F172A' : '#fff',
+                }}>
+                  {(() => {
+                    const filtered = filterServicesByQuery(services, paymentServiceSearch)
+                      .filter((s) => !paymentServices.includes(Number(s.id)));
+                    if (!filtered.length) {
+                      return (
+                        <div style={{ padding: '12px', fontSize: 12, color: C.muted, textAlign: 'center' }}>
+                          {paymentServiceSearch.trim()
+                            ? `No more services match “${paymentServiceSearch.trim()}”`
+                            : (paymentServices.length ? 'All matching services selected' : 'No active services')}
+                        </div>
+                      );
+                    }
+                    return filtered.map((s, idx, arr) => (
+                      <button
+                        key={s.id}
+                        type="button"
+                        onClick={() => togglePaymentService(s.id)}
+                        style={{
+                          display: 'grid', gridTemplateColumns: '1fr auto', alignItems: 'center', gap: 10,
+                          width: '100%', textAlign: 'left', padding: '9px 12px', border: 'none',
+                          borderBottom: idx !== arr.length - 1 ? `1px solid ${isDark ? '#334155' : '#EEF2F6'}` : 'none',
+                          background: 'transparent', cursor: 'pointer',
+                        }}
+                      >
+                        <span style={{ fontSize: 13, fontWeight: 500, color: C.title }}>{s.name}</span>
+                        <span style={{ fontSize: 13, color: '#059669', fontWeight: 800 }}>Rs.{Number(s.price || 0).toLocaleString()}</span>
+                      </button>
+                    ));
+                  })()}
+                </div>
+                {paymentServices.length === 0 && <div style={{ fontSize: 12, color: '#DC2626', marginTop: 6 }}>Select at least one service</div>}
+                <div style={{
+                  marginTop: 10,
+                  border: `1px solid ${isDark ? '#334155' : '#E5EAF0'}`,
+                  borderRadius: 12,
+                  overflow: 'hidden',
+                  background: isDark ? '#0F172A' : '#fff',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: isDark ? '#1E293B' : '#F8FAFC' }}>
+                    <span style={{ fontWeight: 700, color: C.title }}>{paymentUsesPackage ? 'List value' : 'Bill total'}</span>
                     <span style={{
                       fontSize: 16,
                       fontWeight: 800,
@@ -2043,18 +2119,6 @@ export default function WalkInPage() {
                       Rs. {paymentListTotal.toLocaleString()}
                     </span>
                   </div>
-                  {!paymentUsesPackage && (
-                    <div style={{ padding: '10px 12px', borderTop: `1px solid ${isDark ? '#334155' : '#EEF2F6'}` }}>
-                      <Label>Bill total (Rs.) — edit to charge a different price</Label>
-                      <Input
-                        type="number"
-                        value={paymentSubtotal}
-                        onChange={(e) => setPaymentSubtotal(e.target.value)}
-                        style={{ width: '100%', marginTop: 4 }}
-                        placeholder="0"
-                      />
-                    </div>
-                  )}
                   {paymentUsesPackage && paymentBundlePrice > 0 && (
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 12px', background: isDark ? '#172554' : '#EFF6FF', borderTop: `1px solid ${isDark ? '#334155' : '#EEF2F6'}` }}>
                       <span style={{ fontWeight: 600, color: isDark ? '#93C5FD' : '#1D4ED8', fontSize: 13 }}>Bundle price (final)</span>
@@ -2178,48 +2242,6 @@ export default function WalkInPage() {
                     onChange={(e) => setPaymentAmount(e.target.value)}
                     placeholder="0"
                   />
-                </div>
-                <div style={{ marginTop: 8 }}>
-                  <Label>Select Services *</Label>
-                  <Input
-                    placeholder="Search all services…"
-                    value={paymentServiceSearch}
-                    onChange={(e) => setPaymentServiceSearch(e.target.value)}
-                    style={{ marginTop: 4, marginBottom: 8 }}
-                  />
-                  <div style={{
-                    border: `1px solid ${isDark ? '#334155' : '#DCE6F3'}`,
-                    borderRadius: 12, maxHeight: 220, overflowY: 'auto',
-                    background: isDark ? '#0F172A' : '#fff',
-                  }}>
-                    {(() => {
-                      const filtered = filterServicesByQuery(services, paymentServiceSearch);
-                      if (!filtered.length) {
-                        return (
-                          <div style={{ padding: '12px', fontSize: 12, color: C.muted, textAlign: 'center' }}>
-                            {paymentServiceSearch.trim() ? `No services match “${paymentServiceSearch.trim()}”` : 'No active services'}
-                          </div>
-                        );
-                      }
-                      return filtered.map((s, idx, arr) => {
-                        const active = paymentServices.includes(Number(s.id));
-                        return (
-                          <label key={s.id} style={{
-                            display: 'grid', gridTemplateColumns: '24px 1fr auto', alignItems: 'center', gap: 10,
-                            padding: '9px 12px',
-                            borderBottom: idx !== arr.length - 1 ? `1px solid ${isDark ? '#334155' : '#EEF2F6'}` : 'none',
-                            background: active ? (isDark ? '#1E3A5F' : '#F0F9FF') : 'transparent',
-                            cursor: 'pointer',
-                          }}>
-                            <input type="checkbox" checked={active} onChange={() => togglePaymentService(s.id)} style={{ width: 16, height: 16, accentColor: '#2563EB' }} />
-                            <span style={{ fontSize: 13, fontWeight: active ? 700 : 500, color: C.title }}>{s.name}</span>
-                            <span style={{ fontSize: 13, color: '#059669', fontWeight: 800 }}>Rs.{Number(s.price || 0).toLocaleString()}</span>
-                          </label>
-                        );
-                      });
-                    })()}
-                  </div>
-                  {paymentServices.length === 0 && <div style={{ fontSize: 12, color: '#DC2626', marginTop: 6 }}>Select at least one service</div>}
                 </div>
               </div>
             </div>

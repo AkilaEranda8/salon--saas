@@ -635,6 +635,48 @@ class _AddApptSheetState extends State<_AddApptSheet> {
           return;
         }
       }
+      // Same staff + overlapping times within this request
+      final ranged = <Map<String, dynamic>>[];
+      for (final id in _orderedServiceIds()) {
+        final a = _serviceAssignments[id] ?? {};
+        SalonService? svc;
+        for (final s in _services) {
+          if (s.id == id) { svc = s; break; }
+        }
+        final t = (a['time'] ?? '').trim();
+        final parts = t.split(':');
+        final h = int.tryParse(parts.isNotEmpty ? parts[0] : '') ?? 0;
+        final m = int.tryParse(parts.length > 1 ? parts[1] : '') ?? 0;
+        final start = h * 60 + m;
+        final duration = (svc?.durationMinutes ?? 30).clamp(5, 24 * 60);
+        ranged.add({
+          'id': id,
+          'name': svc?.name ?? id,
+          'staff_id': (a['staff_id'] ?? '').trim(),
+          'date': (a['date'] ?? '').trim(),
+          'start': start,
+          'end': start + duration,
+        });
+      }
+      for (var i = 0; i < ranged.length; i++) {
+        for (var j = i + 1; j < ranged.length; j++) {
+          final a = ranged[i];
+          final b = ranged[j];
+          final aStaff = a['staff_id'] as String;
+          final bStaff = b['staff_id'] as String;
+          if (aStaff.isNotEmpty &&
+              bStaff.isNotEmpty &&
+              aStaff == bStaff &&
+              a['date'] == b['date'] &&
+              (a['start'] as int) < (b['end'] as int) &&
+              (a['end'] as int) > (b['start'] as int)) {
+            _snack(
+              '${a['name']} and ${b['name']} overlap for the same staff. Pick different times.',
+            );
+            return;
+          }
+        }
+      }
       items = _orderedServiceIds().map((id) {
         final a = _serviceAssignments[id] ?? {};
         final staff = (a['staff_id'] ?? '').trim();
@@ -1264,7 +1306,7 @@ class _AddApptSheetState extends State<_AddApptSheet> {
                             const SizedBox(height: 2),
                             Text(
                               _multiBooking
-                                  ? 'Each service gets its own staff, date & time'
+                                  ? 'Each service = separate booking (own staff/time)'
                                   : 'One staff and time for all services',
                               style: const TextStyle(
                                   fontSize: 11, color: Color(0xFF6B7280)),
@@ -1335,22 +1377,20 @@ class _AddApptSheetState extends State<_AddApptSheet> {
                                       color: Color(0xFF059669),
                                       fontWeight: FontWeight.w700)),
                             const SizedBox(height: 8),
-                            DropdownButtonFormField<String>(
+                            DropdownButtonFormField<String?>(
                               key: ValueKey(
                                   'multi_staff_${id}_${_staff.length}_${a['staff_id'] ?? ''}'),
                               initialValue: (() {
-                                final raw = staffVal ?? '';
-                                if (raw.isEmpty) return '';
-                                return _staff.any((s) => s.id == raw)
-                                    ? raw
-                                    : '';
+                                final raw = (staffVal ?? '').trim();
+                                if (raw.isEmpty) return null;
+                                return _staff.any((s) => s.id == raw) ? raw : null;
                               })(),
                               isExpanded: true,
                               decoration: _deco('Staff', Icons.badge_outlined),
                               items: [
-                                const DropdownMenuItem(
-                                    value: '', child: Text('Any')),
-                                ..._staff.map((s) => DropdownMenuItem(
+                                const DropdownMenuItem<String?>(
+                                    value: null, child: Text('Any available')),
+                                ..._staff.map((s) => DropdownMenuItem<String?>(
                                       value: s.id,
                                       child: Text(s.name,
                                           overflow: TextOverflow.ellipsis,
@@ -1362,6 +1402,15 @@ class _AddApptSheetState extends State<_AddApptSheet> {
                                 _serviceAssignments[id]!['staff_id'] = v ?? '';
                               }),
                             ),
+                            if (_staff.isEmpty)
+                              const Padding(
+                                padding: EdgeInsets.only(top: 4),
+                                child: Text(
+                                  'No staff for this branch',
+                                  style: TextStyle(
+                                      fontSize: 11, color: Color(0xFFDC2626)),
+                                ),
+                              ),
                             const SizedBox(height: 8),
                             Row(children: [
                               Expanded(

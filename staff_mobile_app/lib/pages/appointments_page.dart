@@ -2452,14 +2452,21 @@ class _PaySheetState extends State<_PaySheet> {
 
             const SizedBox(height: 16),
 
-            // ── Services ───────────────────────────────────────────────
-            WalkInServiceDropdownSection(
+            // ── Services (select + inline price) ───────────────────────
+            Builder(builder: (_) {
+              final pkgLocked =
+                  _packageOfferPrice != null && _packageOfferPrice! > 0;
+              if (!pkgLocked) _syncServicePriceCtrls();
+              return WalkInServiceDropdownSection(
               key: ValueKey(
                 'appt_pay_svc_${_orderedServiceIds().join(',')}',
               ),
               activeServices: activeServices,
               primaryServiceId: _primaryServiceId,
               orderedServiceIds: _orderedServiceIds(),
+              pricesEditable: !pkgLocked,
+              priceControllers: pkgLocked ? null : _servicePriceCtrls,
+              onPriceEdited: pkgLocked ? null : _onServicePriceEdited,
               onPrimaryChanged: (v) {
                 setState(() {
                   final prev = _primaryServiceId;
@@ -2504,69 +2511,8 @@ class _PaySheetState extends State<_PaySheet> {
               borderColor: _pBorder,
               bgColor: _pBg,
               mutedColor: const Color(0xFF6B7280),
-            ),
-
-            if (_orderedServiceIds().isNotEmpty &&
-                !(_packageOfferPrice != null && _packageOfferPrice! > 0)) ...[
-              const SizedBox(height: 10),
-              _label('SERVICE PRICES (LKR)'),
-              ...() {
-                _syncServicePriceCtrls();
-                return _orderedServiceIds().map((id) {
-                  SalonService? svc;
-                  for (final s in widget.services) {
-                    if (s.id == id) {
-                      svc = s;
-                      break;
-                    }
-                  }
-                  final ctrl = _servicePriceCtrls[id]!;
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            svc?.name ?? 'Service',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontSize: 13.5,
-                              fontWeight: FontWeight.w600,
-                              color: Color(0xFF111827),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        SizedBox(
-                          width: 110,
-                          child: TextField(
-                            controller: ctrl,
-                            keyboardType: TextInputType.number,
-                            textAlign: TextAlign.right,
-                            onChanged: (_) => _onServicePriceEdited(),
-                            decoration: _deco('Price', Icons.payments_outlined)
-                                .copyWith(
-                              contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 10, vertical: 10),
-                              prefixIcon: null,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                });
-              }(),
-              Text(
-                'Change each service price when you add it — total updates automatically.',
-                style: TextStyle(
-                  fontSize: 11.5,
-                  color: Colors.grey.shade600,
-                  height: 1.3,
-                ),
-              ),
-            ],
+            );
+            }),
 
             const SizedBox(height: 14),
             _label('PROMO DISCOUNT'),
@@ -2598,49 +2544,45 @@ class _PaySheetState extends State<_PaySheet> {
 
             const SizedBox(height: 14),
 
-            // ── Amount row (bill total is editable — not locked to catalog) ─
-            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _label('TOTAL (LKR)'),
-                    TextField(
-                      controller: _totalCtrl,
-                      keyboardType: TextInputType.number,
-                      enabled: !(_packageOfferPrice != null &&
-                          _packageOfferPrice! > 0),
-                      onChanged: (_) => _applyPaidFromBill(),
-                      decoration: _deco(
-                        'Change price if needed',
-                        Icons.receipt_long_rounded,
-                      ),
-                    ),
-                  ],
-                ),
+            // ── Collect amount (edit prices beside each service above) ─
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: _pGreenL,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: _pGreenB),
               ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _label('PAID (LKR)'),
-                  TextField(
-                      controller: _amtCtrl,
-                    keyboardType: TextInputType.number,
-                      decoration: _deco('After promo', Icons.account_balance_wallet_rounded),
+              child: Row(
+                children: [
+                  const Text(
+                    'Bill total',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF065F46),
                     ),
-                  ],
-                ),
+                  ),
+                  const Spacer(),
+                  Text(
+                    'LKR ${_totalCtrl.text.trim().isEmpty ? '—' : _totalCtrl.text.trim()}',
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                      color: _pGreen,
+                    ),
+                  ),
+                ],
               ),
-            ]),
-            const SizedBox(height: 6),
-            Text(
-              'Service list prices are suggestions — edit Total to charge a different amount.',
-              style: TextStyle(
-                fontSize: 11.5,
-                color: Colors.grey.shade600,
-                height: 1.3,
+            ),
+            const SizedBox(height: 10),
+            _label('COLLECT / PAID (LKR)'),
+            TextField(
+              controller: _amtCtrl,
+              keyboardType: TextInputType.number,
+              decoration: _deco(
+                'After promo / advance',
+                Icons.account_balance_wallet_rounded,
               ),
             ),
 

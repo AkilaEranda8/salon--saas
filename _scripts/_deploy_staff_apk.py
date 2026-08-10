@@ -1,4 +1,4 @@
-"""Upload staff APK 1.3.27 to production web download path."""
+"""Upload staff APK 1.3.28 to production web download path."""
 import io, sys, os, time
 from pathlib import Path
 
@@ -71,7 +71,7 @@ run(
     "cp -f /root/xanesalon/backend/uploads/apps/hexaone-staff-app.apk "
     "/root/xanesalon/backend/assets/hexaone-staff-app.apk && "
     "cp -f /root/xanesalon/backend/uploads/apps/hexaone-staff-app.apk "
-    "/root/xanesalon/backend/uploads/apps/hexaone-staff-app-1.3.27.apk"
+    "/root/xanesalon/backend/uploads/apps/hexaone-staff-app-1.3.28.apk"
 )
 sftp.close()
 print("apk uploaded")

@@ -235,6 +235,28 @@ class MobileApi {
     return all;
   }
 
+  /// Lightweight count for dashboard stats — one page, no full list download.
+  Future<int> fetchCustomerCount({
+    required String token,
+    String? branchId,
+  }) async {
+    final qp = <String, String>{
+      'limit': '1',
+      'page': '1',
+      if (branchId != null && branchId.isNotEmpty) 'branchId': branchId,
+    };
+    final uri = Uri.parse('$baseUrl/api/customers').replace(queryParameters: qp);
+    final response = await http.get(uri, headers: _authHeaders(token));
+    final body = _decode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['message'] ?? 'Customers count failed');
+    }
+    final rawTotal = body['total'];
+    if (rawTotal is num) return rawTotal.toInt();
+    final list = body['data'] as List? ?? const [];
+    return list.length;
+  }
+
   Future<Customer> createCustomer({
     required String token,
     required String name,

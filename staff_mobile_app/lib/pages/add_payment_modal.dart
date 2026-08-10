@@ -1166,13 +1166,20 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
               const SizedBox(height: 12),
 
               // ── Services (dropdowns — same pattern as Walk-in Collect Payment) ──
-              WalkInServiceDropdownSection(
+              Builder(builder: (_) {
+                final pkgLocked =
+                    _packageOfferPrice != null && _packageOfferPrice! > 0;
+                if (!pkgLocked) _syncServicePriceCtrls();
+                return WalkInServiceDropdownSection(
                 key: ValueKey(
                   'pay_svc_${_orderedServiceIds().join(',')}',
                 ),
                 activeServices: activeServices,
                 primaryServiceId: _primaryServiceId,
                 orderedServiceIds: _orderedServiceIds(),
+                pricesEditable: !pkgLocked,
+                priceControllers: pkgLocked ? null : _servicePriceCtrls,
+                onPriceEdited: pkgLocked ? null : _onServicePriceEdited,
                 onPrimaryChanged: (v) {
                   setState(() {
                     final prev = _primaryServiceId;
@@ -1211,66 +1218,13 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
                 },
                 label: 'SERVICES',
                 helperText:
-                    'Primary first; add lines below — same service can be added more than once.',
+                    'Select services and set each price on the right.',
                 accentColor: _pGreen,
                 borderColor: _pBorder,
                 bgColor: _pBg,
                 mutedColor: const Color(0xFF6B7280),
-              ),
-
-              if (_orderedServiceIds().isNotEmpty &&
-                  !(_packageOfferPrice != null && _packageOfferPrice! > 0)) ...[
-                const SizedBox(height: 10),
-                _label('SERVICE PRICES (LKR)'),
-                ...() {
-                  _syncServicePriceCtrls();
-                  return _orderedServiceIds().map((id) {
-                    SalonService? svc;
-                    for (final s in widget.services) {
-                      if (s.id == id) {
-                        svc = s;
-                        break;
-                      }
-                    }
-                    final ctrl = _servicePriceCtrls[id]!;
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              svc?.name ?? 'Service',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontSize: 13.5,
-                                fontWeight: FontWeight.w600,
-                                color: Color(0xFF111827),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          SizedBox(
-                            width: 110,
-                            child: TextField(
-                              controller: ctrl,
-                              keyboardType: TextInputType.number,
-                              textAlign: TextAlign.right,
-                              onChanged: (_) => _onServicePriceEdited(),
-                              decoration: _deco('Price', Icons.payments_outlined)
-                                  .copyWith(
-                                contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: 10, vertical: 10),
-                                prefixIcon: null,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  });
-                }(),
-              ],
+              );
+              }),
 
               const SizedBox(height: 12),
 
@@ -1284,8 +1238,9 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
                       TextFormField(
                         controller: _totalAmountCtrl,
                         keyboardType: TextInputType.number,
+                        readOnly: true,
                         decoration: _deco(
-                            'Change price if needed', Icons.receipt_long_rounded),
+                            'From service prices', Icons.receipt_long_rounded),
                         onChanged: (_) => setState(_applyNetToPaid),
                         validator: (v) {
                           if (_orderedServiceIds().isEmpty) {
@@ -1299,15 +1254,6 @@ class _AddPaymentModalState extends State<AddPaymentModal> {
                           }
                           return null;
                         },
-                      ),
-                      const SizedBox(height: 4),
-                      const Text(
-                        'List prices are suggestions — edit Total to charge a different amount.',
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: Color(0xFF6B7280),
-                          height: 1.25,
-                        ),
                       ),
                     ],
                   ),

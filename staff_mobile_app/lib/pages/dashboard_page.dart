@@ -103,14 +103,15 @@ class _DashboardPageState extends State<DashboardPage>
     final s = AppStateScope.of(context);
     final today = _todayIso();
     try {
-      await s.refreshCurrentUser();
+      // Session restore / login already refreshed user — don't block dashboard on it.
+      unawaited(s.refreshCurrentUser());
       await Future.wait([
         if (s.isFeatureEnabled(MobileFeatures.appointments) &&
             s.hasPermission(StaffPermission.canViewAppointments))
           s.loadAppointments(date: today, limit: 100),
         if (s.isFeatureEnabled(MobileFeatures.customers) &&
             s.hasPermission(StaffPermission.canViewCustomers))
-          s.loadCustomers(),
+          s.loadCustomerCount(),
         if (s.isFeatureEnabled(MobileFeatures.services)) s.loadServices(),
       ]);
       if (mounted) setState(() {});
@@ -274,7 +275,7 @@ class _DashboardPageState extends State<DashboardPage>
           s.hasPermission(StaffPermission.canViewCustomers))
         _StatData(
           'Customers',
-          '${s.customers.length}',
+          '${s.customerCount}',
           Icons.people_alt_rounded,
           const Color(0xFF2563EB),
           const Color(0xFFDBEAFE),

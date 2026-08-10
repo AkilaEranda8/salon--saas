@@ -885,102 +885,32 @@ class _AddWalkInPaymentModalState extends State<AddWalkInPaymentModal> {
 
               const SizedBox(height: 18),
 
-              WalkInServiceDropdownSection(
+              Builder(builder: (_) {
+                final pkgLocked =
+                    _packageOfferPrice != null && _packageOfferPrice! > 0;
+                if (!pkgLocked) _syncServicePriceCtrls();
+                return WalkInServiceDropdownSection(
                 key: ValueKey(
                   'walkin_svc_${_orderedSelectedServiceIds().join(',')}',
                 ),
                 activeServices: activeServices,
                 primaryServiceId: _primaryServiceId,
                 orderedServiceIds: _orderedSelectedServiceIds(),
+                pricesEditable: !pkgLocked,
+                priceControllers: pkgLocked ? null : _servicePriceCtrls,
+                onPriceEdited: pkgLocked ? null : _onServicePriceEdited,
                 onPrimaryChanged: _onPrimaryDropdownChanged,
                 onAddExtra: _onAddExtraFromDropdown,
                 onRemoveExtraAt: _removeExtraAt,
-                label: 'SERVICES (ADDITIONAL ALLOWED)',
+                label: 'SERVICES',
                 helperText:
-                    'Primary + extra lines; same service can be added multiple times. Amount follows prices and promo.',
+                    'Select services and set each price on the right.',
                 accentColor: _pGreen,
                 borderColor: _pBorder,
                 bgColor: _pBg,
                 mutedColor: _pMuted,
-              ),
-
-              if (_orderedSelectedServiceIds().isNotEmpty &&
-                  !(_packageOfferPrice != null && _packageOfferPrice! > 0)) ...[
-                const SizedBox(height: 12),
-                _label('SERVICE PRICES (LKR)'),
-                ...() {
-                  _syncServicePriceCtrls();
-                  return _orderedSelectedServiceIds().map((id) {
-                    SalonService? svc;
-                    for (final s in widget.services) {
-                      if (s.id == id) {
-                        svc = s;
-                        break;
-                      }
-                    }
-                    final ctrl = _servicePriceCtrls[id]!;
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              svc?.name ?? 'Service',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontSize: 13.5,
-                                fontWeight: FontWeight.w600,
-                                color: _pInk,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          SizedBox(
-                            width: 110,
-                            child: TextField(
-                              controller: ctrl,
-                              keyboardType: TextInputType.number,
-                              textAlign: TextAlign.right,
-                              onChanged: (_) => _onServicePriceEdited(),
-                              decoration: InputDecoration(
-                                hintText: 'Price',
-                                hintStyle: const TextStyle(
-                                    color: Color(0xFFB0B8B0), fontSize: 13),
-                                filled: true,
-                                fillColor: _pBg,
-                                contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: 10, vertical: 10),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                  borderSide: const BorderSide(color: _pBorder),
-                                ),
-                                enabledBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                  borderSide: const BorderSide(color: _pBorder),
-                                ),
-                                focusedBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                  borderSide: const BorderSide(
-                                      color: _pGreen, width: 1.8),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  });
-                }(),
-                const Text(
-                  'Change each service price when you add it — total updates automatically.',
-                  style: TextStyle(
-                    fontSize: 11.5,
-                    color: Color(0xFF6B7280),
-                    height: 1.3,
-                  ),
-                ),
-              ],
+              );
+              }),
 
               const SizedBox(height: 18),
               _label('DISCOUNT'),
@@ -1034,72 +964,58 @@ class _AddWalkInPaymentModalState extends State<AddWalkInPaymentModal> {
 
               const SizedBox(height: 18),
 
-              _label('TOTAL (LKR)'),
-              TextFormField(
-                controller: _totalCtrl,
-                keyboardType: TextInputType.number,
-                enabled: !(_packageOfferPrice != null &&
-                    _packageOfferPrice! > 0),
-                onChanged: (_) {
-                  setState(() {});
-                  _syncAmountFromServices(resetTotalFromCatalog: false);
-                },
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                  color: _pInk,
+              Container(
+                width: double.infinity,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(
+                  color: _pGreenL,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: _pGreenB),
                 ),
-                decoration: InputDecoration(
-                  hintText: 'Change price if needed',
-                  hintStyle:
-                      const TextStyle(color: Color(0xFFB0B8B0), fontSize: 14),
-                  prefixIcon: const Icon(Icons.receipt_long_rounded,
-                      color: _pGreen, size: 20),
-                  filled: true,
-                  fillColor: _pBg,
-                  contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: _pBorder),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: _pBorder),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: _pGreen, width: 1.8),
-                  ),
-                  disabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: _pBorder),
-                  ),
+                child: Row(
+                  children: [
+                    const Text(
+                      'Bill total',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF065F46),
+                      ),
+                    ),
+                    const Spacer(),
+                    Text(
+                      'LKR ${_totalCtrl.text.trim().isEmpty ? '—' : _totalCtrl.text.trim()}',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        color: _pGreen,
+                      ),
+                    ),
+                  ],
                 ),
-                validator: (v) {
-                  if (_orderedSelectedServiceIds().isEmpty) {
-                    return 'Select a service';
-                  }
-                  if (v == null || v.trim().isEmpty) return 'Required';
-                  if ((double.tryParse(v.trim()) ?? 0) <= 0) {
-                    return 'Enter a valid amount';
-                  }
-                  return null;
-                },
               ),
-              const SizedBox(height: 6),
-              const Text(
-                'Service list prices are suggestions — edit Total to charge a different amount.',
-                style: TextStyle(
-                  fontSize: 11.5,
-                  color: Color(0xFF6B7280),
-                  height: 1.3,
+              // Keep controller in form tree for validation / submit.
+              Offstage(
+                offstage: true,
+                child: TextFormField(
+                  controller: _totalCtrl,
+                  validator: (v) {
+                    if (_orderedSelectedServiceIds().isEmpty) {
+                      return 'Select a service';
+                    }
+                    if (v == null || v.trim().isEmpty) return 'Required';
+                    if ((double.tryParse(v.trim()) ?? 0) <= 0) {
+                      return 'Enter a valid amount';
+                    }
+                    return null;
+                  },
                 ),
               ),
 
               const SizedBox(height: 14),
 
-              _label('PAID (LKR)'),
+              _label('COLLECT / PAID (LKR)'),
               TextFormField(
                 controller: _amtCtrl,
                 keyboardType: TextInputType.number,

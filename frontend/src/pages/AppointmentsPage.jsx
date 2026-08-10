@@ -741,6 +741,25 @@ export default function AppointmentsPage() {
       .catch(() => setPackageTemplates([]));
   }, [showForm, form.branch_id, user?.branch_id]);
 
+  // Reload staff for the booking branch (includes staff_branches links).
+  useEffect(() => {
+    if (!showForm) return;
+    let cancelled = false;
+    const branchId = form.branch_id || user?.branch_id;
+    (async () => {
+      try {
+        const { data } = await api.get('/staff', {
+          params: { limit: 200, ...(branchId ? { branchId } : {}) },
+        });
+        if (cancelled) return;
+        setStaffList(Array.isArray(data) ? data : (data?.data ?? []));
+      } catch {
+        /* keep existing list */
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [showForm, form.branch_id, user?.branch_id]);
+
   const calcServiceTotal = (ids) => ids.reduce((sum, sid) => { const s = services.find(x => Number(x.id) === Number(sid)); return sum + Number(s?.price || 0); }, 0);
   const calcCustomServiceTotal = (ids, priceMap = paymentServicePrices) => ids.reduce((sum, sid) => {
     const key = Number(sid);
@@ -1159,6 +1178,39 @@ export default function AppointmentsPage() {
         if (pastItem) {
           return setFormErr('Cannot book a past date or time. Choose a current or future slot.');
         }
+        // Same staff + overlapping times within this request
+        const ranged = apptServiceIds.map((id) => {
+          const a = serviceAssignments[String(id)] || {};
+          const svc = services.find((s) => Number(s.id) === Number(id));
+          const start = timeToMinutesLocal(normalizeApptTime(a.time));
+          const duration = Math.max(5, Number(svc?.duration_minutes) || 30);
+          return {
+            id,
+            name: svc?.name || `Service ${id}`,
+            staff_id: a.staff_id ? String(a.staff_id) : '',
+            date: a.date,
+            start,
+            end: start + duration,
+          };
+        });
+        for (let i = 0; i < ranged.length; i += 1) {
+          for (let j = i + 1; j < ranged.length; j += 1) {
+            const a = ranged[i];
+            const b = ranged[j];
+            if (
+              a.staff_id
+              && b.staff_id
+              && a.staff_id === b.staff_id
+              && a.date === b.date
+              && a.start < b.end
+              && a.end > b.start
+            ) {
+              return setFormErr(
+                `${a.name} and ${b.name} overlap for the same staff on ${a.date}. Pick different times.`,
+              );
+            }
+          }
+        }
         setSaving(true);
         try {
           const notes = [
@@ -1187,7 +1239,7 @@ export default function AppointmentsPage() {
             recurrence_frequency: form.is_recurring ? (form.recurrence_frequency || 'weekly') : null,
             recurring_next_date: form.is_recurring ? (form.recurring_next_date || null) : null,
             recurring_sms_time: form.is_recurring
-              ? (form.recurring_sms_time || form.time || '08:00')
+              ? (form.recurring_sms_time || form.time || items[0]?.time || '08:00')
               : null,
             recurring_message_template_ids: form.is_recurring
               ? (form.recurring_message_template_ids || [])
@@ -1642,7 +1694,16 @@ export default function AppointmentsPage() {
     setPaymentDiscountId('');
   };
 
-  const filteredStaff = form.branch_id ? staffList.filter(s => s.branch_id==form.branch_id) : staffList;
+  const bookingBranchId = form.branch_id || user?.branch_id || '';
+  const filteredStaff = useMemo(() => {
+    const list = Array.isArray(staffList) ? staffList : [];
+    if (!bookingBranchId) return list;
+    const bid = String(bookingBranchId);
+    return list.filter((s) =>
+      String(s.branch_id ?? '') === bid
+      || (Array.isArray(s.branches) && s.branches.some((b) => String(b?.id) === bid))
+    );
+  }, [staffList, bookingBranchId]);
   const counts = APPT_STATUSES.reduce((acc,s) => { acc[s]=appts.filter(a=>a.status===s).length; return acc; }, {});
   const totalPages = Math.ceil(total / LIMIT);
 
@@ -2349,7 +2410,9 @@ export default function AppointmentsPage() {
                   </div>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                    {services.filter((s) => apptServiceIds.includes(Number(s.id))).map((s) => {
+                    {apptServiceIds.map((sid) => {
+                      const s = services.find((x) => Number(x.id) === Number(sid));
+                      if (!s) return null;
                       const a = serviceAssignments[String(s.id)] || { staff_id: '', date: form.date || today, time: '' };
                       const ready = !!(a.date && a.time);
                       return (
@@ -2373,12 +2436,19 @@ export default function AppointmentsPage() {
                           </div>
                           <FormGroup label="Staff">
                             <Select
-                              value={a.staff_id || ''}
+                              value={a.staff_id != null && a.staff_id !== '' ? String(a.staff_id) : ''}
                               onChange={(e) => updateServiceAssignment(s.id, { staff_id: e.target.value, time: '' })}
                             >
                               <option value="">Any available staff</option>
-                              {filteredStaff.map((st) => <option key={st.id} value={st.id}>{st.name}</option>)}
+                              {filteredStaff.map((st) => (
+                                <option key={st.id} value={String(st.id)}>{st.name}</option>
+                              ))}
                             </Select>
+                            {filteredStaff.length === 0 && (
+                              <div style={{ fontSize: 11, color: '#DC2626', marginTop: 4 }}>
+                                No staff for this branch — check branch or staff branch assignment.
+                              </div>
+                            )}
                           </FormGroup>
                           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 10 }}>
                             <FormGroup label="Date" required>
@@ -2420,14 +2490,21 @@ export default function AppointmentsPage() {
                       {APPT_STATUSES.filter((s) => s !== 'completed').map((s) => <option key={s} value={s}>{STATUS_META[s].label}</option>)}
                     </Select>
                   </FormGroup>
-                  <FormGroup label={bookingUsesPackage ? 'Bundle price (Rs.)' : 'Amount (Rs.)'}>
+                  <FormGroup label={bookingUsesPackage ? 'Bundle price (Rs.)' : 'Estimated total (Rs.)'}>
                     <Input
                       type="number"
-                      value={bookingUsesPackage ? String(bookingBundlePrice || form.amount || '0') : (form.amount || '')}
+                      value={bookingUsesPackage
+                        ? String(bookingBundlePrice || form.amount || '0')
+                        : String(calcServiceTotal(apptServiceIds) || '')}
                       onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))}
-                      placeholder={bookingUsesPackage ? 'Package bundle' : 'Auto per service'}
-                      disabled={!!bookingUsesPackage}
+                      placeholder={bookingUsesPackage ? 'Package bundle' : 'Sum of services'}
+                      disabled
                     />
+                    {!bookingUsesPackage && (
+                      <div style={{ fontSize: 11, color: isDark ? '#94A3B8' : '#64748B', marginTop: 4 }}>
+                        Each booking uses that service’s catalog price
+                      </div>
+                    )}
                   </FormGroup>
                 </div>
               </ApptSection>
@@ -2436,12 +2513,17 @@ export default function AppointmentsPage() {
                 <ApptSection title="Staff & Notes" dark={isDark}>
                   <FormGroup label="Assign Staff">
                     <Select
-                      value={form.staff_id || ''}
+                      value={form.staff_id != null && form.staff_id !== '' ? String(form.staff_id) : ''}
                       onChange={(e) => setForm((f) => ({ ...f, staff_id: e.target.value, time: '' }))}
                     >
                       <option value="">Any available staff</option>
-                      {filteredStaff.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                      {filteredStaff.map((s) => <option key={s.id} value={String(s.id)}>{s.name}</option>)}
                     </Select>
+                    {filteredStaff.length === 0 && (
+                      <div style={{ fontSize: 11, color: '#DC2626', marginTop: 4 }}>
+                        No staff for this branch — check branch or staff branch assignment.
+                      </div>
+                    )}
                   </FormGroup>
                 </ApptSection>
                 <ApptSection title="Schedule" desc={`Date, time, and booking status · ${bookingDurationMinutes} min total`} dark={isDark}>
@@ -2495,7 +2577,13 @@ export default function AppointmentsPage() {
               </>
             )}
 
-            <ApptSection title="Recurring" desc="Schedule reminder SMS only — does not auto-book" dark={isDark}>
+            <ApptSection
+              title="Recurring"
+              desc={!editItem && multiBooking
+                ? 'Reminder applies to the first booking only — does not auto-book'
+                : 'Schedule reminder SMS only — does not auto-book'}
+              dark={isDark}
+            >
               <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
                 <input
                   type="checkbox"
@@ -2574,7 +2662,11 @@ export default function AppointmentsPage() {
                 {(() => {
                   const summaryTotal = bookingUsesPackage
                     ? Number(bookingBundlePrice || 0)
-                    : Number(form.amount || calcServiceTotal(apptServiceIds) || 0);
+                    : Number(
+                      (!editItem && multiBooking)
+                        ? calcServiceTotal(apptServiceIds)
+                        : (form.amount || calcServiceTotal(apptServiceIds) || 0),
+                    );
                   const summaryAdvance = (!editItem && collectAdvance && Number(advanceAmount) > 0)
                     ? Number(advanceAmount)
                     : 0;
@@ -2740,47 +2832,73 @@ export default function AppointmentsPage() {
                 <Input
                   value={paymentServiceSearch}
                   onChange={(e) => setPaymentServiceSearch(e.target.value)}
-                  placeholder="Search all services…"
+                  placeholder="Search to add a service…"
                   style={{ marginBottom: 8 }}
                 />
-                <div style={{ border:`1px solid ${isDark?'#334155':'#DCE6F3'}`, borderRadius:12, overflow:'hidden', maxHeight:220, overflowY:'auto', background:isDark?'#0F172A':'#fff' }}>
-                  {(() => {
-                    const filtered = filterServicesByQuery(services, paymentServiceSearch);
-                    if (!filtered.length) {
+                {paymentServices.length > 0 && (
+                  <div style={{ border:`1px solid ${isDark?'#334155':'#DCE6F3'}`, borderRadius:12, overflow:'hidden', marginBottom: 8, background:isDark?'#0F172A':'#fff' }}>
+                    {paymentServices.map((sid, idx) => {
+                      const s = services.find((x) => Number(x.id) === Number(sid));
+                      if (!s) return null;
+                      const priceVal = paymentServicePrices[Number(sid)];
+                      const pkgLock = paymentMethod === 'Package' && paymentCustPackageId;
                       return (
-                        <div style={{ padding: '12px', fontSize: 12, color: '#98A2B3', textAlign: 'center' }}>
-                          {paymentServiceSearch.trim() ? `No services match “${paymentServiceSearch.trim()}”` : 'No active services'}
-                        </div>
-                      );
-                    }
-                    return filtered.map((s, idx, arr) => {
-                      const active = paymentServices.includes(Number(s.id));
-                      const priceVal = paymentServicePrices[Number(s.id)];
-                      return (
-                        <div key={s.id} style={{ display:'grid', gridTemplateColumns: active ? '24px 1fr 110px' : '24px 1fr auto', alignItems:'center', gap:10, padding:'9px 12px', borderBottom:idx!==arr.length-1?`1px solid ${isDark?'#334155':'#EEF2F6'}`:'none', background:active?(isDark?'#1e3a5f':'#F0F9FF'):'transparent' }}>
-                          <input type="checkbox" checked={active} onChange={() => togglePaymentService(s.id)} style={{ width:16, height:16, accentColor:'#2563EB', cursor:'pointer' }} />
-                          <span style={{ fontSize:14, color:isDark?'#E2E8F0':'#0F172A', fontWeight:active?700:500 }}>{s.name}</span>
-                          {active && !(paymentMethod === 'Package' && paymentCustPackageId) ? (
+                        <div key={sid} style={{ display:'grid', gridTemplateColumns: pkgLock ? '1fr auto auto' : '1fr 120px auto', alignItems:'center', gap:10, padding:'10px 12px', borderBottom:idx!==paymentServices.length-1?`1px solid ${isDark?'#334155':'#EEF2F6'}`:'none', background:isDark?'#1e3a5f':'#F0F9FF' }}>
+                          <span style={{ fontSize:14, color:isDark?'#E2E8F0':'#0F172A', fontWeight:700 }}>{s.name}</span>
+                          {pkgLock ? (
+                            <span style={{ fontSize:14, color:'#059669', fontWeight:800 }}>Rs.{Number(s.price||0).toLocaleString()}</span>
+                          ) : (
                             <Input
                               type="number"
                               value={priceVal ?? Number(s.price || 0)}
-                              onChange={(e) => setPaymentServicePrice(s.id, e.target.value)}
-                              onClick={(e) => e.stopPropagation()}
+                              onChange={(e) => setPaymentServicePrice(sid, e.target.value)}
                               style={{ padding: '6px 8px', fontWeight: 700, color: '#059669', textAlign: 'right' }}
-                              title="Change this service price"
+                              title="Change price"
                             />
-                          ) : (
-                            <span style={{ fontSize:14, color:'#059669', fontWeight:800 }}>Rs.{Number(s.price||0).toLocaleString()}</span>
                           )}
+                          <button
+                            type="button"
+                            onClick={() => togglePaymentService(sid)}
+                            style={{ border: 'none', background: 'transparent', color: isDark ? '#94A3B8' : '#64748B', cursor: 'pointer', fontSize: 18, lineHeight: 1, padding: 4 }}
+                            title="Remove"
+                          >
+                            ×
+                          </button>
                         </div>
                       );
-                    });
+                    })}
+                  </div>
+                )}
+                <div style={{ border:`1px solid ${isDark?'#334155':'#DCE6F3'}`, borderRadius:12, overflow:'hidden', maxHeight:180, overflowY:'auto', background:isDark?'#0F172A':'#fff' }}>
+                  {(() => {
+                    const filtered = filterServicesByQuery(services, paymentServiceSearch)
+                      .filter((s) => !paymentServices.includes(Number(s.id)));
+                    if (!filtered.length) {
+                      return (
+                        <div style={{ padding: '12px', fontSize: 12, color: '#98A2B3', textAlign: 'center' }}>
+                          {paymentServiceSearch.trim()
+                            ? `No more services match “${paymentServiceSearch.trim()}”`
+                            : (paymentServices.length ? 'All matching services selected' : 'No active services')}
+                        </div>
+                      );
+                    }
+                    return filtered.map((s, idx, arr) => (
+                      <button
+                        key={s.id}
+                        type="button"
+                        onClick={() => togglePaymentService(s.id)}
+                        style={{ display:'grid', gridTemplateColumns:'1fr auto', alignItems:'center', gap:10, width: '100%', textAlign: 'left', padding:'9px 12px', border:'none', borderBottom:idx!==arr.length-1?`1px solid ${isDark?'#334155':'#EEF2F6'}`:'none', background:'transparent', cursor:'pointer' }}
+                      >
+                        <span style={{ fontSize:14, color:isDark?'#E2E8F0':'#0F172A', fontWeight:500 }}>{s.name}</span>
+                        <span style={{ fontSize:13, color:'#059669', fontWeight:700 }}>Rs.{Number(s.price||0).toLocaleString()}</span>
+                      </button>
+                    ));
                   })()}
                 </div>
                 {paymentServices.length===0 && <div style={{ fontSize:12, color:'#DC2626', marginTop:4 }}>Select at least one service</div>}
               </FormGroup>
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14, alignItems:'start' }}>
-                <FormGroup label={paymentUsesPackage ? 'Bundle price (Rs.)' : 'Bill total (Rs.)'} required>
+                <FormGroup label={paymentUsesPackage ? 'Bundle price (Rs.)' : 'Bill total (Rs.)'}>
                   {paymentUsesPackage ? (
                     <div style={{ padding:'10px 12px', background:isDark?'#1E293B':'#F9FAFB', borderRadius:10, border:`1px solid ${isDark?'#334155':'#E5E7EB'}` }}>
                       {paymentListTotal > 0 && (
@@ -2793,17 +2911,14 @@ export default function AppointmentsPage() {
                       </div>
                     </div>
                   ) : (
-                    <>
-                      <Input
-                        type="number"
-                        value={paymentSubtotal}
-                        onChange={(e) => setPaymentSubtotal(e.target.value)}
-                        placeholder="0"
-                      />
-                      <div style={{ fontSize: 11, color: isDark ? '#94A3B8' : '#64748B', marginTop: 6 }}>
-                        Edit each selected service price above, or change the bill total here.
+                    <div style={{ padding:'10px 12px', background:isDark?'#1E293B':'#ECFDF5', borderRadius:10, border:`1px solid ${isDark?'#334155':'#A7F3D0'}` }}>
+                      <div style={{ fontWeight:800, color:'#059669' }}>
+                        Rs. {Number(paymentSubtotal || 0).toLocaleString()}
                       </div>
-                    </>
+                      <div style={{ fontSize: 11, color: isDark ? '#94A3B8' : '#64748B', marginTop: 4 }}>
+                        Sum of selected service prices
+                      </div>
+                    </div>
                   )}
                 </FormGroup>
                 {paymentDiscounts.length > 0 && paymentMethod !== 'Package' && !paymentCustPackageId && (

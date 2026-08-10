@@ -1371,7 +1371,7 @@ export default function PaymentsPage() {
 
           {/* Right column */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            <PaySection title="Services" desc="Select services — change each service price after adding" dark={isDark}>
+            <PaySection title="Services" desc="Add a service, then set its price in the same row" dark={isDark}>
               <ServiceMultiSelect
                 dark={isDark}
                 services={services.filter(s => s.is_active !== false)}
@@ -1403,12 +1403,30 @@ export default function PaymentsPage() {
                 }}
               />
               {!formPackageId && form.service_ids.length > 0 && (
-                <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {form.service_ids.map((sid) => {
+                <div style={{
+                  marginTop: 10,
+                  border: `1px solid ${isDark ? '#334155' : '#E5EAF0'}`,
+                  borderRadius: 12,
+                  overflow: 'hidden',
+                }}>
+                  {form.service_ids.map((sid, idx) => {
                     const s = services.find((x) => Number(x.id) === Number(sid));
                     if (!s) return null;
                     return (
-                      <div key={sid} style={{ display: 'grid', gridTemplateColumns: '1fr 120px', gap: 10, alignItems: 'center' }}>
+                      <div
+                        key={sid}
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: '1fr 120px',
+                          gap: 10,
+                          alignItems: 'center',
+                          padding: '10px 12px',
+                          borderBottom: idx !== form.service_ids.length - 1
+                            ? `1px solid ${isDark ? '#334155' : '#EEF2F6'}`
+                            : 'none',
+                          background: isDark ? '#0F172A' : '#fff',
+                        }}
+                      >
                         <span style={{ fontSize: 13, fontWeight: 600, color: isDark ? '#E2E8F0' : '#0F172A' }}>{s.name}</span>
                         <Input
                           type="number"

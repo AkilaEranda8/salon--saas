@@ -1420,8 +1420,12 @@ export default function AppointmentsPage() {
           duration: Math.max(5, Number(duration) || 30),
         },
       });
-      const slots = Array.isArray(data?.slots) ? data.slots : (Array.isArray(data) ? data : []);
-      return { slots, serverNow: data?.server_now || null };
+      const fit = Array.isArray(data?.slots) ? data.slots : (Array.isArray(data) ? data : []);
+      const remainder = Array.isArray(data?.remainder_slots) ? data.remainder_slots : [];
+      return {
+        slots: fit.length ? fit : remainder,
+        serverNow: data?.server_now || null,
+      };
     } catch {
       return { slots: [], serverNow: null };
     }

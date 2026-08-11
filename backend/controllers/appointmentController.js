@@ -426,6 +426,9 @@ const availability = async (req, res) => {
     return res.json({
       duration_minutes: durationMinutes,
       slots: Array.isArray(result?.slots) ? result.slots : (Array.isArray(result) ? result : []),
+      remainder_slots: Array.isArray(result?.remainder_slots) ? result.remainder_slots : [],
+      occupied: result?.occupied || [],
+      gaps: result?.gaps || [],
       window: result?.window || null,
       server_now: result?.server_now || null,
     });
@@ -871,9 +874,35 @@ const create = async (req, res) => {
       finalAmount = Number(finalAmount);
     }
 
+    const assignedStaffId = selfStaffId != null ? selfStaffId : (staff_id || null);
+    if (assignedStaffId) {
+      const durRows = await Service.findAll({
+        where: { id: validServiceIds, ...tenantWhere(req) },
+        attributes: ['duration_minutes'],
+      });
+      const newDur = durRows.reduce((acc, s) => acc + (Number(s.duration_minutes) || 0), 0) || 30;
+      const start = toMinutes(time);
+      if (start == null) {
+        return res.status(400).json({ message: 'Invalid time.' });
+      }
+      const existing = await loadBlockedRanges({
+        Appointment,
+        Service,
+        staffId: assignedStaffId,
+        date,
+        branchId: null,
+      });
+      const clash = existing.some(([bStart, bEnd]) => start < bEnd && (start + newDur) > bStart);
+      if (clash) {
+        return res.status(409).json({
+          message: 'Selected time overlaps an existing booking. Choose a time after that service ends.',
+        });
+      }
+    }
+
     const appt = await Appointment.create({
       branch_id, customer_id,
-      staff_id: selfStaffId != null ? selfStaffId : (staff_id || null),
+      staff_id: assignedStaffId,
       service_id: primaryServiceId, customer_name, phone, date, time, amount: finalAmount, notes,
       status: req.body.status || 'pending',
       ...recurringFields,

@@ -56,15 +56,60 @@ function filterFutureSlots(slots, dateStr) {
   return list.filter((s) => timeToMinutes(s) >= now.minutes);
 }
 
+function serviceDurationMinutes(svc) {
+  if (!svc) return 0;
+  const raw = svc.duration_minutes ?? svc.dataValues?.duration_minutes;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
 /** Total blocked minutes for an appointment (sum linked services, else primary). */
 function appointmentBlockDuration(appt) {
   const linked = appt?.services;
   if (Array.isArray(linked) && linked.length > 0) {
-    const sum = linked.reduce((acc, s) => acc + (Number(s.duration_minutes) || 0), 0);
+    const sum = linked.reduce((acc, s) => acc + serviceDurationMinutes(s), 0);
     if (sum > 0) return sum;
   }
-  const primary = Number(appt?.service?.duration_minutes) || 0;
+  const primary = serviceDurationMinutes(appt?.service);
   return primary > 0 ? primary : 30;
+}
+
+function mergeRanges(ranges = []) {
+  const sorted = (ranges || [])
+    .map(([a, b]) => [Number(a), Number(b)])
+    .filter(([a, b]) => Number.isFinite(a) && Number.isFinite(b) && b > a)
+    .sort((x, y) => x[0] - y[0]);
+  const out = [];
+  for (const [start, end] of sorted) {
+    const last = out[out.length - 1];
+    if (!last || start > last[1]) out.push([start, end]);
+    else last[1] = Math.max(last[1], end);
+  }
+  return out;
+}
+
+/** Free [start, end) gaps inside the working window after busy ranges. */
+function freeGaps(dayWindow, blockedRanges = []) {
+  if (!dayWindow || dayWindow.closed) return [];
+  const busy = mergeRanges(blockedRanges).map(([a, b]) => [
+    Math.max(dayWindow.startMin, a),
+    Math.min(dayWindow.endMin, b),
+  ]).filter(([a, b]) => b > a);
+
+  const gaps = [];
+  let cursor = dayWindow.startMin;
+  for (const [bStart, bEnd] of busy) {
+    if (bStart > cursor) gaps.push([cursor, bStart]);
+    cursor = Math.max(cursor, bEnd);
+  }
+  if (cursor < dayWindow.endMin) gaps.push([cursor, dayWindow.endMin]);
+  return gaps;
+}
+
+function firstAligned(windowStart, from, interval) {
+  if (from <= windowStart) return windowStart;
+  const steps = Math.ceil((from - windowStart) / interval);
+  return windowStart + steps * interval;
 }
 
 function buildConflictWhere({ staffId, date, branchId = null }) {
@@ -94,13 +139,13 @@ async function loadBlockedRanges({
 }) {
   const rows = await Appointment.findAll({
     where: buildConflictWhere({ staffId, date, branchId }),
-    attributes: ['time'],
+    attributes: ['id', 'time', 'service_id'],
     include: [
-      { model: Service, as: 'service', attributes: ['duration_minutes'], required: false },
+      { model: Service, as: 'service', attributes: ['id', 'duration_minutes'], required: false },
       {
         model: Service,
         as: 'services',
-        attributes: ['duration_minutes'],
+        attributes: ['id', 'duration_minutes'],
         through: { attributes: [] },
         required: false,
       },
@@ -125,10 +170,29 @@ function generateAvailableSlots({
   const duration = parseDurationMinutes(durationMinutes, 30);
   const interval = Math.max(5, parseDurationMinutes(slotInterval, SLOT_INTERVAL_MIN));
   const out = [];
-  for (let min = dayWindow.startMin; min + duration <= dayWindow.endMin; min += interval) {
-    const end = min + duration;
-    const overlaps = blockedRanges.some(([bStart, bEnd]) => min < bEnd && end > bStart);
-    if (!overlaps) out.push(toHHMM(min));
+  for (const [gStart, gEnd] of freeGaps(dayWindow, blockedRanges)) {
+    if (gEnd - gStart < duration) continue;
+    for (let min = firstAligned(dayWindow.startMin, gStart, interval); min + duration <= gEnd; min += interval) {
+      out.push(toHHMM(min));
+    }
+  }
+  return out;
+}
+
+/** 15-min starts in leftover gaps (so time after a long booking still appears). */
+function generateRemainderSlots({
+  dayWindow,
+  blockedRanges = [],
+  slotInterval = SLOT_INTERVAL_MIN,
+}) {
+  if (!dayWindow || dayWindow.closed) return [];
+  const interval = Math.max(5, parseDurationMinutes(slotInterval, SLOT_INTERVAL_MIN));
+  const out = [];
+  for (const [gStart, gEnd] of freeGaps(dayWindow, blockedRanges)) {
+    if (gEnd - gStart < interval) continue;
+    for (let min = firstAligned(dayWindow.startMin, gStart, interval); min < gEnd; min += interval) {
+      out.push(toHHMM(min));
+    }
   }
   return out;
 }
@@ -245,6 +309,9 @@ async function listAvailableSlots({
 }) {
   const empty = (window = null) => ({
     slots: [],
+    remainder_slots: [],
+    occupied: [],
+    gaps: [],
     window: window || { closed: true, start: null, end: null },
     server_now: getSalonNow(),
   });
@@ -292,17 +359,39 @@ async function listAvailableSlots({
     branchId: scopeBranchConflicts ? branchId : null,
   });
 
+  const fitSlots = generateAvailableSlots({
+    dayWindow,
+    durationMinutes,
+    blockedRanges,
+  });
+  const remainderSlots = generateRemainderSlots({
+    dayWindow,
+    blockedRanges,
+  });
+  const gaps = freeGaps(dayWindow, blockedRanges).map(([start, end]) => ({
+    start: toHHMM(start),
+    end: toHHMM(end),
+    minutes: end - start,
+  }));
+  const occupied = mergeRanges(blockedRanges).map(([start, end]) => ({
+    start: toHHMM(start),
+    end: toHHMM(end),
+    minutes: end - start,
+  }));
+
+  // If the next service is shorter than leftover time, fit slots win.
+  // If leftover exists but requested duration does not fit (e.g. 299 booked, 200 left),
+  // still return remainder start times so the next booking can pick after that job.
   const slots = filterFutureSlots(
-    generateAvailableSlots({
-      dayWindow,
-      durationMinutes,
-      blockedRanges,
-    }),
+    fitSlots.length ? fitSlots : remainderSlots,
     dateKey,
   );
 
   return {
     slots,
+    remainder_slots: filterFutureSlots(remainderSlots, dateKey),
+    occupied,
+    gaps,
     window: {
       closed: false,
       start: toHHMM(dayWindow.startMin),
@@ -326,6 +415,9 @@ module.exports = {
   buildConflictWhere,
   loadBlockedRanges,
   generateAvailableSlots,
+  generateRemainderSlots,
+  freeGaps,
+  mergeRanges,
   getStaffDateBlockReason,
   findUnavailableStaffIdsOnDate,
   listAvailableSlots,

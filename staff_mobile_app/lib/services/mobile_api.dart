@@ -691,16 +691,21 @@ class MobileApi {
     if (response.statusCode >= 400) {
       throw Exception(body['message'] ?? 'Availability load failed');
     }
-    final slotsRaw = body['slots'];
-    final slots = <String>[];
-    if (slotsRaw is List) {
-      for (final s in slotsRaw) {
-        final t = '$s'.trim();
-        if (t.isNotEmpty) slots.add(t);
+    List<String> parseSlots(dynamic raw) {
+      final slots = <String>[];
+      if (raw is List) {
+        for (final s in raw) {
+          final t = '$s'.trim();
+          if (t.isNotEmpty) slots.add(t);
+        }
       }
+      return slots;
     }
+
+    final fit = parseSlots(body['slots']);
+    final remainder = parseSlots(body['remainder_slots']);
     return {
-      'slots': slots,
+      'slots': fit.isNotEmpty ? fit : remainder,
       'window': body['window'],
       'server_now': body['server_now'],
       'duration_minutes': body['duration_minutes'],

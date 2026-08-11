@@ -20,6 +20,7 @@ const {
   loadBlockedRanges,
 } = require('../utils/staffAvailability');
 const { resolveStaffRecordForRequest } = require('../utils/resolveUserBranch');
+const { resolveCustomerId } = require('../utils/resolveCustomer');
 
 const ADVANCE_METHODS = new Set(['Cash', 'Card', 'Online Transfer']);
 const ADVANCE_NOTE_PREFIX = 'Advance paid: ';
@@ -532,6 +533,8 @@ const create = async (req, res) => {
       return res.status(400).json({ message: 'branch_id is required.' });
     }
 
+    const resolvedCustomerId = await resolveCustomerId(req, { customerId: customer_id, phone });
+
     const selfStaffId = await linkedStaffIdOrNull(req);
     if (!isTeamAppointmentRole(roleOf(req)) && !selfStaffId) {
       return res.status(403).json({ message: 'No staff profile linked to this account.' });
@@ -729,7 +732,7 @@ const create = async (req, res) => {
           // Recurring fields only on the first booking — avoids N duplicate chains.
           const appt = await Appointment.create({
             branch_id,
-            customer_id: customer_id || null,
+            customer_id: resolvedCustomerId || null,
             staff_id: item.staff_id,
             service_id: item.service_id,
             customer_name,
@@ -783,7 +786,7 @@ const create = async (req, res) => {
           appointment: created[0],
           amount: parsedAdvance,
           method: advanceMethod,
-          customer_id: customer_id || null,
+          customer_id: resolvedCustomerId || null,
           customer_name,
           branch_id,
           staff_id: created[0].staff_id || null,
@@ -901,7 +904,7 @@ const create = async (req, res) => {
     }
 
     const appt = await Appointment.create({
-      branch_id, customer_id,
+      branch_id, customer_id: resolvedCustomerId || null,
       staff_id: assignedStaffId,
       service_id: primaryServiceId, customer_name, phone, date, time, amount: finalAmount, notes,
       status: req.body.status || 'pending',
@@ -918,7 +921,7 @@ const create = async (req, res) => {
         appointment: appt,
         amount: parsedAdvance,
         method: advanceMethod,
-        customer_id: customer_id || null,
+        customer_id: resolvedCustomerId || null,
         customer_name,
         branch_id,
         staff_id: staff_id || null,

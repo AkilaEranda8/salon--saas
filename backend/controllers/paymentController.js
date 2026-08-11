@@ -10,6 +10,7 @@ const { seedRecurringFromVisit } = require('../services/recurringService');
 const { tenantWhere, byIdWhere, resolveTenantId } = require('../utils/tenantScope');
 const { slToday } = require('../utils/dateUtils');
 const { redeemPackageForPayment } = require('../utils/packageRedemption');
+const { resolveCustomerId } = require('../utils/resolveCustomer');
 
 const getBranchWhere = (req) => {
   const where = tenantWhere(req);
@@ -298,6 +299,21 @@ const create = async (req, res) => {
     const today = slToday();
 
     let resolvedAppointmentId = appointment_id ? Number(appointment_id) : null;
+    let linkedAppt = null;
+    if (resolvedAppointmentId) {
+      linkedAppt = await Appointment.findOne({
+        where: byIdWhere(req, resolvedAppointmentId),
+        transaction: t,
+      });
+    }
+    let resolvedCustomerId = await resolveCustomerId(req, {
+      customerId: customer_id,
+      phone: phone || linkedAppt?.phone,
+      appointment: linkedAppt,
+    }, { transaction: t });
+    if (linkedAppt && !linkedAppt.customer_id && resolvedCustomerId) {
+      await linkedAppt.update({ customer_id: resolvedCustomerId }, { transaction: t });
+    }
     let pendingRecurringSeed = null;
 
     // Merge advance + balance into one sale row (remove prior deposit payments)
@@ -359,9 +375,9 @@ const create = async (req, res) => {
     } else if (is_recurring && !resolvedAppointmentId) {
       let resolvedPhone = phone || null;
       let resolvedName = customer_name || null;
-      if (customer_id) {
+      if (resolvedCustomerId) {
         const cust = await Customer.findOne({
-          where: byIdWhere(req, customer_id),
+          where: byIdWhere(req, resolvedCustomerId),
           attributes: ['id', 'name', 'phone'],
           transaction: t,
         });
@@ -374,7 +390,7 @@ const create = async (req, res) => {
       pendingRecurringSeed = {
         tenantId: resolveTenantId(req),
         branchId: branch_id,
-        customerId: customer_id || null,
+        customerId: resolvedCustomerId || null,
         staffId: staff_id || null,
         serviceId: serviceIdList[0] || service_id || null,
         serviceIds: serviceIdList,
@@ -393,7 +409,7 @@ const create = async (req, res) => {
 
     const resolvedCustomerName = await resolveCustomerName(
       req,
-      customer_id,
+      resolvedCustomerId,
       customer_name,
       { transaction: t },
     );
@@ -401,7 +417,7 @@ const create = async (req, res) => {
     const payment = await Payment.create({
       branch_id,
       staff_id:       staff_id       || null,
-      customer_id:    customer_id    || null,
+      customer_id:    resolvedCustomerId || null,
       service_id:     service_id     || null,
       appointment_id: resolvedAppointmentId || null,
       customer_name:  resolvedCustomerName,
@@ -477,9 +493,9 @@ const create = async (req, res) => {
     }
 
     // Update customer stats
-    if (customer_id) {
+    if (resolvedCustomerId) {
       const { Customer: CustModel } = require('../models');
-      const cust = await CustModel.findOne({ where: byIdWhere(req, customer_id), transaction: t });
+      const cust = await CustModel.findOne({ where: byIdWhere(req, resolvedCustomerId), transaction: t });
       if (cust) {
         let newPoints = cust.loyalty_points + points_earned;
         if (usePoints && loyalty_discount > 0) {
@@ -520,7 +536,7 @@ const create = async (req, res) => {
 
     // Fire-and-forget notifications (after transaction commits successfully)
     // Walk-in: send SMS if phone provided even without customer_id
-    if (!customer_id && phone) {
+    if (!resolvedCustomerId && phone) {
       const [branch, service] = await Promise.all([
         Branch.findOne({ where: byIdWhere(req, branch_id), attributes: ['id', 'name', 'phone'] }),
         Service.findOne({ where: byIdWhere(req, service_id), attributes: ['id', 'name'] }),
@@ -531,13 +547,13 @@ const create = async (req, res) => {
         branch, service, walkinCustomer, resolveTenantId(req)
       );
     }
-    if (customer_id) {
+    if (resolvedCustomerId) {
       const [branch, service, customer] = await Promise.all([
         Branch.findOne({ where: byIdWhere(req, branch_id), attributes: ['id', 'name', 'phone'] }),
         Service.findOne({ where: byIdWhere(req, service_id), attributes: ['id', 'name'] }),
         (async () => {
           const { Customer: CustModel } = require('../models');
-          return CustModel.findOne({ where: byIdWhere(req, customer_id), attributes: ['id', 'name', 'phone', 'email', 'loyalty_points'] });
+          return CustModel.findOne({ where: byIdWhere(req, resolvedCustomerId), attributes: ['id', 'name', 'phone', 'email', 'loyalty_points'] });
         })(),
       ]);
       if (customer) {

@@ -280,39 +280,67 @@ const dashboard = async (req, res) => {
         },
       }),
       Reminder.count({ where: { ...branchWhere, is_done: false } }),
-      // Per-branch stats for admin/superadmin
+      // Per-branch stats for admin/superadmin.
+      // Load branches + aggregates separately — joining appointments AND payments
+      // in one query multiplies rows (cartesian product) and inflates totals.
       !req.userBranchId
-        ? Branch.findAll({
-            where: {
+        ? (async () => {
+            const branchFilter = {
               ...tenantWhere(req),
               ...(req.query.branchId ? { id: req.query.branchId } : {}),
               status: 'active',
-            },
-            include: [
-              {
-                model: Appointment,
-                as: 'appointments',
-                where: { date: today },
-                required: false,
-                attributes: [],
-              },
-              {
-                model: Payment,
-                as: 'payments',
-                where: { date: { [Op.between]: [monthStart, monthEnd] } },
-                required: false,
-                attributes: [],
-              },
-            ],
-            attributes: {
-              include: [
-                [fn('COUNT', col('appointments.id')),          'todayAppts'],
-                [fn('SUM',   col('payments.total_amount')),    'monthRevenue'],
-                [fn('SUM',   col('payments.commission_amount')), 'monthCommission'],
-              ],
-            },
-            group: ['Branch.id'],
-          })
+            };
+            const branches = await Branch.findAll({
+              where: branchFilter,
+              attributes: ['id', 'name', 'status', 'color'],
+              order: [['name', 'ASC']],
+            });
+            if (!branches.length) return [];
+
+            const branchIds = branches.map((b) => b.id);
+            const tenantFilter = tenantWhere(req);
+            const [apptRows, payRows] = await Promise.all([
+              Appointment.findAll({
+                where: { ...tenantFilter, branch_id: { [Op.in]: branchIds }, date: today },
+                attributes: ['branch_id', [fn('COUNT', col('Appointment.id')), 'todayAppts']],
+                group: ['branch_id'],
+                raw: true,
+              }),
+              Payment.findAll({
+                where: {
+                  ...tenantFilter,
+                  branch_id: { [Op.in]: branchIds },
+                  date: { [Op.between]: [monthStart, monthEnd] },
+                },
+                attributes: [
+                  'branch_id',
+                  [fn('SUM', col('total_amount')), 'monthRevenue'],
+                  [fn('SUM', col('commission_amount')), 'monthCommission'],
+                ],
+                group: ['branch_id'],
+                raw: true,
+              }),
+            ]);
+
+            const apptMap = Object.fromEntries(
+              apptRows.map((r) => [Number(r.branch_id), Number(r.todayAppts || 0)])
+            );
+            const payMap = Object.fromEntries(
+              payRows.map((r) => [Number(r.branch_id), {
+                monthRevenue: Number(r.monthRevenue || 0),
+                monthCommission: Number(r.monthCommission || 0),
+              }])
+            );
+
+            return branches.map((b) => {
+              const json = b.toJSON();
+              const pay = payMap[b.id] || { monthRevenue: 0, monthCommission: 0 };
+              json.todayAppts = apptMap[b.id] || 0;
+              json.monthRevenue = pay.monthRevenue;
+              json.monthCommission = pay.monthCommission;
+              return json;
+            });
+          })()
         : [],
     ]);
 

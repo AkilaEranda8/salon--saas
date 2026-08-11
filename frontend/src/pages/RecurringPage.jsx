@@ -6,8 +6,10 @@ import Button from '../components/ui/Button';
 import { useToast } from '../components/ui/Toast';
 import {
   PKModal as Modal, StatCard, StaffAvatar, ActionBtn, DataTable,
-  IconEye, IconStop, IconClock, IconCalendar, IconUsers,
+  IconEye, IconStop, IconClock, IconCalendar, IconUsers, IconEdit,
 } from '../components/ui/PageKit';
+import RecurringDateCalendar, { defaultRecurringNextDate } from '../components/ui/RecurringDateCalendar';
+import RecurringTemplateCheckboxes from '../components/ui/RecurringTemplateCheckboxes';
 
 const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
@@ -88,6 +90,10 @@ export default function RecurringPage() {
   const [chains, setChains] = useState([]);
   const [loading, setLoading] = useState(false);
   const [viewChain, setViewChain] = useState(null);
+  const [editChain, setEditChain] = useState(null);
+  const [editForm, setEditForm] = useState({ date: '', time: '08:00', templateIds: [] });
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [recurringTemplates, setRecurringTemplates] = useState([]);
   const [stopId, setStopId] = useState(null);
   const [stopping, setStopping] = useState(false);
   const [tab, setTab] = useState('list');
@@ -99,6 +105,12 @@ export default function RecurringPage() {
   useEffect(() => {
     if (isAdmin) api.get('/branches').then((r) => setBranches(r.data || [])).catch(() => {});
   }, [isAdmin]);
+
+  useEffect(() => {
+    api.get('/notifications/templates/options', { params: { event_type: 'recurring_reminder' } })
+      .then(({ data }) => setRecurringTemplates(Array.isArray(data?.options) ? data.options : []))
+      .catch(() => setRecurringTemplates([]));
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -113,6 +125,40 @@ export default function RecurringPage() {
     setLoading(false);
   }, [branchId]);
   useEffect(() => { load(); }, [load]);
+
+  const openEdit = (c) => {
+    const parent = c.parent || {};
+    const ids = Array.isArray(parent.recurring_message_template_ids)
+      ? parent.recurring_message_template_ids
+      : (parent.recurring_message_template_id ? [parent.recurring_message_template_id] : []);
+    setEditForm({
+      date: c.next_date || parent.recurring_next_date || defaultRecurringNextDate(),
+      time: String(parent.recurring_sms_time || c.appointment_time || '08:00').slice(0, 5),
+      templateIds: ids.map(Number).filter((n) => Number.isInteger(n) && n > 0),
+    });
+    setEditChain(c);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editChain) return;
+    if (!editForm.date) return toast('Pick the next visit date.', 'error');
+    if (!editForm.time) return toast('Enter a reminder time.', 'error');
+    setSavingEdit(true);
+    try {
+      await api.put(`/appointments/${editChain.id}`, {
+        is_recurring: true,
+        recurring_next_date: editForm.date,
+        recurring_sms_time: editForm.time,
+        recurring_message_template_ids: editForm.templateIds,
+      });
+      toast('Recurring series updated.', 'success');
+      setEditChain(null);
+      load();
+    } catch (err) {
+      toast(err.response?.data?.message || 'Failed to update recurring series.', 'error');
+    }
+    setSavingEdit(false);
+  };
 
   const handleStop = async () => {
     if (!stopId) return;
@@ -281,7 +327,10 @@ export default function RecurringPage() {
                       {c.service?.name || '—'} · {(c.appointment_time || '').slice(0, 5)}
                     </div>
                   </div>
-                  <Button variant="secondary" onClick={(e) => { e.stopPropagation(); setViewChain(c); }}>View</Button>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <Button variant="secondary" onClick={(e) => { e.stopPropagation(); openEdit(c); }}>Edit</Button>
+                    <Button variant="secondary" onClick={(e) => { e.stopPropagation(); setViewChain(c); }}>View</Button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -363,12 +412,13 @@ export default function RecurringPage() {
               ),
             },
             {
-              id: 'actions', header: 'Actions', meta: { width: '6%', align: 'center' },
+              id: 'actions', header: 'Actions', meta: { width: '10%', align: 'center' },
               cell: ({ row }) => {
                 const c = row.original;
                 return (
                   <div style={{ display: 'flex', gap: 4, justifyContent: 'center' }}>
                     <ActionBtn onClick={() => setViewChain(c)} title="View history" color="#2563EB"><IconEye /></ActionBtn>
+                    <ActionBtn onClick={() => openEdit(c)} title="Edit series" color="#059669"><IconEdit /></ActionBtn>
                     {!c.stopped && <ActionBtn onClick={() => setStopId(c.id)} title="Stop recurring" color="#DC2626"><IconStop /></ActionBtn>}
                   </div>
                 );
@@ -392,7 +442,12 @@ export default function RecurringPage() {
           title="Recurring History"
           onClose={() => setViewChain(null)}
           size="md"
-          footer={<Button variant="secondary" onClick={() => setViewChain(null)}>Close</Button>}
+          footer={(
+            <>
+              <Button variant="secondary" onClick={() => setViewChain(null)}>Close</Button>
+              <Button variant="primary" onClick={() => { setViewChain(null); openEdit(viewChain); }}>Edit series</Button>
+            </>
+          )}
         >
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
             {[
@@ -450,6 +505,55 @@ export default function RecurringPage() {
               </div>
             </>
           )}
+        </Modal>
+      )}
+
+      {editChain && (
+        <Modal
+          open
+          title="Edit Recurring Series"
+          onClose={() => setEditChain(null)}
+          size="md"
+          footer={(
+            <>
+              <Button variant="secondary" onClick={() => setEditChain(null)}>Cancel</Button>
+              <Button variant="primary" loading={savingEdit} onClick={handleSaveEdit}>Save</Button>
+            </>
+          )}
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div style={{ fontSize: 14, color: '#344054' }}>
+              <strong>{custName(editChain.customer)}</strong>
+              {editChain.service?.name ? ` · ${editChain.service.name}` : ''}
+            </div>
+            <RecurringDateCalendar
+              value={editForm.date}
+              onChange={(date) => setEditForm((f) => ({ ...f, date }))}
+              label="Next visit date"
+            />
+            <label style={{ display: 'grid', gap: 6, fontSize: 13, fontWeight: 600, color: '#344054' }}>
+              Reminder time
+              <input
+                type="time"
+                value={editForm.time}
+                onChange={(e) => setEditForm((f) => ({ ...f, time: e.target.value }))}
+                style={{
+                  height: 42, borderRadius: 10, border: '1px solid #D0D5DD',
+                  padding: '0 12px', fontSize: 14, fontWeight: 500,
+                }}
+              />
+            </label>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: '#344054', marginBottom: 8 }}>
+                Reminder templates
+              </div>
+              <RecurringTemplateCheckboxes
+                templates={recurringTemplates}
+                value={editForm.templateIds}
+                onChange={(templateIds) => setEditForm((f) => ({ ...f, templateIds }))}
+              />
+            </div>
+          </div>
         </Modal>
       )}
 

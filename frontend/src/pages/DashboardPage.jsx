@@ -717,7 +717,7 @@ export default function DashboardPage() {
                   </div>
                   <div style={{ textAlign:'right', flexShrink:0 }}>
                     <div style={{ fontSize:13, fontWeight:700, color:G700 }}>{fmt(rev)}</div>
-                    <div style={{ fontSize:10, color:'#9CA3AF' }}>comm. {fmt(com)}</div>
+                    <div style={{ fontSize:10, color:'#9CA3AF' }}>this month · comm. {fmt(com)}</div>
                   </div>
                 </div>
               );

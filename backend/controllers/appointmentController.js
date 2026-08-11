@@ -1050,6 +1050,11 @@ const update = async (req, res) => {
         : [];
       updates.recurring_message_template_ids = tids.length ? tids : null;
     }
+    if (updates.recurring_next_date !== undefined) {
+      const next = String(updates.recurring_next_date || '').slice(0, 10);
+      const prev = String(appt.recurring_next_date || '').slice(0, 10);
+      if (next && next !== prev) updates.recurring_sms_sent_at = null;
+    }
 
     let nextServiceIds = null;
     if (req.body.service_ids !== undefined || req.body.service_id !== undefined) {

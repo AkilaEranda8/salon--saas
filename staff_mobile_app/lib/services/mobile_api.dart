@@ -672,6 +672,41 @@ class MobileApi {
     );
   }
 
+  /// GET /api/appointments/availability — server slots in Asia/Colombo.
+  Future<Map<String, dynamic>> fetchAvailability({
+    required String token,
+    required String staffId,
+    required String date,
+    int duration = 30,
+  }) async {
+    final uri = Uri.parse('$baseUrl/api/appointments/availability').replace(
+      queryParameters: {
+        'staffId': staffId,
+        'date': date,
+        'duration': '$duration',
+      },
+    );
+    final response = await http.get(uri, headers: _authHeaders(token));
+    final body = _decode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['message'] ?? 'Availability load failed');
+    }
+    final slotsRaw = body['slots'];
+    final slots = <String>[];
+    if (slotsRaw is List) {
+      for (final s in slotsRaw) {
+        final t = '$s'.trim();
+        if (t.isNotEmpty) slots.add(t);
+      }
+    }
+    return {
+      'slots': slots,
+      'window': body['window'],
+      'server_now': body['server_now'],
+      'duration_minutes': body['duration_minutes'],
+    };
+  }
+
   Future<void> createAppointment({
     required String token,
     required String branchId,

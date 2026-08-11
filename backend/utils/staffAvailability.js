@@ -1,5 +1,6 @@
 const { Op } = require('sequelize');
 const { resolveStaffDayWindow, toHHMM } = require('./staffSchedule');
+const { slNowParts, normalizeWallClockTime } = require('./dateUtils');
 
 /** Grid step for candidate start times (minutes). Duration still controls how long a booking occupies. */
 const SLOT_INTERVAL_MIN = 15;
@@ -16,32 +17,17 @@ function parseDurationMinutes(raw, fallback = 30) {
 }
 
 function timeToMinutes(hhmm) {
-  const [h, m] = String(hhmm || '00:00').substring(0, 5).split(':').map(Number);
+  const t = normalizeWallClockTime(hhmm) || '00:00';
+  const [h, m] = t.split(':').map(Number);
   return (Number(h) || 0) * 60 + (Number(m) || 0);
 }
 
 /**
- * Current salon date/time (Asia/Colombo).
+ * Current salon date/time (Asia/Colombo) — offset math, not Intl (avoids hour12 bugs).
  * @returns {{ date: string, time: string, minutes: number }}
  */
 function getSalonNow() {
-  const parts = new Intl.DateTimeFormat('en-GB', {
-    timeZone: SALON_TZ,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  }).formatToParts(new Date());
-  const get = (type) => parts.find((p) => p.type === type)?.value;
-  const date = `${get('year')}-${get('month')}-${get('day')}`;
-  let hour = String(get('hour') || '00');
-  if (hour === '24') hour = '00'; // en-GB midnight quirk
-  const minute = String(get('minute') || '00').padStart(2, '0');
-  hour = hour.padStart(2, '0');
-  const time = `${hour}:${minute}`;
-  return { date, time, minutes: timeToMinutes(time) };
+  return slNowParts();
 }
 
 /** True when date+time is strictly before salon "now". */
@@ -257,7 +243,11 @@ async function listAvailableSlots({
   branchId = null,
   scopeBranchConflicts = false,
 }) {
-  const empty = (window = null) => ({ slots: [], window: window || { closed: true, start: null, end: null } });
+  const empty = (window = null) => ({
+    slots: [],
+    window: window || { closed: true, start: null, end: null },
+    server_now: getSalonNow(),
+  });
 
   const staffIdNum = Number(staffId);
   const dateKey = String(date || '').slice(0, 10);
@@ -318,6 +308,7 @@ async function listAvailableSlots({
       start: toHHMM(dayWindow.startMin),
       end: toHHMM(dayWindow.endMin),
     },
+    server_now: getSalonNow(),
   };
 }
 

@@ -162,18 +162,26 @@ function localToday() {
   return `${get('year')}-${get('month')}-${get('day')}`;
 }
 
-/** Salon HH:MM wall clock. */
+/** Salon HH:MM wall clock. Prefer hourCycle h23 (hour12:false is ignored in some browsers). */
 function localNowTime() {
   const parts = new Intl.DateTimeFormat('en-GB', {
     timeZone: SALON_TZ,
     hour: '2-digit',
     minute: '2-digit',
-    hour12: false,
+    hourCycle: 'h23',
   }).formatToParts(new Date());
   const get = (t) => parts.find((p) => p.type === t)?.value;
   let hour = String(get('hour') || '00');
   if (hour === '24') hour = '00';
   return `${hour.padStart(2, '0')}:${String(get('minute') || '00').padStart(2, '0')}`;
+}
+
+function applyServerNow(serverNow) {
+  if (!serverNow?.date || !serverNow?.time) return null;
+  return {
+    date: String(serverNow.date).slice(0, 10),
+    time: normalizeApptTime(serverNow.time),
+  };
 }
 
 function timeToMinutesLocal(t) {
@@ -228,14 +236,15 @@ function isPastDateTime(dateStr, timeStr) {
   return timeToMinutesLocal(t) < timeToMinutesLocal(localNowTime());
 }
 
-function filterFutureSlotsLocal(slots, dateStr) {
+function filterFutureSlotsLocal(slots, dateStr, serverNow = null) {
   const list = Array.isArray(slots) ? slots : [];
   const d = String(dateStr || '').slice(0, 10);
   if (!d || !list.length) return list;
-  const today = localToday();
+  const now = applyServerNow(serverNow);
+  const today = now?.date || localToday();
   if (d < today) return [];
   if (d > today) return list.map(normalizeApptTime);
-  const nowMin = timeToMinutesLocal(localNowTime());
+  const nowMin = timeToMinutesLocal(now?.time || localNowTime());
   return list.map(normalizeApptTime).filter((s) => timeToMinutesLocal(s) >= nowMin);
 }
 
@@ -1402,7 +1411,7 @@ export default function AppointmentsPage() {
   }, [services, apptServiceIds]);
 
   const fetchSlots = useCallback(async ({ staffId, date, duration }) => {
-    if (!staffId || !date) return [];
+    if (!staffId || !date) return { slots: [], serverNow: null };
     try {
       const { data } = await api.get('/appointments/availability', {
         params: {
@@ -1411,11 +1420,10 @@ export default function AppointmentsPage() {
           duration: Math.max(5, Number(duration) || 30),
         },
       });
-      if (Array.isArray(data?.slots)) return data.slots;
-      if (Array.isArray(data)) return data;
-      return [];
+      const slots = Array.isArray(data?.slots) ? data.slots : (Array.isArray(data) ? data : []);
+      return { slots, serverNow: data?.server_now || null };
     } catch {
-      return [];
+      return { slots: [], serverNow: null };
     }
   }, []);
 
@@ -1447,19 +1455,26 @@ export default function AppointmentsPage() {
     let cancelled = false;
     setSlotsLoading(true);
     fetchSlots({ staffId: form.staff_id, date: form.date, duration: bookingDurationMinutes })
-      .then((slots) => {
+      .then(({ slots, serverNow }) => {
         if (cancelled) return;
-        const normalized = filterFutureSlotsLocal(Array.isArray(slots) ? slots : [], form.date);
+        const normalized = filterFutureSlotsLocal(slots, form.date, serverNow);
         setAvailableSlots(normalized);
+        const nt = normalizeApptTime(form.time);
+        const editingSameSlot = !!(
+          editItem
+          && String(editItem.date || '').slice(0, 10) === String(form.date).slice(0, 10)
+          && normalizeApptTime(editItem.time) === nt
+        );
         // Only clear time if API returned slots and current time is not among them.
-        // Empty slots = keep manual time entry (unless it is already past).
-        if (isPastDateTime(form.date, form.time)) {
+        // Keep the existing booking time when editing that same slot.
+        if (editingSameSlot) {
+          if (nt && nt !== form.time) setForm((f) => ({ ...f, time: nt }));
+        } else if (isPastDateTime(form.date, form.time)) {
           setForm((f) => ({ ...f, time: '' }));
-        } else if (normalized.length && form.time && !slotListIncludes(normalized, form.time)) {
+        } else if (normalized.length && nt && !slotListIncludes(normalized, nt)) {
           setForm((f) => ({ ...f, time: '' }));
-        } else if (form.time) {
-          const nt = normalizeApptTime(form.time);
-          if (nt !== form.time) setForm((f) => ({ ...f, time: nt }));
+        } else if (nt && nt !== form.time) {
+          setForm((f) => ({ ...f, time: nt }));
         }
       })
       .finally(() => { if (!cancelled) setSlotsLoading(false); });
@@ -1491,10 +1506,8 @@ export default function AppointmentsPage() {
         nextLoading[sid] = true;
         const svc = services.find((s) => Number(s.id) === Number(sid));
         const duration = Number(svc?.duration_minutes) || 30;
-        nextSlots[sid] = filterFutureSlotsLocal(
-          await fetchSlots({ staffId: a.staff_id, date: a.date, duration }),
-          a.date,
-        );
+        const fetched = await fetchSlots({ staffId: a.staff_id, date: a.date, duration });
+        nextSlots[sid] = filterFutureSlotsLocal(fetched.slots, a.date, fetched.serverNow);
         nextLoading[sid] = false;
       }));
       if (cancelled) return;

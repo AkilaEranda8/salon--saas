@@ -38,6 +38,11 @@ const Appointment = sequelize.define('Appointment', {
   time: {
     type: DataTypes.TIME,
     allowNull: false,
+    get() {
+      const { normalizeWallClockTime } = require('../utils/dateUtils');
+      const raw = this.getDataValue('time');
+      return normalizeWallClockTime(raw) || raw;
+    },
   },
   amount: {
     type: DataTypes.DECIMAL(10, 2),

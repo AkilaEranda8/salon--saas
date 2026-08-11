@@ -256,6 +256,7 @@ const getAvailability = async (req, res) => {
       slots: Array.isArray(result?.slots) ? result.slots : (Array.isArray(result) ? result : []),
       window: result?.window || null,
       duration_minutes: durationMinutes,
+      server_now: result?.server_now || null,
     });
   } catch (err) {
     console.error('[crm-integration] availability', err);

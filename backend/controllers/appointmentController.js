@@ -427,6 +427,7 @@ const availability = async (req, res) => {
       duration_minutes: durationMinutes,
       slots: Array.isArray(result?.slots) ? result.slots : (Array.isArray(result) ? result : []),
       window: result?.window || null,
+      server_now: result?.server_now || null,
     });
   } catch (err) {
     console.error(err);

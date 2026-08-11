@@ -73,11 +73,12 @@ function normalizeWorkingHours(input) {
  */
 function resolveStaffDayWindow(workingHours, dateStr) {
   const hours = normalizeWorkingHours(workingHours);
-  const d = new Date(`${dateStr}T12:00:00`);
-  if (Number.isNaN(d.getTime())) {
+  const { weekdaySun0 } = require('./dateUtils');
+  const dow = weekdaySun0(dateStr);
+  if (dow == null) {
     return { closed: true, startMin: 0, endMin: 0, reason: 'Invalid date' };
   }
-  const weekday = String(d.getDay()); // 0=Sun … 6=Sat
+  const weekday = String(dow); // 0=Sun … 6=Sat
   const day = hours[weekday] || { closed: false, start: '09:00', end: '18:00' };
   if (day.closed) {
     return { closed: true, startMin: 0, endMin: 0, reason: 'Staff day off (weekly)' };

@@ -9,6 +9,7 @@ import '../state/app_state.dart';
 import '../utils/appointment_notes.dart';
 import '../utils/package_helpers.dart';
 import '../utils/phone_validation.dart';
+import '../utils/salon_time.dart';
 import '../widgets/app_toast.dart';
 import '../widgets/walk_in_service_dropdown_section.dart';
 
@@ -79,6 +80,12 @@ class _AddApptSheetState extends State<_AddApptSheet> {
   bool _collectAdvance = false;
   String _advanceMethod = 'Cash';
 
+  List<String> _slots = [];
+  bool _slotsLoading = false;
+  int _slotsGen = 0;
+  final Map<String, List<String>> _multiSlots = {};
+  final Map<String, bool> _multiSlotsLoading = {};
+
   List<Map<String, dynamic>> _customerPackages = [];
   List<Map<String, dynamic>> _packageTemplates = [];
   String  _selectedPkgId   = '';
@@ -104,9 +111,7 @@ class _AddApptSheetState extends State<_AddApptSheet> {
 
   Future<void> _load() async {
     final app = AppStateScope.of(context);
-    final d   = DateTime.now();
-    _date =
-        '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+    _date = salonToday();
     setState(() { _loading = true; _error = null; });
     try {
       _services = await app.loadServices();
@@ -142,6 +147,7 @@ class _AddApptSheetState extends State<_AddApptSheet> {
     }
     if (!mounted) return;
     setState(() => _loading = false);
+    _reloadSlots();
   }
 
   List<Customer> get _customerPool {
@@ -297,13 +303,194 @@ class _AddApptSheetState extends State<_AddApptSheet> {
     } catch (_) {}
   }
 
-  bool _isPastSlot(String date, String time) {
-    final d = date.trim();
-    final t = time.trim();
-    if (d.isEmpty || t.isEmpty) return false;
-    final parsed = DateTime.tryParse('$d ${t.length == 5 ? '$t:00' : t}');
-    if (parsed == null) return false;
-    return parsed.isBefore(DateTime.now().subtract(const Duration(minutes: 1)));
+  bool _isPastSlot(String date, String time) => isPastSalonDateTime(date, time);
+
+  int _bookingDurationMinutes() {
+    var sum = 0;
+    for (final id in _orderedServiceIds()) {
+      for (final s in _services) {
+        if (s.id == id) sum += s.durationMinutes;
+      }
+    }
+    return sum > 0 ? sum : 30;
+  }
+
+  Future<void> _reloadSlots() async {
+    if (!mounted || _multiBooking) return;
+    final staffId = _staffId.trim();
+    final date = _date.trim();
+    if (staffId.isEmpty || date.isEmpty) {
+      setState(() {
+        _slots = [];
+        _slotsLoading = false;
+      });
+      return;
+    }
+    final gen = ++_slotsGen;
+    setState(() => _slotsLoading = true);
+    try {
+      final app = AppStateScope.of(context);
+      final token = app.currentUser?.authToken ?? '';
+      if (token.isEmpty) return;
+      final data = await app.api.fetchAvailability(
+        token: token,
+        staffId: staffId,
+        date: date,
+        duration: _bookingDurationMinutes(),
+      );
+      if (!mounted || gen != _slotsGen) return;
+      final serverNow = data['server_now'];
+      String? sd;
+      String? st;
+      if (serverNow is Map) {
+        sd = '${serverNow['date'] ?? ''}';
+        st = '${serverNow['time'] ?? ''}';
+      }
+      final next = filterFutureSlots(
+        List<String>.from(data['slots'] as List? ?? const []),
+        date,
+        serverDate: sd,
+        serverTime: st,
+      );
+      setState(() {
+        _slots = next;
+        _slotsLoading = false;
+        final nt = normalizeHm(_time);
+        if (nt.isNotEmpty && next.isNotEmpty && !next.contains(nt) && _isPastSlot(date, nt)) {
+          _time = '';
+        } else if (nt.isNotEmpty) {
+          _time = nt;
+        }
+      });
+    } catch (_) {
+      if (!mounted || gen != _slotsGen) return;
+      setState(() {
+        _slots = [];
+        _slotsLoading = false;
+      });
+    }
+  }
+
+  Future<void> _reloadMultiSlots(String serviceId) async {
+    final a = _serviceAssignments[serviceId] ?? {};
+    final staffId = (a['staff_id'] ?? '').trim();
+    final date = (a['date'] ?? '').trim();
+    if (staffId.isEmpty || date.isEmpty) {
+      setState(() {
+        _multiSlots[serviceId] = [];
+        _multiSlotsLoading[serviceId] = false;
+      });
+      return;
+    }
+    setState(() => _multiSlotsLoading[serviceId] = true);
+    try {
+      final app = AppStateScope.of(context);
+      final token = app.currentUser?.authToken ?? '';
+      SalonService? svc;
+      for (final s in _services) {
+        if (s.id == serviceId) svc = s;
+      }
+      final data = await app.api.fetchAvailability(
+        token: token,
+        staffId: staffId,
+        date: date,
+        duration: svc?.durationMinutes ?? 30,
+      );
+      if (!mounted) return;
+      final serverNow = data['server_now'];
+      String? sd;
+      String? st;
+      if (serverNow is Map) {
+        sd = '${serverNow['date'] ?? ''}';
+        st = '${serverNow['time'] ?? ''}';
+      }
+      final next = filterFutureSlots(
+        List<String>.from(data['slots'] as List? ?? const []),
+        date,
+        serverDate: sd,
+        serverTime: st,
+      );
+      setState(() {
+        _multiSlots[serviceId] = next;
+        _multiSlotsLoading[serviceId] = false;
+        final nt = normalizeHm(a['time']);
+        if (nt.isNotEmpty) {
+          _serviceAssignments.putIfAbsent(serviceId, () => {});
+          _serviceAssignments[serviceId]!['time'] = nt;
+        }
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _multiSlots[serviceId] = [];
+        _multiSlotsLoading[serviceId] = false;
+      });
+    }
+  }
+
+  Widget _slotChips({
+    required List<String> slots,
+    required bool loading,
+    required String value,
+    required ValueChanged<String> onPick,
+    String? durationLabel,
+  }) {
+    final selected = normalizeHm(value);
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            durationLabel == null
+                ? 'Available slots (salon time)'
+                : 'Available slots · $durationLabel',
+            style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF64748B),
+            ),
+          ),
+          const SizedBox(height: 6),
+          if (loading)
+            const Text('Loading slots…',
+                style: TextStyle(fontSize: 12, color: Color(0xFF64748B)))
+          else if (slots.isEmpty)
+            const Text(
+              'No free slots for this staff/time. Pick another day or stylist.',
+              style: TextStyle(fontSize: 12, color: Color(0xFFB45309)),
+            )
+          else
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: slots.map((t) {
+                final on = t == selected;
+                return InkWell(
+                  onTap: () => onPick(t),
+                  borderRadius: BorderRadius.circular(20),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: on ? _cDark : Colors.white,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: on ? _cDark : _cBorder),
+                    ),
+                    child: Text(
+                      t,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: on ? Colors.white : const Color(0xFF0F172A),
+                      ),
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+        ],
+      ),
+    );
   }
 
   Future<void> _pickDate() async {
@@ -325,6 +512,7 @@ class _AddApptSheetState extends State<_AddApptSheet> {
       _date =
           '${p.year}-${p.month.toString().padLeft(2, '0')}-${p.day.toString().padLeft(2, '0')}';
     });
+    _reloadSlots();
   }
 
   Future<void> _pickTime() async {
@@ -341,8 +529,8 @@ class _AddApptSheetState extends State<_AddApptSheet> {
     );
     if (p == null) return;
     setState(() {
-      _time =
-          '${p.hour.toString().padLeft(2, '0')}:${p.minute.toString().padLeft(2, '0')}';
+      _time = normalizeHm(
+          '${p.hour.toString().padLeft(2, '0')}:${p.minute.toString().padLeft(2, '0')}');
     });
   }
 
@@ -388,6 +576,7 @@ class _AddApptSheetState extends State<_AddApptSheet> {
       _serviceAssignments[serviceId]!['date'] =
           '${p.year}-${p.month.toString().padLeft(2, '0')}-${p.day.toString().padLeft(2, '0')}';
     });
+    _reloadMultiSlots(serviceId);
   }
 
   Future<void> _pickAssignmentTime(String serviceId) async {
@@ -446,6 +635,7 @@ class _AddApptSheetState extends State<_AddApptSheet> {
       _syncAssignments();
       _updateTotal();
     });
+    _reloadSlots();
   }
 
   void _onAddExtra(String id) {
@@ -460,6 +650,7 @@ class _AddApptSheetState extends State<_AddApptSheet> {
       _syncAssignments();
       _updateTotal();
     });
+    _reloadSlots();
   }
 
   void _removeExtraAt(int index) {
@@ -471,6 +662,7 @@ class _AddApptSheetState extends State<_AddApptSheet> {
       _syncAssignments();
       _updateTotal();
     });
+    _reloadSlots();
   }
 
   Future<void> _loadCustomerPackages(String custId) async {
@@ -1406,10 +1598,13 @@ class _AddApptSheetState extends State<_AddApptSheet> {
                                           style: const TextStyle(fontSize: 13)),
                                     )),
                               ],
-                              onChanged: (v) => setState(() {
-                                _serviceAssignments.putIfAbsent(id, () => {});
-                                _serviceAssignments[id]!['staff_id'] = v ?? '';
-                              }),
+                              onChanged: (v) {
+                                setState(() {
+                                  _serviceAssignments.putIfAbsent(id, () => {});
+                                  _serviceAssignments[id]!['staff_id'] = v ?? '';
+                                });
+                                _reloadMultiSlots(id);
+                              },
                             ),
                             if (_staff.isEmpty)
                               const Padding(
@@ -1440,6 +1635,17 @@ class _AddApptSheetState extends State<_AddApptSheet> {
                                 ),
                               ),
                             ]),
+                            if ((a['staff_id'] ?? '').toString().trim().isNotEmpty &&
+                                (a['date'] ?? '').toString().trim().isNotEmpty)
+                              _slotChips(
+                                slots: _multiSlots[id] ?? const [],
+                                loading: _multiSlotsLoading[id] == true,
+                                value: a['time'] ?? '',
+                                onPick: (t) => setState(() {
+                                  _serviceAssignments.putIfAbsent(id, () => {});
+                                  _serviceAssignments[id]!['time'] = t;
+                                }),
+                              ),
                           ],
                         ),
                       );
@@ -1632,6 +1838,14 @@ class _AddApptSheetState extends State<_AddApptSheet> {
                       ),
                     ),
                   ]),
+                  if (!_multiBooking && _staffId.isNotEmpty && _date.isNotEmpty)
+                    _slotChips(
+                      slots: _slots,
+                      loading: _slotsLoading,
+                      value: _time,
+                      durationLabel: '${_bookingDurationMinutes()} min',
+                      onPick: (t) => setState(() => _time = t),
+                    ),
 
                   if (!_multiBooking) const SizedBox(height: 12),
 
@@ -1668,8 +1882,10 @@ class _AddApptSheetState extends State<_AddApptSheet> {
                                               fontSize: 13)),
                                     )),
                               ],
-                              onChanged: (v) =>
-                                  setState(() => _staffId = v ?? ''),
+                              onChanged: (v) {
+                                setState(() => _staffId = v ?? '');
+                                _reloadSlots();
+                              },
                             ),
                           ],
                         ),

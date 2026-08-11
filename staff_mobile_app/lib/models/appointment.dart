@@ -137,8 +137,15 @@ class Appointment {
       id: '${json['id']}',
       customerName: '${json['customer_name'] ?? ''}',
       serviceName: '${service is Map ? service['name'] ?? '' : ''}',
-      date: '${json['date'] ?? ''}',
-      time: '${json['time'] ?? ''}',
+      date: '${json['date'] ?? ''}'.trim().length >= 10
+          ? '${json['date']}'.trim().substring(0, 10)
+          : '${json['date'] ?? ''}',
+      time: () {
+        final raw = '${json['time'] ?? ''}'.trim();
+        final m = RegExp(r'(\d{1,2}):(\d{2})').firstMatch(raw);
+        if (m == null) return raw.length >= 5 ? raw.substring(0, 5) : raw;
+        return '${m.group(1)!.padLeft(2, '0')}:${m.group(2)}';
+      }(),
       status: '${json['status'] ?? 'pending'}',
       createdBy: '${staff is Map ? staff['name'] ?? '' : ''}',
       serviceId: '${json['service_id'] ?? service?['id'] ?? ''}',

@@ -28,6 +28,50 @@ const slTimeString = (d = slNow()) =>
 /** YYYY-MM-DD in Sri Lanka for the given slNow()-style Date (default: now) */
 const slDateString = (d = slNow()) => d.toISOString().slice(0, 10);
 
+/**
+ * Normalize any TIME / Date / ISO / HH:MM(:SS) value to salon wall-clock HH:MM.
+ * Does not timezone-shift plain "14:30:00" strings from MySQL TIME columns.
+ */
+function normalizeWallClockTime(value) {
+  if (value == null || value === '') return '';
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    const shifted = new Date(value.getTime() + SL_OFFSET_MS);
+    return `${pad2(shifted.getUTCHours())}:${pad2(shifted.getUTCMinutes())}`;
+  }
+  const s = String(value).trim();
+  if (/^\d{4}-\d{2}-\d{2}T/.test(s)) {
+    const d = new Date(s);
+    if (!Number.isNaN(d.getTime())) {
+      const shifted = new Date(d.getTime() + SL_OFFSET_MS);
+      return `${pad2(shifted.getUTCHours())}:${pad2(shifted.getUTCMinutes())}`;
+    }
+  }
+  const m = s.match(/(\d{1,2}):(\d{2})/);
+  if (!m) return '';
+  const h = Number(m[1]);
+  const min = Number(m[2]);
+  if (!Number.isInteger(h) || !Number.isInteger(min) || h < 0 || h > 23 || min < 0 || min > 59) {
+    return '';
+  }
+  return `${pad2(h)}:${pad2(min)}`;
+}
+
+/** Sunday=0 … Saturday=6 for a YYYY-MM-DD calendar date (timezone-safe). */
+function weekdaySun0(dateStr) {
+  const m = String(dateStr || '').slice(0, 10).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return null;
+  return new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]))).getUTCDay();
+}
+
+function slNowParts() {
+  const d = slNow();
+  return {
+    date: slDateString(d),
+    time: slTimeString(d).slice(0, 5),
+    minutes: d.getUTCHours() * 60 + d.getUTCMinutes(),
+  };
+}
+
 module.exports = {
   slToday,
   slThisMonth,
@@ -36,4 +80,7 @@ module.exports = {
   slTimeString,
   slDateString,
   SL_OFFSET_MS,
+  normalizeWallClockTime,
+  weekdaySun0,
+  slNowParts,
 };

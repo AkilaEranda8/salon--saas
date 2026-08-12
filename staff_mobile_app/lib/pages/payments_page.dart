@@ -127,6 +127,15 @@ class _PaymentsPageState extends State<PaymentsPage> {
     });
   }
 
+  Future<void> _openDetail(PaymentRecord row) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _PaymentDetailSheet(initial: row),
+    );
+  }
+
   Future<void> _openAdd() async {
     final app = AppStateScope.of(context);
     var customers    = _customers;
@@ -332,8 +341,10 @@ class _PaymentsPageState extends State<PaymentsPage> {
               child: ListView.builder(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 88),
                 itemCount: rows.length,
-                itemBuilder: (ctx, i) =>
-                    _PaymentCard(payment: rows[i], fmt: _fmt),
+                itemBuilder: (ctx, i) => GestureDetector(
+                  onTap: () => _openDetail(rows[i]),
+                  child: _PaymentCard(payment: rows[i], fmt: _fmt),
+                ),
               ),
             ),
     ),
@@ -634,6 +645,8 @@ class _PaymentCard extends StatelessWidget {
                   const SizedBox(height: 3),
                   if (p.serviceName.isNotEmpty)
                     Text(p.serviceName,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                         color: _muted, fontSize: 12.5,
                         fontWeight: FontWeight.w500)),
@@ -642,10 +655,14 @@ class _PaymentCard extends StatelessWidget {
                       const Icon(Icons.badge_outlined,
                           size: 11, color: _muted),
                       const SizedBox(width: 3),
-                      Text(p.staffName,
-                        style: const TextStyle(
-                          color: _muted, fontSize: 11.5,
-                          fontWeight: FontWeight.w500)),
+                      Expanded(
+                        child: Text(p.staffName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: _muted, fontSize: 11.5,
+                            fontWeight: FontWeight.w500)),
+                      ),
                     ]),
                 ],
               ),
@@ -740,5 +757,384 @@ class _MethodChip extends StatelessWidget {
           color: color, fontSize: 11,
           fontWeight: FontWeight.w700)),
     ]),
+  );
+}
+
+class _PaymentDetailSheet extends StatefulWidget {
+  const _PaymentDetailSheet({required this.initial});
+  final PaymentRecord initial;
+
+  @override
+  State<_PaymentDetailSheet> createState() => _PaymentDetailSheetState();
+}
+
+class _PaymentDetailSheetState extends State<_PaymentDetailSheet> {
+  late PaymentRecord _p;
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _p = widget.initial;
+    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+  }
+
+  Future<void> _load() async {
+    final app = AppStateScope.of(context);
+    final token = app.currentUser?.authToken ?? '';
+    if (token.isEmpty) {
+      if (mounted) setState(() => _loading = false);
+      return;
+    }
+    try {
+      final raw = await app.api.fetchPayment(
+        token: token,
+        paymentId: widget.initial.id,
+      );
+      if (!mounted) return;
+      setState(() {
+        _p = PaymentRecord.fromJson(raw);
+        _loading = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  String _fmtDate(String raw) {
+    try {
+      final d = DateTime.parse(raw);
+      const months = [
+        '', 'January', 'February', 'March', 'April', 'May', 'June',
+        'July', 'August', 'September', 'October', 'November', 'December',
+      ];
+      return '${d.day} ${months[d.month]} ${d.year}';
+    } catch (_) {
+      return raw;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = _p;
+    final name = p.customerName.isEmpty ? 'Walk-in' : p.customerName;
+    final initials = name.trim().split(' ')
+        .map((e) => e.isNotEmpty ? e[0].toUpperCase() : '')
+        .take(2)
+        .join();
+    final h = MediaQuery.of(context).size.height;
+    final bottom = MediaQuery.of(context).viewPadding.bottom;
+    return SizedBox(
+      height: h * 0.92,
+      child: Container(
+      padding: EdgeInsets.fromLTRB(18, 10, 18, 18 + bottom),
+      decoration: const BoxDecoration(
+        color: _surface,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      child: Column(
+        children: [
+          Center(
+            child: Container(
+              width: 40, height: 4,
+              decoration: BoxDecoration(
+                color: const Color(0xFFE5E7EB),
+                borderRadius: BorderRadius.circular(99),
+              ),
+            ),
+          ),
+          const SizedBox(height: 14),
+          Row(children: [
+            Container(
+              width: 38, height: 38,
+              decoration: BoxDecoration(
+                color: const Color(0xFFECFDF5),
+                borderRadius: BorderRadius.circular(11),
+                border: Border.all(color: const Color(0xFFA7F3D0)),
+              ),
+              child: const Icon(Icons.receipt_long_rounded, color: _emerald, size: 18),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Payment details',
+                    style: TextStyle(
+                      color: _ink, fontSize: 17,
+                      fontWeight: FontWeight.w800, letterSpacing: -0.2)),
+                  Text('#${p.id}${_loading ? ' · loading…' : ''}',
+                    style: const TextStyle(
+                      color: _muted, fontSize: 12, fontWeight: FontWeight.w500)),
+                ],
+              ),
+            ),
+            GestureDetector(
+              onTap: () => Navigator.of(context).pop(),
+              child: Container(
+                width: 32, height: 32,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF3F4F6),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.close_rounded, size: 16, color: _muted),
+              ),
+            ),
+          ]),
+          const SizedBox(height: 14),
+          Expanded(
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF8FAFC),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: _border),
+                    ),
+                    child: Row(children: [
+                      Container(
+                        width: 44, height: 44,
+                        decoration: const BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [_forest, _emerald],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Center(
+                          child: Text(initials,
+                            style: const TextStyle(
+                              color: Colors.white, fontSize: 15,
+                              fontWeight: FontWeight.w800)),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(name,
+                              style: const TextStyle(
+                                color: _ink, fontSize: 16,
+                                fontWeight: FontWeight.w800)),
+                            Text(p.phone.isEmpty ? 'No phone' : p.phone,
+                              style: const TextStyle(color: _muted, fontSize: 12.5)),
+                          ],
+                        ),
+                      ),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: p.isAdvance
+                                  ? const Color(0xFFEFF8FF)
+                                  : const Color(0xFFECFDF5),
+                              borderRadius: BorderRadius.circular(99),
+                            ),
+                            child: Text(
+                              p.isAdvance ? 'ADVANCE' : p.status.toUpperCase(),
+                              style: TextStyle(
+                                color: p.isAdvance
+                                    ? const Color(0xFF2563EB)
+                                    : _emerald,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text('LKR ${p.netAmount.toStringAsFixed(0)}',
+                            style: const TextStyle(
+                              color: _emerald, fontSize: 16,
+                              fontWeight: FontWeight.w900)),
+                        ],
+                      ),
+                    ]),
+                  ),
+                  const SizedBox(height: 10),
+                  _PayDetailRow(icon: Icons.calendar_today_outlined, label: 'Date', value: _fmtDate(p.date)),
+                  if (p.branchName.isNotEmpty)
+                    _PayDetailRow(icon: Icons.storefront_outlined, label: 'Branch', value: p.branchName),
+                  if (p.appointmentLabel.isNotEmpty)
+                    _PayDetailRow(icon: Icons.event_note_outlined, label: 'Appointment', value: p.appointmentLabel),
+                  if (p.pointsEarned > 0)
+                    _PayDetailRow(icon: Icons.stars_rounded, label: 'Points earned', value: p.pointsEarned.toStringAsFixed(0)),
+                  const SizedBox(height: 8),
+                  const _PaySectionLabel('Services'),
+                  if (p.serviceLines.isEmpty)
+                    const _PayMutedBox('—')
+                  else
+                    ...p.serviceLines.map((l) => _PayLineCard(
+                      title: l.serviceName,
+                      subtitle: [
+                        if (l.staffName.isNotEmpty) l.staffName,
+                        if (l.date.isNotEmpty) l.date,
+                        if (l.time.isNotEmpty) l.time,
+                      ].join(' · '),
+                    )),
+                  const SizedBox(height: 8),
+                  const _PaySectionLabel('Staff commission'),
+                  if (p.commissionLines.isEmpty && p.commissionAmount <= 0)
+                    const _PayMutedBox('No commission recorded')
+                  else if (p.commissionLines.isEmpty)
+                    _PayKv(p.staffName.isEmpty ? 'Staff' : p.staffName, 'LKR ${p.commissionAmount.toStringAsFixed(0)}')
+                  else
+                    ...p.commissionLines.map((l) => _PayKv(l.staffName, 'LKR ${l.amount.toStringAsFixed(0)}')),
+                  if (p.managerCommission > 0)
+                    _PayKv('Manager oversight', 'LKR ${p.managerCommission.toStringAsFixed(0)}'),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: Text(
+                      'Total LKR ${p.totalCommission.toStringAsFixed(0)}',
+                      style: const TextStyle(
+                        color: Color(0xFFD97706),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  const _PaySectionLabel('Bill'),
+                  _PayKv('Gross', 'LKR ${p.grossAmount.toStringAsFixed(0)}'),
+                  if (p.loyaltyDiscount > 0)
+                    _PayKv('Loyalty discount', '− LKR ${p.loyaltyDiscount.toStringAsFixed(0)}',
+                      valueColor: const Color(0xFFD97706)),
+                  if (p.promoDiscount > 0)
+                    _PayKv('Promo discount', '− LKR ${p.promoDiscount.toStringAsFixed(0)}',
+                      valueColor: const Color(0xFF7C3AED)),
+                  _PayKv('Net total', 'LKR ${p.netAmount.toStringAsFixed(0)}',
+                    valueColor: _emerald, bold: true),
+                  const SizedBox(height: 8),
+                  const _PaySectionLabel('Payment method'),
+                  if (p.splits.isEmpty)
+                    const _PayMutedBox('—')
+                  else
+                    ...p.splits.map((s) => _PayKv(s.method, 'LKR ${s.amount.toStringAsFixed(0)}')),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+      ),
+    );
+  }
+}
+
+class _PaySectionLabel extends StatelessWidget {
+  const _PaySectionLabel(this.text);
+  final String text;
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(bottom: 6, top: 4),
+    child: Text(text.toUpperCase(),
+      style: const TextStyle(
+        color: _muted, fontSize: 11,
+        fontWeight: FontWeight.w800, letterSpacing: 0.6)),
+  );
+}
+
+class _PayMutedBox extends StatelessWidget {
+  const _PayMutedBox(this.text);
+  final String text;
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.all(12),
+    margin: const EdgeInsets.only(bottom: 6),
+    decoration: BoxDecoration(
+      color: const Color(0xFFF8FAFC),
+      borderRadius: BorderRadius.circular(12),
+      border: Border.all(color: _border),
+    ),
+    child: Text(text, style: const TextStyle(color: _muted, fontSize: 13)),
+  );
+}
+
+class _PayDetailRow extends StatelessWidget {
+  const _PayDetailRow({required this.icon, required this.label, required this.value});
+  final IconData icon;
+  final String label;
+  final String value;
+  @override
+  Widget build(BuildContext context) => Container(
+    margin: const EdgeInsets.only(bottom: 8),
+    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+    decoration: BoxDecoration(
+      color: const Color(0xFFF8FAFC),
+      borderRadius: BorderRadius.circular(12),
+      border: Border.all(color: _border),
+    ),
+    child: Row(children: [
+      Icon(icon, size: 16, color: _muted),
+      const SizedBox(width: 10),
+      Expanded(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(label, style: const TextStyle(color: _muted, fontSize: 11, fontWeight: FontWeight.w700)),
+            Text(value, style: const TextStyle(color: _ink, fontSize: 13.5, fontWeight: FontWeight.w700)),
+          ],
+        ),
+      ),
+    ]),
+  );
+}
+
+class _PayLineCard extends StatelessWidget {
+  const _PayLineCard({required this.title, required this.subtitle});
+  final String title;
+  final String subtitle;
+  @override
+  Widget build(BuildContext context) => Container(
+    margin: const EdgeInsets.only(bottom: 8),
+    padding: const EdgeInsets.all(12),
+    decoration: BoxDecoration(
+      color: const Color(0xFFF8FAFC),
+      borderRadius: BorderRadius.circular(12),
+      border: Border.all(color: _border),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(title, style: const TextStyle(color: _ink, fontSize: 14, fontWeight: FontWeight.w800)),
+        if (subtitle.isNotEmpty) ...[
+          const SizedBox(height: 3),
+          Text(subtitle, style: const TextStyle(color: _muted, fontSize: 12)),
+        ],
+      ],
+    ),
+  );
+}
+
+class _PayKv extends StatelessWidget {
+  const _PayKv(this.label, this.value, {this.valueColor, this.bold = false});
+  final String label;
+  final String value;
+  final Color? valueColor;
+  final bool bold;
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 5),
+    child: Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Expanded(child: Text(label, style: TextStyle(
+          color: bold ? _ink : _muted,
+          fontSize: 13,
+          fontWeight: bold ? FontWeight.w800 : FontWeight.w600,
+        ))),
+        Text(value, style: TextStyle(
+          color: valueColor ?? _ink,
+          fontSize: bold ? 15 : 13,
+          fontWeight: FontWeight.w800,
+        )),
+      ],
+    ),
   );
 }

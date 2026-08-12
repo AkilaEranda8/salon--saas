@@ -24,7 +24,9 @@ const {
 } = require('../utils/tenantFeatures');
 const { breakdownForPayment } = require('../services/paymentCommissionBreakdown');
 const { hasFranchiseCommission } = require('../utils/tenantFeatures');
-const { staffCommissionShares, shareForStaff } = require('../utils/paymentCommissionTotals');
+const { shareForStaff, attachPaymentCommissionTotals } = require('../utils/paymentCommissionTotals');
+const { enrichPaymentsForView } = require('../utils/enrichPaymentsForView');
+const { aggregateStaffCommissionFromDb } = require('../utils/commissionFromTransactions');
 const {
   defaultWorkingHours,
   normalizeWorkingHours,
@@ -796,7 +798,6 @@ const commissionSummary = async (req, res) => {
     if (!staffRows.length) return res.json([]);
 
     const staffIds = staffRows.map((s) => Number(s.id));
-    const staffIdSet = new Set(staffIds);
 
     const periodPayments = await Payment.findAll({
       where: paymentWhere,
@@ -817,28 +818,17 @@ const commissionSummary = async (req, res) => {
       };
     };
 
-    for (const p of periodPayments) {
-      for (const share of staffCommissionShares(p)) {
-        if (!staffIdSet.has(Number(share.staff_id))) continue;
-        bump(Number(share.staff_id), {
-          commission: share.amount,
-          revenue: share.revenue,
-          count: 1,
-        });
-      }
-    }
-
-    if (hasFranchiseCommission(req.tenant)) {
-      try {
-        for (const p of periodPayments) {
-          const mid = Number(p.manager_staff_id);
-          const mamt = parseFloat(p.manager_commission_amount) || 0;
-          if (!staffIdSet.has(mid) || !(mamt > 0)) continue;
-          bump(mid, { commission: mamt, count: 1 });
-        }
-      } catch (mgrErr) {
-        console.warn('commissionSummary manager_agg skipped:', mgrErr.message);
-      }
+    const payMap = await aggregateStaffCommissionFromDb({
+      where: paymentWhere,
+      staffIds,
+      payments: periodPayments,
+    });
+    for (const [id, row] of Object.entries(payMap)) {
+      bump(Number(id), {
+        commission: (row.mainCommission || 0) + (row.helperCommission || 0),
+        revenue: row.totalRevenue,
+        count: row.paymentCount,
+      });
     }
 
     // Fetch pending advance totals + paid payout totals for the same month
@@ -979,19 +969,94 @@ const commissionReport = async (req, res) => {
       });
     };
 
-    for (const payment of periodPayments) {
-      const json = payment.toJSON();
+    const jsonById = new Map();
+    for (const payment of [...periodPayments, ...oversightPayments]) {
+      if (!jsonById.has(Number(payment.id))) {
+        jsonById.set(Number(payment.id), attachPaymentCommissionTotals(payment.toJSON()));
+      }
+    }
+
+    let txnRows = [];
+    try {
+      txnRows = await CommissionTransaction.findAll({
+        where: {
+          ...tenantWhere(req),
+          ...dateFilter,
+          [Op.or]: [
+            { worker_staff_id: staffId, transaction_type: { [Op.in]: ['worker', 'helper'] } },
+            { manager_staff_id: staffId, transaction_type: 'manager_override' },
+          ],
+        },
+        order: [['date', 'DESC'], ['id', 'DESC']],
+      });
+    } catch (txnErr) {
+      console.warn('commissionReport txns skipped:', txnErr.message);
+    }
+
+    const missingPayIds = [...new Set(txnRows.map((t) => Number(t.payment_id)).filter(Boolean))]
+      .filter((id) => !jsonById.has(id));
+    if (missingPayIds.length) {
+      const extra = await Payment.findAll({
+        where: { id: { [Op.in]: missingPayIds }, ...tenantWhere(req) },
+        include: paymentInclude,
+      });
+      for (const payment of extra) {
+        jsonById.set(Number(payment.id), attachPaymentCommissionTotals(payment.toJSON()));
+      }
+    }
+
+    await enrichPaymentsForView([...jsonById.values()]);
+
+    for (const txn of txnRows) {
+      const json = jsonById.get(Number(txn.payment_id));
+      if (!json) continue;
+      const amount = parseFloat(txn.commission_amount) || 0;
+      if (!(amount > 0)) continue;
+      const type = txn.transaction_type;
+      const extra = { commission_transaction_id: txn.id };
+      if (type === 'helper') {
+        const hc = parseJsonField(json.helper_commission);
+        const line = (hc?.helpers || []).find((h) => Number(h.staff_id) === sid);
+        extra.commission_breakdown = {
+          total: amount,
+          note: 'Helper commission from main staff',
+          lines: line ? [{
+            serviceName: json.service?.name || 'Helper share',
+            lineBase: hc?.grossMain || 0,
+            rateLabel: line.rateLabel || `${line.commission_value}${line.commission_type === 'fixed' ? '' : '%'}`,
+            source: 'helper',
+            sourceLabel: 'Helper commission',
+            commission: amount,
+          }] : [],
+        };
+        extra.helper_main_staff = json.staff
+          ? { id: json.staff.id, name: json.staff.name }
+          : null;
+        pushRow(json, 'helper', amount, extra);
+      } else if (type === 'manager_override') {
+        extra.commission_breakdown = managerOversightBreakdown(json, json.manager_commission_breakdown);
+        extra.oversight_performer = json.staff
+          ? { id: json.staff.id, name: json.staff.name }
+          : null;
+        pushRow(json, 'manager_oversight', amount, extra);
+      } else {
+        extra.commission_breakdown = parseJsonField(json.commission_breakdown);
+        pushRow(json, Number(json.staff_id) === sid ? 'worker' : 'co_worker', amount, extra);
+      }
+    }
+
+    for (const json of jsonById.values()) {
       const share = shareForStaff(json, sid);
       if (share) {
         if (share.role === 'helper') {
-          const hc = parseJsonField(payment.helper_commission);
+          const hc = parseJsonField(json.helper_commission);
           const line = share.helper || (hc?.helpers || []).find((h) => Number(h.staff_id) === sid);
           pushRow(json, 'helper', share.amount, {
             commission_breakdown: {
               total: share.amount,
               note: 'Helper commission from main staff',
               lines: line ? [{
-                serviceName: payment.service?.name || 'Helper share',
+                serviceName: json.service?.name || 'Helper share',
                 lineBase: hc?.grossMain || 0,
                 rateLabel: line.rateLabel || `${line.commission_value}${line.commission_type === 'fixed' ? '' : '%'}`,
                 source: 'helper',
@@ -999,14 +1064,14 @@ const commissionReport = async (req, res) => {
                 commission: share.amount,
               }] : [],
             },
-            helper_main_staff: payment.staff
-              ? { id: payment.staff.id, name: payment.staff.name }
+            helper_main_staff: json.staff
+              ? { id: json.staff.id, name: json.staff.name }
               : null,
           });
         } else {
           const bd = share.breakdown
-            || parseJsonField(payment.commission_breakdown)
-            || await breakdownForPayment(payment, req.tenant, req);
+            || parseJsonField(json.commission_breakdown)
+            || await breakdownForPayment(json, req.tenant, req);
           pushRow(json, Number(json.staff_id) === sid ? 'worker' : 'co_worker', share.amount, {
             commission_breakdown: bd,
           });
@@ -1015,7 +1080,7 @@ const commissionReport = async (req, res) => {
     }
 
     for (const payment of oversightPayments) {
-      const json = payment.toJSON();
+      const json = jsonById.get(Number(payment.id)) || attachPaymentCommissionTotals(payment.toJSON());
       pushRow(json, 'manager_oversight', payment.manager_commission_amount, {
         commission_breakdown: managerOversightBreakdown(
           payment,

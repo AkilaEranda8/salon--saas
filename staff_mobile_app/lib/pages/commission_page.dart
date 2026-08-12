@@ -1179,37 +1179,47 @@ class _CommissionCard extends StatelessWidget {
                     const Icon(Icons.content_cut_rounded,
                         size: 11, color: _muted),
                     const SizedBox(width: 4),
-                    Text(r.serviceName,
-                      style: const TextStyle(
-                        color: _muted, fontSize: 12.5,
-                        fontWeight: FontWeight.w500)),
+                    Expanded(
+                      child: Text(r.serviceName,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: _muted, fontSize: 12.5,
+                          fontWeight: FontWeight.w500)),
+                    ),
                   ]),
                 const SizedBox(height: 3),
-                Row(children: [
-                  const Icon(Icons.calendar_today_outlined,
-                      size: 11, color: _muted),
-                  const SizedBox(width: 4),
-                  Text(_fmtDate(r.date),
-                    style: const TextStyle(
-                      color: _muted, fontSize: 11.5,
-                      fontWeight: FontWeight.w500)),
-                  const SizedBox(width: 8),
-                  // Rate badge
-                  if (rate > 0)
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: _goldL,
-                        borderRadius: BorderRadius.circular(5),
-                        border: Border.all(
-                            color: _goldB.withValues(alpha: 0.5))),
-                      child: Text('${rate.toStringAsFixed(0)}%',
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 4,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    Row(mainAxisSize: MainAxisSize.min, children: [
+                      const Icon(Icons.calendar_today_outlined,
+                          size: 11, color: _muted),
+                      const SizedBox(width: 4),
+                      Text(_fmtDate(r.date),
                         style: const TextStyle(
-                          color: _gold, fontSize: 10.5,
-                          fontWeight: FontWeight.w800)),
-                    ),
-                ]),
+                          color: _muted, fontSize: 11.5,
+                          fontWeight: FontWeight.w500)),
+                    ]),
+                    if (rate > 0)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: _goldL,
+                          borderRadius: BorderRadius.circular(5),
+                          border: Border.all(
+                              color: _goldB.withValues(alpha: 0.5))),
+                        child: Text('${rate.toStringAsFixed(0)}%',
+                          style: const TextStyle(
+                            color: _gold, fontSize: 10.5,
+                            fontWeight: FontWeight.w800)),
+                      ),
+                    if (_roleBadge(r.role) != null) _roleBadge(r.role)!,
+                  ],
+                ),
               ],
             ),
           ),
@@ -1236,6 +1246,42 @@ class _CommissionCard extends StatelessWidget {
       ),
     );
   }
+}
+
+Widget? _roleBadge(String role) {
+  late final String label;
+  late final Color fg;
+  late final Color bg;
+  switch (role) {
+    case 'helper':
+      label = 'Helper';
+      fg = const Color(0xFF7C3AED);
+      bg = const Color(0xFFF5F3FF);
+      break;
+    case 'co_worker':
+      label = 'Own service';
+      fg = const Color(0xFF2563EB);
+      bg = const Color(0xFFEFF6FF);
+      break;
+    case 'manager_oversight':
+      label = 'Manager';
+      fg = const Color(0xFF059669);
+      bg = const Color(0xFFECFDF5);
+      break;
+    default:
+      return null;
+  }
+  return Container(
+    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+    decoration: BoxDecoration(
+      color: bg,
+      borderRadius: BorderRadius.circular(5),
+    ),
+    child: Text(label,
+      style: TextStyle(
+        color: fg, fontSize: 10,
+        fontWeight: FontWeight.w800)),
+  );
 }
 
 // ── Small deduction chip inside summary card ──────────────────────────────────

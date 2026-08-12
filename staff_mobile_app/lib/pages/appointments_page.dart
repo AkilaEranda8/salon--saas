@@ -1194,7 +1194,7 @@ class _ApptCard extends StatelessWidget {
                         fontSize: 12, fontWeight: FontWeight.w500)),
                 const SizedBox(width: 10),
                 Expanded(
-                  child: appt.createdBy.isEmpty
+                  child: appt.staffNamesDisplay.isEmpty
                       ? const SizedBox.shrink()
                       : Row(
                           mainAxisAlignment: MainAxisAlignment.end,
@@ -1203,7 +1203,7 @@ class _ApptCard extends StatelessWidget {
                                 size: 11, color: Color(0xFFCBD5E1)),
                             const SizedBox(width: 3),
                             Flexible(
-                              child: Text(appt.createdBy,
+                              child: Text(appt.staffNamesDisplay,
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: const TextStyle(
@@ -1574,7 +1574,7 @@ class _DetailSheet extends StatelessWidget {
                       value: appt.time,
                     )),
                   ]),
-                  if (appt.branchName.isNotEmpty || appt.createdBy.isNotEmpty) ...[
+                  if (appt.branchName.isNotEmpty || appt.staffNamesDisplay.isNotEmpty) ...[
                     const SizedBox(height: 10),
                     Row(children: [
                       if (appt.branchName.isNotEmpty)
@@ -1583,13 +1583,13 @@ class _DetailSheet extends StatelessWidget {
                           label: 'Branch',
                           value: appt.branchName,
                         )),
-                      if (appt.branchName.isNotEmpty && appt.createdBy.isNotEmpty)
+                      if (appt.branchName.isNotEmpty && appt.staffNamesDisplay.isNotEmpty)
                         const SizedBox(width: 10),
-                      if (appt.createdBy.isNotEmpty)
+                      if (appt.staffNamesDisplay.isNotEmpty)
                         Expanded(child: _InfoTile(
                           icon: Icons.person_outline_rounded,
                           label: 'Staff',
-                          value: appt.createdBy,
+                          value: appt.staffNamesDisplay,
                         )),
                     ]),
                   ],
@@ -1970,6 +1970,8 @@ class _PaySheetState extends State<_PaySheet> {
   String _selectedPackageId = '';
   double? _packageOfferPrice;
   int _packagesLoadGen = 0;
+
+  bool get _hasMultiStaff => widget.appointment.hasMultiStaff;
 
   @override
   void initState() {
@@ -2388,11 +2390,11 @@ class _PaySheetState extends State<_PaySheet> {
       AppToast.error(context, 'Select the next recurring visit date');
       return;
     }
-    if (_mainStaffId.trim().isEmpty) {
+    if (!_hasMultiStaff && _mainStaffId.trim().isEmpty) {
       AppToast.error(context, 'Select main staff');
       return;
     }
-    if (!helpersDraftValid(_helpers)) {
+    if (!_hasMultiStaff && !helpersDraftValid(_helpers)) {
       AppToast.error(
         context,
         'Each helper needs a staff member and commission value.',
@@ -2415,10 +2417,109 @@ class _PaySheetState extends State<_PaySheet> {
       recurringNextDate: _recurringNextDate,
       appointmentTime: _recurringSmsTime,
       recurringMessageTemplateIds: List<String>.from(_recurringTemplateIds),
-      staffId: _mainStaffId.trim(),
-      helpers: helpersApiPayload(_helpers),
+      staffId: _mainStaffId.trim().isNotEmpty
+          ? _mainStaffId.trim()
+          : widget.appointment.staffId,
+      helpers: _hasMultiStaff ? const [] : helpersApiPayload(_helpers),
       customerPackageId: _selectedPackageId.trim(),
     ));
+  }
+
+  Widget _buildAssignedStaffSection() {
+    final lines = widget.appointment.serviceStaff;
+    final staffById = <String, StaffMember>{
+      for (final s in widget.staff) s.id: s,
+    };
+    final svcById = <String, String>{
+      for (final s in widget.services) s.id: s.name,
+    };
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: _pBorder),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Service staff (commission auto-split)',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w800,
+              color: Color(0xFF101828),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            decoration: BoxDecoration(
+              color: const Color(0xFFEFF6FF),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: const Color(0xFFBFDBFE)),
+            ),
+            child: const Text(
+              'This booking has more than one performer. Commission is split from each service automatically — helper split is not used.',
+              style: TextStyle(
+                fontSize: 11.5,
+                color: Color(0xFF1D4ED8),
+                height: 1.4,
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          ...widget.appointment.distinctStaffIds.map((sid) {
+            final st = staffById[sid];
+            final fromLine = lines
+                .where((l) => l.staffId == sid)
+                .map((l) => l.staffName.trim())
+                .firstWhere((n) => n.isNotEmpty, orElse: () => '');
+            final name = (st?.name ?? fromLine).trim().isNotEmpty
+                ? (st?.name ?? fromLine)
+                : 'Staff #$sid';
+            final svcNames = <String>[];
+            for (final l in lines.where((l) => l.staffId == sid)) {
+              final n = l.serviceName.trim().isNotEmpty
+                  ? l.serviceName.trim()
+                  : (svcById[l.serviceId] ?? '');
+              if (n.isNotEmpty && !svcNames.contains(n)) svcNames.add(n);
+            }
+            return Container(
+              width: double.infinity,
+              margin: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: _pBorder),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(name,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFF0F172A),
+                    )),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Services: ${svcNames.isEmpty ? '—' : svcNames.join(', ')}',
+                    style: const TextStyle(
+                      fontSize: 11.5,
+                      color: Color(0xFF667085),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }),
+        ],
+      ),
+    );
   }
 
   Widget _label(String text) => Padding(
@@ -2632,16 +2733,19 @@ class _PaySheetState extends State<_PaySheet> {
               const SizedBox(height: 14),
             ],
 
-            PaymentHelperStaffSection(
-              staffOptions: widget.staff,
-              mainStaffId: _mainStaffId,
-              helpers: _helpers,
-              onMainStaffChanged: (id) => setState(() {
-                _mainStaffId = id;
-                _helpers = _helpers.where((h) => h.staffId != id).toList();
-              }),
-              onHelpersChanged: (rows) => setState(() => _helpers = rows),
-            ),
+            if (_hasMultiStaff)
+              _buildAssignedStaffSection()
+            else
+              PaymentHelperStaffSection(
+                staffOptions: widget.staff,
+                mainStaffId: _mainStaffId,
+                helpers: _helpers,
+                onMainStaffChanged: (id) => setState(() {
+                  _mainStaffId = id;
+                  _helpers = _helpers.where((h) => h.staffId != id).toList();
+                }),
+                onHelpersChanged: (rows) => setState(() => _helpers = rows),
+              ),
 
             const SizedBox(height: 16),
 

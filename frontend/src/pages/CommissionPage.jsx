@@ -52,7 +52,22 @@ function breakdownPreview(breakdown) {
 }
 
 function paymentRowKey(p) {
+  if (p.commission_transaction_id) return `txn-${p.commission_transaction_id}`;
   return `${p.commission_role || 'worker'}-${p.id}`;
+}
+
+function paymentServiceLabel(p) {
+  const lines = Array.isArray(p.service_staff) ? p.service_staff : [];
+  const names = [];
+  for (const l of lines) {
+    const n = (l.service_name || '').trim();
+    if (n && !names.includes(n)) names.push(n);
+  }
+  if (names.length) return names.join(', ');
+  const b = parseBreakdown(p.commission_breakdown);
+  if (b?.lines?.length > 1) return `${b.lines.length} services`;
+  if (b?.lines?.[0]?.serviceName) return b.lines[0].serviceName;
+  return p.service?.name || '—';
 }
 
 function formatPaymentDate(date) {
@@ -651,12 +666,11 @@ export default function CommissionPage() {
                 const open = breakOpenId === rowKey;
                 const bd = parseBreakdown(p.commission_breakdown);
                 const cust = p.customer_name || p.appointment?.customer_name || 'Walk-in';
-                const svcLabel = p.service?.name
-                  || (bd?.lines?.length > 1 ? `${bd.lines.length} services` : bd?.lines?.[0]?.serviceName)
-                  || '—';
+                const svcLabel = paymentServiceLabel(p);
                 const preview = breakdownPreview(bd);
                 const fmtDate = formatPaymentDate(p.date);
                 const commAmt = Rs(p.display_commission_amount ?? p.commission_amount);
+                const svcLines = Array.isArray(p.service_staff) ? p.service_staff.filter((l) => l.service_name || l.staff_name) : [];
                 return (
                   <div
                     key={rowKey}
@@ -700,6 +714,9 @@ export default function CommissionPage() {
                         <div style={{ fontSize: 12, color: '#475467', marginTop: 3, lineHeight: 1.45 }}>
                           Paid <strong style={{ color: '#059669' }}>{Rs(p.total_amount)}</strong>
                           {' · '}{svcLabel}
+                          {p.commission_role === 'helper' && p.helper_main_staff?.name && (
+                            <span> · Helper for <strong style={{ color: '#344054' }}>{p.helper_main_staff.name}</strong></span>
+                          )}
                           {p.commission_role === 'manager_oversight' && p.oversight_performer?.name && (
                             <span> · Work by <strong style={{ color: '#344054' }}>{p.oversight_performer.name}</strong></span>
                           )}
@@ -729,6 +746,26 @@ export default function CommissionPage() {
                     </div>
                     {open && (
                       <div style={{ padding: '0 14px 14px', borderTop: '1px solid #EAECF0', background: '#FAFAFA' }}>
+                        {svcLines.length > 0 && (
+                          <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                            {svcLines.map((l, i) => {
+                              const t = l.time ? String(l.time).slice(0, 5) : '';
+                              const d = l.date ? String(l.date).slice(0, 10) : '';
+                              return (
+                                <div key={i} style={{
+                                  display: 'flex', justifyContent: 'space-between', gap: 10,
+                                  fontSize: 12, color: '#344054', background: '#fff',
+                                  border: '1px solid #EAECF0', borderRadius: 8, padding: '7px 10px',
+                                }}>
+                                  <span style={{ fontWeight: 600 }}>{l.service_name || 'Service'}</span>
+                                  <span style={{ color: '#667085', textAlign: 'right' }}>
+                                    {[l.staff_name, d, t].filter(Boolean).join(' · ') || '—'}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
                         {bd?.netTotal != null && (
                           <div style={{ fontSize: 12, color: '#667085', marginTop: 10, marginBottom: 4 }}>
                             Net commissionable amount: <strong style={{ color: '#344054' }}>{Rs(bd.netTotal)}</strong>

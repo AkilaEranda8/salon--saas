@@ -1,6 +1,24 @@
 import '../utils/appointment_notes.dart';
 import 'salon_service.dart';
 
+class AppointmentServiceStaff {
+  AppointmentServiceStaff({
+    required this.serviceId,
+    required this.staffId,
+    this.serviceName = '',
+    this.staffName = '',
+    this.date = '',
+    this.time = '',
+  });
+
+  final String serviceId;
+  final String staffId;
+  final String serviceName;
+  final String staffName;
+  final String date;
+  final String time;
+}
+
 class Appointment {
   Appointment({
     required this.id,
@@ -26,6 +44,7 @@ class Appointment {
     this.advancePaid = 0,
     this.amountPaid = 0,
     this.advanceSplits = const [],
+    this.serviceStaff = const [],
   });
 
   final String id;
@@ -55,6 +74,29 @@ class Appointment {
   final double amountPaid;
   /// Advance payment method splits from API (`advance_splits`).
   final List<Map<String, dynamic>> advanceSplits;
+  final List<AppointmentServiceStaff> serviceStaff;
+
+  List<String> get distinctStaffIds {
+    final ids = <String>[];
+    for (final l in serviceStaff) {
+      final id = l.staffId.trim();
+      if (id.isEmpty || id == '0' || id == 'null') continue;
+      if (!ids.contains(id)) ids.add(id);
+    }
+    return ids;
+  }
+
+  bool get hasMultiStaff => distinctStaffIds.length > 1;
+
+  String get staffNamesDisplay {
+    final names = <String>[];
+    for (final l in serviceStaff) {
+      final n = l.staffName.trim();
+      if (n.isNotEmpty && !names.contains(n)) names.add(n);
+    }
+    if (names.isNotEmpty) return names.join(', ');
+    return createdBy;
+  }
 
   /// Primary + additional service names (from notes), de-duplicated, order preserved.
   String get servicesDisplay {
@@ -159,6 +201,25 @@ class Appointment {
         }
       }
     }
+    final serviceStaff = <AppointmentServiceStaff>[];
+    final rawSs = json['service_staff'];
+    if (rawSs is List) {
+      for (final e in rawSs) {
+        if (e is! Map) continue;
+        final m = Map<String, dynamic>.from(e);
+        final sid = '${m['service_id'] ?? ''}'.trim();
+        final stid = '${m['staff_id'] ?? ''}'.trim();
+        final time = '${m['time'] ?? ''}'.trim();
+        serviceStaff.add(AppointmentServiceStaff(
+          serviceId: sid,
+          staffId: stid,
+          serviceName: '${m['service_name'] ?? ''}'.trim(),
+          staffName: '${m['staff_name'] ?? ''}'.trim(),
+          date: '${m['date'] ?? ''}'.trim(),
+          time: time.length >= 5 ? time.substring(0, 5) : time,
+        ));
+      }
+    }
     return Appointment(
       id: '${json['id']}',
       customerName: '${json['customer_name'] ?? ''}',
@@ -197,6 +258,7 @@ class Appointment {
       advancePaid: parseMoney(json['advance_paid']),
       amountPaid: parseMoney(json['amount_paid']),
       advanceSplits: advanceSplits,
+      serviceStaff: serviceStaff,
     );
   }
 }

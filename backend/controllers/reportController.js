@@ -1,9 +1,10 @@
 const { Op, fn, col, literal } = require('sequelize');
 const { sequelize } = require('../config/database');
-const { Appointment, Payment, PaymentSplit, Branch, Staff, Service, InvProduct, Reminder, Customer, Expense, WalkIn } = require('../models');
+const { Appointment, Payment, PaymentSplit, Branch, Staff, Service, InvProduct, Reminder, Customer, Expense, WalkIn, CommissionTransaction } = require('../models');
 const XLSX = require('xlsx');
 const { tenantWhere } = require('../utils/tenantScope');
-const { staffCommissionShares } = require('../utils/paymentCommissionTotals');
+const { paymentTotalCommission } = require('../utils/paymentCommissionTotals');
+const { aggregateStaffCommissionFromDb, sumCommissionFromDb } = require('../utils/commissionFromTransactions');
 
 /* ── Sri Lanka timezone helpers (UTC+05:30) ─────────────────── */
 const SL_OFFSET_MS = 5.5 * 60 * 60 * 1000;
@@ -66,9 +67,33 @@ const revenue = async (req, res) => {
       ],
       group: [literal("DATE_FORMAT(`date`, '%Y-%m')")],
       order: [[literal("DATE_FORMAT(`date`, '%Y-%m')"), 'ASC']],
+      raw: true,
     });
 
-    return res.json(rows);
+    let txnByMonth = {};
+    try {
+      const txnRows = await CommissionTransaction.findAll({
+        where,
+        attributes: [
+          [fn('DATE_FORMAT', col('date'), '%Y-%m'), 'month'],
+          [fn('SUM', col('commission_amount')), 'commission'],
+        ],
+        group: [literal("DATE_FORMAT(`date`, '%Y-%m')")],
+        raw: true,
+      });
+      txnByMonth = Object.fromEntries(
+        txnRows.map((r) => [r.month, parseFloat(r.commission) || 0]),
+      );
+    } catch (txnErr) {
+      console.warn('reports/revenue txn overlay skipped:', txnErr.message);
+    }
+
+    const data = rows.map((r) => ({
+      ...r,
+      commission: txnByMonth[r.month] != null ? txnByMonth[r.month] : (parseFloat(r.commission) || 0),
+    }));
+
+    return res.json(data);
   } catch (err) {
     console.error(err);
     return res.status(500).json({ message: 'Server error.' });
@@ -118,7 +143,6 @@ const staffReport = async (req, res) => {
     if (!staffRows.length) return res.json([]);
 
     const staffIds = staffRows.map((s) => Number(s.id));
-    const staffIdSet = new Set(staffIds);
 
     // 2. Appointment counts — separate query to avoid cartesian product
     const apptAgg = await Appointment.findAll({
@@ -134,20 +158,11 @@ const staffReport = async (req, res) => {
       attributes: ['id', 'staff_id', 'total_amount', 'commission_amount', 'commission_breakdown', 'helper_commission'],
       raw: true,
     });
-    const payMap = {};
-    for (const p of periodPayments) {
-      for (const share of staffCommissionShares(p)) {
-        const sid = Number(share.staff_id);
-        if (!staffIdSet.has(sid)) continue;
-        if (!payMap[sid]) {
-          payMap[sid] = { mainCommission: 0, helperCommission: 0, totalRevenue: 0, paymentCount: 0 };
-        }
-        if (share.role === 'helper') payMap[sid].helperCommission += share.amount;
-        else payMap[sid].mainCommission += share.amount;
-        payMap[sid].totalRevenue += share.revenue || 0;
-        payMap[sid].paymentCount += 1;
-      }
-    }
+    const payMap = await aggregateStaffCommissionFromDb({
+      where: { ...branchWhere, ...dateWhere },
+      staffIds,
+      payments: periodPayments,
+    });
 
     // Build lookup maps
     const apptMap = {};
@@ -156,7 +171,7 @@ const staffReport = async (req, res) => {
     // Merge and return
     const mergedByUser = new Map();
     for (const staff of staffRows) {
-      const pay = payMap[staff.id] || { mainCommission: 0, helperCommission: 0, totalRevenue: 0, paymentCount: 0 };
+      const pay = payMap[Number(staff.id)] || payMap[staff.id] || { mainCommission: 0, helperCommission: 0, totalRevenue: 0, paymentCount: 0 };
       const mainComm = Math.round((pay.mainCommission || 0) * 100) / 100;
       const helperComm = Math.round((pay.helperCommission || 0) * 100) / 100;
       const row = {
@@ -237,6 +252,7 @@ const dashboard = async (req, res) => {
     const monthStart = selectedMonthRange?.start || currentMonthStart;
     const monthEnd = selectedMonthRange?.end || currentMonthEnd;
 
+    const monthPayWhere = { ...branchWhere, date: { [Op.between]: [monthStart, monthEnd] } };
     const [
       todayAppts,
       todayRevenue,
@@ -249,8 +265,14 @@ const dashboard = async (req, res) => {
     ] = await Promise.all([
       Appointment.count({ where: { ...branchWhere, date: today } }),
       Payment.sum('total_amount',    { where: { ...branchWhere, date: today } }),
-      Payment.sum('total_amount',    { where: { ...branchWhere, date: { [Op.between]: [monthStart, monthEnd] } } }),
-      Payment.sum('commission_amount', { where: { ...branchWhere, date: { [Op.between]: [monthStart, monthEnd] } } }),
+      Payment.sum('total_amount',    { where: monthPayWhere }),
+      (async () => {
+        const { txnSum, coveredPayIds } = await sumCommissionFromDb(monthPayWhere);
+        const restWhere = { ...monthPayWhere };
+        if (coveredPayIds.length) restWhere.id = { [Op.notIn]: coveredPayIds };
+        const rest = await Payment.sum('commission_amount', { where: restWhere }) || 0;
+        return txnSum + rest;
+      })(),
       Customer.count({ where: branchWhere }),
       InvProduct.count({
         where: {
@@ -279,7 +301,7 @@ const dashboard = async (req, res) => {
 
             const branchIds = branches.map((b) => b.id);
             const tenantFilter = tenantWhere(req);
-            const [apptRows, payRows] = await Promise.all([
+            const [apptRows, payRows, txnRows] = await Promise.all([
               Appointment.findAll({
                 where: { ...tenantFilter, branch_id: { [Op.in]: branchIds }, date: today },
                 attributes: ['branch_id', [fn('COUNT', col('Appointment.id')), 'todayAppts']],
@@ -300,15 +322,33 @@ const dashboard = async (req, res) => {
                 group: ['branch_id'],
                 raw: true,
               }),
+              CommissionTransaction.findAll({
+                where: {
+                  ...tenantFilter,
+                  branch_id: { [Op.in]: branchIds },
+                  date: { [Op.between]: [monthStart, monthEnd] },
+                },
+                attributes: [
+                  'branch_id',
+                  [fn('SUM', col('commission_amount')), 'monthCommission'],
+                ],
+                group: ['branch_id'],
+                raw: true,
+              }).catch(() => []),
             ]);
 
             const apptMap = Object.fromEntries(
               apptRows.map((r) => [Number(r.branch_id), Number(r.todayAppts || 0)])
             );
+            const txnCommMap = Object.fromEntries(
+              txnRows.map((r) => [Number(r.branch_id), Number(r.monthCommission || 0)])
+            );
             const payMap = Object.fromEntries(
               payRows.map((r) => [Number(r.branch_id), {
                 monthRevenue: Number(r.monthRevenue || 0),
-                monthCommission: Number(r.monthCommission || 0),
+                monthCommission: txnCommMap[Number(r.branch_id)] != null
+                  ? txnCommMap[Number(r.branch_id)]
+                  : Number(r.monthCommission || 0),
               }])
             );
 
@@ -404,7 +444,7 @@ const exportExcel = async (req, res) => {
       Staff: p.staff?.name || '',
       Branch: p.branch?.name || '',
       'Total (Rs)': Number(p.total_amount || 0),
-      'Commission (Rs)': Number(p.commission_amount || 0),
+      'Commission (Rs)': paymentTotalCommission(p),
       'Loyalty Discount': Number(p.loyalty_discount || 0),
       'Points Earned': p.points_earned || 0,
       'Payment Methods': (p.splits || []).map(s => `${s.method}: Rs.${s.amount}`).join(', '),
@@ -448,31 +488,24 @@ const exportExcel = async (req, res) => {
     XLSX.utils.book_append_sheet(wb, ws3, 'Expenses');
 
     // ── Sheet 4: Staff Performance ──
-    const staffPayments = {};
-    payments.forEach((p) => {
-      for (const share of staffCommissionShares(p)) {
-        const sid = Number(share.staff_id);
-        if (!sid) continue;
-        if (!staffPayments[sid]) staffPayments[sid] = { revenue: 0, mainCommission: 0, helperCommission: 0, count: 0 };
-        if (share.role === 'helper') staffPayments[sid].helperCommission += share.amount;
-        else staffPayments[sid].mainCommission += share.amount;
-        staffPayments[sid].revenue += share.revenue || 0;
-        staffPayments[sid].count += 1;
-      }
+    const staffAgg = await aggregateStaffCommissionFromDb({
+      where: payWhere,
+      staffIds: staffRows.map((s) => Number(s.id)),
+      payments,
     });
     const staffData = staffRows.map(s => {
-      const sp = staffPayments[s.id] || { revenue: 0, mainCommission: 0, helperCommission: 0, count: 0 };
+      const sp = staffAgg[Number(s.id)] || staffAgg[s.id] || { totalRevenue: 0, mainCommission: 0, helperCommission: 0, paymentCount: 0 };
       return {
         Name: s.name,
         Role: s.role_title || '',
         Branch: s.branch?.name || '',
         'Commission Type': s.commission_type,
         'Commission Rate': Number(s.commission_value || 0),
-        'Total Revenue (Rs)': sp.revenue,
+        'Total Revenue (Rs)': sp.totalRevenue,
         'Main Commission (Rs)': sp.mainCommission,
         'Helper Commission (Rs)': sp.helperCommission,
-        'Total Commission (Rs)': sp.mainCommission + sp.helperCommission,
-        'Payments Count': sp.count,
+        'Total Commission (Rs)': (sp.mainCommission || 0) + (sp.helperCommission || 0),
+        'Payments Count': sp.paymentCount,
         'Active': s.is_active ? 'Yes' : 'No',
         'Joined': s.join_date || '',
       };
@@ -498,7 +531,12 @@ const exportExcel = async (req, res) => {
 
     // ── Sheet 6: Summary ──
     const totalRevenue    = payments.reduce((s, p) => s + Number(p.total_amount || 0), 0);
-    const totalCommission = payments.reduce((s, p) => s + Number(p.commission_amount || 0), 0);
+    const { txnSum, coveredPayIds } = await sumCommissionFromDb(payWhere);
+    const restCommission = payments.reduce((s, p) => {
+      if (coveredPayIds.includes(Number(p.id))) return s;
+      return s + paymentTotalCommission(p);
+    }, 0);
+    const totalCommission = txnSum + restCommission;
     const totalExpenses   = expenses.reduce((s, p) => s + Number(p.amount || 0), 0);
     const summaryData = [
       { Metric: 'Total Revenue', Value: totalRevenue },

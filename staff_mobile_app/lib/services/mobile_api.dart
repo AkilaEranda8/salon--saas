@@ -729,8 +729,7 @@ class MobileApi {
     bool isRecurring = false,
     String? recurringNextDate,
     List<String>? recurringMessageTemplateIds,
-    /// Legacy multi-select payload. Backend maps these onto ONE appointment
-    /// (shared staff/date/time from the first item / top-level fields).
+    /// When set, creates one appointment PER item (own staff/date/time).
     List<Map<String, dynamic>>? items,
     List<Map<String, dynamic>>? serviceStaff,
     double? advanceAmount,
@@ -767,62 +766,44 @@ class MobileApi {
       },
     };
 
-    // Always one appointment. Collapse legacy items[] into service_ids + service_staff.
-    var resolvedServiceIds = serviceIds ?? const <String>[];
-    var resolvedPrimary = primaryServiceId;
-    var resolvedDate = date.trim();
-    var resolvedTime = time.trim();
-    var resolvedStaff = staffId;
-    var resolvedServiceStaff = serviceStaff;
     if (useItems) {
-      final ids = <String>[];
-      final lines = <Map<String, dynamic>>[];
-      for (final raw in items) {
-        final sid = '${raw['service_id'] ?? ''}'.trim();
-        if (sid.isEmpty || ids.contains(sid)) continue;
-        ids.add(sid);
-        final st = '${raw['staff_id'] ?? ''}'.trim();
-        lines.add({
-          'service_id': int.tryParse(sid) ?? sid,
-          if (st.isNotEmpty) 'staff_id': int.tryParse(st) ?? st,
-        });
-      }
-      if (ids.isNotEmpty) {
-        resolvedServiceIds = ids;
-        resolvedPrimary = ids.first;
-      }
-      if (lines.isNotEmpty) resolvedServiceStaff = lines;
-      final first = items.first;
-      final d = '${first['date'] ?? ''}'.trim();
-      final t = '${first['time'] ?? ''}'.trim();
-      if (d.isNotEmpty) resolvedDate = d;
-      if (t.isNotEmpty) resolvedTime = t;
-      final s = '${first['staff_id'] ?? ''}'.trim();
-      if (s.isNotEmpty) resolvedStaff = s;
-    }
-
-    bodyMap['service_id'] = int.tryParse(resolvedPrimary) ?? resolvedPrimary;
-    if (resolvedServiceIds.isNotEmpty) {
-      bodyMap['service_ids'] =
-          resolvedServiceIds.map((id) => int.tryParse(id) ?? id).toList();
-    }
-    if (resolvedServiceStaff != null && resolvedServiceStaff.isNotEmpty) {
-      bodyMap['service_staff'] = resolvedServiceStaff.map((raw) {
+      bodyMap['items'] = items.map((raw) {
         final sid = '${raw['service_id'] ?? ''}'.trim();
         final st = '${raw['staff_id'] ?? ''}'.trim();
         return <String, dynamic>{
           'service_id': int.tryParse(sid) ?? sid,
+          'date': '${raw['date'] ?? ''}'.trim(),
+          'time': '${raw['time'] ?? ''}'.trim(),
           if (st.isNotEmpty) 'staff_id': int.tryParse(st) ?? st,
         };
       }).toList();
-    }
-    bodyMap['date'] = resolvedDate;
-    bodyMap['time'] = resolvedTime;
-    if (resolvedStaff != null && resolvedStaff.isNotEmpty) {
-      bodyMap['staff_id'] = int.tryParse(resolvedStaff) ?? resolvedStaff;
-    }
-    if (amount != null && amount.trim().isNotEmpty) {
-      bodyMap['amount'] = double.tryParse(amount.trim()) ?? amount;
+      if (amount != null && amount.trim().isNotEmpty) {
+        bodyMap['amount'] = double.tryParse(amount.trim()) ?? amount;
+      }
+    } else {
+      bodyMap['service_id'] = int.tryParse(primaryServiceId) ?? primaryServiceId;
+      if (serviceIds != null && serviceIds.isNotEmpty) {
+        bodyMap['service_ids'] =
+            serviceIds.map((id) => int.tryParse(id) ?? id).toList();
+      }
+      if (serviceStaff != null && serviceStaff.isNotEmpty) {
+        bodyMap['service_staff'] = serviceStaff.map((raw) {
+          final sid = '${raw['service_id'] ?? ''}'.trim();
+          final st = '${raw['staff_id'] ?? ''}'.trim();
+          return <String, dynamic>{
+            'service_id': int.tryParse(sid) ?? sid,
+            if (st.isNotEmpty) 'staff_id': int.tryParse(st) ?? st,
+          };
+        }).toList();
+      }
+      bodyMap['date'] = date.trim();
+      bodyMap['time'] = time.trim();
+      if (staffId != null && staffId.isNotEmpty) {
+        bodyMap['staff_id'] = int.tryParse(staffId) ?? staffId;
+      }
+      if (amount != null && amount.trim().isNotEmpty) {
+        bodyMap['amount'] = double.tryParse(amount.trim()) ?? amount;
+      }
     }
 
     final response = await http.post(

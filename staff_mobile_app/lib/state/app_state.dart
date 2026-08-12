@@ -1374,7 +1374,7 @@ class AppState extends ChangeNotifier {
     bool isRecurring = false,
     String? recurringNextDate,
     List<String>? recurringMessageTemplateIds,
-    /// When set, treated as multi-service on ONE appointment (same schedule).
+    /// When set, creates one appointment per item (own staff/date/time).
     List<Map<String, dynamic>>? bookingItems,
     /// Per-service staff on one appointment: [{service_id, staff_id}]
     List<Map<String, dynamic>>? serviceStaff,
@@ -1399,41 +1399,28 @@ class AppState extends ChangeNotifier {
     }
     final ownStaffId = (_currentUser?.linkedStaffId ?? '').trim();
     final lockedToSelf = !seesAllBranchAppointments && ownStaffId.isNotEmpty;
-    var effectiveStaffId = lockedToSelf ? ownStaffId : staffId;
-    var effectiveDate = date;
-    var effectiveTime = time;
-    var effectiveServiceIds = List<String>.from(orderedServiceIds);
-
-    // Legacy bookingItems → always ONE appointment (shared schedule).
-    if (bookingItems != null && bookingItems.isNotEmpty) {
-      final ids = <String>[];
-      for (final raw in bookingItems) {
-        final sid = '${raw['service_id'] ?? ''}'.trim();
-        if (sid.isNotEmpty && !ids.contains(sid)) ids.add(sid);
-      }
-      if (ids.isNotEmpty) effectiveServiceIds = ids;
-      final first = bookingItems.first;
-      final d = '${first['date'] ?? ''}'.trim();
-      final t = '${first['time'] ?? ''}'.trim();
-      if (d.isNotEmpty) effectiveDate = d;
-      if (t.isNotEmpty) effectiveTime = t;
-      if (!lockedToSelf) {
-        final picked = '${first['staff_id'] ?? ''}'.trim();
-        if (picked.isNotEmpty) effectiveStaffId = picked;
-      }
+    final effectiveStaffId = lockedToSelf ? ownStaffId : staffId;
+    var effectiveItems = bookingItems;
+    if (lockedToSelf && bookingItems != null && bookingItems.isNotEmpty) {
+      effectiveItems = bookingItems.map((raw) {
+        final m = Map<String, dynamic>.from(raw);
+        final picked = '${m['staff_id'] ?? ''}'.trim();
+        if (picked.isEmpty) {
+          m['staff_id'] = int.tryParse(ownStaffId) ?? ownStaffId;
+        }
+        return m;
+      }).toList();
     }
-    if (lockedToSelf && ownStaffId.isNotEmpty) {
-      effectiveStaffId = ownStaffId;
-    }
-    if (effectiveServiceIds.isEmpty) {
+    final useItems = effectiveItems != null && effectiveItems.isNotEmpty;
+    if (!useItems && orderedServiceIds.isEmpty) {
       _lastError = 'Select at least one service.';
       return false;
     }
     try {
       await loadServices();
       if (appointmentId != null && appointmentId.isNotEmpty) {
-        final primary = effectiveServiceIds.first;
-        final extraNames = effectiveServiceIds
+        final primary = orderedServiceIds.first;
+        final extraNames = orderedServiceIds
             .skip(1)
             .map((id) {
               for (final s in _services) {
@@ -1444,7 +1431,7 @@ class AppState extends ChangeNotifier {
             .where((n) => n.isNotEmpty)
             .toList();
         final notes = AppointmentNotes.combineNotes(baseNotes, extraNames);
-        final autoTotal = _sumServicePrices(effectiveServiceIds);
+        final autoTotal = _sumServicePrices(orderedServiceIds);
         final amountStr =
             (amountOverride != null && amountOverride.trim().isNotEmpty)
             ? amountOverride.trim()
@@ -1454,9 +1441,9 @@ class AppState extends ChangeNotifier {
           appointmentId: appointmentId,
           customerName: customerName,
           primaryServiceId: primary,
-          serviceIds: effectiveServiceIds,
-          date: effectiveDate,
-          time: effectiveTime,
+          serviceIds: orderedServiceIds,
+          date: date,
+          time: time,
           customerId: customerId.isNotEmpty ? customerId : null,
           phone: phone,
           staffId: effectiveStaffId.isNotEmpty ? effectiveStaffId : null,
@@ -1467,9 +1454,27 @@ class AppState extends ChangeNotifier {
           recurringNextDate: recurringNextDate,
           recurringMessageTemplateIds: recurringMessageTemplateIds,
         );
+      } else if (useItems) {
+        final notes = baseNotes.trim();
+        await _api.createAppointment(
+          token: token,
+          branchId: effectiveBranchId,
+          customerName: customerName,
+          customerId: customerId.isNotEmpty ? customerId : null,
+          phone: phone,
+          notes: notes.isNotEmpty ? notes : null,
+          amount: amountOverride,
+          isRecurring: isRecurring,
+          recurringNextDate: recurringNextDate,
+          recurringMessageTemplateIds: recurringMessageTemplateIds,
+          items: effectiveItems,
+          advanceAmount: advanceAmount,
+          advanceMethod: advanceMethod,
+          customerPackageId: customerPackageId,
+        );
       } else {
-        final primary = effectiveServiceIds.first;
-        final extraNames = effectiveServiceIds
+        final primary = orderedServiceIds.first;
+        final extraNames = orderedServiceIds
             .skip(1)
             .map((id) {
               for (final s in _services) {
@@ -1480,7 +1485,7 @@ class AppState extends ChangeNotifier {
             .where((n) => n.isNotEmpty)
             .toList();
         final notes = AppointmentNotes.combineNotes(baseNotes, extraNames);
-        final autoTotal = _sumServicePrices(effectiveServiceIds);
+        final autoTotal = _sumServicePrices(orderedServiceIds);
         final amountStr =
             (amountOverride != null && amountOverride.trim().isNotEmpty)
             ? amountOverride.trim()
@@ -1490,9 +1495,9 @@ class AppState extends ChangeNotifier {
           branchId: effectiveBranchId,
           customerName: customerName,
           primaryServiceId: primary,
-          serviceIds: effectiveServiceIds,
-          date: effectiveDate,
-          time: effectiveTime,
+          serviceIds: orderedServiceIds,
+          date: date,
+          time: time,
           customerId: customerId.isNotEmpty ? customerId : null,
           phone: phone,
           staffId: effectiveStaffId.isNotEmpty ? effectiveStaffId : null,

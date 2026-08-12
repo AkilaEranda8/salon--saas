@@ -812,41 +812,50 @@ class _AddApptSheetState extends State<_AddApptSheet> {
       }
     }
 
-    if (_date.isEmpty) { _snack('Pick a date'); return; }
-    if (_time.isEmpty) { _snack('Pick a time'); return; }
-    if (_isPastSlot(_date, _time)) {
-      _snack('Cannot book a past date/time');
-      return;
+    List<Map<String, dynamic>>? items;
+    if (_multiBooking) {
+      _syncAssignments();
+      for (final id in _orderedServiceIds()) {
+        final a = _serviceAssignments[id] ?? {};
+        if ((a['date'] ?? '').isEmpty || (a['time'] ?? '').isEmpty) {
+          String label = 'each service';
+          for (final s in _services) {
+            if (s.id == id) { label = s.name; break; }
+          }
+          _snack('Set date and time for $label');
+          return;
+        }
+        if (_isPastSlot('${a['date']}', '${a['time']}')) {
+          _snack('Cannot book a past date/time');
+          return;
+        }
+      }
+      items = _orderedServiceIds().map((id) {
+        final a = _serviceAssignments[id] ?? {};
+        final staff = (a['staff_id'] ?? '').trim();
+        return <String, dynamic>{
+          'service_id': id,
+          'date': a['date'],
+          'time': a['time'],
+          if (staff.isNotEmpty) 'staff_id': staff,
+        };
+      }).toList();
+    } else {
+      if (_date.isEmpty) { _snack('Pick a date'); return; }
+      if (_time.isEmpty) { _snack('Pick a time'); return; }
+      if (_isPastSlot(_date, _time)) {
+        _snack('Cannot book a past date/time');
+        return;
+      }
     }
 
     final pkgNote = _selectedPkgId.isNotEmpty
         ? '${AppointmentNotes.packagePrefix} #$_selectedPkgId - $_selectedPkgName'
         : '';
 
-    // Multiple services stay on ONE appointment (optional per-service staff).
     final amountOverride = (_packageOfferPrice != null && _packageOfferPrice! > 0)
         ? _packageOfferPrice!.toStringAsFixed(0)
-        : _amtCtrl.text.trim();
-
-    final ids = _orderedServiceIds();
-    _syncAssignments();
-    final serviceStaff = ids.map((id) {
-      final a = _serviceAssignments[id] ?? {};
-      final staff = (a['staff_id'] ?? '').trim().isNotEmpty
-          ? (a['staff_id'] ?? '').trim()
-          : _staffId;
-      return <String, dynamic>{
-        'service_id': id,
-        if (staff.isNotEmpty) 'staff_id': staff,
-      };
-    }).toList();
-    final primaryStaff = () {
-      for (final row in serviceStaff) {
-        final s = '${row['staff_id'] ?? ''}'.trim();
-        if (s.isNotEmpty) return s;
-      }
-      return _staffId;
-    }();
+        : (_multiBooking ? null : _amtCtrl.text.trim());
 
     setState(() => _saving = true);
     final ok = await app.saveAppointment(
@@ -854,15 +863,15 @@ class _AddApptSheetState extends State<_AddApptSheet> {
       customerName: _namCtrl.text.trim(),
       phone: _phCtrl.text.trim(),
       customerId: _custId,
-      orderedServiceIds: ids,
+      orderedServiceIds: _orderedServiceIds(),
       date: _date,
       time: _time,
-      staffId: primaryStaff,
+      staffId: _staffId,
       baseNotes: pkgNote,
       status: '',
       amountOverride: amountOverride,
-      bookingItems: null,
-      serviceStaff: serviceStaff,
+      bookingItems: items,
+      serviceStaff: null,
       advanceAmount: _collectAdvance && advanceNum > 0 ? advanceNum : null,
       advanceMethod: _collectAdvance ? _advanceMethod : null,
       customerPackageId:
@@ -1429,7 +1438,7 @@ class _AddApptSheetState extends State<_AddApptSheet> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text('Multiple services',
+                            const Text('Multiple booking',
                                 style: TextStyle(
                                     fontSize: 13,
                                     fontWeight: FontWeight.w800,
@@ -1437,8 +1446,8 @@ class _AddApptSheetState extends State<_AddApptSheet> {
                             const SizedBox(height: 2),
                             Text(
                               _multiBooking
-                                  ? 'On — add several services (same appointment, staff per service)'
-                                  : 'Off — one service only',
+                                  ? 'On — separate booking per service (own staff & time)'
+                                  : 'Off — one appointment',
                               style: const TextStyle(
                                   fontSize: 11, color: Color(0xFF6B7280)),
                             ),
@@ -1486,7 +1495,7 @@ class _AddApptSheetState extends State<_AddApptSheet> {
                     mutedColor: const Color(0xFF6B7280),
                   ),
 
-                  if (_multiBooking && _orderedServiceIds().length > 1) ...[
+                  if (_multiBooking && _orderedServiceIds().isNotEmpty) ...[
                     const SizedBox(height: 10),
                     ..._orderedServiceIds().map((id) {
                       SalonService? svc;
@@ -1514,10 +1523,16 @@ class _AddApptSheetState extends State<_AddApptSheet> {
                                     fontSize: 13,
                                     fontWeight: FontWeight.w800,
                                     color: Color(0xFF111827))),
+                            if (svc != null)
+                              Text('LKR ${svc.price.toStringAsFixed(0)}',
+                                  style: const TextStyle(
+                                      fontSize: 11,
+                                      color: Color(0xFF059669),
+                                      fontWeight: FontWeight.w700)),
                             const SizedBox(height: 8),
                             DropdownButtonFormField<String?>(
                               key: ValueKey(
-                                  'line_staff_${id}_${_staff.length}_${a['staff_id'] ?? ''}'),
+                                  'multi_staff_${id}_${_staff.length}_${a['staff_id'] ?? ''}'),
                               initialValue: (() {
                                 final raw = (staffVal ?? '').trim();
                                 if (raw.isEmpty) return null;
@@ -1539,12 +1554,41 @@ class _AddApptSheetState extends State<_AddApptSheet> {
                                 setState(() {
                                   _serviceAssignments.putIfAbsent(id, () => {});
                                   _serviceAssignments[id]!['staff_id'] = v ?? '';
-                                  if (id == _orderedServiceIds().first) {
-                                    _staffId = v ?? '';
-                                  }
                                 });
+                                _reloadMultiSlots(id);
                               },
                             ),
+                            const SizedBox(height: 8),
+                            Row(children: [
+                              Expanded(
+                                child: _pickPill(
+                                  value: a['date'] ?? '',
+                                  hint: 'Date',
+                                  icon: Icons.calendar_today_rounded,
+                                  onTap: () => _pickAssignmentDate(id),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: _pickPill(
+                                  value: a['time'] ?? '',
+                                  hint: 'Time',
+                                  icon: Icons.access_time_rounded,
+                                  onTap: () => _pickAssignmentTime(id),
+                                ),
+                              ),
+                            ]),
+                            if ((a['staff_id'] ?? '').toString().trim().isNotEmpty &&
+                                (a['date'] ?? '').toString().trim().isNotEmpty)
+                              _slotChips(
+                                slots: _multiSlots[id] ?? const [],
+                                loading: _multiSlotsLoading[id] == true,
+                                value: a['time'] ?? '',
+                                onPick: (t) => setState(() {
+                                  _serviceAssignments.putIfAbsent(id, () => {});
+                                  _serviceAssignments[id]!['time'] = t;
+                                }),
+                              ),
                           ],
                         ),
                       );

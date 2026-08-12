@@ -9,8 +9,8 @@ import PageWrapper from '../components/layout/PageWrapper';
 import { useToast } from '../components/ui/Toast';
 import {
   IconEye, IconEdit, IconPlus, IconDollar, IconReceipt, IconCalendar,
-  IconClose, ActionBtn, StatCard, FilterBar,
-  DataTable,
+  IconClose, IconTrash, ActionBtn, StatCard, FilterBar,
+  DataTable, PKModal as Modal,
 } from '../components/ui/PageKit';
 import { computePromoFromDiscount } from '../utils/promoDiscount';
 import {
@@ -502,7 +502,7 @@ function paymentServiceNames(row) {
   return row?.service?.name ? [row.service.name] : [];
 }
 
-function PaymentDetailModal({ open, onClose, payment, loading, dark, canEdit, onEdit, onPrint }) {
+function PaymentDetailModal({ open, onClose, payment, loading, dark, canEdit, canDelete, onEdit, onDelete, onPrint }) {
   if (!open) return null;
   const p = payment || {};
   const muted = dark ? '#94A3B8' : '#667085';
@@ -554,6 +554,11 @@ function PaymentDetailModal({ open, onClose, payment, loading, dark, canEdit, on
       footer={(
         <>
           <Button variant="secondary" onClick={onClose}>Close</Button>
+          {canDelete && (
+            <Button variant="danger" onClick={() => onDelete?.(p)} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <IconTrash /> Delete
+            </Button>
+          )}
           <Button variant="secondary" onClick={() => onPrint?.(p)} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <PrintIcon /> Print receipt
           </Button>
@@ -978,6 +983,7 @@ export default function PaymentsPage() {
   const { toast } = useToast();
   const canEdit  = ['superadmin','admin','manager','staff'].includes(user?.role);
   const isAdmin  = ['superadmin','admin'].includes(user?.role);
+  const canDelete = isAdmin;
   const hasFixedBranch = !!user?.branchId;
   const today = new Date(Date.now() + 5.5 * 60 * 60 * 1000).toISOString().slice(0,10);
   const curMonth = today.slice(0,7);
@@ -997,6 +1003,10 @@ export default function PaymentsPage() {
   const [showDetail, setShowDetail] = useState(false);
   const [detailItem, setDetailItem] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deletePwd, setDeletePwd] = useState('');
+  const [deleteErr, setDeleteErr] = useState('');
+  const [deleting, setDeleting] = useState(false);
   const [form, setForm]           = useState(EMPTY_FORM);
   const [servicePrices, setServicePrices] = useState({});
   const [saving, setSaving]       = useState(false);
@@ -1163,6 +1173,36 @@ export default function PaymentsPage() {
       setDetailLoading(false);
     }
   };
+
+  const openDelete = (row) => {
+    setDeleteTarget(row);
+    setDeletePwd('');
+    setDeleteErr('');
+  };
+
+  const handleDeletePayment = async () => {
+    if (!deleteTarget?.id) return;
+    if (!deletePwd.trim()) {
+      setDeleteErr('Enter your admin password to confirm.');
+      return;
+    }
+    setDeleting(true);
+    setDeleteErr('');
+    try {
+      await api.delete(`/payments/${deleteTarget.id}`, { data: { password: deletePwd } });
+      toast.success('Payment deleted');
+      setDeleteTarget(null);
+      setDeletePwd('');
+      setShowDetail(false);
+      setDetailItem(null);
+      load();
+    } catch (e) {
+      setDeleteErr(e.response?.data?.message || 'Delete failed');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   const openEdit = async (row) => {
     setFormErr('');
     try {
@@ -1453,6 +1493,9 @@ export default function PaymentsPage() {
               <div style={{ display:'flex', gap:4, justifyContent:'center', flexWrap:'wrap' }}>
                 {canEdit && (
                   <ActionBtn onClick={() => openEdit(row.original)} title="Edit payment" color="#D97706"><IconEdit /></ActionBtn>
+                )}
+                {canDelete && (
+                  <ActionBtn onClick={() => openDelete(row.original)} title="Delete payment" color="#DC2626"><IconTrash /></ActionBtn>
                 )}
                 <ActionBtn onClick={() => openDetail(row.original)} title="View details" color="#2563EB"><IconEye /></ActionBtn>
                 <ActionBtn onClick={() => printReceipt(row.original)} title="Print Receipt" color="#059669"><PrintIcon /></ActionBtn>
@@ -2036,9 +2079,50 @@ export default function PaymentsPage() {
         loading={detailLoading}
         dark={isDark}
         canEdit={canEdit}
+        canDelete={canDelete}
         onEdit={(p) => { setShowDetail(false); openEdit(p); }}
+        onDelete={(p) => { setShowDetail(false); openDelete(p); }}
         onPrint={printReceipt}
       />
+
+      <Modal
+        open={!!deleteTarget}
+        onClose={() => { if (!deleting) { setDeleteTarget(null); setDeletePwd(''); setDeleteErr(''); } }}
+        title="Delete payment"
+        size="sm"
+        footer={(
+          <>
+            <Button variant="secondary" disabled={deleting} onClick={() => { setDeleteTarget(null); setDeletePwd(''); setDeleteErr(''); }}>Cancel</Button>
+            <Button variant="danger" loading={deleting} disabled={!deletePwd.trim()} onClick={handleDeletePayment}>
+              Delete permanently
+            </Button>
+          </>
+        )}
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <p style={{ margin: 0, fontSize: 14, color: isDark ? '#94A3B8' : '#475467', lineHeight: 1.5 }}>
+            This removes payment <strong>#{deleteTarget?.id}</strong>
+            {deleteTarget?.customer?.name || deleteTarget?.customer_name
+              ? <> for <strong>{deleteTarget.customer?.name || deleteTarget.customer_name}</strong></> : null}
+            {' '}(Rs. {Number(deleteTarget?.total_amount || 0).toLocaleString()}). Commission on this sale is also removed.
+          </p>
+          <FormGroup label="Admin password" required>
+            <Input
+              type="password"
+              autoComplete="current-password"
+              value={deletePwd}
+              onChange={(e) => setDeletePwd(e.target.value)}
+              placeholder="Enter your password"
+              onKeyDown={(e) => { if (e.key === 'Enter') handleDeletePayment(); }}
+            />
+          </FormGroup>
+          {deleteErr && (
+            <div style={{ background: '#FEF2F2', color: '#DC2626', padding: '9px 13px', borderRadius: 9, fontSize: 13, border: '1px solid #FEE2E2' }}>
+              {deleteErr}
+            </div>
+          )}
+        </div>
+      </Modal>
 
       {qrModal && (
         <HelaPayQRModal

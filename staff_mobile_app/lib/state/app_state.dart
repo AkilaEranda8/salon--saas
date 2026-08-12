@@ -1064,6 +1064,29 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  Future<bool> deletePayment({
+    required String paymentId,
+    required String password,
+  }) async {
+    final token = _currentUser?.authToken;
+    if (token == null || token.isEmpty) {
+      _lastError = 'Missing auth token (cannot delete payment).';
+      return false;
+    }
+    try {
+      await _api.deletePayment(
+        token: token,
+        paymentId: paymentId,
+        password: password,
+      );
+      _lastError = null;
+      return true;
+    } catch (e) {
+      _lastError = e.toString().replaceFirst('Exception: ', '');
+      return false;
+    }
+  }
+
   Future<bool> addManualPayment({
     required String branchId,
     required String serviceId,

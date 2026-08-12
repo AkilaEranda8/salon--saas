@@ -1,6 +1,7 @@
 const { Op, fn, col, literal } = require('sequelize');
 const { sequelize } = require('../config/database');
-const { Payment, PaymentSplit, Branch, Staff, StaffSpecialization, Customer, Service, Appointment, AppointmentService, CustomerPackage, Package: PkgModel, PackageRedemption, LoyaltyRule, CommissionTransaction } = require('../models');
+const { Payment, PaymentSplit, Branch, Staff, StaffSpecialization, Customer, Service, Appointment, AppointmentService, CustomerPackage, Package: PkgModel, PackageRedemption, LoyaltyRule, CommissionTransaction, LoyaltyTransaction } = require('../models');
+const { verifyUserPassword } = require('../utils/verifyUserPassword');
 const { computeCommissionDetails, computeMultiStaffCommissionDetails } = require('../utils/commissionCalculator');
 const { computeHelperCommissionSplit } = require('../utils/helperCommission');
 const { allowsServiceWiseOverrides, hasFranchiseCommission, hasTenantFeature, getMinCommissionableAmount } = require('../utils/tenantFeatures');
@@ -764,4 +765,85 @@ const summary = async (req, res) => {
   }
 };
 
-module.exports = { list, getOne, create, update, summary };
+/**
+ * DELETE payment — admin/superadmin only; requires re-entered password in body.
+ * Cleans splits + commission txns; best-effort loyalty reverse; clears redemption link.
+ */
+const remove = async (req, res) => {
+  const t = await sequelize.transaction();
+  try {
+    const password = req.body?.password;
+    const verified = await verifyUserPassword(req, password);
+    if (!verified.ok) {
+      await t.rollback();
+      return res.status(verified.status).json({ message: verified.message });
+    }
+
+    const payment = await Payment.findOne({
+      where: byIdWhere(req, req.params.id),
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
+    if (!payment) {
+      await t.rollback();
+      return res.status(404).json({ message: 'Payment not found.' });
+    }
+    if (req.userBranchId && Number(payment.branch_id) !== Number(req.userBranchId)) {
+      await t.rollback();
+      return res.status(403).json({ message: 'Access denied. Payment belongs to a different branch.' });
+    }
+
+    const paymentId = payment.id;
+
+    await CommissionTransaction.destroy({
+      where: { payment_id: paymentId, ...tenantWhere(req) },
+      transaction: t,
+    });
+    await PaymentSplit.destroy({
+      where: { payment_id: paymentId },
+      transaction: t,
+    });
+
+    try {
+      await PackageRedemption.update(
+        { payment_id: null },
+        { where: { payment_id: paymentId }, transaction: t },
+      );
+    } catch (e) {
+      console.warn('[payments][remove] package redemption clear skipped:', e.message);
+    }
+
+    if (payment.customer_id) {
+      try {
+        const earned = Math.max(0, parseInt(payment.points_earned, 10) || 0);
+        if (earned > 0) {
+          const cust = await Customer.findOne({
+            where: byIdWhere(req, payment.customer_id),
+            transaction: t,
+            lock: t.LOCK.UPDATE,
+          });
+          if (cust) {
+            const nextPts = Math.max(0, (parseInt(cust.loyalty_points, 10) || 0) - earned);
+            await cust.update({ loyalty_points: nextPts }, { transaction: t });
+          }
+        }
+        await LoyaltyTransaction.destroy({
+          where: { payment_id: paymentId },
+          transaction: t,
+        });
+      } catch (e) {
+        console.warn('[payments][remove] loyalty reverse skipped:', e.message);
+      }
+    }
+
+    await payment.destroy({ transaction: t });
+    await t.commit();
+    return res.json({ message: 'Payment deleted.' });
+  } catch (err) {
+    await t.rollback();
+    console.error('[payments][remove]', err);
+    return res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+module.exports = { list, getOne, create, update, summary, remove };

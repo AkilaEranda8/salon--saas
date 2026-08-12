@@ -1182,6 +1182,23 @@ class MobileApi {
     }
   }
 
+  /// DELETE /api/payments/:id — admin/superadmin; body `{ password }`.
+  Future<void> deletePayment({
+    required String token,
+    required String paymentId,
+    required String password,
+  }) async {
+    final response = await http.delete(
+      Uri.parse('$baseUrl/api/payments/$paymentId'),
+      headers: _authHeaders(token),
+      body: jsonEncode({'password': password}),
+    );
+    final body = _decode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['message'] ?? 'Payment delete failed');
+    }
+  }
+
   Future<List<WalkInEntry>> fetchWalkIns({
     required String token,
     required String branchId,

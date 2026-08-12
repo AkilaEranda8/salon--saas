@@ -11,5 +11,6 @@ router.get('/',        ctrl.list);
 router.get('/:id',     ctrl.getOne);
 router.put('/:id',     requireRole('superadmin', 'admin', 'manager', 'staff'), ctrl.update);
 router.post('/',       requireRole('superadmin', 'admin', 'manager', 'staff'), ctrl.create);
+router.delete('/:id',  requireRole('superadmin', 'admin'), ctrl.remove);
 
 module.exports = router;

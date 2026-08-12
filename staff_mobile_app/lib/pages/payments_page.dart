@@ -128,12 +128,13 @@ class _PaymentsPageState extends State<PaymentsPage> {
   }
 
   Future<void> _openDetail(PaymentRecord row) async {
-    await showModalBottomSheet<void>(
+    final deleted = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (_) => _PaymentDetailSheet(initial: row),
     );
+    if (deleted == true && mounted) _refresh();
   }
 
   Future<void> _openAdd() async {
@@ -814,6 +815,80 @@ class _PaymentDetailSheetState extends State<_PaymentDetailSheet> {
     }
   }
 
+  bool get _canDelete {
+    final r = (AppStateScope.of(context).currentUser?.role ?? '')
+        .trim()
+        .toLowerCase();
+    return r == 'admin' || r == 'superadmin';
+  }
+
+  Future<void> _confirmDelete() async {
+    final pwdCtrl = TextEditingController();
+    String? err;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          title: const Text('Delete payment'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'Removes payment #${_p.id} (LKR ${_p.netAmount.toStringAsFixed(0)}). '
+                'Commission on this sale is also removed.',
+                style: const TextStyle(fontSize: 13.5, color: _muted, height: 1.4),
+              ),
+              const SizedBox(height: 14),
+              TextField(
+                controller: pwdCtrl,
+                obscureText: true,
+                autofocus: true,
+                decoration: const InputDecoration(
+                  labelText: 'Admin password',
+                  border: OutlineInputBorder(),
+                ),
+                onChanged: (_) {
+                  if (err != null) setLocal(() => err = null);
+                },
+              ),
+              if (err != null) ...[
+                const SizedBox(height: 10),
+                Text(err!, style: const TextStyle(color: Color(0xFFDC2626), fontSize: 13)),
+              ],
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+            TextButton(
+              onPressed: () async {
+                final pwd = pwdCtrl.text;
+                if (pwd.trim().isEmpty) {
+                  setLocal(() => err = 'Enter your admin password.');
+                  return;
+                }
+                final app = AppStateScope.of(context);
+                final ok = await app.deletePayment(paymentId: _p.id, password: pwd);
+                if (!ctx.mounted) return;
+                if (ok) {
+                  Navigator.pop(ctx, true);
+                } else {
+                  setLocal(() => err = app.lastError ?? 'Delete failed');
+                }
+              },
+              style: TextButton.styleFrom(foregroundColor: const Color(0xFFDC2626)),
+              child: const Text('Delete'),
+            ),
+          ],
+        ),
+      ),
+    );
+    pwdCtrl.dispose();
+    if (confirmed == true && mounted) {
+      Navigator.of(context).pop(true);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final p = _p;
@@ -1020,6 +1095,23 @@ class _PaymentDetailSheetState extends State<_PaymentDetailSheet> {
               ),
             ),
           ),
+          if (_canDelete) ...[
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: _confirmDelete,
+                icon: const Icon(Icons.delete_outline_rounded, size: 18),
+                label: const Text('Delete payment'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFFDC2626),
+                  side: const BorderSide(color: Color(0xFFFECACA)),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
+            ),
+          ],
         ],
       ),
       ),

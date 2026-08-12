@@ -715,6 +715,12 @@ export default function CommissionPage() {
                         {p.commission_role === 'manager_oversight' && (
                           <span style={{ fontSize: 10, fontWeight: 700, color: '#059669', background: '#ECFDF5', padding: '2px 7px', borderRadius: 6 }}>Manager</span>
                         )}
+                        {p.commission_role === 'helper' && (
+                          <span style={{ fontSize: 10, fontWeight: 700, color: '#7C3AED', background: '#F5F3FF', padding: '2px 7px', borderRadius: 6 }}>Helper</span>
+                        )}
+                        {p.commission_role === 'co_worker' && (
+                          <span style={{ fontSize: 10, fontWeight: 700, color: '#2563EB', background: '#EFF6FF', padding: '2px 7px', borderRadius: 6 }}>Own service</span>
+                        )}
                         <span style={{ fontWeight: 800, color: '#D97706', fontFamily: "'Outfit',sans-serif", fontSize: 14 }}>
                           {commAmt}
                         </span>

@@ -19,40 +19,82 @@ function helperCommissionTotal(helperCommission, breakdown) {
 }
 
 function paymentCommissionLines(payment) {
+  return staffCommissionShares(payment).map((row) => ({
+    staff_id: row.staff_id,
+    staff_name: row.staff_name || null,
+    amount: row.amount,
+  }));
+}
+
+/**
+ * Per-staff commission on one payment.
+ * Multi-staff bookings store shares in commission_breakdown.perStaff — do not
+ * give the header staff_id the combined commission_amount.
+ */
+function staffCommissionShares(payment) {
   const json = payment?.toJSON ? payment.toJSON() : payment;
   const breakdown = parseJsonField(json.commission_breakdown);
   const hc = parseJsonField(json.helper_commission);
+  const shares = [];
 
   if (breakdown?.perStaff?.length) {
-    return breakdown.perStaff
-      .map((row) => ({
-        staff_id: row.staff_id,
+    for (const row of breakdown.perStaff) {
+      const staffId = Number(row.staff_id);
+      const amount = parseFloat(row.amount) || 0;
+      if (!Number.isInteger(staffId) || staffId <= 0 || !(amount > 0)) continue;
+      const ownLines = (breakdown.lines || []).filter(
+        (l) => Number(l.staffId ?? l.staff_id) === staffId,
+      );
+      shares.push({
+        staff_id: staffId,
         staff_name: row.staff_name || null,
-        amount: parseFloat(row.amount) || 0,
-      }))
-      .filter((row) => row.amount > 0);
-  }
-
-  const lines = [];
-  const mainAmt = parseFloat(json.commission_amount) || 0;
-  if (mainAmt > 0) {
-    lines.push({
-      staff_id: json.staff_id,
-      staff_name: json.staff?.name || null,
-      amount: mainAmt,
-    });
-  }
-  for (const h of (hc?.helpers || breakdown?.helpers || [])) {
-    const amt = parseFloat(h.commission_amount) || 0;
-    if (amt > 0) {
-      lines.push({
-        staff_id: h.staff_id,
-        staff_name: h.staff_name || null,
-        amount: amt,
+        amount,
+        revenue: parseFloat(row.serviceAmount) || 0,
+        role: 'worker',
+        breakdown: row.breakdown || {
+          ...breakdown,
+          perStaff: undefined,
+          multiStaff: true,
+          lines: ownLines.length ? ownLines : (row.breakdown?.lines || []),
+          total: amount,
+        },
       });
     }
+    return shares;
   }
-  return lines;
+
+  const mainId = Number(json.staff_id);
+  const mainAmt = parseFloat(json.commission_amount) || 0;
+  if (Number.isInteger(mainId) && mainId > 0 && mainAmt > 0) {
+    shares.push({
+      staff_id: mainId,
+      staff_name: json.staff?.name || null,
+      amount: mainAmt,
+      revenue: parseFloat(json.total_amount) || 0,
+      role: 'worker',
+      breakdown,
+    });
+  }
+
+  for (const h of (hc?.helpers || breakdown?.helpers || [])) {
+    const hid = Number(h.staff_id);
+    const amt = parseFloat(h.commission_amount) || 0;
+    if (!Number.isInteger(hid) || hid <= 0 || !(amt > 0)) continue;
+    shares.push({
+      staff_id: hid,
+      staff_name: h.staff_name || null,
+      amount: amt,
+      revenue: 0,
+      role: 'helper',
+      helper: h,
+    });
+  }
+  return shares;
+}
+
+function shareForStaff(payment, staffId) {
+  const sid = Number(staffId);
+  return staffCommissionShares(payment).find((s) => Number(s.staff_id) === sid) || null;
 }
 
 function paymentTotalCommission(payment) {
@@ -81,4 +123,6 @@ module.exports = {
   paymentCommissionLines,
   paymentTotalCommission,
   attachPaymentCommissionTotals,
+  staffCommissionShares,
+  shareForStaff,
 };

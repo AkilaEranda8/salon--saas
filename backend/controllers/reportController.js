@@ -3,7 +3,7 @@ const { sequelize } = require('../config/database');
 const { Appointment, Payment, PaymentSplit, Branch, Staff, Service, InvProduct, Reminder, Customer, Expense, WalkIn } = require('../models');
 const XLSX = require('xlsx');
 const { tenantWhere } = require('../utils/tenantScope');
-const { helperAmountForStaff } = require('../utils/helperCommission');
+const { staffCommissionShares } = require('../utils/paymentCommissionTotals');
 
 /* ── Sri Lanka timezone helpers (UTC+05:30) ─────────────────── */
 const SL_OFFSET_MS = 5.5 * 60 * 60 * 1000;
@@ -117,7 +117,8 @@ const staffReport = async (req, res) => {
 
     if (!staffRows.length) return res.json([]);
 
-    const staffIds = staffRows.map((s) => s.id);
+    const staffIds = staffRows.map((s) => Number(s.id));
+    const staffIdSet = new Set(staffIds);
 
     // 2. Appointment counts — separate query to avoid cartesian product
     const apptAgg = await Appointment.findAll({
@@ -127,66 +128,45 @@ const staffReport = async (req, res) => {
       raw: true,
     });
 
-    // 3. Payment sums as main staff — separate query
-    const payAgg = await Payment.findAll({
-      where: { staff_id: { [Op.in]: staffIds }, ...branchWhere, ...dateWhere },
-      attributes: [
-        'staff_id',
-        [fn('SUM', col('commission_amount')), 'totalCommission'],
-        [fn('SUM', col('total_amount')),      'totalRevenue'],
-        [fn('COUNT', col('id')), 'paymentCount'],
-      ],
-      group: ['staff_id'],
+    // 3. Per-staff commission shares (multi-staff + helpers), not header staff_id only
+    const periodPayments = await Payment.findAll({
+      where: { ...branchWhere, ...dateWhere },
+      attributes: ['id', 'staff_id', 'total_amount', 'commission_amount', 'commission_breakdown', 'helper_commission'],
       raw: true,
     });
-
-    // 4. Helper commissions from payments.helper_commission JSON
-    const helperCommMap = {};
-    try {
-      const helperPayments = await Payment.findAll({
-        where: {
-          ...branchWhere,
-          ...dateWhere,
-          helper_commission: { [Op.ne]: null },
-        },
-        attributes: ['id', 'helper_commission', 'total_amount'],
-        raw: true,
-      });
-      for (const p of helperPayments) {
-        for (const sid of staffIds) {
-          const amt = helperAmountForStaff(p.helper_commission, sid);
-          if (!(amt > 0)) continue;
-          if (!helperCommMap[sid]) helperCommMap[sid] = { commission: 0, count: 0, revenue: 0 };
-          helperCommMap[sid].commission += amt;
-          helperCommMap[sid].count += 1;
-          helperCommMap[sid].revenue += parseFloat(p.total_amount) || 0;
+    const payMap = {};
+    for (const p of periodPayments) {
+      for (const share of staffCommissionShares(p)) {
+        const sid = Number(share.staff_id);
+        if (!staffIdSet.has(sid)) continue;
+        if (!payMap[sid]) {
+          payMap[sid] = { mainCommission: 0, helperCommission: 0, totalRevenue: 0, paymentCount: 0 };
         }
+        if (share.role === 'helper') payMap[sid].helperCommission += share.amount;
+        else payMap[sid].mainCommission += share.amount;
+        payMap[sid].totalRevenue += share.revenue || 0;
+        payMap[sid].paymentCount += 1;
       }
-    } catch (helperErr) {
-      console.warn('staffReport helper commission skipped:', helperErr.message);
     }
 
     // Build lookup maps
     const apptMap = {};
     for (const r of apptAgg) apptMap[r.staff_id] = r;
-    const payMap = {};
-    for (const r of payAgg)  payMap[r.staff_id]  = r;
 
     // Merge and return
     const mergedByUser = new Map();
     for (const staff of staffRows) {
-      const mainComm = parseFloat(payMap[staff.id]?.totalCommission || 0);
-      const helperComm = parseFloat(helperCommMap[staff.id]?.commission || 0);
+      const pay = payMap[staff.id] || { mainCommission: 0, helperCommission: 0, totalRevenue: 0, paymentCount: 0 };
+      const mainComm = Math.round((pay.mainCommission || 0) * 100) / 100;
+      const helperComm = Math.round((pay.helperCommission || 0) * 100) / 100;
       const row = {
         ...staff.toJSON(),
         apptCount:       parseInt(apptMap[staff.id]?.apptCount || 0, 10),
-        paymentCount:    parseInt(payMap[staff.id]?.paymentCount || 0, 10)
-          + (helperCommMap[staff.id]?.count || 0),
+        paymentCount:    pay.paymentCount || 0,
         mainCommission:  mainComm,
         helperCommission: helperComm,
-        totalCommission: mainComm + helperComm,
-        totalRevenue:    parseFloat(payMap[staff.id]?.totalRevenue || 0)
-          + (helperCommMap[staff.id]?.revenue || 0),
+        totalCommission: Math.round((mainComm + helperComm) * 100) / 100,
+        totalRevenue:    Math.round((pay.totalRevenue || 0) * 100) / 100,
       };
       const key = row.user_id ? `user:${row.user_id}` : `staff:${row.id}`;
       const existing = mergedByUser.get(key);
@@ -469,19 +449,15 @@ const exportExcel = async (req, res) => {
 
     // ── Sheet 4: Staff Performance ──
     const staffPayments = {};
-    payments.forEach(p => {
-      const sid = p.staff_id;
-      if (!sid) return;
-      if (!staffPayments[sid]) staffPayments[sid] = { revenue: 0, mainCommission: 0, helperCommission: 0, count: 0 };
-      staffPayments[sid].revenue         += Number(p.total_amount || 0);
-      staffPayments[sid].mainCommission += Number(p.commission_amount || 0);
-      staffPayments[sid].count          += 1;
-      for (const s of staffRows) {
-        const helperAmt = helperAmountForStaff(p.helper_commission, s.id);
-        if (!(helperAmt > 0)) continue;
-        if (!staffPayments[s.id]) staffPayments[s.id] = { revenue: 0, mainCommission: 0, helperCommission: 0, count: 0 };
-        staffPayments[s.id].helperCommission += helperAmt;
-        staffPayments[s.id].count += 1;
+    payments.forEach((p) => {
+      for (const share of staffCommissionShares(p)) {
+        const sid = Number(share.staff_id);
+        if (!sid) continue;
+        if (!staffPayments[sid]) staffPayments[sid] = { revenue: 0, mainCommission: 0, helperCommission: 0, count: 0 };
+        if (share.role === 'helper') staffPayments[sid].helperCommission += share.amount;
+        else staffPayments[sid].mainCommission += share.amount;
+        staffPayments[sid].revenue += share.revenue || 0;
+        staffPayments[sid].count += 1;
       }
     });
     const staffData = staffRows.map(s => {

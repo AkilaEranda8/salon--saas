@@ -43,6 +43,34 @@ check('next 200 min service gets starts after 13:59', () => {
   assert.ok(!slots.includes('13:45'));
 });
 
+check('120 min at 16:00 blocks until 18:00 — no mid-block starts', () => {
+  const blocked = [[16 * 60, 16 * 60 + 120]]; // 16:00–18:00
+  const slots30 = generateAvailableSlots({
+    dayWindow: day,
+    durationMinutes: 30,
+    blockedRanges: blocked,
+  });
+  assert.ok(!slots30.includes('16:00'));
+  assert.ok(!slots30.includes('16:15'));
+  assert.ok(!slots30.includes('16:30'));
+  assert.ok(!slots30.includes('17:00'));
+  assert.ok(!slots30.includes('17:45'));
+  // Day ends 18:00 — no leftover after a block that ends at close
+  assert.ok(!slots30.includes('18:00'));
+});
+
+check('120 min at 16:00 leaves afternoon free before it', () => {
+  const blocked = [[16 * 60, 16 * 60 + 120]];
+  const slots30 = generateAvailableSlots({
+    dayWindow: day,
+    durationMinutes: 30,
+    blockedRanges: blocked,
+  });
+  assert.ok(slots30.includes('09:00'));
+  assert.ok(slots30.includes('15:30'));
+  assert.ok(!slots30.includes('15:45')); // 15:45+30 = 16:15 overlaps 16:00–18:00
+});
+
 check('when leftover is 200 min, remainder starts still appear', () => {
   const blocked = [[9 * 60, 9 * 60 + 299]];
   const remainder = generateRemainderSlots({
@@ -54,7 +82,7 @@ check('when leftover is 200 min, remainder starts still appear', () => {
   assert.ok(!remainder.includes('13:45'));
 });
 
-check('200 min leftover cannot fit another 299 min — remainder still listed', () => {
+check('200 min leftover cannot fit another 299 min — fit empty, remainder separate', () => {
   const blocked = [[9 * 60, 9 * 60 + 340]]; // leave 200 min (1080-880=200)
   const fit = generateAvailableSlots({
     dayWindow: day,

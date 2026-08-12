@@ -12,6 +12,7 @@ class Appointment {
     required this.createdBy,
     this.serviceId = '',
     this.serviceIds = const [],
+    this.primaryDurationMinutes = 0,
     this.branchId = '',
     this.phone = '',
     this.notes = '',
@@ -37,6 +38,8 @@ class Appointment {
   final String serviceId;
   /// Ordered IDs from API (`appointment_services` / `service_ids`); preferred over notes for display.
   final List<String> serviceIds;
+  /// Primary service duration from API (`service.duration_minutes`).
+  final int primaryDurationMinutes;
   final String branchId;
   final String phone;
   final String notes;
@@ -80,6 +83,29 @@ class Appointment {
     final legacy = servicesDisplay;
     if (legacy.isNotEmpty) return legacy;
     return serviceName;
+  }
+
+  /// Total blocked minutes: sum linked services from catalog, else primary.
+  int resolveDurationMinutes(Iterable<SalonService> catalog) {
+    if (serviceIds.isNotEmpty) {
+      final byId = <String, int>{};
+      for (final s in catalog) {
+        byId[s.id] = s.durationMinutes;
+      }
+      var sum = 0;
+      for (final id in serviceIds) {
+        final d = byId[id] ?? 0;
+        if (d > 0) sum += d;
+      }
+      if (sum > 0) return sum;
+    }
+    if (primaryDurationMinutes > 0) return primaryDurationMinutes;
+    if (serviceId.isNotEmpty) {
+      for (final s in catalog) {
+        if (s.id == serviceId && s.durationMinutes > 0) return s.durationMinutes;
+      }
+    }
+    return 60;
   }
 
   double get displayAmount {
@@ -150,6 +176,14 @@ class Appointment {
       createdBy: '${staff is Map ? staff['name'] ?? '' : ''}',
       serviceId: '${json['service_id'] ?? service?['id'] ?? ''}',
       serviceIds: parsedIds,
+      primaryDurationMinutes: () {
+        if (service is Map) {
+          final d = int.tryParse('${service['duration_minutes'] ?? 0}') ?? 0;
+          if (d > 0) return d;
+        }
+        final top = int.tryParse('${json['duration_minutes'] ?? 0}') ?? 0;
+        return top > 0 ? top : 0;
+      }(),
       branchId: '${json['branch_id'] ?? (branch is Map ? branch['id'] ?? '' : '')}',
       phone: '${json['phone'] ?? (customer is Map ? customer['phone'] ?? '' : '')}',
       notes: '${json['notes'] ?? ''}',

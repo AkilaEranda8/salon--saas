@@ -703,9 +703,10 @@ class MobileApi {
     }
 
     final fit = parseSlots(body['slots']);
-    final remainder = parseSlots(body['remainder_slots']);
     return {
-      'slots': fit.isNotEmpty ? fit : remainder,
+      // Only duration-fitting starts — do not fall back to remainder_slots.
+      'slots': fit,
+      'remainder_slots': parseSlots(body['remainder_slots']),
       'window': body['window'],
       'server_now': body['server_now'],
       'duration_minutes': body['duration_minutes'],
@@ -728,8 +729,8 @@ class MobileApi {
     bool isRecurring = false,
     String? recurringNextDate,
     List<String>? recurringMessageTemplateIds,
-    /// Multi-booking: one appointment per item (own staff/date/time).
-    /// Each map: `service_id`, optional `staff_id`, `date`, `time`.
+    /// Legacy multi-select payload. Backend maps these onto ONE appointment
+    /// (shared staff/date/time from the first item / top-level fields).
     List<Map<String, dynamic>>? items,
     double? advanceAmount,
     String? advanceMethod,
@@ -765,36 +766,43 @@ class MobileApi {
       },
     };
 
+    // Always one appointment. Collapse legacy items[] into service_ids.
+    var resolvedServiceIds = serviceIds ?? const <String>[];
+    var resolvedPrimary = primaryServiceId;
+    var resolvedDate = date.trim();
+    var resolvedTime = time.trim();
+    var resolvedStaff = staffId;
     if (useItems) {
-      bodyMap['items'] = items.map((raw) {
-        final sid = raw['service_id'];
-        final staff = raw['staff_id'];
-        return <String, dynamic>{
-          'service_id': sid is int ? sid : (int.tryParse('$sid') ?? sid),
-          'date': '${raw['date'] ?? ''}'.trim(),
-          'time': '${raw['time'] ?? ''}'.trim(),
-          if (staff != null && '$staff'.trim().isNotEmpty)
-            'staff_id': staff is int ? staff : (int.tryParse('$staff') ?? staff),
-        };
-      }).toList();
-      if (amount != null && amount.trim().isNotEmpty) {
-        bodyMap['amount'] = double.tryParse(amount.trim()) ?? amount;
+      final ids = <String>[];
+      for (final raw in items) {
+        final sid = '${raw['service_id'] ?? ''}'.trim();
+        if (sid.isNotEmpty && !ids.contains(sid)) ids.add(sid);
       }
-    } else {
-      bodyMap['service_id'] =
-          int.tryParse(primaryServiceId) ?? primaryServiceId;
-      if (serviceIds != null && serviceIds.isNotEmpty) {
-        bodyMap['service_ids'] =
-            serviceIds.map((id) => int.tryParse(id) ?? id).toList();
+      if (ids.isNotEmpty) {
+        resolvedServiceIds = ids;
+        resolvedPrimary = ids.first;
       }
-      bodyMap['date'] = date.trim();
-      bodyMap['time'] = time.trim();
-      if (staffId != null && staffId.isNotEmpty) {
-        bodyMap['staff_id'] = int.tryParse(staffId) ?? staffId;
-      }
-      if (amount != null && amount.trim().isNotEmpty) {
-        bodyMap['amount'] = double.tryParse(amount.trim()) ?? amount;
-      }
+      final first = items.first;
+      final d = '${first['date'] ?? ''}'.trim();
+      final t = '${first['time'] ?? ''}'.trim();
+      if (d.isNotEmpty) resolvedDate = d;
+      if (t.isNotEmpty) resolvedTime = t;
+      final s = '${first['staff_id'] ?? ''}'.trim();
+      if (s.isNotEmpty) resolvedStaff = s;
+    }
+
+    bodyMap['service_id'] = int.tryParse(resolvedPrimary) ?? resolvedPrimary;
+    if (resolvedServiceIds.isNotEmpty) {
+      bodyMap['service_ids'] =
+          resolvedServiceIds.map((id) => int.tryParse(id) ?? id).toList();
+    }
+    bodyMap['date'] = resolvedDate;
+    bodyMap['time'] = resolvedTime;
+    if (resolvedStaff != null && resolvedStaff.isNotEmpty) {
+      bodyMap['staff_id'] = int.tryParse(resolvedStaff) ?? resolvedStaff;
+    }
+    if (amount != null && amount.trim().isNotEmpty) {
+      bodyMap['amount'] = double.tryParse(amount.trim()) ?? amount;
     }
 
     final response = await http.post(

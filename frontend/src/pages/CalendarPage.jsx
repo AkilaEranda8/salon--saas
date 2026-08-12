@@ -100,7 +100,43 @@ function staffName(a) {
   return (a.staff ? `${a.staff.first_name||''} ${a.staff.last_name||''}`.trim() : '') || a.staff?.name || '';
 }
 function apptTime(a)  { return a.time || a.appointment_time || ''; }
-function apptDur(a)   { return a.service?.duration_minutes || a.duration || 60; }
+function salonNowMinutes() {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Colombo',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(new Date());
+  const get = (t) => parts.find((p) => p.type === t)?.value;
+  let hour = String(get('hour') || '00');
+  if (hour === '24') hour = '00';
+  return (Number(hour) || 0) * 60 + (Number(get('minute')) || 0);
+}
+
+function salonTodayKey() {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Colombo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date());
+  const get = (t) => parts.find((p) => p.type === t)?.value;
+  return `${get('year')}-${get('month')}-${get('day')}`;
+}
+
+/** Block length on the grid = sum of linked services, else primary, else 60. */
+function apptDur(a) {
+  const linked = Array.isArray(a?.services) ? a.services : [];
+  if (linked.length) {
+    const sum = linked.reduce((acc, s) => acc + (Number(s?.duration_minutes) || 0), 0);
+    if (sum > 0) return sum;
+  }
+  const primary = Number(a?.service?.duration_minutes);
+  if (Number.isFinite(primary) && primary > 0) return primary;
+  const explicit = Number(a?.duration_minutes ?? a?.duration);
+  if (Number.isFinite(explicit) && explicit > 0) return explicit;
+  return 60;
+}
 
 /* ── EventCard ──────────────────────────────────────── */
 function EventCard({ appt, colorIdx, heightPx, navigate }) {
@@ -246,7 +282,7 @@ function MonthView({ year, month, calData, todayDate, anchor, setAnchor, setView
   const lineColor = isDark ? '#334155' : '#F3F4F6';
   const dayText = isDark ? '#E2E8F0' : '#111827';
   const cells    = buildMonthGrid(year, month);
-  const todayKey = dateKey(todayDate);
+  const todayKey = salonTodayKey();
   const DOW_H    = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 
   return (
@@ -331,6 +367,7 @@ export default function CalendarPage() {
   const { toast } = useToast();
   const isAdmin   = ['superadmin','admin'].includes(user?.role);
   const todayDate = new Date();
+  const todayKey = salonTodayKey();
 
   const [viewMode, setViewMode] = useState('week');
   const [anchor,   setAnchor]   = useState(new Date());
@@ -338,10 +375,10 @@ export default function CalendarPage() {
   const [loading,  setLoading]  = useState(false);
   const [branches, setBranches] = useState([]);
   const [branchId, setBranchId] = useState('');
-  const [nowMin,   setNowMin]   = useState(() => { const n=new Date(); return n.getHours()*60+n.getMinutes(); });
+  const [nowMin,   setNowMin]   = useState(() => salonNowMinutes());
 
   useEffect(() => {
-    const t = setInterval(() => { const n=new Date(); setNowMin(n.getHours()*60+n.getMinutes()); }, 60000);
+    const t = setInterval(() => setNowMin(salonNowMinutes()), 60000);
     return () => clearInterval(t);
   }, []);
 
@@ -472,7 +509,7 @@ export default function CalendarPage() {
               {loading && <span style={{ fontSize: 10, color: '#9CA3AF' }}>…</span>}
             </div>
             {displayDays.map((d, di) => {
-              const isTod = sameDay(d, todayDate);
+              const isTod = dateKey(d) === todayKey;
               const dow   = d.getDay();
               const isWkd = dow === 0 || dow === 6;
               return (
@@ -527,7 +564,7 @@ export default function CalendarPage() {
                 {displayDays.map((d, di) => {
                   const key   = dateKey(d);
                   const appts = calData[key] || [];
-                  const isTod = sameDay(d, todayDate);
+                  const isTod = dateKey(d) === todayKey;
 
                   return (
                     <div

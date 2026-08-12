@@ -1397,29 +1397,41 @@ class AppState extends ChangeNotifier {
     }
     final ownStaffId = (_currentUser?.linkedStaffId ?? '').trim();
     final lockedToSelf = !seesAllBranchAppointments && ownStaffId.isNotEmpty;
-    final effectiveStaffId = lockedToSelf ? ownStaffId : staffId;
-    var effectiveItems = bookingItems;
-    // Multi-booking: keep per-service staff picks. Only fill empty with self.
-    if (lockedToSelf && bookingItems != null && bookingItems.isNotEmpty) {
-      effectiveItems = bookingItems.map((raw) {
-        final m = Map<String, dynamic>.from(raw);
-        final picked = '${m['staff_id'] ?? ''}'.trim();
-        if (picked.isEmpty) {
-          m['staff_id'] = int.tryParse(ownStaffId) ?? ownStaffId;
-        }
-        return m;
-      }).toList();
+    var effectiveStaffId = lockedToSelf ? ownStaffId : staffId;
+    var effectiveDate = date;
+    var effectiveTime = time;
+    var effectiveServiceIds = List<String>.from(orderedServiceIds);
+
+    // Legacy bookingItems → always ONE appointment (shared schedule).
+    if (bookingItems != null && bookingItems.isNotEmpty) {
+      final ids = <String>[];
+      for (final raw in bookingItems) {
+        final sid = '${raw['service_id'] ?? ''}'.trim();
+        if (sid.isNotEmpty && !ids.contains(sid)) ids.add(sid);
+      }
+      if (ids.isNotEmpty) effectiveServiceIds = ids;
+      final first = bookingItems.first;
+      final d = '${first['date'] ?? ''}'.trim();
+      final t = '${first['time'] ?? ''}'.trim();
+      if (d.isNotEmpty) effectiveDate = d;
+      if (t.isNotEmpty) effectiveTime = t;
+      if (!lockedToSelf) {
+        final picked = '${first['staff_id'] ?? ''}'.trim();
+        if (picked.isNotEmpty) effectiveStaffId = picked;
+      }
     }
-    final useItems = effectiveItems != null && effectiveItems.isNotEmpty;
-    if (!useItems && orderedServiceIds.isEmpty) {
+    if (lockedToSelf && ownStaffId.isNotEmpty) {
+      effectiveStaffId = ownStaffId;
+    }
+    if (effectiveServiceIds.isEmpty) {
       _lastError = 'Select at least one service.';
       return false;
     }
     try {
       await loadServices();
       if (appointmentId != null && appointmentId.isNotEmpty) {
-        final primary = orderedServiceIds.first;
-        final extraNames = orderedServiceIds
+        final primary = effectiveServiceIds.first;
+        final extraNames = effectiveServiceIds
             .skip(1)
             .map((id) {
               for (final s in _services) {
@@ -1430,7 +1442,7 @@ class AppState extends ChangeNotifier {
             .where((n) => n.isNotEmpty)
             .toList();
         final notes = AppointmentNotes.combineNotes(baseNotes, extraNames);
-        final autoTotal = _sumServicePrices(orderedServiceIds);
+        final autoTotal = _sumServicePrices(effectiveServiceIds);
         final amountStr =
             (amountOverride != null && amountOverride.trim().isNotEmpty)
             ? amountOverride.trim()
@@ -1440,9 +1452,9 @@ class AppState extends ChangeNotifier {
           appointmentId: appointmentId,
           customerName: customerName,
           primaryServiceId: primary,
-          serviceIds: orderedServiceIds,
-          date: date,
-          time: time,
+          serviceIds: effectiveServiceIds,
+          date: effectiveDate,
+          time: effectiveTime,
           customerId: customerId.isNotEmpty ? customerId : null,
           phone: phone,
           staffId: effectiveStaffId.isNotEmpty ? effectiveStaffId : null,
@@ -1453,27 +1465,9 @@ class AppState extends ChangeNotifier {
           recurringNextDate: recurringNextDate,
           recurringMessageTemplateIds: recurringMessageTemplateIds,
         );
-      } else if (useItems) {
-        final notes = baseNotes.trim();
-        await _api.createAppointment(
-          token: token,
-          branchId: effectiveBranchId,
-          customerName: customerName,
-          customerId: customerId.isNotEmpty ? customerId : null,
-          phone: phone,
-          notes: notes.isNotEmpty ? notes : null,
-          amount: amountOverride,
-          isRecurring: isRecurring,
-          recurringNextDate: recurringNextDate,
-          recurringMessageTemplateIds: recurringMessageTemplateIds,
-          items: effectiveItems,
-          advanceAmount: advanceAmount,
-          advanceMethod: advanceMethod,
-          customerPackageId: customerPackageId,
-        );
       } else {
-        final primary = orderedServiceIds.first;
-        final extraNames = orderedServiceIds
+        final primary = effectiveServiceIds.first;
+        final extraNames = effectiveServiceIds
             .skip(1)
             .map((id) {
               for (final s in _services) {
@@ -1484,7 +1478,7 @@ class AppState extends ChangeNotifier {
             .where((n) => n.isNotEmpty)
             .toList();
         final notes = AppointmentNotes.combineNotes(baseNotes, extraNames);
-        final autoTotal = _sumServicePrices(orderedServiceIds);
+        final autoTotal = _sumServicePrices(effectiveServiceIds);
         final amountStr =
             (amountOverride != null && amountOverride.trim().isNotEmpty)
             ? amountOverride.trim()
@@ -1494,9 +1488,9 @@ class AppState extends ChangeNotifier {
           branchId: effectiveBranchId,
           customerName: customerName,
           primaryServiceId: primary,
-          serviceIds: orderedServiceIds,
-          date: date,
-          time: time,
+          serviceIds: effectiveServiceIds,
+          date: effectiveDate,
+          time: effectiveTime,
           customerId: customerId.isNotEmpty ? customerId : null,
           phone: phone,
           staffId: effectiveStaffId.isNotEmpty ? effectiveStaffId : null,

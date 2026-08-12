@@ -259,7 +259,8 @@ const WATCH_MINUTES = Array.from({ length: 12 }, (_, i) => i * 5); // 00,05,…,
 
 /**
  * Watch-style time spinner (hour / minute / AM·PM).
- * For today, past hour/minute/AMPM choices are disabled — unlike native <input type="time">.
+ * Past times (today) are hidden. When `allowedSlots` is set (staff availability),
+ * only those free starts are selectable — busy blocks from long services stay out.
  */
 function WatchTimePicker({
   value,
@@ -268,6 +269,8 @@ function WatchTimePicker({
   dark = false,
   allowPast = false,
   disabled = false,
+  allowedSlots = null,
+  serverNow = null,
 }) {
   const rootRef = useRef(null);
   const [open, setOpen] = useState(false);
@@ -321,14 +324,29 @@ function WatchTimePicker({
     return () => document.removeEventListener('mousedown', onDoc);
   }, [open]);
 
-  const nowMin = timeToMinutesLocal(localNowTime());
-  const isToday = String(date || '').slice(0, 10) === localToday();
+  const nowParts = applyServerNow(serverNow);
+  const todayKey = nowParts?.date || localToday();
+  const nowMin = timeToMinutesLocal(nowParts?.time || localNowTime());
+  const isToday = String(date || '').slice(0, 10) === todayKey;
   const enforceFuture = isToday && !allowPast;
+  const restrictToSlots = Array.isArray(allowedSlots);
 
   const isDisabledCombo = (h12, min, ap) => {
-    if (!enforceFuture) return false;
-    return toMinutes24(h12, min, ap) < nowMin;
+    const total = toMinutes24(h12, min, ap);
+    if (enforceFuture && total < nowMin) return true;
+    if (restrictToSlots) {
+      if (!allowedSlots.length) return true;
+      const hhmm = fromMinutes24(total).hhmm;
+      return !allowedSlots.some((s) => normalizeApptTime(s) === hhmm);
+    }
+    return false;
   };
+
+  const visibleHours = WATCH_HOURS.filter((h) =>
+    WATCH_MINUTES.some((m) => !isDisabledCombo(h, m, ampm)));
+  const visibleMinutes = WATCH_MINUTES.filter((m) => !isDisabledCombo(hour12, m, ampm));
+  const visibleAmpm = ['AM', 'PM'].filter((ap) =>
+    WATCH_HOURS.some((h) => WATCH_MINUTES.some((m) => !isDisabledCombo(h, m, ap))));
 
   const commit = (h12, min, ap) => {
     if (isDisabledCombo(h12, min, ap)) return false;
@@ -407,16 +425,14 @@ function WatchTimePicker({
         >
           <div style={{ display: 'flex' }}>
             <div style={colStyle}>
-              {WATCH_HOURS.map((h) => {
-                const disabledH = WATCH_MINUTES.every((m) => isDisabledCombo(h, m, ampm));
+              {(visibleHours.length ? visibleHours : []).map((h) => {
                 const active = hour12 === h;
                 return (
                   <div
                     key={h}
-                    style={itemStyle(active, disabledH)}
+                    style={itemStyle(active, false)}
                     onMouseDown={(e) => {
                       e.preventDefault();
-                      if (disabledH) return;
                       setHour12(h);
                       const nextMin = WATCH_MINUTES.find((m) => !isDisabledCombo(h, m, ampm)) ?? minute;
                       setMinute(nextMin);
@@ -429,16 +445,14 @@ function WatchTimePicker({
               })}
             </div>
             <div style={colStyle}>
-              {WATCH_MINUTES.map((m) => {
-                const disabledM = isDisabledCombo(hour12, m, ampm);
+              {(visibleMinutes.length ? visibleMinutes : []).map((m) => {
                 const active = minute === m;
                 return (
                   <div
                     key={m}
-                    style={itemStyle(active, disabledM)}
+                    style={itemStyle(active, false)}
                     onMouseDown={(e) => {
                       e.preventDefault();
-                      if (disabledM) return;
                       setMinute(m);
                       commit(hour12, m, ampm);
                     }}
@@ -449,19 +463,15 @@ function WatchTimePicker({
               })}
             </div>
             <div style={{ ...colStyle, borderRight: 'none' }}>
-              {['AM', 'PM'].map((ap) => {
-                const disabledAp = WATCH_HOURS.every((h) =>
-                  WATCH_MINUTES.every((m) => isDisabledCombo(h, m, ap)));
+              {(visibleAmpm.length ? visibleAmpm : []).map((ap) => {
                 const active = ampm === ap;
                 return (
                   <div
                     key={ap}
-                    style={itemStyle(active, disabledAp)}
+                    style={itemStyle(active, false)}
                     onMouseDown={(e) => {
                       e.preventDefault();
-                      if (disabledAp) return;
                       setAmpm(ap);
-                      // pick first valid combo for this ampm
                       let nextH = hour12;
                       let nextM = minute;
                       if (isDisabledCombo(hour12, minute, ap)) {
@@ -486,7 +496,7 @@ function WatchTimePicker({
               })}
             </div>
           </div>
-          {enforceFuture && (
+          {(enforceFuture || restrictToSlots) && (
             <div style={{
               padding: '8px 10px',
               fontSize: 11,
@@ -494,8 +504,13 @@ function WatchTimePicker({
               color: '#D97706',
               borderTop: `1px solid ${dark ? '#334155' : '#F2F4F7'}`,
               background: dark ? '#0F172A' : '#FFFBEB',
-            }}>
-              Past times are disabled
+            }}
+            >
+              {restrictToSlots && !allowedSlots.length
+                ? 'No free slots for this staff/date and service duration'
+                : restrictToSlots
+                  ? 'Only free slots for this service duration'
+                  : 'Past times are hidden'}
             </div>
           )}
         </div>,
@@ -636,7 +651,8 @@ export default function AppointmentsPage() {
   const [apptPackageCache, setApptPackageCache] = useState({});
   const [availableSlots, setAvailableSlots] = useState([]);
   const [slotsLoading, setSlotsLoading] = useState(false);
-  /** Per-service slots for multi-booking: { [serviceId]: string[] } */
+  /** Asia/Colombo now from last availability response (past-slot filter). */
+  const [slotsServerNow, setSlotsServerNow] = useState(null);
 
   useEffect(() => {
     if (!canEdit) return;
@@ -1311,9 +1327,8 @@ export default function AppointmentsPage() {
         },
       });
       const fit = Array.isArray(data?.slots) ? data.slots : (Array.isArray(data) ? data : []);
-      const remainder = Array.isArray(data?.remainder_slots) ? data.remainder_slots : [];
       return {
-        slots: fit.length ? fit : remainder,
+        slots: fit,
         serverNow: data?.server_now || null,
       };
     } catch {
@@ -1340,10 +1355,12 @@ export default function AppointmentsPage() {
   useEffect(() => {
     if (!showForm) {
       setAvailableSlots([]);
+      setSlotsServerNow(null);
       return;
     }
     if (!form.staff_id || !form.date) {
       setAvailableSlots([]);
+      setSlotsServerNow(null);
       return;
     }
     let cancelled = false;
@@ -1353,6 +1370,7 @@ export default function AppointmentsPage() {
         if (cancelled) return;
         const normalized = filterFutureSlotsLocal(slots, form.date, serverNow);
         setAvailableSlots(normalized);
+        setSlotsServerNow(serverNow || null);
         const nt = normalizeApptTime(form.time);
         const editingSameSlot = !!(
           editItem
@@ -2229,6 +2247,12 @@ export default function AppointmentsPage() {
                       date={form.date}
                       value={normalizeApptTime(form.time) || ''}
                       allowPast={!!editItem && String(editItem.date || '').slice(0, 10) < today}
+                      serverNow={slotsServerNow}
+                      allowedSlots={
+                        form.staff_id && form.date && !slotsLoading
+                          ? availableSlots
+                          : null
+                      }
                       onChange={(t) => {
                         setFormErr('');
                         setForm((f) => ({ ...f, time: t }));

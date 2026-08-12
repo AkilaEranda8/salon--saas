@@ -461,7 +461,18 @@ const calendar = async (req, res) => {
       order: [['date', 'ASC'], ['time', 'ASC']],
       include: [
         { model: Staff,   as: 'staff',   attributes: ['id', 'name'] },
-        { model: Service, as: 'service', attributes: ['id', 'name'] },
+        {
+          model: Service,
+          as: 'service',
+          attributes: ['id', 'name', 'duration_minutes'],
+        },
+        {
+          model: Service,
+          as: 'services',
+          attributes: ['id', 'name', 'duration_minutes'],
+          through: { attributes: [] },
+          required: false,
+        },
         { model: Branch,  as: 'branch',  attributes: ['id', 'name', 'color'] },
       ],
     });

@@ -379,13 +379,12 @@ async function listAvailableSlots({
     minutes: end - start,
   }));
 
-  // If the next service is shorter than leftover time, fit slots win.
-  // If leftover exists but requested duration does not fit (e.g. 299 booked, 200 left),
-  // still return remainder start times so the next booking can pick after that job.
-  const slots = filterFutureSlots(
-    fitSlots.length ? fitSlots : remainderSlots,
-    dateKey,
-  );
+  // Bookable starts must fit the requested duration inside a free gap.
+  // Leftover after a long job already appears here when the next service fits
+  // (e.g. 120 min at 16:00 → next starts at 18:00+). Do not promote
+  // remainder_slots into `slots` — those are diagnostic only and caused
+  // pickers to offer times that cannot fit the selected service.
+  const slots = filterFutureSlots(fitSlots, dateKey);
 
   return {
     slots,

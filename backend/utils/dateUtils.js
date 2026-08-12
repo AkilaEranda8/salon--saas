@@ -30,13 +30,18 @@ const slDateString = (d = slNow()) => d.toISOString().slice(0, 10);
 
 /**
  * Normalize any TIME / Date / ISO / HH:MM(:SS) value to salon wall-clock HH:MM.
- * Does not timezone-shift plain "14:30:00" strings from MySQL TIME columns.
+ *
+ * MySQL TIME is wall-clock (no zone). Drivers often return it as a Date whose
+ * UTC hours/minutes ARE the clock (e.g. 16:00 → 1970-01-01T16:00:00.000Z).
+ * Do NOT apply Asia/Colombo offset there — that wrongly turns 16:00 into 21:30
+ * and breaks staff occupancy (120 min at 4:00 looked free until ~9:30).
+ *
+ * Full ISO datetimes (with "T") are real instants and ARE shifted to Colombo.
  */
 function normalizeWallClockTime(value) {
   if (value == null || value === '') return '';
   if (value instanceof Date && !Number.isNaN(value.getTime())) {
-    const shifted = new Date(value.getTime() + SL_OFFSET_MS);
-    return `${pad2(shifted.getUTCHours())}:${pad2(shifted.getUTCMinutes())}`;
+    return `${pad2(value.getUTCHours())}:${pad2(value.getUTCMinutes())}`;
   }
   const s = String(value).trim();
   if (/^\d{4}-\d{2}-\d{2}T/.test(s)) {

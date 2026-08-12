@@ -26,7 +26,7 @@ const { breakdownForPayment } = require('../services/paymentCommissionBreakdown'
 const { hasFranchiseCommission } = require('../utils/tenantFeatures');
 const { shareForStaff, attachPaymentCommissionTotals } = require('../utils/paymentCommissionTotals');
 const { enrichPaymentsForView } = require('../utils/enrichPaymentsForView');
-const { aggregateStaffCommissionFromDb } = require('../utils/commissionFromTransactions');
+const { aggregateStaffCommissionFromDb, collectPeriodStaffIds } = require('../utils/commissionFromTransactions');
 const {
   defaultWorkingHours,
   normalizeWorkingHours,
@@ -777,6 +777,7 @@ const commissionSummary = async (req, res) => {
     const staffWhere = await buildStaffBranchWhere(req, effectiveBranchId);
 
     const paymentWhere = tenantWhere(req);
+    if (effectiveBranchId) paymentWhere.branch_id = effectiveBranchId;
     if (month && year) {
       const m = String(month).padStart(2, '0');
       const start = `${year}-${m}-01`;
@@ -808,6 +809,37 @@ const commissionSummary = async (req, res) => {
       raw: true,
     });
 
+    const payIds = periodPayments.map((p) => Number(p.id)).filter((id) => id > 0);
+    const extraIds = (await collectPeriodStaffIds(periodPayments)).filter((id) => !staffIds.includes(id));
+    if (extraIds.length) {
+      const extraStaff = await Staff.findAll({
+        where: { id: { [Op.in]: extraIds }, ...tenantWhere(req) },
+        include: [
+          { model: Branch, as: 'branch', attributes: ['id', 'name'] },
+          { model: Branch, as: 'branches', attributes: ['id', 'name'], through: { attributes: [] } },
+        ],
+      });
+      staffRows.push(...extraStaff);
+      staffIds.push(...extraStaff.map((s) => Number(s.id)));
+      const found = new Set(extraStaff.map((s) => Number(s.id)));
+      for (const id of extraIds) {
+        if (found.has(id)) continue;
+        staffRows.push({
+          id,
+          name: `Former staff #${id}`,
+          role_title: '',
+          branch: null,
+          branches: [],
+          branch_id: null,
+          commission_type: 'percentage',
+          commission_value: 0,
+          salary_type: 'commission_only',
+          base_salary: 0,
+        });
+        staffIds.push(id);
+      }
+    }
+
     const aggMap = {};
     const bump = (id, { commission = 0, revenue = 0, count = 0 } = {}) => {
       const prev = aggMap[id] || { totalRevenue: 0, totalCommission: 0, appointmentCount: 0 };
@@ -819,7 +851,7 @@ const commissionSummary = async (req, res) => {
     };
 
     const payMap = await aggregateStaffCommissionFromDb({
-      where: paymentWhere,
+      where: payIds.length ? { payment_id: { [Op.in]: payIds } } : { id: { [Op.in]: [-1] } },
       staffIds,
       payments: periodPayments,
     });

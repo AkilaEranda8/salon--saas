@@ -524,7 +524,7 @@ export default function LoginPage({ platformMode = false }) {
               </button>
             </form>
           )}
-          <button type="button" className="lp-back" onClick={() => setStepForgot(false)}>← Back to sign in</button>
+          <button type="button" className="lp-back" onClick={() => { setStepForgot(false); setShowPw(false); }}>← Back to sign in</button>
         </>
       );
     }
@@ -555,7 +555,7 @@ export default function LoginPage({ platformMode = false }) {
               <button
                 type="button"
                 className="lp-forgot-inline"
-                onClick={() => { setStepForgot(true); setForgotSent(false); setForgotUsername(''); setForgotError(''); }}
+                onClick={() => { setStepForgot(true); setForgotSent(false); setForgotUsername(''); setForgotError(''); setShowPw(false); }}
               >
                 Forgot password?
               </button>

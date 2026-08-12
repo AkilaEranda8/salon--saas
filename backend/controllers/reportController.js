@@ -4,7 +4,7 @@ const { Appointment, Payment, PaymentSplit, Branch, Staff, Service, InvProduct, 
 const XLSX = require('xlsx');
 const { tenantWhere } = require('../utils/tenantScope');
 const { paymentTotalCommission } = require('../utils/paymentCommissionTotals');
-const { aggregateStaffCommissionFromDb, sumCommissionFromDb } = require('../utils/commissionFromTransactions');
+const { aggregateStaffCommissionFromDb, sumCommissionForPayments, loadPaymentsForCommission } = require('../utils/commissionFromTransactions');
 
 /* ── Sri Lanka timezone helpers (UTC+05:30) ─────────────────── */
 const SL_OFFSET_MS = 5.5 * 60 * 60 * 1000;
@@ -36,10 +36,12 @@ function getReportDateWhere(query = {}) {
   if (query.date && /^\d{4}-\d{2}-\d{2}$/.test(query.date)) {
     return { date: query.date };
   }
-  if (query.from && query.to
-    && /^\d{4}-\d{2}-\d{2}$/.test(query.from)
-    && /^\d{4}-\d{2}-\d{2}$/.test(query.to)) {
-    return { date: { [Op.between]: [query.from, query.to] } };
+  const fromOk = query.from && /^\d{4}-\d{2}-\d{2}$/.test(query.from);
+  const toOk = query.to && /^\d{4}-\d{2}-\d{2}$/.test(query.to);
+  if (fromOk || toOk) {
+    const start = fromOk ? query.from : query.to;
+    const end = toOk ? query.to : (fromOk ? slToday() : query.from);
+    return { date: { [Op.between]: [start, end] } };
   }
   if (query.month) {
     const range = getMonthRange(query.month);
@@ -103,12 +105,7 @@ const revenue = async (req, res) => {
 // GET /api/reports/services — revenue per service
 const services = async (req, res) => {
   try {
-    const where = getBranchWhere(req);
-    if (req.query.month) {
-      const [year, month] = req.query.month.split('-');
-      const lastDay = new Date(year, month, 0).getDate();
-      where.date = { [Op.between]: [`${year}-${month}-01`, `${year}-${month}-${lastDay}`] };
-    }
+    const where = { ...getBranchWhere(req), ...getReportDateWhere(req.query) };
 
     const rows = await Payment.findAll({
       where,
@@ -155,11 +152,15 @@ const staffReport = async (req, res) => {
     // 3. Per-staff commission shares (multi-staff + helpers), not header staff_id only
     const periodPayments = await Payment.findAll({
       where: { ...branchWhere, ...dateWhere },
-      attributes: ['id', 'staff_id', 'total_amount', 'commission_amount', 'commission_breakdown', 'helper_commission'],
+      attributes: [
+        'id', 'staff_id', 'total_amount', 'commission_amount', 'commission_breakdown',
+        'helper_commission', 'manager_staff_id', 'manager_commission_amount',
+      ],
       raw: true,
     });
+    const payIds = periodPayments.map((p) => Number(p.id)).filter((id) => id > 0);
     const payMap = await aggregateStaffCommissionFromDb({
-      where: { ...branchWhere, ...dateWhere },
+      where: payIds.length ? { payment_id: { [Op.in]: payIds } } : { id: { [Op.in]: [-1] } },
       staffIds,
       payments: periodPayments,
     });
@@ -217,12 +218,7 @@ const staffReport = async (req, res) => {
 // GET /api/reports/appointments — status breakdown
 const appointmentStats = async (req, res) => {
   try {
-    const where = getBranchWhere(req);
-    if (req.query.month) {
-      const [year, month] = req.query.month.split('-');
-      const lastDay = new Date(year, month, 0).getDate();
-      where.date = { [Op.between]: [`${year}-${month}-01`, `${year}-${month}-${lastDay}`] };
-    }
+    const where = { ...getBranchWhere(req), ...getReportDateWhere(req.query) };
 
     const rows = await Appointment.findAll({
       where,
@@ -256,22 +252,31 @@ const dashboard = async (req, res) => {
     const [
       todayAppts,
       todayRevenue,
-      monthRevenue,
-      monthCommission,
+      monthPayStats,
       totalCustomers,
       lowStockCount,
       pendingReminders,
-      branchStats,
+      branchAppts,
     ] = await Promise.all([
       Appointment.count({ where: { ...branchWhere, date: today } }),
-      Payment.sum('total_amount',    { where: { ...branchWhere, date: today } }),
-      Payment.sum('total_amount',    { where: monthPayWhere }),
+      Payment.sum('total_amount', { where: { ...branchWhere, date: today } }),
       (async () => {
-        const { txnSum, coveredPayIds } = await sumCommissionFromDb(monthPayWhere);
-        const restWhere = { ...monthPayWhere };
-        if (coveredPayIds.length) restWhere.id = { [Op.notIn]: coveredPayIds };
-        const rest = await Payment.sum('commission_amount', { where: restWhere }) || 0;
-        return txnSum + rest;
+        const monthPayments = await loadPaymentsForCommission(monthPayWhere);
+        const monthRevenue = monthPayments.reduce((s, p) => s + (parseFloat(p.total_amount) || 0), 0);
+        const monthCommission = await sumCommissionForPayments(monthPayments);
+        const byBranch = {};
+        for (const p of monthPayments) {
+          const bid = Number(p.branch_id);
+          if (!byBranch[bid]) byBranch[bid] = [];
+          byBranch[bid].push(p);
+        }
+        const branchRevenue = {};
+        const branchCommission = {};
+        for (const [bid, rows] of Object.entries(byBranch)) {
+          branchRevenue[bid] = rows.reduce((s, p) => s + (parseFloat(p.total_amount) || 0), 0);
+          branchCommission[bid] = await sumCommissionForPayments(rows);
+        }
+        return { monthRevenue, monthCommission, branchRevenue, branchCommission };
       })(),
       Customer.count({ where: branchWhere }),
       InvProduct.count({
@@ -282,93 +287,45 @@ const dashboard = async (req, res) => {
         },
       }),
       Reminder.count({ where: { ...branchWhere, is_done: false } }),
-      // Per-branch stats for admin/superadmin.
-      // Load branches + aggregates separately — joining appointments AND payments
-      // in one query multiplies rows (cartesian product) and inflates totals.
       !req.userBranchId
-        ? (async () => {
-            const branchFilter = {
-              ...tenantWhere(req),
-              ...(req.query.branchId ? { id: req.query.branchId } : {}),
-              status: 'active',
-            };
-            const branches = await Branch.findAll({
-              where: branchFilter,
-              attributes: ['id', 'name', 'status', 'color'],
-              order: [['name', 'ASC']],
-            });
-            if (!branches.length) return [];
-
-            const branchIds = branches.map((b) => b.id);
-            const tenantFilter = tenantWhere(req);
-            const [apptRows, payRows, txnRows] = await Promise.all([
-              Appointment.findAll({
-                where: { ...tenantFilter, branch_id: { [Op.in]: branchIds }, date: today },
-                attributes: ['branch_id', [fn('COUNT', col('Appointment.id')), 'todayAppts']],
-                group: ['branch_id'],
-                raw: true,
-              }),
-              Payment.findAll({
-                where: {
-                  ...tenantFilter,
-                  branch_id: { [Op.in]: branchIds },
-                  date: { [Op.between]: [monthStart, monthEnd] },
-                },
-                attributes: [
-                  'branch_id',
-                  [fn('SUM', col('total_amount')), 'monthRevenue'],
-                  [fn('SUM', col('commission_amount')), 'monthCommission'],
-                ],
-                group: ['branch_id'],
-                raw: true,
-              }),
-              CommissionTransaction.findAll({
-                where: {
-                  ...tenantFilter,
-                  branch_id: { [Op.in]: branchIds },
-                  date: { [Op.between]: [monthStart, monthEnd] },
-                },
-                attributes: [
-                  'branch_id',
-                  [fn('SUM', col('commission_amount')), 'monthCommission'],
-                ],
-                group: ['branch_id'],
-                raw: true,
-              }).catch(() => []),
-            ]);
-
-            const apptMap = Object.fromEntries(
-              apptRows.map((r) => [Number(r.branch_id), Number(r.todayAppts || 0)])
-            );
-            const txnCommMap = Object.fromEntries(
-              txnRows.map((r) => [Number(r.branch_id), Number(r.monthCommission || 0)])
-            );
-            const payMap = Object.fromEntries(
-              payRows.map((r) => [Number(r.branch_id), {
-                monthRevenue: Number(r.monthRevenue || 0),
-                monthCommission: txnCommMap[Number(r.branch_id)] != null
-                  ? txnCommMap[Number(r.branch_id)]
-                  : Number(r.monthCommission || 0),
-              }])
-            );
-
-            return branches.map((b) => {
-              const json = b.toJSON();
-              const pay = payMap[b.id] || { monthRevenue: 0, monthCommission: 0 };
-              json.todayAppts = apptMap[b.id] || 0;
-              json.monthRevenue = pay.monthRevenue;
-              json.monthCommission = pay.monthCommission;
-              return json;
-            });
-          })()
+        ? Appointment.findAll({
+            where: { ...tenantWhere(req), date: today },
+            attributes: ['branch_id', [fn('COUNT', col('Appointment.id')), 'todayAppts']],
+            group: ['branch_id'],
+            raw: true,
+          })
         : [],
     ]);
+
+    let branchStats = [];
+    if (!req.userBranchId) {
+      const branchFilter = {
+        ...tenantWhere(req),
+        ...(req.query.branchId ? { id: req.query.branchId } : {}),
+        status: 'active',
+      };
+      const branches = await Branch.findAll({
+        where: branchFilter,
+        attributes: ['id', 'name', 'status', 'color'],
+        order: [['name', 'ASC']],
+      });
+      const apptMap = Object.fromEntries(
+        (branchAppts || []).map((r) => [Number(r.branch_id), Number(r.todayAppts || 0)])
+      );
+      branchStats = branches.map((b) => {
+        const json = b.toJSON();
+        json.todayAppts = apptMap[b.id] || 0;
+        json.monthRevenue = monthPayStats.branchRevenue[b.id] || 0;
+        json.monthCommission = monthPayStats.branchCommission[b.id] || 0;
+        return json;
+      });
+    }
 
     return res.json({
       todayAppts,
       todayRevenue:    todayRevenue    || 0,
-      monthRevenue:    monthRevenue    || 0,
-      monthCommission: monthCommission || 0,
+      monthRevenue:    monthPayStats.monthRevenue || 0,
+      monthCommission: monthPayStats.monthCommission || 0,
       totalCustomers,
       lowStockCount,
       pendingReminders,
@@ -531,12 +488,7 @@ const exportExcel = async (req, res) => {
 
     // ── Sheet 6: Summary ──
     const totalRevenue    = payments.reduce((s, p) => s + Number(p.total_amount || 0), 0);
-    const { txnSum, coveredPayIds } = await sumCommissionFromDb(payWhere);
-    const restCommission = payments.reduce((s, p) => {
-      if (coveredPayIds.includes(Number(p.id))) return s;
-      return s + paymentTotalCommission(p);
-    }, 0);
-    const totalCommission = txnSum + restCommission;
+    const totalCommission = await sumCommissionForPayments(payments);
     const totalExpenses   = expenses.reduce((s, p) => s + Number(p.amount || 0), 0);
     const summaryData = [
       { Metric: 'Total Revenue', Value: totalRevenue },

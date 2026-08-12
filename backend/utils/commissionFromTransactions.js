@@ -1,6 +1,12 @@
 const { Op } = require('sequelize');
 const { CommissionTransaction } = require('../models');
-const { staffCommissionShares } = require('./paymentCommissionTotals');
+const { staffCommissionShares, paymentTotalCommission } = require('./paymentCommissionTotals');
+
+const PAYMENT_COMMISSION_ATTRS = [
+  'id', 'branch_id', 'staff_id', 'total_amount', 'commission_amount',
+  'commission_breakdown', 'helper_commission',
+  'manager_staff_id', 'manager_commission_amount',
+];
 
 function emptyShare() {
   return { mainCommission: 0, helperCommission: 0, totalRevenue: 0, paymentCount: 0 };
@@ -121,4 +127,103 @@ async function sumCommissionFromDb(where = {}) {
   return { txnSum, coveredPayIds: [...new Set(coveredPayIds)] };
 }
 
-module.exports = { aggregateStaffCommissionFromDb, sumCommissionFromDb, emptyShare };
+function staffIdsFromPayments(payments = []) {
+  const ids = new Set();
+  for (const p of payments) {
+    const json = p?.toJSON ? p.toJSON() : p;
+    for (const share of staffCommissionShares(json)) {
+      if (share.staff_id > 0) ids.add(Number(share.staff_id));
+    }
+    const mid = Number(json.manager_staff_id);
+    if (Number.isInteger(mid) && mid > 0) ids.add(mid);
+  }
+  return ids;
+}
+
+async function staffIdsFromPaymentTxns(paymentIds = []) {
+  const ids = new Set();
+  const payIds = paymentIds.map(Number).filter((id) => id > 0);
+  if (!payIds.length) return ids;
+  try {
+    const rows = await CommissionTransaction.findAll({
+      where: { payment_id: { [Op.in]: payIds } },
+      attributes: ['worker_staff_id', 'manager_staff_id'],
+      raw: true,
+    });
+    for (const r of rows) {
+      const wid = Number(r.worker_staff_id);
+      const mid = Number(r.manager_staff_id);
+      if (Number.isInteger(wid) && wid > 0) ids.add(wid);
+      if (Number.isInteger(mid) && mid > 0) ids.add(mid);
+    }
+  } catch (err) {
+    console.warn('staffIdsFromPaymentTxns skipped:', err.message);
+  }
+  return ids;
+}
+
+/**
+ * Salon commission for a set of payments: same formula as per-staff rollup
+ * (txn-first, then share / manager gap-fill). Keyed by payment id, not txn.date.
+ */
+async function sumCommissionForPayments(payments = []) {
+  const list = Array.isArray(payments) ? payments : [];
+  if (!list.length) return 0;
+  const payIds = list.map((p) => Number(p.id)).filter((id) => id > 0);
+  const staffIds = [
+    ...new Set([
+      ...staffIdsFromPayments(list),
+      ...(await staffIdsFromPaymentTxns(payIds)),
+    ]),
+  ];
+  if (!staffIds.length) {
+    return Math.round(list.reduce((sum, p) => {
+      const json = p?.toJSON ? p.toJSON() : p;
+      return sum + paymentTotalCommission(json) + (parseFloat(json.manager_commission_amount) || 0);
+    }, 0) * 100) / 100;
+  }
+  const map = await aggregateStaffCommissionFromDb({
+    where: { payment_id: { [Op.in]: payIds } },
+    staffIds,
+    payments: list,
+  });
+  let total = 0;
+  for (const row of Object.values(map)) {
+    total += (row.mainCommission || 0) + (row.helperCommission || 0);
+  }
+  return Math.round(total * 100) / 100;
+}
+
+async function collectPeriodStaffIds(payments = []) {
+  const payIds = (payments || []).map((p) => Number(p.id)).filter((id) => id > 0);
+  return [...new Set([
+    ...staffIdsFromPayments(payments),
+    ...(await staffIdsFromPaymentTxns(payIds)),
+  ])];
+}
+
+async function loadPaymentsForCommission(where = {}) {
+  const { Payment } = require('../models');
+  return Payment.findAll({
+    where,
+    attributes: PAYMENT_COMMISSION_ATTRS,
+    raw: true,
+  });
+}
+
+async function sumPeriodCommission(where = {}) {
+  const payments = await loadPaymentsForCommission(where);
+  return sumCommissionForPayments(payments);
+}
+
+module.exports = {
+  aggregateStaffCommissionFromDb,
+  sumCommissionFromDb,
+  sumCommissionForPayments,
+  sumPeriodCommission,
+  loadPaymentsForCommission,
+  staffIdsFromPayments,
+  collectPeriodStaffIds,
+  PAYMENT_COMMISSION_ATTRS,
+  emptyShare,
+};

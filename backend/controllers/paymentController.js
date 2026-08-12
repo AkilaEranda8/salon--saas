@@ -11,8 +11,9 @@ const { tenantWhere, byIdWhere, resolveTenantId } = require('../utils/tenantScop
 const { slToday } = require('../utils/dateUtils');
 const { redeemPackageForPayment } = require('../utils/packageRedemption');
 const { resolveCustomerId } = require('../utils/resolveCustomer');
-const { attachPaymentCommissionTotals, paymentTotalCommission } = require('../utils/paymentCommissionTotals');
+const { attachPaymentCommissionTotals } = require('../utils/paymentCommissionTotals');
 const { enrichPaymentsForView } = require('../utils/enrichPaymentsForView');
+const { sumCommissionForPayments } = require('../utils/commissionFromTransactions');
 
 const getBranchWhere = (req) => {
   const where = tenantWhere(req);
@@ -54,6 +55,12 @@ const list = async (req, res) => {
       const start = `${year}-${month}-01`;
       const last  = new Date(year, month, 0).getDate();
       where.date  = { [Op.between]: [start, `${year}-${month}-${last}`] };
+    } else if (req.query.from || req.query.to) {
+      const fromOk = req.query.from && /^\d{4}-\d{2}-\d{2}$/.test(req.query.from);
+      const toOk = req.query.to && /^\d{4}-\d{2}-\d{2}$/.test(req.query.to);
+      if (fromOk && toOk) where.date = { [Op.between]: [req.query.from, req.query.to] };
+      else if (fromOk) where.date = { [Op.gte]: req.query.from };
+      else if (toOk) where.date = { [Op.lte]: req.query.to };
     }
     if (req.query.customerId) where.customer_id = req.query.customerId;
 
@@ -692,24 +699,38 @@ const summary = async (req, res) => {
       const start = `${year}-${month}-01`;
       const last  = new Date(year, month, 0).getDate();
       where.date  = { [Op.between]: [start, `${year}-${month}-${last}`] };
+    } else if (req.query.from || req.query.to) {
+      const fromOk = req.query.from && /^\d{4}-\d{2}-\d{2}$/.test(req.query.from);
+      const toOk = req.query.to && /^\d{4}-\d{2}-\d{2}$/.test(req.query.to);
+      if (fromOk && toOk) where.date = { [Op.between]: [req.query.from, req.query.to] };
+      else if (fromOk) where.date = { [Op.gte]: req.query.from };
+      else if (toOk) where.date = { [Op.lte]: req.query.to };
     }
 
     const paymentRows = await Payment.findAll({
       where,
-      attributes: ['branch_id', 'total_amount', 'commission_amount', 'helper_commission', 'commission_breakdown'],
+      attributes: [
+        'id', 'branch_id', 'total_amount', 'commission_amount', 'helper_commission',
+        'commission_breakdown', 'manager_staff_id', 'manager_commission_amount',
+      ],
       include: [{ model: Staff, as: 'staff', attributes: ['id', 'name'] }],
     });
 
     const totalsMap = new Map();
+    const byBranch = new Map();
     for (const row of paymentRows) {
       const branchId = row.branch_id;
       if (!totalsMap.has(branchId)) {
         totalsMap.set(branchId, { branch_id: branchId, revenue: 0, commission: 0, count: 0 });
+        byBranch.set(branchId, []);
       }
       const acc = totalsMap.get(branchId);
       acc.revenue += parseFloat(row.total_amount || 0);
-      acc.commission += paymentTotalCommission(row);
       acc.count += 1;
+      byBranch.get(branchId).push(row);
+    }
+    for (const [branchId, rows] of byBranch.entries()) {
+      totalsMap.get(branchId).commission = await sumCommissionForPayments(rows);
     }
 
     const totals = Array.from(totalsMap.values());

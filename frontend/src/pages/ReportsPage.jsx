@@ -27,6 +27,15 @@ const BASE_TABS = [
   { key:'expenses',  label:'Expenses' },
 ];
 const S = { fontFamily:"'Inter',sans-serif" };
+const SL_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+const slToday = () => new Date(Date.now() + SL_OFFSET_MS).toISOString().slice(0, 10);
+const slThisMonth = () => slToday().slice(0, 7);
+const monthLastDay = (ym) => {
+  const [y, m] = String(ym || '').split('-').map(Number);
+  if (!y || !m) return slToday();
+  const last = new Date(y, m, 0).getDate();
+  return `${String(y).padStart(4, '0')}-${String(m).padStart(2, '0')}-${String(last).padStart(2, '0')}`;
+};
 
 /* ── Helpers ───────────────────────────────────────────────── */
 const fmt = v => `Rs. ${Number(v||0).toLocaleString()}`;
@@ -81,10 +90,10 @@ export default function ReportsPage() {
     [franchiseCommission],
   );
 
-  const today    = new Date().toISOString().slice(0,10);
-  const curMonth = today.slice(0,7);
-  const monthStart = curMonth + '-01';
-  const monthEnd   = today;
+  const today    = slToday();
+  const curMonth = slThisMonth();
+  const monthStart = `${curMonth}-01`;
+  const monthEnd   = monthLastDay(curMonth);
 
   /* ── State ── */
   const [tab, setTab]             = useState('overview');
@@ -101,6 +110,7 @@ export default function ReportsPage() {
   const [expSummary, setExpSummary] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [expenses, setExpenses]   = useState([]);
+  const [periodSummary, setPeriodSummary] = useState({ revenue: 0, commission: 0, count: 0 });
 
   /* ── Load data ── */
   const load = useCallback(async () => {
@@ -110,15 +120,18 @@ export default function ReportsPage() {
       const month = dateFrom.slice(0,7);
       const year = dateFrom.slice(0,4);
 
+      const from = dateFrom || monthStart;
+      const to = dateTo || slToday();
+
       const results = await Promise.allSettled([
         api.get('/reports/revenue', { params: bq }),
-        api.get('/reports/services', { params: { month, ...bq } }),
-        api.get('/reports/staff', { params: { from: dateFrom, to: dateTo, ...bq } }),
-        api.get('/reports/appointments', { params: { month, ...bq } }),
+        api.get('/reports/services', { params: { from, to, ...bq } }),
+        api.get('/reports/staff', { params: { from, to, ...bq } }),
+        api.get('/reports/appointments', { params: { from, to, ...bq } }),
         api.get('/expenses/summary', { params: { year, ...bq } }),
-        api.get('/payments', { params: { limit: 500, from: dateFrom, to: dateTo, ...bq } }),
+        api.get('/payments/summary', { params: { from, to, ...bq } }),
         api.get('/customers', { params: { limit: 500, ...bq } }),
-        api.get('/expenses', { params: { limit: 500, from: dateFrom, to: dateTo, ...bq } }),
+        api.get('/expenses', { params: { limit: 500, from, to, ...bq } }),
       ]);
 
       const val = (i) => results[i].status === 'fulfilled' ? results[i].value.data : null;
@@ -155,8 +168,13 @@ export default function ReportsPage() {
 
       setExpSummary(Array.isArray(val(4)) ? val(4) : (val(4)?.data || []));
 
-      const payRaw = val(5);
-      // not used directly in charts for now
+      const paySum = val(5);
+      const payRows = Array.isArray(paySum) ? paySum : [];
+      setPeriodSummary(payRows.reduce((acc, row) => ({
+        revenue: acc.revenue + Number(row.revenue || 0),
+        commission: acc.commission + Number(row.commission || 0),
+        count: acc.count + Number(row.count || 0),
+      }), { revenue: 0, commission: 0, count: 0 }));
 
       const custRaw = val(6);
       setCustomers(Array.isArray(custRaw) ? custRaw : (custRaw?.data || []));
@@ -215,14 +233,6 @@ export default function ReportsPage() {
     return Object.values(map);
   }, [revenueChart, expSummary]);
 
-  // Totals
-  const totalRevenue    = revenueChart.reduce((s,r) => s + r.revenue, 0);
-  const totalCommission = revenueChart.reduce((s,r) => s + r.commission, 0);
-  const totalExpenses   = revExpData.reduce((s,r) => s + r.expenses, 0);
-  const grossProfit     = totalRevenue - totalExpenses;
-  const totalAppts      = apptStats.reduce((s,a) => s + a.value, 0);
-
-  // Service category breakdown
   const catBreakdown = useMemo(() => {
     const map = {};
     services.forEach(s => {
@@ -247,6 +257,11 @@ export default function ReportsPage() {
   }, [expenses]);
 
   const totalExpFromList = expCatBreakdown.reduce((s,e) => s + e.total, 0);
+  const totalRevenue    = periodSummary.revenue;
+  const totalCommission = periodSummary.commission;
+  const totalExpenses   = totalExpFromList;
+  const grossProfit     = totalRevenue - totalExpenses;
+  const totalAppts      = apptStats.reduce((s,a) => s + a.value, 0);
 
   // Top customers
   const topCustomers = useMemo(() => [...customers].sort((a,b) => Number(b.total_spent||0) - Number(a.total_spent||0)).slice(0,20), [customers]);
@@ -751,10 +766,14 @@ export default function ReportsPage() {
             style={{ padding:'8px 12px', borderRadius:10, border:'1.5px solid #D0D5DD', background: dateFrom === today && dateTo === today ? '#EFF6FF' : '#fff', color: dateFrom === today && dateTo === today ? '#2563EB' : '#344054', fontWeight:600, cursor:'pointer', fontSize:12, ...S }}>
             Today
           </button>
-          <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
+          <button type="button" onClick={() => { setDateFrom(monthStart); setDateTo(monthEnd); }}
+            style={{ padding:'8px 12px', borderRadius:10, border:'1.5px solid #D0D5DD', background: dateFrom === monthStart && dateTo === monthEnd ? '#EFF6FF' : '#fff', color: dateFrom === monthStart && dateTo === monthEnd ? '#2563EB' : '#344054', fontWeight:600, cursor:'pointer', fontSize:12, ...S }}>
+            This month
+          </button>
+          <input type="date" aria-label="From date" value={dateFrom} onChange={e => setDateFrom(e.target.value || monthStart)}
             style={{ padding:'8px 12px', borderRadius:10, border:'1.5px solid #D0D5DD', fontSize:13, color:'#101828', ...S }}/>
           <span style={{ color:'#98A2B3', fontSize:13, ...S }}>to</span>
-          <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
+          <input type="date" aria-label="To date" value={dateTo} onChange={e => setDateTo(e.target.value || slToday())}
             style={{ padding:'8px 12px', borderRadius:10, border:'1.5px solid #D0D5DD', fontSize:13, color:'#101828', ...S }}/>
           <button onClick={load} style={{ padding:'8px 16px', borderRadius:10, border:'1.5px solid #D0D5DD', background:'#fff', color:'#344054', fontWeight:600, cursor:'pointer', fontSize:13, ...S }}>
             Refresh

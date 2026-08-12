@@ -971,7 +971,7 @@ export default function PaymentsPage() {
   const canEdit  = ['superadmin','admin','manager','staff'].includes(user?.role);
   const isAdmin  = ['superadmin','admin'].includes(user?.role);
   const hasFixedBranch = !!user?.branchId;
-  const today = new Date().toISOString().slice(0,10);
+  const today = new Date(Date.now() + 5.5 * 60 * 60 * 1000).toISOString().slice(0,10);
   const curMonth = today.slice(0,7);
   const [payments, setPayments]   = useState([]);
   const [summary, setSummary]     = useState(null);

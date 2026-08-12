@@ -22,7 +22,7 @@ export default function ExpensesPage() {
   const canEdit      = ['superadmin','admin','manager'].includes(user?.role);
   const canAdd       = ['superadmin', 'admin', 'manager'].includes(user?.role);
   const canPickBranch = ['superadmin', 'admin'].includes(user?.role);
-  const today    = new Date().toISOString().slice(0,10);
+  const today    = new Date(Date.now() + 5.5 * 60 * 60 * 1000).toISOString().slice(0,10);
   const curMonth = today.slice(0,7);
   const [items, setItems]       = useState([]);
   const [branches, setBranches] = useState([]);

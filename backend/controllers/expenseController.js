@@ -1,6 +1,7 @@
 const { Op, fn, col, literal } = require('sequelize');
 const { Expense, Branch, User, Payment, Service } = require('../models');
 const { byIdWhere, resolveTenantId } = require('../utils/tenantScope');
+const { sumPeriodCommission } = require('../utils/commissionFromTransactions');
 
 // Scope to tenant branches (works even when payment/expense rows lack tenant_id).
 const getBranchWhere = async (req) => {
@@ -154,10 +155,11 @@ const profitLoss = async (req, res) => {
       where: payWhere,
       attributes: [
         [literal('COALESCE(SUM(`total_amount`),    0)'), 'revenue'],
-        [literal('COALESCE(SUM(`commission_amount`), 0)'), 'commission'],
       ],
       raw: true,
     });
+
+    const commission = await sumPeriodCommission(payWhere);
 
     // Total expenses
     const [expTotals] = await Expense.findAll({
@@ -186,7 +188,6 @@ const profitLoss = async (req, res) => {
     });
 
     const revenue    = parseFloat(payTotals?.revenue    || 0);
-    const commission = parseFloat(payTotals?.commission || 0);
     const expenses   = parseFloat(expTotals?.totalExpenses || 0);
 
     const expenseBreakdown = {};

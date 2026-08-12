@@ -314,15 +314,38 @@ const attachServiceIdsToAppointments = async (appointments) => {
     });
   }
 
+  const allStaffIds = [...new Set(rows.map((r) => Number(r.staff_id)).filter((id) => id > 0))];
+  const allSvcIds = [...new Set(rows.map((r) => Number(r.service_id)).filter((id) => id > 0))];
+  const [staffRows, svcRows] = await Promise.all([
+    allStaffIds.length
+      ? Staff.findAll({ where: { id: allStaffIds }, attributes: ['id', 'name'], raw: true })
+      : [],
+    allSvcIds.length
+      ? Service.findAll({ where: { id: allSvcIds }, attributes: ['id', 'name'], raw: true })
+      : [],
+  ]);
+  const staffNameById = new Map(staffRows.map((s) => [Number(s.id), s.name]));
+  const svcNameById = new Map(svcRows.map((s) => [Number(s.id), s.name]));
+
   for (const appt of list) {
     const ids = map.get(Number(appt.id)) || [];
     const fallbackPrimary = Number(appt.service_id || 0);
     const finalIds = ids.length
       ? Array.from(new Set(ids))
       : (fallbackPrimary ? [fallbackPrimary] : []);
-    const serviceStaff = staffMap.get(Number(appt.id)) || finalIds.map((sid) => ({
+    const apptDate = appt.date ? String(appt.date).slice(0, 10) : null;
+    const apptTime = appt.time ? normalizeTime(appt.time) : null;
+    const serviceStaff = (staffMap.get(Number(appt.id)) || finalIds.map((sid) => ({
       service_id: sid,
       staff_id: appt.staff_id != null ? Number(appt.staff_id) : null,
+      date: apptDate,
+      time: apptTime,
+    }))).map((line) => ({
+      ...line,
+      date: line.date || apptDate,
+      time: line.time || apptTime,
+      staff_name: line.staff_id ? (staffNameById.get(Number(line.staff_id)) || null) : null,
+      service_name: svcNameById.get(Number(line.service_id)) || null,
     }));
     if (typeof appt.setDataValue === 'function') {
       appt.setDataValue('service_ids', finalIds);
@@ -898,26 +921,47 @@ const create = async (req, res) => {
           return c?.phone || null;
         })()
       : null);
-    const [branch, service] = await Promise.all([
+    const [branch, primaryService] = await Promise.all([
       Branch.findOne({ where: byIdWhere(req, branch_id), attributes: ['id', 'name', 'phone'] }),
       Service.findOne({ where: byIdWhere(req, primaryServiceId), attributes: ['id', 'name'] }),
     ]);
-    // WhatsApp assigned staff as soon as the booking is created
-    notifyStaffAppointmentAssigned(appt, branch, service, resolveTenantId(req));
-    // Customer SMS/WhatsApp/email on create (any status). Confirm transition does not re-send.
-    if (notifyPhone) {
-      notifyAppointmentConfirmed({ ...appt.toJSON(), phone: notifyPhone }, branch, service, resolveTenantId(req));
-    }
 
-    const timeLabel = appt.time ? appt.time.slice(0, 5) : '';
-    const notifyStaff = assignedStaffId || effectiveStaffId;
-    if (notifyStaff) {
-      notifyStaffUser(notifyStaff, '📅 New Appointment', `${appt.customer_name} — ${timeLabel}`, {
+    const notifiedStaff = new Set();
+    for (const line of validLines) {
+      const lineStaffId = line.staff_id || assignedStaffId;
+      if (!lineStaffId) continue;
+      const lineDate = line.date || appt.date;
+      const lineTime = line.time || appt.time;
+      const lineTimeLabel = lineTime ? String(lineTime).slice(0, 5) : '';
+      const lineService = await Service.findOne({
+        where: byIdWhere(req, line.service_id),
+        attributes: ['id', 'name'],
+      });
+
+      // WhatsApp per assigned staff (their service + time)
+      notifyStaffAppointmentAssigned(
+        { ...appt.toJSON(), staff_id: lineStaffId, date: lineDate, time: lineTime },
+        branch,
+        lineService || primaryService,
+        resolveTenantId(req),
+      );
+
+      if (notifiedStaff.has(Number(lineStaffId))) continue;
+      notifiedStaff.add(Number(lineStaffId));
+      notifyStaffUser(lineStaffId, '📅 New Appointment', `${appt.customer_name} — ${lineTimeLabel}`, {
         type: 'appointment_assigned',
         appointment_id: String(appt.id),
         branch_id: String(branch_id),
       });
-    } else {
+    }
+
+    // Customer SMS/WhatsApp/email on create (any status). Confirm transition does not re-send.
+    if (notifyPhone) {
+      notifyAppointmentConfirmed({ ...appt.toJSON(), phone: notifyPhone }, branch, primaryService, resolveTenantId(req));
+    }
+
+    if (!notifiedStaff.size) {
+      const timeLabel = appt.time ? appt.time.slice(0, 5) : '';
       notifyBranch(branch_id, '📅 New Appointment', `${appt.customer_name} — ${timeLabel}`, {
         type: 'new_appointment',
         appointment_id: String(appt.id),

@@ -1185,7 +1185,14 @@ export default function AppointmentsPage() {
     setFormErr('');
     setShowForm(true);
   };
-  const openDetail = row => { setDetailItem(row); setShowDetail(true); };
+  const openDetail = async (row) => {
+    setDetailItem(row);
+    setShowDetail(true);
+    try {
+      const r = await api.get(`/appointments/${row.id}`);
+      if (r?.data?.id) setDetailItem(r.data);
+    } catch { /* keep row snapshot */ }
+  };
 
   const handleSave = async () => {
     if (!form.customer_name || !apptServiceIds.length) {
@@ -3017,16 +3024,34 @@ export default function AppointmentsPage() {
             </div>
             {(() => {
               const extraServiceNames = parseAdditionalServiceNames(detailItem.notes || '');
-              const allServiceNames = Array.from(new Set([detailItem.service?.name, ...extraServiceNames].filter(Boolean)));
+              const serviceLines = Array.isArray(detailItem.service_staff) && detailItem.service_staff.length
+                ? detailItem.service_staff
+                : null;
+              const resolveStaffName = (id) => {
+                if (!id) return detailItem.staff?.name || '—';
+                return staffList.find((s) => Number(s.id) === Number(id))?.name
+                  || detailItem.staff?.name
+                  || '—';
+              };
+              const resolveSvcName = (id, fallback) => {
+                if (fallback) return fallback;
+                return services.find((s) => Number(s.id) === Number(id))?.name || '—';
+              };
+              const allServiceNames = serviceLines
+                ? serviceLines.map((l) => l.service_name || resolveSvcName(l.service_id))
+                : Array.from(new Set([detailItem.service?.name, ...extraServiceNames].filter(Boolean)));
               const bill = resolveAppointmentAmountDisplay(detailItem, {
                 services,
                 customerPackages: apptPackageCache[detailItem.customer_id] || [],
               });
+              const hasPerLineSchedule = serviceLines && serviceLines.length > 1;
               const rows = [
-                { icon:'✂️', label:'Services', value: allServiceNames.join(', ') || '—' },
-                { icon:'👤', label:'Staff', value: detailItem.staff?.name || '—' },
-                { icon:'📅', label:'Date', value: detailItem.date ? new Date(detailItem.date).toLocaleDateString('en-US',{weekday:'long',year:'numeric',month:'long',day:'numeric'}) : '—' },
-                { icon:'🕐', label:'Time', value: detailItem.time || '—' },
+                ...(hasPerLineSchedule ? [] : [
+                  { icon:'✂️', label:'Services', value: allServiceNames.join(', ') || '—' },
+                  { icon:'👤', label:'Staff', value: detailItem.staff?.name || resolveStaffName(serviceLines?.[0]?.staff_id) || '—' },
+                  { icon:'📅', label:'Date', value: detailItem.date ? new Date(detailItem.date).toLocaleDateString('en-US',{weekday:'long',year:'numeric',month:'long',day:'numeric'}) : '—' },
+                  { icon:'🕐', label:'Time', value: detailItem.time || '—' },
+                ]),
                 { icon:'🏢', label:'Branch', value: detailItem.branch?.name || '—' },
                 {
                   icon:'💰',
@@ -3039,6 +3064,41 @@ export default function AppointmentsPage() {
               ];
               return (
                 <div style={{ display:'flex', flexDirection:'column', gap: 8 }}>
+                  {hasPerLineSchedule && (
+                    <div style={{ padding:'12px 14px', background: isDark ? '#0F172A' : '#fff', borderRadius: 12, border:`1px solid ${isDark?'#334155':C.border}` }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform:'uppercase', letterSpacing:'0.05em', marginBottom: 10 }}>
+                        Service schedule
+                      </div>
+                      <div style={{ display:'flex', flexDirection:'column', gap: 8 }}>
+                        {serviceLines.map((line) => {
+                          const svcLabel = line.service_name || resolveSvcName(line.service_id);
+                          const staffLabel = line.staff_name || resolveStaffName(line.staff_id);
+                          const lineDate = line.date || detailItem.date;
+                          const lineTime = line.time || detailItem.time;
+                          const dateLabel = lineDate
+                            ? new Date(lineDate).toLocaleDateString('en-US', { weekday:'short', month:'short', day:'numeric', year:'numeric' })
+                            : '—';
+                          const timeLabel = lineTime ? String(lineTime).slice(0, 5) : '—';
+                          return (
+                            <div
+                              key={`${line.service_id}-${line.time}-${line.staff_id}`}
+                              style={{
+                                padding: '10px 12px',
+                                borderRadius: 10,
+                                border: `1px solid ${isDark ? '#334155' : '#E2E8F0'}`,
+                                background: isDark ? '#1E293B' : '#F8FAFC',
+                              }}
+                            >
+                              <div style={{ fontSize: 14, fontWeight: 700, color: isDark ? '#E2E8F0' : '#0F172A' }}>{svcLabel}</div>
+                              <div style={{ fontSize: 12, color: isDark ? '#94A3B8' : '#64748B', marginTop: 4 }}>
+                                👤 {staffLabel} · 📅 {dateLabel} · 🕐 {timeLabel}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                   {rows.map(({ icon, label, value, highlight }) => (
                     <div key={label} style={{ display:'flex', alignItems:'center', gap: 12, padding:'12px 14px', background: isDark ? '#0F172A' : '#fff', borderRadius: 12, border:`1px solid ${isDark?'#334155':C.border}` }}>
                       <span style={{ fontSize: 18, width: 28, textAlign:'center', flexShrink: 0 }}>{icon}</span>

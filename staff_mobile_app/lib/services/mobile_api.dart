@@ -790,9 +790,13 @@ class MobileApi {
         bodyMap['service_staff'] = serviceStaff.map((raw) {
           final sid = '${raw['service_id'] ?? ''}'.trim();
           final st = '${raw['staff_id'] ?? ''}'.trim();
+          final d = '${raw['date'] ?? ''}'.trim();
+          final tm = '${raw['time'] ?? ''}'.trim();
           return <String, dynamic>{
             'service_id': int.tryParse(sid) ?? sid,
             if (st.isNotEmpty) 'staff_id': int.tryParse(st) ?? st,
+            if (d.isNotEmpty) 'date': d,
+            if (tm.isNotEmpty) 'time': tm,
           };
         }).toList();
       }

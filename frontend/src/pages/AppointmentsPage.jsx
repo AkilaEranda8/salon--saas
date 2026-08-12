@@ -1154,8 +1154,8 @@ export default function AppointmentsPage() {
         staff_id: line?.staff_id != null && line.staff_id !== ''
           ? String(line.staff_id)
           : String(row.staff?.id || row.staff_id || ''),
-        date: row.date?.slice(0, 10) || '',
-        time: normalizeApptTime(row.time) || '',
+        date: (line?.date || row.date || '').toString().slice(0, 10) || '',
+        time: normalizeApptTime(line?.time || row.time) || '',
       };
     });
     setServiceAssignments(staffByService);
@@ -1212,16 +1212,34 @@ export default function AppointmentsPage() {
         : '';
 
       // One appointment (multi-service when Multiple booking is on — pay once)
-      if (!form.date || !normalizeApptTime(form.time)) {
+      if (multiBooking) {
+        for (const id of apptServiceIds) {
+          const a = serviceAssignments[String(id)] || {};
+          const svc = services.find((s) => Number(s.id) === Number(id));
+          const label = svc?.name || 'each service';
+          if (!a.date || !normalizeApptTime(a.time)) {
+            return setFormErr(`Set date and time for ${label}`);
+          }
+          if (isPastDateTime(a.date, a.time)) {
+            return setFormErr(`Cannot book a past date/time for ${label}`);
+          }
+        }
+      } else if (!form.date || !normalizeApptTime(form.time)) {
         if (!form.date && !normalizeApptTime(form.time)) {
           return setFormErr('Date and time are required');
         }
         if (!form.date) return setFormErr('Date is required');
         return setFormErr('Time is required — pick an available slot or enter a time');
-      }
-      if (isPastDateTime(form.date, form.time)) {
+      } else if (isPastDateTime(form.date, form.time)) {
         return setFormErr('Cannot book a past date or time. Choose a current or future slot.');
       }
+
+      const firstAssign = serviceAssignments[String(apptServiceIds[0])] || {};
+      const headerDate = multiBooking ? (firstAssign.date || form.date) : form.date;
+      const headerTime = multiBooking
+        ? normalizeApptTime(firstAssign.time || form.time)
+        : normalizeApptTime(form.time);
+
       setSaving(true);
       try {
         const selectedSvcs = services.filter((s) => apptServiceIds.includes(Number(s.id)));
@@ -1239,19 +1257,22 @@ export default function AppointmentsPage() {
               .find((s) => s != null && s !== '');
             return firstLine || form.staff_id || null;
           })(),
-          date: form.date,
-          time: normalizeApptTime(form.time),
+          date: headerDate,
+          time: headerTime,
           status: form.status || 'pending',
           service_id: primary?.id || form.service_id,
           service_ids: apptServiceIds,
           ...(multiBooking
             ? {
-              service_staff: apptServiceIds.map((id) => ({
-                service_id: Number(id),
-                staff_id: serviceAssignments[String(id)]?.staff_id
-                  || form.staff_id
-                  || null,
-              })),
+              service_staff: apptServiceIds.map((id) => {
+                const a = serviceAssignments[String(id)] || {};
+                return {
+                  service_id: Number(id),
+                  date: a.date,
+                  time: normalizeApptTime(a.time),
+                  staff_id: a.staff_id || form.staff_id || null,
+                };
+              }),
             }
             : {}),
           customer_package_id: usesPackage ? Number(bookingCustPackageId) || undefined : undefined,
@@ -1331,12 +1352,15 @@ export default function AppointmentsPage() {
         ].filter(Boolean).join('\n'),
         service_id: primary?.id || form.service_id,
         service_ids: apptServiceIds,
-        service_staff: apptServiceIds.map((id) => ({
-          service_id: Number(id),
-          staff_id: serviceAssignments[String(id)]?.staff_id
-            || form.staff_id
-            || null,
-        })),
+        service_staff: apptServiceIds.map((id) => {
+          const a = serviceAssignments[String(id)] || {};
+          return {
+            service_id: Number(id),
+            date: a.date || form.date,
+            time: normalizeApptTime(a.time || form.time),
+            staff_id: a.staff_id || form.staff_id || null,
+          };
+        }),
         customer_package_id: usesPackage ? Number(bookingCustPackageId) || undefined : undefined,
         is_recurring: !!form.is_recurring,
         recurrence_frequency: form.is_recurring ? (form.recurrence_frequency || 'weekly') : null,
@@ -1452,10 +1476,31 @@ export default function AppointmentsPage() {
   );
 
   useEffect(() => {
-    // Per-line slots unused — multi-service shares one start time on one appointment.
-    setMultiSlots({});
-    setMultiSlotsLoading({});
-  }, [showForm, multiBooking]);
+    if (!showForm || !multiBooking) {
+      setMultiSlots({});
+      setMultiSlotsLoading({});
+      return undefined;
+    }
+    let cancelled = false;
+    const run = async () => {
+      const nextSlots = {};
+      const nextLoading = {};
+      await Promise.all(Object.entries(serviceAssignments).map(async ([sid, a]) => {
+        if (!a?.staff_id || !a?.date) return;
+        nextLoading[sid] = true;
+        const svc = services.find((s) => Number(s.id) === Number(sid));
+        const duration = Number(svc?.duration_minutes) || 30;
+        const fetched = await fetchSlots({ staffId: a.staff_id, date: a.date, duration });
+        nextSlots[sid] = filterFutureSlotsLocal(fetched.slots, a.date, fetched.serverNow);
+        nextLoading[sid] = false;
+      }));
+      if (cancelled) return;
+      setMultiSlots(nextSlots);
+      setMultiSlotsLoading(nextLoading);
+    };
+    run();
+    return () => { cancelled = true; };
+  }, [showForm, multiBooking, multiSlotDeps, services, fetchSlots]);
 
   const renderSlotChips = ({ slots, loading, value, onPick, durationLabel, isDarkMode }) => (
     <div style={{ marginTop: 8 }}>
@@ -2211,7 +2256,7 @@ export default function AppointmentsPage() {
             <ApptSection
               title="Services"
               desc={multiBooking
-                ? 'All selected services go on ONE appointment — collect payment once'
+                ? 'Each service gets its own time — one appointment, one payment'
                 : 'Select one service (tick Multiple booking for several on one appointment)'}
               dark={isDark}
             >
@@ -2233,7 +2278,7 @@ export default function AppointmentsPage() {
                   </span>
                   <span style={{ display: 'block', fontSize: 11, color: isDark ? '#94A3B8' : '#64748B', marginTop: 2 }}>
                     {multiBooking
-                      ? 'On — several services in one appointment (one payment)'
+                      ? 'On — per-service time, one appointment (one payment)'
                       : 'Off — one service'}
                   </span>
                 </span>
@@ -2379,32 +2424,40 @@ export default function AppointmentsPage() {
 
               {multiBooking && apptServiceIds.length > 0 && (
               <ApptSection
-                title="Staff per service"
-                desc="Optional — different stylist per service; same appointment & one payment"
+                title="Staff & time per service"
+                desc="Each service gets its own staff and time — still one appointment & one payment"
                 dark={isDark}
               >
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                   {apptServiceIds.map((sid) => {
                     const s = services.find((x) => Number(x.id) === Number(sid));
                     if (!s) return null;
-                    const a = serviceAssignments[String(s.id)] || { staff_id: form.staff_id || '' };
+                    const a = serviceAssignments[String(s.id)] || {
+                      staff_id: form.staff_id || '',
+                      date: form.date || today,
+                      time: form.time || '',
+                    };
+                    const ready = !!(a.date && a.time);
                     return (
                       <div
                         key={s.id}
                         style={{
-                          border: `1px solid ${isDark ? '#334155' : '#E2E8F0'}`,
+                          border: `1px solid ${ready ? '#86EFAC' : (isDark ? '#334155' : '#E2E8F0')}`,
                           borderRadius: 12,
                           padding: 12,
-                          background: isDark ? '#0F172A' : '#F8FAFC',
+                          background: ready ? (isDark ? '#052e16' : '#F0FDF4') : (isDark ? '#0F172A' : '#F8FAFC'),
                         }}
                       >
                         <div style={{ fontSize: 13, fontWeight: 700, color: isDark ? '#E2E8F0' : '#0F172A', marginBottom: 8 }}>
                           {s.name}
+                          <span style={{ fontSize: 11, fontWeight: 500, color: isDark ? '#94A3B8' : '#64748B', marginLeft: 8 }}>
+                            {s.duration_minutes || 30} min · Rs.{Number(s.price || 0).toLocaleString()}
+                          </span>
                         </div>
                         <FormGroup label="Staff">
                           <Select
                             value={a.staff_id != null && a.staff_id !== '' ? String(a.staff_id) : ''}
-                            onChange={(e) => updateServiceAssignment(s.id, { staff_id: e.target.value })}
+                            onChange={(e) => updateServiceAssignment(s.id, { staff_id: e.target.value, time: '' })}
                           >
                             <option value="">Use main staff below</option>
                             {filteredStaff.map((st) => (
@@ -2412,6 +2465,35 @@ export default function AppointmentsPage() {
                             ))}
                           </Select>
                         </FormGroup>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 10 }}>
+                          <FormGroup label="Date" required>
+                            <Input
+                              type="date"
+                              value={a.date || ''}
+                              min={today}
+                              onChange={(e) => updateServiceAssignment(s.id, { date: e.target.value, time: '' })}
+                            />
+                          </FormGroup>
+                          <FormGroup label="Time" required>
+                            <WatchTimePicker
+                              dark={isDark}
+                              date={a.date}
+                              value={normalizeApptTime(a.time) || ''}
+                              onChange={(t) => {
+                                setFormErr('');
+                                updateServiceAssignment(s.id, { time: t });
+                              }}
+                            />
+                          </FormGroup>
+                        </div>
+                        {!!a.staff_id && !!a.date && renderSlotChips({
+                          slots: multiSlots[String(s.id)] || [],
+                          loading: !!multiSlotsLoading[String(s.id)],
+                          value: normalizeApptTime(a.time) || '',
+                          onPick: (t) => updateServiceAssignment(s.id, { time: normalizeApptTime(t) }),
+                          durationLabel: `${s.duration_minutes || 30} min`,
+                          isDarkMode: isDark,
+                        })}
                       </div>
                     );
                   })}
@@ -2422,6 +2504,7 @@ export default function AppointmentsPage() {
               <>
               <ApptSection
                 title="Staff"
+
                 desc={multiBooking ? 'Main stylist for this appointment' : 'Assign a stylist for this booking'}
                 dark={isDark}
               >
@@ -2446,6 +2529,7 @@ export default function AppointmentsPage() {
                   </div>
                 )}
               </ApptSection>
+              {!multiBooking && (
               <ApptSection title="Schedule" desc={`Date, time, and booking status · ${bookingDurationMinutes} min total`} dark={isDark}>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                   <FormGroup label="Date" required>
@@ -2511,6 +2595,7 @@ export default function AppointmentsPage() {
                   </FormGroup>
                 )}
               </ApptSection>
+              )}
               </>
 
 

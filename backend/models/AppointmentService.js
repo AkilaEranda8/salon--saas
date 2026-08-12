@@ -19,6 +19,14 @@ const AppointmentService = sequelize.define('AppointmentService', {
     type: DataTypes.INTEGER,
     allowNull: true,
   },
+  date: {
+    type: DataTypes.DATEONLY,
+    allowNull: true,
+  },
+  time: {
+    type: DataTypes.TIME,
+    allowNull: true,
+  },
   sort_order: {
     type: DataTypes.INTEGER,
     allowNull: false,

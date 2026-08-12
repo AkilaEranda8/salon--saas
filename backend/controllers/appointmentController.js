@@ -121,6 +121,20 @@ const ensureAppointmentServicesTable = async () => {
           ADD KEY idx_staff_id (staff_id)
         `);
       }
+      for (const col of ['date', 'time']) {
+        const [found] = await sequelize.query(`
+          SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+          WHERE TABLE_SCHEMA = DATABASE()
+            AND TABLE_NAME = 'appointment_services'
+            AND COLUMN_NAME = '${col}'
+        `);
+        if (!found.length) {
+          const sql = col === 'date'
+            ? 'ADD COLUMN date DATE NULL AFTER staff_id'
+            : 'ADD COLUMN time TIME NULL AFTER date';
+          await sequelize.query(`ALTER TABLE appointment_services ${sql}`);
+        }
+      }
     })().catch((err) => {
       appointmentServicesTableReadyPromise = null;
       throw err;
@@ -147,47 +161,61 @@ const normalizeServiceIds = (serviceIds, fallbackServiceId = null) => {
   return Array.from(new Set(ids));
 };
 
-/** Normalize [{service_id, staff_id}] (+ optional service_staff / items). */
+/** Normalize [{service_id, staff_id, date?, time?}] (+ service_staff / items). */
 const normalizeServiceLines = ({ serviceIds, serviceId, serviceStaff, items } = {}) => {
-  const lines = [];
-  const pushLine = (sid, staffRaw) => {
-    const service_id = Number(sid);
+  const lineMap = new Map();
+  const order = [];
+
+  const mergeLine = (raw) => {
+    const service_id = Number(raw?.service_id ?? raw?.serviceId);
     if (!Number.isInteger(service_id) || service_id <= 0) return;
-    if (lines.some((l) => l.service_id === service_id)) return;
-    const staffNum = staffRaw != null && staffRaw !== '' ? Number(staffRaw) : null;
-    lines.push({
-      service_id,
-      staff_id: (Number.isInteger(staffNum) && staffNum > 0) ? staffNum : null,
-    });
+    if (!lineMap.has(service_id)) {
+      lineMap.set(service_id, {
+        service_id,
+        staff_id: null,
+        date: null,
+        time: null,
+      });
+      order.push(service_id);
+    }
+    const line = lineMap.get(service_id);
+    const staffRaw = raw?.staff_id ?? raw?.staffId;
+    if (staffRaw != null && staffRaw !== '') {
+      const staffNum = Number(staffRaw);
+      if (Number.isInteger(staffNum) && staffNum > 0) line.staff_id = staffNum;
+    }
+    const rawDate = raw?.date;
+    if (rawDate != null && String(rawDate).trim()) {
+      line.date = String(rawDate).trim().slice(0, 10);
+    }
+    const rawTime = raw?.time;
+    if (rawTime != null && String(rawTime).trim()) {
+      line.time = normalizeTime(rawTime);
+    }
   };
 
   if (Array.isArray(items) && items.length) {
-    for (const raw of items) {
-      pushLine(raw?.service_id ?? raw?.serviceId, raw?.staff_id ?? raw?.staffId);
-    }
+    for (const raw of items) mergeLine(raw);
   }
 
-  const staffMap = new Map();
   if (Array.isArray(serviceStaff)) {
-    for (const raw of serviceStaff) {
-      const sid = Number(raw?.service_id ?? raw?.serviceId);
-      if (Number.isInteger(sid) && sid > 0) {
-        staffMap.set(sid, raw?.staff_id ?? raw?.staffId ?? null);
-      }
-    }
+    for (const raw of serviceStaff) mergeLine(raw);
   } else if (serviceStaff && typeof serviceStaff === 'object') {
     for (const [k, v] of Object.entries(serviceStaff)) {
-      const sid = Number(k);
-      if (Number.isInteger(sid) && sid > 0) staffMap.set(sid, v);
+      if (v && typeof v === 'object') mergeLine({ service_id: k, ...v });
+      else mergeLine({ service_id: k, staff_id: v });
     }
   }
 
   const ids = normalizeServiceIds(serviceIds, serviceId);
   for (const sid of ids) {
-    pushLine(sid, staffMap.has(sid) ? staffMap.get(sid) : null);
+    if (!lineMap.has(sid)) {
+      lineMap.set(sid, { service_id: sid, staff_id: null, date: null, time: null });
+      order.push(sid);
+    }
   }
 
-  return lines;
+  return order.map((sid) => lineMap.get(sid));
 };
 
 const resolveValidServiceIds = async (req, serviceIds, fallbackServiceId = null) => {
@@ -216,15 +244,25 @@ const replaceAppointmentServiceMappings = async (appointmentId, serviceIdsOrLine
         const service_id = Number(raw.service_id ?? raw.serviceId);
         const staffRaw = raw.staff_id ?? raw.staffId;
         const staffNum = staffRaw != null && staffRaw !== '' ? Number(staffRaw) : null;
+        const lineDate = raw.date != null && String(raw.date).trim()
+          ? String(raw.date).trim().slice(0, 10)
+          : null;
+        const lineTime = raw.time != null && String(raw.time).trim()
+          ? normalizeTime(raw.time)
+          : null;
         return {
           service_id,
           staff_id: (Number.isInteger(staffNum) && staffNum > 0) ? staffNum : null,
+          date: lineDate,
+          time: lineTime,
           sort_order: Number.isInteger(raw.sort_order) ? raw.sort_order : idx,
         };
       }
       return {
         service_id: Number(raw),
         staff_id: null,
+        date: null,
+        time: null,
         sort_order: idx,
       };
     }).filter((l) => Number.isInteger(l.service_id) && l.service_id > 0)
@@ -237,6 +275,8 @@ const replaceAppointmentServiceMappings = async (appointmentId, serviceIdsOrLine
       appointment_id: appointmentId,
       service_id: l.service_id,
       staff_id: l.staff_id,
+      date: l.date,
+      time: l.time,
       sort_order: l.sort_order ?? idx,
     })),
     { ignoreDuplicates: true, ...txOpt },
@@ -254,7 +294,7 @@ const attachServiceIdsToAppointments = async (appointments) => {
 
   const rows = await AppointmentService.findAll({
     where: { appointment_id: { [Op.in]: apptIds } },
-    attributes: ['appointment_id', 'service_id', 'staff_id', 'sort_order', 'id'],
+    attributes: ['appointment_id', 'service_id', 'staff_id', 'date', 'time', 'sort_order', 'id'],
     order: [['appointment_id', 'ASC'], ['sort_order', 'ASC'], ['id', 'ASC']],
     raw: true,
   });
@@ -269,6 +309,8 @@ const attachServiceIdsToAppointments = async (appointments) => {
     staffMap.get(key).push({
       service_id: Number(row.service_id),
       staff_id: row.staff_id != null ? Number(row.staff_id) : null,
+      date: row.date ? String(row.date).slice(0, 10) : null,
+      time: row.time ? normalizeTime(row.time) : null,
     });
   }
 
@@ -696,9 +738,11 @@ const create = async (req, res) => {
         return res.status(400).json({ message: 'items must include valid service_id values.' });
       }
       effectiveServiceIds = fromItems.map((l) => l.service_id);
-      effectiveServiceStaff = fromItems.map((l) => ({
+      effectiveServiceStaff = fromItems.map((l, idx) => ({
         service_id: l.service_id,
         staff_id: l.staff_id,
+        date: items[idx]?.date || date || null,
+        time: items[idx]?.time || time || null,
       }));
       const first = items[0] || {};
       effectiveDate = date || first.date;
@@ -731,18 +775,35 @@ const create = async (req, res) => {
     if (requestedServiceIds.length && validServiceIds.length !== requestedServiceIds.length) {
       return res.status(400).json({ message: 'One or more selected services are invalid.' });
     }
-    const validLines = linesWithStaff.filter((l) => validServiceIds.includes(l.service_id));
+    const validLines = linesWithStaff
+      .filter((l) => validServiceIds.includes(l.service_id))
+      .map((l) => ({
+        ...l,
+        date: l.date || effectiveDate || null,
+        time: l.time || effectiveTime || null,
+      }));
     const primaryServiceId = validLines[0]?.service_id || null;
     const assignedStaffId = selfStaffId != null
       ? Number(selfStaffId)
       : (validLines.find((l) => l.staff_id)?.staff_id || null);
 
-    if (!primaryServiceId || !effectiveDate || !effectiveTime) {
-      return res.status(400).json({ message: 'branch_id, service_id, customer_name, date and time are required.' });
+    const headerDate = validLines[0]?.date || effectiveDate;
+    const headerTime = validLines[0]?.time || effectiveTime;
+
+    if (!primaryServiceId) {
+      return res.status(400).json({ message: 'branch_id, service_id and customer_name are required.' });
     }
-    if (isDateTimeInPast(effectiveDate, effectiveTime)) {
-      return res.status(400).json({ message: pastBookingMessage() });
+    for (let i = 0; i < validLines.length; i += 1) {
+      const line = validLines[i];
+      if (!line.date || !line.time) {
+        return res.status(400).json({ message: `Service line ${i + 1}: date and time are required.` });
+      }
+      if (isDateTimeInPast(line.date, line.time)) {
+        return res.status(400).json({ message: pastBookingMessage() });
+      }
     }
+    effectiveDate = headerDate;
+    effectiveTime = headerTime;
 
     const usesPackage = usesPackageBooking({
       notes,
@@ -775,30 +836,31 @@ const create = async (req, res) => {
       raw: true,
     });
     const durById = new Map(durRows.map((s) => [Number(s.id), parseInt(s.duration_minutes, 10) || 30]));
-    const startMin = toMinutes(effectiveTime);
-    if (startMin == null) {
-      return res.status(400).json({ message: 'Invalid time.' });
-    }
-    let cursor = startMin;
     for (const line of validLines) {
       const dur = durById.get(line.service_id) || 30;
       const lineStaff = line.staff_id || assignedStaffId;
+      const lineDate = line.date || effectiveDate;
+      const lineTime = line.time || effectiveTime;
+      const startMin = toMinutes(lineTime);
+      if (startMin == null) {
+        return res.status(400).json({ message: 'Invalid time.' });
+      }
+      const endMin = startMin + dur;
       if (lineStaff) {
         const existing = await loadBlockedRanges({
           Appointment,
           Service,
           staffId: lineStaff,
-          date: effectiveDate,
+          date: lineDate,
           branchId: null,
         });
-        const clash = existing.some(([bStart, bEnd]) => cursor < bEnd && (cursor + dur) > bStart);
+        const clash = existing.some(([bStart, bEnd]) => startMin < bEnd && endMin > bStart);
         if (clash) {
           return res.status(409).json({
             message: 'Selected time overlaps an existing booking for an assigned staff. Choose another slot.',
           });
         }
       }
-      cursor += dur;
     }
 
     const appt = await Appointment.create({
@@ -987,6 +1049,8 @@ const update = async (req, res) => {
       if (updates.staff_id === undefined && nextServiceLines[0].staff_id) {
         updates.staff_id = nextServiceLines[0].staff_id;
       }
+      if (nextServiceLines[0]?.date) updates.date = nextServiceLines[0].date;
+      if (nextServiceLines[0]?.time) updates.time = nextServiceLines[0].time;
 
       const nextNotes = req.body.notes !== undefined ? req.body.notes : appt.notes;
       const packageBooking = usesPackageBooking({

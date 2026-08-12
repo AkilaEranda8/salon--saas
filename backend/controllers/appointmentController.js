@@ -558,121 +558,71 @@ const create = async (req, res) => {
       recurring_message_template_ids: is_recurring && recurringTplIds?.length ? recurringTplIds : null,
     };
 
-    // ── Multi-booking: one appointment per item (own staff + date + time) ──
+    // ── items[] = multi-service on ONE appointment (same staff/date/time) ──
     if (Array.isArray(items) && items.length > 0) {
-      const normalizedItems = [];
+      const serviceIdList = [];
       for (let i = 0; i < items.length; i += 1) {
         const raw = items[i] || {};
         const sid = Number(raw.service_id ?? raw.serviceId);
-        const requestedStaff = raw.staff_id != null && raw.staff_id !== ''
-          ? Number(raw.staff_id)
-          : null;
-        // Prefer explicitly chosen staff per service (multi-booking).
-        // Fall back to linked staff profile when caller left staff empty.
-        const itemStaff = (Number.isInteger(requestedStaff) && requestedStaff > 0)
-          ? requestedStaff
-          : (selfStaffId != null ? Number(selfStaffId) : null);
-        const itemDate = String(raw.date || '').trim();
-        const rawTime = String(raw.time || '').trim();
         if (!Number.isInteger(sid) || sid <= 0) {
           return res.status(400).json({ message: `items[${i}].service_id is required.` });
         }
-        if (!itemDate || !rawTime) {
-          return res.status(400).json({ message: `items[${i}] needs date and time.` });
-        }
-        const itemTime = normalizeTime(rawTime);
-        if (isDateTimeInPast(itemDate, itemTime)) {
-          return res.status(400).json({ message: pastBookingMessage() });
-        }
-        if (itemStaff != null && (!Number.isInteger(itemStaff) || itemStaff <= 0)) {
-          return res.status(400).json({ message: `items[${i}].staff_id is invalid.` });
-        }
-        normalizedItems.push({
-          service_id: sid,
-          staff_id: itemStaff,
-          date: itemDate,
-          time: itemTime,
-        });
+        if (!serviceIdList.includes(sid)) serviceIdList.push(sid);
       }
 
-      const allServiceIds = [...new Set(normalizedItems.map((i) => i.service_id))];
-      const validServiceIds = await resolveValidServiceIds(req, allServiceIds);
-      if (validServiceIds.length !== allServiceIds.length) {
+      const first = items[0] || {};
+      const itemDate = String(first.date || date || '').trim();
+      const rawTime = String(first.time || time || '').trim();
+      if (!itemDate || !rawTime) {
+        return res.status(400).json({ message: 'date and time are required.' });
+      }
+      const itemTime = normalizeTime(rawTime);
+      if (isDateTimeInPast(itemDate, itemTime)) {
+        return res.status(400).json({ message: pastBookingMessage() });
+      }
+
+      const requestedStaff = first.staff_id != null && first.staff_id !== ''
+        ? Number(first.staff_id)
+        : (staff_id != null && staff_id !== '' ? Number(staff_id) : null);
+      const itemStaff = (Number.isInteger(requestedStaff) && requestedStaff > 0)
+        ? requestedStaff
+        : (selfStaffId != null ? Number(selfStaffId) : null);
+      if (itemStaff != null && (!Number.isInteger(itemStaff) || itemStaff <= 0)) {
+        return res.status(400).json({ message: 'staff_id is invalid.' });
+      }
+
+      const validServiceIds = await resolveValidServiceIds(req, serviceIdList);
+      if (validServiceIds.length !== serviceIdList.length) {
         return res.status(400).json({ message: 'One or more selected services are invalid.' });
       }
+      const primaryServiceId = validServiceIds[0];
 
       const serviceRows = await Service.findAll({
-        where: { id: allServiceIds, ...tenantWhere(req) },
+        where: { id: validServiceIds, ...tenantWhere(req) },
         attributes: ['id', 'name', 'price', 'duration_minutes'],
         raw: true,
       });
-      const serviceMap = new Map(serviceRows.map((s) => [Number(s.id), s]));
-
-      // Build start/end ranges for conflict checks (assigned staff only).
-      const ranged = normalizedItems.map((item, idx) => {
-        const duration = parseDurationMinutes(
-          serviceMap.get(item.service_id)?.duration_minutes,
-          30,
-        );
-        const start = toMinutes(item.time);
-        return {
-          ...item,
-          idx,
-          duration,
-          start,
-          end: start != null ? start + duration : null,
-          serviceName: serviceMap.get(item.service_id)?.name || `Service ${item.service_id}`,
-        };
-      });
-      for (const row of ranged) {
-        if (row.start == null || row.end == null) {
-          return res.status(400).json({
-            message: `Invalid time for ${row.serviceName}.`,
-          });
-        }
+      const totalDuration = serviceRows.reduce(
+        (acc, s) => acc + parseDurationMinutes(s.duration_minutes, 30),
+        0,
+      ) || 30;
+      const start = toMinutes(itemTime);
+      if (start == null) {
+        return res.status(400).json({ message: 'Invalid time.' });
       }
+      const end = start + totalDuration;
 
-      // Within-request overlap: same staff + same date.
-      for (let i = 0; i < ranged.length; i += 1) {
-        for (let j = i + 1; j < ranged.length; j += 1) {
-          const a = ranged[i];
-          const b = ranged[j];
-          if (
-            a.staff_id != null
-            && b.staff_id != null
-            && Number(a.staff_id) === Number(b.staff_id)
-            && a.date === b.date
-            && rangesOverlap(a.start, a.end, b.start, b.end)
-          ) {
-            return res.status(409).json({
-              message: `${a.serviceName} and ${b.serviceName} overlap for the same staff on ${a.date}. Pick different times.`,
-            });
-          }
-        }
-      }
-
-      // Against existing appointments (grouped by staff+date).
-      const groups = new Map();
-      for (const row of ranged) {
-        if (row.staff_id == null) continue;
-        const key = `${row.staff_id}|${row.date}`;
-        if (!groups.has(key)) groups.set(key, []);
-        groups.get(key).push(row);
-      }
-      for (const [key, group] of groups.entries()) {
-        const [staffIdStr, date] = key.split('|');
+      if (itemStaff != null) {
         const existing = await loadBlockedRanges({
           Appointment,
           Service,
-          staffId: Number(staffIdStr),
-          date,
+          staffId: itemStaff,
+          date: itemDate,
           branchId: null,
         });
-        const clash = group.find(({ start, end }) =>
-          existing.some(([bStart, bEnd]) => rangesOverlap(start, end, bStart, bEnd)));
-        if (clash) {
+        if (existing.some(([bStart, bEnd]) => rangesOverlap(start, end, bStart, bEnd))) {
           return res.status(409).json({
-            message: `${clash.serviceName}: selected time is not available. Choose another slot.`,
+            message: 'Selected time overlaps an existing booking. Choose another slot.',
           });
         }
       }
@@ -681,121 +631,80 @@ const create = async (req, res) => {
         notes,
         customer_package_id: req.body.customer_package_id,
       });
-      let packageAmount = 0;
+      let finalAmount;
       if (usesPackage) {
         const pkgId = req.body.customer_package_id || parsePackageIdFromNotes(notes);
         if (amount !== undefined && amount !== null && amount !== '') {
-          packageAmount = Number(amount);
+          finalAmount = Number(amount);
         } else {
-          packageAmount = pkgId ? await resolvePackageBundlePrice(req, pkgId) : 0;
+          finalAmount = pkgId ? await resolvePackageBundlePrice(req, pkgId) : 0;
         }
+      } else if (amount !== undefined && amount !== null && amount !== '') {
+        finalAmount = Number(amount);
+      } else {
+        finalAmount = serviceRows.reduce((sum, s) => sum + Number(s.price || 0), 0);
       }
 
-      const created = [];
       const tx = await sequelize.transaction({
         isolationLevel: Transaction.ISOLATION_LEVELS.READ_COMMITTED,
       });
+      let appt;
       try {
-        // Re-check conflicts inside transaction for assigned staff.
-        for (const [key, group] of groups.entries()) {
-          const [staffIdStr, date] = key.split('|');
+        if (itemStaff != null) {
           const existingTx = await loadBlockedRanges({
             Appointment,
             Service,
-            staffId: Number(staffIdStr),
-            date,
+            staffId: itemStaff,
+            date: itemDate,
             branchId: null,
             transaction: tx,
           });
-          const clashTx = group.find(({ start, end }) =>
-            existingTx.some(([bStart, bEnd]) => rangesOverlap(start, end, bStart, bEnd)));
-          if (clashTx) {
+          if (existingTx.some(([bStart, bEnd]) => rangesOverlap(start, end, bStart, bEnd))) {
             await tx.rollback();
             return res.status(409).json({
-              message: `${clashTx.serviceName}: selected time is no longer available. Choose another slot.`,
+              message: 'Selected time is no longer available. Choose another slot.',
             });
           }
         }
 
-        for (let i = 0; i < normalizedItems.length; i += 1) {
-          const item = normalizedItems[i];
-          const svc = serviceMap.get(item.service_id);
-          let itemAmount;
-          if (usesPackage) {
-            itemAmount = i === 0 ? packageAmount : 0;
-          } else if (amount !== undefined && amount !== null && amount !== '' && normalizedItems.length === 1) {
-            itemAmount = Number(amount);
-          } else {
-            itemAmount = Number(svc?.price || 0);
-          }
-
-          // Recurring fields only on the first booking — avoids N duplicate chains.
-          const appt = await Appointment.create({
-            branch_id,
-            customer_id: resolvedCustomerId || null,
-            staff_id: item.staff_id,
-            service_id: item.service_id,
-            customer_name,
-            phone: phone || null,
-            date: item.date,
-            time: item.time,
-            amount: itemAmount,
-            notes: notes || null,
-            status: req.body.status || 'pending',
-            ...(i === 0 ? recurringFields : {
-              is_recurring: false,
-              recurrence_frequency: null,
-              recurring_next_date: null,
-              recurring_sms_time: null,
-              recurring_message_template_id: null,
-              recurring_message_template_ids: null,
-            }),
-            tenant_id: resolveTenantId(req),
-          }, { transaction: tx });
-          await replaceAppointmentServiceMappings(appt.id, [item.service_id], tx);
-          created.push(appt);
-        }
-
+        appt = await Appointment.create({
+          branch_id,
+          customer_id: resolvedCustomerId || null,
+          staff_id: itemStaff,
+          service_id: primaryServiceId,
+          customer_name,
+          phone: phone || null,
+          date: itemDate,
+          time: itemTime,
+          amount: finalAmount,
+          notes: notes || null,
+          status: req.body.status || 'pending',
+          ...recurringFields,
+          tenant_id: resolveTenantId(req),
+        }, { transaction: tx });
+        await replaceAppointmentServiceMappings(appt.id, validServiceIds, tx);
         await tx.commit();
       } catch (err) {
         try { await tx.rollback(); } catch (_) { /* ignore */ }
         throw err;
       }
 
-      for (const appt of created) {
-        const timeLabel = appt.time ? String(appt.time).slice(0, 5) : '';
-        if (appt.staff_id) {
-          notifyStaffUser(appt.staff_id, '📅 New Appointment', `${customer_name} — ${timeLabel}`, {
-            type: 'appointment_assigned',
-            appointment_id: String(appt.id),
-            branch_id: String(branch_id),
-          });
-        } else {
-          notifyBranch(branch_id, '📅 New Appointment', `${customer_name} — ${timeLabel}`, {
-            type: 'new_appointment',
-            appointment_id: String(appt.id),
-            branch_id: String(branch_id),
-          });
-        }
-      }
-
       let advancePayment = null;
-      if (hasAdvance && created[0]) {
+      if (hasAdvance) {
         advancePayment = await recordAdvancePayment({
           req,
-          appointment: created[0],
+          appointment: appt,
           amount: parsedAdvance,
           method: advanceMethod,
           customer_id: resolvedCustomerId || null,
           customer_name,
           branch_id,
-          staff_id: created[0].staff_id || null,
-          service_id: created[0].service_id || null,
+          staff_id: itemStaff || null,
+          service_id: primaryServiceId,
         });
-        await created[0].reload();
+        await appt.reload();
       }
 
-      // SMS only when appointment is already confirmed — avoids double SMS when staff later confirms.
       const notifyPhone = phone || (customer_id
         ? await (async () => {
             const { Customer: CustModel } = require('../models');
@@ -805,40 +714,42 @@ const create = async (req, res) => {
         : null);
       const [branch, service] = await Promise.all([
         Branch.findOne({ where: byIdWhere(req, branch_id), attributes: ['id', 'name', 'phone'] }),
-        Service.findOne({ where: byIdWhere(req, created[0]?.service_id), attributes: ['id', 'name'] }),
+        Service.findOne({ where: byIdWhere(req, primaryServiceId), attributes: ['id', 'name'] }),
       ]);
-      // WhatsApp assigned staff as soon as the booking is created
-      for (const row of created) {
-        notifyStaffAppointmentAssigned(row, branch, service, resolveTenantId(req));
-      }
-      // Customer SMS/WhatsApp/email on create (any status). Confirm transition does not re-send.
-      if (notifyPhone && created[0]) {
-        notifyAppointmentConfirmed({ ...created[0].toJSON(), phone: notifyPhone }, branch, service, resolveTenantId(req));
+      notifyStaffAppointmentAssigned(appt, branch, service, resolveTenantId(req));
+      if (notifyPhone) {
+        notifyAppointmentConfirmed({ ...appt.toJSON(), phone: notifyPhone }, branch, service, resolveTenantId(req));
       }
 
-      const createdJson = created.map((a) => ({ ...a.toJSON(), service_ids: [a.service_id] }));
-      if (hasAdvance && createdJson[0]) {
-        createdJson[0].advance_paid = parsedAdvance;
-        createdJson[0].amount_paid = parsedAdvance;
+      const timeLabel = appt.time ? String(appt.time).slice(0, 5) : '';
+      if (itemStaff) {
+        notifyStaffUser(itemStaff, '📅 New Appointment', `${customer_name} — ${timeLabel}`, {
+          type: 'appointment_assigned',
+          appointment_id: String(appt.id),
+          branch_id: String(branch_id),
+        });
+      } else {
+        notifyBranch(branch_id, '📅 New Appointment', `${customer_name} — ${timeLabel}`, {
+          type: 'new_appointment',
+          appointment_id: String(appt.id),
+          branch_id: String(branch_id),
+        });
       }
 
+      const apptJson = { ...appt.toJSON(), service_ids: validServiceIds };
       return res.status(201).json({
-        message: createdJson.length > 1
-          ? `${createdJson.length} bookings created successfully`
-          : 'Booking created successfully',
-        count: createdJson.length,
-        ids: createdJson.map((a) => a.id),
-        appointments: createdJson,
+        message: 'Booking created successfully',
+        count: 1,
+        ids: [appt.id],
+        appointments: [apptJson],
         advance_payment_id: advancePayment?.id || null,
         advance_paid: hasAdvance ? parsedAdvance : 0,
-        // Keep first appointment shape for older clients that expect a single row
-        ...createdJson[0],
-        // Do not overwrite single-row service_ids with all item ids
-        service_ids: createdJson[0]?.service_ids || [],
+        amount_paid: hasAdvance ? parsedAdvance : 0,
+        ...apptJson,
       });
     }
 
-    // ── Legacy single appointment (multi-service on one staff/time) ──
+    // ── Single appointment (multi-service on one staff/time) ──
     const requestedServiceIds = normalizeServiceIds(service_ids, service_id);
     const validServiceIds = await resolveValidServiceIds(req, requestedServiceIds);
     if (requestedServiceIds.length && validServiceIds.length !== requestedServiceIds.length) {

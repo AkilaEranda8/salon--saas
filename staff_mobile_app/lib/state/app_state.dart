@@ -1374,7 +1374,7 @@ class AppState extends ChangeNotifier {
     bool isRecurring = false,
     String? recurringNextDate,
     List<String>? recurringMessageTemplateIds,
-    /// When set, creates one appointment per item via API `items[]`.
+    /// When set, treated as multi-service on ONE appointment (same schedule).
     List<Map<String, dynamic>>? bookingItems,
     double? advanceAmount,
     String? advanceMethod,

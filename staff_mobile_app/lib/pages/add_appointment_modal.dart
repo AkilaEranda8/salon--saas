@@ -810,93 +810,21 @@ class _AddApptSheetState extends State<_AddApptSheet> {
       }
     }
 
-    List<Map<String, dynamic>>? items;
-    if (_multiBooking) {
-      _syncAssignments();
-      for (final id in _orderedServiceIds()) {
-        final a = _serviceAssignments[id] ?? {};
-        if ((a['date'] ?? '').isEmpty || (a['time'] ?? '').isEmpty) {
-          String label = 'each service';
-          for (final s in _services) {
-            if (s.id == id) { label = s.name; break; }
-          }
-          _snack('Set date and time for $label');
-          return;
-        }
-        if (_isPastSlot('${a['date']}', '${a['time']}')) {
-          _snack('Cannot book a past date/time');
-          return;
-        }
-      }
-      // Same staff + overlapping times within this request
-      final ranged = <Map<String, dynamic>>[];
-      for (final id in _orderedServiceIds()) {
-        final a = _serviceAssignments[id] ?? {};
-        SalonService? svc;
-        for (final s in _services) {
-          if (s.id == id) { svc = s; break; }
-        }
-        final t = (a['time'] ?? '').trim();
-        final parts = t.split(':');
-        final h = int.tryParse(parts.isNotEmpty ? parts[0] : '') ?? 0;
-        final m = int.tryParse(parts.length > 1 ? parts[1] : '') ?? 0;
-        final start = h * 60 + m;
-        final duration = (svc?.durationMinutes ?? 30).clamp(5, 24 * 60);
-        ranged.add({
-          'id': id,
-          'name': svc?.name ?? id,
-          'staff_id': (a['staff_id'] ?? '').trim(),
-          'date': (a['date'] ?? '').trim(),
-          'start': start,
-          'end': start + duration,
-        });
-      }
-      for (var i = 0; i < ranged.length; i++) {
-        for (var j = i + 1; j < ranged.length; j++) {
-          final a = ranged[i];
-          final b = ranged[j];
-          final aStaff = a['staff_id'] as String;
-          final bStaff = b['staff_id'] as String;
-          if (aStaff.isNotEmpty &&
-              bStaff.isNotEmpty &&
-              aStaff == bStaff &&
-              a['date'] == b['date'] &&
-              (a['start'] as int) < (b['end'] as int) &&
-              (a['end'] as int) > (b['start'] as int)) {
-            _snack(
-              '${a['name']} and ${b['name']} overlap for the same staff. Pick different times.',
-            );
-            return;
-          }
-        }
-      }
-      items = _orderedServiceIds().map((id) {
-        final a = _serviceAssignments[id] ?? {};
-        final staff = (a['staff_id'] ?? '').trim();
-        return <String, dynamic>{
-          'service_id': id,
-          'date': a['date'],
-          'time': a['time'],
-          if (staff.isNotEmpty) 'staff_id': staff,
-        };
-      }).toList();
-    } else {
-      if (_date.isEmpty) { _snack('Pick a date'); return; }
-      if (_time.isEmpty) { _snack('Pick a time'); return; }
-      if (_isPastSlot(_date, _time)) {
-        _snack('Cannot book a past date/time');
-        return;
-      }
+    if (_date.isEmpty) { _snack('Pick a date'); return; }
+    if (_time.isEmpty) { _snack('Pick a time'); return; }
+    if (_isPastSlot(_date, _time)) {
+      _snack('Cannot book a past date/time');
+      return;
     }
 
     final pkgNote = _selectedPkgId.isNotEmpty
         ? '${AppointmentNotes.packagePrefix} #$_selectedPkgId - $_selectedPkgName'
         : '';
 
-    // Multi-booking ignores amount override for non-package — send package offer only.
+    // Multiple services stay on ONE appointment.
     final amountOverride = (_packageOfferPrice != null && _packageOfferPrice! > 0)
         ? _packageOfferPrice!.toStringAsFixed(0)
-        : (_multiBooking ? null : _amtCtrl.text.trim());
+        : _amtCtrl.text.trim();
 
     setState(() => _saving = true);
     final ok = await app.saveAppointment(
@@ -911,7 +839,7 @@ class _AddApptSheetState extends State<_AddApptSheet> {
       baseNotes: pkgNote,
       status: '',
       amountOverride: amountOverride,
-      bookingItems: items,
+      bookingItems: null,
       advanceAmount: _collectAdvance && advanceNum > 0 ? advanceNum : null,
       advanceMethod: _collectAdvance ? _advanceMethod : null,
       customerPackageId:
@@ -1484,173 +1412,35 @@ class _AddApptSheetState extends State<_AddApptSheet> {
 
                   const SizedBox(height: 10),
 
-                  // Multiple bookings toggle
+                  // Multiple services stay on one appointment
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                     decoration: BoxDecoration(
-                      color: _multiBooking ? const Color(0xFFF0FDF4) : _cBg,
+                      color: _cBg,
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: _multiBooking ? const Color(0xFF86EFAC) : _cBorder,
-                      ),
+                      border: Border.all(color: _cBorder),
                     ),
-                    child: Row(children: [
+                    child: const Row(children: [
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text('Multiple bookings',
+                            Text('Multiple services',
                                 style: TextStyle(
                                     fontSize: 13,
                                     fontWeight: FontWeight.w800,
                                     color: Color(0xFF111827))),
-                            const SizedBox(height: 2),
+                            SizedBox(height: 2),
                             Text(
-                              _multiBooking
-                                  ? 'Each service = separate booking (own staff/time)'
-                                  : 'One staff and time for all services',
-                              style: const TextStyle(
+                              'Selecting more than one service keeps them on the same appointment.',
+                              style: TextStyle(
                                   fontSize: 11, color: Color(0xFF6B7280)),
                             ),
                           ],
                         ),
                       ),
-                      Switch.adaptive(
-                        value: _multiBooking,
-                        activeThumbColor: _cMid,
-                        onChanged: (v) => setState(() {
-                          _multiBooking = v;
-                          if (v) {
-                            _syncAssignments();
-                          } else {
-                            // Seed shared date/time/staff from first assignment.
-                            final ids = _orderedServiceIds();
-                            if (ids.isNotEmpty) {
-                              final a = _serviceAssignments[ids.first] ?? {};
-                              if ((a['date'] ?? '').isNotEmpty) {
-                                _date = a['date']!;
-                              }
-                              if ((a['time'] ?? '').isNotEmpty) {
-                                _time = a['time']!;
-                              }
-                              if ((a['staff_id'] ?? '').isNotEmpty) {
-                                _staffId = a['staff_id']!;
-                              }
-                            }
-                          }
-                        }),
-                      ),
                     ]),
                   ),
-
-                  if (_multiBooking && _orderedServiceIds().isNotEmpty) ...[
-                    const SizedBox(height: 10),
-                    ..._orderedServiceIds().map((id) {
-                      SalonService? svc;
-                      for (final s in _services) {
-                        if (s.id == id) { svc = s; break; }
-                      }
-                      final a = _serviceAssignments[id] ??
-                          {'staff_id': _staffId, 'date': _date, 'time': _time};
-                      final staffVal = (a['staff_id'] ?? '').isEmpty
-                          ? null
-                          : a['staff_id'];
-                      return Container(
-                        margin: const EdgeInsets.only(bottom: 8),
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: _cLightB),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(svc?.name ?? 'Service',
-                                style: const TextStyle(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w800,
-                                    color: Color(0xFF111827))),
-                            if (svc != null)
-                              Text('LKR ${svc.price.toStringAsFixed(0)}',
-                                  style: const TextStyle(
-                                      fontSize: 11,
-                                      color: Color(0xFF059669),
-                                      fontWeight: FontWeight.w700)),
-                            const SizedBox(height: 8),
-                            DropdownButtonFormField<String?>(
-                              key: ValueKey(
-                                  'multi_staff_${id}_${_staff.length}_${a['staff_id'] ?? ''}'),
-                              initialValue: (() {
-                                final raw = (staffVal ?? '').trim();
-                                if (raw.isEmpty) return null;
-                                return _staff.any((s) => s.id == raw) ? raw : null;
-                              })(),
-                              isExpanded: true,
-                              decoration: _deco('Staff', Icons.badge_outlined),
-                              items: [
-                                const DropdownMenuItem<String?>(
-                                    value: null, child: Text('Any available')),
-                                ..._staff.map((s) => DropdownMenuItem<String?>(
-                                      value: s.id,
-                                      child: Text(s.name,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: const TextStyle(fontSize: 13)),
-                                    )),
-                              ],
-                              onChanged: (v) {
-                                setState(() {
-                                  _serviceAssignments.putIfAbsent(id, () => {});
-                                  _serviceAssignments[id]!['staff_id'] = v ?? '';
-                                });
-                                _reloadMultiSlots(id);
-                              },
-                            ),
-                            if (_staff.isEmpty)
-                              const Padding(
-                                padding: EdgeInsets.only(top: 4),
-                                child: Text(
-                                  'No staff for this branch',
-                                  style: TextStyle(
-                                      fontSize: 11, color: Color(0xFFDC2626)),
-                                ),
-                              ),
-                            const SizedBox(height: 8),
-                            Row(children: [
-                              Expanded(
-                                child: _pickPill(
-                                  value: a['date'] ?? '',
-                                  hint: 'Date',
-                                  icon: Icons.calendar_today_rounded,
-                                  onTap: () => _pickAssignmentDate(id),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: _pickPill(
-                                  value: a['time'] ?? '',
-                                  hint: 'Time',
-                                  icon: Icons.access_time_rounded,
-                                  onTap: () => _pickAssignmentTime(id),
-                                ),
-                              ),
-                            ]),
-                            if ((a['staff_id'] ?? '').toString().trim().isNotEmpty &&
-                                (a['date'] ?? '').toString().trim().isNotEmpty)
-                              _slotChips(
-                                slots: _multiSlots[id] ?? const [],
-                                loading: _multiSlotsLoading[id] == true,
-                                value: a['time'] ?? '',
-                                onPick: (t) => setState(() {
-                                  _serviceAssignments.putIfAbsent(id, () => {});
-                                  _serviceAssignments[id]!['time'] = t;
-                                }),
-                              ),
-                          ],
-                        ),
-                      );
-                    }),
-                  ],
 
                   const SizedBox(height: 10),
 
@@ -1973,9 +1763,7 @@ class _AddApptSheetState extends State<_AddApptSheet> {
                             Text(
                               _saving
                                   ? 'Booking...'
-                                  : (_multiBooking
-                                      ? 'Book Appointments'
-                                      : 'Book Appointment'),
+                                  : 'Book Appointment',
                               style: TextStyle(
                                   color: _saving
                                       ? const Color(0xFF9CA3AF)

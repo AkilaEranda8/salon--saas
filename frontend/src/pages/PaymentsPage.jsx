@@ -370,9 +370,9 @@ function printReceipt(payment) {
   </div>
   <table>
     ${line('Customer', payment.customer?.name || payment.customer_name)}
-    ${line('Staff', payment.staff?.name)}
+    ${line('Staff', (paymentCommissionLines(payment).map((l) => l.staff_name).filter(Boolean).join(', ')) || payment.staff?.name)}
     ${line('Branch', payment.branch?.name)}
-    ${line('Service', payment.service?.name)}
+    ${line('Service', paymentServiceNames(payment).join(', ') || payment.service?.name)}
     ${dash()}
     ${line('Bill', 'Rs. ' + (Number(payment.total_amount||0)+Number(payment.loyalty_discount||0)+Number(payment.promo_discount||0)).toLocaleString())}
     ${Number(payment.loyalty_discount||0) > 0 ? line('Loyalty Disc.', '- Rs. ' + Number(payment.loyalty_discount).toLocaleString()) : ''}
@@ -487,6 +487,236 @@ function InvoiceModal({ open, onClose, payment }) {
       </div>
     </div>,
     document.body
+  );
+}
+
+function paymentServiceNames(row) {
+  const fromLines = Array.isArray(row?.service_staff)
+    ? row.service_staff.map((l) => l.service_name).filter(Boolean)
+    : [];
+  if (fromLines.length) return Array.from(new Set(fromLines));
+  const fromSvcs = Array.isArray(row?.services)
+    ? row.services.map((s) => s.name).filter(Boolean)
+    : [];
+  if (fromSvcs.length) return Array.from(new Set(fromSvcs));
+  return row?.service?.name ? [row.service.name] : [];
+}
+
+function PaymentDetailModal({ open, onClose, payment, loading, dark, canEdit, onEdit, onPrint }) {
+  if (!open) return null;
+  const p = payment || {};
+  const muted = dark ? '#94A3B8' : '#667085';
+  const title = dark ? '#F8FAFC' : '#101828';
+  const cardBg = dark ? '#0F172A' : '#fff';
+  const cardBorder = dark ? '#334155' : '#E4E7EC';
+  const softBg = dark ? '#1E293B' : '#F8FAFC';
+  const customer = p.customer?.name || p.customer_name || 'Walk-in';
+  const phone = p.customer?.phone || p.appointment?.phone || '';
+  const dateLabel = p.date
+    ? new Date(p.date).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
+    : '—';
+  const createdLabel = p.createdAt
+    ? new Date(p.createdAt).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+    : '';
+  const serviceLines = Array.isArray(p.service_staff) && p.service_staff.length
+    ? p.service_staff
+    : (Array.isArray(p.services) && p.services.length
+      ? p.services.map((s) => ({ service_name: s.name, staff_name: p.staff?.name }))
+      : (p.service?.name ? [{ service_name: p.service.name, staff_name: p.staff?.name }] : []));
+  const commissionLines = paymentCommissionLines(p);
+  const commissionTotal = paymentTotalCommission(p);
+  const loyalty = Number(p.loyalty_discount || 0);
+  const promo = Number(p.promo_discount || 0);
+  const net = Number(p.total_amount || 0);
+  const gross = net + loyalty + promo;
+  const appt = p.appointment;
+  const apptTime = appt?.time ? String(appt.time).slice(0, 5) : '';
+
+  const infoRows = [
+    { icon: '📅', label: 'Date', value: dateLabel },
+    { icon: '🏢', label: 'Branch', value: p.branch?.name || '—' },
+    appt ? {
+      icon: '📋',
+      label: 'Appointment',
+      value: `#${appt.id}${appt.date ? ` · ${String(appt.date).slice(0, 10)}` : ''}${apptTime ? ` ${apptTime}` : ''}${appt.status ? ` · ${appt.status.replace('_', ' ')}` : ''}`,
+    } : null,
+    { icon: '⭐', label: 'Points earned', value: Number(p.points_earned || 0) > 0 ? String(p.points_earned) : null },
+  ].filter((r) => r && r.value);
+
+  return (
+    <PayModal
+      open={open}
+      onClose={onClose}
+      title="Payment details"
+      subtitle={`#${p.id || '—'} · ${customer}`}
+      size="lg"
+      dark={dark}
+      footer={(
+        <>
+          <Button variant="secondary" onClick={onClose}>Close</Button>
+          <Button variant="secondary" onClick={() => onPrint?.(p)} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <PrintIcon /> Print receipt
+          </Button>
+          {canEdit && (
+            <Button variant="primary" onClick={() => onEdit?.(p)} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <IconEdit /> Edit
+            </Button>
+          )}
+        </>
+      )}
+    >
+      {loading && !p.id ? (
+        <div style={{ padding: 28, textAlign: 'center', color: muted }}>Loading payment…</div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12, fontFamily: "'Inter',sans-serif" }}>
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+            padding: 16, background: cardBg, borderRadius: 14, border: `1px solid ${cardBorder}`,
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+              <div style={{
+                width: 44, height: 44, borderRadius: '50%', flexShrink: 0,
+                background: 'linear-gradient(135deg,#059669,#2563EB)', color: '#fff',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 18,
+              }}>
+                {String(customer).charAt(0).toUpperCase()}
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 17, fontWeight: 700, color: title }}>{customer}</div>
+                <div style={{ fontSize: 13, color: muted, marginTop: 2 }}>{phone || 'No phone'}</div>
+              </div>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6, flexShrink: 0 }}>
+              <span style={{
+                padding: '4px 10px', borderRadius: 99, fontSize: 11, fontWeight: 800, letterSpacing: '0.04em',
+                background: p.is_advance ? (dark ? '#1E3A5F' : '#EFF8FF') : (dark ? '#064E3B' : '#ECFDF5'),
+                color: p.is_advance ? '#60A5FA' : '#059669',
+                border: `1px solid ${p.is_advance ? (dark ? '#1D4ED8' : '#B2DDFF') : (dark ? '#065F46' : '#A7F3D0')}`,
+              }}>
+                {p.is_advance ? 'ADVANCE' : (p.status || 'PAID').toUpperCase()}
+              </span>
+              <span style={{ fontSize: 18, fontWeight: 800, color: '#059669' }}>Rs. {net.toLocaleString()}</span>
+            </div>
+          </div>
+
+          {infoRows.map((row) => (
+            <div key={row.label} style={{
+              display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px',
+              background: cardBg, borderRadius: 12, border: `1px solid ${cardBorder}`,
+            }}>
+              <span style={{ fontSize: 18, width: 28, textAlign: 'center', flexShrink: 0 }}>{row.icon}</span>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{row.label}</div>
+                <div style={{ fontSize: 14, fontWeight: 600, color: title, marginTop: 2 }}>{row.value}</div>
+              </div>
+            </div>
+          ))}
+
+          <div style={{ padding: '12px 14px', background: cardBg, borderRadius: 12, border: `1px solid ${cardBorder}` }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: muted, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10 }}>
+              Services
+            </div>
+            {serviceLines.length ? serviceLines.map((line, i) => (
+              <div key={`${line.service_id || line.service_name}-${i}`} style={{
+                padding: '10px 12px', borderRadius: 10, marginBottom: i === serviceLines.length - 1 ? 0 : 8,
+                border: `1px solid ${cardBorder}`, background: softBg,
+              }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: title }}>{line.service_name || 'Service'}</div>
+                <div style={{ fontSize: 12, color: muted, marginTop: 4 }}>
+                  {line.staff_name ? `👤 ${line.staff_name}` : '👤 —'}
+                  {line.date ? ` · 📅 ${line.date}` : ''}
+                  {line.time ? ` · 🕐 ${String(line.time).slice(0, 5)}` : ''}
+                </div>
+              </div>
+            )) : (
+              <div style={{ fontSize: 13, color: muted }}>—</div>
+            )}
+          </div>
+
+          <div style={{ padding: '12px 14px', background: cardBg, borderRadius: 12, border: `1px solid ${cardBorder}` }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                Staff commission
+              </div>
+              <div style={{ fontSize: 14, fontWeight: 800, color: '#D97706' }}>Rs. {Number(commissionTotal || 0).toLocaleString()}</div>
+            </div>
+            {commissionLines.length ? commissionLines.map((line, i) => (
+              <div key={`${line.staff_name}-${i}`} style={{
+                display: 'flex', justifyContent: 'space-between', gap: 12, padding: '8px 0',
+                borderTop: i === 0 ? 'none' : `1px dashed ${cardBorder}`,
+              }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: title }}>{line.staff_name || 'Staff'}</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: '#D97706' }}>Rs. {Number(line.amount || 0).toLocaleString()}</span>
+              </div>
+            )) : (
+              <div style={{ fontSize: 13, color: muted }}>No commission recorded</div>
+            )}
+            {Number(p.manager_commission_amount || 0) > 0 && (
+              <div style={{
+                display: 'flex', justifyContent: 'space-between', gap: 12, padding: '8px 0',
+                borderTop: `1px dashed ${cardBorder}`,
+              }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: title }}>Manager oversight</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: '#7C3AED' }}>
+                  Rs. {Number(p.manager_commission_amount).toLocaleString()}
+                </span>
+              </div>
+            )}
+          </div>
+
+          <div style={{ padding: '12px 14px', background: cardBg, borderRadius: 12, border: `1px solid ${cardBorder}` }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: muted, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10 }}>
+              Bill
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: muted, marginBottom: 6 }}>
+              <span>Gross</span><span>Rs. {gross.toLocaleString()}</span>
+            </div>
+            {loyalty > 0 && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#D97706', marginBottom: 6 }}>
+                <span>Loyalty discount</span><span>- Rs. {loyalty.toLocaleString()}</span>
+              </div>
+            )}
+            {promo > 0 && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#7C3AED', marginBottom: 6 }}>
+                <span>Promo discount</span><span>- Rs. {promo.toLocaleString()}</span>
+              </div>
+            )}
+            <div style={{
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              paddingTop: 8, marginTop: 4, borderTop: `1px solid ${cardBorder}`,
+            }}>
+              <span style={{ fontSize: 13, fontWeight: 800, color: title }}>Net total</span>
+              <span style={{ fontSize: 16, fontWeight: 800, color: '#059669' }}>Rs. {net.toLocaleString()}</span>
+            </div>
+          </div>
+
+          <div style={{ padding: '12px 14px', background: cardBg, borderRadius: 12, border: `1px solid ${cardBorder}` }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: muted, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10 }}>
+              Payment method
+            </div>
+            {(p.splits || []).length ? (p.splits || []).map((sp, i) => (
+              <div key={i} style={{
+                display: 'flex', justifyContent: 'space-between', gap: 12, padding: '8px 0',
+                borderTop: i === 0 ? 'none' : `1px dashed ${cardBorder}`,
+              }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: title }}>
+                  {METHOD_LABEL[sp.method] || sp.method}
+                </span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: title }}>Rs. {Number(sp.amount || 0).toLocaleString()}</span>
+              </div>
+            )) : (
+              <div style={{ fontSize: 13, color: muted }}>—</div>
+            )}
+          </div>
+
+          {createdLabel ? (
+            <div style={{ textAlign: 'right', fontSize: 11, color: dark ? '#64748B' : '#D0D5DD', fontFamily: 'monospace' }}>
+              Recorded {createdLabel} · ID #{p.id}
+            </div>
+          ) : null}
+        </div>
+      )}
+    </PayModal>
   );
 }
 
@@ -756,6 +986,9 @@ export default function PaymentsPage() {
   const [editId, setEditId]       = useState(null);
   const [showInvoice, setShowInvoice] = useState(false);
   const [invoiceItem, setInvoiceItem] = useState(null);
+  const [showDetail, setShowDetail] = useState(false);
+  const [detailItem, setDetailItem] = useState(null);
+  const [detailLoading, setDetailLoading] = useState(false);
   const [form, setForm]           = useState(EMPTY_FORM);
   const [servicePrices, setServicePrices] = useState({});
   const [saving, setSaving]       = useState(false);
@@ -909,6 +1142,19 @@ export default function PaymentsPage() {
     }));
   };
 
+  const openDetail = async (row) => {
+    setDetailItem(row);
+    setShowDetail(true);
+    setDetailLoading(true);
+    try {
+      const { data } = await api.get(`/payments/${row.id}`);
+      if (data?.id) setDetailItem(data);
+    } catch {
+      /* keep list snapshot */
+    } finally {
+      setDetailLoading(false);
+    }
+  };
   const openEdit = async (row) => {
     setFormErr('');
     try {
@@ -1128,7 +1374,7 @@ export default function PaymentsPage() {
             }
           },
           { id:'search', header:'Customer', meta:{ width:'18%' },
-            accessorFn: r => `${r.customer?.name || r.customer_name || ''} ${r.service?.name || ''} ${r.staff?.name || ''}`.trim(),
+            accessorFn: r => `${r.customer?.name || r.customer_name || ''} ${paymentServiceNames(r).join(' ')} ${r.staff?.name || ''}`.trim(),
             cell: ({ row }) => {
               const staffLines = paymentCommissionLines(row.original);
               const staffLabel = staffLines.length > 1
@@ -1147,8 +1393,8 @@ export default function PaymentsPage() {
             }
           },
           { id:'service', header:'Service', meta:{ width:'16%' },
-            accessorFn: r => r.service?.name || '',
-            cell: ({ getValue }) => <span style={{ fontSize:13, color:'#475467' }}>{getValue()}</span>
+            accessorFn: r => paymentServiceNames(r).join(', '),
+            cell: ({ getValue }) => <span style={{ fontSize:13, color:'#475467' }}>{getValue() || '—'}</span>
           },
           { id:'payment', header:'Payment', meta:{ width:'20%' },
             cell: ({ row }) => (
@@ -1200,7 +1446,7 @@ export default function PaymentsPage() {
                 {canEdit && (
                   <ActionBtn onClick={() => openEdit(row.original)} title="Edit payment" color="#D97706"><IconEdit /></ActionBtn>
                 )}
-                <ActionBtn onClick={() => { setInvoiceItem(row.original); setShowInvoice(true); }} title="View Receipt" color="#2563EB"><IconEye /></ActionBtn>
+                <ActionBtn onClick={() => openDetail(row.original)} title="View details" color="#2563EB"><IconEye /></ActionBtn>
                 <ActionBtn onClick={() => printReceipt(row.original)} title="Print Receipt" color="#059669"><PrintIcon /></ActionBtn>
               </div>
             )
@@ -1775,6 +2021,16 @@ export default function PaymentsPage() {
       </PayModal>
 
       <InvoiceModal open={showInvoice} onClose={() => setShowInvoice(false)} payment={invoiceItem} />
+      <PaymentDetailModal
+        open={showDetail}
+        onClose={() => { setShowDetail(false); setDetailItem(null); }}
+        payment={detailItem}
+        loading={detailLoading}
+        dark={isDark}
+        canEdit={canEdit}
+        onEdit={(p) => { setShowDetail(false); openEdit(p); }}
+        onPrint={printReceipt}
+      />
 
       {qrModal && (
         <HelaPayQRModal

@@ -627,7 +627,9 @@ export default function AppointmentsPage() {
   const [paymentRecurringTemplateIds, setPaymentRecurringTemplateIds] = useState([]);
   const [recurringTemplates, setRecurringTemplates] = useState([]);
   const [apptServiceIds, setApptServiceIds] = useState([]);
-  /** Per-service staff/date/time for multi-booking (new appointment only). */
+  /** Tick to book multiple services on one appointment (per-service staff). */
+  const [multiService, setMultiService] = useState(false);
+  /** Per-service staff for multi-service booking. */
   const [serviceAssignments, setServiceAssignments] = useState({});
   const [serviceSearch, setServiceSearch] = useState('');
   const [paymentServiceSearch, setPaymentServiceSearch] = useState('');
@@ -1089,6 +1091,7 @@ export default function AppointmentsPage() {
     setEditItem(null);
     setForm({ ...EMPTY, branch_id: user?.branch_id || '', date: today });
     setApptServiceIds([]);
+    setMultiService(false);
     setServiceAssignments({});
     setServiceSearch('');
     setCollectAdvance(false);
@@ -1138,6 +1141,7 @@ export default function AppointmentsPage() {
         : (row.recurring_message_template_id ? [String(row.recurring_message_template_id)] : []),
     });
     setApptServiceIds(selectedIds);
+    setMultiService(selectedIds.length > 1);
     const staffByService = {};
     const lines = Array.isArray(row.service_staff) ? row.service_staff : [];
     selectedIds.forEach((id) => {
@@ -1471,32 +1475,63 @@ export default function AppointmentsPage() {
 
   const toggleApptService = (id) => {
     const nid = Number(id);
-    setApptServiceIds(prev => {
-      const next = prev.includes(nid) ? prev.filter(x => x !== nid) : [...prev, nid];
-      setForm(f => ({
+    setApptServiceIds((prev) => {
+      let next;
+      if (!multiService) {
+        // Single-service mode: selecting one replaces the previous
+        next = prev.includes(nid) ? [] : [nid];
+      } else {
+        next = prev.includes(nid) ? prev.filter((x) => x !== nid) : [...prev, nid];
+      }
+      setForm((f) => ({
         ...f,
         service_id: next[0] || '',
         amount: resolveBookingAmount(next),
       }));
       setServiceAssignments((prevAssign) => {
         const out = { ...prevAssign };
-        if (!next.includes(nid)) {
-          delete out[String(nid)];
-        } else if (!out[String(nid)]) {
-          out[String(nid)] = {
-            staff_id: form.staff_id || '',
-            date: form.date || today,
-            time: form.time || '',
-          };
-        }
-        // Drop removed services
         Object.keys(out).forEach((k) => {
           if (!next.includes(Number(k))) delete out[k];
+        });
+        next.forEach((sid) => {
+          if (!out[String(sid)]) {
+            out[String(sid)] = {
+              staff_id: form.staff_id || '',
+              date: form.date || today,
+              time: form.time || '',
+            };
+          }
         });
         return out;
       });
       return next;
     });
+  };
+
+  const setMultiServiceMode = (on) => {
+    setMultiService(on);
+    if (!on) {
+      setApptServiceIds((prev) => {
+        const next = prev.length ? [prev[0]] : [];
+        setForm((f) => ({
+          ...f,
+          service_id: next[0] || '',
+          amount: resolveBookingAmount(next),
+        }));
+        setServiceAssignments((prevAssign) => {
+          if (!next.length) return {};
+          const key = String(next[0]);
+          return {
+            [key]: prevAssign[key] || {
+              staff_id: form.staff_id || '',
+              date: form.date || today,
+              time: form.time || '',
+            },
+          };
+        });
+        return next;
+      });
+    }
   };
   const filteredCustomers = useMemo(() => {
     const map = new Map();
@@ -1539,6 +1574,7 @@ export default function AppointmentsPage() {
     const nextIds = resolveTemplateServiceIds(tpl, services);
     if (nextIds.length) {
       setApptServiceIds(nextIds);
+      setMultiService(nextIds.length > 1);
       setServiceAssignments((prev) => {
         const out = {};
         nextIds.forEach((id) => {
@@ -2121,7 +2157,36 @@ export default function AppointmentsPage() {
               )}
             </ApptSection>
 
-            <ApptSection title="Services" desc={editItem ? 'Select one or more — first service is primary' : 'Select one or more services for this one booking'} dark={isDark}>
+            <ApptSection
+              title="Services"
+              desc={multiService
+                ? 'Tick services for one booking — staff can differ per service'
+                : 'Select one service (tick Multiple services to add more)'}
+              dark={isDark}
+            >
+              <label style={{
+                display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer',
+                padding: '10px 12px', borderRadius: 12, marginBottom: 4,
+                border: `1px solid ${multiService ? '#86EFAC' : (isDark ? '#334155' : '#E2E8F0')}`,
+                background: multiService ? (isDark ? '#052e16' : '#F0FDF4') : (isDark ? '#0F172A' : '#F8FAFC'),
+              }}>
+                <input
+                  type="checkbox"
+                  checked={multiService}
+                  onChange={(e) => setMultiServiceMode(e.target.checked)}
+                  style={{ width: 16, height: 16, accentColor: '#16A34A' }}
+                />
+                <span style={{ flex: 1 }}>
+                  <span style={{ display: 'block', fontSize: 13, fontWeight: 700, color: isDark ? '#E2E8F0' : '#0F172A' }}>
+                    Multiple services
+                  </span>
+                  <span style={{ display: 'block', fontSize: 11, color: isDark ? '#94A3B8' : '#64748B', marginTop: 2 }}>
+                    {multiService
+                      ? 'On — add several services on the same appointment'
+                      : 'Off — one service only'}
+                  </span>
+                </span>
+              </label>
               <Input
                 value={serviceSearch}
                 onChange={(e) => setServiceSearch(e.target.value)}
@@ -2154,7 +2219,13 @@ export default function AppointmentsPage() {
                           cursor: 'pointer',
                         }}
                       >
-                        <input type="checkbox" checked={active} onChange={() => toggleApptService(s.id)} style={{ width: 16, height: 16, accentColor: '#2563EB' }} />
+                        <input
+                          type={multiService ? 'checkbox' : 'radio'}
+                          name={multiService ? undefined : 'appt-single-service'}
+                          checked={active}
+                          onChange={() => toggleApptService(s.id)}
+                          style={{ width: 16, height: 16, accentColor: '#2563EB' }}
+                        />
                         <span style={{ minWidth: 0 }}>
                           <span style={{ display: 'block', fontSize: 14, color: isDark ? '#E2E8F0' : '#0F172A', fontWeight: active ? 700 : 500 }}>{s.name}</span>
                           {(s.category || s.subcategory) && (
@@ -2257,7 +2328,7 @@ export default function AppointmentsPage() {
 
               <ApptSection
                 title="Staff"
-                desc={apptServiceIds.length > 1
+                desc={multiService && apptServiceIds.length > 1
                   ? 'Pick staff for each service — stays one appointment'
                   : 'Assign a stylist for this booking'}
                 dark={isDark}
@@ -2266,33 +2337,7 @@ export default function AppointmentsPage() {
                   <div style={{ fontSize: 13, color: isDark ? '#94A3B8' : '#64748B' }}>
                     Select services first.
                   </div>
-                ) : apptServiceIds.length === 1 ? (
-                  <FormGroup label="Assign Staff">
-                    <Select
-                      value={
-                        (serviceAssignments[String(apptServiceIds[0])]?.staff_id
-                          || form.staff_id
-                          || '') !== ''
-                          ? String(serviceAssignments[String(apptServiceIds[0])]?.staff_id || form.staff_id)
-                          : ''
-                      }
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        setForm((f) => ({ ...f, staff_id: v, time: '' }));
-                        setServiceAssignments((prev) => ({
-                          ...prev,
-                          [String(apptServiceIds[0])]: {
-                            ...(prev[String(apptServiceIds[0])] || {}),
-                            staff_id: v,
-                          },
-                        }));
-                      }}
-                    >
-                      <option value="">Any available staff</option>
-                      {filteredStaff.map((s) => <option key={s.id} value={String(s.id)}>{s.name}</option>)}
-                    </Select>
-                  </FormGroup>
-                ) : (
+                ) : multiService && apptServiceIds.length > 1 ? (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                     {apptServiceIds.map((sid) => {
                       const s = services.find((x) => Number(x.id) === Number(sid));
@@ -2320,7 +2365,6 @@ export default function AppointmentsPage() {
                                   ...prev,
                                   [String(sid)]: { ...(prev[String(sid)] || {}), staff_id: v },
                                 }));
-                                // Keep form.staff_id in sync with first service for slot loading
                                 if (Number(sid) === Number(apptServiceIds[0])) {
                                   setForm((f) => ({ ...f, staff_id: v, time: f.time }));
                                 }
@@ -2339,6 +2383,32 @@ export default function AppointmentsPage() {
                       Shared date/time below. Different staff are saved on the same appointment.
                     </div>
                   </div>
+                ) : (
+                  <FormGroup label="Assign Staff">
+                    <Select
+                      value={
+                        (serviceAssignments[String(apptServiceIds[0])]?.staff_id
+                          || form.staff_id
+                          || '') !== ''
+                          ? String(serviceAssignments[String(apptServiceIds[0])]?.staff_id || form.staff_id)
+                          : ''
+                      }
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setForm((f) => ({ ...f, staff_id: v, time: '' }));
+                        setServiceAssignments((prev) => ({
+                          ...prev,
+                          [String(apptServiceIds[0])]: {
+                            ...(prev[String(apptServiceIds[0])] || {}),
+                            staff_id: v,
+                          },
+                        }));
+                      }}
+                    >
+                      <option value="">Any available staff</option>
+                      {filteredStaff.map((s) => <option key={s.id} value={String(s.id)}>{s.name}</option>)}
+                    </Select>
+                  </FormGroup>
                 )}
                 {filteredStaff.length === 0 && (
                   <div style={{ fontSize: 11, color: '#DC2626', marginTop: 4 }}>

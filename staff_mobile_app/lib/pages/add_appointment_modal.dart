@@ -76,6 +76,7 @@ class _AddApptSheetState extends State<_AddApptSheet> {
 
   /// Per-service staff/date/time when multiple bookings is on.
   final Map<String, Map<String, String>> _serviceAssignments = {};
+  /// When true: can add multiple services (+ per-service staff). Off = one service.
   bool _multiBooking = false;
   bool _collectAdvance = false;
   String _advanceMethod = 'Cash';
@@ -639,6 +640,7 @@ class _AddApptSheetState extends State<_AddApptSheet> {
   }
 
   void _onAddExtra(String id) {
+    if (!_multiBooking) return;
     setState(() {
       final p = _primaryServiceId?.trim();
       if (p == null || p.isEmpty) {
@@ -1412,10 +1414,60 @@ class _AddApptSheetState extends State<_AddApptSheet> {
                     const SizedBox(height: 10),
                   ],
 
+                  // Multiple services toggle
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: _multiBooking ? const Color(0xFFF0FDF4) : _cBg,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: _multiBooking ? const Color(0xFF86EFAC) : _cBorder,
+                      ),
+                    ),
+                    child: Row(children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('Multiple services',
+                                style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w800,
+                                    color: Color(0xFF111827))),
+                            const SizedBox(height: 2),
+                            Text(
+                              _multiBooking
+                                  ? 'On — add several services (same appointment, staff per service)'
+                                  : 'Off — one service only',
+                              style: const TextStyle(
+                                  fontSize: 11, color: Color(0xFF6B7280)),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Switch.adaptive(
+                        value: _multiBooking,
+                        activeThumbColor: _cMid,
+                        onChanged: (v) => setState(() {
+                          _multiBooking = v;
+                          if (!v) {
+                            _extraServiceIds.clear();
+                            _syncAssignments();
+                            _invalidatePackageIfServicesChanged();
+                          } else {
+                            _syncAssignments();
+                          }
+                        }),
+                      ),
+                    ]),
+                  ),
+
+                  const SizedBox(height: 10),
+
                   // Services (dropdown)
                   WalkInServiceDropdownSection(
                     key: ValueKey(
-                      'appt_svc_${_orderedServiceIds().join(',')}',
+                      'appt_svc_${_multiBooking}_${_orderedServiceIds().join(',')}',
                     ),
                     activeServices: active,
                     primaryServiceId: _primaryServiceId,
@@ -1423,47 +1475,18 @@ class _AddApptSheetState extends State<_AddApptSheet> {
                     onPrimaryChanged: _onPrimaryChanged,
                     onAddExtra: _onAddExtra,
                     onRemoveExtraAt: _removeExtraAt,
+                    allowMultiple: _multiBooking,
                     label: 'SERVICES',
-                    helperText: 'Pick primary service; add more lines below.',
+                    helperText: _multiBooking
+                        ? 'Pick primary service; add more lines below.'
+                        : 'Pick one service.',
                     accentColor: _cMid,
                     borderColor: _cBorder,
                     bgColor: _cBg,
                     mutedColor: const Color(0xFF6B7280),
                   ),
 
-                  const SizedBox(height: 10),
-
-                  // Multiple services = one appointment; staff can differ per service
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                    decoration: BoxDecoration(
-                      color: _cBg,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: _cBorder),
-                    ),
-                    child: const Row(children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text('Multiple services',
-                                style: TextStyle(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w800,
-                                    color: Color(0xFF111827))),
-                            SizedBox(height: 2),
-                            Text(
-                              'Same appointment — you can pick different staff for each service.',
-                              style: TextStyle(
-                                  fontSize: 11, color: Color(0xFF6B7280)),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ]),
-                  ),
-
-                  if (_orderedServiceIds().length > 1) ...[
+                  if (_multiBooking && _orderedServiceIds().length > 1) ...[
                     const SizedBox(height: 10),
                     ..._orderedServiceIds().map((id) {
                       SalonService? svc;
@@ -1725,13 +1748,13 @@ class _AddApptSheetState extends State<_AddApptSheet> {
 
                   if (!_multiBooking) const SizedBox(height: 12),
 
-                  // Staff + Branch row (shared staff when only one service)
-                  if (_orderedServiceIds().length <= 1 || (_isSuper && _branches.isNotEmpty))
+                  // Staff + Branch row (shared staff when single / multi off)
+                  if (!_multiBooking || _orderedServiceIds().length <= 1 || (_isSuper && _branches.isNotEmpty))
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Staff (shared when single service)
-                      if (_orderedServiceIds().length <= 1)
+                      // Staff (shared when not multi-service lines)
+                      if (!_multiBooking || _orderedServiceIds().length <= 1)
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,

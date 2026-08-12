@@ -23,6 +23,7 @@ class WalkInServiceDropdownSection extends StatefulWidget {
     this.priceControllers,
     this.onPriceEdited,
     this.pricesEditable = false,
+    this.allowMultiple = true,
   });
 
   final List<SalonService> activeServices;
@@ -38,11 +39,11 @@ class WalkInServiceDropdownSection extends StatefulWidget {
   final Color borderColor;
   final Color bgColor;
   final Color mutedColor;
-
-  /// When [pricesEditable] is true, each selected service shows this controller.
   final Map<String, TextEditingController>? priceControllers;
   final VoidCallback? onPriceEdited;
   final bool pricesEditable;
+  /// When false, hide additional-service rows and the "Add another" dropdown.
+  final bool allowMultiple;
 
   @override
   State<WalkInServiceDropdownSection> createState() =>
@@ -387,7 +388,7 @@ class _WalkInServiceDropdownSectionState
             ),
           ),
 
-        if (extraIds.isNotEmpty) ...[
+        if (w.allowMultiple && extraIds.isNotEmpty) ...[
           const SizedBox(height: 8),
           ...List.generate(extraIds.length, (i) {
             final extraId = extraIds[i];
@@ -454,7 +455,7 @@ class _WalkInServiceDropdownSectionState
           }),
         ],
 
-        if (hasPrimary && filtered.isNotEmpty) ...[
+        if (w.allowMultiple && hasPrimary && filtered.isNotEmpty) ...[
           const SizedBox(height: 8),
           DropdownButtonFormField<String>(
             key: ValueKey('extra_add_$_extraDropdownKey'),

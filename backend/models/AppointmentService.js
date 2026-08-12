@@ -15,6 +15,10 @@ const AppointmentService = sequelize.define('AppointmentService', {
     type: DataTypes.INTEGER,
     allowNull: false,
   },
+  staff_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+  },
   sort_order: {
     type: DataTypes.INTEGER,
     allowNull: false,
@@ -26,6 +30,7 @@ const AppointmentService = sequelize.define('AppointmentService', {
   indexes: [
     { fields: ['appointment_id'] },
     { fields: ['service_id'] },
+    { fields: ['staff_id'] },
     { unique: true, fields: ['appointment_id', 'service_id'] },
   ],
 });

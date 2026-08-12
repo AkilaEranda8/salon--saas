@@ -48,13 +48,35 @@ function isTeamAppointmentRole(role) {
 async function applyStaffSelfScope(req, where) {
   if (isTeamAppointmentRole(roleOf(req))) return;
   const linked = await resolveStaffRecordForRequest(req);
-  where.staff_id = linked ? linked.id : -1;
+  const sid = linked ? Number(linked.id) : -1;
+  // Own primary staff OR assigned on a service line
+  where[Op.and] = [
+    ...(where[Op.and] ? (Array.isArray(where[Op.and]) ? where[Op.and] : [where[Op.and]]) : []),
+    {
+      [Op.or]: [
+        { staff_id: sid },
+        sequelize.literal(
+          `EXISTS (SELECT 1 FROM appointment_services AS asv WHERE asv.appointment_id = \`Appointment\`.\`id\` AND asv.staff_id = ${sid})`,
+        ),
+      ],
+    },
+  ];
+  delete where.staff_id;
 }
 
 async function assertStaffOwnsAppointment(req, appt) {
   if (isTeamAppointmentRole(roleOf(req))) return null;
   const linked = await resolveStaffRecordForRequest(req);
-  if (!linked || Number(appt.staff_id) !== Number(linked.id)) {
+  if (!linked) {
+    return { status: 403, message: 'You can only access your own appointments.' };
+  }
+  if (Number(appt.staff_id) === Number(linked.id)) return null;
+  await ensureAppointmentServicesTable();
+  const line = await AppointmentService.findOne({
+    where: { appointment_id: appt.id, staff_id: linked.id },
+    attributes: ['id'],
+  });
+  if (!line) {
     return { status: 403, message: 'You can only access your own appointments.' };
   }
   return null;
@@ -70,19 +92,36 @@ let appointmentServicesTableReadyPromise = null;
 
 const ensureAppointmentServicesTable = async () => {
   if (!appointmentServicesTableReadyPromise) {
-    appointmentServicesTableReadyPromise = sequelize.query(`
-      CREATE TABLE IF NOT EXISTS appointment_services (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        appointment_id INT NOT NULL,
-        service_id INT NOT NULL,
-        sort_order INT NOT NULL DEFAULT 0,
-        createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        updatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        UNIQUE KEY uniq_appt_service (appointment_id, service_id),
-        KEY idx_appointment_id (appointment_id),
-        KEY idx_service_id (service_id)
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-    `).catch((err) => {
+    appointmentServicesTableReadyPromise = (async () => {
+      await sequelize.query(`
+        CREATE TABLE IF NOT EXISTS appointment_services (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          appointment_id INT NOT NULL,
+          service_id INT NOT NULL,
+          staff_id INT NULL,
+          sort_order INT NOT NULL DEFAULT 0,
+          createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          UNIQUE KEY uniq_appt_service (appointment_id, service_id),
+          KEY idx_appointment_id (appointment_id),
+          KEY idx_service_id (service_id),
+          KEY idx_staff_id (staff_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+      `);
+      const [cols] = await sequelize.query(`
+        SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = 'appointment_services'
+          AND COLUMN_NAME = 'staff_id'
+      `);
+      if (!cols.length) {
+        await sequelize.query(`
+          ALTER TABLE appointment_services
+          ADD COLUMN staff_id INT NULL AFTER service_id,
+          ADD KEY idx_staff_id (staff_id)
+        `);
+      }
+    })().catch((err) => {
       appointmentServicesTableReadyPromise = null;
       throw err;
     });
@@ -96,7 +135,7 @@ const normalizeServiceIds = (serviceIds, fallbackServiceId = null) => {
     ? serviceIds
     : (serviceIds !== undefined && serviceIds !== null ? [serviceIds] : []);
   for (const value of raw) {
-    const id = Number(value);
+    const id = Number(value?.service_id ?? value?.serviceId ?? value);
     if (Number.isInteger(id) && id > 0) ids.push(id);
   }
 
@@ -106,6 +145,49 @@ const normalizeServiceIds = (serviceIds, fallbackServiceId = null) => {
   }
 
   return Array.from(new Set(ids));
+};
+
+/** Normalize [{service_id, staff_id}] (+ optional service_staff / items). */
+const normalizeServiceLines = ({ serviceIds, serviceId, serviceStaff, items } = {}) => {
+  const lines = [];
+  const pushLine = (sid, staffRaw) => {
+    const service_id = Number(sid);
+    if (!Number.isInteger(service_id) || service_id <= 0) return;
+    if (lines.some((l) => l.service_id === service_id)) return;
+    const staffNum = staffRaw != null && staffRaw !== '' ? Number(staffRaw) : null;
+    lines.push({
+      service_id,
+      staff_id: (Number.isInteger(staffNum) && staffNum > 0) ? staffNum : null,
+    });
+  };
+
+  if (Array.isArray(items) && items.length) {
+    for (const raw of items) {
+      pushLine(raw?.service_id ?? raw?.serviceId, raw?.staff_id ?? raw?.staffId);
+    }
+  }
+
+  const staffMap = new Map();
+  if (Array.isArray(serviceStaff)) {
+    for (const raw of serviceStaff) {
+      const sid = Number(raw?.service_id ?? raw?.serviceId);
+      if (Number.isInteger(sid) && sid > 0) {
+        staffMap.set(sid, raw?.staff_id ?? raw?.staffId ?? null);
+      }
+    }
+  } else if (serviceStaff && typeof serviceStaff === 'object') {
+    for (const [k, v] of Object.entries(serviceStaff)) {
+      const sid = Number(k);
+      if (Number.isInteger(sid) && sid > 0) staffMap.set(sid, v);
+    }
+  }
+
+  const ids = normalizeServiceIds(serviceIds, serviceId);
+  for (const sid of ids) {
+    pushLine(sid, staffMap.has(sid) ? staffMap.get(sid) : null);
+  }
+
+  return lines;
 };
 
 const resolveValidServiceIds = async (req, serviceIds, fallbackServiceId = null) => {
@@ -122,18 +204,40 @@ const resolveValidServiceIds = async (req, serviceIds, fallbackServiceId = null)
   return requested.filter((id) => valid.has(id));
 };
 
-const replaceAppointmentServiceMappings = async (appointmentId, serviceIds = [], transaction = null) => {
+const replaceAppointmentServiceMappings = async (appointmentId, serviceIdsOrLines = [], transaction = null) => {
   await ensureAppointmentServicesTable();
 
   const txOpt = transaction ? { transaction } : {};
   await AppointmentService.destroy({ where: { appointment_id: appointmentId }, ...txOpt });
-  if (!serviceIds.length) return;
+
+  const lines = Array.isArray(serviceIdsOrLines)
+    ? serviceIdsOrLines.map((raw, idx) => {
+      if (raw && typeof raw === 'object') {
+        const service_id = Number(raw.service_id ?? raw.serviceId);
+        const staffRaw = raw.staff_id ?? raw.staffId;
+        const staffNum = staffRaw != null && staffRaw !== '' ? Number(staffRaw) : null;
+        return {
+          service_id,
+          staff_id: (Number.isInteger(staffNum) && staffNum > 0) ? staffNum : null,
+          sort_order: Number.isInteger(raw.sort_order) ? raw.sort_order : idx,
+        };
+      }
+      return {
+        service_id: Number(raw),
+        staff_id: null,
+        sort_order: idx,
+      };
+    }).filter((l) => Number.isInteger(l.service_id) && l.service_id > 0)
+    : [];
+
+  if (!lines.length) return;
 
   await AppointmentService.bulkCreate(
-    serviceIds.map((sid, idx) => ({
+    lines.map((l, idx) => ({
       appointment_id: appointmentId,
-      service_id: sid,
-      sort_order: idx,
+      service_id: l.service_id,
+      staff_id: l.staff_id,
+      sort_order: l.sort_order ?? idx,
     })),
     { ignoreDuplicates: true, ...txOpt },
   );
@@ -150,16 +254,22 @@ const attachServiceIdsToAppointments = async (appointments) => {
 
   const rows = await AppointmentService.findAll({
     where: { appointment_id: { [Op.in]: apptIds } },
-    attributes: ['appointment_id', 'service_id', 'sort_order', 'id'],
+    attributes: ['appointment_id', 'service_id', 'staff_id', 'sort_order', 'id'],
     order: [['appointment_id', 'ASC'], ['sort_order', 'ASC'], ['id', 'ASC']],
     raw: true,
   });
 
   const map = new Map();
+  const staffMap = new Map();
   for (const row of rows) {
     const key = Number(row.appointment_id);
     if (!map.has(key)) map.set(key, []);
+    if (!staffMap.has(key)) staffMap.set(key, []);
     map.get(key).push(Number(row.service_id));
+    staffMap.get(key).push({
+      service_id: Number(row.service_id),
+      staff_id: row.staff_id != null ? Number(row.staff_id) : null,
+    });
   }
 
   for (const appt of list) {
@@ -168,11 +278,16 @@ const attachServiceIdsToAppointments = async (appointments) => {
     const finalIds = ids.length
       ? Array.from(new Set(ids))
       : (fallbackPrimary ? [fallbackPrimary] : []);
-
+    const serviceStaff = staffMap.get(Number(appt.id)) || finalIds.map((sid) => ({
+      service_id: sid,
+      staff_id: appt.staff_id != null ? Number(appt.staff_id) : null,
+    }));
     if (typeof appt.setDataValue === 'function') {
       appt.setDataValue('service_ids', finalIds);
+      appt.setDataValue('service_staff', serviceStaff);
     } else {
       appt.service_ids = finalIds;
+      appt.service_staff = serviceStaff;
     }
   }
 };
@@ -525,7 +640,7 @@ const create = async (req, res) => {
       branch_id, customer_id, staff_id, service_id, service_ids, customer_name,
       phone, date, time, amount, notes, is_recurring, recurrence_frequency,
       recurring_next_date, recurring_message_template_id, recurring_message_template_ids,
-      items, advance_amount, advance_method,
+      items, advance_amount, advance_method, service_staff,
     } = req.body;
 
     const parsedAdvance = Number(advance_amount);
@@ -693,7 +808,20 @@ const create = async (req, res) => {
           ...recurringFields,
           tenant_id: resolveTenantId(req),
         }, { transaction: tx });
-        await replaceAppointmentServiceMappings(appt.id, validServiceIds, tx);
+        await replaceAppointmentServiceMappings(
+          appt.id,
+          validServiceIds.map((sid, idx) => {
+            const raw = items.find((it) => Number(it?.service_id ?? it?.serviceId) === Number(sid)) || {};
+            const staffRaw = raw.staff_id ?? raw.staffId;
+            const staffNum = staffRaw != null && staffRaw !== '' ? Number(staffRaw) : null;
+            return {
+              service_id: sid,
+              staff_id: (Number.isInteger(staffNum) && staffNum > 0) ? staffNum : itemStaff,
+              sort_order: idx,
+            };
+          }),
+          tx,
+        );
         await tx.commit();
       } catch (err) {
         try { await tx.rollback(); } catch (_) { /* ignore */ }
@@ -760,13 +888,30 @@ const create = async (req, res) => {
       });
     }
 
-    // ── Single appointment (multi-service on one staff/time) ──
-    const requestedServiceIds = normalizeServiceIds(service_ids, service_id);
+    // ── Single appointment (multi-service; optional per-service staff) ──
+    const serviceLines = normalizeServiceLines({
+      serviceIds: service_ids,
+      serviceId: service_id,
+      serviceStaff: service_staff,
+    });
+    // Fill empty line staff from top-level staff_id / self
+    const defaultStaff = selfStaffId != null
+      ? Number(selfStaffId)
+      : (staff_id != null && staff_id !== '' ? Number(staff_id) : null);
+    const linesWithStaff = serviceLines.map((l) => ({
+      ...l,
+      staff_id: l.staff_id || ((Number.isInteger(defaultStaff) && defaultStaff > 0) ? defaultStaff : null),
+    }));
+    const requestedServiceIds = linesWithStaff.map((l) => l.service_id);
     const validServiceIds = await resolveValidServiceIds(req, requestedServiceIds);
     if (requestedServiceIds.length && validServiceIds.length !== requestedServiceIds.length) {
       return res.status(400).json({ message: 'One or more selected services are invalid.' });
     }
-    const primaryServiceId = validServiceIds[0] || null;
+    const validLines = linesWithStaff.filter((l) => validServiceIds.includes(l.service_id));
+    const primaryServiceId = validLines[0]?.service_id || null;
+    const assignedStaffId = selfStaffId != null
+      ? Number(selfStaffId)
+      : (validLines.find((l) => l.staff_id)?.staff_id || null);
 
     if (!primaryServiceId || !date || !time) {
       return res.status(400).json({ message: 'branch_id, service_id, customer_name, date and time are required.' });
@@ -799,30 +944,37 @@ const create = async (req, res) => {
       finalAmount = Number(finalAmount);
     }
 
-    const assignedStaffId = selfStaffId != null ? selfStaffId : (staff_id || null);
-    if (assignedStaffId) {
-      const durRows = await Service.findAll({
-        where: { id: validServiceIds, ...tenantWhere(req) },
-        attributes: ['duration_minutes'],
-      });
-      const newDur = durRows.reduce((acc, s) => acc + (Number(s.duration_minutes) || 0), 0) || 30;
-      const start = toMinutes(time);
-      if (start == null) {
-        return res.status(400).json({ message: 'Invalid time.' });
-      }
-      const existing = await loadBlockedRanges({
-        Appointment,
-        Service,
-        staffId: assignedStaffId,
-        date,
-        branchId: null,
-      });
-      const clash = existing.some(([bStart, bEnd]) => start < bEnd && (start + newDur) > bStart);
-      if (clash) {
-        return res.status(409).json({
-          message: 'Selected time overlaps an existing booking. Choose a time after that service ends.',
+    // Conflict: sequential blocks per service line staff (same start chain)
+    const durRows = await Service.findAll({
+      where: { id: validServiceIds, ...tenantWhere(req) },
+      attributes: ['id', 'duration_minutes'],
+      raw: true,
+    });
+    const durById = new Map(durRows.map((s) => [Number(s.id), parseInt(s.duration_minutes, 10) || 30]));
+    const startMin = toMinutes(time);
+    if (startMin == null) {
+      return res.status(400).json({ message: 'Invalid time.' });
+    }
+    let cursor = startMin;
+    for (const line of validLines) {
+      const dur = durById.get(line.service_id) || 30;
+      const lineStaff = line.staff_id || assignedStaffId;
+      if (lineStaff) {
+        const existing = await loadBlockedRanges({
+          Appointment,
+          Service,
+          staffId: lineStaff,
+          date,
+          branchId: null,
         });
+        const clash = existing.some(([bStart, bEnd]) => cursor < bEnd && (cursor + dur) > bStart);
+        if (clash) {
+          return res.status(409).json({
+            message: 'Selected time overlaps an existing booking for an assigned staff. Choose another slot.',
+          });
+        }
       }
+      cursor += dur;
     }
 
     const appt = await Appointment.create({
@@ -834,7 +986,7 @@ const create = async (req, res) => {
       tenant_id: resolveTenantId(req),
     });
 
-    await replaceAppointmentServiceMappings(appt.id, validServiceIds);
+    await replaceAppointmentServiceMappings(appt.id, validLines);
 
     let advancePayment = null;
     if (hasAdvance) {
@@ -981,17 +1133,34 @@ const update = async (req, res) => {
       if (next && next !== prev) updates.recurring_sms_sent_at = null;
     }
 
-    let nextServiceIds = null;
-    if (req.body.service_ids !== undefined || req.body.service_id !== undefined) {
-      const requestedServiceIds = normalizeServiceIds(req.body.service_ids, req.body.service_id || appt.service_id);
-      nextServiceIds = await resolveValidServiceIds(req, requestedServiceIds);
-      if (requestedServiceIds.length && nextServiceIds.length !== requestedServiceIds.length) {
+    let nextServiceLines = null;
+    if (req.body.service_ids !== undefined || req.body.service_id !== undefined || req.body.service_staff !== undefined) {
+      const lines = normalizeServiceLines({
+        serviceIds: req.body.service_ids !== undefined ? req.body.service_ids : (appt.service_ids || [appt.service_id]),
+        serviceId: req.body.service_id || appt.service_id,
+        serviceStaff: req.body.service_staff,
+      });
+      const requestedServiceIds = lines.map((l) => l.service_id);
+      const validIds = await resolveValidServiceIds(req, requestedServiceIds);
+      if (requestedServiceIds.length && validIds.length !== requestedServiceIds.length) {
         return res.status(400).json({ message: 'One or more selected services are invalid.' });
       }
-      if (!nextServiceIds.length) {
+      if (!validIds.length) {
         return res.status(400).json({ message: 'At least one valid service is required.' });
       }
-      updates.service_id = nextServiceIds[0];
+      const fallbackStaff = updates.staff_id !== undefined
+        ? updates.staff_id
+        : appt.staff_id;
+      nextServiceLines = lines
+        .filter((l) => validIds.includes(l.service_id))
+        .map((l) => ({
+          ...l,
+          staff_id: l.staff_id || (fallbackStaff != null && fallbackStaff !== '' ? Number(fallbackStaff) : null),
+        }));
+      updates.service_id = nextServiceLines[0].service_id;
+      if (updates.staff_id === undefined && nextServiceLines[0].staff_id) {
+        updates.staff_id = nextServiceLines[0].staff_id;
+      }
 
       const nextNotes = req.body.notes !== undefined ? req.body.notes : appt.notes;
       const packageBooking = usesPackageBooking({
@@ -1002,7 +1171,7 @@ const update = async (req, res) => {
       // Recalculate amount from selected services when amount is not explicitly supplied
       if (req.body.amount === undefined && !packageBooking) {
         const selected = await Service.findAll({
-          where: { id: nextServiceIds, ...tenantWhere(req) },
+          where: { id: validIds, ...tenantWhere(req) },
           attributes: ['price'],
           raw: true,
         });
@@ -1014,7 +1183,7 @@ const update = async (req, res) => {
     }
 
     // Auto-update amount from service price when service changes
-    if (updates.service_id && req.body.amount === undefined && !nextServiceIds && !notesUsesPackage(req.body.notes ?? appt.notes)) {
+    if (updates.service_id && req.body.amount === undefined && !nextServiceLines && !notesUsesPackage(req.body.notes ?? appt.notes)) {
       const svc = await Service.findOne({ where: byIdWhere(req, updates.service_id), attributes: ['price'] });
       if (svc) updates.amount = svc.price;
     }
@@ -1024,7 +1193,7 @@ const update = async (req, res) => {
       updates.date !== undefined
       || updates.time !== undefined
       || updates.service_id !== undefined
-      || nextServiceIds
+      || nextServiceLines
     ) {
       updates.reminder_15_sent_at = null;
       updates.reminder_before_start_sent_at = null;
@@ -1032,8 +1201,8 @@ const update = async (req, res) => {
     }
     await appt.update(updates);
 
-    if (nextServiceIds) {
-      await replaceAppointmentServiceMappings(appt.id, nextServiceIds);
+    if (nextServiceLines) {
+      await replaceAppointmentServiceMappings(appt.id, nextServiceLines);
     }
 
     await attachServiceIdsToAppointments(appt);

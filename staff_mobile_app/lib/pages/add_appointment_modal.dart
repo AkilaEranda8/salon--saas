@@ -821,10 +821,30 @@ class _AddApptSheetState extends State<_AddApptSheet> {
         ? '${AppointmentNotes.packagePrefix} #$_selectedPkgId - $_selectedPkgName'
         : '';
 
-    // Multiple services stay on ONE appointment.
+    // Multiple services stay on ONE appointment (optional per-service staff).
     final amountOverride = (_packageOfferPrice != null && _packageOfferPrice! > 0)
         ? _packageOfferPrice!.toStringAsFixed(0)
         : _amtCtrl.text.trim();
+
+    final ids = _orderedServiceIds();
+    _syncAssignments();
+    final serviceStaff = ids.map((id) {
+      final a = _serviceAssignments[id] ?? {};
+      final staff = (a['staff_id'] ?? '').trim().isNotEmpty
+          ? (a['staff_id'] ?? '').trim()
+          : _staffId;
+      return <String, dynamic>{
+        'service_id': id,
+        if (staff.isNotEmpty) 'staff_id': staff,
+      };
+    }).toList();
+    final primaryStaff = () {
+      for (final row in serviceStaff) {
+        final s = '${row['staff_id'] ?? ''}'.trim();
+        if (s.isNotEmpty) return s;
+      }
+      return _staffId;
+    }();
 
     setState(() => _saving = true);
     final ok = await app.saveAppointment(
@@ -832,14 +852,15 @@ class _AddApptSheetState extends State<_AddApptSheet> {
       customerName: _namCtrl.text.trim(),
       phone: _phCtrl.text.trim(),
       customerId: _custId,
-      orderedServiceIds: _orderedServiceIds(),
+      orderedServiceIds: ids,
       date: _date,
       time: _time,
-      staffId: _staffId,
+      staffId: primaryStaff,
       baseNotes: pkgNote,
       status: '',
       amountOverride: amountOverride,
       bookingItems: null,
+      serviceStaff: serviceStaff,
       advanceAmount: _collectAdvance && advanceNum > 0 ? advanceNum : null,
       advanceMethod: _collectAdvance ? _advanceMethod : null,
       customerPackageId:
@@ -1412,7 +1433,7 @@ class _AddApptSheetState extends State<_AddApptSheet> {
 
                   const SizedBox(height: 10),
 
-                  // Multiple services stay on one appointment
+                  // Multiple services = one appointment; staff can differ per service
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                     decoration: BoxDecoration(
@@ -1432,7 +1453,7 @@ class _AddApptSheetState extends State<_AddApptSheet> {
                                     color: Color(0xFF111827))),
                             SizedBox(height: 2),
                             Text(
-                              'Selecting more than one service keeps them on the same appointment.',
+                              'Same appointment — you can pick different staff for each service.',
                               style: TextStyle(
                                   fontSize: 11, color: Color(0xFF6B7280)),
                             ),
@@ -1441,6 +1462,71 @@ class _AddApptSheetState extends State<_AddApptSheet> {
                       ),
                     ]),
                   ),
+
+                  if (_orderedServiceIds().length > 1) ...[
+                    const SizedBox(height: 10),
+                    ..._orderedServiceIds().map((id) {
+                      SalonService? svc;
+                      for (final s in _services) {
+                        if (s.id == id) { svc = s; break; }
+                      }
+                      final a = _serviceAssignments[id] ??
+                          {'staff_id': _staffId, 'date': _date, 'time': _time};
+                      final staffVal = (a['staff_id'] ?? '').isEmpty
+                          ? null
+                          : a['staff_id'];
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: _cLightB),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(svc?.name ?? 'Service',
+                                style: const TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w800,
+                                    color: Color(0xFF111827))),
+                            const SizedBox(height: 8),
+                            DropdownButtonFormField<String?>(
+                              key: ValueKey(
+                                  'line_staff_${id}_${_staff.length}_${a['staff_id'] ?? ''}'),
+                              initialValue: (() {
+                                final raw = (staffVal ?? '').trim();
+                                if (raw.isEmpty) return null;
+                                return _staff.any((s) => s.id == raw) ? raw : null;
+                              })(),
+                              isExpanded: true,
+                              decoration: _deco('Staff', Icons.badge_outlined),
+                              items: [
+                                const DropdownMenuItem<String?>(
+                                    value: null, child: Text('Any available')),
+                                ..._staff.map((s) => DropdownMenuItem<String?>(
+                                      value: s.id,
+                                      child: Text(s.name,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(fontSize: 13)),
+                                    )),
+                              ],
+                              onChanged: (v) {
+                                setState(() {
+                                  _serviceAssignments.putIfAbsent(id, () => {});
+                                  _serviceAssignments[id]!['staff_id'] = v ?? '';
+                                  if (id == _orderedServiceIds().first) {
+                                    _staffId = v ?? '';
+                                  }
+                                });
+                              },
+                            ),
+                          ],
+                        ),
+                      );
+                    }),
+                  ],
 
                   const SizedBox(height: 10),
 
@@ -1639,13 +1725,13 @@ class _AddApptSheetState extends State<_AddApptSheet> {
 
                   if (!_multiBooking) const SizedBox(height: 12),
 
-                  // Staff + Branch row
-                  if (!_multiBooking || (_isSuper && _branches.isNotEmpty))
+                  // Staff + Branch row (shared staff when only one service)
+                  if (_orderedServiceIds().length <= 1 || (_isSuper && _branches.isNotEmpty))
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Staff (shared when not multi)
-                      if (!_multiBooking)
+                      // Staff (shared when single service)
+                      if (_orderedServiceIds().length <= 1)
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,

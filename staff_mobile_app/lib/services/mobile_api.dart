@@ -732,6 +732,7 @@ class MobileApi {
     /// Legacy multi-select payload. Backend maps these onto ONE appointment
     /// (shared staff/date/time from the first item / top-level fields).
     List<Map<String, dynamic>>? items,
+    List<Map<String, dynamic>>? serviceStaff,
     double? advanceAmount,
     String? advanceMethod,
     String? customerPackageId,
@@ -766,22 +767,31 @@ class MobileApi {
       },
     };
 
-    // Always one appointment. Collapse legacy items[] into service_ids.
+    // Always one appointment. Collapse legacy items[] into service_ids + service_staff.
     var resolvedServiceIds = serviceIds ?? const <String>[];
     var resolvedPrimary = primaryServiceId;
     var resolvedDate = date.trim();
     var resolvedTime = time.trim();
     var resolvedStaff = staffId;
+    var resolvedServiceStaff = serviceStaff;
     if (useItems) {
       final ids = <String>[];
+      final lines = <Map<String, dynamic>>[];
       for (final raw in items) {
         final sid = '${raw['service_id'] ?? ''}'.trim();
-        if (sid.isNotEmpty && !ids.contains(sid)) ids.add(sid);
+        if (sid.isEmpty || ids.contains(sid)) continue;
+        ids.add(sid);
+        final st = '${raw['staff_id'] ?? ''}'.trim();
+        lines.add({
+          'service_id': int.tryParse(sid) ?? sid,
+          if (st.isNotEmpty) 'staff_id': int.tryParse(st) ?? st,
+        });
       }
       if (ids.isNotEmpty) {
         resolvedServiceIds = ids;
         resolvedPrimary = ids.first;
       }
+      if (lines.isNotEmpty) resolvedServiceStaff = lines;
       final first = items.first;
       final d = '${first['date'] ?? ''}'.trim();
       final t = '${first['time'] ?? ''}'.trim();
@@ -795,6 +805,16 @@ class MobileApi {
     if (resolvedServiceIds.isNotEmpty) {
       bodyMap['service_ids'] =
           resolvedServiceIds.map((id) => int.tryParse(id) ?? id).toList();
+    }
+    if (resolvedServiceStaff != null && resolvedServiceStaff.isNotEmpty) {
+      bodyMap['service_staff'] = resolvedServiceStaff.map((raw) {
+        final sid = '${raw['service_id'] ?? ''}'.trim();
+        final st = '${raw['staff_id'] ?? ''}'.trim();
+        return <String, dynamic>{
+          'service_id': int.tryParse(sid) ?? sid,
+          if (st.isNotEmpty) 'staff_id': int.tryParse(st) ?? st,
+        };
+      }).toList();
     }
     bodyMap['date'] = resolvedDate;
     bodyMap['time'] = resolvedTime;

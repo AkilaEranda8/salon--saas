@@ -1376,6 +1376,8 @@ class AppState extends ChangeNotifier {
     List<String>? recurringMessageTemplateIds,
     /// When set, treated as multi-service on ONE appointment (same schedule).
     List<Map<String, dynamic>>? bookingItems,
+    /// Per-service staff on one appointment: [{service_id, staff_id}]
+    List<Map<String, dynamic>>? serviceStaff,
     double? advanceAmount,
     String? advanceMethod,
     String? customerPackageId,
@@ -1499,6 +1501,7 @@ class AppState extends ChangeNotifier {
           isRecurring: isRecurring,
           recurringNextDate: recurringNextDate,
           recurringMessageTemplateIds: recurringMessageTemplateIds,
+          serviceStaff: serviceStaff,
           advanceAmount: advanceAmount,
           advanceMethod: advanceMethod,
           customerPackageId: customerPackageId,

@@ -1104,12 +1104,17 @@ export default function AppointmentsPage() {
   };
   const openEdit   = row => {
     const sid = Number(row.service?.id || row.service_id || 0);
+    const fromIds = Array.isArray(row.service_ids) ? row.service_ids.map(Number).filter(Boolean) : [];
     const extraNames = parseAdditionalServiceNames(row.notes || '');
     const extraIds = extraNames
       .map(name => services.find(s => s.name === name)?.id)
       .filter(Boolean)
       .map(Number);
-    const selectedIds = Array.from(new Set([...(sid ? [sid] : []), ...extraIds]));
+    const selectedIds = Array.from(new Set([
+      ...fromIds,
+      ...(sid ? [sid] : []),
+      ...extraIds,
+    ]));
     const totalAmount = selectedIds.reduce((sum, id) => {
       const s = services.find(x => Number(x.id) === Number(id));
       return sum + Number(s?.price || 0);
@@ -1133,6 +1138,19 @@ export default function AppointmentsPage() {
         : (row.recurring_message_template_id ? [String(row.recurring_message_template_id)] : []),
     });
     setApptServiceIds(selectedIds);
+    const staffByService = {};
+    const lines = Array.isArray(row.service_staff) ? row.service_staff : [];
+    selectedIds.forEach((id) => {
+      const line = lines.find((l) => Number(l.service_id) === Number(id));
+      staffByService[String(id)] = {
+        staff_id: line?.staff_id != null && line.staff_id !== ''
+          ? String(line.staff_id)
+          : String(row.staff?.id || row.staff_id || ''),
+        date: row.date?.slice(0, 10) || '',
+        time: normalizeApptTime(row.time) || '',
+      };
+    });
+    setServiceAssignments(staffByService);
     setCustomerSearch(row.customer_name || '');
     setServiceSearch('');
     setBookingCustPackageId(pkgSel.id ? String(pkgSel.id) : '');
@@ -1207,12 +1225,23 @@ export default function AppointmentsPage() {
           customer_id: form.customer_id || null,
           customer_name: form.customer_name,
           phone: form.phone || '',
-          staff_id: form.staff_id || null,
+          staff_id: (() => {
+            const firstLine = apptServiceIds
+              .map((id) => serviceAssignments[String(id)]?.staff_id)
+              .find((s) => s != null && s !== '');
+            return firstLine || form.staff_id || null;
+          })(),
           date: form.date,
           time: normalizeApptTime(form.time),
           status: form.status || 'pending',
           service_id: primary?.id || form.service_id,
           service_ids: apptServiceIds,
+          service_staff: apptServiceIds.map((id) => ({
+            service_id: Number(id),
+            staff_id: serviceAssignments[String(id)]?.staff_id
+              || form.staff_id
+              || null,
+          })),
           customer_package_id: usesPackage ? Number(bookingCustPackageId) || undefined : undefined,
           amount: Number(usesPackage ? getBookingBundlePrice() : (selectedSvcs.reduce((sum, s) => sum + Number(s.price || 0), 0) || form.amount || 0)),
           notes: [
@@ -1272,7 +1301,12 @@ export default function AppointmentsPage() {
         )
         : '';
       const payload = {
-        staff_id: form.staff_id || null,
+        staff_id: (() => {
+          const firstLine = apptServiceIds
+            .map((id) => serviceAssignments[String(id)]?.staff_id)
+            .find((s) => s != null && s !== '');
+          return firstLine || form.staff_id || null;
+        })(),
         customer_name: form.customer_name,
         phone: form.phone || '',
         date: form.date,
@@ -1285,6 +1319,12 @@ export default function AppointmentsPage() {
         ].filter(Boolean).join('\n'),
         service_id: primary?.id || form.service_id,
         service_ids: apptServiceIds,
+        service_staff: apptServiceIds.map((id) => ({
+          service_id: Number(id),
+          staff_id: serviceAssignments[String(id)]?.staff_id
+            || form.staff_id
+            || null,
+        })),
         customer_package_id: usesPackage ? Number(bookingCustPackageId) || undefined : undefined,
         is_recurring: !!form.is_recurring,
         recurrence_frequency: form.is_recurring ? (form.recurrence_frequency || 'weekly') : null,
@@ -2215,21 +2255,96 @@ export default function AppointmentsPage() {
             )}
 
 
-              <ApptSection title="Staff & Notes" dark={isDark}>
-                <FormGroup label="Assign Staff">
-                  <Select
-                    value={form.staff_id != null && form.staff_id !== '' ? String(form.staff_id) : ''}
-                    onChange={(e) => setForm((f) => ({ ...f, staff_id: e.target.value, time: '' }))}
-                  >
-                    <option value="">Any available staff</option>
-                    {filteredStaff.map((s) => <option key={s.id} value={String(s.id)}>{s.name}</option>)}
-                  </Select>
-                  {filteredStaff.length === 0 && (
-                    <div style={{ fontSize: 11, color: '#DC2626', marginTop: 4 }}>
-                      No staff for this branch — check branch or staff branch assignment.
+              <ApptSection
+                title="Staff"
+                desc={apptServiceIds.length > 1
+                  ? 'Pick staff for each service — stays one appointment'
+                  : 'Assign a stylist for this booking'}
+                dark={isDark}
+              >
+                {apptServiceIds.length === 0 ? (
+                  <div style={{ fontSize: 13, color: isDark ? '#94A3B8' : '#64748B' }}>
+                    Select services first.
+                  </div>
+                ) : apptServiceIds.length === 1 ? (
+                  <FormGroup label="Assign Staff">
+                    <Select
+                      value={
+                        (serviceAssignments[String(apptServiceIds[0])]?.staff_id
+                          || form.staff_id
+                          || '') !== ''
+                          ? String(serviceAssignments[String(apptServiceIds[0])]?.staff_id || form.staff_id)
+                          : ''
+                      }
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setForm((f) => ({ ...f, staff_id: v, time: '' }));
+                        setServiceAssignments((prev) => ({
+                          ...prev,
+                          [String(apptServiceIds[0])]: {
+                            ...(prev[String(apptServiceIds[0])] || {}),
+                            staff_id: v,
+                          },
+                        }));
+                      }}
+                    >
+                      <option value="">Any available staff</option>
+                      {filteredStaff.map((s) => <option key={s.id} value={String(s.id)}>{s.name}</option>)}
+                    </Select>
+                  </FormGroup>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {apptServiceIds.map((sid) => {
+                      const s = services.find((x) => Number(x.id) === Number(sid));
+                      if (!s) return null;
+                      const a = serviceAssignments[String(sid)] || {};
+                      return (
+                        <div
+                          key={sid}
+                          style={{
+                            border: `1px solid ${isDark ? '#334155' : '#E2E8F0'}`,
+                            borderRadius: 12,
+                            padding: 12,
+                            background: isDark ? '#0F172A' : '#F8FAFC',
+                          }}
+                        >
+                          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8, color: isDark ? '#E2E8F0' : '#0F172A' }}>
+                            {s.name}
+                          </div>
+                          <FormGroup label="Staff">
+                            <Select
+                              value={a.staff_id != null && a.staff_id !== '' ? String(a.staff_id) : ''}
+                              onChange={(e) => {
+                                const v = e.target.value;
+                                setServiceAssignments((prev) => ({
+                                  ...prev,
+                                  [String(sid)]: { ...(prev[String(sid)] || {}), staff_id: v },
+                                }));
+                                // Keep form.staff_id in sync with first service for slot loading
+                                if (Number(sid) === Number(apptServiceIds[0])) {
+                                  setForm((f) => ({ ...f, staff_id: v, time: f.time }));
+                                }
+                              }}
+                            >
+                              <option value="">Any available staff</option>
+                              {filteredStaff.map((st) => (
+                                <option key={st.id} value={String(st.id)}>{st.name}</option>
+                              ))}
+                            </Select>
+                          </FormGroup>
+                        </div>
+                      );
+                    })}
+                    <div style={{ fontSize: 11, color: isDark ? '#94A3B8' : '#64748B' }}>
+                      Shared date/time below. Different staff are saved on the same appointment.
                     </div>
-                  )}
-                </FormGroup>
+                  </div>
+                )}
+                {filteredStaff.length === 0 && (
+                  <div style={{ fontSize: 11, color: '#DC2626', marginTop: 4 }}>
+                    No staff for this branch — check branch or staff branch assignment.
+                  </div>
+                )}
               </ApptSection>
               <ApptSection title="Schedule" desc={`Date, time, and booking status · ${bookingDurationMinutes} min total`} dark={isDark}>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>

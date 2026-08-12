@@ -65,7 +65,7 @@ function paymentTotalCommission(row) {
 const EMPTY_FORM = {
   branch_id:'', staff_id:'', customer_id:'', service_ids:[], total_amount:'', loyalty_discount:0, discount_id:'',
   splits:[{ method:'Cash', amount:'' }],
-  is_recurring: true,
+  is_recurring: false,
   recurring_next_date: '',
   appointment_time: '08:00',
   recurring_message_template_ids: [],
@@ -825,10 +825,18 @@ function ServiceMultiSelect({ services, selected, onChange, dark = false }) {
   const selSvcs = services.filter((s) => selectedIds.includes(Number(s.id)));
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return services;
-    return services.filter((s) => {
-      const hay = `${s.name || ''} ${s.category || ''} ${s.subcategory || ''}`.toLowerCase();
-      return hay.includes(q);
+    const active = (services || []).filter((s) => s && s.is_active !== false);
+    const matched = !q
+      ? active
+      : active.filter((s) => {
+        const hay = `${s.name || ''} ${s.category || ''} ${s.subcategory || ''}`.toLowerCase();
+        return hay.includes(q);
+      });
+    return [...matched].sort((a, b) => {
+      const ap = Number(a?.price) > 0 ? 0 : 1;
+      const bp = Number(b?.price) > 0 ? 0 : 1;
+      if (ap !== bp) return ap - bp;
+      return String(a?.name || '').localeCompare(String(b?.name || ''), undefined, { sensitivity: 'base' });
     });
   }, [services, search]);
 
@@ -1103,7 +1111,7 @@ export default function PaymentsPage() {
     setForm({
       ...EMPTY_FORM,
       branch_id: user?.branchId || filterBranch || '',
-      is_recurring: !!recurringAllowed,
+      is_recurring: false,
       recurring_next_date: defaultRecurringNextDate(),
       appointment_time: '08:00',
     });

@@ -397,7 +397,7 @@ export default function CustomersPage() {
 
       {/* Add / Edit Modal */}
       <Modal open={showForm} onClose={() => setShowForm(false)} title={editItem ? 'Edit Customer' : 'Add Customer'} size="sm"
-        footer={<><Button variant="secondary" onClick={() => setShowForm(false)}>Cancel</Button><Button variant="primary" loading={saving} onClick={handleSave}>{editItem ? 'Save' : 'Add Customer'}</Button></>}>
+        footer={<><Button variant="secondary" onClick={() => setShowForm(false)}>Cancel</Button><Button variant="primary" loading={saving} disabled={!form.name?.trim() || !form.phone?.trim()} onClick={handleSave}>{editItem ? 'Save' : 'Add Customer'}</Button></>}>
         {formErr && <div style={{ background: '#FEF2F2', color: '#DC2626', padding: '9px 13px', borderRadius: 9, marginBottom: 16, fontSize: 13, border: '1px solid #FEE2E2' }}>{formErr}</div>}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <FormGroup label="Full Name" required><Input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Full name" /></FormGroup>

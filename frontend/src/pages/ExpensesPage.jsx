@@ -263,7 +263,7 @@ export default function ExpensesPage() {
 
       {/* Add / Edit Modal */}
       <Modal open={showForm} onClose={() => setShowForm(false)} title={editItem ? 'Edit Expense' : 'Add Expense'} size="md"
-        footer={<><Button variant="secondary" onClick={() => setShowForm(false)}>Cancel</Button><Button variant="primary" loading={saving} onClick={handleSave}>{editItem ? 'Save' : 'Add Expense'}</Button></>}>
+        footer={<><Button variant="secondary" onClick={() => setShowForm(false)}>Cancel</Button><Button variant="primary" loading={saving} disabled={!form.title?.trim() || !form.amount || !(customCategory ? customCatName.trim() : String(form.category || '').trim())} onClick={handleSave}>{editItem ? 'Save' : 'Add Expense'}</Button></>}>
         {formErr && <div style={{ background:'#FEF2F2', color:'#DC2626', padding:'9px 13px', borderRadius:9, marginBottom:16, fontSize:13, border:'1px solid #FEE2E2' }}>{formErr}</div>}
         <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
           {canPickBranch && <FormGroup label="Branch"><Select value={form.branch_id||''} onChange={e => setForm(f=>({...f, branch_id:e.target.value}))}><option value="">Select branch</option>{branches.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}</Select></FormGroup>}

@@ -181,7 +181,7 @@ export default function InvProductsPage() {
         open={show}
         onClose={() => setShow(false)}
         title={edit ? 'Edit Product' : 'Add Product'}
-        footer={<><Button variant="secondary" onClick={() => setShow(false)}>Cancel</Button><Button variant="primary" loading={saving} onClick={save}>Save</Button></>}
+        footer={<><Button variant="secondary" onClick={() => setShow(false)}>Cancel</Button><Button variant="primary" loading={saving} disabled={!form.name?.trim()} onClick={save}>Save</Button></>}
       >
         {err && <div style={{ background: '#FEF2F2', color: '#DC2626', padding: 10, borderRadius: 8, marginBottom: 12 }}>{err}</div>}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>

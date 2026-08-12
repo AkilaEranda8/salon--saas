@@ -951,7 +951,18 @@ export default function StaffPage() {
             </div>
             <div style={{ display: 'flex', gap: 8, marginLeft: 'auto' }}>
               <Button variant="secondary" onClick={() => setShowForm(false)}>Cancel</Button>
-              <Button variant="primary" loading={saving} onClick={handleSave} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Button
+                variant="primary"
+                loading={saving}
+                disabled={
+                  !form.name?.trim()
+                  || !(form.branch_ids || []).length
+                  || !(form.role_title || String(newRoleDraft || '').trim())
+                  || (form.salary_type !== 'salary_only' && (form.commission_value === '' || form.commission_value == null))
+                }
+                onClick={handleSave}
+                style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+              >
                 <IconUsers />{editItem ? 'Save Changes' : 'Add Staff'}
               </Button>
             </div>

@@ -355,7 +355,7 @@ export default function ServicesPage() {
       />
 
       <Modal open={showForm} onClose={() => setShowForm(false)} title={editItem ? 'Edit Service' : 'Add Service'} size="md"
-        footer={<><Button variant="secondary" onClick={() => setShowForm(false)}>Cancel</Button><Button variant="primary" loading={saving} onClick={handleSave}>{editItem ? 'Save' : 'Add Service'}</Button></>}>
+        footer={<><Button variant="secondary" onClick={() => setShowForm(false)}>Cancel</Button><Button variant="primary" loading={saving} disabled={!form.name?.trim() || !form.price || !form.category?.trim()} onClick={handleSave}>{editItem ? 'Save' : 'Add Service'}</Button></>}>
         {formErr && <div style={{ background: '#FEF2F2', color: '#DC2626', padding: '9px 13px', borderRadius: 9, marginBottom: 16, fontSize: 13, border: '1px solid #FEE2E2' }}>{formErr}</div>}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <FormGroup label="Service Name" required><Input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder="e.g. Hair Cut & Style" /></FormGroup>

@@ -24,12 +24,24 @@ export async function fetchAllServices(apiClient = api, params = {}) {
   return all;
 }
 
+/** Paid services first, then name — keeps Rs.0 / junk catalogue noise out of the way. */
+function sortServicesForPicker(list = []) {
+  return [...list].sort((a, b) => {
+    const ap = Number(a?.price) > 0 ? 0 : 1;
+    const bp = Number(b?.price) > 0 ? 0 : 1;
+    if (ap !== bp) return ap - bp;
+    return String(a?.name || '').localeCompare(String(b?.name || ''), undefined, { sensitivity: 'base' });
+  });
+}
+
 export function filterServicesByQuery(services = [], query = '') {
   const q = String(query || '').trim().toLowerCase();
   const active = services.filter((s) => s && s.is_active !== false);
-  if (!q) return active;
-  return active.filter((s) => {
-    const hay = `${s.name || ''} ${s.category || ''} ${s.subcategory || ''} ${s.description || ''}`.toLowerCase();
-    return hay.includes(q);
-  });
+  const matched = !q
+    ? active
+    : active.filter((s) => {
+      const hay = `${s.name || ''} ${s.category || ''} ${s.subcategory || ''} ${s.description || ''}`.toLowerCase();
+      return hay.includes(q);
+    });
+  return sortServicesForPicker(matched);
 }

@@ -234,7 +234,7 @@ export default function UsersPage() {
       {/* Create/Edit Modal */}
       <Modal open={showForm} onClose={() => setShowForm(false)} title={editItem ? 'Edit User' : 'Add User'} size="md"
         footer={<><Button variant="secondary" onClick={() => setShowForm(false)}>Cancel</Button>
-          <Button variant="primary" loading={saving} onClick={handleSave}>{editItem ? 'Update' : 'Create'}</Button></>}>
+          <Button variant="primary" loading={saving} disabled={!form.name?.trim() || !form.username?.trim() || (!editItem && !form.password)} onClick={handleSave}>{editItem ? 'Update' : 'Create'}</Button></>}>
         {formError && <div style={{ background:'#FEF2F2', color:'#DC2626', padding:'9px 13px', borderRadius:9, marginBottom:16, fontSize:13, border:'1px solid #FEE2E2' }}>{formError}</div>}
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
 

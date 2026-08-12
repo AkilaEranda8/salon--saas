@@ -45,8 +45,19 @@ bool isPastSalonDateTime(String date, String time) {
 
 List<String> filterFutureSlots(List<String> slots, String date, {String? serverDate, String? serverTime}) {
   final d = date.trim();
-  final today = (serverDate != null && serverDate.isNotEmpty) ? serverDate.sliceYmd() : salonToday();
-  final nowHm = (serverTime != null && serverTime.isNotEmpty) ? normalizeHm(serverTime) : salonNowHm();
+  bool hasValidYmd(String? s) =>
+      s != null && RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(s.trim());
+  bool hasValidHm(String? s) =>
+      s != null && RegExp(r'^\d{2}:\d{2}$').hasMatch(s.trim());
+
+  // If server_time/date are missing/invalid, fall back to device Colombo clock.
+  final today = hasValidYmd(serverDate)
+      ? serverDate!.sliceYmd()
+      : salonToday();
+  final normalizedServerHm = (serverTime != null && serverTime.isNotEmpty)
+      ? normalizeHm(serverTime)
+      : '';
+  final nowHm = hasValidHm(normalizedServerHm) ? normalizedServerHm : salonNowHm();
   if (d.compareTo(today) < 0) return const [];
   if (d.compareTo(today) > 0) {
     return slots.map(normalizeHm).where((s) => s.isNotEmpty).toList();

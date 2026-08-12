@@ -388,10 +388,55 @@ exports.assign = async (req, res) => {
 
     if (!staffId) return res.status(400).json({ message: 'staffId is required.' });
 
-    const entry = await WalkIn.findByPk(id);
+    const entry = await WalkIn.findByPk(id, { include: defaultInclude });
     if (!entry) return res.status(404).json({ message: 'Walk-in entry not found.' });
     if (req.userBranchId && Number(entry.branch_id) !== Number(req.userBranchId)) {
       return res.status(403).json({ message: 'Access denied for this branch.' });
+    }
+
+    // Server-side guard: staff cannot be assigned if they're already serving a walk-in
+    // and that walk-in's duration end time hasn't passed yet.
+    // Walk-in doesn't pick a time slot; it blocks in real-time based on serve_start_time.
+    const { slNowParts, normalizeWallClockTime } = require('../utils/dateUtils');
+    const now = slNowParts();
+    const nowMin = Number(now.minutes);
+
+    const hmToMinutes = (hm) => {
+      const t = normalizeWallClockTime(hm || '');
+      const [h, m] = String(t).slice(0, 5).split(':').map(Number);
+      if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
+      return h * 60 + m;
+    };
+
+    const durationMinutesForWalkIn = (w) => {
+      const links = Array.isArray(w?.queueServices) ? w.queueServices : [];
+      if (links.length) {
+        const sum = links.reduce((acc, l) => acc + (Number(l?.service?.duration_minutes) || 0), 0);
+        if (sum > 0) return sum;
+      }
+      return Number(w?.service?.duration_minutes) || 30;
+    };
+
+    const conflicting = await WalkIn.findAll({
+      where: {
+        tenant_id: resolveTenantId(req) ?? entry.tenant_id,
+        branch_id: entry.branch_id,
+        staff_id: staffId,
+        status: 'serving',
+      },
+      include: defaultInclude,
+    });
+
+    const isBusy = conflicting.some((w) => {
+      const startMin = hmToMinutes(w?.serve_start_time || w?.check_in_time);
+      const dur = durationMinutesForWalkIn(w);
+      if (startMin == null) return true; // unknown -> be safe
+      const endMin = startMin + dur;
+      return nowMin < endMin;
+    });
+
+    if (isBusy) {
+      return res.status(409).json({ message: 'Selected staff is busy right now for another walk-in.' });
     }
 
     entry.staff_id = staffId;

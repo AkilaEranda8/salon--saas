@@ -17,25 +17,42 @@ async function recordCommissionTransactions({
   managerPercent,
   managerBreakdown,
   helpers = [],
+  workers = [],
 }, { transaction } = {}) {
   const rows = [];
   const amt = parseFloat(serviceAmount) || 0;
 
-  if (workerStaffId && parseFloat(workerAmount) > 0) {
+  const workerRows = Array.isArray(workers) && workers.length
+    ? workers
+    : (workerStaffId && parseFloat(workerAmount) > 0
+      ? [{
+        staffId: workerStaffId,
+        amount: workerAmount,
+        breakdown: workerBreakdown,
+        serviceAmount: amt,
+      }]
+      : []);
+
+  for (const w of workerRows) {
+    const wid = Number(w.staffId ?? w.staff_id);
+    const wAmt = parseFloat(w.amount ?? w.commission_amount);
+    if (!wid || !(wAmt > 0)) continue;
     rows.push({
       tenant_id: tenantId,
       payment_id: paymentId,
       branch_id: branchId || null,
       transaction_type: 'worker',
-      worker_staff_id: workerStaffId,
+      worker_staff_id: wid,
       manager_staff_id: null,
-      service_amount: amt,
+      service_amount: parseFloat(w.serviceAmount ?? w.service_amount ?? amt) || amt,
       commission_percent: null,
-      commission_amount: parseFloat(workerAmount),
-      breakdown: workerBreakdown || null,
+      commission_amount: wAmt,
+      breakdown: w.breakdown || w.workerBreakdown || null,
       date,
     });
   }
+
+  const primaryWorkerId = workerRows[0]?.staffId ?? workerRows[0]?.staff_id ?? workerStaffId ?? null;
 
   for (const h of (helpers || [])) {
     const helperId = Number(h.staff_id);
@@ -55,7 +72,7 @@ async function recordCommissionTransactions({
       commission_amount: helperAmt,
       breakdown: {
         role: 'helper',
-        mainStaffId: workerStaffId || null,
+        mainStaffId: primaryWorkerId || null,
         commission_type: h.commission_type,
         commission_value: h.commission_value,
         rateLabel: h.rateLabel,

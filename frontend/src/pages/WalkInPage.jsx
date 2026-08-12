@@ -561,7 +561,53 @@ export default function WalkInPage() {
   }, [selectedBranch, fetchData]);
 
   /*  Derived  */
-  const busyStaffIds  = new Set(queue.filter((e) => e.status === 'serving' && e.staff_id).map((e) => e.staff_id));
+  function salonNowHM() {
+    // Use Asia/Colombo wall-clock for comparisons.
+    const parts = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Asia/Colombo',
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23',
+    }).formatToParts(new Date());
+    const get = (t) => parts.find((p) => p.type === t)?.value;
+    let h = String(get('hour') || '00');
+    if (h === '24') h = '00';
+    return `${String(h).padStart(2, '0')}:${String(get('minute') || '00').padStart(2, '0')}`;
+  }
+
+  function hmToMinutes(hm) {
+    const m = String(hm || '').trim().match(/^(\d{1,2}):(\d{2})/);
+    if (!m) return null;
+    const h = Number(m[1]);
+    const mm = Number(m[2]);
+    if (!Number.isFinite(h) || !Number.isFinite(mm)) return null;
+    return h * 60 + mm;
+  }
+
+  function walkInDurationMinutes(entry) {
+    const links = Array.isArray(entry?.queueServices)
+      ? entry.queueServices
+      : (Array.isArray(entry?.walkInServices) ? entry.walkInServices : []);
+    if (links.length) {
+      const sum = links.reduce((acc, l) => acc + (Number(l?.service?.duration_minutes) || 0), 0);
+      if (sum > 0) return sum;
+    }
+    return Number(entry?.service?.duration_minutes) || 30;
+  }
+
+  const nowMin = hmToMinutes(salonNowHM()) ?? 0;
+  const busyStaffIds = new Set(
+    queue
+      .filter((e) => e.status === 'serving' && e.staff_id != null)
+      .filter((e) => {
+        const startHm = e.serve_start_time || e.check_in_time || '';
+        const startMin = hmToMinutes(startHm);
+        const dur = walkInDurationMinutes(e);
+        if (startMin == null || !dur) return true; // unknown -> keep busy
+        return nowMin < startMin + dur;
+      })
+      .map((e) => Number(e.staff_id)),
+  );
 
   /*  Actions  */
   const changeStatus = async (id, status) => {

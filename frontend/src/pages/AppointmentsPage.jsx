@@ -64,9 +64,28 @@ const normalizeServiceName = (name = '') =>
     .replace(/\s+/g, ' ')
     .trim();
 const getAllServiceNamesForAppt = (row) => {
+  const fromLines = Array.isArray(row?.service_staff)
+    ? row.service_staff.map((l) => l.service_name).filter(Boolean)
+    : [];
+  if (fromLines.length) return Array.from(new Set(fromLines));
   const primary = row.service?.name || '';
   const extra = parseAdditionalServiceNames(row.notes || '');
   return Array.from(new Set([primary, ...extra].filter(Boolean)));
+};
+const getApptStaffNames = (row, staffList = []) => {
+  const lines = Array.isArray(row?.service_staff) ? row.service_staff : [];
+  const names = [];
+  const seen = new Set();
+  for (const line of lines) {
+    const name = line?.staff_name
+      || staffList.find((s) => Number(s.id) === Number(line?.staff_id))?.name;
+    if (name && !seen.has(name)) {
+      seen.add(name);
+      names.push(name);
+    }
+  }
+  if (names.length) return names;
+  return row?.staff?.name ? [row.staff.name] : [];
 };
 const inferExtraServiceIdsFromAmount = ({ primaryId, totalAmount, services }) => {
   const target = Number(totalAmount || 0);
@@ -102,12 +121,10 @@ const getInitialPaymentServiceIds = (row, services) => {
         .filter((id) => Number.isInteger(id) && id > 0),
     ));
     const mergedFromApi = Array.from(new Set([...(svcId ? [svcId] : []), ...fromApi]));
-    const inferred = inferExtraServiceIdsFromAmount({
-      primaryId: svcId,
-      totalAmount: row?.amount,
-      services,
-    });
-    return Array.from(new Set([...mergedFromApi, ...inferred]));
+    // For multi-booking appointments, the API already provides the exact booked
+    // service ids via `service_ids`. Do NOT "infer" extras from `amount`,
+    // otherwise the payment modal can show services that were not actually booked.
+    return mergedFromApi;
   }
   const extraNames = parseAdditionalServiceNames(row?.notes || '');
   const byExactName = extraNames
@@ -240,8 +257,17 @@ function filterFutureSlotsLocal(slots, dateStr, serverNow = null) {
   const list = Array.isArray(slots) ? slots : [];
   const d = String(dateStr || '').slice(0, 10);
   if (!d || !list.length) return list;
-  const now = applyServerNow(serverNow);
-  const today = now?.date || localToday();
+  const localTodayKey = localToday();
+  // If server_now has a different "today" date than our Colombo wall-clock,
+  // it means timezone/day mismatch — ignore it to avoid past slots leaking.
+  const now = (() => {
+    const n = applyServerNow(serverNow);
+    if (!n?.date || n.date !== localTodayKey) return null;
+    if (!n?.time || !/^\d{2}:\d{2}$/.test(n.time)) return null;
+    return n;
+  })();
+
+  const today = localTodayKey;
   if (d < today) return [];
   if (d > today) return list.map(normalizeApptTime);
   const nowMin = timeToMinutesLocal(now?.time || localNowTime());
@@ -403,7 +429,7 @@ function WatchTimePicker({
       >
         <span style={{ fontWeight: selected ? 700 : 500 }}>
           {selected ? formatWatchLabel(selected) : '-- : -- --'}
-        </span>
+    </span>
         <span style={{ fontSize: 11, color: '#94A3B8' }}>{open ? '▴' : '▾'}</span>
       </button>
 
@@ -427,8 +453,8 @@ function WatchTimePicker({
             <div style={colStyle}>
               {(visibleHours.length ? visibleHours : []).map((h) => {
                 const active = hour12 === h;
-                return (
-                  <div
+  return (
+    <div
                     key={h}
                     style={itemStyle(active, false)}
                     onMouseDown={(e) => {
@@ -440,10 +466,10 @@ function WatchTimePicker({
                     }}
                   >
                     {String(h).padStart(2, '0')}
-                  </div>
-                );
+    </div>
+  );
               })}
-            </div>
+        </div>
             <div style={colStyle}>
               {(visibleMinutes.length ? visibleMinutes : []).map((m) => {
                 const active = minute === m;
@@ -458,7 +484,7 @@ function WatchTimePicker({
                     }}
                   >
                     {String(m).padStart(2, '0')}
-                  </div>
+      </div>
                 );
               })}
             </div>
@@ -491,13 +517,13 @@ function WatchTimePicker({
                     }}
                   >
                     {ap}
-                  </div>
+        </div>
                 );
               })}
             </div>
           </div>
           {(enforceFuture || restrictToSlots) && (
-            <div style={{
+    <div style={{
               padding: '8px 10px',
               fontSize: 11,
               fontWeight: 600,
@@ -632,6 +658,8 @@ export default function AppointmentsPage() {
   /** Per-service staff/date/time for multi-booking. */
   const [serviceAssignments, setServiceAssignments] = useState({});
   const [multiSlots, setMultiSlots] = useState({});
+  /** Per-service server_now (used for past-time filtering consistency). */
+  const [multiSlotsServerNow, setMultiSlotsServerNow] = useState({});
   const [multiSlotsLoading, setMultiSlotsLoading] = useState({});
   const [serviceSearch, setServiceSearch] = useState('');
   const [paymentServiceSearch, setPaymentServiceSearch] = useState('');
@@ -860,6 +888,19 @@ export default function AppointmentsPage() {
     setPaymentServiceSearch('');
     setPaymentMainStaffId(String(sourceRow.staff_id || sourceRow.staff?.id || ''));
     setPaymentHelpers([]);
+    // If multi-booking appointment has multiple performers, backend records worker
+    // commissions per `appointment_services` staff mapping and can ignore helpers.
+    // For UI clarity, we auto-select the first assigned worker as fallback.
+    const serviceLinesForPayment = Array.isArray(sourceRow.service_staff) ? sourceRow.service_staff : [];
+    const distinctAssignedStaff = [...new Set(
+      serviceLinesForPayment
+        .map((l) => Number(l?.staff_id))
+        .filter((id) => Number.isInteger(id) && id > 0),
+    )];
+    if (distinctAssignedStaff.length > 0) {
+      setPaymentMainStaffId(String(distinctAssignedStaff[0]));
+      setPaymentHelpers([]);
+    }
     const custId = sourceRow.customer_id || sourceRow.customer?.id;
     if (custId) {
       setLoadingPaymentPkgs(true);
@@ -931,8 +972,13 @@ export default function AppointmentsPage() {
     }
     setPaymentServicePrices((prev) => {
       const seeded = seedServicePrices(paymentServices, prev);
-      const total = calcCustomServiceTotal(paymentServices, seeded);
-      setPaymentSubtotal(total > 0 ? String(total) : '');
+      const calcTotal = calcCustomServiceTotal(paymentServices, seeded);
+      // If booking has a custom amount (e.g. double/override), prefer appointment.amount
+      // so recorded payment totals match what user booked.
+      const apptAmount = Number(paymentAppt?.amount || 0);
+      const useAmount = apptAmount > 0 && Math.abs(apptAmount - Number(calcTotal || 0)) > 0.01;
+      const nextSubtotal = useAmount ? apptAmount : calcTotal;
+      setPaymentSubtotal(Number(nextSubtotal) > 0 ? String(nextSubtotal) : '');
       return seeded;
     });
   }, [showPayment, paymentAppt, paymentServices, paymentMethod, paymentCustPackageId, paymentCustPackages]);
@@ -1029,31 +1075,30 @@ export default function AppointmentsPage() {
       }
 
       if (splits.length) {
-        await api.post('/payments', {
-          branch_id: paymentAppt.branch_id || paymentAppt.branch?.id || user?.branch_id,
+      await api.post('/payments', {
+        branch_id: paymentAppt.branch_id || paymentAppt.branch?.id || user?.branch_id,
           staff_id: Number(paymentMainStaffId) || null,
           helpers: helperRows,
-          customer_id: paymentAppt.customer_id || null,
-          service_id: paymentServices[0] || null,
-          service_ids: paymentServices,
-          appointment_id: paymentAppt.id,
-          customer_name: paymentAppt.customer_name,
-          subtotal,
-          loyalty_discount: 0,
+        customer_id: paymentAppt.customer_id || null,
+        service_id: paymentServices[0] || null,
+        service_ids: paymentServices,
+        appointment_id: paymentAppt.id,
+        customer_name: paymentAppt.customer_name,
+        subtotal,
+        loyalty_discount: 0,
           is_recurring: paymentRecurring,
           recurring_next_date: paymentRecurring ? paymentRecurringDate : null,
           appointment_time: paymentRecurring ? paymentRecurringTime : undefined,
           recurring_sms_time: paymentRecurring ? paymentRecurringTime : undefined,
           recurring_message_template_ids: paymentRecurring ? paymentRecurringTemplateIds : [],
           replace_appointment_payments: settleAdvance,
-          ...(paymentDiscountId ? { discount_id: Number(paymentDiscountId) } : {}),
+        ...(paymentDiscountId ? { discount_id: Number(paymentDiscountId) } : {}),
           splits,
-        });
+      });
       } else if (paymentRecurring) {
         // Advance already covers total — still allow completing + optional recurring seed via appointment update.
       }
       if (paymentAppt?.id) {
-        const primaryId = Number(paymentServices[0] || 0);
         const extraNames = paymentServices
           .slice(1)
           .map((id) => services.find((s) => Number(s.id) === Number(id))?.name)
@@ -1062,9 +1107,14 @@ export default function AppointmentsPage() {
           stripAdditionalServicesLine(paymentAppt.notes || ''),
           extraNames.length ? `${APPT_EXTRA_SERVICES_PREFIX} ${extraNames.join(', ')}` : '',
         ].filter(Boolean).join('\n');
+        const bookedIds = getInitialPaymentServiceIds(paymentAppt, services);
+        const sameServices = bookedIds.length === paymentServices.length
+          && bookedIds.every((id) => paymentServices.some((x) => Number(x) === Number(id)))
+          && paymentServices.every((id) => bookedIds.some((x) => Number(x) === Number(id)));
+        // Never send service_staff from Collect Payment — that payload used to
+        // stamp every line with the main staff and wipe per-service assignments.
         await api.put(`/appointments/${paymentAppt.id}`, {
-          service_id: primaryId || paymentAppt.service_id,
-          service_ids: paymentServices,
+          ...(!sameServices ? { service_ids: paymentServices } : {}),
           amount: paymentMethod === 'Package' && paymentCustPackageId
             ? getPackageBundlePrice(paymentCustPackages.find((p) => String(p.id) === String(paymentCustPackageId)))
             : (subtotal || Number(paymentAppt.amount) || collectNow),
@@ -1109,10 +1159,15 @@ export default function AppointmentsPage() {
     setBookingPackageTemplateId('');
     setShowForm(true);
   };
-  const openEdit   = row => {
-    const sid = Number(row.service?.id || row.service_id || 0);
-    const fromIds = Array.isArray(row.service_ids) ? row.service_ids.map(Number).filter(Boolean) : [];
-    const extraNames = parseAdditionalServiceNames(row.notes || '');
+  const openEdit   = async (row) => {
+    let source = row;
+    try {
+      const r = await api.get(`/appointments/${row.id}`);
+      if (r?.data?.id) source = r.data;
+    } catch { /* keep list row */ }
+    const sid = Number(source.service?.id || source.service_id || 0);
+    const fromIds = Array.isArray(source.service_ids) ? source.service_ids.map(Number).filter(Boolean) : [];
+    const extraNames = parseAdditionalServiceNames(source.notes || '');
     const extraIds = extraNames
       .map(name => services.find(s => s.name === name)?.id)
       .filter(Boolean)
@@ -1126,45 +1181,45 @@ export default function AppointmentsPage() {
       const s = services.find(x => Number(x.id) === Number(id));
       return sum + Number(s?.price || 0);
     }, 0);
-    const pkgSel = parsePackageSelection(row.notes || '');
-    setEditItem(row);
+    const pkgSel = parsePackageSelection(source.notes || '');
+    setEditItem(source);
     setForm({
-      ...row,
-      customer_id: row.customer?.id || row.customer_id || '',
-      service_id: row.service?.id || row.service_id,
-      staff_id: row.staff?.id || row.staff_id,
-      date: row.date?.slice(0,10) || '',
-      amount: pkgSel.id ? String(row.amount ?? '') : (totalAmount || row.amount || ''),
-      notes: stripPackageLine(stripAdditionalServicesLine(row.notes || '')),
-      is_recurring: Boolean(row.is_recurring),
-      recurrence_frequency: row.recurrence_frequency || 'weekly',
-      recurring_next_date: row.recurring_next_date || defaultRecurringNextDate(row.date?.slice(0, 10)),
-      recurring_sms_time: (row.recurring_sms_time || row.time || '08:00').toString().slice(0, 5),
-      recurring_message_template_ids: Array.isArray(row.recurring_message_template_ids)
-        ? row.recurring_message_template_ids.map(String)
-        : (row.recurring_message_template_id ? [String(row.recurring_message_template_id)] : []),
+      ...source,
+      customer_id: source.customer?.id || source.customer_id || '',
+      service_id: source.service?.id || source.service_id,
+      staff_id: source.staff?.id || source.staff_id,
+      date: source.date?.slice(0,10) || '',
+      amount: pkgSel.id ? String(source.amount ?? '') : (totalAmount || source.amount || ''),
+      notes: stripPackageLine(stripAdditionalServicesLine(source.notes || '')),
+      is_recurring: Boolean(source.is_recurring),
+      recurrence_frequency: source.recurrence_frequency || 'weekly',
+      recurring_next_date: source.recurring_next_date || defaultRecurringNextDate(source.date?.slice(0, 10)),
+      recurring_sms_time: (source.recurring_sms_time || source.time || '08:00').toString().slice(0, 5),
+      recurring_message_template_ids: Array.isArray(source.recurring_message_template_ids)
+        ? source.recurring_message_template_ids.map(String)
+        : (source.recurring_message_template_id ? [String(source.recurring_message_template_id)] : []),
     });
     setApptServiceIds(selectedIds);
     setMultiBooking(selectedIds.length > 1);
     const staffByService = {};
-    const lines = Array.isArray(row.service_staff) ? row.service_staff : [];
+    const lines = Array.isArray(source.service_staff) ? source.service_staff : [];
     selectedIds.forEach((id) => {
       const line = lines.find((l) => Number(l.service_id) === Number(id));
       staffByService[String(id)] = {
         staff_id: line?.staff_id != null && line.staff_id !== ''
           ? String(line.staff_id)
-          : String(row.staff?.id || row.staff_id || ''),
-        date: (line?.date || row.date || '').toString().slice(0, 10) || '',
-        time: normalizeApptTime(line?.time || row.time) || '',
+          : String(source.staff?.id || source.staff_id || ''),
+        date: (line?.date || source.date || '').toString().slice(0, 10) || '',
+        time: normalizeApptTime(line?.time || source.time) || '',
       };
     });
     setServiceAssignments(staffByService);
-    setCustomerSearch(row.customer_name || '');
+    setCustomerSearch(source.customer_name || '');
     setServiceSearch('');
     setBookingCustPackageId(pkgSel.id ? String(pkgSel.id) : '');
     setBookingPackageTemplateId('');
     setBookingCustPackages([]);
-    const custId = row.customer?.id || row.customer_id;
+    const custId = source.customer?.id || source.customer_id;
     if (custId) {
       setLoadingBookingPkgs(true);
       fetchActiveCustomerPackages(api, custId)
@@ -1230,6 +1285,13 @@ export default function AppointmentsPage() {
           if (isPastDateTime(a.date, a.time)) {
             return setFormErr(`Cannot book a past date/time for ${label}`);
           }
+
+          // Multi-booking needs staff either per-line OR from the "main stylist" fallback.
+          const lineStaff = a.staff_id != null ? String(a.staff_id).trim() : '';
+          const mainStaff = form.staff_id != null ? String(form.staff_id).trim() : '';
+          if (!lineStaff && !mainStaff) {
+            return setFormErr(`Select staff for ${label} (or choose Main stylist first).`);
+          }
         }
       } else if (!form.date || !normalizeApptTime(form.time)) {
         if (!form.date && !normalizeApptTime(form.time)) {
@@ -1247,12 +1309,12 @@ export default function AppointmentsPage() {
         ? normalizeApptTime(firstAssign.time || form.time)
         : normalizeApptTime(form.time);
 
-      setSaving(true);
-      try {
+    setSaving(true);
+    try {
         const selectedSvcs = services.filter((s) => apptServiceIds.includes(Number(s.id)));
-        const [primary, ...extras] = selectedSvcs;
+      const [primary, ...extras] = selectedSvcs;
         const extraNote = extras.length ? `${APPT_EXTRA_SERVICES_PREFIX} ${extras.map((s) => s.name).join(', ')}` : '';
-        const payload = {
+      const payload = {
           branch_id: form.branch_id || user?.branch_id,
           customer_id: form.customer_id || null,
           customer_name: form.customer_name,
@@ -1267,8 +1329,8 @@ export default function AppointmentsPage() {
           date: headerDate,
           time: headerTime,
           status: form.status || 'pending',
-          service_id: primary?.id || form.service_id,
-          service_ids: apptServiceIds,
+        service_id: primary?.id || form.service_id,
+        service_ids: apptServiceIds,
           ...(multiBooking
             ? {
               service_staff: apptServiceIds.map((id) => {
@@ -1486,11 +1548,13 @@ export default function AppointmentsPage() {
     if (!showForm || !multiBooking) {
       setMultiSlots({});
       setMultiSlotsLoading({});
+      setMultiSlotsServerNow({});
       return undefined;
     }
     let cancelled = false;
     const run = async () => {
       const nextSlots = {};
+      const nextServerNow = {};
       const nextLoading = {};
       await Promise.all(Object.entries(serviceAssignments).map(async ([sid, a]) => {
         if (!a?.staff_id || !a?.date) return;
@@ -1499,11 +1563,13 @@ export default function AppointmentsPage() {
         const duration = Number(svc?.duration_minutes) || 30;
         const fetched = await fetchSlots({ staffId: a.staff_id, date: a.date, duration });
         nextSlots[sid] = filterFutureSlotsLocal(fetched.slots, a.date, fetched.serverNow);
+        nextServerNow[sid] = fetched.serverNow || null;
         nextLoading[sid] = false;
       }));
       if (cancelled) return;
       setMultiSlots(nextSlots);
       setMultiSlotsLoading(nextLoading);
+      setMultiSlotsServerNow(nextServerNow);
     };
     run();
     return () => { cancelled = true; };
@@ -1628,10 +1694,14 @@ export default function AppointmentsPage() {
     setServiceAssignments((prev) => ({
       ...prev,
       [key]: {
-        staff_id: '',
-        date: form.date || today,
-        time: '',
-        ...(prev[key] || {}),
+        // Keep existing assignment values unless patch explicitly overrides them.
+        // Important: multi-booking UX edits time/date many times; we must not
+        // wipe `staff_id` on time-only updates.
+        ...(prev[key] || {
+          staff_id: '',
+          date: form.date || today,
+          time: '',
+        }),
         ...patch,
       },
     }));
@@ -1676,7 +1746,7 @@ export default function AppointmentsPage() {
     if (!tpl) return;
     const nextIds = resolveTemplateServiceIds(tpl, services);
     if (nextIds.length) {
-      setApptServiceIds(nextIds);
+    setApptServiceIds(nextIds);
       setMultiBooking(nextIds.length > 1);
       setServiceAssignments((prev) => {
         const out = {};
@@ -1763,11 +1833,22 @@ export default function AppointmentsPage() {
     : null;
   const paymentBundlePrice = getPackageBundlePrice(paymentSelectedCp);
   const paymentUsesPackage = paymentMethod === 'Package' && !!paymentCustPackageId;
+  const paymentServiceLines = Array.isArray(paymentAppt?.service_staff)
+    ? paymentAppt.service_staff
+    : [];
+  const paymentDistinctAssignedStaff = [
+    ...new Set(
+      paymentServiceLines
+        .map((l) => Number(l?.staff_id))
+        .filter((id) => Number.isInteger(id) && id > 0),
+    ),
+  ];
+  const paymentNeedsMultiStaffCommissionUI = paymentDistinctAssignedStaff.length > 1;
 
   const apptColumns = useMemo(() => [
     {
       id: 'customer_name',
-      accessorFn: (r) => [r.customer_name, r.phone, getAllServiceNamesForAppt(r).join(' '), r.staff?.name].filter(Boolean).join(' '),
+      accessorFn: (r) => [r.customer_name, r.phone, getAllServiceNamesForAppt(r).join(' '), getApptStaffNames(r, staffList).join(' ')].filter(Boolean).join(' '),
       header: 'Customer',
       meta: { width: '20%' },
       cell: ({ row }) => {
@@ -1793,17 +1874,18 @@ export default function AppointmentsPage() {
     },
     {
       id: 'staff',
-      accessorFn: (r) => r.staff?.name || '',
+      accessorFn: (r) => getApptStaffNames(r, staffList).join(', '),
       header: 'Staff',
       meta: { width: '14%' },
       cell: ({ row }) => {
-        const r = row.original;
-        return r.staff?.name ? (
+        const names = getApptStaffNames(row.original, staffList);
+        if (!names.length) return <span style={{ fontSize: 13, color: C.muted }}>—</span>;
+        return (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-            <StaffAvatar name={r.staff.name} size={32} />
-            <span style={{ fontSize: 13, fontWeight: 500, color: C.label, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.staff.name}</span>
+            <StaffAvatar name={names[0]} size={32} />
+            <span style={{ fontSize: 13, fontWeight: 500, color: C.label, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{names.join(', ')}</span>
           </div>
-        ) : <span style={{ fontSize: 13, color: C.muted }}>—</span>;
+        );
       },
     },
     {
@@ -1894,7 +1976,7 @@ export default function AppointmentsPage() {
         );
       },
     },
-  ], [canEdit, isDark, C, services, apptPackageCache]);
+  ], [canEdit, isDark, C, services, apptPackageCache, staffList]);
 
   const tomorrow = useMemo(() => {
     const d = new Date();
@@ -1920,7 +2002,7 @@ export default function AppointmentsPage() {
           <Button variant="primary" onClick={openAdd} style={{ display:'flex', alignItems:'center', gap:6 }}>
             <IconPlus /> New Appointment
           </Button>
-        </div>
+      </div>
       )}
     >
 
@@ -1931,7 +2013,7 @@ export default function AppointmentsPage() {
         <StatCard label="Confirmed" value={counts.confirmed || 0} color={SC.primary} icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>} />
         <StatCard label="In Service" value={counts.in_service || 0} color={SC.purple} icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>} />
         <StatCard label="Completed" value={counts.completed || 0} color={SC.success} icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/><path d="m9 12 2 2 4-4"/></svg>} />
-      </div>
+        </div>
 
       {/* Filters */}
       <FilterBar>
@@ -1981,13 +2063,13 @@ export default function AppointmentsPage() {
             </button>
           ))}
           <input type="date" value={filterDate} onChange={(e) => { setFilterDate(e.target.value); setPage(1); }} className="pk-filter-control" style={{ width: 145 }} />
-          {isSuperAdmin && (
+        {isSuperAdmin && (
             <select value={filterBranch} onChange={(e) => { setFilterBranch(e.target.value); setPage(1); }} className="pk-filter-control" style={{ minWidth: 140 }}>
-              <option value="">All Branches</option>
+            <option value="">All Branches</option>
               {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
-            </select>
-          )}
-        </div>
+          </select>
+        )}
+      </div>
       </FilterBar>
 
       {/* Table */}
@@ -1998,7 +2080,7 @@ export default function AppointmentsPage() {
           <>
             <span style={{ fontSize:12, color: C.muted }}>Showing {appts.length} of {total}</span>
             {totalPages > 1 && (
-              <div style={{ display:'flex', gap:4 }}>
+            <div style={{ display:'flex', gap:4 }}>
                 <PagBtn onClick={() => setPage(1)} disabled={page === 1} label="«" />
                 <PagBtn onClick={() => setPage((p) => p - 1)} disabled={page === 1} label="‹" />
                 {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
@@ -2007,8 +2089,8 @@ export default function AppointmentsPage() {
                 })}
                 <PagBtn onClick={() => setPage((p) => p + 1)} disabled={page === totalPages} label="›" />
                 <PagBtn onClick={() => setPage(totalPages)} disabled={page === totalPages} label="»" />
-              </div>
-            )}
+            </div>
+          )}
           </>
         )}
       >
@@ -2102,7 +2184,7 @@ export default function AppointmentsPage() {
           {/* Left column */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <ApptSection title="Customer" desc="Search existing customer or enter walk-in details" dark={isDark}>
-              {form.customer_id && form.customer_name ? (
+            {form.customer_id && form.customer_name ? (
                 <div style={{
                   display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
                   border: '1px solid #86EFAC', background: isDark ? '#052e16' : '#ECFDF3',
@@ -2113,13 +2195,13 @@ export default function AppointmentsPage() {
                       width: 40, height: 40, borderRadius: '50%', background: '#16A34A', color: '#fff',
                       display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 16, flexShrink: 0,
                     }}>
-                      {form.customer_name?.charAt(0)?.toUpperCase() || 'C'}
-                    </div>
+                    {form.customer_name?.charAt(0)?.toUpperCase() || 'C'}
+                  </div>
                     <div style={{ minWidth: 0 }}>
                       <div style={{ fontSize: 15, fontWeight: 700, color: isDark ? '#BBF7D0' : '#065F46', lineHeight: 1.2 }}>{form.customer_name}</div>
                       {form.phone && <div style={{ fontSize: 12, color: isDark ? '#86EFAC' : '#047857', marginTop: 2 }}>{form.phone}</div>}
-                    </div>
                   </div>
+                </div>
                   <Button
                     size="sm"
                     variant="secondary"
@@ -2134,29 +2216,29 @@ export default function AppointmentsPage() {
                   >
                     Change
                   </Button>
-                </div>
-              ) : (
+              </div>
+            ) : (
                 <div style={{ position: 'relative' }}>
-                  <Input
-                    value={customerSearch}
+                <Input
+                  value={customerSearch}
                     onChange={(e) => {
-                      const v = e.target.value;
-                      setCustomerSearch(v);
+                    const v = e.target.value;
+                    setCustomerSearch(v);
                       setForm((f) => ({ ...f, customer_id: '', customer_name: v }));
                       setBookingCustPackages([]);
                       setBookingCustPackageId('');
                       setBookingPackageTemplateId('');
-                      setShowCustomerDrop(true);
-                    }}
-                    onFocus={() => setShowCustomerDrop(true)}
-                    onBlur={() => setTimeout(() => setShowCustomerDrop(false), 200)}
+                    setShowCustomerDrop(true);
+                  }}
+                  onFocus={() => setShowCustomerDrop(true)}
+                  onBlur={() => setTimeout(() => setShowCustomerDrop(false), 200)}
                     placeholder={
                       customerLoading ? 'Loading customers…'
                         : customerSearching ? 'Searching…'
                           : 'Search by name or phone…'
                     }
-                  />
-                  {showCustomerDrop && (
+                />
+                {showCustomerDrop && (
                     <div style={{
                       position: 'absolute', top: 'calc(100% + 6px)', left: 0, right: 0, zIndex: 30,
                       background: isDark ? '#1E293B' : '#fff',
@@ -2164,9 +2246,9 @@ export default function AppointmentsPage() {
                       borderRadius: 12, boxShadow: '0 12px 32px rgba(16,24,40,0.14)',
                       maxHeight: 240, overflowY: 'auto',
                     }}>
-                      {customerLoading ? (
+                    {customerLoading ? (
                         <div style={{ padding: '12px 14px', fontSize: 12, color: '#98A2B3' }}>Loading all customers…</div>
-                      ) : filteredCustomers.length === 0 ? (
+                    ) : filteredCustomers.length === 0 ? (
                         <div style={{ padding: '14px', fontSize: 12, color: '#98A2B3', textAlign: 'center' }}>
                           {customerSearching
                             ? 'Searching customers…'
@@ -2184,7 +2266,7 @@ export default function AppointmentsPage() {
                               {customerSearch.trim()
                                 ? `${filteredCustomers.length} result${filteredCustomers.length !== 1 ? 's' : ''}`
                                 : `${customers.length} customers loaded`}
-                            </div>
+                        </div>
                           )}
                           {filteredCustomers.map((c) => (
                           <div
@@ -2200,7 +2282,7 @@ export default function AppointmentsPage() {
                               fontWeight: 700, fontSize: 13, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
                             }}>
                               {c.name?.charAt(0)?.toUpperCase()}
-                            </div>
+                  </div>
                             <div style={{ flex: 1, minWidth: 0 }}>
                               <div style={{ fontSize: 13, fontWeight: 600, color: isDark ? '#E2E8F0' : '#101828' }}>{c.name}</div>
                               <div style={{ fontSize: 11, color: '#98A2B3' }}>{c.phone || 'No phone'}</div>
@@ -2211,7 +2293,7 @@ export default function AppointmentsPage() {
                               </span>
                             )}
                             <span style={{ fontSize: 11, color: '#10b981', fontWeight: 700, flexShrink: 0 }}>Select →</span>
-                          </div>
+              </div>
                         ))}
                         </>
                       )}
@@ -2227,7 +2309,7 @@ export default function AppointmentsPage() {
 
               <FormGroup label="Phone">
                 <Input value={form.phone || ''} onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))} placeholder="07X XXX XXXX" />
-              </FormGroup>
+          </FormGroup>
 
               {form.customer_id && (
                 <FormGroup label="Package">
@@ -2244,8 +2326,8 @@ export default function AppointmentsPage() {
                       <option value="">No package — pay normally</option>
                       {packageTemplates.map((p) => (
                         <option key={p.id} value={p.id}>{formatPackageTemplateLabel(p)}</option>
-                      ))}
-                    </Select>
+              ))}
+            </Select>
                   ) : (
                     <div style={{ fontSize: 12, color: isDark ? '#94A3B8' : '#64748B', padding: '4px 0' }}>
                       No packages available — create a package with a bundle price first.
@@ -2256,7 +2338,7 @@ export default function AppointmentsPage() {
                       {formatPackageAppliedMessage(bookingBundlePrice)}
                     </div>
                   )}
-                </FormGroup>
+          </FormGroup>
               )}
             </ApptSection>
 
@@ -2486,6 +2568,10 @@ export default function AppointmentsPage() {
                               dark={isDark}
                               date={a.date}
                               value={normalizeApptTime(a.time) || ''}
+                              disabled={!!multiSlotsLoading[String(s.id)]}
+                              allowPast={!!editItem && String(a.date || '').slice(0, 10) < today}
+                              allowedSlots={multiSlots[String(s.id)] ?? null}
+                              serverNow={multiSlotsServerNow[String(s.id)] ?? null}
                               onChange={(t) => {
                                 setFormErr('');
                                 updateServiceAssignment(s.id, { time: t });
@@ -2612,22 +2698,22 @@ export default function AppointmentsPage() {
               dark={isDark}
             >
               <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
-                <input
-                  type="checkbox"
-                  checked={!!form.is_recurring}
+              <input
+                type="checkbox"
+                checked={!!form.is_recurring}
                   onChange={(e) => setForm((f) => ({
-                    ...f,
-                    is_recurring: e.target.checked,
-                    recurrence_frequency: e.target.checked ? (f.recurrence_frequency || 'weekly') : 'weekly',
+                  ...f,
+                  is_recurring: e.target.checked,
+                  recurrence_frequency: e.target.checked ? (f.recurrence_frequency || 'weekly') : 'weekly',
                     recurring_next_date: e.target.checked
                       ? (f.recurring_next_date || defaultRecurringNextDate(f.date))
                       : '',
-                  }))}
+                }))}
                   style={{ width: 18, height: 18, accentColor: '#2563EB' }}
-                />
+              />
                 <span style={{ fontSize: 14, fontWeight: 600, color: isDark ? '#E2E8F0' : '#0F172A' }}>Send reminder SMS on a later date</span>
-              </label>
-              {form.is_recurring && (
+            </label>
+            {form.is_recurring && (
                 <>
                   <RecurringDateCalendar
                     value={form.recurring_next_date || defaultRecurringNextDate(form.date)}
@@ -2662,7 +2748,7 @@ export default function AppointmentsPage() {
             }}>
               <div style={{ fontSize: 11, fontWeight: 700, color: isDark ? '#86EFAC' : '#047857', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10 }}>
                 Booking Summary
-              </div>
+                </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: isDark ? '#D1FAE5' : '#065F46' }}>
                   <span>Customer</span>
@@ -2671,13 +2757,13 @@ export default function AppointmentsPage() {
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: isDark ? '#D1FAE5' : '#065F46' }}>
                   <span>Services</span>
                   <span style={{ fontWeight: 700 }}>{apptServiceIds.length || '—'}</span>
-                </div>
+              </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: isDark ? '#D1FAE5' : '#065F46' }}>
                   <span>Date & Time</span>
                   <span style={{ fontWeight: 700, textAlign: 'right', maxWidth: '60%' }}>
                     {form.date && form.time ? `${form.date} · ${form.time}` : '—'}
                   </span>
-                </div>
+          </div>
                 <div style={{ height: 1, background: isDark ? 'rgba(255,255,255,0.15)' : 'rgba(5,150,105,0.2)', margin: '4px 0' }} />
                 {(() => {
                   const summaryTotal = bookingUsesPackage
@@ -2687,7 +2773,7 @@ export default function AppointmentsPage() {
                     ? Number(advanceAmount)
                     : 0;
                   const summaryRemaining = Math.max(0, summaryTotal - summaryAdvance);
-                  return (
+                return (
                     <>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <span style={{ fontSize: 14, fontWeight: 700, color: isDark ? '#BBF7D0' : '#064E3B' }}>
@@ -2697,14 +2783,14 @@ export default function AppointmentsPage() {
                           {bookingUsesPackage && apptServiceIds.length > 0 && (
                             <div style={{ fontSize: 11, color: isDark ? '#94A3B8' : '#64748B', fontWeight: 600, marginBottom: 2, textDecoration: 'line-through' }}>
                               List Rs. {calcServiceTotal(apptServiceIds).toLocaleString()}
-                            </div>
+            </div>
                           )}
                           <span style={{ fontSize: 18, fontWeight: 800, color: isDark ? '#fff' : '#047857', letterSpacing: '-0.02em' }}>
                             {bookingUsesPackage
                               ? formatPackageBillAmount(bookingBundlePrice)
                               : `Rs. ${summaryTotal.toLocaleString()}`}
-                          </span>
-                        </div>
+                  </span>
+              </div>
                       </div>
                       {summaryAdvance > 0 && (
                         <>
@@ -2725,7 +2811,7 @@ export default function AppointmentsPage() {
                     </>
                   );
                 })()}
-              </div>
+          </div>
             </div>
           </div>
         </div>
@@ -2777,7 +2863,7 @@ export default function AppointmentsPage() {
                     Advance already paid: Rs. {Number(paymentAppt.advance_paid || paymentAppt.amount_paid || 0).toLocaleString()}
                     <div style={{ fontSize: 12, fontWeight: 500, marginTop: 2, opacity: 0.9 }}>
                       Collect the remaining balance below.
-                    </div>
+              </div>
                   </div>
                 )}
               </div>
@@ -2831,19 +2917,67 @@ export default function AppointmentsPage() {
                   </>
                 )}
               </div>
-              <PaymentHelperStaffFields
-                mainStaffId={paymentMainStaffId}
-                onMainStaffChange={setPaymentMainStaffId}
-                helpers={paymentHelpers}
-                onHelpersChange={setPaymentHelpers}
-                staffOptions={(() => {
-                  const bid = paymentAppt.branch_id || paymentAppt.branch?.id;
-                  if (!bid) return staffList;
-                  return staffList.filter((s) => String(s.branch_id) === String(bid)
-                    || (s.branches || []).some((b) => String(b.id) === String(bid)));
-                })()}
-                isDark={isDark}
-              />
+              {paymentNeedsMultiStaffCommissionUI ? (
+                <div style={{
+                  border: `1px solid ${isDark ? '#334155' : '#E5EAF0'}`,
+                  borderRadius: 12,
+                  padding: 14,
+                  background: isDark ? '#0F172A' : '#fff',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 10,
+                  marginBottom: 4,
+                }}>
+                  <div style={{ fontWeight: 800, fontSize: 14, color: isDark ? '#E2E8F0' : '#101828' }}>
+                    Service staff (commission auto-split)
+                  </div>
+                  <div style={{ fontSize: 11, color: isDark ? '#94A3B8' : '#667085', lineHeight: 1.45 }}>
+                    This appointment has multiple performers (per service staff). Commission is calculated server-side
+                    from `service_staff` rows, so helper split is not used here.
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {paymentDistinctAssignedStaff.map((sid) => {
+                      const st = staffList.find((s) => Number(s.id) === Number(sid));
+                      const lineSvcIds = paymentServiceLines
+                        .filter((l) => Number(l?.staff_id) === Number(sid))
+                        .map((l) => Number(l?.service_id))
+                        .filter((id) => id > 0);
+                      const lineSvcNames = Array.from(new Set(lineSvcIds))
+                        .map((id) => services.find((s) => Number(s.id) === Number(id))?.name)
+                        .filter(Boolean);
+                      return (
+                        <div key={sid} style={{
+                          border: `1px solid ${isDark ? '#334155' : '#E5EAF0'}`,
+                          borderRadius: 10,
+                          padding: 12,
+                          background: isDark ? '#1E293B' : '#F8FAFC',
+                        }}>
+                          <div style={{ fontWeight: 800, fontSize: 13, color: isDark ? '#E2E8F0' : '#0F172A' }}>
+                            {st?.name || `Staff #${sid}`}
+                          </div>
+                          <div style={{ fontSize: 11, color: isDark ? '#94A3B8' : '#667085', marginTop: 2 }}>
+                            Services: {lineSvcNames.length ? lineSvcNames.join(', ') : '—'}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : (
+                <PaymentHelperStaffFields
+                  mainStaffId={paymentMainStaffId}
+                  onMainStaffChange={setPaymentMainStaffId}
+                  helpers={paymentHelpers}
+                  onHelpersChange={setPaymentHelpers}
+                  staffOptions={(() => {
+                    const bid = paymentAppt.branch_id || paymentAppt.branch?.id;
+                    if (!bid) return staffList;
+                    return staffList.filter((s) => String(s.branch_id) === String(bid)
+                      || (s.branches || []).some((b) => String(b.id) === String(bid)));
+                  })()}
+                  isDark={isDark}
+                />
+              )}
               <FormGroup label="Services" required>
                 <Input
                   value={paymentServiceSearch}
@@ -2858,11 +2992,11 @@ export default function AppointmentsPage() {
                       if (!s) return null;
                       const priceVal = paymentServicePrices[Number(sid)];
                       const pkgLock = paymentMethod === 'Package' && paymentCustPackageId;
-                      return (
+                    return (
                         <div key={sid} style={{ display:'grid', gridTemplateColumns: pkgLock ? '1fr auto auto' : '1fr 120px auto', alignItems:'center', gap:10, padding:'10px 12px', borderBottom:idx!==paymentServices.length-1?`1px solid ${isDark?'#334155':'#EEF2F6'}`:'none', background:isDark?'#1e3a5f':'#F0F9FF' }}>
                           <span style={{ fontSize:14, color:isDark?'#E2E8F0':'#0F172A', fontWeight:700 }}>{s.name}</span>
                           {pkgLock ? (
-                            <span style={{ fontSize:14, color:'#059669', fontWeight:800 }}>Rs.{Number(s.price||0).toLocaleString()}</span>
+                        <span style={{ fontSize:14, color:'#059669', fontWeight:800 }}>Rs.{Number(s.price||0).toLocaleString()}</span>
                           ) : (
                             <Input
                               type="number"
@@ -2881,8 +3015,8 @@ export default function AppointmentsPage() {
                             ×
                           </button>
                         </div>
-                      );
-                    })}
+                    );
+                  })}
                   </div>
                 )}
                 <div style={{ border:`1px solid ${isDark?'#334155':'#DCE6F3'}`, borderRadius:12, overflow:'hidden', maxHeight:180, overflowY:'auto', background:isDark?'#0F172A':'#fff' }}>
@@ -2920,7 +3054,7 @@ export default function AppointmentsPage() {
                       {paymentListTotal > 0 && (
                         <div style={{ fontSize: 11, color: isDark ? '#94A3B8' : '#64748B', textDecoration: 'line-through', marginBottom: 4 }}>
                           List Rs. {paymentListTotal.toLocaleString()}
-                        </div>
+                  </div>
                       )}
                       <div style={{ fontWeight:800, color:'#059669' }}>
                         Rs. {paymentBundlePrice.toLocaleString()}
@@ -3014,7 +3148,7 @@ export default function AppointmentsPage() {
               <div style={{ display:'flex', alignItems:'center', gap: 12, minWidth: 0 }}>
                 <div style={{ width: 44, height: 44, borderRadius: '50%', background: 'linear-gradient(135deg,#2563EB,#4F46E5)', color:'#fff', display:'flex', alignItems:'center', justifyContent:'center', fontWeight: 800, fontSize: 18, flexShrink: 0 }}>
                   {detailItem.customer_name?.charAt(0)?.toUpperCase() || 'C'}
-                </div>
+              </div>
                 <div style={{ minWidth: 0 }}>
                   <div style={{ fontSize:17, fontWeight:700, color:isDark?'#E2E8F0':'#101828' }}>{detailItem.customer_name}</div>
                   <div style={{ fontSize:13, color:isDark?'#94A3B8':'#667085', marginTop:2 }}>{detailItem.phone || 'No phone'}</div>

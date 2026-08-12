@@ -1,7 +1,7 @@
 const { Op, fn, col, literal } = require('sequelize');
 const { sequelize } = require('../config/database');
 const { Payment, PaymentSplit, Branch, Staff, StaffSpecialization, Customer, Service, Appointment, AppointmentService, CustomerPackage, Package: PkgModel, PackageRedemption, LoyaltyRule, CommissionTransaction } = require('../models');
-const { computeCommissionDetails } = require('../utils/commissionCalculator');
+const { computeCommissionDetails, computeMultiStaffCommissionDetails } = require('../utils/commissionCalculator');
 const { computeHelperCommissionSplit } = require('../utils/helperCommission');
 const { allowsServiceWiseOverrides, hasFranchiseCommission, hasTenantFeature, getMinCommissionableAmount } = require('../utils/tenantFeatures');
 const { recordCommissionTransactions } = require('../services/recordCommissionTransactions');
@@ -11,6 +11,7 @@ const { tenantWhere, byIdWhere, resolveTenantId } = require('../utils/tenantScop
 const { slToday } = require('../utils/dateUtils');
 const { redeemPackageForPayment } = require('../utils/packageRedemption');
 const { resolveCustomerId } = require('../utils/resolveCustomer');
+const { attachPaymentCommissionTotals, paymentTotalCommission } = require('../utils/paymentCommissionTotals');
 
 const getBranchWhere = (req) => {
   const where = tenantWhere(req);
@@ -73,7 +74,7 @@ const list = async (req, res) => {
       const json = row.toJSON();
       const name = displayCustomerName(json);
       if (name) json.customer_name = name;
-      return json;
+      return attachPaymentCommissionTotals(json);
     });
 
     return res.json({ total: count, page, limit, data });
@@ -101,7 +102,7 @@ const getOne = async (req, res) => {
     const json = payment.toJSON();
     const name = displayCustomerName(json);
     if (name) json.customer_name = name;
-    return res.json(json);
+    return res.json(attachPaymentCommissionTotals(json));
   } catch (err) {
     return res.status(500).json({ message: 'Server error.' });
   }
@@ -169,21 +170,29 @@ const create = async (req, res) => {
       ? service_ids.map(Number).filter(Boolean)
       : (service_id ? [Number(service_id)].filter(Boolean) : []);
 
-    if (!serviceIdList.length && appointment_id) {
+    let serviceStaffAssignments = [];
+    if (appointment_id) {
       const links = await AppointmentService.findAll({
         where: { appointment_id: Number(appointment_id) },
+        attributes: ['service_id', 'staff_id'],
+        transaction: t,
+      });
+      serviceStaffAssignments = links.map((l) => ({
+        service_id: Number(l.service_id),
+        staff_id: l.staff_id != null ? Number(l.staff_id) : null,
+      }));
+      if (!serviceIdList.length) {
+        serviceIdList = serviceStaffAssignments.map((l) => l.service_id).filter(Boolean);
+      }
+    }
+
+    if (!serviceIdList.length && appointment_id) {
+      const appt = await Appointment.findOne({
+        where: byIdWhere(req, appointment_id),
         attributes: ['service_id'],
         transaction: t,
       });
-      serviceIdList = links.map((l) => Number(l.service_id)).filter(Boolean);
-      if (!serviceIdList.length) {
-        const appt = await Appointment.findOne({
-          where: byIdWhere(req, appointment_id),
-          attributes: ['service_id'],
-          transaction: t,
-        });
-        if (appt?.service_id) serviceIdList = [Number(appt.service_id)];
-      }
+      if (appt?.service_id) serviceIdList = [Number(appt.service_id)];
     }
 
     const servicePrices = {};
@@ -218,12 +227,67 @@ const create = async (req, res) => {
       promo_discount,
     };
 
-    // Worker staff commission (main) + optional helpers taken from main
+    // Worker staff commission — per-service staff when multiple performers on one appointment
     let commission_amount = 0;
     let commission_breakdown = null;
     let helper_commission = null;
     let helperLines = [];
-    if (staff_id) {
+    let commissionWorkerRows = [];
+
+    const commissionOpts = {
+      allowServiceOverrides: allowsServiceWiseOverrides(req.tenant),
+      minCommissionableAmount: getMinCommissionableAmount(req.tenant),
+    };
+
+    const distinctLineStaff = [...new Set(
+      serviceStaffAssignments
+        .map((l) => l.staff_id)
+        .filter((id) => Number.isInteger(id) && id > 0),
+    )];
+
+    const needsMultiStaffCommission = distinctLineStaff.length > 1;
+
+    if (needsMultiStaffCommission) {
+      const staffIdsToLoad = [...new Set([
+        ...distinctLineStaff,
+        ...(staff_id ? [Number(staff_id)] : []),
+      ])].filter((id) => id > 0);
+
+      const staffRows = staffIdsToLoad.length
+        ? await Staff.findAll({
+          where: { id: staffIdsToLoad, ...tenantWhere(req) },
+          include: [{ model: StaffSpecialization, as: 'specializations' }],
+          transaction: t,
+        })
+        : [];
+
+      const staffById = new Map(staffRows.map((s) => [Number(s.id), s]));
+      const multi = computeMultiStaffCommissionDetails({
+        staffById,
+        serviceAssignments: serviceStaffAssignments,
+        fallbackStaffId: staff_id,
+        serviceIds: serviceIdList,
+        servicePrices,
+        serviceCommissions,
+        serviceNames,
+        total_amount,
+        subtotal: bodySubtotal,
+        loyalty_discount,
+        promo_discount,
+        ...commissionOpts,
+      });
+
+      if (multi?.perStaff?.length) {
+        commission_amount = multi.amount;
+        commission_breakdown = multi.breakdown;
+        commissionWorkerRows = multi.perStaff.map((row) => ({
+          staffId: row.staff_id,
+          amount: row.amount,
+          breakdown: row.breakdown,
+          serviceAmount: row.serviceAmount,
+        }));
+      }
+    } else if (staff_id) {
       const staffMember = await Staff.findOne({
         where: byIdWhere(req, staff_id),
         include: [{ model: StaffSpecialization, as: 'specializations' }],
@@ -233,8 +297,8 @@ const create = async (req, res) => {
         const computed = computeCommissionDetails({
           staff: staffMember,
           specializations: staffMember.specializations || [],
-          allowServiceOverrides: allowsServiceWiseOverrides(req.tenant),
-          minCommissionableAmount: getMinCommissionableAmount(req.tenant),
+          allowServiceOverrides: commissionOpts.allowServiceOverrides,
+          minCommissionableAmount: commissionOpts.minCommissionableAmount,
           ...commissionInputBase,
         });
         const helperIds = (Array.isArray(helpersBody) ? helpersBody : [])
@@ -287,6 +351,12 @@ const create = async (req, res) => {
             ? `Main net after helpers: Rs. ${split.mainNet.toFixed(2)} (gross Rs. ${split.grossMain.toFixed(2)})`
             : computed.breakdown?.note,
         };
+        commissionWorkerRows = [{
+          staffId: Number(staff_id),
+          amount: commission_amount,
+          breakdown: commission_breakdown,
+          serviceAmount: total_amount,
+        }];
       }
     }
 
@@ -414,9 +484,12 @@ const create = async (req, res) => {
       { transaction: t },
     );
 
+    const primaryStaffId = commissionWorkerRows[0]?.staffId
+      || (staff_id ? Number(staff_id) : null);
+
     const payment = await Payment.create({
       branch_id,
-      staff_id:       staff_id       || null,
+      staff_id:       primaryStaffId,
       customer_id:    resolvedCustomerId || null,
       service_id:     service_id     || null,
       appointment_id: resolvedAppointmentId || null,
@@ -437,14 +510,15 @@ const create = async (req, res) => {
         branchId: branch_id,
         date: today,
         serviceAmount: total_amount,
-        workerStaffId: staff_id || null,
+        workerStaffId: primaryStaffId,
         workerAmount: commission_amount,
         workerBreakdown: commission_breakdown,
+        workers: commissionWorkerRows,
         managerStaffId: manager_staff_id,
         managerAmount: manager_commission_amount,
         managerPercent: manager_override_percent,
         managerBreakdown: manager_commission_breakdown,
-        helpers: helperLines,
+        helpers: needsMultiStaffCommission ? [] : helperLines,
       }, { transaction: t });
     }
 
@@ -597,17 +671,25 @@ const summary = async (req, res) => {
       where.date  = { [Op.between]: [start, `${year}-${month}-${last}`] };
     }
 
-    const totals = await Payment.findAll({
+    const paymentRows = await Payment.findAll({
       where,
-      attributes: [
-        'branch_id',
-        [fn('SUM', col('total_amount')), 'revenue'],
-        [fn('SUM', col('commission_amount')), 'commission'],
-        [fn('COUNT', col('id')), 'count'],
-      ],
-      group: ['branch_id'],
-      raw: true,
+      attributes: ['branch_id', 'total_amount', 'commission_amount', 'helper_commission', 'commission_breakdown'],
+      include: [{ model: Staff, as: 'staff', attributes: ['id', 'name'] }],
     });
+
+    const totalsMap = new Map();
+    for (const row of paymentRows) {
+      const branchId = row.branch_id;
+      if (!totalsMap.has(branchId)) {
+        totalsMap.set(branchId, { branch_id: branchId, revenue: 0, commission: 0, count: 0 });
+      }
+      const acc = totalsMap.get(branchId);
+      acc.revenue += parseFloat(row.total_amount || 0);
+      acc.commission += paymentTotalCommission(row);
+      acc.count += 1;
+    }
+
+    const totals = Array.from(totalsMap.values());
 
     const branchIds = totals
       .map((row) => row.branch_id)

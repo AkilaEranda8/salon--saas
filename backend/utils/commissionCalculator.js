@@ -189,6 +189,116 @@ function calculatePaymentCommission(input) {
   return computeCommissionDetails(input).amount;
 }
 
+/**
+ * Commission split when each service line has its own staff (multi-booking).
+ * Returns null when a single staff covers all lines — caller uses computeCommissionDetails.
+ */
+function computeMultiStaffCommissionDetails({
+  staffById = new Map(),
+  serviceAssignments = [],
+  fallbackStaffId = null,
+  serviceIds = [],
+  servicePrices = {},
+  serviceCommissions = {},
+  serviceNames = {},
+  total_amount = 0,
+  subtotal = 0,
+  loyalty_discount = 0,
+  promo_discount = 0,
+  allowServiceOverrides = true,
+  minCommissionableAmount = 0,
+}) {
+  const assignMap = new Map(
+    (serviceAssignments || []).map((a) => [Number(a.service_id), Number(a.staff_id)]),
+  );
+  const ids = (serviceIds || []).map(Number).filter((id) => id > 0);
+  if (!ids.length) return null;
+
+  const groups = new Map();
+  for (const svcId of ids) {
+    const fromLine = assignMap.get(svcId);
+    const staffId = (Number.isInteger(fromLine) && fromLine > 0)
+      ? fromLine
+      : (Number(fallbackStaffId) > 0 ? Number(fallbackStaffId) : null);
+    if (!staffId) continue;
+    if (!groups.has(staffId)) groups.set(staffId, []);
+    groups.get(staffId).push(svcId);
+  }
+
+  if (groups.size <= 1) return null;
+
+  const fullGross = ids.reduce((sum, id) => sum + (parseFloat(servicePrices[id]) || 0), 0);
+  const shareRatio = (partGross) => (fullGross > 0 ? partGross / fullGross : 1 / groups.size);
+
+  const paid = parseFloat(total_amount || 0);
+  const gross = parseFloat(subtotal || 0) || fullGross;
+  const netTotal = gross > paid
+    ? paid
+    : Math.max(0, paid - parseFloat(loyalty_discount || 0) - parseFloat(promo_discount || 0));
+
+  const perStaff = [];
+  const allLines = [];
+  let totalCommission = 0;
+
+  for (const [staffId, svcIds] of groups) {
+    const staffMember = staffById.get(staffId);
+    if (!staffMember || staffMember.salary_type === 'salary_only') continue;
+
+    const groupGross = svcIds.reduce((sum, id) => sum + (parseFloat(servicePrices[id]) || 0), 0);
+    const r = shareRatio(groupGross);
+
+    const computed = computeCommissionDetails({
+      staff: staffMember,
+      specializations: staffMember.specializations || [],
+      serviceIds: svcIds,
+      servicePrices,
+      serviceCommissions,
+      serviceNames,
+      total_amount: paid * r,
+      subtotal: gross * r,
+      loyalty_discount: parseFloat(loyalty_discount || 0) * r,
+      promo_discount: parseFloat(promo_discount || 0) * r,
+      allowServiceOverrides,
+      minCommissionableAmount,
+    });
+
+    const rounded = Math.round(computed.amount * 100) / 100;
+    totalCommission += rounded;
+    perStaff.push({
+      staff_id: staffId,
+      staff_name: staffMember.name || null,
+      amount: rounded,
+      breakdown: computed.breakdown,
+      serviceAmount: Math.round(netTotal * r * 100) / 100,
+      service_ids: svcIds,
+    });
+    for (const line of computed.breakdown.lines || []) {
+      allLines.push({
+        ...line,
+        staffId,
+        staffName: staffMember.name || null,
+      });
+    }
+  }
+
+  const total = Math.round(totalCommission * 100) / 100;
+  return {
+    amount: total,
+    perStaff,
+    breakdown: {
+      multiStaff: true,
+      perStaff,
+      lines: allLines,
+      total,
+      netTotal: Math.round(netTotal * 100) / 100,
+      paidAmount: Math.round(paid * 100) / 100,
+      loyaltyDiscount: parseFloat(loyalty_discount || 0),
+      promoDiscount: parseFloat(promo_discount || 0),
+      minCommissionableAmount: minCommissionableAmount > 0 ? minCommissionableAmount : undefined,
+    },
+  };
+}
+
 function normalizeStaffSpecializations(raw, staffDefaults = {}) {
   if (!Array.isArray(raw)) return [];
   const defaultType = staffDefaults.commission_type || 'percentage';
@@ -223,6 +333,7 @@ function normalizeStaffSpecializations(raw, staffDefaults = {}) {
 module.exports = {
   calculatePaymentCommission,
   computeCommissionDetails,
+  computeMultiStaffCommissionDetails,
   normalizeStaffSpecializations,
   SOURCE_LABELS,
 };

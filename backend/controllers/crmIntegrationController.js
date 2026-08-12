@@ -654,6 +654,9 @@ const createAppointment = async (req, res) => {
         await AppointmentService.create({
           appointment_id: appointment.id,
           service_id: service.id,
+          staff_id: Number(staff_id) || null,
+          date: dateKey,
+          time: timeKey,
         }, { transaction: t });
       } catch {
         // join optional

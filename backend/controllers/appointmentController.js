@@ -279,8 +279,31 @@ const replaceAppointmentServiceMappings = async (appointmentId, serviceIdsOrLine
       time: l.time,
       sort_order: l.sort_order ?? idx,
     })),
-    { ignoreDuplicates: true, ...txOpt },
+    txOpt,
   );
+};
+
+const existingStaffId = (raw) => {
+  const n = raw != null && raw !== '' ? Number(raw) : null;
+  return Number.isInteger(n) && n > 0 ? n : null;
+};
+
+const mergeAppointmentServiceLines = (incomingLines, existingRows, fallbackStaff) => {
+  const existingBySvc = new Map(
+    (existingRows || []).map((r) => [Number(r.service_id), r]),
+  );
+  const fallbackId = existingStaffId(fallbackStaff);
+  return (incomingLines || []).map((l) => {
+    const prev = existingBySvc.get(Number(l.service_id));
+    const incomingId = existingStaffId(l.staff_id);
+    const prevId = existingStaffId(prev?.staff_id);
+    return {
+      ...l,
+      staff_id: incomingId || prevId || fallbackId || null,
+      date: l.date || (prev?.date ? String(prev.date).slice(0, 10) : null),
+      time: l.time || (prev?.time ? normalizeTime(prev.time) : null),
+    };
+  });
 };
 
 const attachServiceIdsToAppointments = async (appointments) => {
@@ -969,6 +992,8 @@ const create = async (req, res) => {
       });
     }
 
+    await attachServiceIdsToAppointments(appt);
+
     return res.status(201).json({
       ...appt.toJSON(),
       service_ids: validServiceIds,
@@ -1067,34 +1092,82 @@ const update = async (req, res) => {
 
     let nextServiceLines = null;
     if (req.body.service_ids !== undefined || req.body.service_id !== undefined || req.body.service_staff !== undefined) {
-      const lines = normalizeServiceLines({
-        serviceIds: req.body.service_ids !== undefined ? req.body.service_ids : (appt.service_ids || [appt.service_id]),
-        serviceId: req.body.service_id || appt.service_id,
-        serviceStaff: req.body.service_staff,
+      // Always merge existing appointment_services staff/date/time.
+      // Collect Payment used to send service_staff with every line stamped to
+      // header staff_id, which destroyed per-service assignments.
+      await ensureAppointmentServicesTable();
+      const existingRows = await AppointmentService.findAll({
+        where: { appointment_id: appt.id },
+        attributes: ['service_id', 'staff_id', 'date', 'time', 'sort_order'],
+        order: [['sort_order', 'ASC'], ['id', 'ASC']],
+        raw: true,
       });
-      const requestedServiceIds = lines.map((l) => l.service_id);
-      const validIds = await resolveValidServiceIds(req, requestedServiceIds);
-      if (requestedServiceIds.length && validIds.length !== requestedServiceIds.length) {
-        return res.status(400).json({ message: 'One or more selected services are invalid.' });
+      const existingIds = existingRows.map((r) => Number(r.service_id)).filter((id) => id > 0);
+      const requestedIds = normalizeServiceIds(
+        req.body.service_ids !== undefined ? req.body.service_ids : (existingIds.length ? existingIds : [appt.service_id]),
+        req.body.service_id || appt.service_id,
+      );
+      const sameServiceSet = requestedIds.length === existingIds.length
+        && requestedIds.every((id) => existingIds.includes(id));
+
+      // Notes/amount/payment updates that repeat the same service_ids must not
+      // destroy and recreate mappings. Only remap when the set changed or the
+      // client sent an explicit service_staff payload.
+      const staffPayloadSent = req.body.service_staff !== undefined;
+      if (staffPayloadSent || !sameServiceSet) {
+        const incomingStaff = staffPayloadSent ? req.body.service_staff : existingRows;
+        const lines = normalizeServiceLines({
+          serviceIds: requestedIds,
+          serviceId: req.body.service_id || appt.service_id,
+          serviceStaff: incomingStaff,
+        });
+        const requestedServiceIds = lines.map((l) => l.service_id);
+        const validIds = await resolveValidServiceIds(req, requestedServiceIds);
+        if (requestedServiceIds.length && validIds.length !== requestedServiceIds.length) {
+          return res.status(400).json({ message: 'One or more selected services are invalid.' });
+        }
+        if (!validIds.length) {
+          return res.status(400).json({ message: 'At least one valid service is required.' });
+        }
+        const fallbackStaff = updates.staff_id !== undefined
+          ? updates.staff_id
+          : appt.staff_id;
+        nextServiceLines = mergeAppointmentServiceLines(
+          lines.filter((l) => validIds.includes(l.service_id)),
+          existingRows,
+          fallbackStaff,
+        );
+        if (!nextServiceLines.length) {
+          return res.status(400).json({ message: 'At least one valid service is required.' });
+        }
+
+        // Collect Payment used to stamp every line with header staff_id and did
+        // not send a top-level staff_id. Ignore that collapse. Real Edit always
+        // sends staff_id, so reassigning every service to one person still works.
+        const existingDistinct = [...new Set(
+          existingRows.map((r) => existingStaffId(r.staff_id)).filter(Boolean),
+        )];
+        const incomingDistinct = [...new Set(
+          nextServiceLines.map((l) => existingStaffId(l.staff_id)).filter(Boolean),
+        )];
+        const headerStaff = existingStaffId(fallbackStaff);
+        if (
+          req.body.staff_id === undefined
+          && existingDistinct.length > 1
+          && incomingDistinct.length === 1
+          && incomingDistinct[0] === headerStaff
+        ) {
+          nextServiceLines = mergeAppointmentServiceLines(
+            nextServiceLines.map((l) => ({ ...l, staff_id: null })),
+            existingRows,
+            fallbackStaff,
+          );
+        }
+
+        updates.service_id = nextServiceLines[0].service_id;
+        if (nextServiceLines[0]?.date) updates.date = nextServiceLines[0].date;
+        if (nextServiceLines[0]?.time) updates.time = nextServiceLines[0].time;
       }
-      if (!validIds.length) {
-        return res.status(400).json({ message: 'At least one valid service is required.' });
-      }
-      const fallbackStaff = updates.staff_id !== undefined
-        ? updates.staff_id
-        : appt.staff_id;
-      nextServiceLines = lines
-        .filter((l) => validIds.includes(l.service_id))
-        .map((l) => ({
-          ...l,
-          staff_id: l.staff_id || (fallbackStaff != null && fallbackStaff !== '' ? Number(fallbackStaff) : null),
-        }));
-      updates.service_id = nextServiceLines[0].service_id;
-      if (updates.staff_id === undefined && nextServiceLines[0].staff_id) {
-        updates.staff_id = nextServiceLines[0].staff_id;
-      }
-      if (nextServiceLines[0]?.date) updates.date = nextServiceLines[0].date;
-      if (nextServiceLines[0]?.time) updates.time = nextServiceLines[0].time;
 
       const nextNotes = req.body.notes !== undefined ? req.body.notes : appt.notes;
       const packageBooking = usesPackageBooking({
@@ -1104,6 +1177,7 @@ const update = async (req, res) => {
 
       // Recalculate amount from selected services when amount is not explicitly supplied
       if (req.body.amount === undefined && !packageBooking) {
+        const validIds = await resolveValidServiceIds(req, requestedIds);
         const selected = await Service.findAll({
           where: { id: validIds, ...tenantWhere(req) },
           attributes: ['price'],

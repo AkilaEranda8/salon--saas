@@ -33,6 +33,35 @@ import { fetchAllServices } from '../utils/fetchAllServices';
 
 const METHODS = ['Cash','Card','Online Transfer','Loyalty Points','Package','LankaQR'];
 const METHOD_LABEL = { 'Cash':'Cash', 'Card':'Card', 'Online Transfer':'Bank Transfer', 'Loyalty Points':'Loyalty Pts', 'Package':'Package', 'LankaQR':'LankaQR' };
+
+function paymentCommissionLines(row) {
+  if (Array.isArray(row?.commission_per_staff) && row.commission_per_staff.length) {
+    return row.commission_per_staff
+      .map((l) => ({
+        staff_name: l.staff_name,
+        amount: Number(l.amount || 0),
+      }))
+      .filter((l) => l.amount > 0);
+  }
+  const main = Number(row?.commission_amount || 0);
+  const helpers = row?.helper_commission?.helpers || row?.commission_breakdown?.helpers || [];
+  const lines = [];
+  if (main > 0) {
+    lines.push({ staff_name: row?.staff?.name || 'Main staff', amount: main });
+  }
+  for (const h of helpers) {
+    const amt = Number(h.commission_amount || 0);
+    if (amt > 0) lines.push({ staff_name: h.staff_name || 'Helper', amount: amt });
+  }
+  return lines;
+}
+
+function paymentTotalCommission(row) {
+  const lines = paymentCommissionLines(row);
+  if (lines.length) return lines.reduce((s, l) => s + l.amount, 0);
+  return Number(row?.total_commission_amount ?? row?.commission_amount ?? 0);
+}
+
 const EMPTY_FORM = {
   branch_id:'', staff_id:'', customer_id:'', service_ids:[], total_amount:'', loyalty_discount:0, discount_id:'',
   splits:[{ method:'Cash', amount:'' }],
@@ -1100,14 +1129,22 @@ export default function PaymentsPage() {
           },
           { id:'search', header:'Customer', meta:{ width:'18%' },
             accessorFn: r => `${r.customer?.name || r.customer_name || ''} ${r.service?.name || ''} ${r.staff?.name || ''}`.trim(),
-            cell: ({ row }) => (
-              <>
-                <div style={{ fontWeight:600, color:'#101828', fontSize:14 }}>
-                  {row.original.customer?.name || row.original.customer_name || 'Walk-in'}
-                </div>
-                <div style={{ fontSize:12, color:'#98A2B3' }}>{row.original.staff?.name || ''}</div>
-              </>
-            )
+            cell: ({ row }) => {
+              const staffLines = paymentCommissionLines(row.original);
+              const staffLabel = staffLines.length > 1
+                ? staffLines.map((l) => `${l.staff_name || 'Staff'} ${Number(l.amount || 0).toLocaleString()}`).join(' · ')
+                : (row.original.staff?.name || staffLines[0]?.staff_name || '');
+              return (
+                <>
+                  <div style={{ fontWeight:600, color:'#101828', fontSize:14 }}>
+                    {row.original.customer?.name || row.original.customer_name || 'Walk-in'}
+                  </div>
+                  {staffLabel ? (
+                    <div style={{ fontSize:12, color:'#98A2B3' }}>{staffLabel}</div>
+                  ) : null}
+                </>
+              );
+            }
           },
           { id:'service', header:'Service', meta:{ width:'16%' },
             accessorFn: r => r.service?.name || '',
@@ -1138,8 +1175,24 @@ export default function PaymentsPage() {
               </span>
             )
           },
-          { accessorKey:'commission_amount', header:'Commission', meta:{ width:'12%', align:'right' },
-            cell: ({ getValue }) => <span style={{ fontWeight:800, color:'#D97706', fontFamily:"'Outfit',sans-serif", fontSize:15 }}>Rs. {Number(getValue()||0).toLocaleString()}</span>
+          { id:'commission', header:'Commission', meta:{ width:'14%', align:'right' },
+            accessorFn: (r) => paymentTotalCommission(r),
+            cell: ({ row }) => {
+              const lines = paymentCommissionLines(row.original);
+              const total = paymentTotalCommission(row.original);
+              return (
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontWeight:800, color:'#D97706', fontFamily:"'Outfit',sans-serif", fontSize:15 }}>
+                    Rs. {Number(total || 0).toLocaleString()}
+                  </div>
+                  {lines.length > 1 ? (
+                    <div style={{ fontSize:11, color:'#98A2B3', marginTop:2 }}>
+                      {lines.map((l) => `${l.staff_name || 'Staff'} ${Number(l.amount || 0).toLocaleString()}`).join(' · ')}
+                    </div>
+                  ) : null}
+                </div>
+              );
+            }
           },
           { id:'invoice', header:'Actions', meta:{ width:'14%', align:'center' },
             cell: ({ row }) => (

@@ -35,8 +35,32 @@ function IconKey() {
   return <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>;
 }
 
+function loginHandoverMessage({ name, username, password, slug }) {
+  const url = slug ? `https://${slug}.salon.hexalyte.com` : window.location.origin;
+  const hi = name ? `Hi ${name.split(' ')[0]},` : 'Hi,';
+  return `${hi}
+
+HEXAONE salon account eka ready.
+
+Web login
+URL: ${url}
+Username: ${username}
+Password: ${password}
+
+Staff app (Hexaone)
+Salon slug: ${slug || ''}
+Username: ${username}
+Password: same password
+App: HEXAONE staff app update/download karanna
+
+First login eken passe Settings → Profile walin password eka change karanna.
+
+Thanks
+Hexalyte`;
+}
+
 export default function UsersPage() {
-  const { user } = useAuth();
+  const { user, tenantSlug } = useAuth();
   const isSuperadmin = user?.role === 'superadmin';
   const isAdmin      = ['superadmin','admin'].includes(user?.role);
   const [users, setUsers]         = useState([]);
@@ -57,6 +81,8 @@ export default function UsersPage() {
   const [staffList, setStaffList] = useState([]);
   const [showFormPwd, setShowFormPwd]   = useState(false);
   const [showNewPwd, setShowNewPwd]     = useState(false);
+  const [handover, setHandover]         = useState(null);
+  const [copied, setCopied]             = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -96,7 +122,18 @@ export default function UsersPage() {
       if (!isSuperadmin && !isAdmin) delete payload.role;
       if (!isSuperadmin && payload.role === 'superadmin') delete payload.role;
       editItem ? await api.put(`/users/${editItem.id}`, payload) : await api.post('/users', payload);
-      setShowForm(false); load();
+      setShowForm(false);
+      load();
+      if (!editItem && payload.password) {
+        const msg = loginHandoverMessage({
+          name: payload.name,
+          username: payload.username,
+          password: payload.password,
+          slug: tenantSlug,
+        });
+        setCopied(false);
+        setHandover({ title: 'User created — copy login details', message: msg });
+      }
     } catch (err) { setFormError(err.response?.data?.message || 'Save failed.'); }
     setSaving(false);
   };
@@ -107,8 +144,26 @@ export default function UsersPage() {
     try {
       await api.patch(`/users/${pwdTarget.id}/password`, { password: newPwd });
       setShowPwd(false);
+      const msg = loginHandoverMessage({
+        name: pwdTarget?.name,
+        username: pwdTarget?.username,
+        password: newPwd,
+        slug: tenantSlug,
+      });
+      setCopied(false);
+      setHandover({ title: 'Password updated — copy login details', message: msg });
     } catch (err) { alert(err.response?.data?.message || 'Failed.'); }
     setSaving(false);
+  };
+
+  const copyHandover = async () => {
+    if (!handover?.message) return;
+    try {
+      await navigator.clipboard.writeText(handover.message);
+      setCopied(true);
+    } catch {
+      setCopied(false);
+    }
   };
 
   const handleDelete = async id => {
@@ -344,6 +399,28 @@ export default function UsersPage() {
             </button>
           </div>
         </FormGroup>
+      </Modal>
+
+      <Modal
+        open={!!handover}
+        onClose={() => setHandover(null)}
+        title={handover?.title || 'Login details'}
+        size="md"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setHandover(null)}>Close</Button>
+            <Button variant="primary" onClick={copyHandover}>{copied ? 'Copied' : 'Copy message'}</Button>
+          </>
+        }
+      >
+        <p style={{ fontSize:13, color:'#475467', margin:'0 0 10px', fontFamily:"'Inter',sans-serif" }}>
+          WhatsApp / SMS ekata copy karala yawanna. Password eka meka witarai pennanne.
+        </p>
+        <textarea
+          readOnly
+          value={handover?.message || ''}
+          style={{ width:'100%', minHeight:280, resize:'vertical', fontFamily:'monospace', fontSize:12.5, lineHeight:1.45, padding:12, borderRadius:10, border:'1.5px solid #E4E7EC', color:'#101828', background:'#F9FAFB' }}
+        />
       </Modal>
     </PageWrapper>
   );

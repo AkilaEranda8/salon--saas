@@ -660,10 +660,13 @@ class MobileApi {
       throw Exception(body['message'] ?? 'Appointments load failed');
     }
     final list = (body['data'] as List? ?? const []);
-    final items = list
-        .whereType<Map>()
-        .map((e) => Appointment.fromJson(Map<String, dynamic>.from(e)))
-        .toList();
+    final items = <Appointment>[];
+    for (final e in list) {
+      if (e is! Map) continue;
+      try {
+        items.add(Appointment.fromJson(Map<String, dynamic>.from(e)));
+      } catch (_) {}
+    }
     return AppointmentListResult(
       total: int.tryParse('${body['total'] ?? items.length}') ?? items.length,
       page: int.tryParse('${body['page'] ?? page}') ?? page,

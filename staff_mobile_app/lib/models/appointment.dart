@@ -220,13 +220,16 @@ class Appointment {
         ));
       }
     }
+    final serviceMap = service is Map ? Map<String, dynamic>.from(service) : null;
+    final staffMap = staff is Map ? Map<String, dynamic>.from(staff) : null;
+    final customerMap = customer is Map ? Map<String, dynamic>.from(customer) : null;
+    final branchMap = branch is Map ? Map<String, dynamic>.from(branch) : null;
+    final dateRaw = '${json['date'] ?? ''}'.trim();
     return Appointment(
       id: '${json['id']}',
-      customerName: '${json['customer_name'] ?? ''}',
-      serviceName: '${service is Map ? service['name'] ?? '' : ''}',
-      date: '${json['date'] ?? ''}'.trim().length >= 10
-          ? '${json['date']}'.trim().substring(0, 10)
-          : '${json['date'] ?? ''}',
+      customerName: '${json['customer_name'] ?? customerMap?['name'] ?? ''}',
+      serviceName: '${serviceMap?['name'] ?? ''}',
+      date: dateRaw.length >= 10 ? dateRaw.substring(0, 10) : dateRaw,
       time: () {
         final raw = '${json['time'] ?? ''}'.trim();
         final m = RegExp(r'(\d{1,2}):(\d{2})').firstMatch(raw);
@@ -234,24 +237,20 @@ class Appointment {
         return '${m.group(1)!.padLeft(2, '0')}:${m.group(2)}';
       }(),
       status: '${json['status'] ?? 'pending'}',
-      createdBy: '${staff is Map ? staff['name'] ?? '' : ''}',
-      serviceId: '${json['service_id'] ?? service?['id'] ?? ''}',
+      createdBy: '${staffMap?['name'] ?? ''}',
+      serviceId: '${json['service_id'] ?? serviceMap?['id'] ?? ''}',
       serviceIds: parsedIds,
       primaryDurationMinutes: () {
-        if (service is Map) {
-          final d = int.tryParse('${service['duration_minutes'] ?? 0}') ?? 0;
-          if (d > 0) return d;
-        }
-        final top = int.tryParse('${json['duration_minutes'] ?? 0}') ?? 0;
-        return top > 0 ? top : 0;
+        final d = int.tryParse('${serviceMap?['duration_minutes'] ?? json['duration_minutes'] ?? 0}') ?? 0;
+        return d > 0 ? d : 0;
       }(),
-      branchId: '${json['branch_id'] ?? (branch is Map ? branch['id'] ?? '' : '')}',
-      phone: '${json['phone'] ?? (customer is Map ? customer['phone'] ?? '' : '')}',
+      branchId: '${json['branch_id'] ?? branchMap?['id'] ?? ''}',
+      phone: '${json['phone'] ?? customerMap?['phone'] ?? ''}',
       notes: '${json['notes'] ?? ''}',
       amount: amt,
-      staffId: '${json['staff_id'] ?? staff?['id'] ?? ''}',
-      customerId: '${json['customer_id'] ?? customer?['id'] ?? ''}',
-      branchName: '${branch is Map ? branch['name'] ?? '' : ''}',
+      staffId: '${json['staff_id'] ?? staffMap?['id'] ?? ''}',
+      customerId: '${json['customer_id'] ?? customerMap?['id'] ?? ''}',
+      branchName: '${branchMap?['name'] ?? ''}',
       isRecurring: json['is_recurring'] == true,
       recurringNextDate: '${json['recurring_next_date'] ?? ''}'.trim(),
       recurringMessageTemplateIds: parsedTplIds,

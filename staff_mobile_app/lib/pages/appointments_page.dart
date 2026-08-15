@@ -182,24 +182,31 @@ class _ApptState extends State<AppointmentsPage> with SingleTickerProviderStateM
 
   Future<void> _load() async {
     final app = AppStateScope.of(context);
-    if (!app.hasPermission(StaffPermission.canViewAppointments)) return;
+    if (!app.hasPermission(StaffPermission.canViewAppointments)) {
+      if (mounted) setState(() { _loading = false; _err = 'No permission to view appointments.'; });
+      return;
+    }
     setState(() { _loading = true; _err = null; });
     try {
-      if (_isSuper) await app.loadBranches();
+      if (_isSuper) {
+        try {
+          await app.loadBranches();
+        } catch (_) {}
+      }
+      try {
+        await app.loadServices();
+      } catch (_) {}
       final sameDay = _fDateFrom == _fDateTo;
-      await Future.wait([
-        app.loadServices(),
-        app.loadAppointments(
-          page: _page,
-          limit: 100,
-          status:   _fStatus.isEmpty ? null : _fStatus,
-          date:     sameDay ? _fDateFrom : null,
-          dateFrom: sameDay ? null : _fDateFrom,
-          dateTo:   sameDay ? null : _fDateTo,
-          branchId: _isSuper ? (_fBranch.isEmpty ? null : _fBranch)
-                             : app.currentUser?.branchId,
-        ),
-      ]);
+      await app.loadAppointments(
+        page: _page,
+        limit: 100,
+        status:   _fStatus.isEmpty ? null : _fStatus,
+        date:     sameDay ? _fDateFrom : null,
+        dateFrom: sameDay ? null : _fDateFrom,
+        dateTo:   sameDay ? null : _fDateTo,
+        branchId: _isSuper ? (_fBranch.isEmpty ? null : _fBranch)
+                           : app.currentUser?.branchId,
+      );
       if (mounted) { _fadeCtrl.forward(from: 0); }
     } catch (e) {
       if (mounted) setState(() => _err = e.toString().replaceFirst('Exception: ', ''));

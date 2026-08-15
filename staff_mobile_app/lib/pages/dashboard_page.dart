@@ -108,11 +108,12 @@ class _DashboardPageState extends State<DashboardPage>
       await Future.wait([
         if (s.isFeatureEnabled(MobileFeatures.appointments) &&
             s.hasPermission(StaffPermission.canViewAppointments))
-          s.loadAppointments(date: today, limit: 200),
+          s.loadAppointments(date: today, limit: 200).catchError((_) => <Appointment>[]),
         if (s.isFeatureEnabled(MobileFeatures.customers) &&
             s.hasPermission(StaffPermission.canViewCustomers))
-          s.loadCustomerCount(),
-        if (s.isFeatureEnabled(MobileFeatures.services)) s.loadServices(),
+          s.loadCustomerCount().catchError((_) => 0),
+        if (s.isFeatureEnabled(MobileFeatures.services))
+          s.loadServices().catchError((_) => <SalonService>[]),
       ]);
       if (mounted) setState(() {});
     } catch (_) {

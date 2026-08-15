@@ -74,6 +74,34 @@ function Modal({ title, onClose, children, isDark, width = 460 }) {
   );
 }
 
+function tenantHandoverMessage(t) {
+  const first = (t.ownerName || t.name || '').split(' ')[0];
+  const hi = first ? `Hi ${first},` : 'Hi,';
+  const slug = t.slug || '';
+  const url = t.url || (slug ? `https://${slug}.salon.hexalyte.com` : '');
+  const username = t.ownerUsername || '';
+  const password = t.password || '';
+  return `${hi}
+
+HEXAONE salon account eka ready.
+
+Web login
+URL: ${url}
+Username: ${username}
+Password: ${password}
+
+Staff app (Hexaone)
+Salon slug: ${slug}
+Username: ${username}
+Password: same password
+App: HEXAONE staff app update/download karanna
+
+First login eken passe Settings → Profile walin password eka change karanna.
+
+Thanks
+Hexalyte`;
+}
+
 function InfoRow({ label, value, isLink, mono, isDark }) {
   const [copied, setCopied] = useState(false);
   const handleCopy = () => {
@@ -109,6 +137,7 @@ export default function PlatformTenantsPage() {
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState('');
   const [createdTenant, setCreatedTenant] = useState(null); // success state
+  const [handoverCopied, setHandoverCopied] = useState(false);
   const [createForm, setCreateForm] = useState({
     businessName: '',
     slug: '',
@@ -388,8 +417,10 @@ export default function PlatformTenantsPage() {
         status: createForm.status,
         branchName: createForm.branchName.trim() || null,
       });
+      setHandoverCopied(false);
       setCreatedTenant({
         ...res.data.tenant,
+        ownerName: createForm.ownerName.trim(),
         ownerUsername: res.data.owner?.username || createForm.ownerEmail.trim().toLowerCase(),
         password: createForm.password,
         url: `https://${res.data.tenant.slug}.salon.hexalyte.com`,
@@ -1158,10 +1189,36 @@ export default function PlatformTenantsPage() {
                   <InfoRow label="Plan" value={createdTenant.plan} />
                 </div>
               </div>
+              <textarea
+                readOnly
+                value={tenantHandoverMessage(createdTenant)}
+                style={{
+                  width: '100%', minHeight: 200, resize: 'vertical', boxSizing: 'border-box',
+                  fontFamily: 'monospace', fontSize: 12, lineHeight: 1.45, padding: 12,
+                  borderRadius: 10, border: `1px solid ${isDark ? '#334155' : '#E5E7EB'}`,
+                  color: isDark ? '#E2E8F0' : '#101828', background: isDark ? '#0F172A' : '#F9FAFB',
+                }}
+              />
               <p style={{ fontSize: 11, color: isDark ? '#64748B' : '#9CA3AF', margin: 0, lineHeight: 1.5 }}>
-                Share the URL and credentials with the client. They can change their password from Settings after logging in.
+                Copy message eka WhatsApp / SMS ekata paste karanna. Client Settings walin password change karanna puluwan.
               </p>
-              <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(tenantHandoverMessage(createdTenant)).then(() => {
+                      setHandoverCopied(true);
+                      setTimeout(() => setHandoverCopied(false), 2000);
+                    });
+                  }}
+                  style={{
+                    padding: '9px 22px', border: 'none', borderRadius: 9, cursor: 'pointer',
+                    background: handoverCopied ? '#059669' : '#4F46E5', color: '#fff',
+                    fontSize: 13, fontWeight: 700,
+                    boxShadow: '0 4px 12px rgba(79,70,229,0.25)',
+                  }}
+                >
+                  {handoverCopied ? 'Copied' : 'Copy message'}
+                </button>
                 <a
                   href={createdTenant.url}
                   target="_blank"

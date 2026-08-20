@@ -88,6 +88,7 @@ const register = async (req, res) => {
       username:  `${username}_${tenant.id}`, // ensure uniqueness
       password:  hashedPassword,
       name:      ownerName,
+      email:     ownerEmail,
       role:      'superadmin',
       branch_id: branch.id,
       tenant_id: tenant.id,
@@ -101,31 +102,29 @@ const register = async (req, res) => {
 
     await t.commit();
 
-    // ── Sync new tenant + superadmin to Keycloak (non-fatal) ─────────────
-    // ORDER: group must exist BEFORE the user is created inside it.
+    let kcTokens = null;
+    // Sync Keycloak before responding so the owner can land on the dashboard logged in.
     if (process.env.KEYCLOAK_URL) {
-      (async () => {
-        try {
-          // Step 1: create the tenant group in Keycloak
-          await kc.createOrGetGroup(tenant.slug, tenant.name);
-
-          // Step 2: create the owner user and add them to the group
-          await kc.createUser({
-            dbUserId:   user.id,
-            username:   user.username,
-            name:       user.name,
-            role:       'superadmin',
-            tenantId:   tenant.id,
-            tenantSlug: tenant.slug,
-            branchId:   user.branch_id,
-            password,             // plain-text still in scope — no forced reset
-            temporary:  false,
-          });
-          console.log(`[KC] Tenant "${tenant.slug}" and owner synced.`);
-        } catch (err) {
-          console.error('[KC] onboarding sync failed (non-fatal):', err.message);
-        }
-      })();
+      try {
+        await kc.createOrGetGroup(tenant.slug, tenant.name);
+        await kc.createUser({
+          dbUserId:   user.id,
+          username:   user.username,
+          name:       user.name,
+          email:      ownerEmail,
+          role:       'superadmin',
+          tenantId:   tenant.id,
+          tenantSlug: tenant.slug,
+          branchId:   user.branch_id,
+          password,
+          temporary:  false,
+        });
+        const kcUsername = `${tenant.slug}__${user.username}`;
+        kcTokens = await kc.passwordGrantWithRetry(kcUsername, password);
+        console.log(`[KC] Tenant "${tenant.slug}" and owner synced.`);
+      } catch (err) {
+        console.error('[KC] onboarding sync/login failed (non-fatal):', err.message);
+      }
     }
 
     // ── Issue JWT ─────────────────────────────────────────────────────────
@@ -168,6 +167,7 @@ const register = async (req, res) => {
         username: user.username,
         role:     user.role,
       },
+      ...(kcTokens || {}),
     });
   } catch (err) {
     await t.rollback();

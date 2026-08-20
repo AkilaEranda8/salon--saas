@@ -5,7 +5,10 @@ import {
   setKcTokens,
   clearKcTokens,
   getKcRefreshToken,
+  getKcAccessToken,
+  isKcTokenExpiring,
   refreshKcToken,
+  consumeOnboardHandoff,
 } from '../utils/kcTokenStore';
 
 const USE_KEYCLOAK = import.meta.env.VITE_USE_KEYCLOAK === 'true';
@@ -69,9 +72,22 @@ function KeycloakAuthProvider({ children }) {
     };
 
     async function init() {
+      consumeOnboardHandoff();
       const rt = getKcRefreshToken();
       if (rt) {
         try {
+          if (getKcAccessToken() && !isKcTokenExpiring()) {
+            try {
+              const res = await api.get('/auth/me');
+              if (!cancelled) {
+                setUser(res.data.user);
+                setLoading(false);
+              }
+              return;
+            } catch {
+              /* fall through to refresh */
+            }
+          }
           const newToken = await refreshKcToken();
           if (newToken && !cancelled) {
             const res = await api.get('/auth/me');

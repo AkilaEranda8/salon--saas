@@ -400,6 +400,47 @@ async function setEnabled(dbUserId, enabled) {
   await axios.put(`${baseUrl()}/users/${kcUser.id}`, { enabled }, { headers: h });
 }
 
+/**
+ * Resource-owner password grant (same client as /auth/kc-login).
+ */
+async function passwordGrant(username, password) {
+  if (!KC_URL) return null;
+
+  const params = new URLSearchParams({
+    grant_type: 'password',
+    client_id: process.env.KC_PUBLIC_CLIENT_ID || 'salon-frontend',
+    username,
+    password,
+  });
+  if (process.env.KC_PUBLIC_CLIENT_SECRET) {
+    params.set('client_secret', process.env.KC_PUBLIC_CLIENT_SECRET);
+  }
+
+  const res = await axios.post(
+    `${KC_URL}/realms/${KC_REALM}/protocol/openid-connect/token`,
+    params.toString(),
+    { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
+  );
+  return {
+    access_token:  res.data.access_token,
+    refresh_token: res.data.refresh_token,
+    expires_in:    res.data.expires_in,
+  };
+}
+
+async function passwordGrantWithRetry(username, password, attempts = 5) {
+  let lastErr;
+  for (let i = 0; i < attempts; i += 1) {
+    try {
+      return await passwordGrant(username, password);
+    } catch (err) {
+      lastErr = err;
+      await new Promise((r) => setTimeout(r, 400 * (i + 1)));
+    }
+  }
+  throw lastErr;
+}
+
 module.exports = {
   // Group lifecycle (must run BEFORE user creation)
   createOrGetGroup,
@@ -412,4 +453,6 @@ module.exports = {
   deleteUser,
   setEnabled,
   findByDbId,
+  passwordGrant,
+  passwordGrantWithRetry,
 };

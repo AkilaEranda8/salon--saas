@@ -67,8 +67,17 @@ const OnboardingPage = () => {
       const { slug } = res.data.tenant;
       // Clear theme preferences so the new account starts with clean defaults
       ['salon-theme-mode', 'salon-sidebar-style', 'salon-primary-color', 'salon-font-family', 'salon-sidebar-appearance', 'salon-table-style'].forEach((k) => localStorage.removeItem(k));
-      // Redirect to the new tenant subdomain
-      window.location.href = `https://${slug}.salon.hexalyte.com/dashboard`;
+      const base = `https://${slug}.salon.hexalyte.com`;
+      if (res.data.access_token && res.data.refresh_token) {
+        const packed = encodeURIComponent(btoa(JSON.stringify({
+          access_token:  res.data.access_token,
+          refresh_token: res.data.refresh_token,
+          expires_in:    res.data.expires_in,
+        })));
+        window.location.href = `${base}/dashboard#onboard=${packed}`;
+        return;
+      }
+      window.location.href = `${base}/login`;
     } catch (err) {
       setError(err.response?.data?.message || 'Registration failed. Please try again.');
     } finally {

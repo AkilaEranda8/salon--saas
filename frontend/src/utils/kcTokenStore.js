@@ -38,6 +38,26 @@ export const getKcAccessToken  = () => _accessToken;
 export const getKcRefreshToken = () => localStorage.getItem(STORAGE_KEY) ?? _refreshToken;
 export const isKcTokenExpiring  = () => !_accessToken || Date.now() >= _expiresAt;
 
+/**
+ * After self-serve signup the owner is redirected to their tenant subdomain
+ * with tokens in the URL hash. Consume once, then strip the hash.
+ */
+export function consumeOnboardHandoff() {
+  if (typeof window === 'undefined') return false;
+  const hash = window.location.hash || '';
+  if (!hash.startsWith('#onboard=')) return false;
+  const packed = hash.slice('#onboard='.length);
+  try {
+    const json = JSON.parse(atob(decodeURIComponent(packed)));
+    if (!json?.access_token || !json?.refresh_token) return false;
+    setKcTokens(json);
+    window.history.replaceState({}, '', window.location.pathname + window.location.search);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // ── Refresh helper ────────────────────────────────────────────────────────────
 // Returns the new access token, or null if refresh fails.
 // Coalesces concurrent callers into a single request.

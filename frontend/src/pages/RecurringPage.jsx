@@ -39,6 +39,11 @@ function custName(c) {
   return `${c.first_name || ''} ${c.last_name || ''}`.trim();
 }
 
+/** Linked customer record, else appointment snapshot name (walk-in / payment recurring). */
+function chainCustomerName(row) {
+  return custName(row?.customer) || row?.customer_name || row?.parent?.customer_name || '';
+}
+
 function staffName(s) {
   if (!s) return '';
   if (s.name) return s.name;
@@ -69,6 +74,7 @@ function mapChain(row) {
   return {
     id: parent.id,
     customer: parent.customer,
+    customer_name: parent.customer_name,
     service: parent.service,
     staff: parent.staff,
     branch: parent.branch,
@@ -322,7 +328,7 @@ export default function RecurringPage() {
                   onClick={() => setViewChain(c)}
                 >
                   <div>
-                    <div style={{ fontWeight: 600 }}>{custName(c.customer)}</div>
+                    <div style={{ fontWeight: 600 }}>{chainCustomerName(c)}</div>
                     <div style={{ fontSize: 12, color: '#98A2B3' }}>
                       {c.service?.name || '—'} · {(c.appointment_time || '').slice(0, 5)}
                     </div>
@@ -343,7 +349,7 @@ export default function RecurringPage() {
           columns={[
             {
               id: 'customer', header: 'Customer', meta: { width: '18%' },
-              accessorFn: (r) => custName(r.customer),
+              accessorFn: (r) => chainCustomerName(r),
               cell: ({ getValue }) => (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                   <StaffAvatar name={getValue()} size={32} />
@@ -451,7 +457,7 @@ export default function RecurringPage() {
         >
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
             {[
-              ['Customer', custName(viewChain.customer)],
+              ['Customer', chainCustomerName(viewChain)],
               ['Service', viewChain.service?.name || '—'],
               ['Staff', staffName(viewChain.staff) || '—'],
               ['Branch', viewChain.branch?.name || '—'],
@@ -523,7 +529,7 @@ export default function RecurringPage() {
         >
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             <div style={{ fontSize: 14, color: '#344054' }}>
-              <strong>{custName(editChain.customer)}</strong>
+              <strong>{chainCustomerName(editChain)}</strong>
               {editChain.service?.name ? ` · ${editChain.service.name}` : ''}
             </div>
             <RecurringDateCalendar

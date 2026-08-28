@@ -333,15 +333,6 @@ export default function PlatformSubscriptionsPage() {
     setNotifyingId(null);
   };
 
-  const isPaymentDue = (sub) => {
-    if (!sub.current_period_end || sub.status === 'cancelled') return false;
-    if (['past_due', 'unpaid', 'incomplete'].includes(sub.status)) return true;
-    const end = new Date(sub.current_period_end).getTime();
-    if (end < Date.now()) return true;
-    const daysLeft = Math.ceil((end - Date.now()) / 86400000);
-    return daysLeft <= 7;
-  };
-
   const subColumns = useMemo(() => [
     {
       id: 'tenant',

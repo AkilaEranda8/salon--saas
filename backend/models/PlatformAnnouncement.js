@@ -13,6 +13,7 @@ const PlatformAnnouncement = sequelize.define('PlatformAnnouncement', {
   scheduled_at: { type: DataTypes.DATE, allowNull: true },
   sent_at: { type: DataTypes.DATE, allowNull: true },
   seen_count: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
+  dismissed_tenant_ids: { type: DataTypes.JSON, allowNull: false, defaultValue: [] },
   created_by: { type: DataTypes.STRING(120), allowNull: false, defaultValue: 'Admin' },
 }, {
   tableName: 'platform_announcements',

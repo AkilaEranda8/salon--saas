@@ -7,6 +7,7 @@ import Sidebar from './components/layout/Sidebar';
 import Topbar  from './components/layout/Topbar';
 import PlatformSidebar from './components/layout/PlatformSidebar';
 import SubscriptionBanner from './components/shared/SubscriptionBanner';
+import AnnouncementBanner from './components/shared/AnnouncementBanner';
 import UpgradePlanModal from './components/shared/UpgradePlanModal';
 import FeatureRoute from './components/FeatureRoute';
 import { useBreakpoint } from './hooks/useBreakpoint';
@@ -27,6 +28,7 @@ import PlatformBankSlipApprovalsPage from './pages/platform/PlatformBankSlipAppr
 import PlatformPlansPage       from './pages/platform/PlatformPlansPage';
 import PlatformSmtpSmsPage    from './pages/platform/PlatformSmtpSmsPage';
 import PlatformActivityLogsPage from './pages/platform/PlatformActivityLogsPage';
+import PlatformAnnouncementsPage from './pages/platform/PlatformAnnouncementsPage';
 
 // Pages
 import LoginPage       from './pages/LoginPage';
@@ -236,6 +238,7 @@ function PlatformShell() {
           <Route path="platform/support"        element={<SupportTicketsPage platformMode />} />
           <Route path="platform/system"         element={<PlatformSystemControlPage />} />
           <Route path="platform/activity-logs"   element={<PlatformActivityLogsPage />} />
+          <Route path="platform/announcements"  element={<PlatformAnnouncementsPage />} />
           <Route path="platform/smtp-sms"       element={<PlatformSmtpSmsPage />} />
           <Route path="*"                        element={<Navigate to="/platform/dashboard" replace />} />
         </Routes>
@@ -660,6 +663,7 @@ function AppShell() {
           </div>
 
           <SubscriptionBanner />
+          <AnnouncementBanner />
           <UpgradePlanModal />
           <ForcePasswordChangeModal />
           <AppShellRoutes />

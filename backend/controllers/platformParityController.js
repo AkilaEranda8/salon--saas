@@ -105,6 +105,125 @@ const deleteAnnouncement = async (req, res) => {
   }
 };
 
+function targetsTenant(row, tenantId) {
+  if (!row || row.status !== 'SENT') return false;
+  if (row.target === 'ALL') return true;
+  const ids = Array.isArray(row.target_tenants) ? row.target_tenants : [];
+  return ids.map(Number).includes(Number(tenantId));
+}
+
+function isDismissed(row, tenantId) {
+  const dismissed = Array.isArray(row.dismissed_tenant_ids) ? row.dismissed_tenant_ids : [];
+  return dismissed.map(Number).includes(Number(tenantId));
+}
+
+/** Tenant dashboard — active announcements not yet dismissed. */
+const listActiveForTenant = async (req, res) => {
+  try {
+    await ensureTables();
+    const tenantId = req.tenant?.id ?? req.user?.tenantId;
+    if (!tenantId) return res.json([]);
+
+    const rows = await PlatformAnnouncement.findAll({
+      where: { status: 'SENT' },
+      order: [['sent_at', 'DESC'], ['createdAt', 'DESC']],
+      limit: 20,
+    });
+
+    const active = rows
+      .filter((row) => targetsTenant(row, tenantId) && !isDismissed(row, tenantId))
+      .map((row) => ({
+        id: row.id,
+        title: row.title,
+        body: row.body,
+        type: row.type,
+        dismissible: row.dismissible,
+        sent_at: row.sent_at,
+      }));
+
+    return res.json(active);
+  } catch (err) {
+    console.error('parity.listActiveForTenant', err);
+    return res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+/** Tenant dismisses a banner (superadmin/admin only). */
+const dismissForTenant = async (req, res) => {
+  try {
+    await ensureTables();
+    const tenantId = req.tenant?.id ?? req.user?.tenantId;
+    if (!tenantId) return res.status(400).json({ message: 'Tenant context required.' });
+    if (!['superadmin', 'admin'].includes(req.user?.role)) {
+      return res.status(403).json({ message: 'Only salon admins can dismiss announcements.' });
+    }
+
+    const row = await PlatformAnnouncement.findByPk(req.params.id);
+    if (!row || !targetsTenant(row, tenantId)) {
+      return res.status(404).json({ message: 'Announcement not found.' });
+    }
+
+    const dismissed = Array.isArray(row.dismissed_tenant_ids) ? [...row.dismissed_tenant_ids] : [];
+    if (!dismissed.map(Number).includes(Number(tenantId))) {
+      dismissed.push(Number(tenantId));
+      row.dismissed_tenant_ids = dismissed;
+      await row.save();
+    }
+
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error('parity.dismissForTenant', err);
+    return res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+/** Platform admin — send payment-due notice to one tenant. */
+const sendPaymentDueAnnouncement = async (req, res) => {
+  try {
+    await ensureTables();
+    const { Tenant } = require('../models');
+    const tenantId = Number(req.body?.tenant_id);
+    if (!tenantId) return res.status(400).json({ message: 'tenant_id is required.' });
+
+    const tenant = await Tenant.findByPk(tenantId, { attributes: ['id', 'name', 'slug', 'plan', 'trial_ends_at'] });
+    if (!tenant) return res.status(404).json({ message: 'Tenant not found.' });
+
+    const customBody = String(req.body?.body || '').trim();
+    const dueHint = req.body?.due_date
+      ? new Date(req.body.due_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+      : null;
+
+    const body = customBody || [
+      `Hi ${tenant.name},`,
+      '',
+      dueHint
+        ? `Your HEXAONE subscription payment was due on ${dueHint}.`
+        : 'Your HEXAONE subscription payment is now due.',
+      '',
+      'Please open Billing in your salon dashboard and complete payment to avoid interruption.',
+      '',
+      'If you already paid, you can ignore this message.',
+    ].join('\n');
+
+    const row = await PlatformAnnouncement.create({
+      title: String(req.body?.title || '').trim() || 'Payment due — action required',
+      body,
+      type: 'PAYMENT_DUE',
+      target: 'SELECTED',
+      target_tenants: [tenantId],
+      dismissible: true,
+      status: 'SENT',
+      sent_at: new Date(),
+      created_by: req.user?.email || req.user?.username || 'Admin',
+    });
+
+    return res.status(201).json(row);
+  } catch (err) {
+    console.error('parity.sendPaymentDueAnnouncement', err);
+    return res.status(500).json({ message: 'Server error.' });
+  }
+};
+
 // ── Releases ─────────────────────────────────────────────────────────────────
 const listReleases = async (req, res) => {
   try {
@@ -558,6 +677,9 @@ module.exports = {
   updateAnnouncement,
   sendAnnouncement,
   deleteAnnouncement,
+  listActiveForTenant,
+  dismissForTenant,
+  sendPaymentDueAnnouncement,
   listReleases,
   getRelease,
   createRelease,

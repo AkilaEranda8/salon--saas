@@ -148,6 +148,7 @@ export default function PlatformSubscriptionsPage() {
   const [tenants, setTenants] = useState([]);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [notifyingId, setNotifyingId] = useState(null);
   const [formError, setFormError] = useState('');
 
   const [modalOpen, setModalOpen] = useState(false);
@@ -316,6 +317,28 @@ export default function PlatformSubscriptionsPage() {
     }
   };
 
+  const sendPaymentReminder = async (sub) => {
+    if (!sub.tenant_id) return;
+    if (!window.confirm(`Send payment-due announcement to ${sub.tenantName}?`)) return;
+    setNotifyingId(sub.id);
+    try {
+      await api.post('/platform/announcements/payment-due', {
+        tenant_id: sub.tenant_id,
+        due_date: sub.current_period_end || null,
+      });
+      setNotice(`Payment reminder sent to ${sub.tenantName}.`);
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to send payment reminder.');
+    }
+    setNotifyingId(null);
+  };
+
+  const isPaymentDue = (sub) => {
+    if (!sub.current_period_end || sub.status === 'cancelled') return false;
+    return new Date(sub.current_period_end).getTime() < Date.now()
+      || ['past_due', 'unpaid'].includes(sub.status);
+  };
+
   const subColumns = useMemo(() => [
     {
       id: 'tenant',
@@ -387,6 +410,16 @@ export default function PlatformSubscriptionsPage() {
       cell: ({ row: { original: sub } }) => (
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button type="button" onClick={() => openEdit(sub)} style={{ padding: '8px 12px', border: '1px solid #3f3f46', borderRadius: 10, background: '#18181b', color: '#e4e4e7', cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>Edit</button>
+          {isPaymentDue(sub) && (
+            <button
+              type="button"
+              disabled={notifyingId === sub.id}
+              onClick={() => sendPaymentReminder(sub)}
+              style={{ padding: '8px 12px', border: '1px solid #FECACA', borderRadius: 10, background: '#FEF2F2', color: '#B91C1C', cursor: 'pointer', fontSize: 12, fontWeight: 700 }}
+            >
+              {notifyingId === sub.id ? 'Sending…' : 'Notify payment due'}
+            </button>
+          )}
           <button type="button" onClick={() => handleDelete(sub)} style={{ padding: '8px 12px', border: '1px solid #FECACA', borderRadius: 10, background: '#FEF2F2', color: '#B91C1C', cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>Delete</button>
           {sub.status !== 'active' && (
             <button type="button" onClick={() => quickUpdateStatus(sub, 'active')} style={{ padding: '8px 12px', border: '1px solid #BBF7D0', borderRadius: 10, background: '#F0FDF4', color: '#166534', cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>Set Active</button>

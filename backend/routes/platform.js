@@ -67,6 +67,7 @@ router.delete('/plans/:id',       ctrl.deletePlan);
 // ── Enterprise parity: announcements / releases / suggestions / catalog ─────
 router.get('/announcements',              parity.listAnnouncements);
 router.post('/announcements',             parity.createAnnouncement);
+router.post('/announcements/payment-due', parity.sendPaymentDueAnnouncement);
 router.patch('/announcements/:id',        parity.updateAnnouncement);
 router.patch('/announcements/:id/send',   parity.sendAnnouncement);
 router.delete('/announcements/:id',       parity.deleteAnnouncement);

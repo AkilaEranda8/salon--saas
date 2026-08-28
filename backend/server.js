@@ -238,6 +238,7 @@ app.use('/api/users',        require('./routes/users'));
 app.use('/api/walkin',       require('./routes/walkin'));
 app.use('/api/expenses',     require('./routes/expenses'));
 app.use('/api/notifications', require('./routes/notifications'));
+app.use('/api/announcements', require('./routes/announcements'));
 app.use('/api/packages',     require('./routes/packages'));
 app.use('/api/discounts',    require('./routes/discounts'));
 app.use('/api/mobile-offers', require('./routes/mobileOffers'));

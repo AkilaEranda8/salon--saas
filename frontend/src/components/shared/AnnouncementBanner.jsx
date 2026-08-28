@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import api from '../api/axios';
+import api from '../../api/axios';
 import { useAuth } from '../../context/AuthContext';
 
 const TYPE_STYLE = {
@@ -89,6 +89,24 @@ export default function AnnouncementBanner() {
                   Complete payment
                 </button>
               )}
+              <button
+                type="button"
+                onClick={() => navigate('/announcements')}
+                style={{
+                  marginTop: 10,
+                  marginLeft: a.type === 'PAYMENT_DUE' ? 8 : 0,
+                  padding: '6px 14px',
+                  borderRadius: 8,
+                  border: `1px solid ${style.border}`,
+                  background: '#fff',
+                  color: style.text,
+                  fontWeight: 600,
+                  fontSize: 12,
+                  cursor: 'pointer',
+                }}
+              >
+                View all
+              </button>
             </div>
             {a.dismissible !== false && (
               <button

@@ -79,6 +79,7 @@ import BillingInvoicesPage from './pages/BillingInvoicesPage';
 import BankSlipUploadPage from './pages/BankSlipUploadPage';
 import OnboardingPage   from './pages/OnboardingPage';
 import SupportTicketsPage from './pages/SupportTicketsPage';
+import AnnouncementsPage from './pages/AnnouncementsPage';
 import MaintenancePage  from './pages/MaintenancePage';
 import BrandingSettingsPage  from './pages/BrandingSettingsPage';
 import PaymentSettingsPage   from './pages/PaymentSettingsPage';
@@ -415,6 +416,11 @@ function AppShellRoutes() {
               </RoleRoute>
             } />
             <Route path="/support"      element={<SupportTicketsPage />} />
+            <Route path="/announcements" element={
+              <RoleRoute roles={['superadmin', 'admin']}>
+                <AnnouncementsPage />
+              </RoleRoute>
+            } />
             <Route path="/expenses"     element={
               <RoleRoute roles={['superadmin', 'admin', 'manager']}>
                 <ExpensesPage />

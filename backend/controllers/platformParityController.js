@@ -148,6 +148,38 @@ const listActiveForTenant = async (req, res) => {
   }
 };
 
+/** Tenant announcements page — all sent messages for this salon. */
+const listForTenant = async (req, res) => {
+  try {
+    await ensureTables();
+    const tenantId = req.tenant?.id ?? req.user?.tenantId;
+    if (!tenantId) return res.json([]);
+
+    const rows = await PlatformAnnouncement.findAll({
+      where: { status: 'SENT' },
+      order: [['sent_at', 'DESC'], ['createdAt', 'DESC']],
+      limit: 50,
+    });
+
+    return res.json(
+      rows
+        .filter((row) => targetsTenant(row, tenantId))
+        .map((row) => ({
+          id: row.id,
+          title: row.title,
+          body: row.body,
+          type: row.type,
+          dismissible: row.dismissible,
+          sent_at: row.sent_at,
+          dismissed: isDismissed(row, tenantId),
+        }))
+    );
+  } catch (err) {
+    console.error('parity.listForTenant', err);
+    return res.status(500).json({ message: 'Server error.' });
+  }
+};
+
 /** Tenant dismisses a banner (superadmin/admin only). */
 const dismissForTenant = async (req, res) => {
   try {
@@ -680,6 +712,7 @@ module.exports = {
   sendAnnouncement,
   deleteAnnouncement,
   listActiveForTenant,
+  listForTenant,
   dismissForTenant,
   sendPaymentDueAnnouncement,
   listReleases,

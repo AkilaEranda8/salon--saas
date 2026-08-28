@@ -335,8 +335,11 @@ export default function PlatformSubscriptionsPage() {
 
   const isPaymentDue = (sub) => {
     if (!sub.current_period_end || sub.status === 'cancelled') return false;
-    return new Date(sub.current_period_end).getTime() < Date.now()
-      || ['past_due', 'unpaid'].includes(sub.status);
+    if (['past_due', 'unpaid', 'incomplete'].includes(sub.status)) return true;
+    const end = new Date(sub.current_period_end).getTime();
+    if (end < Date.now()) return true;
+    const daysLeft = Math.ceil((end - Date.now()) / 86400000);
+    return daysLeft <= 7;
   };
 
   const subColumns = useMemo(() => [
@@ -409,17 +412,18 @@ export default function PlatformSubscriptionsPage() {
       meta: { width: '18%' },
       cell: ({ row: { original: sub } }) => (
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <button type="button" onClick={() => openEdit(sub)} style={{ padding: '8px 12px', border: '1px solid #3f3f46', borderRadius: 10, background: '#18181b', color: '#e4e4e7', cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>Edit</button>
-          {isPaymentDue(sub) && (
+          {sub.status !== 'cancelled' && (
             <button
               type="button"
               disabled={notifyingId === sub.id}
               onClick={() => sendPaymentReminder(sub)}
+              title="Send payment-due banner to this salon dashboard"
               style={{ padding: '8px 12px', border: '1px solid #FECACA', borderRadius: 10, background: '#FEF2F2', color: '#B91C1C', cursor: 'pointer', fontSize: 12, fontWeight: 700 }}
             >
-              {notifyingId === sub.id ? 'Sending…' : 'Notify payment due'}
+              {notifyingId === sub.id ? 'Sending…' : 'Notify'}
             </button>
           )}
+          <button type="button" onClick={() => openEdit(sub)} style={{ padding: '8px 12px', border: '1px solid #3f3f46', borderRadius: 10, background: '#18181b', color: '#e4e4e7', cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>Edit</button>
           <button type="button" onClick={() => handleDelete(sub)} style={{ padding: '8px 12px', border: '1px solid #FECACA', borderRadius: 10, background: '#FEF2F2', color: '#B91C1C', cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>Delete</button>
           {sub.status !== 'active' && (
             <button type="button" onClick={() => quickUpdateStatus(sub, 'active')} style={{ padding: '8px 12px', border: '1px solid #BBF7D0', borderRadius: 10, background: '#F0FDF4', color: '#166534', cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>Set Active</button>
@@ -430,7 +434,7 @@ export default function PlatformSubscriptionsPage() {
         </div>
       ),
     },
-  ], []);
+  ], [notifyingId]);
 
   return (
     <div style={{
@@ -455,6 +459,10 @@ export default function PlatformSubscriptionsPage() {
           <h1 style={{ fontSize: 34, lineHeight: 1.05, fontWeight: 900, color: isDark ? '#F8FAFC' : '#111827', margin: '10px 0 8px' }}>Subscriptions</h1>
           <p style={{ fontSize: 14, color: isDark ? '#94A3B8' : '#64748B', margin: 0, lineHeight: 1.6 }}>
             Review tenant billing state, spot overdue renewals, and keep Stripe references aligned with the platform.
+            {' '}
+            <span style={{ color: isDark ? '#C4B5FD' : '#4F46E5', fontWeight: 600 }}>
+              Use <strong>Notify</strong> to push a payment banner to the salon, or open <strong>Billing → Announcements</strong> for custom messages.
+            </span>
           </p>
         </div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>

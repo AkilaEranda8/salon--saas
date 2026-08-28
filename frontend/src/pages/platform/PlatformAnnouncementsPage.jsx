@@ -13,7 +13,6 @@ const TYPE_COLORS = {
 };
 
 const EMPTY = {
-  title: '',
   body: '',
   type: 'INFO',
   target: 'ALL',
@@ -97,8 +96,8 @@ export default function PlatformAnnouncementsPage() {
   };
 
   const handleSave = async () => {
-    if (!form.title.trim() || !form.body.trim()) {
-      setError('Title and message are required.');
+    if (!form.body.trim()) {
+      setError('Message is required.');
       return;
     }
     if (form.target === 'SELECTED' && !form.target_tenants.length) {
@@ -109,7 +108,6 @@ export default function PlatformAnnouncementsPage() {
     setError('');
     try {
       await api.post('/platform/announcements', {
-        title: form.title.trim(),
         body: form.body.trim(),
         type: form.type,
         target: form.target,
@@ -137,7 +135,8 @@ export default function PlatformAnnouncementsPage() {
   };
 
   const remove = async (row) => {
-    if (!window.confirm(`Delete "${row.title}"?`)) return;
+    const preview = (row.body || row.title || '').trim().slice(0, 60);
+    if (!window.confirm(`Delete this announcement${preview ? `: "${preview}…"` : ''}?`)) return;
     try {
       await api.delete(`/platform/announcements/${row.id}`);
       setNotice('Deleted.');
@@ -149,13 +148,15 @@ export default function PlatformAnnouncementsPage() {
 
   const columns = useMemo(() => [
     {
-      id: 'title',
-      header: 'Title',
-      accessorKey: 'title',
-      meta: { width: '22%' },
+      id: 'body',
+      header: 'Message',
+      accessorKey: 'body',
+      meta: { width: '28%' },
       cell: ({ row: { original: r } }) => (
         <div>
-          <div style={{ fontWeight: 700 }}>{r.title}</div>
+          <div style={{ fontWeight: 600, whiteSpace: 'pre-wrap' }}>
+            {(r.body || '').split('\n')[0]}
+          </div>
           <div style={{ fontSize: 12, color: '#94A3B8', marginTop: 3 }}>{r.created_by}</div>
         </div>
       ),
@@ -248,22 +249,19 @@ export default function PlatformAnnouncementsPage() {
         emptyMessage="No announcements yet"
         emptySub="Create one to notify salons about billing or updates"
         pagination={false}
-        searchableColumns={[{ id: 'title', title: 'Title' }]}
+        searchableColumns={[{ id: 'body', title: 'Message' }]}
       />
 
       {modalOpen && (
         <Modal title="New announcement" onClose={() => setModalOpen(false)} dark={isDark}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             <label style={labelStyle(isDark)}>
-              Title
-              <input style={inputStyle} value={form.title} onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))} />
-            </label>
-            <label style={labelStyle(isDark)}>
               Message
               <textarea
-                style={{ ...inputStyle, minHeight: 120, resize: 'vertical' }}
+                style={{ ...inputStyle, minHeight: 140, resize: 'vertical' }}
                 value={form.body}
                 onChange={(e) => setForm((f) => ({ ...f, body: e.target.value }))}
+                placeholder="Type the message salons will see on their dashboard…"
               />
             </label>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>

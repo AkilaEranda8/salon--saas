@@ -89,15 +89,12 @@ export default function AnnouncementsPage() {
               }}
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 8 }}>
-                <div>
-                  <span style={{
-                    display: 'inline-block', fontSize: 11, fontWeight: 700, textTransform: 'uppercase',
-                    letterSpacing: 0.5, color: style.text, marginBottom: 6,
-                  }}>
-                    {style.label}
-                  </span>
-                  <h3 style={{ margin: 0, fontSize: 17, fontWeight: 800, color: '#101828' }}>{a.title}</h3>
-                </div>
+                <span style={{
+                  display: 'inline-block', fontSize: 11, fontWeight: 700, textTransform: 'uppercase',
+                  letterSpacing: 0.5, color: style.text,
+                }}>
+                  {style.label}
+                </span>
                 <div style={{ fontSize: 12, color: '#98A2B3', whiteSpace: 'nowrap' }}>
                   {formatWhen(a.sent_at)}
                   {a.dismissed && ' · Dismissed'}

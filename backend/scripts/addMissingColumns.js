@@ -148,6 +148,28 @@ async function addIfMissing(table, column, definition) {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `).catch(e => console.warn('  ! commission_payouts:', e.message));
 
+    // ── platform_announcements table ─────────────────────────────────────────
+    await sequelize.query(`
+      CREATE TABLE IF NOT EXISTS platform_announcements (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        title VARCHAR(255) NOT NULL,
+        body TEXT NOT NULL,
+        type VARCHAR(30) NOT NULL DEFAULT 'INFO',
+        status VARCHAR(30) NOT NULL DEFAULT 'DRAFT',
+        target VARCHAR(30) NOT NULL DEFAULT 'ALL',
+        target_tenants JSON NOT NULL,
+        dismissible TINYINT(1) NOT NULL DEFAULT 1,
+        scheduled_at DATETIME NULL,
+        sent_at DATETIME NULL,
+        seen_count INT NOT NULL DEFAULT 0,
+        dismissed_tenant_ids JSON NOT NULL,
+        created_by VARCHAR(120) NOT NULL DEFAULT 'Admin',
+        createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `).catch(e => console.warn('  ! platform_announcements:', e.message));
+    await addIfMissing('platform_announcements', 'dismissed_tenant_ids', { type: DataTypes.JSON, allowNull: false, defaultValue: [] });
+
     console.log('✓ Migration complete');
   } catch (err) {
     console.error('✗ Migration failed:', err.message);

@@ -64,9 +64,6 @@ export default function AnnouncementBanner() {
             }}
           >
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontWeight: 700, fontSize: 14, color: style.text, marginBottom: 4 }}>
-                {a.title}
-              </div>
               <div style={{ fontSize: 13, color: '#344054', whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>
                 {a.body}
               </div>

@@ -8,16 +8,36 @@ const { PlatformRelease, PlatformReleaseItem } = require('../models/PlatformRele
 const { FeatureSuggestion, FeatureSuggestionHistory } = require('../models/FeatureSuggestion');
 const { MasterCatalogCategory, MasterCatalogItem } = require('../models/MasterCatalog');
 
-async function ensureTables() {
-  await Promise.all([
-    PlatformAnnouncement.sync({ alter: true }),
-    PlatformRelease.sync({ alter: true }),
-    PlatformReleaseItem.sync({ alter: true }),
-    FeatureSuggestion.sync({ alter: true }),
-    FeatureSuggestionHistory.sync({ alter: true }),
-    MasterCatalogCategory.sync({ alter: true }),
-    MasterCatalogItem.sync({ alter: true }),
-  ]);
+let tablesReady = null;
+
+/** Create parity tables once — never ALTER on each request (avoids MySQL deadlocks). */
+function ensureTables() {
+  if (tablesReady) return tablesReady;
+  tablesReady = Promise.all([
+    PlatformAnnouncement.sync(),
+    PlatformRelease.sync(),
+    PlatformReleaseItem.sync(),
+    FeatureSuggestion.sync(),
+    FeatureSuggestionHistory.sync(),
+    MasterCatalogCategory.sync(),
+    MasterCatalogItem.sync(),
+  ]).catch((err) => {
+    tablesReady = null;
+    throw err;
+  });
+  return tablesReady;
+}
+
+/** Internal title for list/search — first line of message. */
+function announcementTitle(body, type = 'INFO') {
+  const line = String(body || '').trim().split(/\r?\n/).find(Boolean) || '';
+  if (line) return line.length <= 255 ? line : `${line.slice(0, 252)}...`;
+  const defaults = {
+    PAYMENT_DUE: 'Please complete your subscription payment',
+    WARNING: 'Important notice',
+    INFO: 'Announcement',
+  };
+  return defaults[type] || defaults.INFO;
 }
 
 // ── Announcements ────────────────────────────────────────────────────────────
@@ -39,12 +59,13 @@ const createAnnouncement = async (req, res) => {
       title, body, type = 'INFO', target = 'ALL', target_tenants = [],
       dismissible = true, scheduled_at, sendNow = false,
     } = req.body || {};
-    if (!title?.trim() || !body?.trim()) {
-      return res.status(400).json({ message: 'title and body are required.' });
+    if (!body?.trim()) {
+      return res.status(400).json({ message: 'body is required.' });
     }
+    const trimmedBody = body.trim();
     const row = await PlatformAnnouncement.create({
-      title: title.trim(),
-      body: body.trim(),
+      title: title?.trim() || announcementTitle(trimmedBody, type),
+      body: trimmedBody,
       type,
       target,
       target_tenants,
@@ -240,7 +261,7 @@ const sendPaymentDueAnnouncement = async (req, res) => {
     ].join('\n');
 
     const row = await PlatformAnnouncement.create({
-      title: String(req.body?.title || '').trim() || 'Please complete your subscription payment',
+      title: announcementTitle(body, 'PAYMENT_DUE'),
       body,
       type: 'PAYMENT_DUE',
       target: 'SELECTED',

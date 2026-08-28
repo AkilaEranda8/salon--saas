@@ -86,7 +86,7 @@ export default function AnnouncementBanner() {
                     cursor: 'pointer',
                   }}
                 >
-                  Open Billing
+                  Complete payment
                 </button>
               )}
             </div>

@@ -296,16 +296,6 @@ export default function PlatformSubscriptionsPage() {
     }
   };
 
-  const quickUpdateStatus = async (sub, status) => {
-    try {
-      await api.patch(`/platform/subscriptions/${sub.id}`, { status });
-      setNotice(`Updated ${sub.tenantName} to ${status}.`);
-      await load(true);
-    } catch (err) {
-      setError(err.response?.data?.message || 'Status update failed.');
-    }
-  };
-
   const handleDelete = async (sub) => {
     if (!window.confirm(`Delete subscription ${sub.stripe_subscription_id}?`)) return;
     try {
@@ -319,14 +309,16 @@ export default function PlatformSubscriptionsPage() {
 
   const sendPaymentReminder = async (sub) => {
     if (!sub.tenant_id) return;
-    if (!window.confirm(`Send payment-due announcement to ${sub.tenantName}?`)) return;
+    if (!window.confirm(
+      `Send payment reminder to ${sub.tenantName}?\n\nThey will see a banner on their dashboard asking to complete payment. Subscription status will NOT change.`
+    )) return;
     setNotifyingId(sub.id);
     try {
       await api.post('/platform/announcements/payment-due', {
         tenant_id: sub.tenant_id,
         due_date: sub.current_period_end || null,
       });
-      setNotice(`Payment reminder sent to ${sub.tenantName}.`);
+      setNotice(`Payment reminder sent to ${sub.tenantName} — they can complete payment from Billing.`);
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to send payment reminder.');
     }
@@ -408,20 +400,14 @@ export default function PlatformSubscriptionsPage() {
               type="button"
               disabled={notifyingId === sub.id}
               onClick={() => sendPaymentReminder(sub)}
-              title="Send payment-due banner to this salon dashboard"
+              title="Show payment reminder on salon dashboard (does not change subscription status)"
               style={{ padding: '8px 12px', border: '1px solid #FECACA', borderRadius: 10, background: '#FEF2F2', color: '#B91C1C', cursor: 'pointer', fontSize: 12, fontWeight: 700 }}
             >
-              {notifyingId === sub.id ? 'Sending…' : 'Notify'}
+              {notifyingId === sub.id ? 'Sending…' : 'Payment reminder'}
             </button>
           )}
           <button type="button" onClick={() => openEdit(sub)} style={{ padding: '8px 12px', border: '1px solid #3f3f46', borderRadius: 10, background: '#18181b', color: '#e4e4e7', cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>Edit</button>
           <button type="button" onClick={() => handleDelete(sub)} style={{ padding: '8px 12px', border: '1px solid #FECACA', borderRadius: 10, background: '#FEF2F2', color: '#B91C1C', cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>Delete</button>
-          {sub.status !== 'active' && (
-            <button type="button" onClick={() => quickUpdateStatus(sub, 'active')} style={{ padding: '8px 12px', border: '1px solid #BBF7D0', borderRadius: 10, background: '#F0FDF4', color: '#166534', cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>Set Active</button>
-          )}
-          {sub.status === 'active' && (
-            <button type="button" onClick={() => quickUpdateStatus(sub, 'past_due')} style={{ padding: '8px 12px', border: '1px solid #FDE68A', borderRadius: 10, background: '#FFFBEB', color: '#B45309', cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>Mark Past Due</button>
-          )}
         </div>
       ),
     },
@@ -452,7 +438,7 @@ export default function PlatformSubscriptionsPage() {
             Review tenant billing state, spot overdue renewals, and keep Stripe references aligned with the platform.
             {' '}
             <span style={{ color: isDark ? '#C4B5FD' : '#4F46E5', fontWeight: 600 }}>
-              Use <strong>Notify</strong> to push a payment banner to the salon, or open <strong>Billing → Announcements</strong> for custom messages.
+              Use <strong>Payment reminder</strong> to ask the salon to complete payment on their dashboard — status stays unchanged. Custom messages: <strong>Billing → Announcements</strong>.
             </span>
           </p>
         </div>

@@ -200,13 +200,15 @@ const sendPaymentDueAnnouncement = async (req, res) => {
         ? `Your HEXAONE subscription payment was due on ${dueHint}.`
         : 'Your HEXAONE subscription payment is now due.',
       '',
-      'Please open Billing in your salon dashboard and complete payment to avoid interruption.',
+      'Please open Billing in your salon dashboard and complete the payment.',
       '',
-      'If you already paid, you can ignore this message.',
+      'ඔබේ subscription ගෙවීම due වී ඇත. Dashboard එකේ Billing වෙත ගොස් payment එක complete කරන්න.',
+      '',
+      'If you already paid, you can dismiss this message.',
     ].join('\n');
 
     const row = await PlatformAnnouncement.create({
-      title: String(req.body?.title || '').trim() || 'Payment due — action required',
+      title: String(req.body?.title || '').trim() || 'Please complete your subscription payment',
       body,
       type: 'PAYMENT_DUE',
       target: 'SELECTED',

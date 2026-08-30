@@ -403,7 +403,7 @@ export default function PlatformSubscriptionsPage() {
               title="Show payment reminder on salon dashboard (does not change subscription status)"
               style={{ padding: '8px 12px', border: '1px solid #FECACA', borderRadius: 10, background: '#FEF2F2', color: '#B91C1C', cursor: 'pointer', fontSize: 12, fontWeight: 700 }}
             >
-              {notifyingId === sub.id ? 'Sending…' : 'Payment reminder'}
+              {notifyingId === sub.id ? 'Sending…' : 'Due payment'}
             </button>
           )}
           <button type="button" onClick={() => openEdit(sub)} style={{ padding: '8px 12px', border: '1px solid #3f3f46', borderRadius: 10, background: '#18181b', color: '#e4e4e7', cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>Edit</button>
@@ -438,7 +438,7 @@ export default function PlatformSubscriptionsPage() {
             Review tenant billing state, spot overdue renewals, and keep Stripe references aligned with the platform.
             {' '}
             <span style={{ color: isDark ? '#C4B5FD' : '#4F46E5', fontWeight: 600 }}>
-              Use <strong>Payment reminder</strong> to ask the salon to complete payment on their dashboard — status stays unchanged. Custom messages: <strong>Billing → Announcements</strong>.
+              Use <strong>Due payment</strong> to ask the salon to complete payment on their dashboard — status stays unchanged. Custom messages: <strong>Billing → Announcements</strong>.
             </span>
           </p>
         </div>

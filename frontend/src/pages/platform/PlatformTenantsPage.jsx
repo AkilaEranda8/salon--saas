@@ -168,6 +168,28 @@ export default function PlatformTenantsPage() {
   const [clearDataError, setClearDataError] = useState('');
   const [defaultTrialDays, setDefaultTrialDays] = useState(14);
   const [trialAdjusting, setTrialAdjusting] = useState(false);
+  const [notifyingId, setNotifyingId] = useState(null);
+  const [notice, setNotice] = useState('');
+
+  const sendPaymentDue = async (tenant) => {
+    if (!tenant?.id) return;
+    if (!window.confirm(
+      `Send due payment reminder to ${tenant.name}?\n\nThey will see a banner on their salon dashboard asking to complete payment in Billing.`
+    )) return;
+    setNotifyingId(tenant.id);
+    setError('');
+    setNotice('');
+    try {
+      await api.post('/platform/announcements/payment-due', {
+        tenant_id: tenant.id,
+        due_date: tenant.trial_ends_at || null,
+      });
+      setNotice(`Due payment reminder sent to ${tenant.name}.`);
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to send due payment reminder.');
+    }
+    setNotifyingId(null);
+  };
 
   const openEditTenant = (tenant) => {
     setEditTenant({ ...tenant, _originalPlan: tenant.plan, clearTrialData: false });
@@ -582,6 +604,17 @@ export default function PlatformTenantsPage() {
       cell: ({ row: { original: t } }) => (
         <div style={{ display: 'flex', gap: 4, alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap' }}>
           <IBtn onClick={() => openDetail(t)} title="View details"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></IBtn>
+          {t.status !== 'cancelled' && (
+            <IBtn
+              onClick={() => sendPaymentDue(t)}
+              disabled={notifyingId === t.id}
+              title="Send due payment reminder to salon dashboard"
+              bg="#FEF2F2" border="#FECACA">
+              {notifyingId === t.id
+                ? <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                : <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>}
+            </IBtn>
+          )}
           <IBtn
             onClick={() => handleImpersonate(t)}
             disabled={impersonating === t.id || t.status !== 'active'}
@@ -601,7 +634,7 @@ export default function PlatformTenantsPage() {
         </div>
       ),
     },
-  ], [isDark, impersonating]);
+  ], [isDark, impersonating, notifyingId]);
 
   const pageBg = isDark
     ? 'linear-gradient(160deg, #0D1B2A 0%, #0F172A 100%)'
@@ -672,6 +705,17 @@ export default function PlatformTenantsPage() {
           );
         })}
       </div>
+
+      {notice && (
+        <div style={{ marginBottom: 14, color: '#065F46', background: '#ECFDF5', border: '1px solid #A7F3D0', borderRadius: 12, padding: '10px 14px', fontSize: 13 }}>
+          {notice}
+        </div>
+      )}
+      {error && (
+        <div style={{ marginBottom: 14, color: '#B91C1C', background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 12, padding: '10px 14px', fontSize: 13 }}>
+          {error}
+        </div>
+      )}
 
       <DataTable
         columns={columns}
@@ -798,6 +842,13 @@ export default function PlatformTenantsPage() {
             <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 8 }}>
               <div style={{ fontSize: 10.5, fontWeight: 700, color: isDark ? '#475569' : '#9CA3AF', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 2 }}>Actions</div>
               {[
+                {
+                  label: notifyingId === detailTenant.id ? 'Sending due payment…' : 'Due payment reminder',
+                  color: '#B91C1C',
+                  bg: isDark ? 'rgba(220,38,38,0.1)' : '#FEF2F2', border: isDark ? 'rgba(220,38,38,0.25)' : '#FECACA',
+                  onClick: () => sendPaymentDue(detailTenant),
+                  disabled: detailTenant.status === 'cancelled' || notifyingId === detailTenant.id,
+                },
                 {
                   label: 'Manage Features', color: '#059669',
                   bg: isDark ? 'rgba(5,150,105,0.1)' : '#F0FDF4', border: isDark ? 'rgba(5,150,105,0.25)' : '#D1FAE5',

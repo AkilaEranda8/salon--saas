@@ -352,15 +352,102 @@ const CSS = `
   font-weight: 500;
   pointer-events: none;
 }
+.lp-mobile-welcome { display: none; }
+
+/* ── Tablet ────────────────────────────────────────────────── */
+@media (max-width: 1024px) and (min-width: 901px) {
+  .lp-root { grid-template-columns: minmax(260px, 38%) 1fr; }
+  .lp-side { padding: 28px 24px 24px; }
+  .lp-welcome { font-size: 28px; }
+  .lp-side-mid { gap: 24px; padding: 20px 0; }
+}
+
+/* ── Mobile ────────────────────────────────────────────────── */
 @media (max-width: 900px) {
-  .lp-root { grid-template-columns: 1fr; height: auto; min-height: 100vh; overflow: auto; }
-  .lp-side { display: none; }
-  .lp-visual {
-    min-height: 100vh;
-    padding: 28px 18px 48px;
-    align-items: flex-start;
+  .lp-root {
+    grid-template-columns: 1fr;
+    height: auto;
+    min-height: 100dvh;
+    overflow: auto;
+    -webkit-overflow-scrolling: touch;
   }
-  .lp-page-foot { position: static; margin-top: 24px; color: rgba(248,250,252,.8); }
+
+  .lp-side {
+    display: flex;
+    height: auto;
+    min-height: 0;
+    padding: calc(16px + env(safe-area-inset-top, 0px)) 20px 18px;
+    border-right: none;
+    border-bottom: 1px solid rgba(255,255,255,.06);
+  }
+  .lp-side-mid { display: none; }
+  .lp-side-foot { display: none; }
+  .lp-logo-row { margin-bottom: 8px; }
+  .lp-logo-row img { height: 36px; max-width: 180px; }
+  .lp-host { font-size: 11px; margin-bottom: 12px; }
+  .lp-mobile-welcome {
+    display: block;
+    margin: 0;
+  }
+  .lp-mobile-welcome .lp-welcome {
+    font-size: 22px;
+    line-height: 1.2;
+  }
+  .lp-mobile-welcome .lp-side-sub {
+    margin-top: 8px;
+    font-size: 13px;
+    max-width: none;
+  }
+
+  .lp-visual {
+    min-height: auto;
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    padding: 20px 16px calc(24px + env(safe-area-inset-bottom, 0px));
+    align-items: stretch;
+    justify-content: flex-start;
+    background:
+      linear-gradient(180deg, rgba(7,11,20,.62) 0%, rgba(7,11,20,.78) 100%),
+      url('/login-salon-bg.jpg') center / cover no-repeat;
+  }
+  .lp-card {
+    max-width: none;
+    width: 100%;
+    margin: 0 auto;
+    border-radius: 16px;
+    padding: 22px 18px 20px;
+    box-shadow: 0 16px 40px rgba(7,11,20,.45);
+  }
+  .lp-card-logo { margin-bottom: 16px; }
+  .lp-card-logo img { height: 44px; max-width: 190px; }
+  .lp-h1 { font-size: 22px; }
+  .lp-h2 { margin-bottom: 18px; font-size: 13px; }
+  .lp-input {
+    font-size: 16px; /* prevent iOS zoom */
+    padding: 13px 14px 13px 42px;
+    min-height: 48px;
+  }
+  .lp-btn {
+    min-height: 48px;
+    font-size: 15px;
+    margin-top: 8px;
+  }
+  .lp-field { margin-bottom: 12px; }
+  .lp-page-foot {
+    position: static;
+    margin-top: 18px;
+    padding: 0 8px;
+    font-size: 11px;
+    color: rgba(248,250,252,.75);
+  }
+}
+
+@media (max-width: 380px) {
+  .lp-side { padding-left: 14px; padding-right: 14px; }
+  .lp-visual { padding-left: 12px; padding-right: 12px; }
+  .lp-card { padding: 18px 14px 16px; }
+  .lp-mobile-welcome .lp-welcome { font-size: 20px; }
 }
 `;
 
@@ -647,6 +734,17 @@ export default function LoginPage({ platformMode = false }) {
             />
           </div>
           <p className="lp-host">{hostLabel}</p>
+          <div className="lp-mobile-welcome">
+            <h2 className="lp-welcome">
+              Welcome to <em>{welcomeName}</em>
+            </h2>
+            <p className="lp-side-sub">
+              <IconStore />
+              {platformMode
+                ? 'Platform console — tenants, billing & system controls.'
+                : 'Sign in to manage appointments, payments, and clients.'}
+            </p>
+          </div>
         </div>
 
         <div className="lp-side-mid">

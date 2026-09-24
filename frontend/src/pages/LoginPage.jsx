@@ -5,8 +5,9 @@ import MaintenancePage from './MaintenancePage';
 import { normalizeBranding, resolveBrandName } from '../utils/branding';
 import { getTenantSlug } from '../utils/tenant';
 
-const HEXALYTE_INNOVATION_WHITE = '/hexalyte-logo-white.png';       // globe + HEXALYTE INNOVATION
-const HEXALYTE_MARK_WHITE = '/hexalyte-innovation-white.png';       // icon + hexalyte wordmark
+const HEXALYTE_INNOVATION_WHITE = '/hexalyte-logo-white.png';       // white — dark left panel
+const HEXALYTE_MARK_WHITE = '/hexalyte-innovation-white.png';       // white wordmark fallback
+const HEXALYTE_INNOVATION_COLOR = '/hexalyte-innovation-color.png'; // blue — white card
 
 const WORKSPACE_FEATURES = [
   'Appointments & walk-ins',
@@ -188,12 +189,10 @@ const CSS = `
   margin-bottom: 22px;
 }
 .lp-card-logo img {
-  height: 34px;
+  height: 52px;
   width: auto;
-  max-width: 170px;
+  max-width: 220px;
   object-fit: contain;
-  /* white logo → dark on white card */
-  filter: invert(1);
 }
 .lp-eyebrow {
   margin: 0 0 6px;
@@ -415,7 +414,7 @@ export default function LoginPage({ platformMode = false }) {
     : rawBrand;
   const welcomeName = platformMode ? 'Hexalyte' : brandName;
   const sideLogo = HEXALYTE_INNOVATION_WHITE;
-  const cardLogo = HEXALYTE_MARK_WHITE;
+  const cardLogo = HEXALYTE_INNOVATION_COLOR;
   const features = platformMode ? PLATFORM_FEATURES : WORKSPACE_FEATURES;
   const featuresLabel = platformMode ? 'Admin tools' : 'Your workspace includes';
 
@@ -694,8 +693,8 @@ export default function LoginPage({ platformMode = false }) {
           <div className="lp-card-logo">
             <img
               src={cardLogo}
-              alt="Hexalyte"
-              onError={(e) => { e.currentTarget.style.filter = 'none'; e.currentTarget.src = '/kogo.png?v=6'; }}
+              alt="Hexalyte Innovation"
+              onError={(e) => { e.currentTarget.src = HEXALYTE_MARK_WHITE; e.currentTarget.style.filter = 'invert(1)'; }}
             />
           </div>
           {renderForm()}

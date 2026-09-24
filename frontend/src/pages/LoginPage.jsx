@@ -2,8 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import MaintenancePage from './MaintenancePage';
-import { normalizeBranding, resolveBrandName, resolveBrandLogo } from '../utils/branding';
+import { normalizeBranding, resolveBrandName } from '../utils/branding';
 import { getTenantSlug } from '../utils/tenant';
+
+const HEXALYTE_INNOVATION_WHITE = '/hexalyte-logo-white.png';       // globe + HEXALYTE INNOVATION
+const HEXALYTE_MARK_WHITE = '/hexalyte-innovation-white.png';       // icon + hexalyte wordmark
 
 const WORKSPACE_FEATURES = [
   'Appointments & walk-ins',
@@ -11,6 +14,14 @@ const WORKSPACE_FEATURES = [
   'Staff schedules & commissions',
   'Client CRM & loyalty',
   'Inventory & suppliers',
+];
+
+const PLATFORM_FEATURES = [
+  'Tenant management',
+  'Subscriptions & invoices',
+  'Announcements',
+  'System monitoring',
+  'Support tickets',
 ];
 
 const CSS = `
@@ -24,11 +35,11 @@ const CSS = `
   height: 100vh;
   width: 100%;
   display: grid;
-  grid-template-columns: minmax(280px, 32%) 1fr;
+  grid-template-columns: minmax(300px, 34%) 1fr;
   font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
   color: #0f172a;
   overflow: hidden;
-  background: #0b1220;
+  background: #070b14;
 }
 
 /* ── Left info panel ───────────────────────────────────────── */
@@ -37,96 +48,109 @@ const CSS = `
   z-index: 2;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
-  padding: clamp(28px, 3.5vw, 44px) clamp(24px, 3vw, 40px);
-  background: linear-gradient(165deg, #0c1526 0%, #111827 55%, #0a101c 100%);
+  height: 100%;
+  min-height: 100vh;
+  padding: 40px 40px 32px;
+  background: #070b14;
   color: #e2e8f0;
   border-right: 1px solid rgba(255,255,255,.06);
   overflow-y: auto;
+  box-sizing: border-box;
 }
-.lp-side-top { display: flex; flex-direction: column; gap: 28px; }
+.lp-side-top {
+  flex-shrink: 0;
+}
 .lp-logo-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
+  margin-bottom: 10px;
 }
 .lp-logo-row img {
-  height: 40px;
+  height: 48px;
   width: auto;
-  max-width: 180px;
+  max-width: 240px;
   object-fit: contain;
   object-position: left center;
+  display: block;
 }
-.lp-logo-text {
-  font-size: 13px;
-  font-weight: 700;
-  letter-spacing: .08em;
-  text-transform: uppercase;
-  color: #f8fafc;
-}
-.lp-logo-text span { color: #94a3b8; font-weight: 500; display: block; font-size: 10px; letter-spacing: .14em; margin-top: 2px; }
 .lp-host {
+  margin: 0;
   font-size: 12px;
   color: #64748b;
   font-weight: 500;
   word-break: break-all;
+  line-height: 1.4;
 }
+.lp-side-mid {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 32px;
+  padding: 32px 0;
+  min-height: 0;
+}
+.lp-welcome-block { margin: 0; }
 .lp-welcome {
   margin: 0;
-  font-size: clamp(26px, 2.6vw, 34px);
+  font-size: clamp(28px, 2.8vw, 36px);
   font-weight: 800;
   line-height: 1.15;
   letter-spacing: -.03em;
-  color: #f8fafc;
+  color: #ffffff;
 }
 .lp-welcome em {
   font-style: normal;
   color: #a5b4fc;
 }
 .lp-side-sub {
-  margin: 12px 0 0;
+  margin: 14px 0 0;
   display: flex;
   align-items: flex-start;
-  gap: 8px;
-  font-size: 13.5px;
+  gap: 10px;
+  font-size: 14px;
   line-height: 1.55;
   color: #94a3b8;
+  max-width: 340px;
 }
-.lp-side-sub svg { flex-shrink: 0; margin-top: 2px; color: #818cf8; }
+.lp-side-sub svg { flex-shrink: 0; margin-top: 3px; color: #818cf8; }
+.lp-features-block { margin: 0; }
 .lp-include-label {
-  margin: 8px 0 12px;
+  margin: 0 0 16px;
   font-size: 11px;
   font-weight: 700;
-  letter-spacing: .12em;
+  letter-spacing: .14em;
   text-transform: uppercase;
   color: #64748b;
 }
-.lp-checklist { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.lp-checklist { list-style: none; margin: 0; padding: 0; display: grid; gap: 14px; }
 .lp-checklist li {
   display: flex;
   align-items: center;
-  gap: 10px;
-  font-size: 14px;
+  gap: 12px;
+  font-size: 14.5px;
   font-weight: 500;
-  color: #e2e8f0;
+  color: #f1f5f9;
+  line-height: 1.3;
 }
 .lp-check {
-  width: 20px; height: 20px; border-radius: 6px;
+  width: 22px; height: 22px; border-radius: 6px;
   display: flex; align-items: center; justify-content: center;
-  background: rgba(99,102,241,.18);
+  background: rgba(99,102,241,.2);
   color: #a5b4fc;
   flex-shrink: 0;
 }
 .lp-side-foot {
+  flex-shrink: 0;
   display: flex;
   flex-wrap: wrap;
-  gap: 14px;
-  padding-top: 28px;
-  font-size: 11.5px;
+  align-items: center;
+  gap: 16px 20px;
+  padding-top: 8px;
+  font-size: 12px;
   color: #64748b;
   font-weight: 500;
 }
-.lp-side-foot span { display: inline-flex; align-items: center; gap: 6px; }
+.lp-side-foot span { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
+.lp-side-foot svg { flex-shrink: 0; opacity: .9; }
 
 /* ── Right visual + card ───────────────────────────────────── */
 .lp-visual {
@@ -136,7 +160,7 @@ const CSS = `
   justify-content: center;
   padding: clamp(20px, 3vw, 40px);
   background:
-    linear-gradient(180deg, rgba(15,23,42,.55) 0%, rgba(15,23,42,.72) 100%),
+    linear-gradient(180deg, rgba(7,11,20,.52) 0%, rgba(7,11,20,.7) 100%),
     url('/login-salon-bg.jpg') center / cover no-repeat;
   animation: lp-in .5s ease-out both;
   overflow: auto;
@@ -145,7 +169,7 @@ const CSS = `
   content: '';
   position: absolute;
   inset: 0;
-  background: radial-gradient(ellipse 80% 60% at 50% 40%, transparent 0%, rgba(15,23,42,.35) 100%);
+  background: radial-gradient(ellipse 80% 60% at 50% 40%, transparent 0%, rgba(7,11,20,.35) 100%);
   pointer-events: none;
 }
 .lp-card {
@@ -156,7 +180,7 @@ const CSS = `
   background: #fff;
   border-radius: 20px;
   padding: clamp(28px, 3.5vw, 36px) clamp(24px, 3vw, 34px) 28px;
-  box-shadow: 0 28px 64px rgba(15,23,42,.35);
+  box-shadow: 0 28px 64px rgba(7,11,20,.4);
 }
 .lp-card-logo {
   display: flex;
@@ -164,10 +188,12 @@ const CSS = `
   margin-bottom: 22px;
 }
 .lp-card-logo img {
-  height: 36px;
+  height: 34px;
   width: auto;
-  max-width: 160px;
+  max-width: 170px;
   object-fit: contain;
+  /* white logo → dark on white card */
+  filter: invert(1);
 }
 .lp-eyebrow {
   margin: 0 0 6px;
@@ -380,10 +406,18 @@ export default function LoginPage({ platformMode = false }) {
   const [forgotLoading, setForgotLoading] = useState(false);
   const [forgotError, setForgotError] = useState('');
 
-  const brandName = platformMode ? 'Hexalyte Platform' : resolveBrandName(branding);
-  const logoSrc = resolveBrandLogo(branding, 'login') || '/kogo.png?v=6';
   const hostLabel = typeof window !== 'undefined' ? window.location.host : '';
   const tenantSlug = !platformMode ? getTenantSlug() : null;
+  const rawBrand = platformMode ? 'Hexalyte' : resolveBrandName(branding);
+  // Avoid default product codename on login chrome
+  const brandName = (!rawBrand || rawBrand === 'Hexaone')
+    ? (platformMode ? 'Hexalyte' : (tenantSlug ? tenantSlug.replace(/-/g, ' ') : 'Hexalyte'))
+    : rawBrand;
+  const welcomeName = platformMode ? 'Hexalyte' : brandName;
+  const sideLogo = HEXALYTE_INNOVATION_WHITE;
+  const cardLogo = HEXALYTE_MARK_WHITE;
+  const features = platformMode ? PLATFORM_FEATURES : WORKSPACE_FEATURES;
+  const featuresLabel = platformMode ? 'Admin tools' : 'Your workspace includes';
 
   useEffect(() => {
     let active = true;
@@ -607,16 +641,19 @@ export default function LoginPage({ platformMode = false }) {
       <aside className="lp-side">
         <div className="lp-side-top">
           <div className="lp-logo-row">
-            <img src={logoSrc} alt={brandName} onError={(e) => { e.currentTarget.src = '/kogo.png?v=6'; }} />
+            <img
+              src={sideLogo}
+              alt="Hexalyte Innovation"
+              onError={(e) => { e.currentTarget.src = HEXALYTE_MARK_WHITE; }}
+            />
           </div>
-          <div className="lp-host">{hostLabel}</div>
-          <div>
+          <p className="lp-host">{hostLabel}</p>
+        </div>
+
+        <div className="lp-side-mid">
+          <div className="lp-welcome-block">
             <h2 className="lp-welcome">
-              {platformMode ? (
-                <>Welcome to <em>Hexalyte Platform</em></>
-              ) : (
-                <>Welcome to <em>{brandName}</em></>
-              )}
+              Welcome to <em>{welcomeName}</em>
             </h2>
             <p className="lp-side-sub">
               <IconStore />
@@ -625,40 +662,27 @@ export default function LoginPage({ platformMode = false }) {
                 : 'Salon workspace — sign in to manage appointments, payments, and clients.'}
             </p>
           </div>
-          {!platformMode && (
-            <div>
-              <div className="lp-include-label">Your workspace includes</div>
-              <ul className="lp-checklist">
-                {WORKSPACE_FEATURES.map((item) => (
-                  <li key={item}>
-                    <span className="lp-check"><IconCheck /></span>
-                    {item}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-          {platformMode && (
-            <div>
-              <div className="lp-include-label">Admin tools</div>
-              <ul className="lp-checklist">
-                {['Tenant management', 'Subscriptions & invoices', 'Announcements', 'System monitoring', 'Support tickets'].map((item) => (
-                  <li key={item}>
-                    <span className="lp-check"><IconCheck /></span>
-                    {item}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
+
+          <div className="lp-features-block">
+            <div className="lp-include-label">{featuresLabel}</div>
+            <ul className="lp-checklist">
+              {features.map((item) => (
+                <li key={item}>
+                  <span className="lp-check"><IconCheck /></span>
+                  {item}
+                </li>
+              ))}
+            </ul>
+          </div>
         </div>
+
         <div className="lp-side-foot">
           <span>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
             SSL Secured
           </span>
           <span>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg>
             Cloud hosted
           </span>
           {tenantSlug && <span>{tenantSlug}</span>}
@@ -668,7 +692,11 @@ export default function LoginPage({ platformMode = false }) {
       <section className="lp-visual">
         <div className="lp-card">
           <div className="lp-card-logo">
-            <img src={logoSrc} alt={brandName} onError={(e) => { e.currentTarget.src = '/kogo.png?v=6'; }} />
+            <img
+              src={cardLogo}
+              alt="Hexalyte"
+              onError={(e) => { e.currentTarget.style.filter = 'none'; e.currentTarget.src = '/kogo.png?v=6'; }}
+            />
           </div>
           {renderForm()}
         </div>

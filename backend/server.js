@@ -341,7 +341,8 @@ connectWithRetry().then(async () => {
 
   try {
     const brandingColumns = [
-      ['brand_name', "ALTER TABLE tenants ADD COLUMN brand_name VARCHAR(150) NULL AFTER email"],
+      ['phone', "ALTER TABLE tenants ADD COLUMN phone VARCHAR(30) NULL AFTER email"],
+      ['brand_name', "ALTER TABLE tenants ADD COLUMN brand_name VARCHAR(150) NULL AFTER phone"],
       ['logo_sidebar_url', "ALTER TABLE tenants ADD COLUMN logo_sidebar_url TEXT NULL AFTER brand_name"],
       ['logo_header_url', "ALTER TABLE tenants ADD COLUMN logo_header_url TEXT NULL AFTER logo_sidebar_url"],
       ['logo_login_url', "ALTER TABLE tenants ADD COLUMN logo_login_url TEXT NULL AFTER logo_header_url"],
@@ -355,6 +356,24 @@ connectWithRetry().then(async () => {
         logger.info(`migration: tenants.${column} column added`);
       }
     }
+
+    // Backfill tenant phone from primary branch when missing
+    await sequelize.query(`
+      UPDATE tenants t
+      INNER JOIN (
+        SELECT b1.tenant_id, b1.phone
+        FROM branches b1
+        INNER JOIN (
+          SELECT tenant_id, MIN(id) AS min_id
+          FROM branches
+          WHERE phone IS NOT NULL AND phone != ''
+          GROUP BY tenant_id
+        ) first_b ON first_b.tenant_id = b1.tenant_id AND first_b.min_id = b1.id
+      ) src ON src.tenant_id = t.id
+      SET t.phone = src.phone
+      WHERE (t.phone IS NULL OR t.phone = '')
+        AND src.phone IS NOT NULL AND src.phone != ''
+    `);
   } catch (err) {
     logger.warn('migration_tenants_branding', { message: err.message });
   }

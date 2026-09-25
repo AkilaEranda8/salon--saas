@@ -48,6 +48,7 @@ const TENANT_SAFE_ATTRIBUTES = [
   'name',
   'slug',
   'email',
+  'phone',
   'brand_name',
   'logo_sidebar_url',
   'logo_header_url',
@@ -127,6 +128,7 @@ const listTenants = async (req, res) => {
         { name:  { [Op.like]: `%${req.query.search}%` } },
         { slug:  { [Op.like]: `%${req.query.search}%` } },
         { email: { [Op.like]: `%${req.query.search}%` } },
+        { phone: { [Op.like]: `%${req.query.search}%` } },
       ];
     }
 
@@ -140,13 +142,20 @@ const listTenants = async (req, res) => {
 
     // Attach the latest subscription snapshot per tenant for platform billing UI.
     const tenantIds = rows.map((t) => t.id);
-    const subscriptions = tenantIds.length
-      ? await Subscription.findAll({
-          where: { tenant_id: tenantIds },
-          attributes: ['id', 'tenant_id', 'plan', 'status', 'current_period_end', 'createdAt'],
-          order: [['tenant_id', 'ASC'], ['createdAt', 'DESC']],
-        })
-      : [];
+    const [subscriptions, branches] = tenantIds.length
+      ? await Promise.all([
+          Subscription.findAll({
+            where: { tenant_id: tenantIds },
+            attributes: ['id', 'tenant_id', 'plan', 'status', 'current_period_end', 'createdAt'],
+            order: [['tenant_id', 'ASC'], ['createdAt', 'DESC']],
+          }),
+          Branch.findAll({
+            where: { tenant_id: tenantIds },
+            attributes: ['tenant_id', 'phone'],
+            order: [['id', 'ASC']],
+          }),
+        ])
+      : [[], []];
 
     const latestSubByTenant = new Map();
     for (const sub of subscriptions) {
@@ -155,10 +164,19 @@ const listTenants = async (req, res) => {
       }
     }
 
+    const branchPhoneByTenant = new Map();
+    for (const b of branches) {
+      if (!branchPhoneByTenant.has(b.tenant_id) && b.phone) {
+        branchPhoneByTenant.set(b.tenant_id, b.phone);
+      }
+    }
+
     const tenants = rows.map((tenant) => {
       const sub = latestSubByTenant.get(tenant.id);
+      const json = tenant.toJSON();
       return {
-        ...tenant.toJSON(),
+        ...json,
+        phone: json.phone || branchPhoneByTenant.get(tenant.id) || null,
         subscription: sub
           ? {
               id: sub.id,
@@ -231,6 +249,7 @@ const createTenant = async (req, res) => {
       name: businessName,
       slug: cleanSlug,
       email: ownerEmail,
+      phone: phone || null,
       brand_name: businessName,
       plan,
       status,
@@ -410,14 +429,21 @@ const getTenant = async (req, res) => {
     });
     if (!tenant) return res.status(404).json({ message: 'Tenant not found.' });
 
-    const [branchCount, staffCount, customerCount] = await Promise.all([
+    const [branchCount, staffCount, customerCount, primaryBranch] = await Promise.all([
       Branch.count({ where: { tenant_id: tenant.id } }),
       Staff.count({  where: { tenant_id: tenant.id, is_active: true } }),
       Customer.count({ where: { tenant_id: tenant.id } }),
+      Branch.findOne({
+        where: { tenant_id: tenant.id },
+        attributes: ['phone'],
+        order: [['id', 'ASC']],
+      }),
     ]);
 
+    const json = tenant.toJSON();
     return res.json({
-      ...tenant.toJSON(),
+      ...json,
+      phone: json.phone || primaryBranch?.phone || null,
       stats: { branches: branchCount, staff: staffCount, customers: customerCount },
     });
   } catch (err) {
@@ -432,7 +458,7 @@ const updateTenant = async (req, res) => {
     const tenant = await Tenant.findByPk(req.params.id);
     if (!tenant) return res.status(404).json({ message: 'Tenant not found.' });
 
-    const allowed = ['status', 'plan', 'trial_ends_at', 'max_branches', 'max_staff', 'name', 'email', 'payment_gateway', 'back_transfer_wage', 'helapay_merchant_id', 'helapay_app_id', 'helapay_app_secret', 'helapay_business_id', 'helapay_notify_url'];
+    const allowed = ['status', 'plan', 'trial_ends_at', 'max_branches', 'max_staff', 'name', 'email', 'phone', 'payment_gateway', 'back_transfer_wage', 'helapay_merchant_id', 'helapay_app_id', 'helapay_app_secret', 'helapay_business_id', 'helapay_notify_url'];
     const updates = {};
     for (const key of allowed) {
       if (req.body[key] !== undefined) updates[key] = req.body[key];

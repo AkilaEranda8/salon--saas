@@ -396,10 +396,22 @@ export default function PlatformTenantsPage() {
     setDetailStats(null);
     setDetailLoading(true);
     try {
-      const res = await api.get(`/platform/tenants/${tenant.id}/stats`);
-      setDetailStats(res.data.stats ?? res.data);
-    } catch { setDetailStats(null); }
-    finally { setDetailLoading(false); }
+      const [detailRes, statsRes] = await Promise.all([
+        api.get(`/platform/tenants/${tenant.id}`),
+        api.get(`/platform/tenants/${tenant.id}/stats`),
+      ]);
+      const full = detailRes.data || {};
+      setDetailTenant({
+        ...tenant,
+        ...full,
+        phone: full.phone || tenant.phone || null,
+      });
+      setDetailStats(statsRes.data.stats ?? statsRes.data);
+    } catch {
+      setDetailStats(null);
+    } finally {
+      setDetailLoading(false);
+    }
   };
 
   const openCreate = () => {
@@ -484,7 +496,7 @@ export default function PlatformTenantsPage() {
     {
       id: 'name',
       header: 'Salon',
-      accessorFn: row => `${row.name || ''} ${row.email || ''} ${row.slug || ''}`.trim(),
+      accessorFn: row => `${row.name || ''} ${row.email || ''} ${row.phone || ''} ${row.slug || ''}`.trim(),
       meta: { width: '22%' },
       cell: ({ row: { original: t } }) => {
         const av = getAvatar(t.name);
@@ -499,6 +511,9 @@ export default function PlatformTenantsPage() {
             <div>
               <div style={{ fontWeight: 700, color: isDark ? '#F1F5F9' : '#111827' }}>{t.name}</div>
               <div style={{ fontSize: 11, color: isDark ? '#475569' : '#9CA3AF', marginTop: 1 }}>{t.email || '—'}</div>
+              {t.phone ? (
+                <div style={{ fontSize: 11, color: isDark ? '#64748B' : '#6B7280', marginTop: 1 }}>{t.phone}</div>
+              ) : null}
             </div>
           </div>
         );
@@ -825,14 +840,18 @@ export default function PlatformTenantsPage() {
               <div style={{ fontSize: 10.5, fontWeight: 700, color: isDark ? '#475569' : '#9CA3AF', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 10 }}>Details</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                 {[
-                  { label: 'Email',      value: detailTenant.email              || '—' },
-                  { label: 'Phone',      value: detailTenant.phone              || '—' },
-                  { label: 'Registered', value: detailTenant.createdAt ? new Date(detailTenant.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—' },
-                  { label: 'Trial Ends', value: detailTenant.trial_ends_at ? new Date(detailTenant.trial_ends_at).toLocaleDateString() : '—' },
-                ].map(({ label, value }) => (
-                  <div key={label} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, padding: '6px 0', borderBottom: `1px solid ${isDark ? '#1E293B' : '#F9FAFB'}` }}>
-                    <span style={{ color: isDark ? '#64748B' : '#6B7280' }}>{label}</span>
-                    <span style={{ color: isDark ? '#F1F5F9' : '#111827', fontWeight: 600 }}>{value}</span>
+                  { label: 'Email',      value: detailTenant.email || '—', href: detailTenant.email ? `mailto:${detailTenant.email}` : null },
+                  { label: 'Phone',      value: detailTenant.phone || '—', href: detailTenant.phone ? `tel:${String(detailTenant.phone).replace(/\s+/g, '')}` : null },
+                  { label: 'Registered', value: detailTenant.createdAt ? new Date(detailTenant.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—', href: null },
+                  { label: 'Trial Ends', value: detailTenant.trial_ends_at ? new Date(detailTenant.trial_ends_at).toLocaleDateString() : '—', href: null },
+                ].map(({ label, value, href }) => (
+                  <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 13, padding: '6px 0', borderBottom: `1px solid ${isDark ? '#1E293B' : '#F9FAFB'}`, gap: 12 }}>
+                    <span style={{ color: isDark ? '#64748B' : '#6B7280', flexShrink: 0 }}>{label}</span>
+                    {href && value !== '—' ? (
+                      <a href={href} style={{ color: isDark ? '#A5B4FC' : '#4338CA', fontWeight: 700, textDecoration: 'none', textAlign: 'right', wordBreak: 'break-all' }}>{value}</a>
+                    ) : (
+                      <span style={{ color: isDark ? '#F1F5F9' : '#111827', fontWeight: 600, textAlign: 'right' }}>{value}</span>
+                    )}
                   </div>
                 ))}
               </div>

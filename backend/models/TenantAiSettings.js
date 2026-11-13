@@ -36,6 +36,12 @@ const TenantAiSettings = sequelize.define('TenantAiSettings', {
     type: DataTypes.TEXT,
     allowNull: true,
   },
+  // Owner-ticked AI access grants (JSON object of boolean flags).
+  access_grants: {
+    type: DataTypes.JSON,
+    allowNull: true,
+    defaultValue: null,
+  },
   updated_by: {
     type: DataTypes.INTEGER,
     allowNull: true,

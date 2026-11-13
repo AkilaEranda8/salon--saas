@@ -160,6 +160,12 @@ async function ensureAiCrmSchema() {
       `ALTER TABLE crm_leads ADD COLUMN marketing_opt_out_at DATETIME NULL`
     );
   }
+  if (!(await columnExists('tenant_ai_settings', 'access_grants'))) {
+    await sequelize.query(
+      `ALTER TABLE tenant_ai_settings ADD COLUMN access_grants JSON NULL`
+    );
+    console.log('[migration] tenant_ai_settings.access_grants added');
+  }
 }
 
 module.exports = ensureAiCrmSchema;

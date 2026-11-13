@@ -21,6 +21,8 @@ const staffInbox = [verifyToken, requireRole('superadmin', 'admin', 'manager', '
 router.get('/ai-settings', ...admin, aiSettingsCtrl.getAiSettings);
 router.put('/ai-settings', ...admin, aiSettingsCtrl.updateAiSettings);
 router.post('/ai-settings/test', ...admin, aiSettingsCtrl.testAiSettings);
+router.get('/ai-access', ...admin, aiSettingsCtrl.getAiAccess);
+router.put('/ai-access', ...admin, aiSettingsCtrl.updateAiAccess);
 router.get('/ai-model-rates', ...admin, aiSettingsCtrl.listModelRates);
 
 // ── AI Rules (bot behaviour) ─────────────────────────────────────────────────

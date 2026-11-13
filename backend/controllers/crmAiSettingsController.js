@@ -11,6 +11,13 @@ const {
   maskSecret,
   isMaskedPlaceholder,
 } = require('../utils/secretCrypto');
+const {
+  ACCESS_CATALOG,
+  normalizeGrants,
+  mergeGrants,
+  requiredGranted,
+  missingRequired,
+} = require('../services/crmAiAccessGrants');
 
 const PROVIDERS = new Set(['openai', 'gemini', 'nvidia', 'local']);
 
@@ -36,6 +43,7 @@ async function getOrCreateSettings(tenantId) {
 function toPublic(row) {
   const openaiPlain = decryptSecret(row.openai_api_key_enc);
   const geminiPlain = decryptSecret(row.gemini_api_key_enc);
+  const access_grants = normalizeGrants(row.access_grants);
   return {
     provider: row.provider || 'openai',
     model: row.model || defaultModelFor(row.provider),
@@ -43,6 +51,10 @@ function toPublic(row) {
     openai_api_key_set: !!openaiPlain,
     gemini_api_key: maskSecret(geminiPlain),
     gemini_api_key_set: !!geminiPlain,
+    access_grants,
+    access_catalog: ACCESS_CATALOG,
+    access_ready: requiredGranted(access_grants),
+    access_missing: missingRequired(access_grants),
     updated_at: row.updatedAt || row.updated_at || null,
   };
 }
@@ -89,6 +101,10 @@ const updateAiSettings = async (req, res) => {
     }
     if (body.gemini_api_key != null && !isMaskedPlaceholder(body.gemini_api_key)) {
       patch.gemini_api_key_enc = encryptSecret(String(body.gemini_api_key).trim());
+    }
+
+    if (body.access_grants != null) {
+      patch.access_grants = mergeGrants(row.access_grants, body.access_grants);
     }
 
     await row.update(patch);
@@ -209,10 +225,60 @@ const listModelRates = async (_req, res) => {
   }
 };
 
+/** GET /api/crm/ai-access — catalog + current ticks */
+const getAiAccess = async (req, res) => {
+  try {
+    const tenantId = resolveTenantId(req);
+    if (!tenantId) return res.status(400).json({ message: 'Tenant required.' });
+    const row = await getOrCreateSettings(tenantId);
+    const grants = normalizeGrants(row.access_grants);
+    return res.json({
+      tenant_id: tenantId,
+      grants,
+      catalog: ACCESS_CATALOG,
+      ready: requiredGranted(grants),
+      missing: missingRequired(grants),
+      updated_at: row.updatedAt || row.updated_at || null,
+    });
+  } catch (err) {
+    console.error('[ai-access] get', err);
+    return res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+/** PUT /api/crm/ai-access — save owner ticks */
+const updateAiAccess = async (req, res) => {
+  try {
+    const tenantId = resolveTenantId(req);
+    if (!tenantId) return res.status(400).json({ message: 'Tenant required.' });
+    const row = await getOrCreateSettings(tenantId);
+    const next = mergeGrants(row.access_grants, req.body?.grants || req.body?.access_grants || req.body);
+    await row.update({
+      access_grants: next,
+      updated_by: req.user?.id || null,
+    });
+    await row.reload();
+    const grants = normalizeGrants(row.access_grants);
+    return res.json({
+      tenant_id: tenantId,
+      grants,
+      catalog: ACCESS_CATALOG,
+      ready: requiredGranted(grants),
+      missing: missingRequired(grants),
+      updated_at: row.updatedAt || row.updated_at || null,
+    });
+  } catch (err) {
+    console.error('[ai-access] put', err);
+    return res.status(500).json({ message: 'Server error.' });
+  }
+};
+
 module.exports = {
   getAiSettings,
   updateAiSettings,
   testAiSettings,
   getAiSettingsInternal,
   listModelRates,
+  getAiAccess,
+  updateAiAccess,
 };

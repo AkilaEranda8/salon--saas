@@ -79,6 +79,23 @@ async function processInboundAiTurn(jobData) {
   const tenant = await Tenant.findByPk(tenantId);
   if (!tenant) throw new Error(`Tenant ${tenantId} not found`);
 
+  // Owner must tick required AI access grants before automated replies run.
+  try {
+    const { TenantAiSettings } = require('../models');
+    const { requiredGranted, missingRequired } = require('./crmAiAccessGrants');
+    const aiRow = await TenantAiSettings.findOne({ where: { tenant_id: tenantId } });
+    if (!requiredGranted(aiRow?.access_grants)) {
+      const missing = missingRequired(aiRow?.access_grants);
+      return {
+        skipped: true,
+        reason: 'ai_access_not_granted',
+        missing,
+      };
+    }
+  } catch (grantErr) {
+    console.warn('[inbound] access grant check failed:', grantErr.message);
+  }
+
   let resumeInbound = null;
   let skipInsert = false;
 

@@ -84,6 +84,7 @@ import MaintenancePage  from './pages/MaintenancePage';
 import BrandingSettingsPage  from './pages/BrandingSettingsPage';
 import PaymentSettingsPage   from './pages/PaymentSettingsPage';
 import CrmAiSettingsPage     from './pages/crm/CrmAiSettingsPage';
+import CrmAccessGuidePage    from './pages/crm/CrmAccessGuidePage';
 import CrmInboxPage          from './pages/crm/CrmInboxPage';
 import CrmLeadsPage          from './pages/crm/CrmLeadsPage';
 import CrmWhatsAppCloudPage  from './pages/crm/CrmWhatsAppCloudPage';
@@ -464,6 +465,13 @@ function AppShellRoutes() {
               <RoleRoute roles={['superadmin', 'admin']}>
                 <FeatureRoute feature="whatsapp_ai_crm" title="AI Settings">
                   <CrmAiSettingsPage />
+                </FeatureRoute>
+              </RoleRoute>
+            } />
+            <Route path="/crm/access" element={
+              <RoleRoute roles={['superadmin', 'admin']}>
+                <FeatureRoute feature="whatsapp_ai_crm" title="AI Access">
+                  <CrmAccessGuidePage />
                 </FeatureRoute>
               </RoleRoute>
             } />

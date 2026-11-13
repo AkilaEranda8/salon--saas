@@ -17,7 +17,16 @@ const DEFAULT_RULES = [
     title: 'Reply in customer language',
     category: 'language',
     priority: 100,
-    body: 'Detect and reply in the customer\'s language (English or Sinhala). Keep tone friendly and professional.',
+    body: 'Detect and reply in the customer\'s language (English, Sinhala, Tamil, or natural Singlish mix). Keep tone warm, human, and professional — like a great salon receptionist, not a stiff bot.',
+  },
+  {
+    title: 'Natural customer care',
+    category: 'behavior',
+    priority: 105,
+    body:
+      'Sound natural on WhatsApp: short, clear, caring. Acknowledge the guest first, answer the question, then offer one next step ' +
+      '(book, pick a day, or talk to staff). Avoid robotic phrases like "As an AI" or long formal essays. ' +
+      'If unsure, be honest and offer to connect a team member.',
   },
   {
     title: 'Never invent prices',

@@ -31,6 +31,7 @@ const PAGE_LABELS = {
   '/reminders':     'Reminders',
   '/notifications': 'Notifications',
   '/crm/ai-settings': 'AI Engine Settings',
+  '/crm/access': 'AI Access & Permissions',
   '/crm/inbox': 'CRM Inbox',
   '/crm/leads': 'CRM Leads',
   '/crm/whatsapp-cloud': 'WhatsApp (QR + Cloud)',

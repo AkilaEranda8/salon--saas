@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { io } from 'socket.io-client';
 import toast from 'react-hot-toast';
 import api from '../../api/axios';
@@ -214,6 +215,11 @@ export default function CrmWhatsAppCloudPage() {
     <PageWrapper
       title="WhatsApp for CRM"
       subtitle="Connect via QR (quick start) or Meta Cloud API. Inbound messages feed CRM Inbox, Leads, and AI."
+      actions={(
+        <Link to="/crm/access" style={{ fontSize: 13, fontWeight: 600, color: C.text, textDecoration: 'none', border: `1px solid ${C.border}`, borderRadius: 10, padding: '8px 12px', background: C.cardBg }}>
+          What access to grant →
+        </Link>
+      )}
     >
       {loading ? (
         <div style={{ color: C.muted, padding: 24 }}>Loading…</div>

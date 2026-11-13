@@ -355,14 +355,22 @@ async function getStatus(tenantId) {
   const { WhatsAppConnection } = getModels();
   const row = await WhatsAppConnection.findOne({ where: { tenant_id: tid } });
   const rt = getRuntime(tid);
+  // Live socket wins — stale DB "connecting" without an active socket is disconnected.
+  const liveConnected = activeSockets.has(tid) && rt.status === 'connected';
+  const status = liveConnected
+    ? 'connected'
+    : (rt.status === 'connecting' && rt.qrImage)
+      ? 'connecting'
+      : (activeSockets.has(tid) ? (rt.status || 'connecting') : 'disconnected');
   return {
-    status: rt.status || row?.status || 'disconnected',
+    status,
     phone: rt.phone || row?.phone || null,
     push_name: rt.push_name || row?.push_name || null,
     connected_at: rt.connected_at || row?.connected_at || null,
     last_error: row?.last_error || rt.last_error || null,
     qrImage: rt.qrImage || null,
-    provider: (rt.status === 'connected' || row?.status === 'connected') ? 'qr' : 'twilio',
+    provider: 'qr',
+    has_session: sessionHasCreds(tid),
   };
 }
 
@@ -457,17 +465,65 @@ async function listMessages(tenantId, { page = 1, limit = 50 } = {}) {
   return { total: count, page: safePage, limit: safeLimit, data: rows };
 }
 
+function sessionHasCreds(tenantId) {
+  const dir = sessionDir(tenantId);
+  try {
+    if (!fs.existsSync(dir)) return false;
+    // Baileys multi-file auth writes creds.json once paired.
+    return fs.existsSync(path.join(dir, 'creds.json'));
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Re-open Baileys sockets after API restart.
+ * Previously only rows with status=connected were restored — a crash mid-connect
+ * left status=connecting forever and WhatsApp AI CRM stayed silent until manual QR.
+ * Now restore any tenant that still has local creds (connected/connecting).
+ */
 async function restoreSessionsOnBoot() {
   ensureDir(SESSIONS_ROOT);
   const { WhatsAppConnection } = getModels();
-  const connected = await WhatsAppConnection.findAll({ where: { status: 'connected' } });
-  for (const row of connected) {
-    const dir = sessionDir(row.tenant_id);
-    if (fs.existsSync(dir)) {
-      startSession(row.tenant_id).catch((err) => {
-        console.error(`[WhatsApp] restore tenant ${row.tenant_id} failed:`, err.message);
+  const rows = await WhatsAppConnection.findAll({
+    where: { status: ['connected', 'connecting'] },
+  });
+
+  const seen = new Set();
+  for (const row of rows) {
+    const tid = Number(row.tenant_id);
+    if (!tid || seen.has(tid)) continue;
+    seen.add(tid);
+    if (!sessionHasCreds(tid)) {
+      // Stale connecting row without creds — mark disconnected so UI can re-pair.
+      if (row.status === 'connecting') {
+        await row.update({
+          status: 'disconnected',
+          last_error: 'Session expired — scan QR again',
+        }).catch(() => {});
+      }
+      continue;
+    }
+    startSession(tid).catch((err) => {
+      console.error(`[WhatsApp] restore tenant ${tid} failed:`, err.message);
+    });
+  }
+
+  // Also pick up orphan session folders (creds on disk, no/odd DB row).
+  try {
+    const dirs = fs.readdirSync(SESSIONS_ROOT, { withFileTypes: true })
+      .filter((d) => d.isDirectory())
+      .map((d) => Number(d.name))
+      .filter((n) => Number.isFinite(n) && n > 0);
+    for (const tid of dirs) {
+      if (seen.has(tid) || !sessionHasCreds(tid)) continue;
+      seen.add(tid);
+      startSession(tid).catch((err) => {
+        console.error(`[WhatsApp] restore orphan tenant ${tid} failed:`, err.message);
       });
     }
+  } catch (err) {
+    console.warn('[WhatsApp] orphan session scan failed:', err.message);
   }
 }
 

@@ -59,32 +59,75 @@ router.post('/reorders', requireRole('superadmin', 'admin', 'manager'), async (r
 });
 
 router.patch('/reorders/:id', requireRole('superadmin', 'admin', 'manager'), async (req, res) => {
+  const { InventoryReorder, Inventory } = require('../models');
+  const { sequelize } = require('../config/database');
+  const t = await sequelize.transaction();
   try {
-    const { InventoryReorder, Inventory } = require('../models');
     const tenantId = resolveTenantId(req);
     const where = { id: req.params.id };
     if (tenantId) where.tenant_id = tenantId;
 
-    const reorder = await InventoryReorder.findOne({ where });
-    if (!reorder) return res.status(404).json({ message: 'Reorder not found.' });
+    // Lock the reorder row so concurrent PATCHes cannot both apply stock
+    const reorder = await InventoryReorder.findOne({ where, transaction: t, lock: t.LOCK.UPDATE });
+    if (!reorder) {
+      await t.rollback();
+      return res.status(404).json({ message: 'Reorder not found.' });
+    }
+    if (req.userBranchId && Number(reorder.branch_id) !== Number(req.userBranchId)) {
+      await t.rollback();
+      return res.status(403).json({ message: 'Access denied for this branch.' });
+    }
+
+    const prevStatus = String(reorder.status || '');
+    const nextStatus = req.body.status !== undefined ? String(req.body.status) : prevStatus;
+    const validStatuses = ['draft', 'ordered', 'partial', 'received', 'cancelled'];
+    if (!validStatuses.includes(nextStatus)) {
+      await t.rollback();
+      return res.status(400).json({ message: 'Invalid status.' });
+    }
+    const alreadyReceived = prevStatus === 'received';
+    // A received reorder is final: stock was applied once and must never be re-applied
+    if (alreadyReceived && nextStatus !== 'received') {
+      await t.rollback();
+      return res.status(400).json({ message: 'A received reorder cannot change status.' });
+    }
 
     const allowed = ['status', 'supplier_name', 'supplier_contact', 'quantity_received', 'notes'];
-    for (const f of allowed) { if (req.body[f] !== undefined) reorder[f] = req.body[f]; }
+    for (const f of allowed) {
+      if (req.body[f] === undefined) continue;
+      // Don't allow changing quantity_received after stock was already applied
+      if (f === 'quantity_received' && alreadyReceived) continue;
+      reorder[f] = req.body[f];
+    }
 
-    if (req.body.status === 'ordered')  reorder.ordered_at  = new Date();
-    if (req.body.status === 'received') {
+    if (nextStatus === 'ordered' && prevStatus !== 'ordered') reorder.ordered_at = new Date();
+
+    // Only add stock once, when transitioning INTO received from a non-received status
+    if (nextStatus === 'received' && !alreadyReceived) {
       reorder.received_at = new Date();
-      // Auto-adjust inventory quantity
-      const item = await Inventory.findByPk(reorder.inventory_id);
-      if (item && reorder.quantity_received > 0) {
-        await item.update({ quantity: parseFloat(item.quantity) + parseFloat(reorder.quantity_received) });
+      const qty = parseFloat(reorder.quantity_received);
+      if (qty > 0) {
+        const item = await Inventory.findByPk(reorder.inventory_id, {
+          transaction: t,
+          lock: t.LOCK.UPDATE,
+        });
+        if (item) {
+          await item.update(
+            { quantity: parseFloat(item.quantity) + qty },
+            { transaction: t }
+          );
+        }
       }
     }
-    await reorder.save();
-    return res.json(reorder);
-  } catch (err) { return res.status(500).json({ message: 'Server error.' }); }
-});
 
+    await reorder.save({ transaction: t });
+    await t.commit();
+    return res.json(reorder);
+  } catch (err) {
+    await t.rollback().catch(() => {});
+    return res.status(500).json({ message: 'Server error.' });
+  }
+});
 router.get('/',               ctrl.list);
 router.post('/',              ctrl.create);
 router.put('/:id',            ctrl.update);

@@ -67,6 +67,15 @@ class MyCommissionResult {
   }
 }
 
+class KcTokens {
+  KcTokens({required this.accessToken, this.refreshToken = ''});
+
+  final String accessToken;
+
+  /// Empty when the server did not rotate the refresh token.
+  final String refreshToken;
+}
+
 class MobileApi {
   MobileApi({required String baseUrl, this.slug})
     : baseUrl = baseUrl.endsWith('/')
@@ -75,6 +84,70 @@ class MobileApi {
 
   final String baseUrl;
   final String? slug;
+
+  /// Called on a 401 from an authenticated request. Receives the access token
+  /// that was rejected and returns a fresh access token (or null to give up).
+  /// The failed request is retried once with the new token.
+  Future<String?> Function(String staleToken)? onUnauthorized;
+
+  Future<http.Response> _send(
+    String method,
+    Uri url,
+    Map<String, String>? headers,
+    Object? body,
+  ) {
+    Future<http.Response> run(Map<String, String>? h) {
+      switch (method) {
+        case 'POST':
+          return http.post(url, headers: h, body: body);
+        case 'PUT':
+          return http.put(url, headers: h, body: body);
+        case 'PATCH':
+          return http.patch(url, headers: h, body: body);
+        case 'DELETE':
+          return http.delete(url, headers: h, body: body);
+        default:
+          return http.get(url, headers: h);
+      }
+    }
+
+    return run(headers).then((res) async {
+      if (res.statusCode != 401) return res;
+      final handler = onUnauthorized;
+      final auth = headers?['Authorization'] ?? '';
+      if (handler == null || !auth.startsWith('Bearer ')) return res;
+      final stale = auth.substring(7).trim();
+      String? fresh;
+      try {
+        fresh = await handler(stale);
+      } catch (_) {
+        fresh = null;
+      }
+      if (fresh == null || fresh.isEmpty) return res;
+      final retryHeaders = Map<String, String>.from(headers!)
+        ..['Authorization'] = 'Bearer $fresh';
+      return run(retryHeaders);
+    });
+  }
+
+  Future<http.Response> _get(Uri url, {Map<String, String>? headers}) =>
+      _send('GET', url, headers, null);
+
+  Future<http.Response> _post(Uri url,
+          {Map<String, String>? headers, Object? body}) =>
+      _send('POST', url, headers, body);
+
+  Future<http.Response> _put(Uri url,
+          {Map<String, String>? headers, Object? body}) =>
+      _send('PUT', url, headers, body);
+
+  Future<http.Response> _patch(Uri url,
+          {Map<String, String>? headers, Object? body}) =>
+      _send('PATCH', url, headers, body);
+
+  Future<http.Response> _delete(Uri url,
+          {Map<String, String>? headers, Object? body}) =>
+      _send('DELETE', url, headers, body);
 
   Future<Map<String, dynamic>> login({
     required String username,
@@ -113,22 +186,37 @@ class MobileApi {
     };
   }
 
-  Future<String?> kcRefresh({required String refreshToken}) async {
+  /// Returns only the new access token (see [kcRefreshTokens] for rotation).
+  Future<String?> kcRefresh({required String refreshToken}) async =>
+      (await kcRefreshTokens(refreshToken: refreshToken))?.accessToken;
+
+  /// Exchanges a refresh token for new tokens.
+  /// Returns null when the server rejects the refresh token (400/401/403);
+  /// throws on network errors / 5xx so callers can keep the session.
+  Future<KcTokens?> kcRefreshTokens({required String refreshToken}) async {
     final res = await http.post(
       Uri.parse('$baseUrl/api/auth/kc-refresh'),
       headers: _baseHeaders(),
       body: jsonEncode({'refresh_token': refreshToken}),
     );
-    if (res.statusCode >= 400) return null;
+    if (res.statusCode == 400 ||
+        res.statusCode == 401 ||
+        res.statusCode == 403) {
+      return null;
+    }
+    if (res.statusCode >= 400) {
+      throw Exception('Token refresh failed (${res.statusCode})');
+    }
     final body = _decode(res.body);
-    return '${body['access_token'] ?? ''}'.trim().isEmpty
-        ? null
-        : '${body['access_token']}';
+    final access = '${body['access_token'] ?? ''}'.trim();
+    if (access.isEmpty) return null;
+    final refresh = '${body['refresh_token'] ?? ''}'.trim();
+    return KcTokens(accessToken: access, refreshToken: refresh);
   }
 
   /// GET /api/auth/me — resolves [branchId] from linked Staff when portal row has no branch.
   Future<Map<String, dynamic>> fetchMe({required String token}) async {
-    final response = await http.get(
+    final response = await _get(
       Uri.parse('$baseUrl/api/auth/me'),
       headers: _authHeaders(token),
     );
@@ -146,7 +234,7 @@ class MobileApi {
     String? deviceInfo,
   }) async {
     try {
-      await http.post(
+      await _post(
         Uri.parse('$baseUrl/api/fcm-token'),
         headers: _authHeaders(token),
         body: jsonEncode({
@@ -176,7 +264,7 @@ class MobileApi {
     final uri = Uri.parse(
       '$baseUrl/api/discounts/payment',
     ).replace(queryParameters: {'branchId': branchId});
-    final response = await http.get(uri, headers: _authHeaders(token));
+    final response = await _get(uri, headers: _authHeaders(token));
     final body = _decode(response.body);
     if (response.statusCode >= 400) {
       throw Exception(body['message'] ?? 'Discounts load failed');
@@ -210,7 +298,7 @@ class MobileApi {
         if (search != null && search.trim().isNotEmpty) 'search': search.trim(),
       };
       final uri = Uri.parse('$baseUrl/api/customers').replace(queryParameters: qp);
-      final response = await http.get(uri, headers: _authHeaders(token));
+      final response = await _get(uri, headers: _authHeaders(token));
       final body = _decode(response.body);
       if (response.statusCode >= 400) {
         throw Exception(body['message'] ?? 'Customers load failed');
@@ -246,7 +334,7 @@ class MobileApi {
       if (branchId != null && branchId.isNotEmpty) 'branchId': branchId,
     };
     final uri = Uri.parse('$baseUrl/api/customers').replace(queryParameters: qp);
-    final response = await http.get(uri, headers: _authHeaders(token));
+    final response = await _get(uri, headers: _authHeaders(token));
     final body = _decode(response.body);
     if (response.statusCode >= 400) {
       throw Exception(body['message'] ?? 'Customers count failed');
@@ -264,7 +352,7 @@ class MobileApi {
     required String email,
     required String? branchId,
   }) async {
-    final response = await http.post(
+    final response = await _post(
       Uri.parse('$baseUrl/api/customers'),
       headers: _authHeaders(token),
       body: jsonEncode({
@@ -295,7 +383,7 @@ class MobileApi {
     final bid = (branchId ?? '').trim();
     if (bid.isNotEmpty) q['branchId'] = bid;
     final uri = Uri.parse('$baseUrl/api/packages').replace(queryParameters: q);
-    final response = await http.get(uri, headers: _authHeaders(token));
+    final response = await _get(uri, headers: _authHeaders(token));
     if (response.statusCode < 400) {
       return _asMaps(_decodeList(response.body));
     }
@@ -328,7 +416,7 @@ class MobileApi {
     if (bid.isNotEmpty) {
       body['branch_id'] = int.tryParse(bid) ?? bid;
     }
-    final response = await http.post(
+    final response = await _post(
       Uri.parse('$baseUrl/api/packages/purchase'),
       headers: _authHeaders(token),
       body: jsonEncode(body),
@@ -353,7 +441,7 @@ class MobileApi {
   }) async {
     // Prefer full customer package list (matches web), then active-only.
     // These endpoints return a JSON array — must use _decodeList (not _decode).
-    final primary = await http.get(
+    final primary = await _get(
       Uri.parse('$baseUrl/api/packages/customer/$customerId'),
       headers: _authHeaders(token),
     );
@@ -361,7 +449,7 @@ class MobileApi {
       return _asMaps(_decodeList(primary.body));
     }
 
-    final fallback = await http.get(
+    final fallback = await _get(
       Uri.parse('$baseUrl/api/packages/customer/$customerId/active'),
       headers: _authHeaders(token),
     );
@@ -392,7 +480,7 @@ class MobileApi {
       'limit': '500',
       if (onlyActive) 'active': 'true',
     };
-    final response = await http.get(
+    final response = await _get(
       Uri.parse('$baseUrl/api/services').replace(queryParameters: qp),
       headers: _authHeaders(token),
     );
@@ -410,7 +498,7 @@ class MobileApi {
   Future<List<Map<String, dynamic>>> fetchBranches({
     required String token,
   }) async {
-    final response = await http.get(
+    final response = await _get(
       Uri.parse('$baseUrl/api/branches?limit=200'),
       headers: _authHeaders(token),
     );
@@ -432,7 +520,7 @@ class MobileApi {
     final uri = Uri.parse(
       '$baseUrl/api/staff?limit=200${branchId != null && branchId.isNotEmpty ? '&branchId=$branchId' : ''}',
     );
-    final response = await http.get(uri, headers: _authHeaders(token));
+    final response = await _get(uri, headers: _authHeaders(token));
     final body = _decode(response.body);
     if (response.statusCode >= 400) {
       throw Exception(body['message'] ?? 'Staff load failed');
@@ -445,7 +533,7 @@ class MobileApi {
   }
 
   Future<List<String>> fetchStaffRoles({required String token}) async {
-    final response = await http.get(
+    final response = await _get(
       Uri.parse('$baseUrl/api/staff/roles'),
       headers: _authHeaders(token),
     );
@@ -461,7 +549,7 @@ class MobileApi {
     required String token,
     required String title,
   }) async {
-    final response = await http.post(
+    final response = await _post(
       Uri.parse('$baseUrl/api/staff/roles'),
       headers: _authHeaders(token),
       body: jsonEncode({'title': title.trim()}),
@@ -478,7 +566,7 @@ class MobileApi {
     required String token,
     required Map<String, dynamic> payload,
   }) async {
-    final response = await http.post(
+    final response = await _post(
       Uri.parse('$baseUrl/api/staff'),
       headers: _authHeaders(token),
       body: jsonEncode(payload),
@@ -495,7 +583,7 @@ class MobileApi {
     required String staffId,
     required Map<String, dynamic> payload,
   }) async {
-    final response = await http.put(
+    final response = await _put(
       Uri.parse('$baseUrl/api/staff/$staffId'),
       headers: _authHeaders(token),
       body: jsonEncode(payload),
@@ -511,7 +599,7 @@ class MobileApi {
     required String token,
     required String staffId,
   }) async {
-    final response = await http.get(
+    final response = await _get(
       Uri.parse('$baseUrl/api/staff/$staffId'),
       headers: _authHeaders(token),
     );
@@ -545,7 +633,7 @@ class MobileApi {
     required String token,
     required String staffId,
   }) async {
-    final response = await http.delete(
+    final response = await _delete(
       Uri.parse('$baseUrl/api/staff/$staffId/photo'),
       headers: _authHeaders(token),
     );
@@ -577,7 +665,7 @@ class MobileApi {
       final raw = commissionValue?.trim() ?? '';
       payload['commission_value'] = raw.isEmpty ? null : raw;
     }
-    final response = await http.post(
+    final response = await _post(
       Uri.parse('$baseUrl/api/services'),
       headers: _authHeaders(token),
       body: jsonEncode(payload),
@@ -613,7 +701,7 @@ class MobileApi {
       final raw = commissionValue?.trim() ?? '';
       payload['commission_value'] = raw.isEmpty ? null : raw;
     }
-    final response = await http.put(
+    final response = await _put(
       Uri.parse('$baseUrl/api/services/$serviceId'),
       headers: _authHeaders(token),
       body: jsonEncode(payload),
@@ -654,7 +742,7 @@ class MobileApi {
     final uri = Uri.parse(
       '$baseUrl/api/appointments',
     ).replace(queryParameters: qp);
-    final response = await http.get(uri, headers: _authHeaders(token));
+    final response = await _get(uri, headers: _authHeaders(token));
     final body = _decode(response.body);
     if (response.statusCode >= 400) {
       throw Exception(body['message'] ?? 'Appointments load failed');
@@ -689,7 +777,7 @@ class MobileApi {
         'duration': '$duration',
       },
     );
-    final response = await http.get(uri, headers: _authHeaders(token));
+    final response = await _get(uri, headers: _authHeaders(token));
     final body = _decode(response.body);
     if (response.statusCode >= 400) {
       throw Exception(body['message'] ?? 'Availability load failed');
@@ -813,7 +901,7 @@ class MobileApi {
       }
     }
 
-    final response = await http.post(
+    final response = await _post(
       Uri.parse('$baseUrl/api/appointments'),
       headers: _authHeaders(token),
       body: jsonEncode(bodyMap),
@@ -828,7 +916,7 @@ class MobileApi {
     required String token,
     required String appointmentId,
   }) async {
-    final response = await http.get(
+    final response = await _get(
       Uri.parse('$baseUrl/api/appointments/$appointmentId'),
       headers: _authHeaders(token),
     );
@@ -889,7 +977,7 @@ class MobileApi {
                   .toList()
             : null,
     };
-    final response = await http.put(
+    final response = await _put(
       Uri.parse('$baseUrl/api/appointments/$appointmentId'),
       headers: _authHeaders(token),
       body: jsonEncode(bodyMap),
@@ -905,7 +993,7 @@ class MobileApi {
     required String appointmentId,
     required String status,
   }) async {
-    final response = await http.patch(
+    final response = await _patch(
       Uri.parse('$baseUrl/api/appointments/$appointmentId/status'),
       headers: _authHeaders(token),
       body: jsonEncode({'status': status}),
@@ -920,7 +1008,7 @@ class MobileApi {
     required String token,
     required String appointmentId,
   }) async {
-    final response = await http.delete(
+    final response = await _delete(
       Uri.parse('$baseUrl/api/appointments/$appointmentId'),
       headers: _authHeaders(token),
     );
@@ -930,7 +1018,8 @@ class MobileApi {
     }
   }
 
-  Future<void> createPayment({
+  /// Returns the created payment id when the server includes it.
+  Future<String?> createPayment({
     required String token,
     required String branchId,
     required String appointmentId,
@@ -1007,7 +1096,7 @@ class MobileApi {
                 .map((id) => int.tryParse(id) ?? id)
                 .toList(),
     };
-    final response = await http.post(
+    final response = await _post(
       Uri.parse('$baseUrl/api/payments'),
       headers: _authHeaders(token),
       body: jsonEncode(bodyMap),
@@ -1016,6 +1105,9 @@ class MobileApi {
     if (response.statusCode >= 400) {
       throw Exception(body['message'] ?? 'Payment create failed');
     }
+    final data = body['data'] is Map ? body['data'] as Map : body;
+    final id = '${data['id'] ?? data['payment_id'] ?? ''}'.trim();
+    return id.isEmpty || id == 'null' ? null : id;
   }
 
   Future<List<PaymentRecord>> fetchPayments({
@@ -1032,7 +1124,7 @@ class MobileApi {
       if (customerId != null && customerId.isNotEmpty) 'customerId': customerId,
     };
     final uri = Uri.parse('$baseUrl/api/payments').replace(queryParameters: qp);
-    final response = await http.get(uri, headers: _authHeaders(token));
+    final response = await _get(uri, headers: _authHeaders(token));
     final body = _decode(response.body);
     if (response.statusCode >= 400) {
       throw Exception(body['message'] ?? 'Payments load failed');
@@ -1069,7 +1161,7 @@ class MobileApi {
   }) async {
     final subtotal = double.tryParse(totalAmount.trim()) ?? 0;
     final paid = double.tryParse(paidAmount.trim()) ?? 0;
-    final response = await http.post(
+    final response = await _post(
       Uri.parse('$baseUrl/api/payments'),
       headers: _authHeaders(token),
       body: jsonEncode({
@@ -1130,7 +1222,7 @@ class MobileApi {
     required String token,
     required String paymentId,
   }) async {
-    final response = await http.get(
+    final response = await _get(
       Uri.parse('$baseUrl/api/payments/$paymentId'),
       headers: _authHeaders(token),
     );
@@ -1157,7 +1249,7 @@ class MobileApi {
   }) async {
     final subtotal = double.tryParse(totalAmount.trim()) ?? 0;
     final paid = double.tryParse(paidAmount.trim()) ?? 0;
-    final response = await http.put(
+    final response = await _put(
       Uri.parse('$baseUrl/api/payments/$paymentId'),
       headers: _authHeaders(token),
       body: jsonEncode({
@@ -1191,7 +1283,7 @@ class MobileApi {
     required String paymentId,
     required String password,
   }) async {
-    final response = await http.delete(
+    final response = await _delete(
       Uri.parse('$baseUrl/api/payments/$paymentId'),
       headers: _authHeaders(token),
       body: jsonEncode({'password': password}),
@@ -1212,7 +1304,7 @@ class MobileApi {
       if (date != null && date.isNotEmpty) 'date': date,
     };
     final uri = Uri.parse('$baseUrl/api/walkin').replace(queryParameters: qp);
-    final response = await http.get(uri, headers: _authHeaders(token));
+    final response = await _get(uri, headers: _authHeaders(token));
     final body = _decodeList(response.body);
     if (response.statusCode >= 400) {
       final mapBody = _decode(response.body);
@@ -1234,7 +1326,7 @@ class MobileApi {
     final uri = Uri.parse(
       '$baseUrl/api/staff/me/commission',
     ).replace(queryParameters: qp.isEmpty ? null : qp);
-    final response = await http.get(uri, headers: _authHeaders(token));
+    final response = await _get(uri, headers: _authHeaders(token));
     final body = _decode(response.body);
     if (response.statusCode >= 400) {
       throw Exception(body['message'] ?? 'Commission load failed');
@@ -1263,7 +1355,7 @@ class MobileApi {
     final uri = Uri.parse(
       '$baseUrl/api/staff/commission',
     ).replace(queryParameters: qp);
-    final response = await http.get(uri, headers: _authHeaders(token));
+    final response = await _get(uri, headers: _authHeaders(token));
     if (response.statusCode >= 400) {
       final body = _decode(response.body);
       throw Exception(body['message'] ?? 'Commission summary failed');
@@ -1297,7 +1389,7 @@ class MobileApi {
     final uri = Uri.parse(
       '$baseUrl/api/staff/$staffId/commission',
     ).replace(queryParameters: qp.isEmpty ? null : qp);
-    final response = await http.get(uri, headers: _authHeaders(token));
+    final response = await _get(uri, headers: _authHeaders(token));
     final body = _decode(response.body);
     if (response.statusCode >= 400) {
       throw Exception(body['message'] ?? 'Commission report failed');
@@ -1433,7 +1525,7 @@ class MobileApi {
         'customerPackageId':
             int.tryParse(customerPackageId.trim()) ?? customerPackageId.trim(),
     };
-    final response = await http.post(
+    final response = await _post(
       Uri.parse('$baseUrl/api/walkin/checkin'),
       headers: _authHeaders(token),
       body: jsonEncode(reqBody),
@@ -1453,7 +1545,7 @@ class MobileApi {
     required String walkInId,
     required String staffId,
   }) async {
-    final response = await http.patch(
+    final response = await _patch(
       Uri.parse('$baseUrl/api/walkin/$walkInId/assign'),
       headers: _authHeaders(token),
       body: jsonEncode({'staffId': int.tryParse(staffId) ?? staffId}),
@@ -1469,7 +1561,7 @@ class MobileApi {
     required String walkInId,
     required String status,
   }) async {
-    final response = await http.patch(
+    final response = await _patch(
       Uri.parse('$baseUrl/api/walkin/$walkInId/status'),
       headers: _authHeaders(token),
       body: jsonEncode({'status': status}),
@@ -1507,7 +1599,7 @@ class MobileApi {
       if (ids.isNotEmpty) 'service_ids': ids,
       'note': note?.trim() ?? '',
     };
-    final response = await http.patch(
+    final response = await _patch(
       Uri.parse('$baseUrl/api/walkin/$walkInId'),
       headers: _authHeaders(token),
       body: jsonEncode(reqBody),
@@ -1529,7 +1621,7 @@ class MobileApi {
     required String reference,
     required double amount,
   }) async {
-    final response = await http.post(
+    final response = await _post(
       Uri.parse('$baseUrl/api/helapay/qr'),
       headers: _authHeaders(token),
       body: jsonEncode({'reference': reference, 'amount': amount}),
@@ -1546,7 +1638,7 @@ class MobileApi {
     required String reference,
     required String qrReference,
   }) async {
-    final response = await http.post(
+    final response = await _post(
       Uri.parse('$baseUrl/api/helapay/status'),
       headers: _authHeaders(token),
       body: jsonEncode({'reference': reference, 'qr_reference': qrReference}),
@@ -1572,7 +1664,7 @@ class MobileApi {
     final uri = Uri.parse(
       '$baseUrl/api/commission-payouts',
     ).replace(queryParameters: qp);
-    final response = await http.get(uri, headers: _authHeaders(token));
+    final response = await _get(uri, headers: _authHeaders(token));
     final body = _decode(response.body);
     if (response.statusCode >= 400) {
       throw Exception(body['message'] ?? 'Payouts load failed');
@@ -1590,7 +1682,7 @@ class MobileApi {
     required String month,
     String? notes,
   }) async {
-    final response = await http.post(
+    final response = await _post(
       Uri.parse('$baseUrl/api/commission-payouts'),
       headers: _authHeaders(token),
       body: jsonEncode({
@@ -1614,7 +1706,7 @@ class MobileApi {
     required String token,
     required String payoutId,
   }) async {
-    final response = await http.delete(
+    final response = await _delete(
       Uri.parse('$baseUrl/api/commission-payouts/$payoutId'),
       headers: _authHeaders(token),
     );
@@ -1638,7 +1730,7 @@ class MobileApi {
     if (branchId != null && branchId.isNotEmpty) qp['branchId'] = branchId;
     if (status != null && status.isNotEmpty) qp['status'] = status;
     final uri = Uri.parse('$baseUrl/api/advances').replace(queryParameters: qp);
-    final response = await http.get(uri, headers: _authHeaders(token));
+    final response = await _get(uri, headers: _authHeaders(token));
     final body = _decode(response.body);
     if (response.statusCode >= 400) {
       throw Exception(body['message'] ?? 'Advances load failed');
@@ -1656,7 +1748,7 @@ class MobileApi {
     required String month,
     String? reason,
   }) async {
-    final response = await http.post(
+    final response = await _post(
       Uri.parse('$baseUrl/api/advances'),
       headers: _authHeaders(token),
       body: jsonEncode({
@@ -1680,7 +1772,7 @@ class MobileApi {
     required String token,
     required String advanceId,
   }) async {
-    final response = await http.patch(
+    final response = await _patch(
       Uri.parse('$baseUrl/api/advances/$advanceId/deduct'),
       headers: _authHeaders(token),
     );
@@ -1695,7 +1787,7 @@ class MobileApi {
     required String token,
     required String advanceId,
   }) async {
-    final response = await http.patch(
+    final response = await _patch(
       Uri.parse('$baseUrl/api/advances/$advanceId/revert'),
       headers: _authHeaders(token),
     );
@@ -1710,7 +1802,7 @@ class MobileApi {
     required String token,
     required String advanceId,
   }) async {
-    final response = await http.delete(
+    final response = await _delete(
       Uri.parse('$baseUrl/api/advances/$advanceId'),
       headers: _authHeaders(token),
     );
@@ -1727,7 +1819,7 @@ class MobileApi {
     final uri = Uri.parse(
       '$baseUrl/api/notifications/templates/options',
     ).replace(queryParameters: {'event_type': 'recurring_reminder'});
-    final response = await http.get(uri, headers: _authHeaders(token));
+    final response = await _get(uri, headers: _authHeaders(token));
     final body = _decode(response.body);
     if (response.statusCode >= 400) {
       throw Exception(body['message'] ?? 'Template options load failed');
@@ -1747,7 +1839,7 @@ class MobileApi {
     required String token,
     required String customerId,
   }) async {
-    final response = await http.get(
+    final response = await _get(
       Uri.parse('$baseUrl/api/customers/$customerId'),
       headers: _authHeaders(token),
     );
@@ -1763,7 +1855,7 @@ class MobileApi {
     required String token,
     required String code,
   }) async {
-    final response = await http.post(
+    final response = await _post(
       Uri.parse('$baseUrl/api/customers/qr/resolve'),
       headers: _authHeaders(token),
       body: jsonEncode({'code': code.trim()}),
@@ -1781,7 +1873,7 @@ class MobileApi {
     required String code,
     int? appointmentId,
   }) async {
-    final response = await http.post(
+    final response = await _post(
       Uri.parse('$baseUrl/api/customers/qr/checkin'),
       headers: _authHeaders(token),
       body: jsonEncode({
@@ -1801,7 +1893,7 @@ class MobileApi {
     final uri = Uri.parse(
       '$baseUrl/api/users',
     ).replace(queryParameters: {'limit': '100'});
-    final response = await http.get(uri, headers: _authHeaders(token));
+    final response = await _get(uri, headers: _authHeaders(token));
     final body = _decode(response.body);
     if (response.statusCode >= 400) {
       throw Exception(body['message'] ?? 'Users load failed');
@@ -1824,7 +1916,7 @@ class MobileApi {
     final payload = <String, dynamic>{};
     if (role != null) payload['role'] = role;
     if (isActive != null) payload['is_active'] = isActive;
-    final response = await http.put(
+    final response = await _put(
       Uri.parse('$baseUrl/api/users/$userId'),
       headers: _authHeaders(token),
       body: jsonEncode(payload),
@@ -1841,7 +1933,7 @@ class MobileApi {
     required String token,
     required String userId,
   }) async {
-    final response = await http.get(
+    final response = await _get(
       Uri.parse('$baseUrl/api/users/$userId/mobile-features'),
       headers: _authHeaders(token),
     );
@@ -1856,7 +1948,7 @@ class MobileApi {
   Future<Map<String, dynamic>> fetchMobileRoleDefaults({
     required String token,
   }) async {
-    final response = await http.get(
+    final response = await _get(
       Uri.parse('$baseUrl/api/users/mobile-features/role-defaults'),
       headers: _authHeaders(token),
     );
@@ -1872,7 +1964,7 @@ class MobileApi {
     required String token,
     required Map<String, Map<String, bool>> defaults,
   }) async {
-    final response = await http.put(
+    final response = await _put(
       Uri.parse('$baseUrl/api/users/mobile-features/role-defaults'),
       headers: _authHeaders(token),
       body: jsonEncode({'defaults': defaults}),
@@ -1890,7 +1982,7 @@ class MobileApi {
     required String userId,
     required Map<String, bool> features,
   }) async {
-    final response = await http.put(
+    final response = await _put(
       Uri.parse('$baseUrl/api/users/$userId/mobile-features'),
       headers: _authHeaders(token),
       body: jsonEncode({'features': features}),
@@ -1912,7 +2004,7 @@ class MobileApi {
     if (branchId != null && branchId.isNotEmpty) qp['branchId'] = branchId;
     if (month != null && month.isNotEmpty) qp['month'] = month;
     final uri = Uri.parse('$baseUrl/api/expenses').replace(queryParameters: qp);
-    final response = await http.get(uri, headers: _authHeaders(token));
+    final response = await _get(uri, headers: _authHeaders(token));
     final body = _decode(response.body);
     if (response.statusCode >= 400) {
       throw Exception(body['message'] ?? 'Expenses load failed');
@@ -1933,7 +2025,7 @@ class MobileApi {
     String? receiptNumber,
     String? notes,
   }) async {
-    final response = await http.post(
+    final response = await _post(
       Uri.parse('$baseUrl/api/expenses'),
       headers: _authHeaders(token),
       body: jsonEncode({
@@ -1969,7 +2061,7 @@ class MobileApi {
     final uri = Uri.parse(
       '$baseUrl/api/reminders',
     ).replace(queryParameters: qp);
-    final response = await http.get(uri, headers: _authHeaders(token));
+    final response = await _get(uri, headers: _authHeaders(token));
     if (response.statusCode >= 400) {
       final body = _decode(response.body);
       throw Exception(body['message'] ?? 'Reminders load failed');
@@ -1988,7 +2080,7 @@ class MobileApi {
     String type = 'general',
     String? dueDate,
   }) async {
-    final response = await http.post(
+    final response = await _post(
       Uri.parse('$baseUrl/api/reminders'),
       headers: _authHeaders(token),
       body: jsonEncode({
@@ -2011,7 +2103,7 @@ class MobileApi {
     required String token,
     required int reminderId,
   }) async {
-    final response = await http.patch(
+    final response = await _patch(
       Uri.parse('$baseUrl/api/reminders/$reminderId/toggle'),
       headers: _authHeaders(token),
     );
@@ -2027,7 +2119,7 @@ class MobileApi {
     required String token,
     required int reminderId,
   }) async {
-    final response = await http.delete(
+    final response = await _delete(
       Uri.parse('$baseUrl/api/reminders/$reminderId'),
       headers: _authHeaders(token),
     );
@@ -2053,7 +2145,7 @@ class MobileApi {
     final uri = Uri.parse(
       '$baseUrl/api/attendance',
     ).replace(queryParameters: qp.isEmpty ? null : qp);
-    final response = await http.get(uri, headers: _authHeaders(token));
+    final response = await _get(uri, headers: _authHeaders(token));
     if (response.statusCode >= 400) {
       final body = _decode(response.body);
       throw Exception(body['message'] ?? 'Attendance load failed');
@@ -2075,7 +2167,7 @@ class MobileApi {
     double? latitude,
     double? longitude,
   }) async {
-    final response = await http.post(
+    final response = await _post(
       Uri.parse('$baseUrl/api/attendance'),
       headers: _authHeaders(token),
       body: jsonEncode({
@@ -2107,7 +2199,7 @@ class MobileApi {
     double? latitude,
     double? longitude,
   }) async {
-    final response = await http.put(
+    final response = await _put(
       Uri.parse('$baseUrl/api/attendance/$id'),
       headers: _authHeaders(token),
       body: jsonEncode({
@@ -2147,7 +2239,7 @@ class MobileApi {
         if (branchId != null && branchId.isNotEmpty) 'branchId': branchId,
       },
     );
-    final response = await http.get(uri, headers: _authHeaders(token));
+    final response = await _get(uri, headers: _authHeaders(token));
     final body = _decode(response.body);
     if (response.statusCode >= 400) {
       throw Exception(body['message'] ?? 'Inventory products load failed');
@@ -2172,7 +2264,7 @@ class MobileApi {
     String? sku,
     String? brand,
   }) async {
-    final response = await http.post(
+    final response = await _post(
       Uri.parse('$baseUrl/api/salon-inventory/products'),
       headers: _authHeaders(token),
       body: jsonEncode({
@@ -2208,7 +2300,7 @@ class MobileApi {
     String? brand,
     String status = 'active',
   }) async {
-    final response = await http.put(
+    final response = await _put(
       Uri.parse('$baseUrl/api/salon-inventory/products/$productId'),
       headers: _authHeaders(token),
       body: jsonEncode({
@@ -2234,7 +2326,7 @@ class MobileApi {
     required String token,
     required String productId,
   }) async {
-    final response = await http.delete(
+    final response = await _delete(
       Uri.parse('$baseUrl/api/salon-inventory/products/$productId'),
       headers: _authHeaders(token),
     );
@@ -2254,7 +2346,7 @@ class MobileApi {
             if (branchId != null && branchId.isNotEmpty) 'branchId': branchId,
           },
         );
-    final response = await http.get(uri, headers: _authHeaders(token));
+    final response = await _get(uri, headers: _authHeaders(token));
     if (response.statusCode >= 400) {
       final body = _decode(response.body);
       throw Exception(body['message'] ?? 'Goods receipts load failed');
@@ -2271,7 +2363,7 @@ class MobileApi {
     required List<Map<String, dynamic>> items,
     String? notes,
   }) async {
-    final response = await http.post(
+    final response = await _post(
       Uri.parse('$baseUrl/api/salon-inventory/goods-receipts'),
       headers: _authHeaders(token),
       body: jsonEncode({
@@ -2298,7 +2390,7 @@ class MobileApi {
         if (branchId != null && branchId.isNotEmpty) 'branchId': branchId,
       },
     );
-    final response = await http.get(uri, headers: _authHeaders(token));
+    final response = await _get(uri, headers: _authHeaders(token));
     if (response.statusCode >= 400) {
       final body = _decode(response.body);
       throw Exception(body['message'] ?? 'Adjustments load failed');
@@ -2316,7 +2408,7 @@ class MobileApi {
     required double quantity,
     required String reason,
   }) async {
-    final response = await http.post(
+    final response = await _post(
       Uri.parse('$baseUrl/api/salon-inventory/adjustments'),
       headers: _authHeaders(token),
       body: jsonEncode({
@@ -2347,7 +2439,7 @@ class MobileApi {
         if (date != null && date.isNotEmpty) 'date': date,
       },
     );
-    final response = await http.get(uri, headers: _authHeaders(token));
+    final response = await _get(uri, headers: _authHeaders(token));
     if (response.statusCode >= 400) {
       final body = _decode(response.body);
       throw Exception(body['message'] ?? 'Consumption records load failed');
@@ -2369,7 +2461,7 @@ class MobileApi {
     String? serviceId,
     String? reason,
   }) async {
-    final response = await http.post(
+    final response = await _post(
       Uri.parse('$baseUrl/api/salon-inventory/consumptions'),
       headers: _authHeaders(token),
       body: jsonEncode({
@@ -2398,7 +2490,7 @@ class MobileApi {
     required String token,
     required String consumptionId,
   }) async {
-    final response = await http.post(
+    final response = await _post(
       Uri.parse(
         '$baseUrl/api/salon-inventory/consumptions/$consumptionId/cancel',
       ),
@@ -2419,7 +2511,7 @@ class MobileApi {
     final uri = Uri.parse(
       '$baseUrl/api/salon-inventory/day-end/preview',
     ).replace(queryParameters: {'branchId': branchId, 'date': date});
-    final response = await http.get(uri, headers: _authHeaders(token));
+    final response = await _get(uri, headers: _authHeaders(token));
     final body = _decode(response.body);
     if (response.statusCode >= 400) {
       throw Exception(body['message'] ?? 'Day End preview failed');
@@ -2434,7 +2526,7 @@ class MobileApi {
     required List<Map<String, dynamic>> items,
     String? notes,
   }) async {
-    final response = await http.post(
+    final response = await _post(
       Uri.parse('$baseUrl/api/salon-inventory/day-end/confirm'),
       headers: _authHeaders(token),
       body: jsonEncode({
@@ -2468,7 +2560,7 @@ class MobileApi {
         if (to != null && to.isNotEmpty) 'to': to,
       },
     );
-    final response = await http.get(uri, headers: _authHeaders(token));
+    final response = await _get(uri, headers: _authHeaders(token));
     if (response.statusCode >= 400) {
       final body = _decode(response.body);
       throw Exception(body['message'] ?? 'Stock history load failed');

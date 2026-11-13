@@ -43,4 +43,19 @@ function assertBalanced(lines = []) {
   return { debit, credit };
 }
 
-module.exports = { money, assertBalanced };
+/** Mirror journal lines (swap debit/credit) for a void/reversing entry. */
+function buildReverseLines(lines = []) {
+  return lines.map((l) => ({
+    account_id: l.account_id,
+    debit: money(l.credit),
+    credit: money(l.debit),
+    memo: l.memo ? `Void: ${l.memo}` : 'Void',
+  }));
+}
+
+/** Journal statuses that count toward ledger balances (voided originals net out with their reversals). */
+const LEDGER_JOURNAL_STATUSES = ['posted', 'voided'];
+
+module.exports = {
+  money, assertBalanced, buildReverseLines, LEDGER_JOURNAL_STATUSES,
+};

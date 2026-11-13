@@ -4,11 +4,29 @@ const { WalkIn, Service, Staff, Branch, WalkInQueueService, Customer } = require
 const { emitQueueUpdate } = require('../socket');
 const { notifyBranch, notifyStaffUser } = require('../services/fcmService');
 const { notifyWalkInCheckIn, notifyWalkInServing, notifyWalkInCompleted } = require('../services/notificationService');
-const { tenantWhere, resolveTenantId } = require('../utils/tenantScope');
+const { tenantWhere, resolveTenantId, byIdWhere } = require('../utils/tenantScope');
 const { slToday } = require('../utils/dateUtils');
 const { parsePackageIdFromNotes, resolvePackageBundlePrice, notesUsesPackage } = require('../utils/packageNotes');
 
 const { parseQueryBranchId } = require('../utils/branchScope');
+
+function phoneMatchWhere(phoneQ) {
+  const digits = String(phoneQ || '').replace(/\D/g, '');
+  if (!digits) return { phone: phoneQ };
+  const variants = new Set([phoneQ, digits]);
+  if (digits.length === 10 && digits.startsWith('0')) {
+    variants.add(`94${digits.slice(1)}`);
+    variants.add(`+94${digits.slice(1)}`);
+  }
+  if (digits.length === 11 && digits.startsWith('94')) {
+    variants.add(`0${digits.slice(2)}`);
+    variants.add(`+${digits}`);
+  }
+  if (digits.length === 12 && digits.startsWith('94')) {
+    variants.add(`0${digits.slice(2)}`);
+  }
+  return { phone: { [Op.in]: [...variants] } };
+}
 
 function resolveBranchIdFromRequest(req, rawBranchId) {
   const requested = parseQueryBranchId(rawBranchId);
@@ -117,6 +135,16 @@ exports.checkin = async (req, res) => {
 
     const dateStr = today();
 
+    // Branch (and services/customer below) must belong to the caller's tenant
+    const scope = tenantWhere(req);
+    if (scope.tenant_id) {
+      const ownBranch = await Branch.findOne({
+        where: { id: effectiveBranchId, ...scope },
+        attributes: ['id'],
+      });
+      if (!ownBranch) return res.status(403).json({ message: 'Access denied for this branch.' });
+    }
+
     const result = await sequelize.transaction(async (t) => {
       const token = await generateToken(effectiveBranchId, dateStr, t);
 
@@ -128,16 +156,19 @@ exports.checkin = async (req, res) => {
       }
 
       const primaryServiceId = orderedServiceIds[0];
-      const service = await Service.findByPk(primaryServiceId, { transaction: t });
+      const service = await Service.findOne({ where: { id: primaryServiceId, ...scope }, transaction: t });
       if (!service) throw Object.assign(new Error('Service not found.'), { status: 404 });
 
       const svcRows = orderedServiceIds.length > 1
         ? await Service.findAll({
-          where: { id: orderedServiceIds },
+          where: { id: orderedServiceIds, ...scope },
           attributes: ['id', 'price', 'duration_minutes'],
           transaction: t,
         })
         : [service];
+      if (svcRows.length !== orderedServiceIds.length) {
+        throw Object.assign(new Error('Service not found.'), { status: 404 });
+      }
       const durationSum = svcRows.reduce((sum, s) => sum + Number(s.duration_minutes || 30), 0);
       const totalAmount = svcRows.reduce((sum, s) => sum + Number(s.price || 0), 0);
       const usesPackage = !!(customerPackageId || /^\s*package\s*[:\-]?\s*#\d+/im.test(String(note || '')));
@@ -155,12 +186,20 @@ exports.checkin = async (req, res) => {
 
       const linkedCustomerId = customerId || req.body.customer_id || null;
       let resolvedCustomerId = linkedCustomerId;
+      if (resolvedCustomerId) {
+        const ownCustomer = await Customer.findOne({
+          where: { id: resolvedCustomerId, ...scope },
+          attributes: ['id'],
+          transaction: t,
+        });
+        if (!ownCustomer) throw Object.assign(new Error('Customer not found.'), { status: 404 });
+      }
       if (!resolvedCustomerId && phone) {
         const phoneQ = String(phone).trim();
         const match = await Customer.findOne({
           where: {
             ...tenantWhere(req),
-            phone: { [Op.like]: `%${phoneQ}%` },
+            ...phoneMatchWhere(phoneQ),
           },
           transaction: t,
         });
@@ -242,7 +281,7 @@ exports.update = async (req, res) => {
     } = req.body;
     const resolvedCustomerPackageId = customerPackageId || customerPackageIdSnake;
 
-    const entry = await WalkIn.findByPk(id);
+    const entry = await WalkIn.findOne({ where: byIdWhere(req, id) });
     if (!entry) return res.status(404).json({ message: 'Walk-in entry not found.' });
     if (req.userBranchId && Number(entry.branch_id) !== Number(req.userBranchId)) {
       return res.status(403).json({ message: 'Access denied for this branch.' });
@@ -258,10 +297,18 @@ exports.update = async (req, res) => {
       const usesPackage = !!(pkgId || notesUsesPackage(effectiveNote));
 
       let resolvedCustomerId = customerId || req.body.customer_id || entry.customer_id;
+      if (resolvedCustomerId && resolvedCustomerId !== entry.customer_id) {
+        const ownCustomer = await Customer.findOne({
+          where: { id: resolvedCustomerId, ...tenantWhere(req) },
+          attributes: ['id'],
+          transaction: t,
+        });
+        if (!ownCustomer) throw Object.assign(new Error('Customer not found.'), { status: 404 });
+      }
       if (!resolvedCustomerId && (phone || entry.phone)) {
         const phoneQ = String(phone ?? entry.phone).trim();
         const match = await Customer.findOne({
-          where: { ...tenantWhere(req), phone: { [Op.like]: `%${phoneQ}%` } },
+          where: { ...tenantWhere(req), ...phoneMatchWhere(phoneQ) },
           transaction: t,
         });
         if (match) resolvedCustomerId = match.id;
@@ -278,11 +325,11 @@ exports.update = async (req, res) => {
 
       if (orderedServiceIds?.length) {
         const svcRows = await Service.findAll({
-          where: { id: orderedServiceIds },
+          where: { id: orderedServiceIds, ...tenantWhere(req) },
           attributes: ['id', 'price', 'duration_minutes'],
           transaction: t,
         });
-        if (!svcRows.length) {
+        if (svcRows.length !== orderedServiceIds.length) {
           throw Object.assign(new Error('Service not found.'), { status: 404 });
         }
         entry.service_id = orderedServiceIds[0];
@@ -349,7 +396,7 @@ exports.updateStatus = async (req, res) => {
       return res.status(400).json({ message: `status must be one of: ${valid.join(', ')}` });
     }
 
-    const entry = await WalkIn.findByPk(id);
+    const entry = await WalkIn.findOne({ where: byIdWhere(req, id) });
     if (!entry) return res.status(404).json({ message: 'Walk-in entry not found.' });
     if (req.userBranchId && Number(entry.branch_id) !== Number(req.userBranchId)) {
       return res.status(403).json({ message: 'Access denied for this branch.' });
@@ -388,11 +435,18 @@ exports.assign = async (req, res) => {
 
     if (!staffId) return res.status(400).json({ message: 'staffId is required.' });
 
-    const entry = await WalkIn.findByPk(id, { include: defaultInclude });
+    const entry = await WalkIn.findOne({ where: byIdWhere(req, id), include: defaultInclude });
     if (!entry) return res.status(404).json({ message: 'Walk-in entry not found.' });
     if (req.userBranchId && Number(entry.branch_id) !== Number(req.userBranchId)) {
       return res.status(403).json({ message: 'Access denied for this branch.' });
     }
+
+    // Staff must belong to the same tenant (and branch scope) as the walk-in
+    const staffRow = await Staff.findOne({
+      where: { id: staffId, ...(entry.tenant_id ? { tenant_id: entry.tenant_id } : tenantWhere(req)) },
+      attributes: ['id'],
+    });
+    if (!staffRow) return res.status(404).json({ message: 'Staff not found.' });
 
     // Server-side guard: staff cannot be assigned if they're already serving a walk-in
     // and that walk-in's duration end time hasn't passed yet.
@@ -472,7 +526,7 @@ exports.remove = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const entry = await WalkIn.findByPk(id);
+    const entry = await WalkIn.findOne({ where: byIdWhere(req, id) });
     if (!entry) return res.status(404).json({ message: 'Walk-in entry not found.' });
     if (req.userBranchId && Number(entry.branch_id) !== Number(req.userBranchId)) {
       return res.status(403).json({ message: 'Access denied for this branch.' });

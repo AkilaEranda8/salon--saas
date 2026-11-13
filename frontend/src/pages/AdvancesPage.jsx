@@ -10,10 +10,11 @@ import {
   ActionBtn, StatCard,
   FilterBar, DataTable, StaffAvatar,
 } from '../components/ui/PageKit';
+import { todayYmdSL } from '../utils/dateSL';
 
 const Rs    = n => `Rs. ${Number(n || 0).toLocaleString()}`;
-const today = () => new Date().toISOString().slice(0, 10);
-const curMo = () => new Date().toISOString().slice(0, 7);
+const today = () => todayYmdSL();
+const curMo = () => todayYmdSL().slice(0, 7);
 
 const EMPTY_FORM = {
   staff_id: '', branch_id: '', amount: '', date: today(),

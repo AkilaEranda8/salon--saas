@@ -46,4 +46,23 @@ class StaffUser {
   final String? tenantSlug;
   final String? tenantName;
   final String? authToken;
+
+  /// Same user with a refreshed access token (used after a 401 refresh).
+  StaffUser copyWithAuthToken(String token) => StaffUser(
+        id: id,
+        username: username,
+        password: password,
+        displayName: displayName,
+        isActive: isActive,
+        permissions: permissions,
+        mobileFeatures: mobileFeatures,
+        tenantFeatures: tenantFeatures,
+        role: role,
+        jobTitle: jobTitle,
+        branchId: branchId,
+        linkedStaffId: linkedStaffId,
+        tenantSlug: tenantSlug,
+        tenantName: tenantName,
+        authToken: token,
+      );
 }

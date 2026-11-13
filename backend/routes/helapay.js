@@ -1,6 +1,7 @@
 const { Router } = require('express');
 const { verifyToken } = require('../middleware/auth');
 const { tenantScope } = require('../middleware/tenantScope');
+const { requireTenantAuthority } = require('../middleware/featureGate');
 const { generateQR, checkPaymentStatus, getTransactionHistory } = require('../services/helapayService');
 const requirePlan = require('../middleware/requirePlan');
 const logger      = require('../utils/logger');
@@ -10,7 +11,7 @@ const router = Router();
 // ── POST /api/helapay/qr ─────────────────────────────────────────────────────
 // Generate a LankaQR code for a payment
 // Body: { reference, amount }
-router.post('/qr', verifyToken, requirePlan('pro', 'enterprise'), async (req, res) => {
+router.post('/qr', verifyToken, requireTenantAuthority('helapay'), requirePlan('pro', 'enterprise'), async (req, res) => {
   try {
     const tenant = req.tenant;
     if (!tenant) return res.status(400).json({ message: 'Tenant context required.' });
@@ -31,7 +32,7 @@ router.post('/qr', verifyToken, requirePlan('pro', 'enterprise'), async (req, re
 // ── POST /api/helapay/status ──────────────────────────────────────────────────
 // Check payment status
 // Body: { reference?, qr_reference? }
-router.post('/status', verifyToken, requirePlan('pro', 'enterprise'), async (req, res) => {
+router.post('/status', verifyToken, requireTenantAuthority('helapay'), requirePlan('pro', 'enterprise'), async (req, res) => {
   try {
     const tenant = req.tenant;
     if (!tenant) return res.status(400).json({ message: 'Tenant context required.' });
@@ -52,7 +53,7 @@ router.post('/status', verifyToken, requirePlan('pro', 'enterprise'), async (req
 // ── POST /api/helapay/history ─────────────────────────────────────────────────
 // Retrieve transaction history
 // Body: { start, end } (YYYY-MM-DD)
-router.post('/history', verifyToken, requirePlan('pro', 'enterprise'), async (req, res) => {
+router.post('/history', verifyToken, requireTenantAuthority('helapay'), requirePlan('pro', 'enterprise'), async (req, res) => {
   try {
     const tenant = req.tenant;
     if (!tenant) return res.status(400).json({ message: 'Tenant context required.' });

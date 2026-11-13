@@ -71,13 +71,37 @@ const list = async (req, res) => {
   }
 };
 
+const ALLOWED_CREATE_ROLES = {
+  platform_admin: ['platform_admin', 'superadmin', 'admin', 'manager', 'staff'],
+  superadmin: ['superadmin', 'admin', 'manager', 'staff'],
+  admin: ['admin', 'manager', 'staff'],
+};
+
+function actorMayManageTarget(actorRole, targetRole) {
+  const actor = String(actorRole || '').trim().toLowerCase();
+  const target = String(targetRole || '').trim().toLowerCase();
+  if (actor === 'platform_admin') return true;
+  if (actor === 'superadmin') return !['platform_admin'].includes(target);
+  if (actor === 'admin') return ['admin', 'manager', 'staff'].includes(target);
+  return false;
+}
+
 const create = async (req, res) => {
   try {
     const { username, password, name, role, branch_id, is_active, email } = req.body;
     const tenantId = resolveTenantId(req);
+    const actorRole = String(req.user?.role || '').trim().toLowerCase();
+    const requestedRole = String(role || 'staff').trim().toLowerCase();
+    const allowedRoles = ALLOWED_CREATE_ROLES[actorRole] || [];
 
     if (!username || !password || !name) {
       return res.status(400).json({ message: 'Username, password and name are required.' });
+    }
+    if (!allowedRoles.includes(requestedRole)) {
+      return res.status(403).json({ message: 'You are not allowed to create a user with this role.' });
+    }
+    if (requestedRole === 'platform_admin' && actorRole !== 'platform_admin') {
+      return res.status(403).json({ message: 'Only platform admins can create platform admins.' });
     }
 
     const existing = await User.findOne({
@@ -95,7 +119,7 @@ const create = async (req, res) => {
     const user = await User.create({
       username, password: hash, name,
       email:                normalizedEmail,
-      role:                 role || 'staff',
+      role:                 requestedRole,
       branch_id:            branch_id || null,
       is_active:            is_active !== false,
       tenant_id:            tenantId,
@@ -151,23 +175,33 @@ const update = async (req, res) => {
     const user = await User.findOne({ where: byIdWhere(req, req.params.id) });
     if (!user) return res.status(404).json({ message: 'User not found.' });
 
+    const actorRole = String(req.user?.role || '').trim().toLowerCase();
+    const currentRole = String(user.role || '').trim().toLowerCase();
+    if (!actorMayManageTarget(actorRole, currentRole)) {
+      return res.status(403).json({ message: 'You are not allowed to modify this user.' });
+    }
+
     const { name, username, role, branch_id, is_active, password, email } = req.body;
     const updates = {};
     if (name !== undefined)      updates.name      = name;
     if (username !== undefined)  updates.username   = username;
     // Role changes: ignore when unchanged (so admin toggles/edits don't 403).
-    // Superadmin may set any role; admin may set staff/manager/admin on non-superadmins.
+    // Superadmin may set tenant roles; admin may set staff/manager/admin on non-superadmins.
     if (role !== undefined) {
       const nextRole = String(role).trim().toLowerCase();
-      const currentRole = String(user.role || '').trim().toLowerCase();
-      const actorRole = String(req.user?.role || '').trim().toLowerCase();
       if (nextRole && nextRole !== currentRole) {
-        if (actorRole === 'superadmin') {
+        if (actorRole === 'platform_admin') {
+          updates.role = nextRole;
+        } else if (
+          actorRole === 'superadmin'
+          && ['superadmin', 'admin', 'manager', 'staff'].includes(nextRole)
+        ) {
           updates.role = nextRole;
         } else if (
           actorRole === 'admin'
           && ['staff', 'manager', 'admin'].includes(nextRole)
           && currentRole !== 'superadmin'
+          && currentRole !== 'platform_admin'
         ) {
           updates.role = nextRole;
         } else {
@@ -176,9 +210,19 @@ const update = async (req, res) => {
       }
     }
     if (branch_id !== undefined) updates.branch_id  = branch_id || null;
-    if (is_active !== undefined) updates.is_active  = is_active;
+    if (is_active !== undefined) {
+      if (currentRole === 'superadmin' && actorRole === 'admin') {
+        return res.status(403).json({ message: 'Admins cannot activate/deactivate superadmins.' });
+      }
+      updates.is_active = is_active;
+    }
     if (email !== undefined)     updates.email      = email && String(email).trim() ? String(email).trim() : null;
-    if (password)                updates.password   = await bcrypt.hash(password, 10);
+    if (password) {
+      if (currentRole === 'superadmin' && actorRole === 'admin') {
+        return res.status(403).json({ message: 'Admins cannot reset a superadmin password.' });
+      }
+      updates.password = await bcrypt.hash(password, 10);
+    }
 
     // Check username uniqueness before updating
     if (username !== undefined && username !== user.username) {
@@ -233,6 +277,15 @@ const changePassword = async (req, res) => {
   try {
     const user = await User.findOne({ where: byIdWhere(req, req.params.id) });
     if (!user) return res.status(404).json({ message: 'User not found.' });
+
+    const actorRole = String(req.user?.role || '').trim().toLowerCase();
+    const targetRole = String(user.role || '').trim().toLowerCase();
+    if (!actorMayManageTarget(actorRole, targetRole)) {
+      return res.status(403).json({ message: 'You are not allowed to change this user password.' });
+    }
+    if (targetRole === 'superadmin' && actorRole === 'admin') {
+      return res.status(403).json({ message: 'Admins cannot reset a superadmin password.' });
+    }
 
     const { password } = req.body;
     if (!password || password.length < 6) {

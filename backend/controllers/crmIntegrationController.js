@@ -613,7 +613,7 @@ const createAppointment = async (req, res) => {
         scopeBranchConflicts: false,
       });
       const slots = Array.isArray(slotResult?.slots) ? slotResult.slots : [];
-      if (slots.length && !slots.includes(timeKey)) {
+      if (!slots.includes(timeKey)) {
         const err = new Error('Selected time is not available');
         err.code = 'SLOT_CONFLICT';
         throw err;
@@ -743,6 +743,21 @@ const rescheduleAppointment = async (req, res) => {
       return res.status(400).json({ message: `Cannot reschedule a ${appt.status} appointment` });
     }
 
+    // Idempotency (ai_engine sends one key per appointment+target slot). A marker in notes records
+    // that this exact move was applied; a retry with the appointment already at that slot is a no-op.
+    const idemKey = req.body.idempotency_key
+      ? String(req.body.idempotency_key).replace(/[\[\]\s]/g, '').slice(0, 120)
+      : '';
+    const idemMarker = idemKey ? `[resched-idem:${idemKey}]` : '';
+    const alreadyMarked = !!idemMarker && String(appt.notes || '').includes(idemMarker);
+    if (
+      alreadyMarked
+      && (!req.body.date || String(req.body.date).slice(0, 10) === String(appt.date).slice(0, 10))
+      && (!req.body.time || String(req.body.time).substring(0, 5) === String(appt.time).substring(0, 5))
+    ) {
+      return res.json({ appointment: appt, idempotent_replay: true });
+    }
+
     const updates = {};
     if (req.body.date) updates.date = String(req.body.date).slice(0, 10);
     if (req.body.time) updates.time = String(req.body.time).substring(0, 5);
@@ -773,10 +788,14 @@ const rescheduleAppointment = async (req, res) => {
     const sameSlot = String(appt.date).slice(0, 10) === String(nextDate).slice(0, 10)
       && String(appt.time).substring(0, 5) === nextTime
       && Number(appt.staff_id) === Number(nextStaff);
-    if (!sameSlot && slots.length && !slots.includes(nextTime)) {
+    if (!sameSlot && !slots.includes(nextTime)) {
       return res.status(409).json({ message: 'Selected time is not available' });
     }
 
+    if (idemMarker && !alreadyMarked) {
+      const baseNotes = updates.notes !== undefined ? updates.notes : appt.notes;
+      updates.notes = [baseNotes || '', idemMarker].filter(Boolean).join(' ');
+    }
     await appt.update(updates);
     return res.json({ appointment: appt });
   } catch (err) {

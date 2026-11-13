@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:local_auth/local_auth.dart';
+import 'package:local_auth/error_codes.dart' as auth_error;
 
 import '../state/app_state.dart';
 import 'dashboard_page.dart';
@@ -85,9 +87,36 @@ class _SessionGateState extends State<SessionGate> {
           () => _biometricError = 'Authentication failed. Try again.',
         );
       }
+    } on PlatformException catch (e) {
+      if (!mounted) return;
+      // Only unlock when biometrics/device lock genuinely can't be used
+      // (nothing to authenticate with). Everything else fails closed.
+      const unavailableCodes = {
+        auth_error.notAvailable,
+        auth_error.notEnrolled,
+        auth_error.passcodeNotSet,
+      };
+      if (unavailableCodes.contains(e.code)) {
+        await AppStateScope.of(context).setBiometricUnlockEnabled(false);
+        if (!mounted) return;
+        setState(() {
+          _biometricLocked = false;
+          _biometricError = null;
+        });
+        return;
+      }
+      final locked = e.code == auth_error.lockedOut ||
+          e.code == auth_error.permanentlyLockedOut;
+      setState(
+        () => _biometricError = locked
+            ? 'Too many attempts. Unlock your device, then try again.'
+            : 'Authentication failed. Try again.',
+      );
     } catch (_) {
-      // Any biometric error → still enter app (session stays valid).
-      if (mounted) setState(() => _biometricLocked = false);
+      // Unknown error → stay locked.
+      if (mounted) {
+        setState(() => _biometricError = 'Authentication failed. Try again.');
+      }
     }
   }
 

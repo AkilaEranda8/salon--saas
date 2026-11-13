@@ -3,6 +3,9 @@ const router  = express.Router();
 const multer = require('multer');
 const { verifyToken } = require('../middleware/auth');
 const { platformAdmin } = require('../middleware/platformAdmin');
+const { requireTenantAuthority } = require('../middleware/featureGate');
+
+const tenantAuth = requireTenantAuthority('billing');
 const ctrl            = require('../controllers/billingController');
 const bankSlipCtrl    = require('../controllers/bankSlipController');
 
@@ -26,16 +29,16 @@ router.post('/webhook', ctrl.stripeWebhook);
 
 // The routes below need parsed JSON (express.json() is already applied in server.js
 // for non-webhook requests because the webhook uses a separate raw-body handler)
-router.post('/checkout', verifyToken, ctrl.createCheckout);
-router.get('/portal',    verifyToken, ctrl.billingPortal);
-router.get('/status',    verifyToken, ctrl.billingStatus);
-router.get('/invoices',  verifyToken, ctrl.billingInvoices);
-router.get('/invoices/:id/pdf', verifyToken, ctrl.billingInvoicePdf);
-router.post('/invoices/:id/email', verifyToken, ctrl.billingInvoiceEmail);
+router.post('/checkout', verifyToken, tenantAuth, ctrl.createCheckout);
+router.get('/portal',    verifyToken, tenantAuth, ctrl.billingPortal);
+router.get('/status',    verifyToken, tenantAuth, ctrl.billingStatus);
+router.get('/invoices',  verifyToken, tenantAuth, ctrl.billingInvoices);
+router.get('/invoices/:id/pdf', verifyToken, tenantAuth, ctrl.billingInvoicePdf);
+router.post('/invoices/:id/email', verifyToken, tenantAuth, ctrl.billingInvoiceEmail);
 
 // Bank Slip routes
-router.post('/bank-slip/upload', verifyToken, upload.single('file'), bankSlipCtrl.uploadBankSlip);
-router.get('/bank-slip/status', verifyToken, bankSlipCtrl.getBankSlipStatus);
+router.post('/bank-slip/upload', verifyToken, tenantAuth, upload.single('file'), bankSlipCtrl.uploadBankSlip);
+router.get('/bank-slip/status', verifyToken, tenantAuth, bankSlipCtrl.getBankSlipStatus);
 router.get('/bank-slip/list', verifyToken, platformAdmin, bankSlipCtrl.listBankSlips);
 router.patch('/bank-slip/:id/approve', verifyToken, platformAdmin, bankSlipCtrl.approveBankSlip);
 router.patch('/bank-slip/:id/reject', verifyToken, platformAdmin, bankSlipCtrl.rejectBankSlip);

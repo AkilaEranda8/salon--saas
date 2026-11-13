@@ -84,6 +84,7 @@ class _AppointmentsPageState extends State<AppointmentsPage> {
     String? selectedSlot;
     List<String> slots = [];
     var loadingSlots = false;
+    var submitting = false;
     String? err;
 
     Future<void> loadSlots(StateSetter setModal) async {
@@ -197,9 +198,15 @@ class _AppointmentsPageState extends State<AppointmentsPage> {
                   const SizedBox(height: 12),
                   AppButton(
                     label: 'Confirm rebook',
-                    onPressed: selectedSlot == null
+                    loading: submitting,
+                    onPressed: selectedSlot == null || submitting
                         ? null
                         : () async {
+                            if (submitting) return; // double-tap guard
+                            setModal(() {
+                              submitting = true;
+                              err = null;
+                            });
                             try {
                               await state.api.rebook(
                                 token: state.token!,
@@ -215,7 +222,11 @@ class _AppointmentsPageState extends State<AppointmentsPage> {
                                 _load();
                               }
                             } catch (e) {
-                              setModal(() => err = e.toString().replaceFirst('Exception: ', ''));
+                              if (!ctx.mounted) return;
+                              setModal(() {
+                                submitting = false;
+                                err = e.toString().replaceFirst('Exception: ', '');
+                              });
                             }
                           },
                   ),

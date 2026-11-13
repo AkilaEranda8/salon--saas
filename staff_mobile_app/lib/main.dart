@@ -28,8 +28,10 @@ Future<void> main() async {
 
 Future<void> _initNotifications() async {
   try {
-    await NotificationService.instance.init();
+    // Load saved history first; init() is idempotent (also called from
+    // _bindPushWhenReady) and may add the launch notification on top.
     await NotificationStore.instance.load();
+    await NotificationService.instance.init();
   } catch (_) {}
 }
 

@@ -10,14 +10,25 @@ const {
   CrmMessage,
   CrmConversation,
 } = require('../models');
-const { ensureConversation, appendMessage } = require('./crmConversationService');
+const { ensureConversation, appendMessage, setMarketingOptOut } = require('./crmConversationService');
+const { sendAndLog } = require('./crmOutboundSendService');
 const { runTurn } = require('./aiEngineClient');
 const { enqueue, QUEUE_NAMES } = require('./queue');
 const { getRedis, cacheKey } = require('../utils/redis');
+const { emitConversationChanged } = require('./crmRealtime');
 
 const TURN_PENDING = 'pending_ai';
 const TURN_PROCESSING = 'processing';
 const TURN_COMPLETED = 'completed';
+
+// \b doesn't work after Sinhala letters, so use a letter lookahead instead.
+const OPT_OUT_RE = /^(stop|unsubscribe|එපා|නවත්වන්න)(?![\p{L}\p{M}])/iu;
+
+/** Short "STOP"-style message (guard length so "stop by at 5" style chat isn't an opt-out). */
+function isOptOutMessage(text) {
+  const t = String(text || '').trim();
+  return t.length > 0 && t.length <= 40 && OPT_OUT_RE.test(t);
+}
 
 async function loadAiSettings(tenantId) {
   const row = await TenantAiSettings.findOne({ where: { tenant_id: tenantId } });
@@ -137,6 +148,17 @@ async function processInboundAiTurn(jobData) {
     branchId: jobData.branchId || null,
   });
 
+  // Marketing opt-out (STOP) — flag the lead so promo/birthday/rebooking skip them
+  const optOutRequested = isOptOutMessage(message);
+  if (optOutRequested && !lead.marketing_opt_out) {
+    try {
+      await setMarketingOptOut(tenantId, lead.phone || phone, true);
+      lead.marketing_opt_out = true;
+    } catch (e) {
+      console.warn('[inbound] opt-out save failed', e.message);
+    }
+  }
+
   if (['queued', 'human_active'].includes(conversation.status) && !resumeInbound) {
     try {
       await appendMessage({
@@ -154,6 +176,17 @@ async function processInboundAiTurn(jobData) {
         return { skipped: true, reason: 'duplicate_wa_message' };
       }
       throw e;
+    }
+    // AI stays off, but staff must not miss new customer messages
+    try {
+      const { notifyStaffInboundWhileHandoff } = require('./crmHandoffService');
+      await notifyStaffInboundWhileHandoff({
+        tenantId,
+        conversationId: conversation.id,
+        status: conversation.status,
+      });
+    } catch (e) {
+      console.warn('[inbound] handoff re-notify', e.message);
     }
     return {
       skipped: true,
@@ -201,6 +234,34 @@ async function processInboundAiTurn(jobData) {
     await lead.update({ stage: 'conversation' });
   }
 
+  if (optOutRequested) {
+    // Acknowledge and stop — don't let the AI reply with sales text to a STOP
+    try {
+      await sendAndLog({
+        tenantId,
+        phone: lead.phone || phone,
+        text: 'You’re unsubscribed from promotional messages. Reply *book* any time if you need us.',
+        senderType: 'bot',
+        conversationId: conversation.id,
+        meta: { source: 'marketing_opt_out', inbound_wa_message_id: waMessageId },
+      });
+    } catch (e) {
+      console.warn('[inbound] opt-out confirm', e.message);
+    }
+    await markTurnState(conversation, TURN_COMPLETED, waMessageId);
+    if (inboundMsg) {
+      await inboundMsg.update({
+        meta: { ...(inboundMsg.meta || {}), turn_state: TURN_COMPLETED, opt_out: true },
+      }).catch(() => {});
+    }
+    return {
+      skipped: true,
+      reason: 'marketing_opt_out',
+      conversationId: conversation.id,
+      leadId: lead.id,
+    };
+  }
+
   // Prepaid credit wallet — block AI when top-ups exist and balance is exhausted
   try {
     const { getAiCreditGate } = require('./crmCreditGate');
@@ -242,6 +303,7 @@ async function processInboundAiTurn(jobData) {
           replyJid: jobData.replyJid || jobData.reply_jid || inboundMsg?.meta?.reply_jid || null,
         }, { name: 'credit-pause' }).catch(() => {});
       }
+      emitConversationChanged(tenantId, conversation.id, { reason: 'ai_credits_exhausted' });
       return {
         skipped: false,
         credit_blocked: true,
@@ -380,6 +442,7 @@ async function processInboundAiTurn(jobData) {
       });
     }
 
+    emitConversationChanged(tenantId, conversation.id, { reason: 'ai_error' });
     return {
       skipped: false,
       failed: true,
@@ -597,6 +660,9 @@ async function processInboundAiTurn(jobData) {
     }
   }
 
+  // Status may have changed (handoff / ai_resume) after the last appendMessage emit
+  emitConversationChanged(tenantId, conversation.id, { reason: turn.handoff ? 'handoff' : 'ai_turn_done' });
+
   return {
     skipped: false,
     resumed: !!resumeInbound,
@@ -645,6 +711,7 @@ async function enqueueInboundTurn(data) {
 
 module.exports = {
   processInboundAiTurn,
+  isOptOutMessage,
   enqueueInboundTurn,
   loadAiSettings,
   TURN_PENDING,

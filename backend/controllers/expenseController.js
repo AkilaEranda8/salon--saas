@@ -258,13 +258,18 @@ const create = async (req, res) => {
       created_by:     req.user?.id   || null,
       tenant_id:      tenantId,
     });
+    let accountingWarning = null;
     try {
-      const { postExpenseToGl } = require('../services/accountingEngine');
-      await postExpenseToGl(expense, { tenant: req.tenant, userId: req.user?.id });
+      const { postExpenseToGl, resolveAccountingTenant } = require('../services/accountingEngine');
+      const acctTenant = await resolveAccountingTenant(req);
+      await postExpenseToGl(expense, { tenant: acctTenant, userId: req.user?.id });
     } catch (acctErr) {
-      console.warn('[accounting] expense post failed:', acctErr.message);
+      const { recordAccountingWarning } = require('../services/accountingEngine');
+      accountingWarning = recordAccountingWarning(res, `expense #${expense.id} post`, acctErr);
     }
-    return res.status(201).json(expense);
+    const json = expense.toJSON();
+    if (accountingWarning) json.accounting_warning = accountingWarning;
+    return res.status(201).json(json);
   } catch (err) {
     console.error(err);
     return res.status(500).json({ message: 'Server error.' });
@@ -285,8 +290,27 @@ const update = async (req, res) => {
     for (const field of allowed) {
       if (req.body[field] !== undefined) expense[field] = req.body[field];
     }
+    const glChanged = ['amount', 'date', 'payment_method'].some((f) => expense.changed(f));
     await expense.save();
-    return res.json(expense);
+
+    let accountingWarning = null;
+    if (glChanged) {
+      try {
+        const { repostExpenseToGl, resolveAccountingTenant } = require('../services/accountingEngine');
+        const acctTenant = await resolveAccountingTenant(req);
+        await repostExpenseToGl(expense, {
+          tenant: acctTenant,
+          userId: req.user?.id,
+          reason: `Expense #${expense.id} updated`,
+        });
+      } catch (acctErr) {
+        const { recordAccountingWarning } = require('../services/accountingEngine');
+        accountingWarning = recordAccountingWarning(res, `expense #${expense.id} repost`, acctErr);
+      }
+    }
+    const json = expense.toJSON();
+    if (accountingWarning) json.accounting_warning = accountingWarning;
+    return res.json(json);
   } catch (err) {
     return res.status(500).json({ message: 'Server error.' });
   }
@@ -301,20 +325,22 @@ const remove = async (req, res) => {
     if (req.userBranchId && expense.branch_id !== req.userBranchId) {
       return res.status(403).json({ message: 'Access denied.' });
     }
+    let accountingWarning = null;
     try {
-      const { voidJournalBySource } = require('../services/accountingEngine');
-      await voidJournalBySource({
-        tenantId: expense.tenant_id,
-        sourceType: 'expense',
-        sourceId: expense.id,
+      const { voidExpenseGl } = require('../services/accountingEngine');
+      await voidExpenseGl(expense, {
         userId: req.user?.id,
         reason: `Expense #${expense.id} deleted`,
       });
     } catch (acctErr) {
-      console.warn('[accounting] expense void failed:', acctErr.message);
+      const { recordAccountingWarning } = require('../services/accountingEngine');
+      accountingWarning = recordAccountingWarning(res, `expense #${expense.id} void`, acctErr);
     }
     await expense.destroy();
-    return res.json({ message: 'Expense deleted.' });
+    return res.json({
+      message: 'Expense deleted.',
+      ...(accountingWarning ? { accounting_warning: accountingWarning } : {}),
+    });
   } catch (err) {
     return res.status(500).json({ message: 'Server error.' });
   }

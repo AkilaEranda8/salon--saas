@@ -12,6 +12,9 @@ const PERMISSIONS = {
 
 // ─── verifyToken ──────────────────────────────────────────────────────────────
 const verifyToken = async (req, res, next) => {
+  // Already verified earlier in this request (softAuth in server.js)
+  if (req.authVerified && req.user) return next();
+
   const token =
     req.cookies?.token ||
     (req.headers.authorization?.startsWith('Bearer ')
@@ -24,6 +27,11 @@ const verifyToken = async (req, res, next) => {
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
+
+    // Reject incomplete login tokens (password ok, 2FA not yet verified)
+    if (decoded?.pre2fa) {
+      return res.status(401).json({ message: 'Two-factor authentication required.' });
+    }
 
     // ── Check revocation list ─────────────────────────────────────────────────
     try {
@@ -81,6 +89,9 @@ const optionalVerifyToken = (req, res, next) => {
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
+    if (decoded?.pre2fa) {
+      return res.json({ user: null });
+    }
     req.user = decoded;
     req.userTenantId = decoded.role === 'platform_admin' ? null : (decoded.tenantId ?? null);
     return next();

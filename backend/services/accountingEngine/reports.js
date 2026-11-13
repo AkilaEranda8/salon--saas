@@ -1,14 +1,16 @@
 'use strict';
 
 const { Op } = require('sequelize');
-const { money } = require('./balance');
+const { money, LEDGER_JOURNAL_STATUSES } = require('./balance');
 const { ensureTenantBooks } = require('./coa');
 
 async function postedLinesQuery(tenantId, { from, to, accountId, asOf } = {}) {
   const { AcctJournal, AcctJournalLine, AcctAccount } = require('../../models');
+  // Include voided originals together with their posted reversing journals so
+  // nets cancel to zero. Excluding voided while leaving reversals flipped the books.
   const journalWhere = {
     tenant_id: Number(tenantId),
-    status: 'posted',
+    status: { [Op.in]: LEDGER_JOURNAL_STATUSES },
   };
   if (from || to || asOf) {
     journalWhere.date = {};

@@ -6,15 +6,18 @@ const DEFAULT_ACCOUNTS = [
   { code: '1100', name: 'Accounts Receivable', type: 'asset' },
   { code: '1110', name: 'Staff Advances', type: 'asset' },
   { code: '1200', name: 'Petty Cash', type: 'asset' },
+  { code: '1300', name: 'Inventory', type: 'asset' },
   { code: '2000', name: 'Accounts Payable', type: 'liability' },
   { code: '2100', name: 'VAT Output', type: 'liability' },
   { code: '2200', name: 'VAT Input', type: 'asset' },
   { code: '2300', name: 'Unearned Packages', type: 'liability' },
   { code: '2310', name: 'Loyalty Liability', type: 'liability' },
+  { code: '2320', name: 'Customer Deposits', type: 'liability' },
   { code: '3000', name: 'Owner Equity', type: 'equity' },
   { code: '4000', name: 'Service Revenue', type: 'revenue' },
   { code: '5000', name: 'Operating Expense', type: 'expense' },
   { code: '5100', name: 'Payroll Expense', type: 'expense' },
+  { code: '5200', name: 'Cost of Goods Sold', type: 'expense' },
 ];
 
 const CODE_TO_SETTING = {
@@ -23,15 +26,18 @@ const CODE_TO_SETTING = {
   '1100': 'default_ar_account_id',
   '1110': 'default_advance_account_id',
   '1200': 'default_petty_account_id',
+  '1300': 'default_inventory_account_id',
   '2000': 'default_ap_account_id',
   '2100': 'output_vat_account_id',
   '2200': 'input_vat_account_id',
   '2300': 'default_package_liability_id',
   '2310': 'default_loyalty_liability_id',
+  '2320': 'default_deposit_liability_id',
   '3000': 'default_equity_account_id',
   '4000': 'default_revenue_account_id',
   '5000': 'default_expense_account_id',
   '5100': 'default_payroll_account_id',
+  '5200': 'default_cogs_account_id',
 };
 
 async function ensureTenantBooks(tenantId, { transaction } = {}) {

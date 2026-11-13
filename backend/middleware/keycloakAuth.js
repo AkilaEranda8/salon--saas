@@ -91,6 +91,9 @@ function mapClaims(decoded) {
 
 // ─── verifyToken ──────────────────────────────────────────────────────────────
 const verifyToken = (req, res, next) => {
+  // Already verified earlier in this request (softAuth in server.js)
+  if (req.authVerified && req.user) return next();
+
   const token = req.headers.authorization?.startsWith('Bearer ')
     ? req.headers.authorization.split(' ')[1]
     : null;

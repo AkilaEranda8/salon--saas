@@ -113,7 +113,8 @@ router.post('/', async (req, res) => {
 
     res.sendStatus(200);
 
-    // C10: delivery status scoped by tenant_id + wa_message_id
+    // C10: delivery status scoped by tenant_id + wa_message_id (monotonic)
+    const { canAdvanceDeliveryStatus, emitCrmEvent } = require('../services/crmOutboundSendService');
     for (const st of statuses) {
       if (!st.waMessageId) continue;
       try {
@@ -121,15 +122,29 @@ router.post('/', async (req, res) => {
           ? await getWabaByPhoneNumberId(st.phoneNumberId)
           : null);
         if (!account) continue;
-        await CrmMessage.update(
-          { delivery_status: st.status },
-          {
-            where: {
-              tenant_id: account.tenant_id,
-              wa_message_id: st.waMessageId,
-            },
-          }
-        );
+        const row = await CrmMessage.findOne({
+          where: {
+            tenant_id: account.tenant_id,
+            wa_message_id: st.waMessageId,
+          },
+        });
+        if (!row) continue;
+        const nextStatus = st.errors?.length ? 'failed' : st.status;
+        if (!canAdvanceDeliveryStatus(row.delivery_status, nextStatus)) continue;
+        const patch = { delivery_status: nextStatus };
+        if (st.errors?.length) {
+          patch.meta = {
+            ...(row.meta && typeof row.meta === 'object' ? row.meta : {}),
+            webhook_errors: st.errors,
+            failed_at: new Date().toISOString(),
+          };
+        }
+        await row.update(patch);
+        emitCrmEvent(account.tenant_id, 'crm:message', {
+          conversation_id: row.conversation_id,
+          message_id: row.id,
+          delivery_status: nextStatus,
+        });
       } catch (e) {
         console.warn('[wa-webhook] status update', e.message);
       }

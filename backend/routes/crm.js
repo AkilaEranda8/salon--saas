@@ -141,6 +141,17 @@ router.post('/queue-stats/check-dlq-alerts', ...admin, async (_req, res) => {
 
 router.get('/internal/ai-settings/:tenantId', requireServiceAuth, aiSettingsCtrl.getAiSettingsInternal);
 router.get('/internal/rules/:tenantId', requireServiceAuth, rulesCtrl.getRulesInternal);
+// Worker → API relay so BullMQ-process events reach staff sockets
+router.post('/internal/realtime-emit', requireServiceAuth, (req, res) => {
+  const { emitLocal, ALLOWED_EVENTS } = require('../services/crmRealtime');
+  const tenantId = parseInt(req.body?.tenantId || req.headers['x-tenant-id'], 10);
+  const event = String(req.body?.event || '');
+  if (!Number.isInteger(tenantId) || tenantId <= 0 || !ALLOWED_EVENTS.has(event)) {
+    return res.status(400).json({ message: 'valid tenantId and event required' });
+  }
+  const delivered = emitLocal(tenantId, event, req.body?.payload || {});
+  return res.json({ ok: true, delivered });
+});
 router.post('/internal/whatsapp-qr-send', requireServiceAuth, async (req, res) => {
   try {
     const tenantId = parseInt(req.body?.tenantId || req.body?.tenant_id || req.headers['x-tenant-id'], 10);

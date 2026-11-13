@@ -5,6 +5,7 @@ const path = require('path');
 const multer = require('multer');
 const { Tenant } = require('../models');
 const { verifyToken, requireRole } = require('../middleware/auth');
+const { requireTenantAuthority } = require('../middleware/featureGate');
 const { encrypt } = require('../utils/crypto');
 const logger      = require('../utils/logger');
 
@@ -138,20 +139,22 @@ const toPublicAssetUrl = (req, relativePath) => {
 };
 
 const resolveTenant = async (req) => {
+  // Prefer JWT-enforced tenant (set by requireTenantAuthority) over header slug
+  const tenantId = req.authorityTenantId ?? req.userTenantId ?? req.tenant?.id ?? null;
+  if (!tenantId) return null;
+  return Tenant.findByPk(tenantId, { attributes: BRANDING_ATTRIBUTES });
+};
+
+const resolvePublicTenant = async (req) => {
   if (req.tenant?.id) {
     return Tenant.findByPk(req.tenant.id, { attributes: BRANDING_ATTRIBUTES });
   }
-
-  if (req.userTenantId) {
-    return Tenant.findByPk(req.userTenantId, { attributes: BRANDING_ATTRIBUTES });
-  }
-
   return null;
 };
 
 router.get('/public', async (req, res) => {
   try {
-    const tenant = await resolveTenant(req);
+    const tenant = await resolvePublicTenant(req);
     if (!tenant) return res.json({ data: DEFAULT_BRANDING });
     return res.json({ data: toBrandingPayload(tenant) });
   } catch (err) {
@@ -162,7 +165,7 @@ router.get('/public', async (req, res) => {
 
 router.get('/plugin-download', async (req, res) => {
   try {
-    const tenant = await resolveTenant(req);
+    const tenant = await resolvePublicTenant(req);
     if (!tenant || tenant.docs_page_enabled !== true) {
       return res.status(404).json({ message: 'Plugin download is not available.' });
     }
@@ -191,7 +194,7 @@ router.get('/plugin-download', async (req, res) => {
   }
 });
 
-router.get('/', verifyToken, requireRole('superadmin', 'admin', 'manager', 'staff'), async (req, res) => {
+router.get('/', verifyToken, requireRole('superadmin', 'admin', 'manager', 'staff'), requireTenantAuthority('branding'), async (req, res) => {
   try {
     const tenant = await resolveTenant(req);
     if (!tenant) {
@@ -204,7 +207,7 @@ router.get('/', verifyToken, requireRole('superadmin', 'admin', 'manager', 'staf
   }
 });
 
-router.put('/', verifyToken, requireRole('superadmin', 'admin'), async (req, res) => {
+router.put('/', verifyToken, requireRole('superadmin', 'admin'), requireTenantAuthority('branding'), async (req, res) => {
   try {
     const tenant = await resolveTenant(req);
     if (!tenant) {
@@ -236,7 +239,7 @@ router.put('/', verifyToken, requireRole('superadmin', 'admin'), async (req, res
   }
 });
 
-router.post('/upload', verifyToken, requireRole('superadmin', 'admin'), (req, res) => {
+router.post('/upload', verifyToken, requireRole('superadmin', 'admin'), requireTenantAuthority('branding'), (req, res) => {
   upload.single('file')(req, res, async (err) => {
     if (err) {
       const message = err.message || 'Upload failed.';
@@ -286,9 +289,9 @@ router.post('/upload', verifyToken, requireRole('superadmin', 'admin'), (req, re
 });
 
 // ── GET /api/branding/domain ─────────────────────────────────────────────────
-router.get('/domain', verifyToken, requireRole('superadmin', 'admin'), async (req, res) => {
+router.get('/domain', verifyToken, requireRole('superadmin', 'admin'), requireTenantAuthority('branding'), async (req, res) => {
   try {
-    const tenantId = req.tenant?.id ?? req.userTenantId;
+    const tenantId = req.authorityTenantId;
     if (!tenantId) return res.status(400).json({ message: 'Tenant context required.' });
     const tenant = await Tenant.findByPk(tenantId, { attributes: ['id', 'slug', 'custom_domain', 'domain_verified'] });
     if (!tenant) return res.status(404).json({ message: 'Tenant not found.' });
@@ -305,9 +308,9 @@ router.get('/domain', verifyToken, requireRole('superadmin', 'admin'), async (re
 });
 
 // ── PATCH /api/branding/domain ───────────────────────────────────────────────
-router.patch('/domain', verifyToken, requireRole('superadmin', 'admin'), async (req, res) => {
+router.patch('/domain', verifyToken, requireRole('superadmin', 'admin'), requireTenantAuthority('branding'), async (req, res) => {
   try {
-    const tenantId = req.tenant?.id ?? req.userTenantId;
+    const tenantId = req.authorityTenantId;
     if (!tenantId) return res.status(400).json({ message: 'Tenant context required.' });
 
     const rawDomain = String(req.body?.custom_domain ?? '').trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '');
@@ -342,9 +345,9 @@ router.patch('/domain', verifyToken, requireRole('superadmin', 'admin'), async (
 });
 
 // ── POST /api/branding/domain/verify ────────────────────────────────────────
-router.post('/domain/verify', verifyToken, requireRole('superadmin', 'admin'), async (req, res) => {
+router.post('/domain/verify', verifyToken, requireRole('superadmin', 'admin'), requireTenantAuthority('branding'), async (req, res) => {
   try {
-    const tenantId = req.tenant?.id ?? req.userTenantId;
+    const tenantId = req.authorityTenantId;
     if (!tenantId) return res.status(400).json({ message: 'Tenant context required.' });
 
     const tenant = await Tenant.findByPk(tenantId);
@@ -410,9 +413,9 @@ router.post('/domain/verify', verifyToken, requireRole('superadmin', 'admin'), a
 });
 
 // ── GET /api/branding/payment-settings ───────────────────────────────────────
-router.get('/payment-settings', verifyToken, requireRole('superadmin', 'admin'), async (req, res) => {
+router.get('/payment-settings', verifyToken, requireRole('superadmin', 'admin'), requireTenantAuthority('branding'), async (req, res) => {
   try {
-    const tenantId = req.tenant?.id ?? req.userTenantId;
+    const tenantId = req.authorityTenantId;
     if (!tenantId) return res.status(400).json({ message: 'Tenant context required.' });
     const tenant = await Tenant.findByPk(tenantId, {
       attributes: ['id', 'helapay_merchant_id', 'helapay_app_id', 'helapay_business_id', 'helapay_notify_url'],
@@ -431,9 +434,9 @@ router.get('/payment-settings', verifyToken, requireRole('superadmin', 'admin'),
 });
 
 // ── PUT /api/branding/payment-settings ───────────────────────────────────────
-router.put('/payment-settings', verifyToken, requireRole('superadmin', 'admin'), async (req, res) => {
+router.put('/payment-settings', verifyToken, requireRole('superadmin', 'admin'), requireTenantAuthority('branding'), async (req, res) => {
   try {
-    const tenantId = req.tenant?.id ?? req.userTenantId;
+    const tenantId = req.authorityTenantId;
     if (!tenantId) return res.status(400).json({ message: 'Tenant context required.' });
     const tenant = await Tenant.findByPk(tenantId);
     if (!tenant) return res.status(404).json({ message: 'Tenant not found.' });

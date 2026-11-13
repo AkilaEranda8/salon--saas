@@ -23,6 +23,10 @@ const AcctTaxSetting = sequelize.define('AcctTaxSetting', {
   default_package_liability_id: { type: DataTypes.INTEGER, allowNull: true },
   default_loyalty_liability_id: { type: DataTypes.INTEGER, allowNull: true },
   default_equity_account_id: { type: DataTypes.INTEGER, allowNull: true },
+  default_inventory_account_id: { type: DataTypes.INTEGER, allowNull: true },
+  default_cogs_account_id: { type: DataTypes.INTEGER, allowNull: true },
+  // Customer deposits (advance bookings). Falls back to default_package_liability_id when unset.
+  default_deposit_liability_id: { type: DataTypes.INTEGER, allowNull: true },
   auto_post_payments: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
   auto_post_expenses: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
   auto_post_payroll: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },

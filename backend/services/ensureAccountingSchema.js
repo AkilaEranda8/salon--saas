@@ -41,6 +41,26 @@ async function ensureAccountingSchema() {
       );
     }
   }
+  // model.sync() never adds columns to existing tables — add new setting columns idempotently.
+  try {
+    const { sequelize } = require('../config/database');
+    const { DataTypes } = require('sequelize');
+    const qi = sequelize.getQueryInterface();
+    const table = AcctTaxSetting.tableName;
+    const desc = await qi.describeTable(table);
+    for (const col of [
+      'default_inventory_account_id',
+      'default_cogs_account_id',
+      'default_deposit_liability_id',
+    ]) {
+      if (!desc[col]) {
+        await qi.addColumn(table, col, { type: DataTypes.INTEGER, allowNull: true });
+        console.log(`[migration] Added ${table}.${col}`);
+      }
+    }
+  } catch (err) {
+    console.warn('[migration] acct_tax_settings column check failed:', err.message);
+  }
   console.log('[migration] accounting schema ready');
 }
 

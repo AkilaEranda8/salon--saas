@@ -136,9 +136,14 @@ async function loadBlockedRanges({
   date,
   branchId = null,
   transaction = null,
+  excludeAppointmentId = null,
 }) {
+  const where = buildConflictWhere({ staffId, date, branchId });
+  if (excludeAppointmentId != null) {
+    where.id = { [Op.ne]: Number(excludeAppointmentId) };
+  }
   const rows = await Appointment.findAll({
-    where: buildConflictWhere({ staffId, date, branchId }),
+    where,
     attributes: ['id', 'time', 'service_id'],
     include: [
       { model: Service, as: 'service', attributes: ['id', 'duration_minutes'], required: false },

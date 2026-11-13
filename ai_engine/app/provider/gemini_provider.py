@@ -17,6 +17,41 @@ FREE_TIER_MODELS = (
 )
 
 
+MAX_OUTPUT_TOKENS = 1024  # floor/default; replies stay short via prompt, but 512 truncated Sinhala/Tamil
+MAX_OUTPUT_TOKENS_CAP = 2048
+
+
+def _max_output_tokens(requested: int | None) -> int:
+    return max(MAX_OUTPUT_TOKENS, min(int(requested or 0), MAX_OUTPUT_TOKENS_CAP))
+
+
+def _build_contents(messages: list[dict[str, str]]) -> tuple[str, list[dict]]:
+    """
+    Split OpenAI-style messages into Gemini `systemInstruction` text + `contents`.
+    system → systemInstruction (kept as a system role, not flattened into the prompt);
+    user → "user"; assistant/other → "model". Consecutive same-role turns are merged
+    and the conversation is guaranteed to start with a user turn.
+    """
+    system_parts: list[str] = []
+    contents: list[dict] = []
+    for m in messages:
+        role = str(m.get("role") or "user").lower()
+        text = str(m.get("content") or "").strip()
+        if not text:
+            continue
+        if role == "system":
+            system_parts.append(text)
+            continue
+        g_role = "user" if role in ("user", "customer") else "model"
+        if contents and contents[-1]["role"] == g_role:
+            contents[-1]["parts"][0]["text"] += "\n\n" + text
+        else:
+            contents.append({"role": g_role, "parts": [{"text": text}]})
+    if contents and contents[0]["role"] == "model":
+        contents.insert(0, {"role": "user", "parts": [{"text": "(earlier conversation)"}]})
+    return "\n\n".join(system_parts), contents
+
+
 class GeminiProvider:
     name = "gemini"
 
@@ -30,20 +65,19 @@ class GeminiProvider:
             if m and m not in candidates:
                 candidates.append(m)
 
-        parts: list[str] = []
-        for m in req.messages:
-            role = m.get("role", "user")
-            content = m.get("content", "")
-            parts.append(f"{role.upper()}: {content}")
-        prompt = "\n\n".join(parts)
+        system_instruction, contents = _build_contents(req.messages)
+        if not contents:
+            raise ValueError("Gemini request has no user/assistant content")
 
-        payload = {
-            "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+        payload: dict = {
+            "contents": contents,
             "generationConfig": {
                 "temperature": req.temperature,
-                "maxOutputTokens": min(int(req.max_tokens or 512), 512),
+                "maxOutputTokens": _max_output_tokens(req.max_tokens),
             },
         }
+        if system_instruction:
+            payload["systemInstruction"] = {"parts": [{"text": system_instruction}]}
 
         started = time.perf_counter()
         last_error = ""

@@ -57,7 +57,10 @@ class _CheckInQrPageState extends State<CheckInQrPage>
     super.dispose();
   }
 
+  bool _inFlight = false;
+
   Future<void> _load() async {
+    if (_inFlight) return;
     final state = AppStateScope.of(context);
     if (!state.isLoggedIn || state.token == null) {
       setState(() {
@@ -67,6 +70,7 @@ class _CheckInQrPageState extends State<CheckInQrPage>
       return;
     }
 
+    _inFlight = true;
     setState(() {
       _loading = true;
       _error = null;
@@ -108,7 +112,27 @@ class _CheckInQrPageState extends State<CheckInQrPage>
         _loading = false;
         _error = e.toString().replaceFirst('Exception: ', '');
       });
+      // Keep trying — never leave the page stuck on "Refreshing…".
+      _scheduleRetry();
+    } finally {
+      _inFlight = false;
     }
+  }
+
+  /// After a failed load: retry in 10s; keep the countdown ticking without
+  /// triggering its own reload (the retry timer owns that).
+  void _scheduleRetry() {
+    _refreshTimer?.cancel();
+    _tickTimer?.cancel();
+    _refreshTimer = Timer(const Duration(seconds: 10), () {
+      if (mounted) _load();
+    });
+    _tickTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      final expiresAt = _expiresAt;
+      if (!mounted || expiresAt == null) return;
+      final left = expiresAt.difference(DateTime.now()).inSeconds;
+      setState(() => _secondsLeft = left < 0 ? 0 : left);
+    });
   }
 
   void _scheduleRefresh() {
@@ -267,7 +291,9 @@ class _CheckInQrPageState extends State<CheckInQrPage>
                                         pulse: _pulse,
                                         label: _secondsLeft > 0
                                             ? 'Live · $_timerLabel left'
-                                            : 'Refreshing code…',
+                                            : (_error != null
+                                                ? 'Offline · retrying…'
+                                                : 'Refreshing code…'),
                                       ),
                                       const SizedBox(height: 22),
                                       ScaleTransition(

@@ -73,6 +73,16 @@ function hasTenantFeature(tenant, feature) {
   return getEffectiveFeatures(tenant)[feature] === true;
 }
 
+/**
+ * WhatsApp AI CRM background work (automations, reminders, auto-release):
+ * tenant must be active (not suspended/cancelled) AND have whatsapp_ai_crm.
+ */
+function isTenantCrmEligible(tenant) {
+  if (!tenant) return false;
+  if (tenant.status === 'suspended' || tenant.status === 'cancelled') return false;
+  return hasTenantFeature(tenant, 'whatsapp_ai_crm');
+}
+
 /** Franchise mode: per-staff commission rates on paid services. */
 function hasFranchiseCommission(tenant) {
   return hasTenantFeature(tenant, 'franchise_commission');
@@ -177,6 +187,7 @@ module.exports = {
   parseEnabledFeatures,
   getEffectiveFeatures,
   hasTenantFeature,
+  isTenantCrmEligible,
   hasFranchiseCommission,
   allowsServiceWiseOverrides,
   hasServiceWiseCommissionForUser,

@@ -165,8 +165,13 @@ class _BookFlowPageState extends State<BookFlowPage> {
     }
   }
 
+  /// Incremented per [_loadSlots] call (and on back/reset) so a slower,
+  /// older response can never overwrite the slots of a newer date/stylist.
+  int _slotsSeq = 0;
+
   Future<void> _loadSlots() async {
     if (!_hasSelection || _staffMember == null) return;
+    final seq = ++_slotsSeq;
     setState(() {
       _busy = true;
       _error = null;
@@ -180,14 +185,14 @@ class _BookFlowPageState extends State<BookFlowPage> {
             date: date,
             duration: _totalDuration,
           );
-      if (!mounted) return;
+      if (!mounted || seq != _slotsSeq) return;
       setState(() {
         _slots = rows;
         _busy = false;
         if (_step < 3) _step = 3;
       });
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || seq != _slotsSeq) return;
       setState(() {
         _busy = false;
         _error = e.toString().replaceFirst('Exception: ', '');
@@ -279,7 +284,9 @@ class _BookFlowPageState extends State<BookFlowPage> {
   }
 
   void _reset() {
+    _slotsSeq++; // drop any in-flight slot response
     setState(() {
+      _busy = false;
       _step = 1;
       _selectedServices.clear();
       _staffMember = null;
@@ -646,7 +653,7 @@ class _BookFlowPageState extends State<BookFlowPage> {
                 lastDate: start.add(const Duration(days: 90)),
                 onMonthChanged: (m) => setState(() => _calendarMonth = m),
                 onDaySelected: (d) async {
-                  if (_sameDay(d, _day)) return;
+                  if (_busy || _sameDay(d, _day)) return;
                   setState(() {
                     _day = d;
                     _slot = null;
@@ -673,7 +680,7 @@ class _BookFlowPageState extends State<BookFlowPage> {
                   day: d,
                   selected: selected,
                   onTap: () async {
-                    if (selected) return;
+                    if (selected || _busy) return;
                     setState(() {
                       _day = d;
                       _slot = null;
@@ -934,6 +941,16 @@ class _BookFlowPageState extends State<BookFlowPage> {
           keyboardType: TextInputType.phone,
           inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9+\s]'))],
           decoration: const InputDecoration(labelText: 'Phone number'),
+          onChanged: (_) {
+            // OTP verification belongs to the number that was verified.
+            if (_otpVerified || _needsOtp) {
+              setState(() {
+                _otpVerified = false;
+                _needsOtp = false;
+                _otp.clear();
+              });
+            }
+          },
         ),
         if (_needsOtp) ...[
           const SizedBox(height: 12),
@@ -984,7 +1001,10 @@ class _BookFlowPageState extends State<BookFlowPage> {
         break;
       case 3:
         label = 'Continue';
-        onBack = () => setState(() => _step = 2);
+        onBack = () {
+          _slotsSeq++;
+          setState(() => _step = 2);
+        };
         onPressed = _slot == null || _busy ? null : _prepareConfirm;
         break;
       default:

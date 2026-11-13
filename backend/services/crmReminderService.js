@@ -13,24 +13,13 @@ const {
   CrmFollowUpJob,
   CrmLead,
 } = require('../models');
-const { hasTenantFeature } = require('../utils/tenantFeatures');
-const {
-  getWabaByTenant,
-  sendCloudText,
-  sendCloudTemplate,
-} = require('./whatsappCloudService');
+const { isTenantCrmEligible } = require('../utils/tenantFeatures');
+const { slToday, slDatePlusDays } = require('../utils/dateUtils');
+const { getWabaByTenant } = require('./whatsappCloudService');
 
+/** Tomorrow in Sri Lanka (server runs in UTC). */
 function tomorrowDateOnly() {
-  const d = new Date();
-  d.setDate(d.getDate() + 1);
-  return d.toISOString().slice(0, 10);
-}
-
-function bodyParams(values) {
-  return [{
-    type: 'body',
-    parameters: values.map((text) => ({ type: 'text', text: String(text ?? '').slice(0, 60) || '-' })),
-  }];
+  return slDatePlusDays(1);
 }
 
 async function sendConfirmOrReminder({
@@ -46,89 +35,70 @@ async function sendConfirmOrReminder({
   conversationId,
   leadId,
 }) {
+  const { sendAndLog } = require('./crmOutboundSendService');
   const waba = await getWabaByTenant(tenantId);
-  if (!waba || !waba.enabled) {
-    return { skipped: true, reason: 'waba_disabled' };
-  }
-
-  const templateName = kind === 'confirm' ? waba.template_confirm : waba.template_reminder;
+  const templateName = waba?.enabled
+    ? (kind === 'confirm' ? waba.template_confirm : waba.template_reminder)
+    : null;
   const timeShort = String(time || '').slice(0, 5);
   const textFallback = kind === 'confirm'
     ? `Hi ${customerName || 'there'}! Your appointment is confirmed:\n${serviceName} with ${staffName}\n${date} at ${timeShort}\nSee you soon!`
     : `Reminder: Hi ${customerName || 'there'}, you have ${serviceName} tomorrow (${date}) at ${timeShort} with ${staffName}. Reply if you need to reschedule.`;
 
-  let result;
-  let channel = 'text';
   try {
-    if (templateName) {
-      channel = 'template';
-      result = await sendCloudTemplate({
-        tenantId,
-        to: phone,
-        templateName,
-        languageCode: 'en',
-        components: bodyParams([customerName || 'Customer', serviceName || 'Service', `${date} ${timeShort}`]),
-        wabaRow: waba,
-      });
-    } else {
-      result = await sendCloudText({
-        tenantId,
-        to: phone,
-        body: textFallback,
-        wabaRow: waba,
-      });
-    }
-  } catch (err) {
-    // Template fail → try session text once
-    if (channel === 'template') {
-      try {
-        channel = 'text_fallback';
-        result = await sendCloudText({
-          tenantId,
-          to: phone,
-          body: textFallback,
-          wabaRow: waba,
-        });
-      } catch (err2) {
-        await CrmFollowUpJob.create({
-          tenant_id: tenantId,
-          job_type: kind === 'confirm' ? 'booking_confirm' : 'appointment_reminder',
-          status: 'failed',
-          appointment_id: appointmentId || null,
-          conversation_id: conversationId || null,
-          lead_id: leadId || null,
-          phone,
-          error_message: err2.message || err.message,
-          meta: { template: templateName, first_error: err.message },
-        });
-        throw err2;
-      }
-    } else {
-      await CrmFollowUpJob.create({
-        tenant_id: tenantId,
-        job_type: kind === 'confirm' ? 'booking_confirm' : 'appointment_reminder',
-        status: 'failed',
+    const queued = await sendAndLog({
+      tenantId,
+      phone,
+      text: textFallback,
+      senderType: 'automation',
+      conversationId: conversationId || null,
+      name: customerName || null,
+      templateName: templateName || null,
+      templateParams: [
+        customerName || 'Customer',
+        serviceName || 'Service',
+        `${date} ${timeShort}`,
+      ],
+      meta: {
+        source: kind === 'confirm' ? 'booking_confirm' : 'appointment_reminder',
         appointment_id: appointmentId || null,
-        phone,
-        error_message: err.message,
-      });
-      throw err;
+        lead_id: leadId || null,
+      },
+    });
+    if (queued?.skipped) {
+      throw new Error(`send_skipped:${queued.reason || 'unknown'}`);
     }
+
+    await CrmFollowUpJob.create({
+      tenant_id: tenantId,
+      job_type: kind === 'confirm' ? 'booking_confirm' : 'appointment_reminder',
+      status: 'sent',
+      appointment_id: appointmentId || null,
+      conversation_id: queued.conversationId || conversationId || null,
+      lead_id: leadId || null,
+      phone,
+      sent_at: new Date(),
+      meta: {
+        channel: 'queued_wa_outbound',
+        crm_message_id: queued.messageId || null,
+        template: templateName || null,
+      },
+    });
+
+    return { skipped: false, queued: true, ...queued, channel: 'queued_wa_outbound' };
+  } catch (err) {
+    await CrmFollowUpJob.create({
+      tenant_id: tenantId,
+      job_type: kind === 'confirm' ? 'booking_confirm' : 'appointment_reminder',
+      status: 'failed',
+      appointment_id: appointmentId || null,
+      conversation_id: conversationId || null,
+      lead_id: leadId || null,
+      phone,
+      error_message: err.message,
+    });
+    throw err;
   }
-
-  await CrmFollowUpJob.create({
-    tenant_id: tenantId,
-    job_type: kind === 'confirm' ? 'booking_confirm' : 'appointment_reminder',
-    status: 'sent',
-    appointment_id: appointmentId || null,
-    conversation_id: conversationId || null,
-    lead_id: leadId || null,
-    phone,
-    sent_at: new Date(),
-    meta: { channel, waMessageId: result?.waMessageId, template: templateName || null },
-  });
-
-  return { skipped: false, ...result, channel };
 }
 
 /**
@@ -184,7 +154,7 @@ async function runDayBeforeReminders({ tenantId = null } = {}) {
 
   for (const waba of accounts) {
     const tenant = await Tenant.findByPk(waba.tenant_id);
-    if (!tenant || !hasTenantFeature(tenant, 'whatsapp_ai_crm')) {
+    if (!isTenantCrmEligible(tenant)) {
       skipped += 1;
       continue;
     }
@@ -251,39 +221,49 @@ async function runDayBeforeReminders({ tenantId = null } = {}) {
 
 /**
  * Nudge leads stuck in interested / booking_requested with no confirmed booking (2h+).
- * Cloud WABA first; on miss/failure fall back to QR via API process.
+ * Sent through sendAndLog → WA_OUTBOUND (Cloud first, QR fallback in the worker).
  */
-async function sendAbandonedViaQrHttp(tenantId, phone, message) {
-  const secret = process.env.AI_ENGINE_SERVICE_SECRET || process.env.CRM_SERVICE_SECRET || '';
-  const backendUrl = (process.env.BACKEND_INTERNAL_URL || 'http://backend:5000').replace(/\/$/, '');
-  if (!secret) return { ok: false, reason: 'no_service_secret' };
+const DEFAULT_ABANDONED_DELAY_MS = 2 * 60 * 60 * 1000;
+const MIN_ABANDONED_DELAY_MS = 30 * 60 * 1000;
+
+const ABANDONED_DELAY_MAP = {
+  '30_minutes': 30 * 60 * 1000,
+  '2_hours': 2 * 60 * 60 * 1000,
+  '6_hours': 6 * 60 * 60 * 1000,
+  '24_hours': 24 * 60 * 60 * 1000,
+  '1_day': 24 * 60 * 60 * 1000,
+};
+
+/** Delay from the tenant's abandoned_booking automation (settings / delay column), else 2h. */
+async function getAbandonedDelayMs(tenantId) {
   try {
-    const r = await fetch(`${backendUrl}/api/crm/internal/whatsapp-qr-send`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Service-Key': secret,
-        'X-Tenant-Id': String(tenantId),
-      },
-      body: JSON.stringify({
-        tenantId,
-        phone,
-        message,
-        event_type: 'abandoned_booking_nudge',
-      }),
+    const { CrmAutomation } = require('../models');
+    const row = await CrmAutomation.findOne({
+      where: { tenant_id: tenantId, type: 'abandoned_booking' },
+      order: [['id', 'ASC']],
     });
-    const body = await r.json().catch(() => ({}));
-    if (!r.ok || !body.ok) {
-      return { ok: false, reason: body.reason || `http_${r.status}`, body };
+    const settings = row?.settings_json || {};
+    const raw = row?.delay || settings.delay || settings.delay_hours;
+    if (typeof raw === 'number' || /^\d+(\.\d+)?$/.test(String(raw || ''))) {
+      const hrs = Number(raw);
+      if (hrs > 0) return Math.max(hrs * 3600 * 1000, MIN_ABANDONED_DELAY_MS);
     }
-    return { ok: true, channel: 'qr', ...body };
-  } catch (err) {
-    return { ok: false, reason: 'qr_api_error', error: err.message };
+    return ABANDONED_DELAY_MAP[raw] || DEFAULT_ABANDONED_DELAY_MS;
+  } catch {
+    return DEFAULT_ABANDONED_DELAY_MS;
   }
 }
 
-async function runAbandonedBookingNudges({ tenantId = null } = {}) {
-  const cutoff = new Date(Date.now() - 2 * 60 * 60 * 1000);
+/**
+ * @param {object} opts
+ * @param {number|null} [opts.tenantId]
+ * @param {number|null} [opts.delayMs] — force delay for all leads (automation run); otherwise per-tenant setting
+ */
+async function runAbandonedBookingNudges({ tenantId = null, delayMs = null } = {}) {
+  // Without an explicit delay, scan from the smallest supported delay and filter per tenant below.
+  const scanDelay = delayMs || MIN_ABANDONED_DELAY_MS;
+  const delayByTenant = new Map();
+  const cutoff = new Date(Date.now() - scanDelay);
   const recentFloor = new Date(Date.now() - 48 * 60 * 60 * 1000);
   const leadWhere = {
     stage: { [Op.in]: ['interested', 'booking_requested'] },
@@ -296,12 +276,24 @@ async function runAbandonedBookingNudges({ tenantId = null } = {}) {
 
   for (const lead of leads) {
     const tenant = await Tenant.findByPk(lead.tenant_id);
-    if (!tenant || !hasTenantFeature(tenant, 'whatsapp_ai_crm')) continue;
+    if (!isTenantCrmEligible(tenant)) continue;
     try {
       const { shouldRunLegacy } = require('./crmAutomationRunner');
       const ok = await shouldRunLegacy(lead.tenant_id, 'abandoned_booking');
       if (!ok) continue;
     } catch { /* automations optional */ }
+
+    // Honor per-tenant delay from automation settings (default 2h)
+    let tenantDelay = delayMs;
+    if (!tenantDelay) {
+      if (!delayByTenant.has(lead.tenant_id)) {
+        delayByTenant.set(lead.tenant_id, await getAbandonedDelayMs(lead.tenant_id));
+      }
+      tenantDelay = delayByTenant.get(lead.tenant_id);
+    }
+    if (lead.last_message_at && new Date(lead.last_message_at).getTime() > Date.now() - tenantDelay) {
+      continue;
+    }
 
     const already = await CrmFollowUpJob.findOne({
       where: {
@@ -319,48 +311,44 @@ async function runAbandonedBookingNudges({ tenantId = null } = {}) {
         tenant_id: lead.tenant_id,
         phone: lead.phone,
         status: { [Op.in]: ['pending', 'confirmed'] },
-        date: { [Op.gte]: new Date().toISOString().slice(0, 10) },
+        date: { [Op.gte]: slToday() },
       },
     });
     if (booked) continue;
 
     const text = `Hi${lead.name ? ` ${lead.name}` : ''}! Still want to book with us? Reply *book* and I’ll help you finish in a minute.`;
-    let channel = null;
+    let queued = null;
     let lastError = null;
 
-    const waba = await getWabaByTenant(lead.tenant_id);
-    if (waba && waba.enabled) {
-      try {
-        await sendCloudText({
-          tenantId: lead.tenant_id,
-          to: lead.phone,
-          body: text,
-          wabaRow: waba,
-        });
-        channel = 'cloud';
-      } catch (err) {
-        lastError = err.message;
+    // Logs a CrmMessage and sends via WA_OUTBOUND (Cloud w/ 24h check, else QR)
+    try {
+      const { sendAndLog } = require('./crmOutboundSendService');
+      queued = await sendAndLog({
+        tenantId: lead.tenant_id,
+        phone: lead.phone,
+        text,
+        senderType: 'automation',
+        name: lead.name || null,
+        meta: { source: 'abandoned_booking_nudge', event_type: 'abandoned_booking_nudge', lead_id: lead.id },
+      });
+      if (queued?.skipped) {
+        lastError = queued.reason || 'send_skipped';
+        queued = null;
       }
+    } catch (err) {
+      lastError = err.message;
     }
 
-    if (!channel) {
-      const qr = await sendAbandonedViaQrHttp(lead.tenant_id, lead.phone, text);
-      if (qr.ok) {
-        channel = 'qr';
-      } else {
-        lastError = qr.reason || qr.error || lastError || 'send_failed';
-      }
-    }
-
-    if (channel) {
+    if (queued) {
       await CrmFollowUpJob.create({
         tenant_id: lead.tenant_id,
         job_type: 'abandoned_booking',
         status: 'sent',
         lead_id: lead.id,
+        conversation_id: queued.conversationId || null,
         phone: lead.phone,
         sent_at: new Date(),
-        meta: { channel },
+        meta: { channel: 'queued_wa_outbound', crm_message_id: queued.messageId || null },
       });
       await lead.update({ follow_up_status: 'nudged' }).catch(() => {});
       sent += 1;
@@ -444,6 +432,17 @@ async function scheduleReminderRepeatableJobs() {
     {
       repeat: { pattern: '5 * * * *' },
       jobId: 'repeat:automation-tick',
+      removeOnComplete: 100,
+      removeOnFail: 200,
+    }
+  );
+
+  await q.add(
+    'handoff-auto-release',
+    { job: 'handoff_auto_release' },
+    {
+      repeat: { pattern: '*/15 * * * *' },
+      jobId: 'repeat:handoff-auto-release',
       removeOnComplete: 100,
       removeOnFail: 200,
     }

@@ -475,6 +475,22 @@ const recordAdvancePayment = async ({
     tenant_id: resolveTenantId(req),
   });
 
+  // GL: Dr cash/bank (tender), Cr customer deposit liability. Never blocks the booking.
+  // On settle, paymentController voids this journal (voidPaymentGl) and the final
+  // payment posts the full gross, so the deposit is not double counted.
+  try {
+    const { postPaymentToGl, resolveAccountingTenant } = require('../services/accountingEngine');
+    const acctTenant = await resolveAccountingTenant(req);
+    await postPaymentToGl(payment, {
+      tenant: acctTenant,
+      splits: [{ method: advanceMethod, amount: advanceAmount }],
+      userId: req.user?.id,
+    });
+  } catch (acctErr) {
+    const { recordAccountingWarning } = require('../services/accountingEngine');
+    recordAccountingWarning(req.res || null, `advance payment #${payment.id} post`, acctErr);
+  }
+
   const noteLine = buildAdvanceNote(advanceAmount, advanceMethod);
   const existingNotes = String(appointment.notes || '').trim();
   if (!existingNotes.includes(ADVANCE_NOTE_PREFIX)) {
@@ -882,6 +898,14 @@ const create = async (req, res) => {
       raw: true,
     });
     const durById = new Map(durRows.map((s) => [Number(s.id), parseInt(s.duration_minutes, 10) || 30]));
+    // Validate client-supplied status first (clients may only create pending/confirmed)
+    const requestedStatus = String(req.body.status || 'pending').trim().toLowerCase();
+    const allowedCreateStatuses = new Set(['pending', 'confirmed']);
+    if (!allowedCreateStatuses.has(requestedStatus)) {
+      return res.status(400).json({ message: 'status must be pending or confirmed when creating.' });
+    }
+
+    const conflictChecks = [];
     for (const line of validLines) {
       const dur = durById.get(line.service_id) || 30;
       const lineStaff = line.staff_id || assignedStaffId;
@@ -891,35 +915,60 @@ const create = async (req, res) => {
       if (startMin == null) {
         return res.status(400).json({ message: 'Invalid time.' });
       }
-      const endMin = startMin + dur;
-      if (lineStaff) {
+      conflictChecks.push({ lineStaff, lineDate, startMin, endMin: startMin + dur });
+    }
+
+    // Conflict check + insert run in ONE transaction. Staff rows are locked (in id order)
+    // so concurrent bookings for the same stylist serialize instead of double-booking.
+    await ensureAppointmentServicesTable(); // DDL must not run inside the transaction
+    const apptTx = await sequelize.transaction();
+    let appt;
+    try {
+      const staffToLock = [...new Set(
+        conflictChecks.map((c) => Number(c.lineStaff)).filter((id) => Number.isInteger(id) && id > 0),
+      )].sort((a, b) => a - b);
+      if (staffToLock.length) {
+        await Staff.findAll({
+          where: { id: staffToLock },
+          attributes: ['id'],
+          transaction: apptTx,
+          lock: apptTx.LOCK.UPDATE,
+        });
+      }
+
+      for (const chk of conflictChecks) {
+        if (!chk.lineStaff) continue;
         const existing = await loadBlockedRanges({
           Appointment,
           Service,
-          staffId: lineStaff,
-          date: lineDate,
+          staffId: chk.lineStaff,
+          date: chk.lineDate,
           branchId: null,
+          transaction: apptTx,
         });
-        const clash = existing.some(([bStart, bEnd]) => startMin < bEnd && endMin > bStart);
+        const clash = existing.some(([bStart, bEnd]) => chk.startMin < bEnd && chk.endMin > bStart);
         if (clash) {
-          return res.status(409).json({
-            message: 'Selected time overlaps an existing booking for an assigned staff. Choose another slot.',
-          });
+          throw Object.assign(new Error('Selected time overlaps an existing booking for an assigned staff. Choose another slot.'), { httpStatus: 409 });
         }
       }
+
+      appt = await Appointment.create({
+        branch_id, customer_id: resolvedCustomerId || null,
+        staff_id: assignedStaffId,
+        service_id: primaryServiceId, customer_name, phone,
+        date: effectiveDate, time: normalizeTime(effectiveTime), amount: finalAmount, notes,
+        status: requestedStatus,
+        ...recurringFields,
+        tenant_id: resolveTenantId(req),
+      }, { transaction: apptTx });
+
+      await replaceAppointmentServiceMappings(appt.id, validLines, apptTx);
+      await apptTx.commit();
+    } catch (txErr) {
+      await apptTx.rollback().catch(() => {});
+      if (txErr.httpStatus) return res.status(txErr.httpStatus).json({ message: txErr.message });
+      throw txErr;
     }
-
-    const appt = await Appointment.create({
-      branch_id, customer_id: resolvedCustomerId || null,
-      staff_id: assignedStaffId,
-      service_id: primaryServiceId, customer_name, phone,
-      date: effectiveDate, time: normalizeTime(effectiveTime), amount: finalAmount, notes,
-      status: req.body.status || 'pending',
-      ...recurringFields,
-      tenant_id: resolveTenantId(req),
-    });
-
-    await replaceAppointmentServiceMappings(appt.id, validLines);
 
     let advancePayment = null;
     if (hasAdvance) {
@@ -1051,21 +1100,51 @@ const update = async (req, res) => {
         : null;
     }
 
-    if (updates.date !== undefined || updates.time !== undefined) {
+    // Staff cannot reassign appointment to another stylist (strip before the overlap check)
+    if (!isTeamAppointmentRole(roleOf(req))) {
+      delete updates.staff_id;
+    }
+
+    if (updates.date !== undefined || updates.time !== undefined || updates.staff_id !== undefined) {
       const nextDate = updates.date !== undefined ? updates.date : appt.date;
       const nextTime = updates.time !== undefined ? updates.time : appt.time;
+      const nextStaff = updates.staff_id !== undefined ? updates.staff_id : appt.staff_id;
+      const sameDate = String(nextDate).slice(0, 10) === String(appt.date || '').slice(0, 10);
+      const sameTime = String(nextTime || '').slice(0, 5) === String(appt.time || '').slice(0, 5);
+      const sameStaff = Number(nextStaff || 0) === Number(appt.staff_id || 0);
       if (isDateTimeInPast(nextDate, nextTime)) {
-        const sameDate = String(nextDate).slice(0, 10) === String(appt.date || '').slice(0, 10);
-        const sameTime = String(nextTime || '').slice(0, 5) === String(appt.time || '').slice(0, 5);
         // Allow editing other fields on an already-past appointment without changing schedule
         if (!(sameDate && sameTime)) {
           return res.status(400).json({ message: pastBookingMessage() });
         }
       }
-    }
-    // Staff cannot reassign appointment to another stylist
-    if (!isTeamAppointmentRole(roleOf(req))) {
-      delete updates.staff_id;
+      // Overlap check whenever schedule/staff changes
+      if (!(sameDate && sameTime && sameStaff) && nextStaff) {
+        const startMin = toMinutes(nextTime);
+        if (startMin == null) {
+          return res.status(400).json({ message: 'Invalid time.' });
+        }
+        const svcId = updates.service_id !== undefined ? updates.service_id : appt.service_id;
+        const svc = svcId
+          ? await Service.findOne({ where: { id: svcId, ...tenantWhere(req) }, attributes: ['duration_minutes'], raw: true })
+          : null;
+        const dur = parseInt(svc?.duration_minutes, 10) || 30;
+        const endMin = startMin + dur;
+        const existing = await loadBlockedRanges({
+          Appointment,
+          Service,
+          staffId: nextStaff,
+          date: nextDate,
+          branchId: null,
+          excludeAppointmentId: appt.id,
+        });
+        const clash = existing.some(([bStart, bEnd]) => rangesOverlap(startMin, endMin, bStart, bEnd));
+        if (clash) {
+          return res.status(409).json({
+            message: 'Selected time overlaps an existing booking for this staff. Choose another slot.',
+          });
+        }
+      }
     }
     if (updates.is_recurring === false) {
       updates.recurrence_frequency = null;
@@ -1194,6 +1273,44 @@ const update = async (req, res) => {
     if (updates.service_id && req.body.amount === undefined && !nextServiceLines && !notesUsesPackage(req.body.notes ?? appt.notes)) {
       const svc = await Service.findOne({ where: byIdWhere(req, updates.service_id), attributes: ['price'] });
       if (svc) updates.amount = svc.price;
+    }
+
+    // Overlap check for per-service remaps (service_staff / service_ids) which may
+    // change staff/date/time after the header-level check above.
+    if (nextServiceLines?.length) {
+      const durRows = await Service.findAll({
+        where: {
+          id: nextServiceLines.map((l) => l.service_id),
+          ...tenantWhere(req),
+        },
+        attributes: ['id', 'duration_minutes'],
+        raw: true,
+      });
+      const durById = new Map(durRows.map((s) => [Number(s.id), parseInt(s.duration_minutes, 10) || 30]));
+      for (const line of nextServiceLines) {
+        const lineStaff = line.staff_id || updates.staff_id || appt.staff_id;
+        const lineDate = line.date || updates.date || appt.date;
+        const lineTime = line.time || updates.time || appt.time;
+        if (!lineStaff) continue;
+        const startMin = toMinutes(lineTime);
+        if (startMin == null) {
+          return res.status(400).json({ message: 'Invalid time.' });
+        }
+        const endMin = startMin + (durById.get(Number(line.service_id)) || 30);
+        const existing = await loadBlockedRanges({
+          Appointment,
+          Service,
+          staffId: lineStaff,
+          date: lineDate,
+          branchId: null,
+          excludeAppointmentId: appt.id,
+        });
+        if (existing.some(([bStart, bEnd]) => rangesOverlap(startMin, endMin, bStart, bEnd))) {
+          return res.status(409).json({
+            message: 'Selected time overlaps an existing booking for an assigned staff. Choose another slot.',
+          });
+        }
+      }
     }
 
     const prevStaffId = appt.staff_id;

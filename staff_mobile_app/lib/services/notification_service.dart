@@ -39,11 +39,21 @@ class NotificationService {
   );
 
   /// Must be called once after Firebase is initialised (in main).
-  Future<void> init() async {
+  Future<void> init() {
+    // main() calls init() from two places concurrently; the shared future
+    // makes every call after the first a no-op that just awaits completion.
     if (_initialised) {
       _attachTokenRefreshListener();
-      return;
+      return Future.value();
     }
+    return _initFuture ??= _doInit().whenComplete(() {
+      if (!_initialised) _initFuture = null; // allow retry if it bailed out
+    });
+  }
+
+  Future<void>? _initFuture;
+
+  Future<void> _doInit() async {
     if (!_firebaseReady) {
       debugPrint('[NotificationService] Skip init — Firebase not ready.');
       return;
@@ -76,6 +86,9 @@ class NotificationService {
     FirebaseMessaging.onMessageOpenedApp.listen(_handleMessageOpenedApp);
 
     // Check if app was opened via a notification from terminated state
+    // Load saved history first so the initial message is added on top of it
+    // (not saved over an empty, not-yet-loaded store).
+    await NotificationStore.instance.load();
     final initial = await _messaging.getInitialMessage();
     if (initial != null) {
       _handleMessageOpenedApp(initial);
@@ -117,7 +130,7 @@ class NotificationService {
     final notification = message.notification;
     if (notification == null) return;
 
-    _saveToStore(message);
+    unawaited(_saveToStore(message));
 
     _localNotifications.show(
       notification.hashCode,
@@ -144,18 +157,18 @@ class NotificationService {
   }
 
   void _handleMessageOpenedApp(RemoteMessage message) {
-    _saveToStore(message);
+    unawaited(_saveToStore(message));
     debugPrint(
         '[NotificationService] Opened from notification: ${message.data}');
   }
 
-  static void _saveToStore(RemoteMessage message) {
+  static Future<void> _saveToStore(RemoteMessage message) async {
     final n = message.notification;
     final title = n?.title ?? message.data['title'] as String? ?? '';
     final body  = n?.body  ?? message.data['body']  as String? ?? '';
     if (title.isEmpty && body.isEmpty) return;
 
-    NotificationStore.instance.add(AppNotification(
+    await NotificationStore.instance.add(AppNotification(
       id:        message.messageId ?? DateTime.now().millisecondsSinceEpoch.toString(),
       title:     title,
       body:      body,
@@ -174,4 +187,12 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     await Firebase.initializeApp();
   }
   debugPrint('[FCM Background] ${message.messageId}');
+  // Persist to history. SharedPreferences works in the background isolate;
+  // the store reloads prefs and de-dupes by message id, so the main isolate
+  // picks this up on its next load/add. Never let a failure crash the handler.
+  try {
+    await NotificationService._saveToStore(message);
+  } catch (e) {
+    debugPrint('[FCM Background] save failed: $e');
+  }
 }

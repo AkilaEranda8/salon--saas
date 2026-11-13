@@ -10,6 +10,7 @@ const {
 } = require('../models');
 const { resolveTenantId } = require('../utils/tenantScope');
 const { enqueueInboundTurn, processInboundAiTurn } = require('../services/crmInboundTurnService');
+const { emitConversationChanged } = require('../services/crmRealtime');
 
 function tid(req) {
   return resolveTenantId(req);
@@ -222,7 +223,35 @@ const getConversation = async (req, res) => {
     });
     const json = conv.toJSON();
     json.unread = false;
-    return res.json({ conversation: json, messages });
+
+    // Side-panel context: linked salon customer + last few appointments (best-effort)
+    let customer = null;
+    let recentAppointments = [];
+    const customerId = conv.customer_id || json.lead?.customer_id || null;
+    if (customerId) {
+      try {
+        const { Appointment, Service } = require('../models');
+        customer = await Customer.findOne({
+          where: { id: customerId, tenant_id: tenantId },
+          attributes: ['id', 'name', 'phone', 'email'],
+        });
+        recentAppointments = await Appointment.findAll({
+          where: { customer_id: customerId, tenant_id: tenantId },
+          attributes: ['id', 'date', 'time', 'status'],
+          include: [{ model: Service, as: 'service', attributes: ['id', 'name'], required: false }],
+          order: [['date', 'DESC'], ['time', 'DESC']],
+          limit: 3,
+        });
+      } catch (e) {
+        console.warn('[crm] getConversation side panel', e.message);
+      }
+    }
+    return res.json({
+      conversation: json,
+      messages,
+      customer,
+      recent_appointments: recentAppointments,
+    });
   } catch (err) {
     return res.status(500).json({ message: 'Server error' });
   }
@@ -285,6 +314,7 @@ const closeConversation = async (req, res) => {
       entity_type: 'conversation',
       entity_id: conv.id,
     });
+    emitConversationChanged(tenantId, conv.id, { reason: 'closed' });
     return res.json(conv);
   } catch (err) {
     return res.status(500).json({ message: 'Server error' });
@@ -343,6 +373,7 @@ const deleteConversation = async (req, res) => {
       meta: { phone },
     }).catch(() => {});
 
+    emitConversationChanged(tenantId, conversationId, { reason: 'deleted' });
     return res.json({ message: 'Conversation deleted', id: conversationId });
   } catch (err) {
     console.error('[crm] deleteConversation', err);
@@ -362,6 +393,20 @@ const claimConversation = async (req, res) => {
       handoff_reason: conv.handoff_reason || 'claimed_by_agent',
       staff_last_read_at: new Date(),
     });
+    // Drop mid-flow booking state so AI doesn't resume a stale flow after release
+    try {
+      const { clearBookingSession } = require('../services/crmHandoffService');
+      await clearBookingSession({ tenantId, conversationId: conv.id, phone: conv.phone });
+    } catch (e) {
+      console.warn('[crm] claim clear session', e.message);
+    }
+    // Also ask ai_engine to clear (handles phone variants / shared Redis patterns)
+    try {
+      const { clearSession } = require('../services/aiEngineClient');
+      await clearSession({ tenantId, phone: conv.phone, conversationId: conv.id });
+    } catch (e) {
+      console.warn('[crm] claim ai_engine clearSession', e.message);
+    }
     await CrmAuditLog.create({
       tenant_id: tenantId,
       actor_type: 'user',
@@ -370,6 +415,7 @@ const claimConversation = async (req, res) => {
       entity_type: 'conversation',
       entity_id: conv.id,
     });
+    emitConversationChanged(tenantId, conv.id, { reason: 'claimed' });
     return res.json(conv);
   } catch (err) {
     return res.status(500).json({ message: 'Server error' });
@@ -395,6 +441,7 @@ const releaseConversation = async (req, res) => {
       entity_type: 'conversation',
       entity_id: conv.id,
     });
+    emitConversationChanged(tenantId, conv.id, { reason: 'released' });
     return res.json(conv);
   } catch (err) {
     return res.status(500).json({ message: 'Server error' });
@@ -414,7 +461,19 @@ const agentReply = async (req, res) => {
       return res.status(400).json({ message: 'Conversation is closed. Release or open a new thread.' });
     }
 
-    if (!['human_active', 'queued'].includes(conv.status)) {
+    if (conv.status === 'queued') {
+      // Agent answered a queued handoff — they now own the thread
+      await conv.update({
+        status: 'human_active',
+        assigned_user_id: conv.assigned_user_id || req.user?.id || null,
+      });
+      try {
+        const { clearBookingSession } = require('../services/crmHandoffService');
+        await clearBookingSession({ tenantId, conversationId: conv.id, phone: conv.phone });
+      } catch (e) {
+        console.warn('[crm] agentReply clear session', e.message);
+      }
+    } else if (conv.status !== 'human_active') {
       await conv.update({ status: 'human_active', assigned_user_id: req.user?.id || null });
     }
 

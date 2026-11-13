@@ -19,6 +19,11 @@ class AppState extends ChangeNotifier {
   CustomerProfile? _profile;
   bool _booting = true;
   String? _bootError;
+  bool _offline = false;
+
+  /// True when the session is kept but the profile could not be loaded
+  /// (network / server error). Cleared by a successful [refreshProfile].
+  bool get offline => _offline;
 
   String? get token => _token;
   CustomerProfile? get profile => _profile;
@@ -45,8 +50,19 @@ class AppState extends ChangeNotifier {
         _token = saved;
         try {
           _profile = await _api.getMe(saved);
+          _offline = false;
+        } on ApiException catch (e) {
+          if (e.isAuthError) {
+            // Token rejected → real logout.
+            await logout(notify: false);
+          } else {
+            // 5xx / other server trouble: keep the session, retry later.
+            _offline = true;
+          }
         } catch (_) {
-          await logout(notify: false);
+          // Network / timeout: keep the session and show an offline state;
+          // [refreshProfile] loads the profile once we are back online.
+          _offline = true;
         }
       }
     } catch (e) {
@@ -60,13 +76,33 @@ class AppState extends ChangeNotifier {
   Future<void> setSession({required String token, required String phone}) async {
     _token = token;
     await _tokenStore.save(token: token, phone: phone);
-    _profile = await _api.getMe(token);
+    try {
+      _profile = await _api.getMe(token);
+      _offline = false;
+    } on ApiException catch (e) {
+      if (e.isAuthError) {
+        // Fresh token rejected: roll back so we are not half-logged-in.
+        await logout(notify: false);
+        rethrow;
+      }
+      _offline = true; // server trouble: keep the valid token, retry later
+    } catch (_) {
+      _offline = true; // network: keep the token; profile loads on refresh
+    }
     notifyListeners();
   }
 
   Future<void> refreshProfile() async {
     if (_token == null) return;
-    _profile = await _api.getMe(_token!);
+    try {
+      _profile = await _api.getMe(_token!);
+      _offline = false;
+    } on ApiException catch (e) {
+      if (e.isAuthError) {
+        await logout();
+      }
+      rethrow;
+    }
     notifyListeners();
   }
 

@@ -1048,19 +1048,25 @@ router.get('/customer-portal/packages', portalAuth, async (req, res) => {
 router.post('/customer-portal/purchase', portalAuth, async (req, res) => {
   const t = await Appointment.sequelize.transaction();
   try {
-    const { packageId, paymentMethod } = req.body || {};
+    const { packageId } = req.body || {};
     if (!packageId) {
       await t.rollback();
       return res.status(400).json({ message: 'packageId is required.' });
     }
 
+    const tenantId = req.portalTenantId || null;
+    if (!tenantId) {
+      await t.rollback();
+      return res.status(400).json({ message: 'Portal session has no salon context. Please log in again.' });
+    }
+    const tenantScope = { tenant_id: tenantId };
     const variants = buildPhoneVariants(req.portalPhone);
     let customer = await Customer.findOne({
-      where: { phone: { [Op.or]: variants } },
+      where: { phone: { [Op.or]: variants }, ...tenantScope },
       transaction: t,
     });
     const latestAppt = await Appointment.findOne({
-      where: { phone: { [Op.or]: variants } },
+      where: { phone: { [Op.or]: variants }, ...tenantScope },
       attributes: ['customer_name', 'branch_id', 'phone'],
       order: [['createdAt', 'DESC']],
       transaction: t,
@@ -1076,11 +1082,13 @@ router.post('/customer-portal/purchase', portalAuth, async (req, res) => {
         name: latestAppt.customer_name || 'Portal Customer',
         phone: latestAppt.phone || req.portalPhone,
         branch_id: latestAppt.branch_id || null,
+        tenant_id: tenantId,
       }, { transaction: t });
     }
 
-    const pkg = await Package.findByPk(packageId, { transaction: t });
-    if (!pkg || !pkg.is_active) {
+    const pkgWhere = { id: packageId, is_active: true, ...tenantScope };
+    const pkg = await Package.findOne({ where: pkgWhere, transaction: t });
+    if (!pkg) {
       await t.rollback();
       return res.status(404).json({ message: 'Package not found or inactive.' });
     }
@@ -1091,14 +1099,17 @@ router.post('/customer-portal/purchase', portalAuth, async (req, res) => {
       return res.status(400).json({ message: 'Could not determine branch for purchase.' });
     }
 
+    const { slToday } = require('../utils/dateUtils');
+    const today = slToday();
+
     if (pkg.type === 'membership') {
-      const today = new Date().toISOString().slice(0, 10);
       const existingActive = await CustomerPackage.findOne({
         where: {
           customer_id: customer.id,
           package_id: pkg.id,
           status: 'active',
           expiry_date: { [Op.gte]: today },
+          ...tenantScope,
         },
         transaction: t,
       });
@@ -1108,46 +1119,31 @@ router.post('/customer-portal/purchase', portalAuth, async (req, res) => {
       }
     }
 
-    const today = new Date().toISOString().slice(0, 10);
-    const expiryDate = new Date();
-    expiryDate.setDate(expiryDate.getDate() + Number(pkg.validity_days || 0));
-    const cp = await CustomerPackage.create({
-      customer_id: customer.id,
-      package_id: pkg.id,
-      branch_id: effectiveBranchId,
-      purchase_date: today,
-      expiry_date: expiryDate.toISOString().slice(0, 10),
-      sessions_total: pkg.sessions_count ?? null,
-      sessions_used: 0,
-      status: 'active',
-      amount_paid: pkg.package_price,
-      payment_method: paymentMethod || 'Cash',
-      notes: 'Purchased from customer portal',
-    }, { transaction: t });
-
+    // Do NOT activate packages or mark payments paid from the portal —
+    // there is no payment gateway step here. Create a pending payment request
+    // for salon staff to collect and activate the package in-store.
     const payment = await Payment.create({
       branch_id: effectiveBranchId,
       customer_id: customer.id,
       service_id: null,
       appointment_id: null,
-      customer_name: customer.name,
+      customer_name: `${customer.name} · portal pkg #${pkg.id}`,
       total_amount: pkg.package_price,
       loyalty_discount: 0,
       points_earned: 0,
       commission_amount: 0,
       date: today,
-      status: 'paid',
-    }, { transaction: t });
-
-    await PaymentSplit.create({
-      payment_id: payment.id,
-      method: paymentMethod || 'Cash',
-      amount: pkg.package_price,
-      customer_package_id: cp.id,
+      status: 'pending',
+      tenant_id: tenantId,
     }, { transaction: t });
 
     await t.commit();
-    return res.status(201).json({ message: `${pkg.type === 'membership' ? 'Membership' : 'Package'} purchased successfully.` });
+    return res.status(402).json({
+      message: 'Online package purchase requires in-salon payment. A pending request was created for the salon to confirm.',
+      code: 'PAYMENT_REQUIRED',
+      payment_id: payment.id,
+      package_id: pkg.id,
+    });
   } catch (err) {
     await t.rollback();
     console.error('portal.purchase error:', err);

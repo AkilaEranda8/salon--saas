@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import axios from '../api/axios';
 import AiChatWidget from '../components/ui/AiChatWidget';
 import { resolveBrandName } from '../utils/branding';
+import { todayYmdSL } from '../utils/dateSL';
 
 const colors = {
   primary: '#3b82f6',
@@ -44,35 +45,43 @@ export default function BookingPage() {
     notes: '',
   });
 
+  const staffFetchSeq = useRef(0);
+  const slotsFetchSeq = useRef(0);
+
   // Fetch branches on mount
   useEffect(() => {
-    axios.get('/api/public/branches').then((r) => setBranches(r.data)).catch(() => {});
-    axios.get('/api/branding/public').then((r) => setBranding(r.data?.data || r.data || {})).catch(() => {});
+    axios.get('/public/branches').then((r) => setBranches(Array.isArray(r.data) ? r.data : (r.data?.data || []))).catch(() => {});
+    axios.get('/branding/public').then((r) => setBranding(r.data?.data || r.data || {})).catch(() => {});
   }, []);
 
   // Fetch services when step = 1
   useEffect(() => {
     if (step === 1 && services.length === 0) {
-      axios.get('/api/public/services').then((r) => setServices(r.data)).catch(() => {});
+      axios.get('/public/services').then((r) => setServices(Array.isArray(r.data) ? r.data : (r.data?.data || []))).catch(() => {});
     }
   }, [step]);
 
   // Fetch staff when branch selected and step = 2 (filter by selected service + date)
   useEffect(() => {
     if (step === 2 && form.branch) {
+      const seq = ++staffFetchSeq.current;
       const q = new URLSearchParams({ branchId: String(form.branch.id) });
       if (form.service?.id) q.set('serviceId', String(form.service.id));
       if (form.date) q.set('date', form.date);
       axios
-        .get(`/api/public/staff?${q.toString()}`)
+        .get(`/public/staff?${q.toString()}`)
         .then((r) => {
-          const list = Array.isArray(r.data) ? r.data : [];
+          if (seq !== staffFetchSeq.current) return;
+          const list = Array.isArray(r.data) ? r.data : (r.data?.data || []);
           setStaffList(list);
           if (form.staff && !list.some((s) => Number(s.id) === Number(form.staff.id))) {
             setForm((p) => ({ ...p, staff: null, time: '' }));
           }
         })
-        .catch(() => setStaffList([]));
+        .catch(() => {
+          if (seq !== staffFetchSeq.current) return;
+          setStaffList([]);
+        });
     }
   }, [step, form.branch, form.service, form.date]);
 
@@ -82,6 +91,7 @@ export default function BookingPage() {
       setAvailableSlots([]);
       return;
     }
+    const seq = ++slotsFetchSeq.current;
     const duration = Math.max(5, Number(form.service?.duration_minutes) || 30);
     const q = new URLSearchParams({
       staffId: String(form.staff.id),
@@ -91,30 +101,40 @@ export default function BookingPage() {
     if (form.branch?.id) q.set('branchId', String(form.branch.id));
     setSlotsLoading(true);
     axios
-      .get(`/api/public/availability?${q.toString()}`)
+      .get(`/public/availability?${q.toString()}`)
       .then((r) => {
+        if (seq !== slotsFetchSeq.current) return;
         const data = r.data;
         if (Array.isArray(data)) setAvailableSlots(data);
         else setAvailableSlots(Array.isArray(data?.slots) ? data.slots : []);
       })
-      .catch(() => setAvailableSlots([]))
-      .finally(() => setSlotsLoading(false));
+      .catch(() => {
+        if (seq !== slotsFetchSeq.current) return;
+        setAvailableSlots([]);
+      })
+      .finally(() => {
+        if (seq === slotsFetchSeq.current) setSlotsLoading(false);
+      });
   }, [form.staff, form.date, form.service?.id, form.service?.duration_minutes, form.branch?.id]);
 
   const canContinue = () => {
     switch (step) {
       case 0: return !!form.branch;
       case 1: return !!form.service;
-      case 2: return !!form.staff && !!form.date && !!form.time;
+      case 2: return !!form.staff && !!form.date && !!form.time && availableSlots.includes(form.time);
       case 3: return form.customer_name.trim() && form.phone.trim();
       default: return false;
     }
   };
 
   const handleSubmit = async () => {
+    if (!availableSlots.includes(form.time)) {
+      alert('Selected time is no longer available. Please pick another slot.');
+      return;
+    }
     setSubmitting(true);
     try {
-      const res = await axios.post('/api/public/bookings', {
+      const res = await axios.post('/public/bookings', {
         branch_id: form.branch.id,
         service_id: form.service.id,
         staff_id: form.staff.id,
@@ -140,10 +160,7 @@ export default function BookingPage() {
     setStep(0);
   };
 
-  const getMinDate = () => {
-    const d = new Date();
-    return d.toISOString().split('T')[0];
-  };
+  const getMinDate = () => todayYmdSL();
 
   const categories = [...new Set(services.map((s) => s.category).filter(Boolean))];
   const filteredServices = categoryFilter ? services.filter((s) => s.category === categoryFilter) : services;
@@ -260,7 +277,7 @@ export default function BookingPage() {
       )}
       <div style={S.cardGrid}>
         {filteredServices.map((s) => (
-          <div key={s.id} style={S.selectCard(form.service?.id === s.id)} onClick={() => setForm((p) => ({ ...p, service: s }))}>
+          <div key={s.id} style={S.selectCard(form.service?.id === s.id)} onClick={() => setForm((p) => ({ ...p, service: s, time: '' }))}>
             <div style={{ fontSize: 15, fontWeight: 700, color: colors.dark }}>{s.name}</div>
             {s.category && <span style={S.badge(`${colors.accent}18`, colors.accent)}>{s.category}</span>}
             <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 10, fontSize: 13 }}>

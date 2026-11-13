@@ -10,6 +10,7 @@ import {
   ActionBtn, StatCard, PKModal as Modal,
   FilterBar, DataTable,
 } from '../components/ui/PageKit';
+import { todayYmdSL } from '../utils/dateSL';
 
 const EMPTY = {
   branch_id: '',
@@ -25,7 +26,7 @@ const EMPTY = {
 };
 
 function getStatus(row) {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayYmdSL();
   if (!row.is_active) return 'inactive';
   if (row.starts_at && String(row.starts_at).slice(0, 10) > today) return 'upcoming';
   if (row.ends_at   && String(row.ends_at).slice(0, 10) < today)   return 'expired';

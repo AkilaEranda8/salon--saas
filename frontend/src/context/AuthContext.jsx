@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import api from '../api/axios';
-import { getTenantSlug } from '../utils/tenant';
+import { getTenantSlug, clearImpersonationSlug } from '../utils/tenant';
 import {
   setKcTokens,
   clearKcTokens,
@@ -171,6 +171,7 @@ function KeycloakAuthProvider({ children }) {
     clearKcTokens();
     setUser(null);
     try { await api.post('/auth/kc-logout', { refresh_token: rt }); } catch { /* non-fatal */ }
+    finally { clearImpersonationSlug(); }
   };
 
   const refreshUser = async () => {
@@ -266,7 +267,7 @@ function LegacyAuthProvider({ children }) {
 
   const logout = async () => {
     try { await api.post('/auth/logout'); } catch { /* non-fatal */ }
-    finally { setUser(null); }
+    finally { setUser(null); clearImpersonationSlug(); }
   };
 
   const refreshUser = async () => {

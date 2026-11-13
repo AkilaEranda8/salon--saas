@@ -56,11 +56,14 @@ const create = async (req, res) => {
       tenant_id:  req.userTenantId ?? req.tenant?.id ?? null,
     });
 
+    let accountingWarning = null;
     try {
-      const { postStaffAdvanceToGl } = require('../services/accountingEngine');
-      await postStaffAdvanceToGl(advance, { tenant: req.tenant, userId: req.user?.id });
+      const { postStaffAdvanceToGl, resolveAccountingTenant } = require('../services/accountingEngine');
+      const acctTenant = await resolveAccountingTenant(req);
+      await postStaffAdvanceToGl(advance, { tenant: acctTenant, userId: req.user?.id });
     } catch (acctErr) {
-      console.warn('[accounting] advance post failed:', acctErr.message);
+      const { recordAccountingWarning } = require('../services/accountingEngine');
+      accountingWarning = recordAccountingWarning(res, `advance #${advance.id} post`, acctErr);
     }
 
     const result = await StaffAdvance.findOne({
@@ -71,7 +74,9 @@ const create = async (req, res) => {
       ],
     });
 
-    return res.status(201).json(result);
+    const json = result.toJSON();
+    if (accountingWarning) json.accounting_warning = accountingWarning;
+    return res.status(201).json(json);
   } catch (err) {
     console.error(err);
     return res.status(500).json({ message: 'Server error.' });
@@ -86,13 +91,18 @@ const markDeducted = async (req, res) => {
       return res.status(400).json({ message: 'Already marked as deducted.' });
     }
     await advance.update({ status: 'deducted' });
+    let accountingWarning = null;
     try {
-      const { postAdvanceRecoveryToGl } = require('../services/accountingEngine');
-      await postAdvanceRecoveryToGl(advance, { tenant: req.tenant, userId: req.user?.id });
+      const { postAdvanceRecoveryToGl, resolveAccountingTenant } = require('../services/accountingEngine');
+      const acctTenant = await resolveAccountingTenant(req);
+      await postAdvanceRecoveryToGl(advance, { tenant: acctTenant, userId: req.user?.id });
     } catch (acctErr) {
-      console.warn('[accounting] advance recovery post failed:', acctErr.message);
+      const { recordAccountingWarning } = require('../services/accountingEngine');
+      accountingWarning = recordAccountingWarning(res, `advance #${advance.id} recovery post`, acctErr);
     }
-    return res.json(advance);
+    const json = advance.toJSON();
+    if (accountingWarning) json.accounting_warning = accountingWarning;
+    return res.json(json);
   } catch (err) {
     console.error(err);
     return res.status(500).json({ message: 'Server error.' });
@@ -106,6 +116,7 @@ const revertPending = async (req, res) => {
     if (advance.status === 'pending') {
       return res.status(400).json({ message: 'Already pending.' });
     }
+    let accountingWarning = null;
     try {
       const { voidJournalBySource } = require('../services/accountingEngine');
       await voidJournalBySource({
@@ -116,10 +127,13 @@ const revertPending = async (req, res) => {
         reason: `Advance #${advance.id} reverted to pending`,
       });
     } catch (acctErr) {
-      console.warn('[accounting] advance recovery void failed:', acctErr.message);
+      const { recordAccountingWarning } = require('../services/accountingEngine');
+      accountingWarning = recordAccountingWarning(res, `advance #${advance.id} recovery void`, acctErr);
     }
     await advance.update({ status: 'pending' });
-    return res.json(advance);
+    const json = advance.toJSON();
+    if (accountingWarning) json.accounting_warning = accountingWarning;
+    return res.json(json);
   } catch (err) {
     console.error(err);
     return res.status(500).json({ message: 'Server error.' });
@@ -130,6 +144,7 @@ const remove = async (req, res) => {
   try {
     const advance = await StaffAdvance.findOne({ where: byIdWhere(req, req.params.id) });
     if (!advance) return res.status(404).json({ message: 'Advance not found.' });
+    let accountingWarning = null;
     try {
       const { voidJournalBySource } = require('../services/accountingEngine');
       if (advance.status === 'deducted') {
@@ -149,10 +164,14 @@ const remove = async (req, res) => {
         reason: `Advance #${advance.id} deleted`,
       });
     } catch (acctErr) {
-      console.warn('[accounting] advance void failed:', acctErr.message);
+      const { recordAccountingWarning } = require('../services/accountingEngine');
+      accountingWarning = recordAccountingWarning(res, `advance #${advance.id} void`, acctErr);
     }
     await advance.destroy();
-    return res.json({ message: 'Deleted.' });
+    return res.json({
+      message: 'Deleted.',
+      ...(accountingWarning ? { accounting_warning: accountingWarning } : {}),
+    });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ message: 'Server error.' });

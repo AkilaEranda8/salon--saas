@@ -142,6 +142,90 @@ function normalizeWaTo(phone) {
   return digits;
 }
 
+const SESSION_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+/** True when the customer's last inbound message is < 24h old (free-form text allowed). */
+function isWithin24hWindow(conversation, now = Date.now()) {
+  const lastIn = conversation?.last_inbound_at
+    ? new Date(conversation.last_inbound_at).getTime()
+    : 0;
+  return !!lastIn && now - lastIn < SESSION_WINDOW_MS;
+}
+
+/** Accepts ready-made Cloud components, or a flat array of body parameter values. */
+function buildTemplateComponents(templateParams) {
+  if (!Array.isArray(templateParams) || !templateParams.length) return [];
+  if (templateParams[0] && typeof templateParams[0] === 'object' && templateParams[0].type) {
+    return templateParams;
+  }
+  return [{
+    type: 'body',
+    parameters: templateParams.map((p) => ({ type: 'text', text: String(p ?? '').slice(0, 60) || '-' })),
+  }];
+}
+
+/**
+ * Decide how to send over Cloud API.
+ * - No conversation known → text (window unknown; legacy behaviour)
+ * - Inside 24h → text
+ * - Outside 24h → template if templateName, else blocked (OUTSIDE_24H)
+ * @returns {{ mode: 'text'|'template'|'blocked', body?, templateName?, languageCode?, components?, code?, message? }}
+ */
+function chooseCloudSend({
+  conversation,
+  text,
+  templateName = null,
+  templateParams = null,
+  languageCode = 'en',
+  now = Date.now(),
+}) {
+  if (!conversation || isWithin24hWindow(conversation, now)) {
+    if (text) return { mode: 'text', body: text };
+    if (templateName) {
+      return {
+        mode: 'template',
+        templateName,
+        languageCode,
+        components: buildTemplateComponents(templateParams),
+      };
+    }
+    return { mode: 'blocked', code: 'EMPTY_MESSAGE', message: 'No message text or template to send' };
+  }
+  if (templateName) {
+    return {
+      mode: 'template',
+      templateName,
+      languageCode,
+      components: buildTemplateComponents(templateParams),
+    };
+  }
+  return {
+    mode: 'blocked',
+    code: 'OUTSIDE_24H',
+    message: 'OUTSIDE_24H: customer last messaged >24h ago and no approved template was provided',
+  };
+}
+
+/** Execute a chooseCloudSend() decision. Throws err.code = OUTSIDE_24H etc. when blocked. */
+async function sendCloudChosen({ tenantId, to, choice, wabaRow = null }) {
+  if (choice.mode === 'text') {
+    return sendCloudText({ tenantId, to, body: choice.body, wabaRow });
+  }
+  if (choice.mode === 'template') {
+    return sendCloudTemplate({
+      tenantId,
+      to,
+      templateName: choice.templateName,
+      languageCode: choice.languageCode || 'en',
+      components: choice.components || [],
+      wabaRow,
+    });
+  }
+  const err = new Error(choice.message || 'Cloud send blocked');
+  err.code = choice.code || 'SEND_BLOCKED';
+  throw err;
+}
+
 /**
  * Send a WhatsApp Cloud text message (within 24h session window).
  */
@@ -183,7 +267,8 @@ async function sendCloudText({ tenantId, to, body, wabaRow = null }) {
     const msg = data?.error?.message || `Cloud API ${r.status}`;
     await row.update({ last_error: msg }).catch(() => {});
     const err = new Error(msg);
-    err.code = 'WABA_SEND_FAILED';
+    // 131047 = re-engagement message required (outside 24h window)
+    err.code = data?.error?.code === 131047 ? 'OUTSIDE_24H' : 'WABA_SEND_FAILED';
     err.data = data;
     throw err;
   }
@@ -354,6 +439,10 @@ module.exports = {
   verifyMetaSignature,
   sendCloudText,
   sendCloudTemplate,
+  chooseCloudSend,
+  sendCloudChosen,
+  isWithin24hWindow,
+  buildTemplateComponents,
   testCloudConnection,
   parseInboundMessages,
   parseStatusUpdates,

@@ -398,6 +398,7 @@ const create = async (req, res) => {
       await linkedAppt.update({ customer_id: resolvedCustomerId }, { transaction: t });
     }
     let pendingRecurringSeed = null;
+    let accountingWarning = null;
 
     // Merge advance + balance into one sale row (remove prior deposit payments)
     if (replace_appointment_payments && resolvedAppointmentId) {
@@ -406,11 +407,23 @@ const create = async (req, res) => {
           appointment_id: resolvedAppointmentId,
           ...tenantWhere(req),
         },
-        attributes: ['id'],
         transaction: t,
       });
       const priorIds = prior.map((p) => p.id).filter(Boolean);
       if (priorIds.length) {
+        // Void GL journals of the deposit payments being replaced (merged sale re-posts below).
+        const { voidPaymentGl, recordAccountingWarning } = require('../services/accountingEngine');
+        for (const priorPay of prior) {
+          try {
+            await voidPaymentGl(priorPay, {
+              userId: req.user?.id,
+              reason: `Replaced by new payment for appointment #${resolvedAppointmentId}`,
+              transaction: t,
+            });
+          } catch (acctErr) {
+            accountingWarning = recordAccountingWarning(res, `payment #${priorPay.id} void (replace)`, acctErr);
+          }
+        }
         await CommissionTransaction.destroy({
           where: { payment_id: { [Op.in]: priorIds } },
           transaction: t,
@@ -543,15 +556,21 @@ const create = async (req, res) => {
     await PaymentSplit.bulkCreate(splitRows, { transaction: t });
 
     try {
-      const { postPaymentToGl } = require('../services/accountingEngine');
+      const {
+        postPaymentToGl,
+        resolveAccountingTenant,
+      } = require('../services/accountingEngine');
+      const acctTenant = await resolveAccountingTenant(req);
       await postPaymentToGl(payment, {
-        tenant: req.tenant,
+        tenant: acctTenant,
+        tenantId: resolveTenantId(req),
         splits,
         userId: req.user?.id,
         transaction: t,
       });
     } catch (acctErr) {
-      console.warn('[accounting] payment post failed:', acctErr.message);
+      const { recordAccountingWarning } = require('../services/accountingEngine');
+      accountingWarning = recordAccountingWarning(res, `payment #${payment.id} post`, acctErr);
     }
 
     // Redeem package sessions when a customer package is linked (any pay method).
@@ -665,10 +684,13 @@ const create = async (req, res) => {
       if (name) json.customer_name = name;
       const payload = attachPaymentCommissionTotals(json);
       await enrichPaymentsForView(payload);
+      if (accountingWarning) payload.accounting_warning = accountingWarning;
       return res.status(201).json(payload);
     } catch (viewErr) {
       console.error('payment create enrich failed:', viewErr);
-      return res.status(201).json(payment);
+      const fallback = payment?.toJSON ? payment.toJSON() : payment;
+      if (accountingWarning && fallback) fallback.accounting_warning = accountingWarning;
+      return res.status(201).json(fallback);
     }
   } catch (err) {
     await t.rollback().catch(() => {});
@@ -681,11 +703,74 @@ const update = async (req, res) => {
   try {
     const payment = await Payment.findOne({ where: byIdWhere(req, req.params.id) });
     if (!payment) return res.status(404).json({ message: 'Payment not found.' });
-    const allowed = ['status', 'date', 'total_amount'];
-    const fields  = {};
-    for (const k of allowed) { if (req.body[k] !== undefined) fields[k] = req.body[k]; }
+    if (req.userBranchId && Number(payment.branch_id) !== Number(req.userBranchId)) {
+      return res.status(403).json({ message: 'Access denied for this branch.' });
+    }
+
+    const role = String(req.user?.role || '').trim().toLowerCase();
+    const canEditMoney = ['superadmin', 'admin', 'manager', 'platform_admin'].includes(role);
+    if (!canEditMoney) {
+      return res.status(403).json({ message: 'Staff cannot edit payment amount or status.' });
+    }
+
+    const fields = {};
+    if (req.body.date !== undefined) fields.date = req.body.date;
+    if (req.body.total_amount !== undefined) {
+      const amt = Number(req.body.total_amount);
+      if (!Number.isFinite(amt) || amt < 0) {
+        return res.status(400).json({ message: 'Invalid total_amount.' });
+      }
+      fields.total_amount = amt;
+    }
+    if (req.body.status !== undefined) {
+      const nextStatus = String(req.body.status).trim().toLowerCase();
+      if (!['paid', 'pending'].includes(nextStatus)) {
+        return res.status(400).json({ message: 'status must be paid or pending.' });
+      }
+      fields.status = nextStatus;
+    }
+    if (!Object.keys(fields).length) {
+      return res.status(400).json({ message: 'No valid fields to update.' });
+    }
+
+    const glBefore = {
+      amount: Number(payment.total_amount) || 0,
+      date: String(payment.date || ''),
+      status: String(payment.status || ''),
+    };
+
     await payment.update(fields);
-    return res.json(payment);
+
+    const glChanged = glBefore.amount !== (Number(payment.total_amount) || 0)
+      || glBefore.date !== String(payment.date || '')
+      || glBefore.status !== String(payment.status || '');
+
+    let accountingWarning = null;
+    if (glChanged) {
+      try {
+        const {
+          repostPaymentToGl,
+          resolveAccountingTenant,
+        } = require('../services/accountingEngine');
+        const acctTenant = await resolveAccountingTenant(req);
+        const splits = await PaymentSplit.findAll({ where: { payment_id: payment.id } });
+        // Void existing journal, then re-post only if still paid (postPaymentToGl skips non-paid).
+        await repostPaymentToGl(payment, {
+          tenant: acctTenant,
+          tenantId: resolveTenantId(req),
+          splits,
+          userId: req.user?.id,
+          reason: `Payment #${payment.id} updated`,
+        });
+      } catch (acctErr) {
+        const { recordAccountingWarning } = require('../services/accountingEngine');
+        accountingWarning = recordAccountingWarning(res, `payment #${payment.id} repost`, acctErr);
+      }
+    }
+
+    const json = payment.toJSON();
+    if (accountingWarning) json.accounting_warning = accountingWarning;
+    return res.json(json);
   } catch (err) {
     console.error(err);
     return res.status(500).json({ message: 'Server error.' });
@@ -795,6 +880,19 @@ const remove = async (req, res) => {
 
     const paymentId = payment.id;
 
+    let accounting_warning = null;
+    try {
+      const { voidPaymentGl } = require('../services/accountingEngine');
+      await voidPaymentGl(payment, {
+        userId: req.user?.id,
+        reason: `Payment #${paymentId} deleted`,
+        transaction: t,
+      });
+    } catch (acctErr) {
+      const { recordAccountingWarning } = require('../services/accountingEngine');
+      accounting_warning = recordAccountingWarning(res, `payment #${paymentId} void`, acctErr);
+    }
+
     await CommissionTransaction.destroy({
       where: { payment_id: paymentId, ...tenantWhere(req) },
       transaction: t,
@@ -838,7 +936,10 @@ const remove = async (req, res) => {
 
     await payment.destroy({ transaction: t });
     await t.commit();
-    return res.json({ message: 'Payment deleted.' });
+    return res.json({
+      message: 'Payment deleted.',
+      ...(accounting_warning ? { accounting_warning } : {}),
+    });
   } catch (err) {
     await t.rollback();
     console.error('[payments][remove]', err);

@@ -5,6 +5,7 @@ const {
   AiUsage,
   AiCreditEntry,
   CrmConversation,
+  CrmMessage,
   CrmBookingRequest,
   CrmLead,
 } = require('../models');
@@ -273,7 +274,43 @@ const getCrmOverview = async (req, res) => {
 
     const conversion = conversations > 0 ? (bookings / conversations) * 100 : 0;
 
+    // Inbox health: handoff backlog, outbound delivery, rough AI containment
+    const weekAgo = daysAgo(7);
+    const [queuedHandoffs, humanActive, handedOffMonth, outboundPending, outboundFailed] = await Promise.all([
+      CrmConversation.count({ where: { tenant_id: tenantId, status: 'queued' } }),
+      CrmConversation.count({ where: { tenant_id: tenantId, status: 'human_active' } }),
+      CrmConversation.count({
+        where: {
+          tenant_id: tenantId,
+          createdAt: { [Op.gte]: monthStart },
+          [Op.or]: [
+            { status: { [Op.in]: ['queued', 'human_active'] } },
+            { handoff_reason: { [Op.ne]: null } },
+            { assigned_user_id: { [Op.ne]: null } },
+          ],
+        },
+      }),
+      CrmMessage.count({
+        where: { tenant_id: tenantId, direction: 'outbound', delivery_status: 'pending', createdAt: { [Op.gte]: weekAgo } },
+      }),
+      CrmMessage.count({
+        where: { tenant_id: tenantId, direction: 'outbound', delivery_status: 'failed', createdAt: { [Op.gte]: weekAgo } },
+      }),
+    ]);
+    const containment = conversations > 0
+      ? Math.max(0, ((conversations - handedOffMonth) / conversations) * 100)
+      : null;
+
     return res.json({
+      health: {
+        open_conversations: activeChats,
+        queued_handoffs: queuedHandoffs,
+        human_active: humanActive,
+        outbound_pending_7d: outboundPending,
+        outbound_failed_7d: outboundFailed,
+        handed_off_month: handedOffMonth,
+        ai_containment_pct: containment == null ? null : Math.round(containment * 10) / 10,
+      },
       month: {
         leads,
         conversations,
@@ -314,8 +351,17 @@ const addAiCreditTopup = async (req, res) => {
       created_by: req.user?.id || null,
     });
 
+    // Credits restored — put credit-paused chats back on AI
+    let released = null;
+    try {
+      const { releaseCreditBlockedConversations } = require('../services/crmHandoffService');
+      released = await releaseCreditBlockedConversations(tenantId);
+    } catch (e) {
+      console.warn('[crm-analytics] topup release', e.message);
+    }
+
     const wallet = await getWalletSummary(tenantId);
-    return res.status(201).json({ entry, wallet });
+    return res.status(201).json({ entry, wallet, released_conversations: released?.released || 0 });
   } catch (err) {
     console.error('[crm-analytics] topup', err);
     return res.status(500).json({ message: err.message || 'Server error' });
@@ -350,8 +396,21 @@ const setAiCreditBalance = async (req, res) => {
       created_by: req.user?.id || null,
     });
 
+    let released = null;
+    try {
+      const { releaseCreditBlockedConversations } = require('../services/crmHandoffService');
+      released = await releaseCreditBlockedConversations(tenantId);
+    } catch (e) {
+      console.warn('[crm-analytics] set-balance release', e.message);
+    }
+
     const wallet = await getWalletSummary(tenantId);
-    return res.json({ entry, wallet, previous_remaining: current.remaining });
+    return res.json({
+      entry,
+      wallet,
+      previous_remaining: current.remaining,
+      released_conversations: released?.released || 0,
+    });
   } catch (err) {
     console.error('[crm-analytics] set-balance', err);
     return res.status(500).json({ message: err.message || 'Server error' });

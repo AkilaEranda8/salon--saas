@@ -78,35 +78,64 @@ function HelaPayQRModal({ amount, reference, onClose, onSuccess }) {
   const [status,      setStatus]      = useState('generating'); // generating | waiting | success | failed | error
   const [errMsg,      setErrMsg]      = useState('');
   const pollRef = useRef(null);
+  const successTimerRef = useRef(null);
+  const cancelledRef = useRef(false);
+  const onSuccessRef = useRef(onSuccess);
+  onSuccessRef.current = onSuccess;
+
+  const MAX_POLLS = 200; // 200 × 3s = 10 minutes
 
   const stopPoll = () => { if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; } };
 
   const startPolling = (ref, qrRef) => {
     stopPoll();
+    let polls = 0;
     pollRef.current = setInterval(async () => {
+      if (cancelledRef.current) { stopPoll(); return; }
+      if (++polls > MAX_POLLS) {
+        stopPoll();
+        setErrMsg('Timed out waiting for payment. Please check the payment status and try again.');
+        setStatus('error');
+        return;
+      }
       try {
         const res = await api.post('/helapay/status', { reference: ref, qr_reference: qrRef });
+        if (cancelledRef.current) return;
         const ps = res.data?.sale?.payment_status;
-        if (ps === 2)  { stopPoll(); setStatus('success'); setTimeout(onSuccess, 1500); }
+        if (ps === 2) {
+          stopPoll();
+          setStatus('success');
+          successTimerRef.current = setTimeout(() => {
+            successTimerRef.current = null;
+            if (!cancelledRef.current) onSuccessRef.current?.();
+          }, 1500);
+        }
         else if (ps === -1) { stopPoll(); setStatus('failed'); }
       } catch { }
     }, 3000);
   };
 
   useEffect(() => {
+    cancelledRef.current = false;
     (async () => {
       try {
         const res = await api.post('/helapay/qr', { reference: String(reference), amount: Number(amount) });
+        if (cancelledRef.current) return;
         setQrData(res.data.qr_data);
         setQrReference(res.data.qr_reference);
         setStatus('waiting');
         startPolling(res.data.reference, res.data.qr_reference);
       } catch (e) {
+        if (cancelledRef.current) return;
         setErrMsg(e.response?.data?.message || 'QR generation failed. Check HelaPay settings.');
         setStatus('error');
       }
     })();
-    return stopPoll;
+    return () => {
+      cancelledRef.current = true;
+      stopPoll();
+      if (successTimerRef.current) { clearTimeout(successTimerRef.current); successTimerRef.current = null; }
+    };
   }, []);
 
   const qrUrl = qrData

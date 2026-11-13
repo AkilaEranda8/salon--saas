@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 
 const ToastContext = createContext(null);
 let _id = 0;
@@ -104,7 +104,7 @@ export function ToastProvider({ children }) {
   }, []);
 
   // Support both: toast('msg', 'type')  AND  toast.success('msg')
-  const toast = Object.assign(
+  const toast = useMemo(() => Object.assign(
     (msg, type = 'info') => addToast(type, msg),
     {
       success: msg => addToast('success', msg),
@@ -112,10 +112,12 @@ export function ToastProvider({ children }) {
       warn:    msg => addToast('warn',     msg),
       info:    msg => addToast('info',     msg),
     }
-  );
+  ), [addToast]);
+
+  const ctxValue = useMemo(() => ({ toast }), [toast]);
 
   return (
-    <ToastContext.Provider value={{ toast }}>
+    <ToastContext.Provider value={ctxValue}>
       {children}
 
       {/* Portal-like container fixed bottom-right */}

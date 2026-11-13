@@ -18,6 +18,7 @@ const { apiMonitorMiddleware } = require('./services/apiMonitoring');
 const { tenantScope }          = require('./middleware/tenantScope');
 const { checkSubscription }    = require('./middleware/checkSubscription');
 const { enforceMaintenanceMode } = require('./middleware/maintenanceMode');
+const { softAuth }             = require('./middleware/softAuth');
 const { ensureCustomerProfileColumns } = require('./services/ensureCustomerProfileColumns');
 const { ensureInventorySupplierColumns } = require('./services/ensureInventorySupplierColumns');
 const ensureStaffSalaryColumns = require('./services/ensureStaffSalaryColumns');
@@ -215,6 +216,10 @@ app.use('/api/onboarding', onboardingLimiter, require('./routes/onboarding'));
 
 // Auth
 app.use('/api/auth',         require('./routes/auth'));
+
+// Soft-verify JWT (when present) so req.user/req.userTenantId exist for the
+// maintenance + subscription checks below (JWT tenant is authoritative, not X-Tenant-Slug).
+app.use('/api/',             softAuth);
 
 // Platform-controlled maintenance lock for non-platform requests
 app.use('/api/',             enforceMaintenanceMode);

@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import MaintenancePage from './MaintenancePage';
 import { normalizeBranding, resolveBrandName } from '../utils/branding';
 import { getTenantSlug } from '../utils/tenant';
+import api from '../api/axios';
 
 const HEXALYTE_INNOVATION_WHITE = '/hexalyte-logo-white.png';       // white — dark left panel
 const HEXALYTE_MARK_WHITE = '/hexalyte-innovation-white.png';       // white wordmark fallback
@@ -544,12 +545,11 @@ export default function LoginPage({ platformMode = false }) {
     if (!forgotUsername.trim()) { setForgotError('Please enter your username.'); return; }
     setForgotLoading(true);
     try {
-      await fetch('/api/auth/forgot-password', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: forgotUsername.trim() }),
-      });
+      await api.post('/auth/forgot-password', { username: forgotUsername.trim() });
       setForgotSent(true);
-    } catch { setForgotError('Something went wrong. Please try again.'); }
+    } catch (err) {
+      setForgotError(err?.response?.data?.message || 'Something went wrong. Please try again.');
+    }
     setForgotLoading(false);
   };
 

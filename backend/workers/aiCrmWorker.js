@@ -7,7 +7,7 @@
 require('dotenv').config();
 
 const { Worker, UnrecoverableError } = require('bullmq');
-const { getRedis } = require('../utils/redis');
+const { getRedis, cacheKey } = require('../utils/redis');
 const { QUEUE_NAMES, moveToDlq, enqueue } = require('../services/queue');
 const {
   AiUsage,
@@ -20,7 +20,12 @@ const {
   Appointment,
 } = require('../models');
 const { processInboundAiTurn } = require('../services/crmInboundTurnService');
-const { sendCloudText, getWabaByTenant } = require('../services/whatsappCloudService');
+const {
+  getWabaByTenant,
+  chooseCloudSend,
+  sendCloudChosen,
+} = require('../services/whatsappCloudService');
+const { markMessageSent, markMessageFailed } = require('../services/crmOutboundSendService');
 const { notifyTenantRoles } = require('../services/fcmService');
 const {
   runDayBeforeReminders,
@@ -76,12 +81,56 @@ async function handleAiUsage(job) {
   });
 }
 
+const TURN_LOCK_TTL_SEC = 120;
+const TURN_LOCK_REQUEUE_DELAY_MS = 2000;
+const TURN_LOCK_MAX_REQUEUES = 40; // ~80s of waiting before falling back to BullMQ retry
+
+const RELEASE_LOCK_LUA = 'if redis.call("get", KEYS[1]) == ARGV[1] then return redis.call("del", KEYS[1]) else return 0 end';
+
+/**
+ * Serialize AI turns per tenant+phone so concurrent customer messages don't race
+ * (session state, conversation status, duplicate replies).
+ */
 async function handleInbound(job) {
-  const result = await processInboundAiTurn(job.data || {});
-  if (result?.unrecoverable) {
-    throw new UnrecoverableError(result.error || 'inbound_unrecoverable');
+  const data = job.data || {};
+  const tenantId = data.tenantId || data.tenant_id;
+  const phoneDigits = String(data.phone || '').replace(/\D/g, '').slice(-12);
+  const redis = getRedis();
+
+  let lockKey = null;
+  let lockToken = null;
+  if (redis && tenantId && phoneDigits) {
+    lockKey = cacheKey(tenantId, 'crm', 'turn_lock', phoneDigits);
+    lockToken = `${process.pid}:${job.id}:${Date.now()}`;
+    const got = await redis.set(lockKey, lockToken, 'EX', TURN_LOCK_TTL_SEC, 'NX');
+    if (!got) {
+      const attempt = Number(data._lockRequeues || 0);
+      if (attempt >= TURN_LOCK_MAX_REQUEUES) {
+        throw new Error('inbound_turn_lock_timeout'); // BullMQ retry/backoff
+      }
+      await enqueue(QUEUE_NAMES.WA_INBOUND_AI, { ...data, _lockRequeues: attempt + 1 }, {
+        name: 'inbound-turn',
+        delay: TURN_LOCK_REQUEUE_DELAY_MS,
+        // New jobId — the original wa-in id is retained after completion and would dedupe
+        jobId: `${job.id}-lock${attempt + 1}`,
+      });
+      return { skipped: true, requeued: true, reason: 'turn_lock_held', attempt: attempt + 1 };
+    }
   }
-  return result;
+
+  try {
+    const result = await processInboundAiTurn(data);
+    if (result?.unrecoverable) {
+      throw new UnrecoverableError(result.error || 'inbound_unrecoverable');
+    }
+    return result;
+  } finally {
+    if (lockKey) {
+      try {
+        await redis.eval(RELEASE_LOCK_LUA, 1, lockKey, lockToken);
+      } catch { /* lock expires via TTL */ }
+    }
+  }
 }
 
 async function handleOutbound(job) {
@@ -116,23 +165,45 @@ async function handleOutbound(job) {
   const markSent = async (waMessageId = null) => {
     if (!d.crm_message_id) return;
     try {
-      const patch = { delivery_status: 'sent' };
-      if (waMessageId) patch.wa_message_id = waMessageId;
-      await CrmMessage.update(patch, { where: { id: d.crm_message_id, tenant_id: tenantId } });
+      await markMessageSent(tenantId, d.crm_message_id, waMessageId);
     } catch (err) {
       console.warn('[worker] mark sent failed (WA already delivered)', err.message);
+    }
+  };
+
+  const markFailedSafe = async (err) => {
+    try {
+      await markMessageFailed(tenantId, d.crm_message_id, err);
+    } catch (e) {
+      console.warn('[worker] mark failed error', e.message);
     }
   };
 
   const waba = await getWabaByTenant(tenantId);
   if (waba && waba.enabled) {
     try {
-      const result = await sendCloudText({
-        tenantId,
-        to: phone,
-        body: message,
-        wabaRow: waba,
+      let conversation = null;
+      if (d.conversation_id) {
+        conversation = await CrmConversation.findOne({
+          where: { id: d.conversation_id, tenant_id: tenantId },
+        }).catch(() => null);
+      }
+      const choice = chooseCloudSend({
+        conversation,
+        text: message,
+        templateName: d.template_name || null,
+        templateParams: d.template_params || null,
+        languageCode: d.language_code || 'en',
       });
+      if (choice.mode === 'blocked') {
+        // Not retryable — fail loudly instead of letting Meta silently reject
+        if (redis) await redis.del(dedupeKey).catch(() => {});
+        const err = new Error(choice.message);
+        err.code = choice.code;
+        await markFailedSafe(err);
+        return { skipped: true, failed: true, reason: choice.code };
+      }
+      const result = await sendCloudChosen({ tenantId, to: phone, choice, wabaRow: waba });
       await markSent(result.waMessageId || null);
       if (!d.crm_message_id && d.conversation_id && result.waMessageId) {
         try {
@@ -158,47 +229,69 @@ async function handleOutbound(job) {
       return { channel: 'cloud', ...result };
     } catch (err) {
       if (redis) await redis.del(dedupeKey).catch(() => {});
+      // Final-attempt failures are marked in attachDlq (markFailed after retries exhausted)
       throw err;
     }
   }
 
-  // Fallback: Baileys QR lives in the API process — call backend over HTTP
+  // Fallback 1: Baileys QR (API process) over HTTP
   const secret = serviceSecret();
-  if (!secret) {
-    if (redis) await redis.del(dedupeKey).catch(() => {});
-    console.warn('[worker] wa-outbound skipped — no service secret for QR send', { tenantId });
-    return { skipped: true, reason: 'no_service_secret' };
-  }
-  try {
-    const r = await fetch(`${backendBase()}/api/crm/internal/whatsapp-qr-send`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Service-Key': secret,
-        'X-Tenant-Id': String(tenantId),
-      },
-      body: JSON.stringify({
-        tenantId,
-        phone,
-        message,
-        event_type: 'crm_ai_reply',
-        replyJid: d.replyJid || d.reply_jid || null,
-        conversation_id: d.conversation_id || d.conversationId || null,
-      }),
-    });
-    const body = await r.json().catch(() => ({}));
-    if (!r.ok || !body.ok) {
-      if (redis) await redis.del(dedupeKey).catch(() => {});
-      console.warn('[worker] wa-outbound QR via API failed', { tenantId, status: r.status, body });
-      // Do not throw — avoid retry storms that re-send later when QR recovers mid-flight
-      return { skipped: true, reason: body.reason || 'qr_api_failed', status: r.status };
+  if (secret) {
+    try {
+      const r = await fetch(`${backendBase()}/api/crm/internal/whatsapp-qr-send`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Service-Key': secret,
+          'X-Tenant-Id': String(tenantId),
+        },
+        body: JSON.stringify({
+          tenantId,
+          phone,
+          message,
+          event_type: d.event_type || 'crm_ai_reply',
+          replyJid: d.replyJid || d.reply_jid || null,
+          conversation_id: d.conversation_id || d.conversationId || null,
+        }),
+      });
+      const body = await r.json().catch(() => ({}));
+      if (r.ok && body.ok) {
+        await markSent(body.waMessageId || body.id || null);
+        return { channel: 'qr', via: 'backend_api', ...body };
+      }
+      console.warn('[worker] wa-outbound QR via API failed — trying Twilio WA', { tenantId, status: r.status, body });
+    } catch (err) {
+      console.warn('[worker] wa-outbound QR API error — trying Twilio WA', err.message);
     }
-    await markSent(body.waMessageId || body.id || null);
-    return { channel: 'qr', via: 'backend_api', ...body };
+  }
+
+  // Fallback 2: legacy Twilio-style WhatsApp (Twilio-only tenants)
+  try {
+    const { sendWhatsApp } = require('../services/notificationService');
+    const tw = await sendWhatsApp({
+      to: phone,
+      message,
+      tenantId,
+      meta: {
+        event_type: d.event_type || 'crm_ai_reply',
+        conversation_id: d.conversation_id || null,
+        crm_message_id: d.crm_message_id || null,
+      },
+    });
+    if (tw?.skipped) {
+      if (redis) await redis.del(dedupeKey).catch(() => {});
+      await markFailedSafe(Object.assign(
+        new Error(tw.reason || 'No WhatsApp channel available'),
+        { code: tw.reason || 'NO_CHANNEL' }
+      ));
+      return { skipped: true, reason: tw.reason || 'twilio_skipped' };
+    }
+    await markSent(tw?.sid || tw?.waMessageId || null);
+    return { channel: 'twilio_wa', ...tw };
   } catch (err) {
     if (redis) await redis.del(dedupeKey).catch(() => {});
-    console.error('[worker] wa-outbound QR API error', err.message);
-    return { skipped: true, reason: 'qr_api_error', error: err.message };
+    await markFailedSafe(Object.assign(err, { code: err.code || 'TWILIO_WA_FAILED' }));
+    return { skipped: true, reason: 'twilio_wa_error', error: err.message };
   }
 }
 
@@ -220,7 +313,14 @@ async function handleHandoff(job) {
     return { skipped: true, reason: 'conversation_not_found' };
   }
 
-  if (conv.status === 'ai_active' || conv.status === 'ai_resume') {
+  const isCustomerMessage = d.kind === 'customer_message';
+
+  if (isCustomerMessage) {
+    // Re-notify only while a human still owns the thread (may have been released since)
+    if (!['queued', 'human_active'].includes(conv.status)) {
+      return { skipped: true, reason: 'not_in_handoff', status: conv.status };
+    }
+  } else if (conv.status === 'ai_active' || conv.status === 'ai_resume') {
     await conv.update({
       status: 'queued',
       handoff_reason: String(reason).slice(0, 255),
@@ -228,10 +328,14 @@ async function handleHandoff(job) {
   }
 
   const phone = conv.phone || conv.lead?.phone || '';
-  const title = 'CRM handoff needed';
-  const body = phone
-    ? `Customer ${phone} needs a human — ${String(reason).slice(0, 80)}`
-    : `Conversation #${conversationId} needs a human — ${String(reason).slice(0, 80)}`;
+  const title = isCustomerMessage ? 'New customer message' : 'CRM handoff needed';
+  const body = isCustomerMessage
+    ? (phone
+      ? `Customer ${phone} sent a new message (${conv.status === 'human_active' ? 'chat in progress' : 'waiting for staff'})`
+      : `New message in conversation #${conversationId} (${conv.status})`)
+    : (phone
+      ? `Customer ${phone} needs a human — ${String(reason).slice(0, 80)}`
+      : `Conversation #${conversationId} needs a human — ${String(reason).slice(0, 80)}`);
 
   await notifyTenantRoles(
     tenantId,
@@ -239,6 +343,7 @@ async function handleHandoff(job) {
     body,
     {
       type: 'crm_handoff',
+      kind: isCustomerMessage ? 'customer_message' : 'handoff',
       conversation_id: String(conversationId),
       phone: String(phone || ''),
       reason: String(reason).slice(0, 120),
@@ -255,6 +360,10 @@ async function handleHandoff(job) {
     entity_id: conversationId,
     meta: { reason, phone },
   }).catch(() => {});
+
+  try {
+    require('../services/crmRealtime').emitConversationChanged(tenantId, conversationId, { reason: 'handoff' });
+  } catch (_) { /* realtime optional */ }
 
   return { ok: true, conversationId, notified: true };
 }
@@ -374,6 +483,10 @@ async function handleFollowup(job) {
       customerId: d.customerId || null,
     });
   }
+  if (name === 'handoff-auto-release' || d.job === 'handoff_auto_release') {
+    const { releaseStaleHandoffs } = require('../services/crmHandoffService');
+    return withReminderLock('handoff_auto_release', 300, () => releaseStaleHandoffs());
+  }
   if (name === 'automation-tick' || d.job === 'automation_tick') {
     const { tickScheduledAutomations } = require('../services/crmAutomationRunner');
     return withReminderLock('automation_tick', 500, () => tickScheduledAutomations());
@@ -385,6 +498,16 @@ function attachDlq(worker, queueName) {
   worker.on('failed', async (job, err) => {
     console.error(`[worker] ${queueName} job ${job?.id} failed:`, err.message);
     const maxAttempts = job?.opts?.attempts || 3;
+    const finalFailure = job && (
+      (job.attemptsMade || 0) >= maxAttempts || err?.name === 'UnrecoverableError'
+    );
+    if (finalFailure && queueName === QUEUE_NAMES.WA_OUTBOUND) {
+      const d = job.data || {};
+      const tenantId = d.tenant_id || d.tenantId;
+      await markMessageFailed(tenantId, d.crm_message_id, err).catch((e) =>
+        console.warn('[worker] markFailed after final failure', e.message)
+      );
+    }
     if (job && (job.attemptsMade || 0) >= maxAttempts) {
       await moveToDlq({ sourceQueue: queueName, job, err });
     }

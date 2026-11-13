@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import api from '../api/axios';
+import { todayYmdSL } from '../utils/dateSL';
 import Button from '../components/ui/Button';
 import { Input, FormGroup } from '../components/ui/FormElements';
 import PageWrapper from '../components/layout/PageWrapper';
@@ -26,7 +27,7 @@ const EMPTY = {
 const STATUS_TABS = ['All', 'Live', 'Draft', 'Upcoming', 'Expired'];
 
 function getStatus(row) {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayYmdSL();
   if (!row.is_published) return 'draft';
   if (row.starts_at && String(row.starts_at).slice(0, 10) > today) return 'upcoming';
   if (row.ends_at && String(row.ends_at).slice(0, 10) < today) return 'expired';

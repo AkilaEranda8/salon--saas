@@ -9,20 +9,21 @@ import {
   StatCard, PKModal as Modal,
   FilterBar, DataTable, TableActionsRow,
 } from '../components/ui/PageKit';
+import { todayYmdSL } from '../utils/dateSL';
 
 const CATS    = ['Rent','Utilities','Supplies','Salary','Marketing','Maintenance','Other'];
 const CUSTOM_CAT = '__custom__';
 const METHODS = ['cash','bank_transfer','cheque','card'];
 const CAT_COLOR = { Rent:'#2563EB', Utilities:'#7C3AED', Supplies:'#D97706', Salary:'#059669', Marketing:'#EA580C', Maintenance:'#0284C7', Other:'#64748B' };
 const CAT_BG    = { Rent:'#EFF6FF', Utilities:'#F5F3FF', Supplies:'#FFFBEB', Salary:'#ECFDF5', Marketing:'#FFF7ED', Maintenance:'#F0F9FF', Other:'#F8FAFC' };
-const EMPTY = { branch_id:'', category:'Supplies', title:'', amount:'', date: new Date().toISOString().slice(0,10), paid_to:'', payment_method:'cash', receipt_number:'', notes:'' };
+const emptyForm = () => ({ branch_id:'', category:'Supplies', title:'', amount:'', date: todayYmdSL(), paid_to:'', payment_method:'cash', receipt_number:'', notes:'' });
 
 export default function ExpensesPage() {
   const { user }     = useAuth();
   const canEdit      = ['superadmin','admin','manager'].includes(user?.role);
   const canAdd       = ['superadmin', 'admin', 'manager'].includes(user?.role);
   const canPickBranch = ['superadmin', 'admin'].includes(user?.role);
-  const today    = new Date(Date.now() + 5.5 * 60 * 60 * 1000).toISOString().slice(0,10);
+  const today    = todayYmdSL();
   const curMonth = today.slice(0,7);
   const [items, setItems]       = useState([]);
   const [branches, setBranches] = useState([]);
@@ -32,7 +33,7 @@ export default function ExpensesPage() {
   const [filterMonth, setFilterMonth]   = useState(curMonth);
   const [showForm, setShowForm] = useState(false);
   const [editItem, setEditItem] = useState(null);
-  const [form, setForm]         = useState(EMPTY);
+  const [form, setForm]         = useState(() => emptyForm());
   const [saving, setSaving]     = useState(false);
   const [formErr, setFormErr]   = useState('');
   const [customCategory, setCustomCategory] = useState(false);
@@ -61,7 +62,7 @@ export default function ExpensesPage() {
 
   const openAdd  = () => {
     setEditItem(null);
-    setForm({ ...EMPTY, branch_id: user?.branch_id||'', date: today });
+    setForm({ ...emptyForm(), branch_id: user?.branch_id||'', date: today });
     setCustomCategory(false);
     setCustomCatName('');
     setFormErr('');

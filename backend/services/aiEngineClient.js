@@ -57,8 +57,30 @@ async function runTurn(payload) {
   return data;
 }
 
+/**
+ * Drop the customer's in-progress booking/cancel/reschedule dialogue (call when a human claims the chat).
+ * Best-effort by design: never throws, so claiming a conversation can't fail because ai_engine is down.
+ * @returns {Promise<{ok:boolean, cleared?:number, error?:string}>}
+ */
+async function clearSession({ tenantId, phone, conversationId = null }) {
+  if (!tenantId || !phone) return { ok: false, error: 'tenantId and phone required' };
+  try {
+    const r = await fetch(`${AI_ENGINE_URL}/v1/sessions/clear`, {
+      method: 'POST',
+      headers: headers(),
+      body: JSON.stringify({ tenantId, phone, conversationId }),
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) return { ok: false, error: data.detail || `ai_engine clear ${r.status}` };
+    return { ok: true, cleared: data.cleared || 0 };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+}
+
 module.exports = {
   health,
   runTurn,
+  clearSession,
   AI_ENGINE_URL,
 };

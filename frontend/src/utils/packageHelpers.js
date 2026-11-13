@@ -1,4 +1,5 @@
 /** Shared package selection helpers for appointments, payments, and walk-in. */
+import { todayYmdSL } from './dateSL';
 
 export const PACKAGE_NOTE_PREFIX = 'Package:';
 
@@ -78,7 +79,7 @@ export function packageIsSelectableForPayment(cp) {
 
 function packageExpiryPassed(cp) {
   if (!cp?.expiry_date) return false;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayYmdSL();
   return String(cp.expiry_date).slice(0, 10) < today;
 }
 

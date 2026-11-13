@@ -149,6 +149,17 @@ async function ensureAiCrmSchema() {
     );
     console.log('[migration] crm_conversations.staff_last_read_at added');
   }
+  if (!(await columnExists('crm_leads', 'marketing_opt_out'))) {
+    await sequelize.query(
+      `ALTER TABLE crm_leads ADD COLUMN marketing_opt_out TINYINT(1) NOT NULL DEFAULT 0`
+    );
+    console.log('[migration] crm_leads.marketing_opt_out added');
+  }
+  if (!(await columnExists('crm_leads', 'marketing_opt_out_at'))) {
+    await sequelize.query(
+      `ALTER TABLE crm_leads ADD COLUMN marketing_opt_out_at DATETIME NULL`
+    );
+  }
 }
 
 module.exports = ensureAiCrmSchema;

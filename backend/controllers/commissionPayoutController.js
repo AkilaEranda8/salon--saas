@@ -68,15 +68,18 @@ const create = async (req, res) => {
     });
     const advanceCleared = pendingAdvances.reduce((s, a) => s + Number(a.amount || 0), 0);
 
+    let accountingWarning = null;
     try {
-      const { postCommissionPayoutToGl } = require('../services/accountingEngine');
+      const { postCommissionPayoutToGl, resolveAccountingTenant } = require('../services/accountingEngine');
+      const acctTenant = await resolveAccountingTenant(req);
       await postCommissionPayoutToGl(payout, {
-        tenant: req.tenant,
+        tenant: acctTenant,
         userId: req.user?.id,
         advanceCleared,
       });
     } catch (acctErr) {
-      console.warn('[accounting] payout post failed:', acctErr.message);
+      const { recordAccountingWarning } = require('../services/accountingEngine');
+      accountingWarning = recordAccountingWarning(res, `payout #${payout.id} post`, acctErr);
     }
 
     if (pendingAdvances.length) {
@@ -94,7 +97,9 @@ const create = async (req, res) => {
       ],
     });
 
-    return res.status(201).json(result);
+    const json = result.toJSON();
+    if (accountingWarning) json.accounting_warning = accountingWarning;
+    return res.status(201).json(json);
   } catch (err) {
     console.error(err);
     return res.status(500).json({ message: 'Server error.' });
@@ -112,6 +117,7 @@ const remove = async (req, res) => {
       { where: { staff_id: payout.staff_id, month: payout.month, status: 'deducted', ...tenantWhere(req) } }
     );
 
+    let accountingWarning = null;
     try {
       const { voidJournalBySource } = require('../services/accountingEngine');
       await voidJournalBySource({
@@ -122,11 +128,15 @@ const remove = async (req, res) => {
         reason: `Payout #${payout.id} deleted`,
       });
     } catch (acctErr) {
-      console.warn('[accounting] payout void failed:', acctErr.message);
+      const { recordAccountingWarning } = require('../services/accountingEngine');
+      accountingWarning = recordAccountingWarning(res, `payout #${payout.id} void`, acctErr);
     }
 
     await payout.destroy();
-    return res.json({ message: 'Deleted.' });
+    return res.json({
+      message: 'Deleted.',
+      ...(accountingWarning ? { accounting_warning: accountingWarning } : {}),
+    });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ message: 'Server error.' });

@@ -59,6 +59,7 @@ class PaymentRecord {
     this.managerCommission = 0,
     this.createdAt = '',
     this.appointmentLabel = '',
+    this.appointmentId = '',
     this.serviceLines = const [],
     this.commissionLines = const [],
   });
@@ -81,6 +82,7 @@ class PaymentRecord {
   final double managerCommission;
   final String createdAt;
   final String appointmentLabel;
+  final String appointmentId;
   final List<PaymentServiceLine> serviceLines;
   final List<PaymentCommissionLine> commissionLines;
 
@@ -226,6 +228,12 @@ class PaymentRecord {
       managerCommission: _asDouble(json['manager_commission_amount']),
       createdAt: '${json['createdAt'] ?? json['created_at'] ?? ''}',
       appointmentLabel: appointmentLabel,
+      appointmentId: apptId.isNotEmpty
+          ? apptId
+          : '${json['appointment_id'] ?? ''}'.trim().replaceFirst(
+              RegExp(r'^null$'),
+              '',
+            ),
       serviceLines: serviceLines,
       commissionLines: commissionLines,
     );

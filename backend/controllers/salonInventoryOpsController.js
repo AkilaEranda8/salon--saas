@@ -250,11 +250,49 @@ const dayEndConfirm = async (req, res) => {
       { where: { id: { [Op.in]: pending.map((c) => c.id) } }, transaction: t },
     );
 
+    // GL: Dr COGS, Cr Inventory for day-end consumption cost.
+    let accounting_warning = null;
+    try {
+      let totalCost = 0;
+      for (const [productId, { quantity }] of totals) {
+        const product = await InvProduct.findOne({
+          where: { id: productId, ...tenantWhere(req) },
+          attributes: ['id', 'cost_price'],
+          transaction: t,
+        });
+        if (!product) continue;
+        totalCost += quantity * (parseFloat(product.cost_price) || 0);
+      }
+      if (totalCost > 0) {
+        const {
+          postConsumptionToGl,
+          resolveAccountingTenant,
+          recordAccountingWarning,
+        } = require('../services/accountingEngine');
+        const acctTenant = await resolveAccountingTenant(req);
+        await postConsumptionToGl({
+          tenant: acctTenant,
+          tenantId: resolveTenantId(req),
+          sourceId: batch.id,
+          date,
+          totalCost,
+          memo: `Day-end consumption ${date}`,
+          userId: req.user?.id,
+          transaction: t,
+        });
+      }
+    } catch (acctErr) {
+      const { recordAccountingWarning } = require('../services/accountingEngine');
+      accounting_warning = recordAccountingWarning(res, `day-end batch #${batch.id} COGS`, acctErr);
+    }
+
     await t.commit();
     const full = await InvDayEndBatch.findByPk(batch.id, {
       include: [{ model: InvDayEndBatchItem, as: 'items', include: [{ model: InvProduct, as: 'product' }] }],
     });
-    return res.json(full);
+    const payload = full ? full.toJSON() : batch.toJSON();
+    if (accounting_warning) payload.accounting_warning = accounting_warning;
+    return res.json(payload);
   } catch (err) {
     await t.rollback();
     console.error('inv.dayEndConfirm', err.message);

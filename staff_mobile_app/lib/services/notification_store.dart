@@ -60,26 +60,48 @@ class NotificationStore {
   int get unreadCount =>
       notifications.value.where((n) => !n.isRead).length;
 
-  /// Call once at startup to load persisted notifications.
-  Future<void> load() async {
+  Future<void>? _loadFuture;
+
+  /// Loads persisted notifications. Idempotent: safe to call from several
+  /// places (startup, [add], notification handlers) — only the first call
+  /// reads storage unless [force] is true (e.g. to pick up items written by
+  /// the background isolate). In-memory items are merged, never discarded.
+  Future<void> load({bool force = false}) {
+    if (force) _loadFuture = null;
+    return _loadFuture ??= _doLoad();
+  }
+
+  Future<void> _doLoad() async {
     try {
       final prefs = await SharedPreferences.getInstance();
+      // Background isolate writes are not visible to a cached instance.
+      await prefs.reload();
       final raw = prefs.getString(_prefKey);
+      final byId = <String, AppNotification>{};
       if (raw != null) {
-        final list = (jsonDecode(raw) as List)
-            .map((e) => AppNotification.fromJson(e as Map<String, dynamic>))
-            .toList();
-        // newest first
-        list.sort((a, b) => b.timestamp.compareTo(a.timestamp));
-        notifications.value = list;
+        for (final e in (jsonDecode(raw) as List)) {
+          final n = AppNotification.fromJson(e as Map<String, dynamic>);
+          byId[n.id] = n;
+        }
       }
+      // Anything already in memory wins over the persisted copy.
+      for (final n in notifications.value) {
+        byId[n.id] = n;
+      }
+      // newest first
+      final list = byId.values.toList()
+        ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
+      notifications.value = list.take(_maxItems).toList();
     } catch (e) {
+      _loadFuture = null; // allow a retry
       debugPrint('[NotificationStore] load error: $e');
     }
   }
 
   /// Add a new notification and persist.
   Future<void> add(AppNotification n) async {
+    // Never save on top of an unloaded (or stale) store — that wiped history.
+    await load(force: true);
     final current = List<AppNotification>.from(notifications.value);
     // Avoid duplicates by id
     current.removeWhere((x) => x.id == n.id);
@@ -92,6 +114,7 @@ class NotificationStore {
 
   /// Mark all notifications as read and persist.
   Future<void> markAllRead() async {
+    await load();
     final updated = notifications.value.map((n) {
       n.isRead = true;
       return n;
@@ -102,6 +125,7 @@ class NotificationStore {
 
   /// Remove a single notification by id.
   Future<void> remove(String id) async {
+    await load();
     final updated = notifications.value.where((n) => n.id != id).toList();
     notifications.value = updated;
     await _save(updated);

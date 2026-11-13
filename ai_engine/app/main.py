@@ -11,21 +11,17 @@ from fastapi import Depends, FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
 from app.auth import check_service_auth
-from app.booking_flow import handle_booking_turn
+from app.booking_flow import handle_booking_turn, is_faq_message
+from app.handoff import COMPLAINT_RE as _COMPLAINT_RE
 from app.provider import CompletionRequest, get_provider
+from app.session_store import BookingSessionUnavailable, clear_session
 from app.tenant_credentials import resolve_provider_key
 from app.tenant_rules import fetch_tenant_rules_block
 from app.tools import list_tool_names, run_tool
 
-app = FastAPI(title="Hexalyte AI Engine", version="0.3.0")
+app = FastAPI(title="Hexalyte AI Engine", version="0.4.0")
 
 _HANDOFF_TOKEN = re.compile(r"\[HANDOFF:([^\]]+)\]", re.I)
-_COMPLAINT_RE = re.compile(
-    r"\b(complaint|complain|manager|human|speak to (someone|a person|staff)|"
-    r"real person|refund|scam|terrible|awful|angry|furious|"
-    r"පැමිණිල්ල|මැනේජර්|කෝප|හොර)\b",
-    re.I,
-)
 
 
 def _detect_handoff(customer_message: str, reply_text: str) -> Optional[dict[str, Any]]:
@@ -79,9 +75,32 @@ async def health():
     return {
         "status": "ok",
         "service": "ai_engine",
-        "version": "0.3.0",
+        "version": "0.4.0",
         "tools": list_tool_names(),
     }
+
+
+class ClearSessionRequest(BaseModel):
+    tenantId: int
+    phone: str
+    conversationId: Optional[int] = None
+
+
+@app.post("/v1/sessions/clear")
+async def sessions_clear(
+    body: ClearSessionRequest,
+    _: None = Depends(check_service_auth),
+):
+    """
+    Drop booking / cancel / reschedule dialogue state (call when a human claims the chat).
+    Same X-Service-Key auth as every other internal route. Idempotent: cleared=0 is fine.
+    Redis key: ai:booking:session:{tenantId}:{conversationId or 0}:{phone}
+    """
+    try:
+        n = clear_session(body.tenantId, body.phone, body.conversationId)
+    except BookingSessionUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return {"ok": True, "cleared": n}
 
 
 @app.get("/v1/tools")
@@ -107,6 +126,20 @@ async def tools_run(
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
+async def _load_kb_block(body: "TurnRequest", actions: list[dict[str, Any]]) -> str:
+    """Knowledge prompt block from kbHints (preferred) or a live search. Never raises."""
+    if body.kbHints and body.kbHints.get("prompt_block"):
+        actions.append({"tool": "knowledge_hints", "ok": True, "count": len(body.kbHints.get("hits") or [])})
+        return str(body.kbHints.get("prompt_block") or "")
+    try:
+        kb = await run_tool("search_knowledge", tenant_id=body.tenantId, q=body.message, limit=4)
+        actions.append({"tool": "search_knowledge", "ok": True, "count": len(kb.get("hits") or [])})
+        return str(kb.get("prompt_block") or "")
+    except Exception as exc:
+        actions.append({"tool": "search_knowledge", "ok": False, "error": str(exc)})
+        return ""
+
+
 @app.post("/v1/turns", response_model=TurnResponse)
 async def turns(
     body: TurnRequest,
@@ -120,7 +153,17 @@ async def turns(
 
     force_handoff = bool(_COMPLAINT_RE.search(body.message or ""))
 
-    # 1) Booking / cancel state machine (tools) — skip when customer wants a human
+    # 0) Clear FAQ (hours / location / price): load knowledge first. If the KB has context,
+    #    answer from it and don't enter (or advance) the booking state machine.
+    kb_block = ""
+    kb_loaded = False
+    faq_with_knowledge = False
+    if not force_handoff and is_faq_message(body.message or ""):
+        kb_block = await _load_kb_block(body, actions)
+        kb_loaded = True
+        faq_with_knowledge = bool(kb_block.strip())
+
+    # 1) Booking / cancel / reschedule state machine (tools) — skip when customer wants a human
     if not force_handoff:
         try:
             booked = await handle_booking_turn(
@@ -130,6 +173,7 @@ async def turns(
                 message=body.message,
                 brand=brand,
                 customer_name=customer_name,
+                faq_with_knowledge=faq_with_knowledge,
             )
             if booked is not None:
                 return TurnResponse(
@@ -163,17 +207,8 @@ async def turns(
         except Exception as exc:
             actions.append({"tool": "customer_lookup", "ok": False, "error": str(exc)})
 
-    kb_block = ""
-    if body.kbHints and body.kbHints.get("prompt_block"):
-        kb_block = str(body.kbHints.get("prompt_block") or "")
-        actions.append({"tool": "knowledge_hints", "ok": True, "count": len(body.kbHints.get("hits") or [])})
-    else:
-        try:
-            kb = await run_tool("search_knowledge", tenant_id=body.tenantId, q=body.message, limit=4)
-            kb_block = str(kb.get("prompt_block") or "")
-            actions.append({"tool": "search_knowledge", "ok": True, "count": len(kb.get("hits") or [])})
-        except Exception as exc:
-            actions.append({"tool": "search_knowledge", "ok": False, "error": str(exc)})
+    if not kb_loaded:
+        kb_block = await _load_kb_block(body, actions)
 
     # Live packages + promo discounts when customer asks about offers / offer details
     offers_block = ""
@@ -443,7 +478,7 @@ async def turns(
     system_parts.append(
         f"You are the AI WhatsApp receptionist for {brand}. "
         "Be concise, friendly, and helpful. Reply in the customer's language "
-        "(English or Sinhala) unless a salon rule says otherwise. "
+        "(English, Sinhala or Tamil) unless a salon rule says otherwise. "
         "For booking, tell them to say 'book appointment'. "
         "Prefer salon knowledge snippets for FAQs/policies. "
         "Keep replies under 120 words unless a rule says otherwise. "

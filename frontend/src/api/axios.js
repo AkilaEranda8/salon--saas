@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { getTenantSlug, getCustomHostname } from '../utils/tenant';
+import { getTenantSlug, getCustomHostname, clearImpersonationSlug } from '../utils/tenant';
 import {
   getKcAccessToken,
   isKcTokenExpiring,
@@ -84,7 +84,11 @@ api.interceptors.response.use(
     const status = error.response?.status;
     const code   = error.response?.data?.code;
 
-    if (status === 401 && !isLoginPath) {
+    // Wrong code on 2FA screens returns 401 — let the page show the error instead of logging out.
+    const reqUrl = error.config?.url || '';
+    const isTwoFaCodeCheck = /\/auth\/2fa\/(enable|disable|verify-login|verify)/.test(reqUrl);
+
+    if (status === 401 && !isLoginPath && !isTwoFaCodeCheck) {
       if (USE_KEYCLOAK) {
         const original = error.config || {};
         const isPublic = KC_PUBLIC_PATHS.some((p) => original.url?.includes(p));
@@ -102,10 +106,12 @@ api.interceptors.response.use(
         // Transient network/Keycloak failures retain the session for a later retry.
         if (!getKcRefreshToken()) {
           clearKcTokens();
+          clearImpersonationSlug();
           window.location.href = path.startsWith('/platform') ? '/platform/login' : '/login';
         }
       } else {
         localStorage.removeItem('zanesalon_user');
+        clearImpersonationSlug();
         window.location.href = '/login';
       }
     }

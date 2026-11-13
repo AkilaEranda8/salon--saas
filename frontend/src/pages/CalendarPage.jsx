@@ -383,7 +383,10 @@ export default function CalendarPage() {
   }, []);
 
   useEffect(() => {
-    if (isAdmin) api.get('/branches').then(r => setBranches(r.data || [])).catch(() => {});
+    if (isAdmin) api.get('/branches').then(r => {
+      const raw = r.data?.data || r.data;
+      setBranches(Array.isArray(raw) ? raw : []);
+    }).catch(() => {});
   }, [isAdmin]);
 
   const load = useCallback(async () => {
@@ -416,14 +419,14 @@ export default function CalendarPage() {
     const d = new Date(anchor);
     if (viewMode==='day')   d.setDate(d.getDate()-1);
     else if (viewMode==='week')  d.setDate(d.getDate()-7);
-    else d.setMonth(d.getMonth()-1);
+    else { d.setDate(1); d.setMonth(d.getMonth()-1); }
     setAnchor(d);
   };
   const goNext = () => {
     const d = new Date(anchor);
     if (viewMode==='day')   d.setDate(d.getDate()+1);
     else if (viewMode==='week')  d.setDate(d.getDate()+7);
-    else d.setMonth(d.getMonth()+1);
+    else { d.setDate(1); d.setMonth(d.getMonth()+1); }
     setAnchor(d);
   };
 

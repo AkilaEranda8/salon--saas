@@ -10,6 +10,7 @@ import {
   ActionBtn, IconEdit, IconTrash, IconPlus, IconUsers, IconStar, IconDollar, IconCheck,
 } from '../components/ui/PageKit';
 import usePageTheme, { PAGE_STAT_COLORS as SC } from '../hooks/usePageTheme';
+import { todayYmdSL } from '../utils/dateSL';
 
 const Rs = (n) => `Rs. ${Number(n || 0).toLocaleString()}`;
 const CYCLES = { monthly: 'Monthly', quarterly: 'Quarterly', yearly: 'Yearly', one_time: 'One-time' };
@@ -62,7 +63,7 @@ export default function MembershipPlansPage() {
 
   const [planForm, setPlanForm] = useState(BLANK_PLAN);
   const [enrollForm, setEnrollForm] = useState({
-    customer_id: '', plan_id: '', start_date: new Date().toISOString().slice(0, 10), amount_paid: '', notes: '',
+    customer_id: '', plan_id: '', start_date: todayYmdSL(), amount_paid: '', notes: '',
   });
 
   const loadPlans = useCallback(() =>
@@ -121,7 +122,7 @@ export default function MembershipPlansPage() {
     setEnrollForm({
       customer_id: '',
       plan_id: planId ? String(planId) : '',
-      start_date: new Date().toISOString().slice(0, 10),
+      start_date: todayYmdSL(),
       amount_paid: plan?.price != null ? String(plan.price) : '',
       notes: '',
     });
@@ -220,7 +221,7 @@ export default function MembershipPlansPage() {
       toast.success('Customer enrolled!');
       setShowEnrollForm(false);
       setEnrollForm({
-        customer_id: '', plan_id: '', start_date: new Date().toISOString().slice(0, 10), amount_paid: '', notes: '',
+        customer_id: '', plan_id: '', start_date: todayYmdSL(), amount_paid: '', notes: '',
       });
       setTab('enrollments');
       loadEnrollments();

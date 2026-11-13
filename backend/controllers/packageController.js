@@ -2,7 +2,7 @@
 const { Op } = require('sequelize');
 const { sequelize } = require('../config/database');
 const { tenantWhere, byIdWhere, resolveTenantId } = require('../utils/tenantScope');
-const { slToday } = require('../utils/dateUtils');
+const { slToday, slDatePlusDays, slNow } = require('../utils/dateUtils');
 const { withSessionsRemaining, hasSessionsLeft, getSessionsRemaining } = require('../utils/customerPackageHelpers');
 
 function packageHasDiscount(pkg) {
@@ -379,15 +379,14 @@ const purchase = async (req, res) => {
     }
 
     const today      = slToday();
-    const expiryDate = new Date();
-    expiryDate.setDate(expiryDate.getDate() + pkg.validity_days);
+    const expiryStr  = slDatePlusDays(Number(pkg.validity_days) || 0);
 
     const cp = await CustomerPackage.create({
       customer_id:    customerId,
       package_id:     packageId,
       branch_id:      effectiveBranchId,
       purchase_date:  today,
-      expiry_date:    expiryDate.toISOString().slice(0, 10),
+      expiry_date:    expiryStr,
       // 0 sessions means unlimited (membership).
       sessions_total: pkg.sessions_count || 0,
       sessions_used:  0,
@@ -397,6 +396,23 @@ const purchase = async (req, res) => {
       notes:          notes || null,
       tenant_id:      resolveTenantId(req),
     }, { transaction: t });
+
+    let accounting_warning = null;
+    try {
+      const {
+        postPackagePurchaseToGl,
+        resolveAccountingTenant,
+      } = require('../services/accountingEngine');
+      const acctTenant = await resolveAccountingTenant(req);
+      await postPackagePurchaseToGl(cp, {
+        tenant: acctTenant,
+        userId: req.user?.id,
+        transaction: t,
+      });
+    } catch (acctErr) {
+      const { recordAccountingWarning } = require('../services/accountingEngine');
+      accounting_warning = recordAccountingWarning(res, `package sale #${cp.id} post`, acctErr);
+    }
 
     await t.commit();
 
@@ -413,7 +429,9 @@ const purchase = async (req, res) => {
       ],
     });
 
-    return res.status(201).json(result);
+    const payload = result ? result.toJSON() : cp.toJSON();
+    if (accounting_warning) payload.accounting_warning = accounting_warning;
+    return res.status(201).json(payload);
   } catch (err) {
     await t.rollback();
     console.error(err);
@@ -436,6 +454,7 @@ const redeem = async (req, res) => {
       where: byIdWhere(req, customerPackageId),
       include: [{ model: Package, as: 'package' }],
       transaction: t,
+      lock: t.LOCK.UPDATE,
     });
 
     if (!cp) {
@@ -531,8 +550,8 @@ const purchaseForAllCustomers = async (req, res) => {
     const customers = await Customer.findAll({ where, attributes: ['id', 'branch_id'] });
     if (!customers.length) return res.status(404).json({ message: 'No customers found.' });
 
-    const expiry = new Date();
-    expiry.setMonth(expiry.getMonth() + parseInt(expiryMonths));
+    const expiry = slNow(); // UTC getters reflect Asia/Colombo wall clock
+    expiry.setUTCMonth(expiry.getUTCMonth() + parseInt(expiryMonths));
     const expiryStr = expiry.toISOString().slice(0, 10);
     const today = slToday();
 
@@ -545,6 +564,7 @@ const purchaseForAllCustomers = async (req, res) => {
 
     let created = 0;
     let skipped = 0;
+    // Bulk assign is a grant (no cash collected) — do not post package_sale journals.
     for (const c of customers) {
       if (alreadyHas.has(c.id)) { skipped++; continue; }
       await CustomerPackage.create({

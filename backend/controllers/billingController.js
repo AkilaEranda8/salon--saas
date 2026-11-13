@@ -1,5 +1,6 @@
 const { Tenant, Subscription, PlatformInvoice } = require('../models');
 const { invalidateTenantCache } = require('../middleware/tenantScope');
+const { invalidateSubscriptionGraceCache } = require('../middleware/checkSubscription');
 const { getTenantCaps } = require('../utils/planConfig');
 const { generateInvoicePdfBuffer, sendInvoiceEmail } = require('../services/invoiceDocumentService');
 
@@ -161,7 +162,17 @@ async function handleStripeEvent(event) {
       const tenant  = await Tenant.findOne({ where: { stripe_customer_id: invoice.customer } });
       if (!tenant) break;
 
-      await tenant.update({ status: 'suspended' });
+      // Do not suspend immediately: mark the subscription past_due and let
+      // checkSubscription enforce the grace window from current_period_end.
+      // (Tenant.status enum has no past_due value.)
+      const subId = invoice.subscription || tenant.stripe_subscription_id;
+      if (subId) {
+        await Subscription.update(
+          { status: 'past_due' },
+          { where: { tenant_id: tenant.id, stripe_subscription_id: subId } }
+        );
+      }
+      invalidateSubscriptionGraceCache(tenant.id);
       invalidateTenantCache(tenant.slug);
       break;
     }
@@ -178,21 +189,36 @@ async function syncSubscription(tenantId, stripeSubscription) {
 
   const priceId = stripeSubscription.items.data[0]?.price?.id;
   const plan    = getPlanFromPriceId(priceId);
-  // Stripe uses 'canceled' (one l); our DB ENUM uses 'cancelled' (two l)
   const rawStatus = stripeSubscription.status;
-  const status  = rawStatus === 'canceled' ? 'cancelled' : rawStatus;
+  // Map Stripe statuses to Subscription ENUM (active|trialing|past_due|cancelled)
+  const status  = mapStripeStatus(rawStatus);
   const caps = getTenantCaps(plan);
 
-  const tenantStatus = (rawStatus === 'active' || rawStatus === 'trialing') ? 'active' : 'suspended';
+  // Tenant.status ENUM is active|suspended|cancelled (no past_due).
+  //  - active / trialing        -> active
+  //  - past_due / incomplete    -> keep tenant active; the Subscription row is past_due and
+  //                                checkSubscription enforces the grace window
+  //  - unpaid / paused / canceled / incomplete_expired -> suspended
+  let tenantStatus;
+  if (rawStatus === 'active' || rawStatus === 'trialing') tenantStatus = 'active';
+  else if (rawStatus === 'past_due' || rawStatus === 'incomplete') tenantStatus = tenant.status === 'cancelled' ? 'cancelled' : (tenant.status || 'active');
+  else tenantStatus = 'suspended';
+
+  // An incomplete (unpaid first invoice) subscription must not grant the paid plan yet.
+  const grantPlan = rawStatus !== 'incomplete';
 
   await tenant.update({
-    plan,
+    ...(grantPlan ? { plan } : {}),
     status:                 tenantStatus,
     stripe_subscription_id: stripeSubscription.id,
-    max_branches:           caps.max_branches,
-    max_staff:              caps.max_staff,
-    trial_ends_at:          plan === 'trial' ? tenant.trial_ends_at : null,
+    ...(grantPlan ? {
+      max_branches:           caps.max_branches,
+      max_staff:              caps.max_staff,
+      trial_ends_at:          plan === 'trial' ? tenant.trial_ends_at : null,
+    } : {}),
   });
+
+  const toDate = (secs) => (Number.isFinite(Number(secs)) ? new Date(Number(secs) * 1000) : null);
 
   // Upsert Subscription record
   await Subscription.upsert({
@@ -201,12 +227,29 @@ async function syncSubscription(tenantId, stripeSubscription) {
     stripe_price_id:        priceId,
     plan,
     status,
-    current_period_start:   new Date(stripeSubscription.current_period_start * 1000),
-    current_period_end:     new Date(stripeSubscription.current_period_end   * 1000),
-    cancel_at_period_end:   stripeSubscription.cancel_at_period_end,
+    current_period_start:   toDate(stripeSubscription.current_period_start),
+    current_period_end:     toDate(stripeSubscription.current_period_end),
+    cancel_at_period_end:   !!stripeSubscription.cancel_at_period_end,
   });
 
+  invalidateSubscriptionGraceCache(tenant.id);
   invalidateTenantCache(tenant.slug);
+}
+
+function mapStripeStatus(rawStatus) {
+  switch (rawStatus) {
+    case 'active':   return 'active';
+    case 'trialing': return 'trialing';
+    case 'past_due':
+    case 'unpaid':
+    case 'incomplete':
+      return 'past_due';
+    case 'canceled':
+    case 'incomplete_expired':
+    case 'paused':
+    default:
+      return 'cancelled';
+  }
 }
 
 function getPlanFromPriceId(priceId) {
@@ -242,7 +285,7 @@ const billingStatus = async (req, res) => {
 // ── GET /api/billing/invoices ───────────────────────────────────────────────
 const billingInvoices = async (req, res) => {
   try {
-    const tenantId = req.tenant?.id || req.user?.tenantId;
+    const tenantId = req.authorityTenantId ?? req.tenant?.id ?? null;
     if (!tenantId) return res.status(400).json({ message: 'Tenant context required.' });
 
     const invoices = await PlatformInvoice.findAll({
@@ -261,7 +304,7 @@ const billingInvoices = async (req, res) => {
 // ── GET /api/billing/invoices/:id/pdf ───────────────────────────────────────
 const billingInvoicePdf = async (req, res) => {
   try {
-    const tenantId = req.tenant?.id || req.user?.tenantId;
+    const tenantId = req.authorityTenantId ?? req.tenant?.id ?? null;
     if (!tenantId) return res.status(400).json({ message: 'Tenant context required.' });
 
     const invoice = await PlatformInvoice.findOne({
@@ -285,7 +328,7 @@ const billingInvoicePdf = async (req, res) => {
 // ── POST /api/billing/invoices/:id/email ────────────────────────────────────
 const billingInvoiceEmail = async (req, res) => {
   try {
-    const tenantId = req.tenant?.id || req.user?.tenantId;
+    const tenantId = req.authorityTenantId ?? req.tenant?.id ?? null;
     if (!tenantId) return res.status(400).json({ message: 'Tenant context required.' });
 
     const invoice = await PlatformInvoice.findOne({

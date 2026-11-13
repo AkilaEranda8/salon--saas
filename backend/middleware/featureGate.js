@@ -118,6 +118,25 @@ async function enforceJwtTenantAuthority(req, feature) {
   return { ok: true, tenant };
 }
 
+/**
+ * Route middleware (use AFTER verifyToken): forces the JWT tenant for non-platform users
+ * and rejects X-Tenant-Slug mismatches. Sets req.tenant and req.authorityTenantId.
+ * platform_admin may still select a tenant via slug/host header.
+ */
+const requireTenantAuthority = (feature = 'tenant') => async (req, res, next) => {
+  try {
+    const enforced = await enforceJwtTenantAuthority(req, feature);
+    if (!enforced.ok) {
+      return res.status(enforced.status).json(enforced.body);
+    }
+    req.authorityTenantId = enforced.tenant?.id ?? null;
+    return next();
+  } catch (err) {
+    console.error('requireTenantAuthority error:', err);
+    return res.status(500).json({ message: 'Tenant authority check failed.' });
+  }
+};
+
 const featureGate = (feature) => async (req, res, next) => {
   try {
     const enforced = await enforceJwtTenantAuthority(req, feature);
@@ -166,5 +185,6 @@ const featureGate = (feature) => async (req, res, next) => {
 module.exports = {
   featureGate,
   enforceJwtTenantAuthority,
+  requireTenantAuthority,
   FEATURE_LABELS,
 };

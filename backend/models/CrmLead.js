@@ -62,6 +62,16 @@ const CrmLead = sequelize.define('CrmLead', {
     type: DataTypes.DATE,
     allowNull: true,
   },
+  /** Customer replied STOP — exclude from promo/birthday/rebooking automations. */
+  marketing_opt_out: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: false,
+  },
+  marketing_opt_out_at: {
+    type: DataTypes.DATE,
+    allowNull: true,
+  },
 }, {
   tableName: 'crm_leads',
   underscored: true,

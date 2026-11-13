@@ -13,6 +13,20 @@ class ProfilePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final state = AppStateScope.of(context);
+    if (state.isLoggedIn && state.profile == null && state.offline) {
+      // Session kept, but the profile could not be loaded (network/server).
+      return EmptyState(
+        title: 'You appear to be offline',
+        subtitle: 'Could not load your profile. Check your connection and try again.',
+        actionLabel: 'Retry',
+        onAction: () async {
+          try {
+            await state.refreshProfile();
+          } catch (_) {}
+        },
+        icon: Icons.cloud_off_outlined,
+      );
+    }
     if (!state.isLoggedIn || state.profile == null) {
       return EmptyState(
         title: 'Your profile',

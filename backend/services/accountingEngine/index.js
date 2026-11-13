@@ -11,6 +11,10 @@ const reports = require('./reports');
 const paymentAdapter = require('./adapters/payment');
 const expenseAdapter = require('./adapters/expense');
 const payrollAdapter = require('./adapters/payroll');
+const packageAdapter = require('./adapters/package');
+const inventoryAdapter = require('./adapters/inventory');
+const { resolveAccountingTenant } = require('./resolveTenant');
+const warning = require('./warning');
 
 module.exports = {
   ...balance,
@@ -21,10 +25,21 @@ module.exports = {
   ...journal,
   ...posting,
   ...reports,
+  ...warning,
+  resolveAccountingTenant,
   postPaymentToGl: paymentAdapter.postPaymentToGl,
+  voidPaymentGl: paymentAdapter.voidPaymentGl,
+  repostPaymentToGl: paymentAdapter.repostPaymentToGl,
   postExpenseToGl: expenseAdapter.postExpenseToGl,
+  voidExpenseGl: expenseAdapter.voidExpenseGl,
+  repostExpenseToGl: expenseAdapter.repostExpenseToGl,
   postCommissionPayoutToGl: payrollAdapter.postCommissionPayoutToGl,
   postStaffAdvanceToGl: payrollAdapter.postStaffAdvanceToGl,
   postAdvanceRecoveryToGl: payrollAdapter.postAdvanceRecoveryToGl,
   buildCommissionPayoutLines: payrollAdapter.buildCommissionPayoutLines,
+  postPackagePurchaseToGl: packageAdapter.postPackagePurchaseToGl,
+  postPackageSaleToGl: packageAdapter.postPackageSaleToGl,
+  voidPackageSaleGl: packageAdapter.voidPackageSaleGl,
+  postGoodsReceiptToGl: inventoryAdapter.postGoodsReceiptToGl,
+  postConsumptionToGl: inventoryAdapter.postConsumptionToGl,
 };

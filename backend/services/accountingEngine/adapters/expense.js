@@ -1,6 +1,8 @@
 'use strict';
 
+const { sequelize } = require('../../../config/database');
 const { money } = require('../balance');
+const { voidJournalBySource } = require('../journal');
 const { splitInclusiveVat } = require('../vat');
 const { getSettings } = require('../coa');
 const { postFromSource } = require('../posting');
@@ -54,4 +56,33 @@ async function postExpenseToGl(expense, { tenant, userId = null, transaction = n
   });
 }
 
-module.exports = { postExpenseToGl };
+async function voidExpenseGl(expense, {
+  userId = null, reason = null, transaction = null,
+} = {}) {
+  if (!expense?.tenant_id || expense.id == null) return null;
+  return voidJournalBySource({
+    tenantId: expense.tenant_id,
+    sourceType: 'expense',
+    sourceId: expense.id,
+    userId,
+    reason: reason || `Expense #${expense.id} voided`,
+    transaction,
+  });
+}
+
+/** Void the existing expense journal (if any) and post again from current values (atomic). */
+async function repostExpenseToGl(expense, opts = {}) {
+  const { userId = null, reason = null, transaction: outerTx = null } = opts;
+  const run = async (transaction) => {
+    await voidExpenseGl(expense, {
+      userId,
+      reason: reason || `Expense #${expense.id} updated (repost)`,
+      transaction,
+    });
+    return postExpenseToGl(expense, { ...opts, transaction });
+  };
+  if (outerTx) return run(outerTx);
+  return sequelize.transaction(run);
+}
+
+module.exports = { postExpenseToGl, voidExpenseGl, repostExpenseToGl };

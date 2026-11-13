@@ -5,6 +5,21 @@ import 'package:http/http.dart' as http;
 import '../config.dart';
 import '../models/models.dart';
 
+/// HTTP error from the API. [toString] returns just the message so existing
+/// `e.toString().replaceFirst('Exception: ', '')` call sites are unchanged.
+class ApiException implements Exception {
+  ApiException(this.message, this.statusCode);
+
+  final String message;
+  final int statusCode;
+
+  /// Token rejected — the session is no longer valid.
+  bool get isAuthError => statusCode == 401 || statusCode == 403;
+
+  @override
+  String toString() => message;
+}
+
 class PublicApi {
   PublicApi({String? baseUrl, int? tenantId})
       : baseUrl = (baseUrl ?? AppConfig.apiBaseUrl).replaceAll(RegExp(r'/+$'), ''),
@@ -37,7 +52,7 @@ class PublicApi {
   Never _throw(http.Response res) {
     final body = _decode(res);
     final msg = body is Map ? (body['message']?.toString() ?? 'Request failed') : 'Request failed (${res.statusCode})';
-    throw Exception(msg);
+    throw ApiException(msg, res.statusCode);
   }
 
   Future<List<SalonService>> getServices() async {

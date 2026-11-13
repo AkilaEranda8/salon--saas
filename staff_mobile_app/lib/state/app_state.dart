@@ -18,6 +18,7 @@ import '../models/staff_user.dart';
 import '../models/walkin_entry.dart';
 import '../services/mobile_api.dart';
 import '../services/notification_service.dart';
+import '../services/notification_store.dart';
 import '../utils/appointment_notes.dart';
 import '../utils/package_helpers.dart';
 import '../utils/phone_validation.dart';
@@ -42,7 +43,62 @@ const String kStaffApiBaseUrl = String.fromEnvironment(
 );
 
 class AppState extends ChangeNotifier {
-  AppState() : _api = MobileApi(baseUrl: kStaffApiBaseUrl);
+  AppState() : _api = MobileApi(baseUrl: kStaffApiBaseUrl) {
+    _api.onUnauthorized = _handleUnauthorized;
+  }
+
+  MobileApi _newApi({String? slug}) {
+    final api = MobileApi(baseUrl: kStaffApiBaseUrl, slug: slug);
+    api.onUnauthorized = _handleUnauthorized;
+    return api;
+  }
+
+  Future<String?>? _refreshInFlight;
+
+  /// 401 handler used by [MobileApi]: refreshes the access token once
+  /// (single-flight, since Keycloak may rotate the refresh token) and
+  /// returns the new token so the failed request can be retried.
+  Future<String?> _handleUnauthorized(String staleToken) {
+    final user = _currentUser;
+    if (user == null) return Future.value(null);
+    final current = user.authToken?.trim() ?? '';
+    // Another request already refreshed while this one was in flight.
+    if (current.isNotEmpty && current != staleToken) {
+      return Future.value(current);
+    }
+    return _refreshInFlight ??= _refreshAccessToken().whenComplete(() {
+      _refreshInFlight = null;
+    });
+  }
+
+  Future<String?> _refreshAccessToken() async {
+    final prefs = await SharedPreferences.getInstance();
+    final refresh = prefs.getString(_kRefreshTokenKey) ?? '';
+    if (refresh.isEmpty) {
+      await logout();
+      return null;
+    }
+    KcTokens? tokens;
+    try {
+      tokens = await _api.kcRefreshTokens(refreshToken: refresh);
+    } catch (_) {
+      // Network / server error — keep the session, caller sees the 401.
+      return null;
+    }
+    if (tokens == null) {
+      // Refresh token rejected — session is no longer valid.
+      await logout();
+      return null;
+    }
+    final user = _currentUser;
+    if (user == null) return null; // logged out while refreshing
+    await prefs.setString(_kAuthTokenKey, tokens.accessToken);
+    if (tokens.refreshToken.isNotEmpty) {
+      await prefs.setString(_kRefreshTokenKey, tokens.refreshToken);
+    }
+    _currentUser = user.copyWithAuthToken(tokens.accessToken);
+    return tokens.accessToken;
+  }
 
   /// Call after [Firebase.initializeApp] + [NotificationService.init].
   void bindPushTokenRefresh() {
@@ -80,10 +136,7 @@ class AppState extends ChangeNotifier {
   String get apiBaseUrl => _api.baseUrl;
 
   void setSlug(String slug) {
-    _api = MobileApi(
-      baseUrl: kStaffApiBaseUrl,
-      slug: slug.trim().toLowerCase(),
-    );
+    _api = _newApi(slug: slug.trim().toLowerCase());
   }
 
   Future<String?> getSavedSlug() async {
@@ -142,18 +195,28 @@ class AppState extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       final savedSlug = prefs.getString(_kSlugKey);
       if (savedSlug != null && savedSlug.isNotEmpty) {
-        _api = MobileApi(baseUrl: kStaffApiBaseUrl, slug: savedSlug);
+        _api = _newApi(slug: savedSlug);
       }
       // Fresh access token before any API calls from the dashboard.
+      // No refresh token, or the server rejects it → the stored access token
+      // is stale (short-lived), so drop the session instead of keeping it.
+      // Network/server errors keep the session; the 401 handler retries later.
       final savedRefresh = prefs.getString(_kRefreshTokenKey) ?? '';
-      if (savedRefresh.isNotEmpty) {
-        try {
-          final newAccess = await _api.kcRefresh(refreshToken: savedRefresh);
-          if (newAccess != null && newAccess.isNotEmpty) {
-            await prefs.setString(_kAuthTokenKey, newAccess);
-          }
-        } catch (_) {}
+      if (savedRefresh.isEmpty) {
+        await _clearPersistedSession();
+        return;
       }
+      try {
+        final tokens = await _api.kcRefreshTokens(refreshToken: savedRefresh);
+        if (tokens == null) {
+          await _clearPersistedSession();
+          return;
+        }
+        await prefs.setString(_kAuthTokenKey, tokens.accessToken);
+        if (tokens.refreshToken.isNotEmpty) {
+          await prefs.setString(_kRefreshTokenKey, tokens.refreshToken);
+        }
+      } catch (_) {}
 
       final token = prefs.getString(_kAuthTokenKey);
       if (token == null || token.trim().isEmpty) return;
@@ -280,18 +343,37 @@ class AppState extends ChangeNotifier {
     } catch (_) {}
   }
 
-  void logout() {
+  /// Clears local session state immediately (UI goes back to login), then
+  /// best-effort unregisters the FCM token (3s timeout) before returning.
+  Future<void> logout() async {
     final token = _currentUser?.authToken;
-    if (token != null && token.isNotEmpty) {
-      _api.removeFcmToken(token: token);
-    }
+    final api = _api;
     _currentUser = null;
     _customers.clear();
     _customerCount = 0;
     _appointments.clear();
     _services.clear();
-    _clearPersistedSession();
+    _salonStaff.clear();
+    _staffUsers.clear();
+    _branches.clear();
+    _paidAppointmentPayments.clear();
+    _collectingAppointmentIds.clear();
     notifyListeners();
+    // Persisted data first, so a quick app kill or re-login can't race it.
+    try {
+      await _clearPersistedSession();
+    } catch (_) {}
+    try {
+      await NotificationStore.instance.clear();
+    } catch (_) {}
+    // Best-effort FCM unregister with the old token; never blocks logout.
+    if (token != null && token.isNotEmpty) {
+      try {
+        await api
+            .removeFcmToken(token: token)
+            .timeout(const Duration(seconds: 3));
+      } catch (_) {}
+    }
   }
 
   bool hasPermission(StaffPermission permission) {
@@ -1623,7 +1705,24 @@ class AppState extends ChangeNotifier {
       _lastError = 'Branch not found for this appointment.';
       return false;
     }
+    if (!_collectingAppointmentIds.add(appointment.id)) {
+      _lastError = 'A payment for this appointment is already being processed.';
+      return false;
+    }
     try {
+      // Never create a second payment: if one already exists (recorded earlier
+      // in this session, or found on the server after a failed status update),
+      // only retry the "completed" status update.
+      final existingPaymentId = await _existingAppointmentPaymentId(
+        token: token,
+        appointment: appointment,
+        branchId: effectiveBranchId,
+      );
+      if (existingPaymentId != null) {
+        _paidAppointmentPayments[appointment.id] = existingPaymentId;
+        return await _completeAppointmentAfterPayment(token, appointment.id);
+      }
+
       final advancePaid = appointment.advancePaid > 0
           ? appointment.advancePaid
           : 0.0;
@@ -1647,7 +1746,7 @@ class AppState extends ChangeNotifier {
           merged[key] = {
             'method': method,
             'amount': amt,
-            'customer_package_id': ?packageId,
+            'customer_package_id': packageId,
           };
         }
       }
@@ -1694,7 +1793,7 @@ class AppState extends ChangeNotifier {
       final resolvedStaffId = (staffId != null && staffId.trim().isNotEmpty)
           ? staffId.trim()
           : (appointment.staffId.isNotEmpty ? appointment.staffId : null);
-      await _api.createPayment(
+      final createdPaymentId = await _api.createPayment(
         token: token,
         branchId: effectiveBranchId,
         appointmentId: appointment.id,
@@ -1726,17 +1825,82 @@ class AppState extends ChangeNotifier {
         splits: splitsPayload,
         replaceAppointmentPayments: settleAdvance,
       );
-      await _api.updateAppointmentStatus(
-        token: token,
-        appointmentId: appointment.id,
-        status: 'completed',
-      );
-      await reloadAppointments();
-      return true;
+      // Payment is now recorded — remember it so a retry never charges again.
+      _paidAppointmentPayments[appointment.id] = createdPaymentId ?? '';
+      return await _completeAppointmentAfterPayment(token, appointment.id);
     } catch (e) {
       _lastError = e.toString().replaceFirst('Exception: ', '');
       return false;
+    } finally {
+      _collectingAppointmentIds.remove(appointment.id);
     }
+  }
+
+  /// appointmentId → payment id (empty when the server did not return one)
+  /// for payments created in this session whose appointment may not be
+  /// completed yet.
+  final Map<String, String> _paidAppointmentPayments = {};
+  final Set<String> _collectingAppointmentIds = {};
+
+  static bool _isSuccessfulPaymentStatus(String status) {
+    final s = status.trim().toLowerCase();
+    return s == 'paid' || s == 'completed' || s == 'success' || s == 'successful';
+  }
+
+  /// Id of an existing successful (non-advance) payment for [appointment],
+  /// or null. Server lookup is best-effort: if it fails we rely on the
+  /// in-session record only.
+  Future<String?> _existingAppointmentPaymentId({
+    required String token,
+    required Appointment appointment,
+    required String branchId,
+  }) async {
+    final local = _paidAppointmentPayments[appointment.id];
+    if (local != null) return local;
+    try {
+      final payments = await _api.fetchPayments(
+        token: token,
+        branchId: branchId,
+        customerId: appointment.customerId.isNotEmpty
+            ? appointment.customerId
+            : null,
+      );
+      for (final p in payments) {
+        if (p.appointmentId == appointment.id &&
+            !p.isAdvance &&
+            _isSuccessfulPaymentStatus(p.status)) {
+          return p.id;
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  /// Marks the appointment completed after its payment exists. On failure the
+  /// error explains the payment was recorded, so the user does not re-charge.
+  Future<bool> _completeAppointmentAfterPayment(
+    String token,
+    String appointmentId,
+  ) async {
+    try {
+      await _api.updateAppointmentStatus(
+        token: token,
+        appointmentId: appointmentId,
+        status: 'completed',
+      );
+    } catch (e) {
+      final detail = e.toString().replaceFirst('Exception: ', '');
+      _lastError =
+          'Payment was recorded, but the appointment could not be marked '
+          'completed ($detail). Do not collect again — open this appointment '
+          'and tap collect once more to finish; you will not be charged twice.';
+      return false;
+    }
+    _paidAppointmentPayments.remove(appointmentId);
+    try {
+      await reloadAppointments();
+    } catch (_) {}
+    return true;
   }
 
   Future<List<Map<String, dynamic>>> loadInventoryProducts({

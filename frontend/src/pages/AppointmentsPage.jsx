@@ -39,6 +39,8 @@ import RecurringTemplateCheckboxes from '../components/ui/RecurringTemplateCheck
 import PaymentHelperStaffFields, { helpersPayload } from '../components/payments/PaymentHelperStaffFields';
 import { pinWalkInFirst } from '../utils/walkInCustomer';
 import { fetchAllServices, filterServicesByQuery } from '../utils/fetchAllServices';
+import { tomorrowYmdSL } from '../utils/dateSL';
+import { useToast } from '../components/ui/Toast';
 
 const IconMoney    = () => <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>;
 
@@ -609,6 +611,7 @@ export default function AppointmentsPage() {
   const { isDark }   = useTheme();
   const { C }        = usePageTheme();
   const navigate     = useNavigate();
+  const { toast }    = useToast();
   const canEdit      = ['superadmin','admin','manager','staff'].includes(user?.role);
   const isSuperAdmin = user?.role === 'superadmin';
   const today        = localToday();
@@ -695,13 +698,18 @@ export default function AppointmentsPage() {
 
   const load = useCallback(async () => {
     setLoading(true);
+    // Secondary data is fetched independently so its failure never blocks the appointments list.
+    const secondary = Promise.allSettled([
+      api.get('/branches',     { params:{ limit:100 } }),
+      api.get('/staff',        { params:{ limit:200, ...(filterBranch?{branchId:filterBranch}:{}) } }),
+      fetchAllServices(api),
+    ]).then(([brS, stS, svS]) => {
+      if (brS.status === 'fulfilled') setBranches(Array.isArray(brS.value.data) ? brS.value.data : (brS.value.data?.data??[]));
+      if (stS.status === 'fulfilled') setStaffList(Array.isArray(stS.value.data) ? stS.value.data : (stS.value.data?.data??[]));
+      if (svS.status === 'fulfilled') setServices(svS.value);
+    });
     try {
-      const [apR, brR, stR, allServices] = await Promise.all([
-        api.get('/appointments', { params:{ page, limit:LIMIT, ...(filterBranch?{branchId:filterBranch}:{}), ...(filterStatus?{status:filterStatus}:{}), ...(filterDate?{date:filterDate}:{}) } }),
-        api.get('/branches',     { params:{ limit:100 } }),
-        api.get('/staff',        { params:{ limit:200, ...(filterBranch?{branchId:filterBranch}:{}) } }),
-        fetchAllServices(api),
-      ]);
+      const apR = await api.get('/appointments', { params:{ page, limit:LIMIT, ...(filterBranch?{branchId:filterBranch}:{}), ...(filterStatus?{status:filterStatus}:{}), ...(filterDate?{date:filterDate}:{}) } });
       const d = apR.data?.data ?? apR.data ?? [];
       const rows = Array.isArray(d) ? d : [];
       setAppts(rows);
@@ -723,12 +731,12 @@ export default function AppointmentsPage() {
       } else {
         setApptPackageCache({});
       }
-      setBranches(Array.isArray(brR.data) ? brR.data : (brR.data?.data??[]));
-      setServices(allServices);
-      setStaffList(Array.isArray(stR.data) ? stR.data : (stR.data?.data??[]));
-    } catch {}
+    } catch (e) {
+      toast.error(e.response?.data?.message || 'Failed to load appointments.');
+    }
     setLoading(false);
-  }, [filterBranch, filterStatus, filterDate, page]);
+    await secondary;
+  }, [filterBranch, filterStatus, filterDate, page, toast]);
   useEffect(() => { load(); }, [load]);
 
   /* Load all salon customers when booking modal opens (not branch-limited) */
@@ -1447,11 +1455,22 @@ export default function AppointmentsPage() {
     } catch (e) { setFormErr(e.response?.data?.message||'Save failed'); }
     setSaving(false);
   };
-  const handleStatusChange = async (id, status) => { await api.patch(`/appointments/${id}/status`, { status }); load(); };
+  const handleStatusChange = async (id, status) => {
+    try {
+      await api.patch(`/appointments/${id}/status`, { status });
+    } catch (e) {
+      toast.error(e.response?.data?.message || 'Failed to update appointment status.');
+    }
+    load();
+  };
   const confirmDelete = id => setDeleteId(id);
   const handleDelete = async () => {
     if (!deleteId) return;
-    try { await api.delete(`/appointments/${deleteId}`); } catch {}
+    try {
+      await api.delete(`/appointments/${deleteId}`);
+    } catch (e) {
+      toast.error(e.response?.data?.message || 'Failed to delete appointment.');
+    }
     setDeleteId(null); load();
   };
 
@@ -1978,11 +1997,7 @@ export default function AppointmentsPage() {
     },
   ], [canEdit, isDark, C, services, apptPackageCache, staffList]);
 
-  const tomorrow = useMemo(() => {
-    const d = new Date();
-    d.setDate(d.getDate() + 1);
-    return d.toISOString().slice(0, 10);
-  }, []);
+  const tomorrow = useMemo(() => tomorrowYmdSL(), []);
 
   const activeFilterLabel = filterStatus
     ? STATUS_META[filterStatus]?.label

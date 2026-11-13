@@ -310,6 +310,8 @@ const updateTax = async (req, res) => {
       'default_ap_account_id', 'default_petty_account_id',
       'default_advance_account_id', 'default_package_liability_id',
       'default_loyalty_liability_id', 'default_equity_account_id',
+      'default_inventory_account_id', 'default_cogs_account_id',
+      'default_deposit_liability_id',
       'auto_post_payments', 'auto_post_expenses', 'auto_post_payroll',
     ];
     const patch = {};

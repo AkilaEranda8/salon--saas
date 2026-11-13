@@ -2,7 +2,7 @@
 
 const { Op } = require('sequelize');
 const { sequelize } = require('../../config/database');
-const { money, assertBalanced } = require('./balance');
+const { money, assertBalanced, buildReverseLines } = require('./balance');
 const { resolveOpenPeriod } = require('./periods');
 const { writeAudit } = require('./audit');
 const { ensureTenantBooks } = require('./coa');
@@ -148,12 +148,7 @@ async function voidJournal({ tenantId, journalId, userId = null, reason = null, 
       throw err;
     }
 
-    const reverseLines = (journal.lines || []).map((l) => ({
-      account_id: l.account_id,
-      debit: money(l.credit),
-      credit: money(l.debit),
-      memo: l.memo ? `Void: ${l.memo}` : 'Void',
-    }));
+    const reverseLines = buildReverseLines(journal.lines || []);
 
     const reversing = await postJournal({
       tenantId: tid,
@@ -166,6 +161,12 @@ async function voidJournal({ tenantId, journalId, userId = null, reason = null, 
       transaction,
     });
 
+    // Original stays in the ledger (status voided) and nets to zero with `reversing`
+    // (status posted). source_type/source_id are archived only because
+    // uq_acct_journals_source is UNIQUE(tenant_id, source_type, source_id): keeping
+    // them would make re-posting the same source (repost after edit) fail with a
+    // duplicate-key error. voidJournalBySource/findExistingSourceJournal only look at
+    // posted|draft journals under the original source, so they are unaffected.
     await journal.update({
       status: 'voided',
       voided_by_journal_id: reversing.id,

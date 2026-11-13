@@ -8,11 +8,9 @@ const fs = require('fs').promises;
 // Tenant user uploads bank slip as payment proof
 const uploadBankSlip = async (req, res) => {
   try {
-    let tenant = req.tenant;
-    if (!tenant && req.user?.tenantId) {
-      // Fallback to tenant id from JWT when tenant-scope header is unavailable.
-      tenant = { id: req.user.tenantId };
-    }
+    // Tenant is forced to the JWT tenant by requireTenantAuthority (platform_admin may use slug).
+    const tenantId = req.authorityTenantId ?? req.tenant?.id ?? null;
+    const tenant = tenantId ? { id: tenantId } : null;
     if (!tenant) return res.status(400).json({ message: 'Tenant context required.' });
     if (!req.file) return res.status(400).json({ message: 'No file uploaded.' });
 
@@ -216,11 +214,8 @@ const rejectBankSlip = async (req, res) => {
 // Tenant user checks their bank slip status
 const getBankSlipStatus = async (req, res) => {
   try {
-    let tenant = req.tenant;
-    if (!tenant && req.user?.tenantId) {
-      // Fallback to tenant id from JWT when tenant-scope header is unavailable.
-      tenant = { id: req.user.tenantId };
-    }
+    const tenantId = req.authorityTenantId ?? req.tenant?.id ?? null;
+    const tenant = tenantId ? { id: tenantId } : null;
     if (!tenant) return res.status(400).json({ message: 'Tenant context required.' });
 
     const bankSlips = await BankSlip.findAll({

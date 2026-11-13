@@ -9,10 +9,11 @@ import {
   StaffAvatar, IconDollar, IconUsers, IconReceipt, IconPlus,
   ActionBtn,
 } from '../components/ui/PageKit';
+import { todayYmdSL } from '../utils/dateSL';
 
 const Rs     = n => `Rs. ${Number(n || 0).toLocaleString()}`;
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-const today  = () => new Date().toISOString().slice(0, 10);
+const today  = () => todayYmdSL();
 
 /** Salary portion only (not commission) — Day+Comm uses attendance days × rate. */
 function salaryPortion(r) {

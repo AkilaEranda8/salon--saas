@@ -55,6 +55,11 @@ export function getTenantSlug() {
   return detectFromHostname(window.location.hostname);
 }
 
+/** Clears the impersonation tenant slug (call on logout / when leaving impersonation). */
+export function clearImpersonationSlug() {
+  try { sessionStorage.removeItem('impersonation_tenant_slug'); } catch { /* ignore */ }
+}
+
 /**
  * Returns whether the current page is a platform admin context.
  */

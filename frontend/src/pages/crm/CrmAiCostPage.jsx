@@ -23,6 +23,94 @@ function Kpi({ label, value, sub, C, warn }) {
   );
 }
 
+/** One composed section: inbox backlog, delivery, queues, follow-ups. */
+function HealthSection({ C, overview, queues, followUps }) {
+  const h = overview?.health || {};
+  const m = overview?.month || {};
+  const num = (v) => (v == null ? '—' : v);
+
+  const stats = [
+    { label: 'Open conversations', value: num(h.open_conversations ?? m.active_chats), sub: `${num(h.human_active)} with a human` },
+    { label: 'Queued handoffs', value: num(h.queued_handoffs), warn: h.queued_handoffs > 0, sub: 'Waiting for staff' },
+    { label: 'Outbound pending', value: num(h.outbound_pending_7d), warn: h.outbound_pending_7d > 5, sub: 'Last 7 days' },
+    { label: 'Outbound failed', value: num(h.outbound_failed_7d), warn: h.outbound_failed_7d > 0, sub: 'Last 7 days' },
+    {
+      label: 'AI containment',
+      value: h.ai_containment_pct == null ? '—' : `${h.ai_containment_pct}%`,
+      sub: `${num(h.handed_off_month)} of ${num(m.conversations)} handed off (month)`,
+    },
+    { label: 'Conversion', value: `${m.conversion_rate_pct ?? 0}%`, sub: `${num(m.confirmed_bookings)} bookings · ${num(m.leads)} leads` },
+  ];
+
+  const queueRows = ['wa-inbound-ai', 'wa-outbound', 'handoff']
+    .map((name) => ({ name, q: queues?.queues?.[name] }))
+    .filter((r) => r.q);
+  const dlq = queues?.dlq;
+
+  const fuCounts = (followUps || []).reduce((acc, j) => {
+    acc[j.status] = (acc[j.status] || 0) + 1;
+    return acc;
+  }, {});
+
+  const sectionTitle = { fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: C.label, marginBottom: 8 };
+  const line = { display: 'flex', justifyContent: 'space-between', gap: 12, padding: '6px 0', borderTop: `1px solid ${C.border}`, fontSize: 13, color: C.text };
+
+  return (
+    <section style={{ background: C.cardBg, border: `1px solid ${C.border}`, borderRadius: 14, boxShadow: C.shadow, overflow: 'hidden' }}>
+      <div style={{ padding: '14px 18px', borderBottom: `1px solid ${C.border}`, fontWeight: 700, color: C.text }}>
+        Inbox &amp; queue health
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))' }}>
+        {stats.map((s, i) => (
+          <div key={s.label} style={{ padding: '14px 18px', borderLeft: i ? `1px solid ${C.border}` : 'none' }}>
+            <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: C.label }}>{s.label}</div>
+            <div style={{ fontSize: 24, fontWeight: 800, marginTop: 4, color: s.warn ? '#B45309' : C.text }}>{s.value}</div>
+            <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>{s.sub}</div>
+          </div>
+        ))}
+      </div>
+
+      {(queueRows.length > 0 || followUps) && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 24, padding: '16px 18px', borderTop: `1px solid ${C.border}` }}>
+          {queueRows.length > 0 && (
+            <div>
+              <div style={sectionTitle}>Queues</div>
+              {queueRows.map(({ name, q }) => (
+                <div key={name} style={line}>
+                  <span>{name}</span>
+                  <span style={{ color: q.failed > 0 ? '#B45309' : C.muted }}>
+                    {q.available === false
+                      ? 'unavailable'
+                      : `${q.waiting} waiting · ${q.active} active · ${q.failed} failed`}
+                  </span>
+                </div>
+              ))}
+              {dlq?.available && (
+                <div style={line}>
+                  <span>Dead letters</span>
+                  <span style={{ color: dlq.alert ? '#DC2626' : C.muted, fontWeight: dlq.alert ? 700 : 400 }}>{dlq.depth}</span>
+                </div>
+              )}
+            </div>
+          )}
+          {followUps && (
+            <div>
+              <div style={sectionTitle}>Follow-ups (latest 50)</div>
+              {['pending', 'sent', 'failed', 'skipped'].map((s) => (
+                <div key={s} style={line}>
+                  <span style={{ textTransform: 'capitalize' }}>{s}</span>
+                  <span style={{ color: s === 'failed' && fuCounts[s] ? '#B45309' : C.muted }}>{fuCounts[s] || 0}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function money(n, currency = 'USD') {
   const v = Number(n) || 0;
   return `${currency} ${v.toFixed(v >= 1 ? 2 : 4)}`;
@@ -33,16 +121,22 @@ export default function CrmAiCostPage() {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState(null);
   const [overview, setOverview] = useState(null);
+  const [queues, setQueues] = useState(null);
+  const [followUps, setFollowUps] = useState(null);
 
   const load = async () => {
     setLoading(true);
     try {
-      const [costRes, ovRes] = await Promise.all([
+      const [costRes, ovRes, qRes, fuRes] = await Promise.all([
         api.get('/crm/analytics/ai-cost'),
         api.get('/crm/analytics/overview'),
+        api.get('/crm/queue-stats').catch(() => null),
+        api.get('/crm/follow-ups').catch(() => null),
       ]);
       setData(costRes.data);
       setOverview(ovRes.data);
+      setQueues(qRes?.data || null);
+      setFollowUps(fuRes?.data?.data || null);
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to load AI cost analytics');
     } finally {
@@ -90,12 +184,7 @@ export default function CrmAiCostPage() {
             <Kpi C={C} label="Cost / Booking" value={money(month.cost_per_booking, currency)} sub={`${month.bookings || 0} confirmed bookings`} />
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
-            <Kpi C={C} label="Active Chats" value={overview?.month?.active_chats ?? '—'} sub="Open conversations" />
-            <Kpi C={C} label="Leads (month)" value={overview?.month?.leads ?? '—'} />
-            <Kpi C={C} label="Bookings (month)" value={overview?.month?.confirmed_bookings ?? '—'} />
-            <Kpi C={C} label="Conversion" value={`${overview?.month?.conversion_rate_pct ?? 0}%`} sub="Conversations → bookings" />
-          </div>
+          <HealthSection C={C} overview={overview} queues={queues} followUps={followUps} />
 
           {(wallet.entries || []).length > 0 && (
             <div style={{ background: C.cardBg, border: `1px solid ${C.border}`, borderRadius: 14, overflow: 'hidden' }}>

@@ -65,6 +65,20 @@ function initSocket(httpServer, corsOptions) {
       socket.whatsappTenantId = tenantId;
       socket.join(`whatsapp_tenant_${tenantId}`);
     });
+
+    socket.on('crm:join', (payload = {}) => {
+      const tenantId = resolveSocketWhatsAppTenant(socket, payload)
+        || socket.user?.tenantId
+        || socket.user?.tenant_id
+        || null;
+      if (!tenantId) return;
+      // Staff inbox: any authenticated tenant user can join their CRM room
+      if (socket.user?.role === 'platform_admin' && payload?.tenantId) {
+        socket.join(`crm_tenant_${Number(payload.tenantId)}`);
+        return;
+      }
+      socket.join(`crm_tenant_${Number(tenantId)}`);
+    });
   });
 
   return io;

@@ -102,6 +102,13 @@ const statusBadge = (status = '') => {
   return { bg: '#f2f4f7', color: '#344054', label: status || 'Pending' };
 };
 
+/** Parse a portal fetch response; tolerate non-JSON bodies and flag 401. */
+async function parsePortalRes(res) {
+  let data = {};
+  try { data = await res.json(); } catch { data = {}; }
+  return { ok: res.ok, status: res.status, unauthorized: res.status === 401, data: data ?? {} };
+}
+
 export default function CustomerPortalPage() {
   const navigate = useNavigate();
   const [portalToken, setPortalToken] = useState(localStorage.getItem('portal_token') || '');
@@ -123,19 +130,19 @@ export default function CustomerPortalPage() {
       const res = await fetch('/api/public/customer-portal/me', {
         headers: { Authorization: `Bearer ${token}` },
       });
-      return { ok: res.ok, data: await res.json() };
+      return parsePortalRes(res);
     },
     async bookings(token) {
       const res = await fetch('/api/public/customer-portal/bookings', {
         headers: { Authorization: `Bearer ${token}` },
       });
-      return { ok: res.ok, data: await res.json() };
+      return parsePortalRes(res);
     },
     async packages(token, type) {
       const res = await fetch(`/api/public/customer-portal/packages?type=${encodeURIComponent(type)}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      return { ok: res.ok, data: await res.json() };
+      return parsePortalRes(res);
     },
     async rebook(token, payload) {
       const res = await fetch('/api/public/customer-portal/rebook', {
@@ -146,7 +153,7 @@ export default function CustomerPortalPage() {
         },
         body: JSON.stringify(payload),
       });
-      return { ok: res.ok, data: await res.json() };
+      return parsePortalRes(res);
     },
     async purchase(token, packageId) {
       const res = await fetch('/api/public/customer-portal/purchase', {
@@ -157,7 +164,7 @@ export default function CustomerPortalPage() {
         },
         body: JSON.stringify({ packageId, paymentMethod: 'Cash' }),
       });
-      return { ok: res.ok, data: await res.json() };
+      return parsePortalRes(res);
     },
   }), []);
 
@@ -168,6 +175,10 @@ export default function CustomerPortalPage() {
       api.packages(token, 'bundle'),
       api.packages(token, 'membership'),
     ]);
+    if ([meRes, bookingsRes, pkgRes, membershipRes].some((r) => r.unauthorized)) {
+      clearPortalSession();
+      return;
+    }
     if (!meRes.ok || !bookingsRes.ok || !pkgRes.ok || !membershipRes.ok) {
       setMessage(
         meRes.data?.message ||
@@ -214,7 +225,8 @@ export default function CustomerPortalPage() {
     }
     setLoading(true);
     try {
-      const { ok, data } = await api.rebook(portalToken, rebookDraft);
+      const { ok, data, unauthorized } = await api.rebook(portalToken, rebookDraft);
+      if (unauthorized) { clearPortalSession(); return; }
       setMessage(data.message || (ok ? 'Rebook submitted.' : 'Rebook failed.'));
       if (ok) {
         setRebookDraft({ appointmentId: null, date: '', time: '' });
@@ -229,7 +241,8 @@ export default function CustomerPortalPage() {
     setBuyingId(pkgId);
     setLoading(true);
     try {
-      const { ok, data } = await api.purchase(portalToken, pkgId);
+      const { ok, data, unauthorized } = await api.purchase(portalToken, pkgId);
+      if (unauthorized) { clearPortalSession(); return; }
       setMessage(data.message || (ok ? 'Purchase successful.' : 'Purchase failed.'));
     } finally {
       setBuyingId(null);

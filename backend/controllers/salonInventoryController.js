@@ -307,11 +307,35 @@ const createGoodsReceipt = async (req, res) => {
       if (cost > 0) await product.update({ cost_price: cost }, { transaction: t });
     }
 
+    const totalCost = items.reduce(
+      (sum, it) => sum + (toDec(it.quantity_received) * toDec(it.unit_cost)),
+      0,
+    );
+    let accounting_warning = null;
+    try {
+      const {
+        postGoodsReceiptToGl,
+        resolveAccountingTenant,
+      } = require('../services/accountingEngine');
+      const acctTenant = await resolveAccountingTenant(req);
+      await postGoodsReceiptToGl(grn, {
+        tenant: acctTenant,
+        totalCost,
+        userId: req.user?.id,
+        transaction: t,
+      });
+    } catch (acctErr) {
+      const { recordAccountingWarning } = require('../services/accountingEngine');
+      accounting_warning = recordAccountingWarning(res, `GRN #${grn.id} post`, acctErr);
+    }
+
     await t.commit();
     const full = await InvGoodsReceipt.findByPk(grn.id, {
       include: [{ model: InvGoodsReceiptItem, as: 'items', include: [{ model: InvProduct, as: 'product' }] }],
     });
-    return res.status(201).json(full);
+    const payload = full ? full.toJSON() : grn.toJSON();
+    if (accounting_warning) payload.accounting_warning = accounting_warning;
+    return res.status(201).json(payload);
   } catch (err) {
     await t.rollback();
     console.error('inv.createGRN', err.message);

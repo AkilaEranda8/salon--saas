@@ -433,6 +433,7 @@ const setAiCreditBalance = async (req, res) => {
 
 module.exports = {
   getAiCostSummary,
+  getAiBudgetDashboard,
   getCrmOverview,
   addAiCreditTopup,
   setAiCreditBalance,

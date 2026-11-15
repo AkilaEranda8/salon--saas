@@ -5,7 +5,7 @@
   "parent_immutable": true,
   "tenant": 28,
   "scope": "advanced_intelligent_receptionist_engine",
-  "production_status": "NOT_DEPLOYED",
+  "production_status": "DEPLOYED",
   "note_prod_reality": "Brief said prod=RC3; live T28 runs phase6_t28_rc4. RC5/RC6 are local candidates only until explicit deploy approval.",
   "changed_files": [
     "ai_engine/app/response_quality.py",
@@ -93,5 +93,6 @@
     "NLU: eka hodada / cheaper alternative / ehema nam epa",
     "Pricing/booking authority unchanged",
     "DO NOT DEPLOY without separate approval"
-  ]
+  ],
+  "deployed_utc": "2026-11-15T02:44:49.609479+00:00"
 }

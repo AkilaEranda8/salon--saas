@@ -1,0 +1,62 @@
+# RC9a isolated LOCAL staging — MySQL + Redis ONLY
+# Usage:
+#   docker compose -f docker-compose.rc9a-staging.yml --env-file docs/staging/rc9a-staging.env up -d
+# Does NOT start backend, ai_engine, workers, Baileys, or proxy.
+# Does NOT connect to production. Gemini/WhatsApp stay off (no app containers).
+
+name: salon-rc9a-staging
+
+services:
+  staging_mysql:
+    image: mysql:8.0
+    container_name: rc9a_staging_mysql
+    restart: "no"
+    environment:
+      MYSQL_ROOT_PASSWORD: ${STAGING_MYSQL_ROOT_PASSWORD:-rc9a_staging_root_only}
+      MYSQL_DATABASE: ${STAGING_MYSQL_DATABASE:-zanesalon_staging}
+      MYSQL_USER: ${STAGING_MYSQL_USER:-staging_salon}
+      MYSQL_PASSWORD: ${STAGING_MYSQL_PASSWORD:-rc9a_staging_db_only}
+    ports:
+      # Host-only staging port — not production 3306
+      - "3307:3306"
+    volumes:
+      - rc9a_staging_mysql_data:/var/lib/mysql
+      - ./docs/staging/sql/01_init_tenants.sql:/docker-entrypoint-initdb.d/01_init_tenants.sql:ro
+    networks:
+      - rc9a_staging_net
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 25s
+
+  staging_redis:
+    image: redis:7-alpine
+    container_name: rc9a_staging_redis
+    restart: "no"
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--protected-mode", "no"]
+    ports:
+      # Host-only staging port — not production 6379
+      - "6380:6379"
+    volumes:
+      - rc9a_staging_redis_data:/data
+    networks:
+      - rc9a_staging_net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+networks:
+  rc9a_staging_net:
+    name: rc9a_staging_net
+    driver: bridge
+    internal: false
+
+volumes:
+  rc9a_staging_mysql_data:
+    name: rc9a_staging_mysql_data
+  rc9a_staging_redis_data:
+    name: rc9a_staging_redis_data

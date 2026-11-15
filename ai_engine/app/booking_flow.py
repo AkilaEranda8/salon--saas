@@ -2064,6 +2064,13 @@ def _attach_flow_state(result: Optional[dict[str, Any]], sess: Session) -> Optio
     actions = list(result.get("actions") or [])
     if not any(isinstance(a, dict) and a.get("tool") == "booking_flow_state" for a in actions):
         d = sess.draft
+        truth_payload = None
+        try:
+            truth = getattr(sess, "truth", None)
+            if truth is not None and hasattr(truth, "to_dict"):
+                truth_payload = truth.to_dict()
+        except Exception:
+            truth_payload = None
         actions.append(
             {
                 "tool": "booking_flow_state",
@@ -2072,8 +2079,12 @@ def _attach_flow_state(result: Optional[dict[str, Any]], sess: Session) -> Optio
                 "paused": bool(getattr(sess, "paused", False)),
                 "pause_reason": getattr(sess, "pause_reason", None),
                 "service": d.service_name,
+                "service_id": getattr(d, "service_id", None),
+                "duration_minutes": getattr(d, "duration", None),
                 "date": d.date,
                 "time": d.time,
+                # RC9: persist ConversationTruth into CRM memory via upsertMemoryFromTurn
+                "conversation_truth": truth_payload,
             }
         )
         result["actions"] = actions

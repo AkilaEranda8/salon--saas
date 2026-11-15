@@ -1,0 +1,205 @@
+'use strict';
+
+/**
+ * AI CRM schema bootstrap — unique indexes MUST succeed or startup fails (C9).
+ * Active appointment slot uniqueness via generated column (C17).
+ */
+const { sequelize } = require('../config/database');
+const { AiModelRate } = require('../models');
+
+/** ~25% below public list — salon CRM tracked spend stays lighter. */
+const DEFAULT_RATES = [
+  { provider: 'openai', model: 'gpt-4o-mini', input_per_1k: 0.00011, output_per_1k: 0.00045, currency: 'USD' },
+  { provider: 'openai', model: 'gpt-4o', input_per_1k: 0.0019, output_per_1k: 0.0075, currency: 'USD' },
+  { provider: 'gemini', model: 'gemini-2.0-flash', input_per_1k: 0.000075, output_per_1k: 0.0003, currency: 'USD' },
+  { provider: 'gemini', model: 'gemini-2.0-flash-lite', input_per_1k: 0.000055, output_per_1k: 0.00022, currency: 'USD' },
+  { provider: 'gemini', model: 'gemini-1.5-flash', input_per_1k: 0.000055, output_per_1k: 0.00022, currency: 'USD' },
+  { provider: 'gemini', model: 'gemini-1.5-flash-8b', input_per_1k: 0.000028, output_per_1k: 0.00011, currency: 'USD' },
+  { provider: 'gemini', model: 'gemini-flash-latest', input_per_1k: 0.000075, output_per_1k: 0.0003, currency: 'USD' },
+  { provider: 'gemini', model: 'gemini-2.5-flash', input_per_1k: 0.0003, output_per_1k: 0.0025, currency: 'USD' },
+  { provider: 'gemini', model: 'gemini-2.5-flash-lite', input_per_1k: 0.0001, output_per_1k: 0.0004, currency: 'USD' },
+  // RC8 official routing models (Google AI Studio paid tier)
+  { provider: 'gemini', model: 'gemini-3.1-flash-lite', input_per_1k: 0.00025, output_per_1k: 0.0015, currency: 'USD' },
+  { provider: 'gemini', model: 'gemini-3.5-flash-lite', input_per_1k: 0.0003, output_per_1k: 0.0025, currency: 'USD' },
+  { provider: 'gemini', model: 'gemini-3.8-flash', input_per_1k: 0.00075, output_per_1k: 0.00375, currency: 'USD' },
+  { provider: 'gemini', model: 'gemini-4-hydrogen', input_per_1k: 0.0015, output_per_1k: 0.0075, currency: 'USD' },
+];
+
+async function indexExists(indexName, tableName) {
+  const [rows] = await sequelize.query(
+    `SELECT 1 AS ok FROM information_schema.statistics
+     WHERE table_schema = DATABASE()
+       AND table_name = :tableName
+       AND index_name = :indexName
+     LIMIT 1`,
+    { replacements: { tableName, indexName } }
+  );
+  return Array.isArray(rows) && rows.length > 0;
+}
+
+async function columnExists(tableName, columnName) {
+  const [rows] = await sequelize.query(
+    `SELECT 1 AS ok FROM information_schema.columns
+     WHERE table_schema = DATABASE()
+       AND table_name = :tableName
+       AND column_name = :columnName
+     LIMIT 1`,
+    { replacements: { tableName, columnName } }
+  );
+  return Array.isArray(rows) && rows.length > 0;
+}
+
+/**
+ * Create unique index or throw a clear migration error (C9).
+ */
+async function ensureUniqueIndex(indexName, tableName, createSql) {
+  if (await indexExists(indexName, tableName)) return { created: false, name: indexName };
+  try {
+    await sequelize.query(createSql);
+  } catch (err) {
+    const e = new Error(
+      `FATAL AI CRM migration: failed to create UNIQUE index ${indexName} on ${tableName}. ` +
+      `Resolve duplicate rows then restart. Underlying: ${err.message}`
+    );
+    e.code = 'AI_CRM_UNIQUE_INDEX_FAILED';
+    e.cause = err;
+    throw e;
+  }
+  if (!(await indexExists(indexName, tableName))) {
+    const e = new Error(
+      `FATAL AI CRM migration: UNIQUE index ${indexName} was not present after CREATE on ${tableName}.`
+    );
+    e.code = 'AI_CRM_UNIQUE_INDEX_MISSING';
+    throw e;
+  }
+  return { created: true, name: indexName };
+}
+
+async function ensureActiveSlotConstraint() {
+  // VIRTUAL generated column (not STORED): MySQL forbids STORED generated cols
+  // that reference FK base columns with CASCADE/SET NULL (staff_id/tenant_id).
+  // NULL for cancelled/completed → multiple history rows OK;
+  // unique among active pending/confirmed/in_service (C17).
+  if (!(await columnExists('appointments', 'active_slot_key'))) {
+    try {
+      await sequelize.query(`
+        ALTER TABLE appointments
+        ADD COLUMN active_slot_key VARCHAR(128)
+        GENERATED ALWAYS AS (
+          IF(
+            status IN ('cancelled', 'completed') OR staff_id IS NULL OR tenant_id IS NULL,
+            NULL,
+            CONCAT(
+              tenant_id, '|', staff_id, '|', \`date\`, '|',
+              DATE_FORMAT(\`time\`, '%H:%i')
+            )
+          )
+        ) VIRTUAL
+      `);
+    } catch (err) {
+      const e = new Error(
+        `FATAL AI CRM migration: failed to add appointments.active_slot_key. ${err.message}`
+      );
+      e.code = 'AI_CRM_SLOT_COLUMN_FAILED';
+      e.cause = err;
+      throw e;
+    }
+  }
+
+  await ensureUniqueIndex(
+    'appointments_active_slot_uq',
+    'appointments',
+    'CREATE UNIQUE INDEX appointments_active_slot_uq ON appointments (active_slot_key)'
+  );
+}
+
+async function ensureAiCrmSchema() {
+  for (const row of DEFAULT_RATES) {
+    const [record, created] = await AiModelRate.findOrCreate({
+      where: { provider: row.provider, model: row.model },
+      defaults: { ...row, active: true },
+    });
+    if (record && !record.active) {
+      await record.update({ active: true });
+    }
+    if (!created && record) {
+      // Keep published list rates in sync (aliases / new Gemini SKUs)
+      const patch = {};
+      if (Number(record.input_per_1k) !== Number(row.input_per_1k)) patch.input_per_1k = row.input_per_1k;
+      if (Number(record.output_per_1k) !== Number(row.output_per_1k)) patch.output_per_1k = row.output_per_1k;
+      if (Object.keys(patch).length) await record.update(patch);
+    }
+  }
+
+  // Keep usage costs aligned with current rates (incl. discounted salon rates)
+  try {
+    const { backfillZeroCosts, recomputeAllCosts } = require('./aiUsageCost');
+    const bf = await backfillZeroCosts({ limit: 5000 });
+    if (bf.updated) {
+      console.log(`[ai-crm] backfilled ${bf.updated}/${bf.scanned} ai_usage cost rows`);
+    }
+    const rc = await recomputeAllCosts({ limit: 20000 });
+    if (rc.updated) {
+      console.log(`[ai-crm] recomputed ${rc.updated}/${rc.scanned} ai_usage costs after rate sync`);
+    }
+  } catch (e) {
+    console.warn('[ai-crm] usage cost backfill skipped', e.message);
+  }
+
+  await ensureUniqueIndex(
+    'waba_phone_number_id_uq',
+    'whatsapp_business_accounts',
+    'CREATE UNIQUE INDEX waba_phone_number_id_uq ON whatsapp_business_accounts (phone_number_id)'
+  );
+  await ensureUniqueIndex(
+    'waba_business_account_id_uq',
+    'whatsapp_business_accounts',
+    'CREATE UNIQUE INDEX waba_business_account_id_uq ON whatsapp_business_accounts (waba_id)'
+  );
+  await ensureUniqueIndex(
+    'crm_messages_tenant_wa_id_uq',
+    'crm_messages',
+    'CREATE UNIQUE INDEX crm_messages_tenant_wa_id_uq ON crm_messages (tenant_id, wa_message_id)'
+  );
+
+  await ensureActiveSlotConstraint();
+
+  // C4 resume columns
+  if (!(await columnExists('crm_conversations', 'ai_turn_state'))) {
+    await sequelize.query(
+      `ALTER TABLE crm_conversations ADD COLUMN ai_turn_state VARCHAR(32) NULL`
+    );
+  }
+  if (!(await columnExists('crm_conversations', 'ai_turn_wa_message_id'))) {
+    await sequelize.query(
+      `ALTER TABLE crm_conversations ADD COLUMN ai_turn_wa_message_id VARCHAR(128) NULL`
+    );
+  }
+  if (!(await columnExists('crm_conversations', 'staff_last_read_at'))) {
+    await sequelize.query(
+      `ALTER TABLE crm_conversations ADD COLUMN staff_last_read_at DATETIME NULL`
+    );
+    console.log('[migration] crm_conversations.staff_last_read_at added');
+  }
+  if (!(await columnExists('crm_leads', 'marketing_opt_out'))) {
+    await sequelize.query(
+      `ALTER TABLE crm_leads ADD COLUMN marketing_opt_out TINYINT(1) NOT NULL DEFAULT 0`
+    );
+    console.log('[migration] crm_leads.marketing_opt_out added');
+  }
+  if (!(await columnExists('crm_leads', 'marketing_opt_out_at'))) {
+    await sequelize.query(
+      `ALTER TABLE crm_leads ADD COLUMN marketing_opt_out_at DATETIME NULL`
+    );
+  }
+  if (!(await columnExists('tenant_ai_settings', 'access_grants'))) {
+    await sequelize.query(
+      `ALTER TABLE tenant_ai_settings ADD COLUMN access_grants JSON NULL`
+    );
+    console.log('[migration] tenant_ai_settings.access_grants added');
+  }
+}
+
+module.exports = ensureAiCrmSchema;
+module.exports.ensureUniqueIndex = ensureUniqueIndex;
+module.exports.ensureActiveSlotConstraint = ensureActiveSlotConstraint;

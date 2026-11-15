@@ -80,10 +80,10 @@ _CLARIFY_RE = re.compile(
     re.I,
 )
 _REFERENT_RE = re.compile(
-    r"\b(?:eka|ehema|ehemada|ekath|ekema|eya|"
+    r"\b(?:eka|ekata|ekath|ekema|ehema|ehemada|eya|"
     r"kalin(?:a)?\s+eka|kalina\s+eka|passe\s+eka|me\s+eka|that\s+one|the\s+one|"
-    r"wena\s+eka|wenath\s+eka|wenna\s+eka|"
-    r"ඒක|එක|කලින්\s*එක)\b",
+    r"wena\s+eka|wenath\s+eka|wenna\s+eka|ekak|"
+    r"ඒක|ඒකට|එක|එකට|කලින්\s*එක)\b",
     re.I,
 )
 _ADVICE_RE = re.compile(
@@ -159,8 +159,14 @@ _IMPLICIT_BOOK_RE = re.compile(
     r"kalata\s+enna|enawa|come\s+tomorrow|heta\s+enna)\b",
     re.I,
 )
+_DURATION_FOLLOWUP_RE = re.compile(
+    r"\b(?:ekata\s+kochchara|kochchara\s+welawak|how\s+long\s+(?:for\s+)?(?:it|that|eka)|"
+    r"duration\s+(?:eka)?|wela\s*yan)\b",
+    re.I,
+)
 _COMMITMENT_RE = re.compile(
     r"\b(?:i\s+(?:will|ll)\s+|mama\s+(?:enawa|karannam)|balamu|"
+    r"hari[,\s]+ehema\s+karamu|ehema\s+karamu|let'?s\s+do\s+(?:that|it)|"
     r"passe\s+kiyannam|call\s+(?:you|me)|confirm\s+karannam)\b",
     re.I,
 )
@@ -204,6 +210,14 @@ class ConversationContext:
     is_incomplete: bool = False
     is_implicit: bool = False
     stale_context_blocked: bool = False
+    # RC9 persistent structured state
+    qa_history: list = field(default_factory=list)
+    correction_log: list = field(default_factory=list)
+    selected_service_id: Optional[str] = None
+    last_duration_minutes: Optional[int] = None
+    preferred_date: Optional[str] = None
+    preferred_time: Optional[str] = None
+    booking_status: Optional[str] = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -350,7 +364,7 @@ def is_referent_message(text: str) -> bool:
         return False
     # Explicit new service name → not pure referent
     if detect_service_category(t) and not re.search(
-        r"\b(?:eka|ehema|kalin|kalina|that\s+one|the\s+one|ඒක)\b", t, re.I
+        r"\b(?:eka|ekata|ehema|kalin|kalina|that\s+one|the\s+one|ඒක|ඒකට)\b", t, re.I
     ):
         return False
     return True
@@ -413,7 +427,7 @@ def classify_intent(
             ),
         }
 
-    # Resolve "eka" / "kalina eka" / "ehema" against prior topic before other routing
+    # Resolve "eka" / "ekata" / "kalina eka" / "ehema" against prior topic before other routing
     referent_topic = None
     if is_referent_message(raw) or (
         len(raw.split()) <= 8 and _REFERENT_RE.search(raw) and (prior_topic or mem.get("last_service"))
@@ -421,6 +435,41 @@ def classify_intent(
         referent_topic = resolve_referent_topic(
             raw, memory=mem, prior_topic=prior_topic
         ) or prior_topic or mem.get("last_service")
+
+    # Duration follow-up on prior service ("Ekata kochchara welawak yanawada?")
+    if _DURATION_FOLLOWUP_RE.search(raw) and (referent_topic or prior_topic or mem.get("last_service")):
+        topic = referent_topic or prior_topic or mem.get("last_service")
+        return {
+            "intent": INTENT_DURATION,
+            "topic": topic,
+            "must": (
+                f"Answer DURATION for {topic} using verified catalogue minutes only. "
+                "Do not switch topic or pitch unrelated services. "
+                "If duration unknown, say you will confirm with the team — never invent."
+            ),
+            "referent_topic": topic,
+            "ask_kind": "duration",
+        }
+
+    # Recall prior quoted price / selected service ("Mata kalin kiwwa price eka mathaka na")
+    if re.search(
+        r"\b(?:mathaka\s+(?:na|nadda)|kalin\s+ki[uw]w[aeéá]?|previously\s+(?:said|told|selected))\b",
+        raw,
+        re.I,
+    ) and (referent_topic or prior_topic or mem.get("last_service") or mem.get("last_quoted_price")):
+        topic = referent_topic or prior_topic or mem.get("last_service")
+        price = mem.get("last_quoted_price")
+        return {
+            "intent": INTENT_PRICE if price or is_price_enquiry(raw) else INTENT_GENERAL,
+            "topic": topic,
+            "must": (
+                f"Customer wants to RECALL prior discussion about {topic or 'the service'}"
+                + (f" (last verified price: {price})" if price else "")
+                + ". Restate ONLY what was already verified — never invent a new price."
+            ),
+            "referent_topic": topic,
+            "ask_kind": "recall",
+        }
 
     if (_ALTERNATIVE_RE.search(raw) or _REJECT_PRIOR_RE.search(raw) or _CHEAPER_RE.search(raw)) and (
         referent_topic or prior_topic or mem.get("last_service")
@@ -878,6 +927,24 @@ def build_conversation_context(
             "Stale prior topic blocked — answer the NEW topic only.",
         ]
 
+    # Prefer draft booking fields; fall back to CRM memory (RC9 reload)
+    supplied = {
+        k: draft.get(k)
+        for k in ("service_name", "date", "time", "name", "phone")
+        if draft.get(k)
+    }
+    if not supplied.get("date") and mem.get("preferred_date"):
+        supplied["date"] = mem.get("preferred_date")
+    if not supplied.get("time") and mem.get("preferred_time"):
+        supplied["time"] = mem.get("preferred_time")
+    if not supplied.get("service_name") and (topic or prior_topic or mem.get("last_service")):
+        supplied["service_name"] = topic or prior_topic or mem.get("last_service")
+
+    qa_history = list(mem.get("qa_history") or [])[-12:]
+    correction_log = list(mem.get("correction_log") or [])[-12:]
+    if intent == INTENT_CORRECTION and message:
+        correction_log = (correction_log + [{"text": message[:160], "topic": topic or prior_topic}])[-12:]
+
     return ConversationContext(
         tenant_id=tenant_id,
         phone=phone,
@@ -892,16 +959,12 @@ def build_conversation_context(
         customer_name=customer_name or mem.get("customer_name"),
         preferred_language=lang,
         script_mode=sm,
-        booking_progress=booking_state,
+        booking_progress=booking_state or mem.get("booking_state"),
         booking_paused=bool(booking_paused),
         pending_booking_question=pending_q,
-        supplied_booking_fields={
-            k: draft.get(k)
-            for k in ("service_name", "date", "time", "name", "phone")
-            if draft.get(k)
-        },
+        supplied_booking_fields=supplied,
         objections=[mem.get("objections")] if mem.get("objections") else [],
-        unresolved_question=unresolved,
+        unresolved_question=unresolved or mem.get("unresolved_question"),
         is_correction=(intent == INTENT_CORRECTION),
         is_topic_switch=topic_switch,
         has_media=has_media,
@@ -915,6 +978,20 @@ def build_conversation_context(
         is_incomplete=incomplete,
         is_implicit=implicit,
         stale_context_blocked=stale_blocked,
+        qa_history=qa_history,
+        correction_log=correction_log,
+        selected_service_id=(
+            str(mem.get("last_service_id")) if mem.get("last_service_id") is not None else None
+        ),
+        last_duration_minutes=(
+            int(mem["last_duration_minutes"])
+            if mem.get("last_duration_minutes") is not None
+            and str(mem.get("last_duration_minutes")).isdigit()
+            else mem.get("last_duration_minutes")
+        ),
+        preferred_date=mem.get("preferred_date") or supplied.get("date"),
+        preferred_time=mem.get("preferred_time") or supplied.get("time"),
+        booking_status=mem.get("booking_status"),
     )
 
 
@@ -999,8 +1076,18 @@ def format_context_for_prompt(ctx: ConversationContext) -> str:
     ]
     if ctx.referent_topic:
         lines.append(
-            f"- When they say eka/ehema/kalina eka → they mean: {ctx.referent_topic}"
+            f"- When they say eka/ekata/ehema/kalina eka → they mean: {ctx.referent_topic}"
         )
+    if ctx.selected_service_id:
+        lines.append(f"- Selected service ID (backend): {ctx.selected_service_id}")
+    if ctx.last_duration_minutes is not None:
+        lines.append(f"- Last verified duration (min): {ctx.last_duration_minutes}")
+    if ctx.preferred_date or ctx.preferred_time:
+        lines.append(
+            f"- Preferred date/time: {ctx.preferred_date or '—'} {ctx.preferred_time or ''}".strip()
+        )
+    if ctx.booking_status:
+        lines.append(f"- Booking status: {ctx.booking_status}")
     if ctx.pending_booking_question:
         lines.append(f"- Pending booking question (do not force): {ctx.pending_booking_question}")
     if ctx.supplied_booking_fields:
@@ -1024,6 +1111,18 @@ def format_context_for_prompt(ctx: ConversationContext) -> str:
         lines.append(f"- Pending questions: {', '.join(str(p) for p in ctx.pending_questions[:5])}")
     if ctx.commitments:
         lines.append(f"- Commitments: {', '.join(str(c) for c in ctx.commitments[:4])}")
+    if ctx.qa_history:
+        lines.append("- Recent Q&A (use for 'eka' / 'kalin kiwwa' — do not ask customer to repeat):")
+        for row in ctx.qa_history[-4:]:
+            if not isinstance(row, dict):
+                continue
+            lines.append(
+                f"  · Q: {str(row.get('q') or '')[:100]} → A: {str(row.get('a') or '')[:120]}"
+            )
+    if ctx.correction_log:
+        last_c = ctx.correction_log[-1]
+        bit = last_c.get("text") if isinstance(last_c, dict) else str(last_c)
+        lines.append(f"- Latest customer correction (overrides older guesses): {str(bit)[:140]}")
     if ctx.is_incomplete:
         lines.append("- Incomplete utterance: yes — use referent/memory")
     if ctx.is_implicit:
@@ -1037,6 +1136,12 @@ def format_context_for_prompt(ctx: ConversationContext) -> str:
     )
     lines.append(
         "Multi-intent: if several questions appear, answer EACH verified part in one reply — never drop secondary asks."
+    )
+    lines.append(
+        "NEVER replace an informational ask with unrelated service recommendations or a generic booking prompt."
+    )
+    lines.append(
+        "If a fact is not in verified context/catalogue, say so clearly — never invent price/duration/booking."
     )
     return "\n".join(lines)
 
@@ -1062,5 +1167,14 @@ def memory_patch_from_context(ctx: ConversationContext) -> dict[str, Any]:
         "commitments": list(ctx.commitments or [])[:8],
         "emotion": ctx.emotion,
         "tenant_id": ctx.tenant_id,  # isolation hint for CRM layer
+        # RC9 structured persistence
+        "last_service_id": ctx.selected_service_id,
+        "last_duration_minutes": ctx.last_duration_minutes,
+        "preferred_date": ctx.preferred_date,
+        "preferred_time": ctx.preferred_time,
+        "booking_status": ctx.booking_status,
+        "correction_log": list(ctx.correction_log or [])[-12:],
+        # RC9 audit: do NOT echo full qa_history here — that duplicated rows on upsert.
+        # New Q&A pairs are appended only via the post-reply qa_append action in main.py.
     }
     return scrub_sensitive_memory(patch)

@@ -144,10 +144,11 @@ def bump_turn(truth: ConversationTruth) -> None:
 
 
 _RECALL_RE = re.compile(
-    r"\b(?:kalin\s+ki[uw]w[eé]?|mama\s+ki[uw]w[aá]|oyata\s+mathaka|"
-    r"mathaka\s+nadda|what\s+(?:did\s+i|service)|previously\s+selected|"
+    r"\b(?:kalin\s+ki[uw]w[aeéá]?|mama\s+ki[uw]w[aá]|oyata\s+mathaka|"
+    r"mathaka\s+(?:nadda|na)|mata\s+kalin\s+ki[uw]w[aeéá]?|"
+    r"price\s+eka\s+mathaka|what\s+(?:did\s+i|service)|previously\s+selected|"
     r"selected\s+(?:service|eka)|dressing\s+ek\s+mokakd|"
-    r"kiuw\s+dressing|kiwwa\s+dressing)\b"
+    r"kiuw\s+dressing|kiwwa\s+dressing|kalin\s+kiwwa\s+eka)\b"
     r"|කලින්\s*කි(?:ව්|ු)ව",
     re.I,
 )

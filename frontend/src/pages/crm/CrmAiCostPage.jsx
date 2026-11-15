@@ -311,10 +311,85 @@ function CostDetailsModal({ open, onClose, C, wallet, today, month, providers, r
   );
 }
 
+/** RC8 — monthly Gemini budget ($20 hard / $16 planned) + routing mix. */
+function BudgetPanel({ C, budget, currency }) {
+  const b = budget.budget || {};
+  const pct = Number(b.pct_of_hard || 0);
+  const warn = pct >= 70;
+  const barColor = pct >= 95 ? '#DC2626' : pct >= 85 ? '#EA580C' : pct >= 70 ? '#D97706' : (C.primary || '#2563EB');
+  const moneyUsd = (v) => `$${Number(v || 0).toFixed(4)}`;
+
+  return (
+    <section style={{ background: C.cardBg, border: `1px solid ${warn ? '#F59E0B' : C.border}`, borderRadius: 14, boxShadow: C.shadow, overflow: 'hidden' }}>
+      <div style={{ padding: '14px 18px', borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+        <div style={{ fontWeight: 700, color: C.text }}>Gemini monthly budget (RC8)</div>
+        <div style={{ fontSize: 12, color: C.muted }}>
+          Hard ${b.hard_cap ?? 20} · Planned ${b.planned ?? 16} · Argon blocked
+        </div>
+      </div>
+      <div style={{ padding: '14px 18px', display: 'grid', gap: 14 }}>
+        <div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 6 }}>
+            <span style={{ color: C.text, fontWeight: 600 }}>Spend {moneyUsd(b.spent)} / ${b.hard_cap ?? 20}</span>
+            <span style={{ color: barColor, fontWeight: 700 }}>{pct}% of hard cap</span>
+          </div>
+          <div style={{ height: 10, borderRadius: 999, background: C.border, overflow: 'hidden' }}>
+            <div style={{ width: `${Math.min(100, pct)}%`, height: '100%', background: barColor }} />
+          </div>
+          <div style={{ fontSize: 12, color: C.muted, marginTop: 6 }}>
+            Remaining hard {moneyUsd(b.remaining_hard)}
+            {(b.alerts_pct || []).length > 0 ? ` · Alerts: ${(b.alerts_pct || []).join('%, ')}%` : ''}
+            {b.hard_exhausted ? ' · HARD CAP — safe handoff only' : ''}
+            {!b.allow_hydrogen ? ' · Hydrogen escalation paused' : ''}
+          </div>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10 }}>
+          <Kpi C={C} label="Total spend" value={money(budget.total_spend_usd, currency)} sub="This month (AiUsage)" />
+          <Kpi C={C} label="Avg / conversation" value={moneyUsd(budget.avg_cost_per_conversation)} sub={`Target $${budget.target_avg_conversation ?? 0.016}`} warn={Number(budget.avg_cost_per_conversation) > 0.02} />
+          <Kpi C={C} label="P95 / conversation" value={moneyUsd(budget.p95_cost_per_conversation)} sub={`${budget.conversations_with_usage || 0} convs`} />
+          <Kpi C={C} label="Tokens" value={String(budget.token_consumption?.total_tokens || 0)} sub={`In ${budget.token_consumption?.prompt_tokens || 0} · Out ${budget.token_consumption?.completion_tokens || 0}`} />
+          <Kpi C={C} label="Repair/retry calls" value={String(budget.repair_retry_calls || 0)} sub="Purpose match" />
+        </div>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <thead>
+              <tr style={{ textAlign: 'left', color: C.muted }}>
+                <th style={th}>Model</th>
+                <th style={th}>Calls</th>
+                <th style={th}>% calls</th>
+                <th style={th}>Spend</th>
+                <th style={th}>% spend</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(budget.spend_by_model || []).length === 0 && (
+                <tr><td colSpan={5} style={{ padding: 12, color: C.muted }}>No Gemini usage this month yet.</td></tr>
+              )}
+              {(budget.spend_by_model || []).map((m) => {
+                const dist = (budget.model_routing_distribution || []).find((d) => d.model === m.model);
+                return (
+                  <tr key={m.model} style={{ borderTop: `1px solid ${C.border}` }}>
+                    <td style={td}>{m.model}</td>
+                    <td style={td}>{m.calls}</td>
+                    <td style={td}>{dist?.pct_calls ?? 0}%</td>
+                    <td style={td}>{money(m.cost, currency)}</td>
+                    <td style={td}>{m.pct_of_spend}%</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 export default function CrmAiCostPage() {
   const { C } = usePageTheme();
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState(null);
+  const [budget, setBudget] = useState(null);
   const [overview, setOverview] = useState(null);
   const [queues, setQueues] = useState(null);
   const [followUps, setFollowUps] = useState(null);
@@ -323,13 +398,15 @@ export default function CrmAiCostPage() {
   const load = async () => {
     setLoading(true);
     try {
-      const [costRes, ovRes, qRes, fuRes] = await Promise.all([
+      const [costRes, budRes, ovRes, qRes, fuRes] = await Promise.all([
         api.get('/crm/analytics/ai-cost'),
+        api.get('/crm/analytics/ai-budget').catch(() => null),
         api.get('/crm/analytics/overview'),
         api.get('/crm/queue-stats').catch(() => null),
         api.get('/crm/follow-ups').catch(() => null),
       ]);
       setData(costRes.data);
+      setBudget(budRes?.data || null);
       setOverview(ovRes.data);
       setQueues(qRes?.data || null);
       setFollowUps(fuRes?.data?.data || null);
@@ -419,6 +496,10 @@ export default function CrmAiCostPage() {
               Open cost modal
             </button>
           </div>
+
+          {budget?.ok && (
+            <BudgetPanel C={C} budget={budget} currency={currency} />
+          )}
 
           <HealthSection C={C} overview={overview} queues={queues} followUps={followUps} />
 

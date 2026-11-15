@@ -161,6 +161,20 @@ async function dailySeries(tenantId, days = 14) {
   }));
 }
 
+/** GET /api/crm/analytics/ai-budget — RC8 monthly Gemini budget dashboard */
+const getAiBudgetDashboard = async (req, res) => {
+  try {
+    const tenantId = resolveTenantId(req);
+    if (!tenantId) return res.status(400).json({ message: 'Tenant required' });
+    const { buildMonthlyBudgetDashboard } = require('../services/geminiBudgetReport');
+    const report = await buildMonthlyBudgetDashboard(tenantId);
+    return res.json(report);
+  } catch (err) {
+    console.error('[crm-analytics] ai-budget', err);
+    return res.status(500).json({ message: err.message || 'Server error' });
+  }
+};
+
 /** GET /api/crm/analytics/ai-cost */
 const getAiCostSummary = async (req, res) => {
   try {

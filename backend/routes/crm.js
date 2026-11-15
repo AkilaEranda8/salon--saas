@@ -39,6 +39,7 @@ router.delete('/rules/:id', ...admin, rulesCtrl.remove);
 
 // ── Analytics / AI Cost ──────────────────────────────────────────────────────
 router.get('/analytics/ai-cost', ...admin, analyticsCtrl.getAiCostSummary);
+router.get('/analytics/ai-budget', ...admin, analyticsCtrl.getAiBudgetDashboard);
 router.get('/analytics/overview', ...admin, analyticsCtrl.getCrmOverview);
 // AI credit top-ups are platform-admin only (see /platform/tenants/:id/ai-credits)
 

@@ -16,8 +16,13 @@ const DEFAULT_RATES = [
   { provider: 'gemini', model: 'gemini-1.5-flash', input_per_1k: 0.000055, output_per_1k: 0.00022, currency: 'USD' },
   { provider: 'gemini', model: 'gemini-1.5-flash-8b', input_per_1k: 0.000028, output_per_1k: 0.00011, currency: 'USD' },
   { provider: 'gemini', model: 'gemini-flash-latest', input_per_1k: 0.000075, output_per_1k: 0.0003, currency: 'USD' },
-  { provider: 'gemini', model: 'gemini-2.5-flash', input_per_1k: 0.00011, output_per_1k: 0.00045, currency: 'USD' },
-  { provider: 'gemini', model: 'gemini-2.5-flash-lite', input_per_1k: 0.000055, output_per_1k: 0.00022, currency: 'USD' },
+  { provider: 'gemini', model: 'gemini-2.5-flash', input_per_1k: 0.0003, output_per_1k: 0.0025, currency: 'USD' },
+  { provider: 'gemini', model: 'gemini-2.5-flash-lite', input_per_1k: 0.0001, output_per_1k: 0.0004, currency: 'USD' },
+  // RC8 official routing models (Google AI Studio paid tier)
+  { provider: 'gemini', model: 'gemini-3.1-flash-lite', input_per_1k: 0.00025, output_per_1k: 0.0015, currency: 'USD' },
+  { provider: 'gemini', model: 'gemini-3.5-flash-lite', input_per_1k: 0.0003, output_per_1k: 0.0025, currency: 'USD' },
+  { provider: 'gemini', model: 'gemini-3.8-flash', input_per_1k: 0.00075, output_per_1k: 0.00375, currency: 'USD' },
+  { provider: 'gemini', model: 'gemini-4-hydrogen', input_per_1k: 0.0015, output_per_1k: 0.0075, currency: 'USD' },
 ];
 
 async function indexExists(indexName, tableName) {

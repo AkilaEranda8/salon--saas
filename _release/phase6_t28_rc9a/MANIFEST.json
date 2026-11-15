@@ -1,0 +1,195 @@
+{
+  "rc_id": "phase6_t28_rc9a",
+  "created_utc": "2026-11-15T04:32:37.428350+00:00",
+  "parent_rc": "phase6_t28_rc9",
+  "parent_immutable": true,
+  "also_preserves": [
+    "phase6_t28_rc8"
+  ],
+  "tenant": 28,
+  "scope": "rc9_plus_audit_hotfixes_redis_loss_recovery",
+  "production_status": "NOT_DEPLOYED",
+  "note_prod_reality": "RC9a LOCAL ONLY. Includes RC9 answer/memory fixes plus audit hotfixes (stale service_id clear, Q&A dedupe, tenant patch guard) and Redis-loss recovery tests. Does NOT overwrite RC8/RC9. No deploy without approval.",
+  "audit_hotfixes": [
+    "stale_service_id_cleared_on_correction",
+    "qa_history_dedupe_no_echo",
+    "assert_patch_tenant",
+    "redis_loss_multiturn_booking_recovery_test"
+  ],
+  "changed_files": [
+    "ai_engine/app/conversation_intelligence.py",
+    "ai_engine/app/conversation_truth.py",
+    "ai_engine/app/response_quality.py",
+    "ai_engine/app/booking_flow.py",
+    "ai_engine/app/main.py",
+    "backend/services/crmAiMemoryService.js",
+    "backend/services/crmAiMemoryMerge.js"
+  ],
+  "files": {
+    "ai_engine/app/conversation_intelligence.py": {
+      "sha256": "1f1ab61bf76538743a819985a37debd14a31f207168c9c8716eafd65aff60c70",
+      "sha16": "1f1ab61bf7653874",
+      "bytes": 47659,
+      "deploy": true,
+      "note": null
+    },
+    "ai_engine/app/conversation_truth.py": {
+      "sha256": "d8ccaf14c5af2ef42f4edccd49ba7f5c68d39f70d9b6d695cda42d30f83fd0c0",
+      "sha16": "d8ccaf14c5af2ef4",
+      "bytes": 17549,
+      "deploy": true,
+      "note": null
+    },
+    "ai_engine/app/response_quality.py": {
+      "sha256": "622d45352aa6b7bf41b96f01d24c81f3bb4cedb17a325171f5807a75e1190497",
+      "sha16": "622d45352aa6b7bf",
+      "bytes": 20062,
+      "deploy": true,
+      "note": null
+    },
+    "ai_engine/app/booking_flow.py": {
+      "sha256": "abcbb8a2bb77a6033d240ac7300a90f72bca1cdf82b2cb31591206f381708150",
+      "sha16": "abcbb8a2bb77a603",
+      "bytes": 168587,
+      "deploy": true,
+      "note": null
+    },
+    "ai_engine/app/main.py": {
+      "sha256": "cb227db87f7c7c294b17fd7f7e49f3e53eda1404cc882e4ee6889af9878bac64",
+      "sha16": "cb227db87f7c7c29",
+      "bytes": 124395,
+      "deploy": true,
+      "note": null
+    },
+    "backend/services/crmAiMemoryService.js": {
+      "sha256": "f694d8d754dcd55ff57b3e98757852b06afb95c7db054dfd686abe18861d862e",
+      "sha16": "f694d8d754dcd55f",
+      "bytes": 15077,
+      "deploy": true,
+      "note": null
+    },
+    "backend/services/crmAiMemoryMerge.js": {
+      "sha256": "f5c83fe3ff160551d4f93234f4fc9e379ee212b7b7662b75a03b3f20512ff737",
+      "sha16": "f5c83fe3ff160551",
+      "bytes": 3475,
+      "deploy": true,
+      "note": null
+    },
+    "ai_engine/tests/test_rc9_conversation_memory_replay.py": {
+      "sha256": "333c9799ef81d455f4920e47376e33eea675f5d13753bf65b8e47c8789c7a99d",
+      "sha16": "333c9799ef81d455",
+      "bytes": 11298,
+      "deploy": false,
+      "note": "audit only"
+    },
+    "ai_engine/tests/test_rc9_audit_memory_safety.py": {
+      "sha256": "6b4896132cff46427035fd7e8babd0ba967c4265bc3b9e5208216cbf443c2bde",
+      "sha16": "6b4896132cff4642",
+      "bytes": 4091,
+      "deploy": false,
+      "note": "audit only"
+    },
+    "ai_engine/tests/test_rc9a_redis_loss_booking_recovery.py": {
+      "sha256": "8659344b981b60d7b16b934ae103aac719ea34d66a48aa56ae1111f358c8ac41",
+      "sha16": "8659344b981b60d7",
+      "bytes": 6976,
+      "deploy": false,
+      "note": "audit only"
+    },
+    "backend/services/__tests__/crmAiMemoryRc9.test.js": {
+      "sha256": "d5000f6e0019f290fe7191c17425116cf5826069749c994a7a3d0fd8309a40ac",
+      "sha16": "d5000f6e0019f290",
+      "bytes": 1899,
+      "deploy": false,
+      "note": "audit only"
+    },
+    "backend/services/__tests__/crmAiMemoryRc9Audit.test.js": {
+      "sha256": "dc8374df62611a0e03b1283ab68e64a5b94de42b35006b02eea48f6e4b466730",
+      "sha16": "dc8374df62611a0e",
+      "bytes": 6910,
+      "deploy": false,
+      "note": "audit only"
+    }
+  },
+  "compare_to_rc9": {
+    "changed": [
+      "ai_engine/app/conversation_intelligence.py",
+      "ai_engine/app/response_quality.py",
+      "backend/services/crmAiMemoryService.js",
+      "ai_engine/tests/test_rc9_conversation_memory_replay.py"
+    ],
+    "new_in_rc9a": [
+      "backend/services/crmAiMemoryMerge.js",
+      "ai_engine/tests/test_rc9_audit_memory_safety.py",
+      "ai_engine/tests/test_rc9a_redis_loss_booking_recovery.py",
+      "backend/services/__tests__/crmAiMemoryRc9Audit.test.js"
+    ],
+    "details": {
+      "ai_engine/app/conversation_intelligence.py": {
+        "unchanged": false,
+        "rc9_sha16": "58ffb160d38d754e",
+        "rc9a_sha16": "1f1ab61bf7653874"
+      },
+      "ai_engine/app/conversation_truth.py": {
+        "unchanged": true,
+        "rc9_sha16": "d8ccaf14c5af2ef4",
+        "rc9a_sha16": "d8ccaf14c5af2ef4"
+      },
+      "ai_engine/app/response_quality.py": {
+        "unchanged": false,
+        "rc9_sha16": "cd98b964c915310f",
+        "rc9a_sha16": "622d45352aa6b7bf"
+      },
+      "ai_engine/app/booking_flow.py": {
+        "unchanged": true,
+        "rc9_sha16": "abcbb8a2bb77a603",
+        "rc9a_sha16": "abcbb8a2bb77a603"
+      },
+      "ai_engine/app/main.py": {
+        "unchanged": true,
+        "rc9_sha16": "cb227db87f7c7c29",
+        "rc9a_sha16": "cb227db87f7c7c29"
+      },
+      "backend/services/crmAiMemoryService.js": {
+        "unchanged": false,
+        "rc9_sha16": "3ac7faf12b2d6f30",
+        "rc9a_sha16": "f694d8d754dcd55f"
+      },
+      "ai_engine/tests/test_rc9_conversation_memory_replay.py": {
+        "unchanged": false,
+        "rc9_sha16": "5f09656ae0fc23c1",
+        "rc9a_sha16": "333c9799ef81d455"
+      },
+      "backend/services/__tests__/crmAiMemoryRc9.test.js": {
+        "unchanged": true,
+        "rc9_sha16": "d5000f6e0019f290",
+        "rc9a_sha16": "d5000f6e0019f290"
+      }
+    }
+  },
+  "compare_to_rc8": {
+    "overlapping_paths": [
+      "ai_engine/app/main.py"
+    ],
+    "details": {
+      "ai_engine/app/main.py": {
+        "unchanged": false,
+        "rc8_sha16": "32d180b11143b493",
+        "rc9a_sha16": "cb227db87f7c7c29"
+      }
+    }
+  },
+  "frozen_snapshots_untouched": {
+    "ok": true,
+    "rc8_manifest_sha256": "6a4c31925cc33213f4ac80db6d9a6db3ccf49d77d2e62d0c6eed58ed7a622e0d",
+    "rc9_manifest_sha256": "fd0201ee348cc2d5d41d658b9126c56704485c18da2dbcf1a231c7009ad3e183"
+  },
+  "pytest": {
+    "ok": true,
+    "output": "........................................................                 [100%]\n56 passed in 1.33s\n"
+  },
+  "node_test": {
+    "ok": true,
+    "output": "\u00e2\u0153\u201d memoryToContext exposes RC9 structured fields (4.2257ms)\n\u00e2\u0153\u201d memoryToContext null-safe (0.3485ms)\n\u00e2\u0153\u201d audit1_crm_memory_survives_redis_loss_via_memoryToContext (3.266ms)\n\u00e2\u0153\u201d audit2_correction_clears_stale_service_id (0.4552ms)\n\u00e2\u0153\u201d audit2_resolveLastServiceId_honors_explicit_null_after_correction (0.4939ms)\n\u00e2\u0153\u201d audit3_qa_history_no_duplicate_when_prior_echoed (3.8221ms)\n\u00e2\u0153\u201d audit3_qa_history_caps_at_12 (1.0787ms)\n\u00e2\u0153\u201d audit4_assertPatchTenant_rejects_cross_tenant_claim (0.5344ms)\n\u00e2\u0153\u201d audit4_memoryToContext_does_not_invent_other_tenant_fields (0.6694ms)\n\u00e2\u0153\u201d audit4_cross_tenant_rows_remain_isolated_when_loaded_separately (0.5857ms)\n\u00e2\u201e\u00b9 tests 10\n\u00e2\u201e\u00b9 suites 0\n\u00e2\u201e\u00b9 pass 10\n\u00e2\u201e\u00b9 fail 0\n\u00e2\u201e\u00b9 cancelled 0\n\u00e2\u201e\u00b9 skipped 0\n\u00e2\u201e\u00b9 todo 0\n\u00e2\u201e\u00b9 duration_ms 201.9013\n"
+  }
+}

@@ -1,0 +1,48 @@
+# RC9a isolated staging — copy to a staging-only .env (NEVER production .env)
+# Do not put real production secrets here. Do not commit filled values.
+
+NODE_ENV=staging
+
+# ── Identity ────────────────────────────────────────────────────────────────
+# Staging host URL (fill after provision): e.g. http://localhost:8080 or https://staging-salon.example
+STAGING_BASE_URL=http://localhost:8080
+STAGING_AI_URL=http://localhost:8010
+STAGING_TENANT_ID=928
+# Production Larvendo T28 must NOT be used as write target
+PROD_TENANT_ID_DO_NOT_USE=28
+
+# ── Database (MUST be a separate MySQL from production) ─────────────────────
+DB_HOST=127.0.0.1
+DB_PORT=3307
+DB_USER=staging_salon
+DB_PASS=CHANGE_ME_STAGING_ONLY
+DB_NAME=zanesalon_staging
+
+# ── Redis (MUST be a separate Redis from production) ────────────────────────
+REDIS_URL=redis://127.0.0.1:6380/0
+
+# ── Gemini (staging project key only — never production key) ────────────────
+# Official model IDs (ai.google.dev / AI Studio pricing list):
+#   gemini-3.1-flash-lite
+#   gemini-3.8-flash
+#   gemini-4-hydrogen
+# Do NOT use gemini-4-argon in normal routing.
+GEMINI_API_KEY=STAGING_KEY_PLACEHOLDER_DO_NOT_COMMIT
+GEMINI_COST_ROUTER=1
+GEMINI_MONTHLY_HARD_CAP=20
+GEMINI_MONTHLY_PLANNED=16
+
+# ── WhatsApp kill-switch (staging MUST keep outbound off) ───────────────────
+# Until a code kill-switch exists, staging MUST:
+#   1) Not start Baileys / QR session for staging tenant
+#   2) Scale ai_crm_worker WA_OUTBOUND consumers to 0 OR pause outbound queue
+#   3) Evaluate via HTTP /v1/turns only (CRM_EVAL_HTTP_ONLY=1)
+CRM_EVAL_HTTP_ONLY=1
+CRM_WA_OUTBOUND_DISABLED=1
+TWILIO_ACCOUNT_SID=
+TWILIO_AUTH_TOKEN=
+TWILIO_WHATSAPP_FROM=
+
+# ── Evidence harness ────────────────────────────────────────────────────────
+RC9A_EVIDENCE_DIR=docs/eval_runs/rc9a_staging
+RC9A_HARNESS_DRY_RUN=1

@@ -7,7 +7,14 @@
 const { Op } = require('sequelize');
 const { AiModelRate, AiUsage } = require('../models');
 
-/** Fallback when DB has no row (USD per 1k tokens). ~25% below list for salon tracking. */
+/**
+ * Fallback when DB has no row (USD per 1k tokens).
+ * RC8: official Google AI Studio paid-tier list prices (per 1M → /1000).
+ * gemini-3.1-flash-lite $0.25/$1.50 per 1M
+ * gemini-3.8-flash $0.75/$3.75 per 1M (promo through 2026-12-31)
+ * gemini-4-hydrogen $1.50/$7.50 per 1M
+ * gemini-4-argon recorded but not used in normal routing
+ */
 const FALLBACK_RATES = {
   'openai:gpt-4o-mini': { input_per_1k: 0.00011, output_per_1k: 0.00045 },
   'openai:gpt-4o': { input_per_1k: 0.0019, output_per_1k: 0.0075 },
@@ -16,8 +23,13 @@ const FALLBACK_RATES = {
   'gemini:gemini-1.5-flash': { input_per_1k: 0.000055, output_per_1k: 0.00022 },
   'gemini:gemini-1.5-flash-8b': { input_per_1k: 0.000028, output_per_1k: 0.00011 },
   'gemini:gemini-flash-latest': { input_per_1k: 0.000075, output_per_1k: 0.0003 },
-  'gemini:gemini-2.5-flash': { input_per_1k: 0.00011, output_per_1k: 0.00045 },
-  'gemini:gemini-2.5-flash-lite': { input_per_1k: 0.000055, output_per_1k: 0.00022 },
+  'gemini:gemini-2.5-flash': { input_per_1k: 0.0003, output_per_1k: 0.0025 },
+  'gemini:gemini-2.5-flash-lite': { input_per_1k: 0.0001, output_per_1k: 0.0004 },
+  'gemini:gemini-3.1-flash-lite': { input_per_1k: 0.00025, output_per_1k: 0.0015 },
+  'gemini:gemini-3.5-flash-lite': { input_per_1k: 0.0003, output_per_1k: 0.0025 },
+  'gemini:gemini-3.8-flash': { input_per_1k: 0.00075, output_per_1k: 0.00375 },
+  'gemini:gemini-4-hydrogen': { input_per_1k: 0.0015, output_per_1k: 0.0075 },
+  'gemini:gemini-4-argon': { input_per_1k: 0.002, output_per_1k: 0.01 },
 };
 
 const MODEL_ALIASES = {

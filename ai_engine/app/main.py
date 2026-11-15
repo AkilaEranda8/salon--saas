@@ -60,6 +60,23 @@ from app.response_quality import (
 from app.turn_planner import build_turn_plan, format_plan_for_prompt
 from app.turn_trace import TurnTrace, new_trace_id, redact_phone
 from app.conversation_truth import ConversationTruth, format_truth_for_prompt
+from app.cost_router import (
+    HARD_CONV_CAP,
+    TARGET_CONV_COST,
+    build_call_accounting,
+    cost_router_enabled,
+    estimate_cost_usd,
+    select_model,
+    trim_recent_messages,
+)
+from app.budget_ledger import (
+    budget_exhausted_safe_reply,
+    budget_status,
+    check_alerts,
+    release as budget_release,
+    reserve as budget_reserve,
+    settle as budget_settle,
+)
 from app.customer_respect import (
     ensure_respectful_address,
     find_banned_casual,
@@ -2008,7 +2025,8 @@ async def turns(
         actions.append({"tool": "vision_images", "ok": True, "count": len(vision_images)})
 
     chat_messages: list[dict[str, Any]] = [{"role": "system", "content": system}]
-    for m in body.recentMessages or []:
+    # RC8: trim history — avoid unlimited transcript cost
+    for m in trim_recent_messages(body.recentMessages, max_turns=8, max_chars=400):
         if not isinstance(m, dict):
             continue
         role = str(m.get("role") or "").strip().lower()
@@ -2016,14 +2034,15 @@ async def turns(
         if not content:
             continue
         if role in ("user", "customer"):
-            chat_messages.append({"role": "user", "content": content[:800]})
+            chat_messages.append({"role": "user", "content": content[:400]})
         elif role in ("assistant", "ai", "agent", "system"):
             # Prior AI/agent replies as assistant turns
-            chat_messages.append({"role": "assistant", "content": content[:800]})
+            chat_messages.append({"role": "assistant", "content": content[:400]})
     raw_user = (body.message or "").strip()
     if not raw_user and vision_images:
         raw_user = "Please look at the photo I sent and help me based on this salon."
     ask_meta = _understand_customer_ask(raw_user) if raw_user else {}
+    ask_units: list = []
     # Prefer Phase 2+ conversation intelligence intent when available
     if conv_ctx and conv_ctx.current_intent:
         ask_meta = {
@@ -2088,16 +2107,82 @@ async def turns(
 
     result = None
     last_exc: Exception | None = None
+    _budget_res_id = None
+    _route_max_tokens = None
+    _routed_model = model
+    _repair_count = 0
+
+    # RC8: smart model router + atomic monthly budget (local candidate; prod unchanged until deploy)
+    if cost_router_enabled() and str(provider_name or "").lower() == "gemini":
+        _bst = budget_status(int(body.tenantId or 0))
+        for _al in check_alerts(int(body.tenantId or 0)):
+            actions.append(_al)
+        if _bst.hard_exhausted:
+            actions.append({
+                "tool": "gemini_budget_hard_cap",
+                "ok": False,
+                "spent_usd": _bst.spent_usd,
+                "hard_cap": _bst.hard_cap,
+            })
+            _safe = budget_exhausted_safe_reply(script_mode)
+            return TurnResponse(
+                replyText=_finalize_customer_reply(
+                    _safe, address_form=address_form, script_mode=script_mode, actions=actions
+                ),
+                actions=actions,
+                handoff={"wanted": True, "reason": "ai_monthly_budget_exhausted"},
+                usage=None,
+            )
+        _ask_n = len(ask_units) if ask_units else len(decompose_customer_asks(raw_user or ""))
+        _route = select_model(
+            raw_user or body.message or "",
+            has_media=bool(vision_images),
+            ask_units=_ask_n,
+            is_correction=bool(conv_ctx and conv_ctx.is_correction),
+            is_incomplete=bool(conv_ctx and getattr(conv_ctx, "is_incomplete", False)),
+            topic_switch=bool(conv_ctx and conv_ctx.is_topic_switch),
+            emotion=(conv_ctx.emotion if conv_ctx else None),
+            booking_paused=bool(conv_ctx and conv_ctx.booking_paused),
+            multi_intent=_ask_n >= 2,
+            allow_hydrogen=_bst.allow_hydrogen,
+            monthly_spent=_bst.spent_usd,
+            planned_usd=_bst.planned_usd,
+        )
+        _routed_model = _route.model
+        _route_max_tokens = _route.max_output_tokens
+        model = _routed_model
+        actions.append({"tool": "gemini_cost_router", "ok": True, **_route.to_dict()})
+        # Reserve ~target conversation slice (clamped); settle after actual tokens
+        _res = budget_reserve(int(body.tenantId or 0), TARGET_CONV_COST)
+        actions.append(_res.to_action())
+        if not _res.ok:
+            actions.append({
+                "tool": "gemini_budget_hard_cap",
+                "ok": False,
+                "reason": _res.reason,
+            })
+            _safe = budget_exhausted_safe_reply(script_mode)
+            return TurnResponse(
+                replyText=_finalize_customer_reply(
+                    _safe, address_form=address_form, script_mode=script_mode, actions=actions
+                ),
+                actions=actions,
+                handoff={"wanted": True, "reason": "ai_monthly_budget_exhausted"},
+                usage=None,
+            )
+        _budget_res_id = _res.reservation_id
+
     try:
         provider = get_provider(provider_name)
-        result = await provider.complete(
-            CompletionRequest(
-                messages=chat_messages,
-                model=model,
-                api_key=api_key,
-                google_search=use_google_search,
-            )
-        )
+        _complete_kwargs: dict[str, Any] = {
+            "messages": chat_messages,
+            "model": model,
+            "api_key": api_key,
+            "google_search": use_google_search,
+        }
+        if _route_max_tokens:
+            _complete_kwargs["max_tokens"] = _route_max_tokens
+        result = await provider.complete(CompletionRequest(**_complete_kwargs))
         if use_google_search and getattr(result, "raw", None):
             actions.append(
                 {
@@ -2109,25 +2194,34 @@ async def turns(
     except Exception as exc:
         last_exc = exc
         actions.append({"tool": "primary_provider", "ok": False, "provider": provider_name, "error": str(exc)[:200]})
+        if _budget_res_id:
+            actions.append(budget_release(int(body.tenantId or 0), _budget_res_id))
+            _budget_res_id = None
 
     # Fail over only if alternate key looks real (skip Google keys pasted into OpenAI field)
     alt_usable = bool(alt_key) and not str(alt_key).startswith("AQ.")
     if result is None and alt_usable and alt_provider and alt_provider != provider_name:
         try:
             alt = get_provider(alt_provider)
-            alt_model = "gpt-4o-mini" if alt_provider == "openai" else "gemini-3.5-flash-lite"
+            # RC8: prefer official lite ID on gemini failover (not Argon)
+            alt_model = "gpt-4o-mini" if alt_provider == "openai" else "gemini-3.1-flash-lite"
             result = await alt.complete(
                 CompletionRequest(
                     messages=chat_messages,
                     model=alt_model,
                     api_key=alt_key,
                     google_search=False,  # failover stays fast — no search
+                    max_tokens=_route_max_tokens or 400,
                 )
             )
             actions.append({"tool": "provider_failover", "ok": True, "provider": alt_provider, "model": alt_model})
+            model = alt_model
         except Exception as exc:
             last_exc = exc
             actions.append({"tool": "provider_failover", "ok": False, "provider": alt_provider, "error": str(exc)[:200]})
+            if _budget_res_id:
+                actions.append(budget_release(int(body.tenantId or 0), _budget_res_id))
+                _budget_res_id = None
 
     if result is None:
         # Provider failure: never pretend the ask was answered; never force booking.
@@ -2376,6 +2470,22 @@ async def turns(
         _prior_ai = None
         if conv_ctx and conv_ctx.last_ai_response:
             _prior_ai = conv_ctx.last_ai_response
+        # RC9: pass backend-verified LKR amounts into quality gate
+        _verified_amts: list[int] = []
+        for _a in actions:
+            if not isinstance(_a, dict) or not _a.get("ok"):
+                continue
+            if _a.get("tool") in ("pricing_resolver", "price_output_self_repair", "list_services_pricing"):
+                if _a.get("amount_lkr") is not None:
+                    try:
+                        _verified_amts.append(int(_a["amount_lkr"]))
+                    except (TypeError, ValueError):
+                        pass
+                for _amt in (_a.get("amounts") or []):
+                    try:
+                        _verified_amts.append(int(_amt))
+                    except (TypeError, ValueError):
+                        pass
         qrep = validate_customer_reply(
             raw_user,
             reply_text,
@@ -2384,6 +2494,7 @@ async def turns(
             price_hard_gated=_price_gated,
             has_media=_has_media_turn,
             prior_ai_reply=_prior_ai,
+            verified_amounts=_verified_amts or None,
             actions=actions,
             expected_service=(conv_ctx.current_topic if conv_ctx else None),
         )
@@ -2412,6 +2523,7 @@ async def turns(
                 "attempt": 1,
                 "max_attempts": 1,
             })
+            _repair_count = 1
             try:
                 with trace.span("response_quality_repair") as span:
                     span.detail(missing=qrep.missing[:6])
@@ -2440,6 +2552,7 @@ async def turns(
                             price_hard_gated=_price_gated,
                             has_media=_has_media_turn,
                             prior_ai_reply=_prior_ai,
+                            verified_amounts=_verified_amts or None,
                             actions=actions,
                             expected_service=(conv_ctx.current_topic if conv_ctx else None),
                         )
@@ -2534,6 +2647,24 @@ async def turns(
         actions=actions,
     )
 
+    # RC9: append this turn's Q&A into CRM memory (no secrets / truncate)
+    if raw_user and reply_text:
+        actions.append({
+            "tool": "conversation_intelligence",
+            "ok": True,
+            "qa_append": True,
+            "memory_patch": {
+                "qa_history": [{
+                    "q": str(raw_user)[:180],
+                    "a": str(reply_text)[:220],
+                    "topic": (conv_ctx.current_topic if conv_ctx else None),
+                }],
+                "current_topic": (conv_ctx.current_topic if conv_ctx else None),
+                "last_service": (conv_ctx.current_topic if conv_ctx else None),
+                "last_quoted_price": (conv_ctx.last_quoted_price if conv_ctx else None),
+            },
+        })
+
     if result:
         trace.record_usage(
             provider=getattr(result, "provider", None),
@@ -2542,6 +2673,42 @@ async def turns(
             completion_tokens=getattr(result, "completion_tokens", None),
             latency_ms=getattr(result, "latency_ms", None),
         )
+        # RC8 cost accounting + budget settle (no message contents / no API keys)
+        if cost_router_enabled():
+            _pt = int(getattr(result, "prompt_tokens", 0) or 0)
+            _ct = int(getattr(result, "completion_tokens", 0) or 0)
+            _mdl = str(getattr(result, "model", None) or model or "")
+            _acct = build_call_accounting(
+                tenant_id=body.tenantId,
+                conversation_id=body.conversationId,
+                model=_mdl,
+                prompt_tokens=_pt,
+                completion_tokens=_ct,
+                repair_count=_repair_count,
+                purpose="whatsapp_turn",
+            )
+            actions.append(_acct)
+            if _acct.get("over_hard_conversation"):
+                actions.append({
+                    "tool": "gemini_conversation_cost_cap",
+                    "ok": False,
+                    "estimated_usd": _acct.get("estimated_usd"),
+                    "hard_cap": HARD_CONV_CAP,
+                })
+            if _budget_res_id:
+                actions.append(
+                    budget_settle(
+                        int(body.tenantId or 0),
+                        _budget_res_id,
+                        float(_acct.get("estimated_usd") or 0),
+                    )
+                )
+                _budget_res_id = None
+            for _al in check_alerts(int(body.tenantId or 0)):
+                actions.append(_al)
+    elif _budget_res_id:
+        actions.append(budget_release(int(body.tenantId or 0), _budget_res_id))
+        _budget_res_id = None
     actions.append(trace.to_action())
 
     return TurnResponse(

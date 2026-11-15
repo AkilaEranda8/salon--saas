@@ -1,0 +1,117 @@
+{
+  "rc_id": "phase6_t28_rc8",
+  "created_utc": "2026-11-15T03:48:31.216701+00:00",
+  "parent_rc": "phase6_t28_rc7",
+  "parent_immutable": true,
+  "tenant": 28,
+  "scope": "gemini_20_usd_monthly_cost_control_smart_model_router",
+  "production_status": "NOT_DEPLOYED",
+  "note_prod_reality": "Preserve live RC7 production model config. RC8 LOCAL ONLY \u2014 cost router + atomic budget ledger + dashboard. No deploy / restart / WhatsApp / commit without separate approval. GEMINI_COST_ROUTER defaults on in code but prod unchanged until this package is deployed.",
+  "policy": {
+    "monthly_hard_cap_usd": 20,
+    "monthly_planned_usd": 16,
+    "safety_reserve_usd": 4,
+    "target_avg_conversation_usd": 0.016,
+    "warn_conversation_usd": 0.02,
+    "hard_conversation_cap_usd": 0.03,
+    "daily_planned_usd": 0.53,
+    "models": {
+      "simple": "gemini-3.1-flash-lite",
+      "normal": "gemini-3.8-flash",
+      "complex": "gemini-4-hydrogen",
+      "blocked": "gemini-4-argon"
+    },
+    "pricing_source": "https://ai.google.dev/gemini-api/docs/pricing (2026-11-15)"
+  },
+  "changed_files": [
+    "ai_engine/app/cost_router.py",
+    "ai_engine/app/budget_ledger.py",
+    "ai_engine/app/main.py",
+    "backend/services/geminiBudgetReport.js",
+    "backend/services/aiUsageCost.js",
+    "backend/services/ensureAiCrmSchema.js",
+    "backend/controllers/crmAnalyticsController.js",
+    "backend/routes/crm.js",
+    "frontend/src/pages/crm/CrmAiCostPage.jsx"
+  ],
+  "files": {
+    "ai_engine/app/cost_router.py": {
+      "sha256": "ed385ae897bcb42d1adeb277e4d5c835133f832335b9b8decb6c7feea5408ff5",
+      "sha16": "ed385ae897bcb42d",
+      "bytes": 9286,
+      "deploy": true,
+      "note": null
+    },
+    "ai_engine/app/budget_ledger.py": {
+      "sha256": "36f9495bb64c4ed1a41f87d4451f0ebc1d4bace733a0702f59bcfba53b2b32c6",
+      "sha16": "36f9495bb64c4ed1",
+      "bytes": 13748,
+      "deploy": true,
+      "note": null
+    },
+    "ai_engine/app/main.py": {
+      "sha256": "32d180b11143b493ea8e404b8a6843849617cb4c0aa5c77c2a86d8ad9f546e73",
+      "sha16": "32d180b11143b493",
+      "bytes": 122734,
+      "deploy": true,
+      "note": null
+    },
+    "backend/services/geminiBudgetReport.js": {
+      "sha256": "cea449ab8f84be75d625a5c7a8d10310c25ee8f809496f046b97082a0cb3e558",
+      "sha16": "cea449ab8f84be75",
+      "bytes": 5173,
+      "deploy": true,
+      "note": null
+    },
+    "backend/services/aiUsageCost.js": {
+      "sha256": "14fed506f953f464aa23260c3148842d6795f0c3934c09c389c6ae450be1f583",
+      "sha16": "14fed506f953f464",
+      "bytes": 6966,
+      "deploy": true,
+      "note": null
+    },
+    "backend/services/ensureAiCrmSchema.js": {
+      "sha256": "df4c922ca88795d406e6ec87f21e3d29f2363da654861fc2757c2d563f6e9bb5",
+      "sha16": "df4c922ca88795d4",
+      "bytes": 8368,
+      "deploy": true,
+      "note": null
+    },
+    "backend/controllers/crmAnalyticsController.js": {
+      "sha256": "0b7b2ad8e4570aea0417b940ac8f9ef3a47dc94ccf3e9d836c0f723141732773",
+      "sha16": "0b7b2ad8e4570aea",
+      "bytes": 14098,
+      "deploy": true,
+      "note": null
+    },
+    "backend/routes/crm.js": {
+      "sha256": "118ab7020e77ab139d2627228c06adbd80404cc75af9c580d1b2b7615f3e4f38",
+      "sha16": "118ab7020e77ab13",
+      "bytes": 14012,
+      "deploy": true,
+      "note": null
+    },
+    "frontend/src/pages/crm/CrmAiCostPage.jsx": {
+      "sha256": "89ca73239f3d613710bfa5938307fe353085b6280b3bf2c277b9b214faeee6f6",
+      "sha16": "89ca73239f3d6137",
+      "bytes": 30851,
+      "deploy": true,
+      "note": null
+    },
+    "ai_engine/tests/test_rc8_cost_router_budget.py": {
+      "sha256": "3c2349cba50d9172b20e678a54915054110aafdb4ae76399390bb7dd8edc0ad4",
+      "sha16": "3c2349cba50d9172",
+      "bytes": 3367,
+      "deploy": false,
+      "note": "audit only"
+    }
+  },
+  "import_smoke": {
+    "ok": true,
+    "errors": []
+  },
+  "pytest": {
+    "ok": true,
+    "output": "........                                                                 [100%]\n8 passed in 0.08s\n"
+  }
+}

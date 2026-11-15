@@ -1,0 +1,66 @@
+{
+  "note": "Synthetic RC9a staging customers only. Not production leads. Digits are fake reserved test patterns.",
+  "staging_tenant_id_planned": 928,
+  "source_catalogue": "Clone Larvendo T28 services/branches into staging tenant — do not write T28 production rows",
+  "customers": [
+    {
+      "id": "syn-sg-01",
+      "display_name": "Staging Singlish A",
+      "phone_e164": "+947700928001",
+      "phone_digits": "947700928001",
+      "lang": "singlish",
+      "pillar_focus": ["direct_answer", "eka_referent", "memory"]
+    },
+    {
+      "id": "syn-si-01",
+      "display_name": "Staging Sinhala A",
+      "phone_e164": "+947700928002",
+      "phone_digits": "947700928002",
+      "lang": "sinhala",
+      "pillar_focus": ["language", "multi_question"]
+    },
+    {
+      "id": "syn-en-01",
+      "display_name": "Staging English A",
+      "phone_e164": "+947700928003",
+      "phone_digits": "947700928003",
+      "lang": "english",
+      "pillar_focus": ["direct_answer", "pricing_safety"]
+    },
+    {
+      "id": "syn-book-01",
+      "display_name": "Staging Booker",
+      "phone_e164": "+947700928004",
+      "phone_digits": "947700928004",
+      "lang": "singlish",
+      "pillar_focus": ["redis_loss", "booking_safety"]
+    },
+    {
+      "id": "syn-corr-01",
+      "display_name": "Staging Correction",
+      "phone_e164": "+947700928005",
+      "phone_digits": "947700928005",
+      "lang": "singlish",
+      "pillar_focus": ["corrections", "service_id"]
+    },
+    {
+      "id": "syn-race-01",
+      "display_name": "Staging Race A",
+      "phone_e164": "+947700928006",
+      "phone_digits": "947700928006",
+      "lang": "english",
+      "pillar_focus": ["concurrency", "budget"]
+    },
+    {
+      "id": "syn-tenant-b",
+      "display_name": "Staging TenantB SamePhone",
+      "phone_e164": "+947700928001",
+      "phone_digits": "947700928001",
+      "lang": "english",
+      "staging_tenant_id_planned": 929,
+      "pillar_focus": ["tenant_isolation"],
+      "note": "Same digits as syn-sg-01 but tenant 929 — must not share CRM memory"
+    }
+  ],
+  "isolation_tenant_b_planned": 929
+}

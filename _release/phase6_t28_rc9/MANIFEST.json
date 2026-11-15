@@ -1,0 +1,84 @@
+{
+  "rc_id": "phase6_t28_rc9",
+  "created_utc": "2026-11-15T04:12:22.641277+00:00",
+  "parent_rc": "phase6_t28_rc8",
+  "parent_immutable": true,
+  "tenant": 28,
+  "scope": "direct_answer_accuracy_persistent_conversation_memory",
+  "production_status": "NOT_DEPLOYED",
+  "note_prod_reality": "Preserve live production. RC9 LOCAL ONLY \u2014 answer accuracy + CRM memory round-trip. No deploy / restart / WhatsApp / commit without approval.",
+  "changed_files": [
+    "ai_engine/app/conversation_intelligence.py",
+    "ai_engine/app/conversation_truth.py",
+    "ai_engine/app/response_quality.py",
+    "ai_engine/app/booking_flow.py",
+    "ai_engine/app/main.py",
+    "backend/services/crmAiMemoryService.js"
+  ],
+  "files": {
+    "ai_engine/app/conversation_intelligence.py": {
+      "sha256": "58ffb160d38d754e46719a6a96fbdf1063c363e1e8f5b039fe1af261c7885a7f",
+      "sha16": "58ffb160d38d754e",
+      "bytes": 47534,
+      "deploy": true,
+      "note": null
+    },
+    "ai_engine/app/conversation_truth.py": {
+      "sha256": "d8ccaf14c5af2ef42f4edccd49ba7f5c68d39f70d9b6d695cda42d30f83fd0c0",
+      "sha16": "d8ccaf14c5af2ef4",
+      "bytes": 17549,
+      "deploy": true,
+      "note": null
+    },
+    "ai_engine/app/response_quality.py": {
+      "sha256": "cd98b964c915310f75284eb651730be78f2fb9a92ad6bfcd9770bde49dcd79d8",
+      "sha16": "cd98b964c915310f",
+      "bytes": 19358,
+      "deploy": true,
+      "note": null
+    },
+    "ai_engine/app/booking_flow.py": {
+      "sha256": "abcbb8a2bb77a6033d240ac7300a90f72bca1cdf82b2cb31591206f381708150",
+      "sha16": "abcbb8a2bb77a603",
+      "bytes": 168587,
+      "deploy": true,
+      "note": null
+    },
+    "ai_engine/app/main.py": {
+      "sha256": "cb227db87f7c7c294b17fd7f7e49f3e53eda1404cc882e4ee6889af9878bac64",
+      "sha16": "cb227db87f7c7c29",
+      "bytes": 124395,
+      "deploy": true,
+      "note": null
+    },
+    "backend/services/crmAiMemoryService.js": {
+      "sha256": "3ac7faf12b2d6f30efd2a433b5962c16b9477b2c1354e9012a4720140e7f280d",
+      "sha16": "3ac7faf12b2d6f30",
+      "bytes": 14456,
+      "deploy": true,
+      "note": null
+    },
+    "ai_engine/tests/test_rc9_conversation_memory_replay.py": {
+      "sha256": "5f09656ae0fc23c1919b231018a7710eed7b93ac03067fb4722fd9b672d5a28e",
+      "sha16": "5f09656ae0fc23c1",
+      "bytes": 11104,
+      "deploy": false,
+      "note": "audit only"
+    },
+    "backend/services/__tests__/crmAiMemoryRc9.test.js": {
+      "sha256": "d5000f6e0019f290fe7191c17425116cf5826069749c994a7a3d0fd8309a40ac",
+      "sha16": "d5000f6e0019f290",
+      "bytes": 1899,
+      "deploy": false,
+      "note": "audit only"
+    }
+  },
+  "pytest": {
+    "ok": true,
+    "output": ".............................                                            [100%]\n29 passed in 1.39s\n"
+  },
+  "node_test": {
+    "ok": true,
+    "output": "\u00e2\u0153\u201d memoryToContext exposes RC9 structured fields (3.9742ms)\n\u00e2\u0153\u201d memoryToContext null-safe (0.5135ms)\n\u00e2\u201e\u00b9 tests 2\n\u00e2\u201e\u00b9 suites 0\n\u00e2\u201e\u00b9 pass 2\n\u00e2\u201e\u00b9 fail 0\n\u00e2\u201e\u00b9 cancelled 0\n\u00e2\u201e\u00b9 skipped 0\n\u00e2\u201e\u00b9 todo 0\n\u00e2\u201e\u00b9 duration_ms 185.2407\n"
+  }
+}

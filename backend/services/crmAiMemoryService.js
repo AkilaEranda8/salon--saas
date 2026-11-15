@@ -5,6 +5,12 @@
  * Powers advanced WhatsApp customer chat continuity.
  */
 
+const {
+  appendQaHistory,
+  assertPatchTenant,
+  resolveLastServiceId,
+} = require('./crmAiMemoryMerge');
+
 const INTEREST_HINTS = [
   'hair', 'facial', 'bridal', 'nail', 'massage', 'color', 'cut', 'keratin', 'keratina',
   'rebonding', 'manicure', 'pedicure', 'wax', 'makeup', 'beard', 'trim', 'highlight',
@@ -53,6 +59,7 @@ function detectLangHint(text) {
 function memoryToContext(row) {
   if (!row) return null;
   const meta = (row.meta && typeof row.meta === 'object') ? row.meta : {};
+  // RC9: expose full structured state written by upsert — AI must reload prior Q&A / truth
   return {
     summary: row.summary || null,
     preferred_services: row.preferred_services || null,
@@ -69,10 +76,26 @@ function memoryToContext(row) {
     last_intent: meta.last_intent || null,
     unresolved_question: meta.unresolved_question || null,
     last_quoted_price: meta.last_quoted_price || null,
+    pricing_service_key: meta.pricing_service_key || null,
+    last_service_id: meta.last_service_id || null,
+    last_duration_minutes: meta.last_duration_minutes || null,
+    preferred_date: meta.preferred_date || null,
+    preferred_time: meta.preferred_time || null,
+    booking_status: meta.booking_status || null,
     address_preference: meta.address_preference || meta.honorific || null,
     honorific: meta.honorific || meta.address_preference || null,
     address_form: meta.address_form || null,
     address_preference_asked: !!meta.address_preference_asked,
+    conversation_summary: meta.conversation_summary || null,
+    pending_questions: Array.isArray(meta.pending_questions) ? meta.pending_questions : [],
+    commitments: Array.isArray(meta.commitments) ? meta.commitments : [],
+    correction_log: Array.isArray(meta.correction_log) ? meta.correction_log : [],
+    qa_history: Array.isArray(meta.qa_history) ? meta.qa_history.slice(-12) : [],
+    conversation_truth: (meta.conversation_truth && typeof meta.conversation_truth === 'object')
+      ? meta.conversation_truth
+      : null,
+    emotion: meta.emotion || null,
+    last_trace_id: meta.last_trace_id || null,
   };
 }
 
@@ -141,14 +164,28 @@ async function upsertMemoryFromTurn({
   const lastExchange = `Customer: ${msg.slice(0, 100)} | AI: ${String(replyText || '').slice(0, 100)}`;
   summaryBits.push(lastExchange);
 
-  // Phase 2+/RC7: merge CI + pricing + respect + memory_correction patches
-  const ciAct = [...actions].reverse().find((a) => a?.tool === 'conversation_intelligence' && a.ok);
+  // Phase 2+/RC7/RC9: merge ALL CI patches (context + qa_append) + pricing + respect + corrections
+  const ciPatches = actions
+    .filter((a) => a?.tool === 'conversation_intelligence' && a.ok && a.memory_patch && typeof a.memory_patch === 'object')
+    .map((a) => a.memory_patch);
+  const mergedCi = {};
+  const qaFromCi = [];
+  for (const p of ciPatches) {
+    for (const [k, v] of Object.entries(p)) {
+      if (k === 'qa_history' && Array.isArray(v)) {
+        qaFromCi.push(...v);
+      } else {
+        mergedCi[k] = v;
+      }
+    }
+  }
+  if (qaFromCi.length) mergedCi.qa_history = qaFromCi.slice(-12);
   const priceMemAct = [...actions].reverse().find((a) => a?.tool === 'pricing_memory_patch' && a.ok);
   const respectAct = [...actions].reverse().find((a) => a?.tool === 'customer_respect_memory' && a.ok);
   const correctionAct = [...actions].reverse().find((a) => a?.tool === 'memory_correction' && a.ok);
   const pauseAct = [...actions].reverse().find((a) => a?.tool === 'booking_pause_for_understanding' && a.ok);
   const patch = {
-    ...((ciAct && typeof ciAct.memory_patch === 'object') ? ciAct.memory_patch : {}),
+    ...mergedCi,
     ...((priceMemAct && typeof priceMemAct.memory_patch === 'object') ? priceMemAct.memory_patch : {}),
     ...((respectAct && typeof respectAct.memory_patch === 'object') ? respectAct.memory_patch : {}),
     // Corrections win over stale CI topic
@@ -161,8 +198,19 @@ async function upsertMemoryFromTurn({
       delete patch[k];
     }
   }
+  // Tenant isolation: drop patches that claim a different tenant_id
+  if (!assertPatchTenant(tenantId, patch)) {
+    for (const k of Object.keys(patch)) delete patch[k];
+  }
   const styleAct = [...actions].reverse().find((a) => a?.tool === 'comm_style' && a.ok);
   const scriptMode = styleAct?.script_mode || patch.script_mode || prevMeta.script_mode || null;
+  const correctionCleared = !!(
+    correctionAct
+    && (
+      Object.prototype.hasOwnProperty.call(patch, 'last_service_id')
+      || (patch.last_service && prevMeta.last_service && patch.last_service !== prevMeta.last_service)
+    )
+  );
 
   const meta = {
     ...prevMeta,
@@ -213,7 +261,41 @@ async function upsertMemoryFromTurn({
       const tr = [...actions].reverse().find((a) => a?.tool === 'turn_trace' && a.trace_id);
       return tr?.trace_id || prevMeta.last_trace_id || null;
     })(),
+    // RC9/audit: structured booking + Q&A (deduped; correction can null service_id)
+    last_service_id: resolveLastServiceId({
+      flowServiceId: flowAct?.service_id,
+      patch,
+      prevId: prevMeta.last_service_id,
+      correctionCleared,
+    }),
+    last_duration_minutes: correctionCleared && patch.last_duration_minutes == null
+      ? (flowAct?.duration_minutes ?? null)
+      : (flowAct?.duration_minutes
+        ?? patch.last_duration_minutes
+        ?? prevMeta.last_duration_minutes
+        ?? null),
+    preferred_date: flowAct?.date || patch.preferred_date || prevMeta.preferred_date || null,
+    preferred_time: flowAct?.time || patch.preferred_time || prevMeta.preferred_time || null,
+    booking_status: booking?.status || patch.booking_status || prevMeta.booking_status || null,
+    qa_history: appendQaHistory(prevMeta.qa_history, patch.qa_history),
+    conversation_truth: (() => {
+      const fromFlow = flowAct?.conversation_truth;
+      const fromPatch = patch.conversation_truth;
+      if (fromFlow && typeof fromFlow === 'object') return fromFlow;
+      if (fromPatch && typeof fromPatch === 'object') return fromPatch;
+      return (prevMeta.conversation_truth && typeof prevMeta.conversation_truth === 'object')
+        ? prevMeta.conversation_truth
+        : null;
+    })(),
   };
+  // After service-name correction without flow service, prefer corrected topic over stale flow name
+  if (correctionCleared && patch.last_service) {
+    meta.last_service = patch.last_service;
+    meta.current_topic = patch.current_topic || patch.last_service;
+    if (patch.pricing_service_key === null || patch.pricing_service_key === undefined) {
+      meta.pricing_service_key = null;
+    }
+  }
 
   if (Array.isArray(patch.preferred_services)) {
     for (const s of patch.preferred_services) {

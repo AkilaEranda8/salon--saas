@@ -86,6 +86,18 @@ _HEALTH_DIAG = re.compile(
     r"diagnos(?:e|is)|medical\s+condition|skin\s+disease)\b",
     re.I,
 )
+_GENERIC_BOOK_PROMPT = re.compile(
+    r"\b(?:date\s*(?:\/|,|and|&)?\s*time\s+kiyanna|book\s+karanna\s+oni|"
+    r"would\s+you\s+like\s+to\s+book|shall\s+i\s+book|"
+    r"appointment\s+eka\s+fix|lock\s+in\s+a\s+(?:date|time))\b",
+    re.I,
+)
+_UNRELATED_PITCH = re.compile(
+    r"\b(?:bridal\s+package|we\s+also\s+offer|recommend(?:ed)?\s+(?:our\s+)?|"
+    r"popular\s+(?:services?|packages?)|you\s+may\s+(?:also\s+)?like|"
+    r"special\s+package|combo\s+deal)\b",
+    re.I,
+)
 
 
 def decompose_customer_asks(
@@ -162,7 +174,14 @@ def _unit_answered(unit: AskUnit, reply: str) -> bool:
     if unit.kind == "booking":
         return bool(re.search(r"\b(?:date|time|book|slot|yes|appointment|heta|tomorrow)\b", r))
     if unit.kind == "advice":
-        return len(r.split()) >= 6  # non-empty substantive reply
+        # Must be substantive AND not a pure booking pitch with no advice signal
+        if len(r.split()) < 6:
+            return False
+        if _GENERIC_BOOK_PROMPT.search(r) and not re.search(
+            r"\b(?:hoda|suitable|recommend|option|depend|hair|damage|safe|alternative)\b", r
+        ):
+            return False
+        return True
     if unit.kind == "service":
         token = unit.label.replace("service_", "").replace("_", " ")
         return token in r or bool(re.search(r"\b(?:service|thiyen|option|cut|facial|treatment)\b", r))
@@ -243,6 +262,49 @@ def _tool_failure_unacked(reply: str, actions: Optional[list]) -> bool:
     return False
 
 
+def _is_informational_ask(message: str) -> bool:
+    """Price / duration / location / hours / advice — not an explicit book request."""
+    raw = message or ""
+    if _BOOK_HINT.search(raw) and not (
+        is_price_enquiry(raw) or _DURATION_HINT.search(raw) or _LOCATION_HINT.search(raw)
+        or _ADVICE_HINT.search(raw) or _HOURS_HINT.search(raw)
+    ):
+        return False
+    return bool(
+        is_price_enquiry(raw)
+        or _DURATION_HINT.search(raw)
+        or _LOCATION_HINT.search(raw)
+        or _HOURS_HINT.search(raw)
+        or _ADVICE_HINT.search(raw)
+        or re.search(r"\b(?:kiyada|keeyada|eka|ekata|mathaka)\b", raw, re.I)
+    )
+
+
+def _off_topic_recommendation(message: str, reply: str, *, expected_topic: Optional[str]) -> bool:
+    """True when informational ask is answered with unrelated pitch / generic book CTA only."""
+    if not message or not reply:
+        return False
+    if not _is_informational_ask(message):
+        return False
+    r = reply.lower()
+    units = decompose_customer_asks(message, prior_topic=expected_topic)
+    answered_any = any(_unit_answered(u, reply) for u in units) if units else False
+    # Generic booking CTA without answering the ask
+    if units and not answered_any and _GENERIC_BOOK_PROMPT.search(r):
+        return True
+    # Unrelated package pitch without topic tokens
+    if _UNRELATED_PITCH.search(r):
+        topic = (expected_topic or detect_service_category(message) or "").lower()
+        if topic and topic not in r and not answered_any:
+            return True
+        if re.search(r"\bbridal\b", r) and topic in ("haircut", "hair_cut", "cut", "keratin", "facial"):
+            if not re.search(re.escape(topic), r) and not re.search(
+                r"\b(?:cut|keratin|facial|butterfly|layer)\b", r
+            ):
+                return True
+    return False
+
+
 def _context_inconsistency(
     reply: str,
     *,
@@ -262,6 +324,8 @@ def _context_inconsistency(
             r"\b(?:cut|butterfly|layer|haircut|trim)\b", r
         ):
             return True
+    if _off_topic_recommendation(message, reply, expected_topic=expected_topic):
+        return True
     return False
 
 
@@ -328,6 +392,11 @@ def validate_customer_reply(
         missing.append("context_consistency")
         warnings.append("service_identity_drift")
 
+    if _off_topic_recommendation(message, reply, expected_topic=expected_service or prior_topic):
+        if "context_consistency" not in missing:
+            missing.append("off_topic_recommendation")
+        warnings.append("unrelated_or_generic_booking_pitch")
+
     if _HEALTH_DIAG.search(reply or ""):
         missing.append("health_diagnosis_forbidden")
         warnings.append("health_diagnosis")
@@ -342,11 +411,15 @@ def validate_customer_reply(
             + ", ".join(missing[:10])
             + ". Rewrite ONE WhatsApp reply that covers EACH missing customer ask using "
             "ONLY verified salon data already available. "
+            "Answer the customer's ACTUAL question(s) first. "
+            "Do NOT replace their ask with unrelated service recommendations. "
+            "Do NOT send a generic booking prompt when they asked price/duration/location/advice. "
             "Do not invent prices, services, or booking success. "
             "Do not claim you saw a photo/heard audio unless media was actually provided. "
             "Do not diagnose medical/skin conditions. "
             "Match the customer's language (Singlish/Sinhala/English). "
-            "If a fact is unknown, say you will confirm with the team — never fabricate."
+            "If a fact is unknown, say you will confirm with the team — never fabricate. "
+            "Use conversation memory for 'eka' / prior service — do not ask them to repeat."
         )
 
     return QualityReport(
@@ -384,6 +457,23 @@ def merge_memory_correction(
     if field == "last_service":
         mem["current_topic"] = new_value
         mem.pop("unresolved_question", None)
+        # RC9 audit: stale catalogue ID must not survive a service-name correction
+        mem["last_service_id"] = None
+        mem["pricing_service_key"] = None
+        truth = dict(mem.get("conversation_truth") or {}) if isinstance(mem.get("conversation_truth"), dict) else {}
+        truth["selected_service_id"] = {
+            "value": None,
+            "confidence": 0.0,
+            "confirmed": False,
+            "source_message": reason,
+        }
+        truth["selected_service_name"] = {
+            "value": new_value,
+            "confidence": 0.95,
+            "confirmed": True,
+            "source_message": reason,
+        }
+        mem["conversation_truth"] = truth
     if field == "hair_length":
         mem["hair_length"] = new_value
     return mem

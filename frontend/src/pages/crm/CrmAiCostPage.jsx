@@ -8,12 +8,19 @@ import PageWrapper from '../../components/layout/PageWrapper';
 import usePageTheme from '../../hooks/usePageTheme';
 
 
-function Kpi({ label, value, sub, C, warn }) {
+function Kpi({ label, value, sub, C, warn, onClick }) {
   return (
-    <div style={{
-      background: C.cardBg, border: `1px solid ${warn ? '#F59E0B' : C.border}`, borderRadius: 14,
-      padding: '16px 18px', boxShadow: C.shadow,
-    }}>
+    <div
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onClick={onClick}
+      onKeyDown={onClick ? (e) => { if (e.key === 'Enter' || e.key === ' ') onClick(); } : undefined}
+      style={{
+        background: C.cardBg, border: `1px solid ${warn ? '#F59E0B' : C.border}`, borderRadius: 14,
+        padding: '16px 18px', boxShadow: C.shadow, cursor: onClick ? 'pointer' : 'default',
+        transition: 'border-color 0.15s, transform 0.15s',
+      }}
+    >
       <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: C.label }}>
         {label}
       </div>
@@ -116,6 +123,194 @@ function money(n, currency = 'USD') {
   return `${currency} ${v.toFixed(v >= 1 ? 2 : 4)}`;
 }
 
+function CostDetailsModal({ open, onClose, C, wallet, today, month, providers, recent, currency }) {
+  if (!open) return null;
+
+  const accent = C.primary || '#2563EB';
+  const remaining = Number(wallet?.remaining) || 0;
+  const spent = Number(wallet?.spent_total) || 0;
+  const credits = Number(wallet?.credits_added) || 0;
+  const pct = credits > 0 ? Math.min(100, Math.round((spent / credits) * 100)) : 0;
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="AI cost details"
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 1200,
+        background: 'rgba(15, 23, 42, 0.55)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: 16, backdrop: 'blur(2px)',
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: 'min(560px, 100%)', maxHeight: '90vh', overflow: 'auto',
+          background: C.cardBg, borderRadius: 18, border: `1px solid ${C.border}`,
+          boxShadow: '0 24px 64px rgba(15,23,42,0.28)',
+        }}
+      >
+        <div style={{
+          padding: '18px 20px 14px',
+          background: `linear-gradient(135deg, ${accent}18, transparent 70%)`,
+          borderBottom: `1px solid ${C.border}`,
+          display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start',
+        }}>
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: C.label }}>
+              CRM · AI wallet
+            </div>
+            <div style={{ fontSize: 22, fontWeight: 800, color: C.text, marginTop: 4 }}>Cost overview</div>
+            <div style={{ fontSize: 13, color: C.muted, marginTop: 4 }}>
+              Balance, spend, and recent model usage for this salon.
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            style={{
+              width: 36, height: 36, borderRadius: 10, border: `1px solid ${C.border}`,
+              background: C.cardBg, color: C.text, cursor: 'pointer', fontSize: 18, lineHeight: 1,
+            }}
+          >
+            ×
+          </button>
+        </div>
+
+        <div style={{ padding: 20, display: 'grid', gap: 16 }}>
+          <div style={{
+            borderRadius: 14, padding: 16,
+            background: remaining < 5 ? 'rgba(245,158,11,0.1)' : `${accent}10`,
+            border: `1px solid ${remaining < 5 ? '#F59E0B55' : `${accent}33`}`,
+          }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: C.label, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+              Remaining balance
+            </div>
+            <div style={{ fontSize: 34, fontWeight: 800, color: remaining < 5 ? '#B45309' : C.text, marginTop: 4 }}>
+              {money(remaining, currency)}
+            </div>
+            <div style={{ fontSize: 13, color: C.muted, marginTop: 4 }}>
+              Credits {money(credits, currency)} · Spent {money(spent, currency)}
+            </div>
+            <div style={{
+              marginTop: 12, height: 8, borderRadius: 999, background: C.border, overflow: 'hidden',
+            }}>
+              <div style={{
+                width: `${pct}%`, height: '100%', borderRadius: 999,
+                background: remaining < 5 ? '#F59E0B' : accent,
+                transition: 'width 0.3s ease',
+              }} />
+            </div>
+            <div style={{ fontSize: 11, color: C.muted, marginTop: 6 }}>{pct}% of credits used</div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            {[
+              { label: 'Today', value: money(today?.cost, currency), sub: `${today?.calls || 0} calls` },
+              { label: 'This month', value: money(month?.cost, currency), sub: `${month?.calls || 0} calls` },
+              { label: 'Per conversation', value: money(month?.cost_per_conversation, currency), sub: `${month?.conversations || 0} chats` },
+              { label: 'Per booking', value: money(month?.cost_per_booking, currency), sub: `${month?.bookings || 0} booked` },
+            ].map((x) => (
+              <div key={x.label} style={{
+                padding: '12px 14px', borderRadius: 12, border: `1px solid ${C.border}`, background: C.cardBg,
+              }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: C.label, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{x.label}</div>
+                <div style={{ fontSize: 18, fontWeight: 800, color: C.text, marginTop: 4 }}>{x.value}</div>
+                <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>{x.sub}</div>
+              </div>
+            ))}
+          </div>
+
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: C.label, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
+              By model (month)
+            </div>
+            {(providers || []).length === 0 ? (
+              <div style={{ fontSize: 13, color: C.muted, padding: '8px 0' }}>No AI usage yet this month.</div>
+            ) : (
+              <div style={{ display: 'grid', gap: 6 }}>
+                {(providers || []).slice(0, 6).map((p) => (
+                  <div key={`${p.provider}-${p.model}`} style={{
+                    display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center',
+                    padding: '10px 12px', borderRadius: 10, border: `1px solid ${C.border}`,
+                  }}>
+                    <div>
+                      <div style={{ fontWeight: 700, color: C.text, fontSize: 13 }}>{p.model || p.provider}</div>
+                      <div style={{ fontSize: 12, color: C.muted }}>{p.provider} · {p.calls} calls · {p.total_tokens} tokens</div>
+                    </div>
+                    <div style={{ fontWeight: 800, color: C.text, fontSize: 13 }}>{money(p.cost, currency)}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: C.label, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
+              Recent calls
+            </div>
+            {(recent || []).length === 0 ? (
+              <div style={{ fontSize: 13, color: C.muted }}>No recent AI calls.</div>
+            ) : (
+              <div style={{ display: 'grid', gap: 4, maxHeight: 180, overflowY: 'auto' }}>
+                {(recent || []).slice(0, 8).map((r) => (
+                  <div key={r.id} style={{
+                    display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 12.5,
+                    padding: '7px 0', borderTop: `1px solid ${C.border}`, color: C.text,
+                  }}>
+                    <span style={{ color: C.muted }}>
+                      {r.createdAt ? new Date(r.createdAt).toLocaleString() : '—'} · {r.model || r.provider}
+                    </span>
+                    <span style={{ fontWeight: 700 }}>{money(r.cost, r.currency || currency)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {(wallet?.entries || []).length > 0 && (
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: C.label, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
+                Credit history
+              </div>
+              <div style={{ display: 'grid', gap: 4, maxHeight: 140, overflowY: 'auto' }}>
+                {wallet.entries.slice(0, 6).map((e) => (
+                  <div key={e.id} style={{
+                    display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 12.5,
+                    padding: '7px 0', borderTop: `1px solid ${C.border}`, color: C.text,
+                  }}>
+                    <span style={{ color: C.muted }}>{e.entry_type} · {e.note || '—'}</span>
+                    <span style={{ fontWeight: 700 }}>{money(e.amount_usd, currency)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div style={{ fontSize: 12.5, color: C.muted, lineHeight: 1.45, paddingTop: 4 }}>
+            Tracked rates are discounted for salon CRM reporting. Credits are added by Hexaone platform admin.
+          </div>
+
+          <button
+            type="button"
+            onClick={onClose}
+            style={{
+              padding: '12px 16px', borderRadius: 12, border: 'none',
+              background: accent, color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: 14,
+            }}
+          >
+            Got it
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function CrmAiCostPage() {
   const { C } = usePageTheme();
   const [loading, setLoading] = useState(true);
@@ -123,6 +318,7 @@ export default function CrmAiCostPage() {
   const [overview, setOverview] = useState(null);
   const [queues, setQueues] = useState(null);
   const [followUps, setFollowUps] = useState(null);
+  const [modalOpen, setModalOpen] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -146,6 +342,14 @@ export default function CrmAiCostPage() {
 
   useEffect(() => { load(); }, []);
 
+  // Open cost modal once per session when page loads with data
+  useEffect(() => {
+    if (!loading && data && !sessionStorage.getItem('crm_ai_cost_modal_seen')) {
+      setModalOpen(true);
+      sessionStorage.setItem('crm_ai_cost_modal_seen', '1');
+    }
+  }, [loading, data]);
+
   const month = data?.month || {};
   const today = data?.today || {};
   const wallet = data?.wallet || overview?.wallet || {};
@@ -160,16 +364,28 @@ export default function CrmAiCostPage() {
       title="AI Cost & CRM Analytics"
       subtitle="Token usage, spend, and WhatsApp conversion for this salon."
       actions={(
-        <button
-          type="button"
-          onClick={load}
-          style={{
-            padding: '8px 14px', borderRadius: 10, border: `1px solid ${C.border}`,
-            background: C.cardBg, color: C.text, fontWeight: 600, cursor: 'pointer',
-          }}
-        >
-          Refresh
-        </button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button
+            type="button"
+            onClick={() => setModalOpen(true)}
+            style={{
+              padding: '8px 14px', borderRadius: 10, border: 'none',
+              background: C.primary || '#2563EB', color: '#fff', fontWeight: 700, cursor: 'pointer',
+            }}
+          >
+            Cost details
+          </button>
+          <button
+            type="button"
+            onClick={load}
+            style={{
+              padding: '8px 14px', borderRadius: 10, border: `1px solid ${C.border}`,
+              background: C.cardBg, color: C.text, fontWeight: 600, cursor: 'pointer',
+            }}
+          >
+            Refresh
+          </button>
+        </div>
       )}
     >
       {loading && <div style={{ color: C.muted, padding: 16 }}>Loading…</div>}
@@ -177,11 +393,31 @@ export default function CrmAiCostPage() {
       {!loading && data && (
         <div style={{ display: 'grid', gap: 18 }}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
-            <Kpi C={C} label="Remaining balance" value={money(wallet.remaining, currency)} sub={`Spent ${money(wallet.spent_total, currency)}`} warn={!!wallet.low_balance} />
-            <Kpi C={C} label="Today's AI Cost" value={money(today.cost, currency)} sub={`${today.calls || 0} calls · ${today.total_tokens || 0} tokens`} />
-            <Kpi C={C} label="Monthly AI Cost" value={money(month.cost, currency)} sub={`${month.calls || 0} calls this month`} />
+            <Kpi C={C} label="Remaining balance" value={money(wallet.remaining, currency)} sub={`Credits ${money(wallet.credits_added, currency)} · Spent ${money(wallet.spent_total, currency)}`} warn={!!wallet.low_balance} onClick={() => setModalOpen(true)} />
+            <Kpi C={C} label="Today's AI Cost" value={money(today.cost, currency)} sub={`${today.calls || 0} calls · ${today.total_tokens || 0} tokens`} onClick={() => setModalOpen(true)} />
+            <Kpi C={C} label="Monthly AI Cost" value={money(month.cost, currency)} sub={`${month.calls || 0} calls this month`} onClick={() => setModalOpen(true)} />
             <Kpi C={C} label="Cost / Conversation" value={money(month.cost_per_conversation, currency)} sub={`${month.conversations || 0} conversations`} />
             <Kpi C={C} label="Cost / Booking" value={money(month.cost_per_booking, currency)} sub={`${month.bookings || 0} confirmed bookings`} />
+          </div>
+
+          <div style={{
+            background: C.cardBg, border: `1px solid ${C.border}`, borderRadius: 14,
+            padding: '14px 16px', boxShadow: C.shadow,
+            display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap',
+          }}>
+            <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.45 }}>
+              Salon rates are discounted ~25% for CRM tracking. Credits are added by Hexaone platform admin.
+            </div>
+            <button
+              type="button"
+              onClick={() => setModalOpen(true)}
+              style={{
+                padding: '8px 12px', borderRadius: 10, border: `1px solid ${C.border}`,
+                background: C.cardBg, color: C.text, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
+              }}
+            >
+              Open cost modal
+            </button>
           </div>
 
           <HealthSection C={C} overview={overview} queues={queues} followUps={followUps} />
@@ -261,7 +497,7 @@ export default function CrmAiCostPage() {
                 </thead>
                 <tbody>
                   {(data.providers || []).length === 0 && (
-                    <tr><td colSpan={5} style={{ padding: 16, color: C.muted }}>No AI usage recorded yet. Run inbox simulate sync with a provider key.</td></tr>
+                    <tr><td colSpan={5} style={{ padding: 16, color: C.muted }}>No AI usage recorded yet.</td></tr>
                   )}
                   {(data.providers || []).map((p) => (
                     <tr key={`${p.provider}-${p.model}`} style={{ borderTop: `1px solid ${C.border}` }}>
@@ -312,6 +548,18 @@ export default function CrmAiCostPage() {
           </div>
         </div>
       )}
+
+      <CostDetailsModal
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+        C={C}
+        wallet={wallet}
+        today={today}
+        month={month}
+        providers={data?.providers || []}
+        recent={data?.recent || []}
+        currency={currency}
+      />
     </PageWrapper>
   );
 }

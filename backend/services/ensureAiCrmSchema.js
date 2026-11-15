@@ -7,12 +7,17 @@
 const { sequelize } = require('../config/database');
 const { AiModelRate } = require('../models');
 
+/** ~25% below public list — salon CRM tracked spend stays lighter. */
 const DEFAULT_RATES = [
-  { provider: 'openai', model: 'gpt-4o-mini', input_per_1k: 0.00015, output_per_1k: 0.0006, currency: 'USD' },
-  { provider: 'openai', model: 'gpt-4o', input_per_1k: 0.0025, output_per_1k: 0.01, currency: 'USD' },
-  { provider: 'gemini', model: 'gemini-2.0-flash', input_per_1k: 0.0001, output_per_1k: 0.0004, currency: 'USD' },
-  { provider: 'gemini', model: 'gemini-2.0-flash-lite', input_per_1k: 0.000075, output_per_1k: 0.0003, currency: 'USD' },
-  { provider: 'gemini', model: 'gemini-1.5-flash', input_per_1k: 0.000075, output_per_1k: 0.0003, currency: 'USD' },
+  { provider: 'openai', model: 'gpt-4o-mini', input_per_1k: 0.00011, output_per_1k: 0.00045, currency: 'USD' },
+  { provider: 'openai', model: 'gpt-4o', input_per_1k: 0.0019, output_per_1k: 0.0075, currency: 'USD' },
+  { provider: 'gemini', model: 'gemini-2.0-flash', input_per_1k: 0.000075, output_per_1k: 0.0003, currency: 'USD' },
+  { provider: 'gemini', model: 'gemini-2.0-flash-lite', input_per_1k: 0.000055, output_per_1k: 0.00022, currency: 'USD' },
+  { provider: 'gemini', model: 'gemini-1.5-flash', input_per_1k: 0.000055, output_per_1k: 0.00022, currency: 'USD' },
+  { provider: 'gemini', model: 'gemini-1.5-flash-8b', input_per_1k: 0.000028, output_per_1k: 0.00011, currency: 'USD' },
+  { provider: 'gemini', model: 'gemini-flash-latest', input_per_1k: 0.000075, output_per_1k: 0.0003, currency: 'USD' },
+  { provider: 'gemini', model: 'gemini-2.5-flash', input_per_1k: 0.00011, output_per_1k: 0.00045, currency: 'USD' },
+  { provider: 'gemini', model: 'gemini-2.5-flash-lite', input_per_1k: 0.000055, output_per_1k: 0.00022, currency: 'USD' },
 ];
 
 async function indexExists(indexName, tableName) {
@@ -105,13 +110,35 @@ async function ensureActiveSlotConstraint() {
 
 async function ensureAiCrmSchema() {
   for (const row of DEFAULT_RATES) {
-    const [record] = await AiModelRate.findOrCreate({
+    const [record, created] = await AiModelRate.findOrCreate({
       where: { provider: row.provider, model: row.model },
       defaults: { ...row, active: true },
     });
     if (record && !record.active) {
       await record.update({ active: true });
     }
+    if (!created && record) {
+      // Keep published list rates in sync (aliases / new Gemini SKUs)
+      const patch = {};
+      if (Number(record.input_per_1k) !== Number(row.input_per_1k)) patch.input_per_1k = row.input_per_1k;
+      if (Number(record.output_per_1k) !== Number(row.output_per_1k)) patch.output_per_1k = row.output_per_1k;
+      if (Object.keys(patch).length) await record.update(patch);
+    }
+  }
+
+  // Keep usage costs aligned with current rates (incl. discounted salon rates)
+  try {
+    const { backfillZeroCosts, recomputeAllCosts } = require('./aiUsageCost');
+    const bf = await backfillZeroCosts({ limit: 5000 });
+    if (bf.updated) {
+      console.log(`[ai-crm] backfilled ${bf.updated}/${bf.scanned} ai_usage cost rows`);
+    }
+    const rc = await recomputeAllCosts({ limit: 20000 });
+    if (rc.updated) {
+      console.log(`[ai-crm] recomputed ${rc.updated}/${rc.scanned} ai_usage costs after rate sync`);
+    }
+  } catch (e) {
+    console.warn('[ai-crm] usage cost backfill skipped', e.message);
   }
 
   await ensureUniqueIndex(

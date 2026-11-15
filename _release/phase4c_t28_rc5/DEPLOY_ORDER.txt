@@ -1,0 +1,13 @@
+RC5 CANDIDATE — post-handoff message routing
+Parent: phase4c_t28_rc4 (immutable)
+Status: HOLD — do not deploy without explicit approval
+
+Deploy order (when approved):
+1. backend/services/crmHandoffInboundPolicy.js (CREATE) + worker mirror
+2. backend/services/crmInboundTurnService.js + worker mirror
+3. ai_engine/app/booking_flow.py
+4. ai_engine/app/main.py
+5. Restart ai_crm_worker, backend, ai_engine
+
+Do NOT send WhatsApp until separately approved.
+Do NOT overwrite RC2/RC3/RC4 folders.

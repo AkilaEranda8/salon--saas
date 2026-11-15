@@ -1,0 +1,13 @@
+RC3 CANDIDATE — customer intent category filtering
+Parent: phase4c_t28_rc2 (immutable)
+Status: HOLD — do not deploy without explicit approval
+
+Deploy order (when approved):
+1. ai_engine/app/booking_flow.py
+2. ai_engine/app/main.py
+3. Restart ai_engine only
+
+Do NOT modify RC2 files in place.
+Do NOT send WhatsApp messages as part of this release prep.
+Do NOT change customer or booking data.
+Do NOT restart production until separately approved.

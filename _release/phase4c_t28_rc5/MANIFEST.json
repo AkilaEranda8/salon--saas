@@ -1,0 +1,133 @@
+{
+  "rc_id": "phase4c_t28_rc5",
+  "created_utc": "2026-11-14T13:23:45.771973+00:00",
+  "parent_rc": "phase4c_t28_rc4",
+  "parent_immutable": true,
+  "tenant": 28,
+  "scope": "post_handoff_inbound_routing",
+  "changed_files": [
+    "ai_engine/app/main.py",
+    "ai_engine/app/booking_flow.py",
+    "backend/services/crmInboundTurnService.js",
+    "backend/services/crmHandoffInboundPolicy.js",
+    "backend/services/crmHandoffInboundPolicy.js",
+    "worker/services/crmInboundTurnService.js",
+    "worker/services/crmHandoffInboundPolicy.js"
+  ],
+  "files": {
+    "ai_engine/app/main.py": {
+      "sha256": "ae0cfa2c5e3628a10a4fdd9fe55d25cb2a50103900c2156be8308fd8116b8081",
+      "sha16": "ae0cfa2c5e3628a1",
+      "bytes": 99213,
+      "changed_from_rc4": true,
+      "deploy": true
+    },
+    "ai_engine/app/booking_flow.py": {
+      "sha256": "aa76cc3af31106846c0a4835a14cb292834cc437b28ab13263681239dd193d36",
+      "sha16": "aa76cc3af3110684",
+      "bytes": 132525,
+      "changed_from_rc4": true,
+      "deploy": true
+    },
+    "backend/services/crmInboundTurnService.js": {
+      "sha256": "9f62fa143964616ecf15a11baa2386f97a88e267f559220536cbf9f339a87960",
+      "sha16": "9f62fa143964616e",
+      "bytes": 40399,
+      "changed_from_rc4": true,
+      "deploy": true
+    },
+    "backend/services/crmHandoffInboundPolicy.js": {
+      "sha256": "b2874ff2d0181521f50529084bf2f3436ee4171450d268e9846c7621e3933787",
+      "sha16": "b2874ff2d0181521",
+      "bytes": 3485,
+      "changed_from_rc4": true,
+      "deploy": true
+    },
+    "ai_engine/app/customer_respect.py": {
+      "sha256": "26e2d24db460c12f1f58aeea80aa98549be371f53219153e6b706b0b5954d2ae",
+      "sha16": "26e2d24db460c12f",
+      "bytes": 9379,
+      "changed_from_rc4": true,
+      "deploy": true
+    },
+    "backend/services/crmAiMemoryService.js": {
+      "sha256": "8fbe1f9307f0c2295e0e57ac2424ab05b94f1d23890ecc2526a2c76766895cac",
+      "sha16": "8fbe1f9307f0c229",
+      "bytes": 9938,
+      "changed_from_rc4": true,
+      "deploy": true
+    },
+    "ai_engine/app/pricing_resolver.py": {
+      "sha256": "27fa6ab72c6b5b6aa59f39e8c2814fa536fbabe97a339041485ae10e02974f44",
+      "sha16": "27fa6ab72c6b5b6a",
+      "bytes": 32889,
+      "changed_from_rc4": false,
+      "deploy": true
+    },
+    "ai_engine/app/conversation_intelligence.py": {
+      "sha256": "b48ac76f091efb473e3a5c27929a966679852102ff9122b3e21fc874d862c823",
+      "sha16": "b48ac76f091efb47",
+      "bytes": 24981,
+      "changed_from_rc4": false,
+      "deploy": true
+    },
+    "worker/services/crmInboundTurnService.js": {
+      "sha256": "9f62fa143964616ecf15a11baa2386f97a88e267f559220536cbf9f339a87960",
+      "sha16": "9f62fa143964616e",
+      "bytes": 40399,
+      "changed_from_rc4": true,
+      "deploy": true,
+      "mirrored_from": "backend/services/crmInboundTurnService.js"
+    },
+    "worker/services/crmHandoffInboundPolicy.js": {
+      "sha256": "b2874ff2d0181521f50529084bf2f3436ee4171450d268e9846c7621e3933787",
+      "sha16": "b2874ff2d0181521",
+      "bytes": 3485,
+      "changed_from_rc4": true,
+      "deploy": true,
+      "mirrored_from": "backend/services/crmHandoffInboundPolicy.js"
+    },
+    "worker/services/crmAiMemoryService.js": {
+      "sha256": "8fbe1f9307f0c2295e0e57ac2424ab05b94f1d23890ecc2526a2c76766895cac",
+      "sha16": "8fbe1f9307f0c229",
+      "bytes": 9938,
+      "changed_from_rc4": true,
+      "deploy": true,
+      "mirrored_from": "backend/services/crmAiMemoryService.js"
+    },
+    "backend/tests/test_handoff_inbound_policy.js": {
+      "sha256": "eb957a940128c63f77259ca411e76f9c6242bb5323dc5669cbc094b9e8eef022",
+      "sha16": "eb957a940128c63f",
+      "bytes": 2626,
+      "changed_from_rc4": true,
+      "deploy": false,
+      "note": "audit only"
+    },
+    "ai_engine/tests/test_customer_respect_sir_madam.py": {
+      "sha256": "efe8eabe1bc1fa67ce353248657668854cff6dd768676eb191c115b90e6f9ed3",
+      "sha16": "efe8eabe1bc1fa67",
+      "bytes": 5037,
+      "changed_from_rc4": true,
+      "deploy": false,
+      "note": "audit only"
+    },
+    "ai_engine/tests/test_customer_intent_category_filtering.py": {
+      "sha256": "0bd3765fddf0972c0d48f83020bb34e562758123f54d0ebfb44b9b1703000d80",
+      "sha16": "0bd3765fddf0972c",
+      "bytes": 7050,
+      "changed_from_rc4": true,
+      "deploy": false,
+      "note": "audit only"
+    }
+  },
+  "import_smoke": {
+    "ok": true,
+    "errors": []
+  },
+  "notes": [
+    "Fix: AI was fully skipped on queued/human_active; generic ack spam / silent no-reply",
+    "FAQ/substantial asks answered while handoff status preserved",
+    "One ack per handoff episode (4h TTL), not every 120s",
+    "RC3/RC4 immutable; DO NOT DEPLOY without separate approval"
+  ]
+}

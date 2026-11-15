@@ -1,0 +1,43 @@
+{
+  "mode": "offline_deterministic",
+  "gemini_api_called": false,
+  "whatsapp_sent": false,
+  "passed": 4,
+  "total": 4,
+  "results": [
+    {
+      "id": "multi_branch_price",
+      "ok": true,
+      "notes": [],
+      "units": [
+        "butterfly_price",
+        "layer_availability",
+        "price_discussed",
+        "branch_location"
+      ],
+      "emotion": "neutral",
+      "topic": "location"
+    },
+    {
+      "id": "eka_price",
+      "ok": true,
+      "notes": [],
+      "emotion": "neutral",
+      "topic": "keratin"
+    },
+    {
+      "id": "cheaper_alt",
+      "ok": true,
+      "notes": [],
+      "emotion": "neutral",
+      "topic": "keratin"
+    },
+    {
+      "id": "reject_prior",
+      "ok": true,
+      "notes": [],
+      "emotion": "neutral",
+      "topic": "rebond"
+    }
+  ]
+}

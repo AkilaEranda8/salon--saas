@@ -1,0 +1,14 @@
+PHASE 6 RC5 CANDIDATE — Gemini full human-understanding engine
+Parent: phase6_t28_rc4 (leave prod untouched until approval)
+Status: HOLD — do not deploy without explicit approval
+
+Deploy order (when approved):
+1. ai_engine/app/conversation_intelligence.py
+2. ai_engine/app/main.py
+3. ai_engine/app/pricing_resolver.py
+4. ai_engine/app/booking_flow.py
+5. backend/services/crmHandoffInboundPolicy.js + worker mirror
+6. Restart ai_engine, ai_crm_worker, backend
+
+Do NOT send WhatsApp until separately approved.
+Do NOT overwrite phase6_t28_rc3 / phase6_t28_rc4 folders.

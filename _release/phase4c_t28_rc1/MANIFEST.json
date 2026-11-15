@@ -1,0 +1,45 @@
+{
+  "rc_id": "phase4c_t28_rc1",
+  "files": {
+    "ai_engine/app/main.py": {
+      "sha16": "a73d79a65d9f9544",
+      "bytes": 88282,
+      "matches_workspace": true
+    },
+    "ai_engine/app/pricing_resolver.py": {
+      "sha16": "f38c616f83ac9873",
+      "bytes": 29991,
+      "matches_workspace": true
+    },
+    "ai_engine/app/conversation_intelligence.py": {
+      "sha16": "b48ac76f091efb47",
+      "bytes": 24981,
+      "matches_workspace": true
+    },
+    "ai_engine/app/booking_flow.py": {
+      "sha16": "f70577c7fa077e1d",
+      "bytes": 125699,
+      "matches_workspace": true
+    },
+    "backend/services/crmInboundTurnService.js": {
+      "sha16": "ef40cdd7dd8b031a",
+      "bytes": 37787,
+      "matches_workspace": true
+    },
+    "backend/services/crmAiMemoryService.js": {
+      "sha16": "f63ea110f2129fa7",
+      "bytes": 8732,
+      "matches_workspace": true
+    },
+    "worker/services/crmInboundTurnService.js": {
+      "sha16": "ef40cdd7dd8b031a",
+      "bytes": 37787,
+      "matches_workspace": true
+    },
+    "worker/services/crmAiMemoryService.js": {
+      "sha16": "f63ea110f2129fa7",
+      "bytes": 8732,
+      "matches_workspace": true
+    }
+  }
+}

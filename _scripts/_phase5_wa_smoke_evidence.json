@@ -1,0 +1,778 @@
+{
+  "mode": "phase5_production_wa_smoke",
+  "authorization": "APPROVED FOR WHATSAPP SMOKE ONLY",
+  "tenantId": 28,
+  "phone_masked": "947***0063",
+  "started_utc": "2026-11-14T12:10:34.419Z",
+  "scenarios": [
+    {
+      "id": 1,
+      "name": "sinhala_conversation",
+      "started_utc": "2026-11-14T12:10:34.525Z",
+      "status": "PASS",
+      "expected": {
+        "requireReply": true,
+        "mustIncludeAny": [
+          "keratin",
+          "කෙරටින්",
+          "length",
+          "shoulder",
+          "treatment",
+          "මිල",
+          "දිග"
+        ]
+      },
+      "actual": {
+        "inbound": "ආයුබෝවන්, කෙරටින් ගැන කෙටියෙන් කියන්න",
+        "outbound": "Keratin මිල කෙස් දිග අනුව වෙනස් වෙනවා. ඔබේ length එක *Shoulder*, *Bra Strap* ද *Hip* ද?",
+        "amounts": [],
+        "correlation": {
+          "conversationId": 24,
+          "waMessageId": "p5-smoke-1794658234530-4hxyel",
+          "replyMessageId": 400
+        },
+        "notes": []
+      },
+      "sanitized": {
+        "inbound": "ආයුබෝවන්, කෙරටින් ගැන කෙටියෙන් කියන්න",
+        "outbound": "Keratin මිල කෙස් දිග අනුව වෙනස් වෙනවා. ඔබේ length එක *Shoulder*, *Bra Strap* ද *Hip* ද?",
+        "amounts": [],
+        "correlation": {
+          "conversationId": 24,
+          "waMessageId": "p5-smoke-1794658234530-4hxyel",
+          "replyMessageId": 400
+        },
+        "notes": []
+      },
+      "severity": null,
+      "finished_utc": "2026-11-14T12:10:36.088Z"
+    },
+    {
+      "id": 2,
+      "name": "singlish_conversation",
+      "started_utc": "2026-11-14T12:10:38.591Z",
+      "status": "PASS",
+      "expected": {
+        "requireReply": true,
+        "mustIncludeAny": [
+          "shoulder",
+          "bra",
+          "hip",
+          "length",
+          "kiyada",
+          "mila",
+          "keratin"
+        ],
+        "forbidAmounts": [
+          15000
+        ]
+      },
+      "actual": {
+        "inbound": "Keratin kiyada?",
+        "outbound": "Keratin price eka hair length eken wenas wenawa. Oyaage length eka *shoulder*, *bra strap* da *hip* da?",
+        "amounts": [],
+        "correlation": {
+          "conversationId": 24,
+          "waMessageId": "p5-smoke-1794658238599-6g35nh",
+          "replyMessageId": 402
+        },
+        "notes": []
+      },
+      "sanitized": {
+        "inbound": "Keratin kiyada?",
+        "outbound": "Keratin price eka hair length eken wenas wenawa. Oyaage length eka *shoulder*, *bra strap* da *hip* da?",
+        "amounts": [],
+        "correlation": {
+          "conversationId": 24,
+          "waMessageId": "p5-smoke-1794658238599-6g35nh",
+          "replyMessageId": 402
+        },
+        "notes": []
+      },
+      "severity": null,
+      "finished_utc": "2026-11-14T12:10:40.109Z"
+    },
+    {
+      "id": 3,
+      "name": "english_conversation",
+      "started_utc": "2026-11-14T12:10:42.610Z",
+      "status": "PASS",
+      "expected": {
+        "requireReply": true,
+        "mustIncludeAny": [
+          "facial",
+          "hydra",
+          "cleanup",
+          "service"
+        ]
+      },
+      "actual": {
+        "inbound": "What facials do you offer?",
+        "outbound": "I couldn't find that exact service on our verified salon list. Please share the catalogue name (or say *staff* and a team member will help).",
+        "amounts": [],
+        "correlation": {
+          "conversationId": 24,
+          "waMessageId": "p5-smoke-1794658242617-qrrdgr",
+          "replyMessageId": 404
+        },
+        "notes": []
+      },
+      "sanitized": {
+        "inbound": "What facials do you offer?",
+        "outbound": "I couldn't find that exact service on our verified salon list. Please share the catalogue name (or say *staff* and a team member will help).",
+        "amounts": [],
+        "correlation": {
+          "conversationId": 24,
+          "waMessageId": "p5-smoke-1794658242617-qrrdgr",
+          "replyMessageId": 404
+        },
+        "notes": []
+      },
+      "severity": null,
+      "finished_utc": "2026-11-14T12:10:44.132Z"
+    },
+    {
+      "id": 4,
+      "name": "keratin_shoulder_25000",
+      "started_utc": "2026-11-14T12:10:46.632Z",
+      "status": "PASS",
+      "expected": {
+        "requireReply": true,
+        "amountExact": 25000,
+        "forbidAmounts": [
+          15000
+        ],
+        "mustIncludeAny": [
+          "25000",
+          "25,000",
+          "keratin"
+        ]
+      },
+      "actual": {
+        "inbound": "Keratin shoulder price?",
+        "outbound": "Guide price for Keratin (shoulder): Rs 25,000 · ~300 min. Final price is confirmed at the salon visit.",
+        "amounts": [
+          25000
+        ],
+        "correlation": {
+          "conversationId": 24,
+          "waMessageId": "p5-smoke-1794658246640-485zqi",
+          "replyMessageId": 406
+        },
+        "notes": []
+      },
+      "sanitized": {
+        "inbound": "Keratin shoulder price?",
+        "outbound": "Guide price for Keratin (shoulder): Rs 25,000 · ~300 min. Final price is confirmed at the salon visit.",
+        "amounts": [
+          25000
+        ],
+        "correlation": {
+          "conversationId": 24,
+          "waMessageId": "p5-smoke-1794658246640-485zqi",
+          "replyMessageId": 406
+        },
+        "notes": []
+      },
+      "severity": null,
+      "finished_utc": "2026-11-14T12:10:48.154Z"
+    },
+    {
+      "id": 5,
+      "name": "galaxy_clarify",
+      "started_utc": "2026-11-14T12:10:50.655Z",
+      "status": "PASS",
+      "expected": {
+        "requireReply": true,
+        "noAmounts": false,
+        "forbidAmounts": [
+          25000,
+          15000,
+          30000
+        ],
+        "mustIncludeAny": [
+          "staff",
+          "confirm",
+          "verify",
+          "catalogue",
+          "exact",
+          "which",
+          "clarify",
+          "not sure",
+          "cannot",
+          "can't",
+          "team",
+          "list",
+          "galaxy"
+        ]
+      },
+      "actual": {
+        "inbound": "Galaxy Plasma Treatment price kiyada?",
+        "outbound": "Eka exact service eka verified list eken hambune na. Catalogue name eka kiyanna — nathnam *staff* kiyala team eken confirm karaganna.",
+        "amounts": [],
+        "correlation": {
+          "conversationId": 24,
+          "waMessageId": "p5-smoke-1794658250666-goo5l3",
+          "replyMessageId": 408
+        },
+        "notes": []
+      },
+      "sanitized": {
+        "inbound": "Galaxy Plasma Treatment price kiyada?",
+        "outbound": "Eka exact service eka verified list eken hambune na. Catalogue name eka kiyanna — nathnam *staff* kiyala team eken confirm karaganna.",
+        "amounts": [],
+        "correlation": {
+          "conversationId": 24,
+          "waMessageId": "p5-smoke-1794658250666-goo5l3",
+          "replyMessageId": 408
+        },
+        "notes": []
+      },
+      "severity": null,
+      "finished_utc": "2026-11-14T12:10:52.184Z"
+    },
+    {
+      "id": 6,
+      "name": "butterfly_4500",
+      "started_utc": "2026-11-14T12:10:54.685Z",
+      "status": "PASS",
+      "expected": {
+        "requireReply": true,
+        "amountExact": 4500,
+        "forbidAmounts": [
+          3500
+        ],
+        "mustIncludeAny": [
+          "4500",
+          "4,500",
+          "butterfly"
+        ]
+      },
+      "actual": {
+        "inbound": "Ladies Hair Cut-Butterfly price",
+        "outbound": "Ladies Hair Cut-Butterfly: Rs 4,500 · 105 min.",
+        "amounts": [
+          4500
+        ],
+        "correlation": {
+          "conversationId": 24,
+          "waMessageId": "p5-smoke-1794658254693-glmfdw",
+          "replyMessageId": 410
+        },
+        "notes": []
+      },
+      "sanitized": {
+        "inbound": "Ladies Hair Cut-Butterfly price",
+        "outbound": "Ladies Hair Cut-Butterfly: Rs 4,500 · 105 min.",
+        "amounts": [
+          4500
+        ],
+        "correlation": {
+          "conversationId": 24,
+          "waMessageId": "p5-smoke-1794658254693-glmfdw",
+          "replyMessageId": 410
+        },
+        "notes": []
+      },
+      "severity": null,
+      "finished_utc": "2026-11-14T12:10:56.202Z"
+    },
+    {
+      "id": 7,
+      "name": "image_inquiry",
+      "started_utc": "2026-11-14T12:10:58.703Z",
+      "status": "PASS",
+      "expected": {
+        "requireReply": true,
+        "mustIncludeAny": [
+          "hair",
+          "style",
+          "photo",
+          "look",
+          "cut",
+          "colour",
+          "color",
+          "help",
+          "book",
+          "staff"
+        ]
+      },
+      "actual": {
+        "inbound": "[Customer sent a photo of a hairstyle]",
+        "outbound": "The photo you shared is completely blank, so I can't quite see the hairstyle! Could you send a clearer picture or tell me which look you're going for?",
+        "amounts": [],
+        "correlation": {
+          "conversationId": 24,
+          "waMessageId": "p5-smoke-1794658258707-wodgbj",
+          "replyMessageId": 412
+        },
+        "notes": []
+      },
+      "sanitized": {
+        "inbound": "[Customer sent a photo of a hairstyle]",
+        "outbound": "The photo you shared is completely blank, so I can't quite see the hairstyle! Could you send a clearer picture or tell me which look you're going for?",
+        "amounts": [],
+        "correlation": {
+          "conversationId": 24,
+          "waMessageId": "p5-smoke-1794658258707-wodgbj",
+          "replyMessageId": 412
+        },
+        "notes": []
+      },
+      "severity": null,
+      "finished_utc": "2026-11-14T12:11:01.723Z"
+    },
+    {
+      "id": 8,
+      "name": "topic_switch_during_booking",
+      "started_utc": "2026-11-14T12:11:04.225Z",
+      "status": "PASS",
+      "expected": [
+        {
+          "message": "I want to book an appointment"
+        },
+        {
+          "message": "1"
+        },
+        {
+          "message": "Facial mila?",
+          "expect": {
+            "requireReply": true,
+            "mustIncludeAny": [
+              "facial",
+              "mila",
+              "price",
+              "rs",
+              "hydra",
+              "cleanup"
+            ]
+          }
+        }
+      ],
+      "actual": {
+        "steps": [
+          {
+            "inbound": "I want to book an appointment",
+            "outbound": "I'd love to help you book your appointment! What service would you like to get done?",
+            "amounts": [],
+            "correlation": {
+              "conversationId": 24,
+              "waMessageId": "p5-smoke-1794658264231-j5kwea",
+              "replyMessageId": 414
+            }
+          },
+          {
+            "inbound": "1",
+            "outbound": "Got it! Could you let me know what day works best for your appointment?",
+            "amounts": [],
+            "correlation": {
+              "conversationId": 24,
+              "waMessageId": "p5-smoke-1794658269252-v4y5gx",
+              "replyMessageId": 416
+            }
+          },
+          {
+            "inbound": "Facial mila?",
+            "outbound": "Verified salon prices:\n• Aroma Magic Gold: Rs 7,000 · 90 min\n• Aroma Magic Gold Facial: Rs 7,000 · 90 min\n• Clean-up: Rs 4,000 · 60 min\n• Fox C Peal Treatment: Rs 15,000 · 75 min\n• Fox C Peel Treatment: Rs 15,000 · 75 min\n• Gold/Diamond Facial: Rs 5,000 · 90 min\n• Hydra Facial Standard: Rs 6,000 · 40 min\n• Hydra Facial Ume Care: Rs 8,000 · 40 min\n…and 9 more — tell me the exact name for a precise quote.",
+            "amounts": [
+              7000,
+              7000,
+              4000,
+              15000,
+              15000,
+              5000,
+              6000,
+              8000
+            ],
+            "correlation": {
+              "conversationId": 24,
+              "waMessageId": "p5-smoke-1794658275775-d9dzf5",
+              "replyMessageId": 418
+            }
+          }
+        ],
+        "notes": []
+      },
+      "sanitized": {
+        "steps": [
+          {
+            "inbound": "I want to book an appointment",
+            "outbound": "I'd love to help you book your appointment! What service would you like to get done?",
+            "amounts": [],
+            "correlation": {
+              "conversationId": 24,
+              "waMessageId": "p5-smoke-1794658264231-j5kwea",
+              "replyMessageId": 414
+            }
+          },
+          {
+            "inbound": "1",
+            "outbound": "Got it! Could you let me know what day works best for your appointment?",
+            "amounts": [],
+            "correlation": {
+              "conversationId": 24,
+              "waMessageId": "p5-smoke-1794658269252-v4y5gx",
+              "replyMessageId": 416
+            }
+          },
+          {
+            "inbound": "Facial mila?",
+            "outbound": "Verified salon prices:\n• Aroma Magic Gold: Rs 7,000 · 90 min\n• Aroma Magic Gold Facial: Rs 7,000 · 90 min\n• Clean-up: Rs 4,000 · 60 min\n• Fox C Peal Treatment: Rs 15,000 · 75 min\n• Fox C Peel Treatment: Rs 15,000 · 75 min\n• Gold/Diamond Facial: Rs 5,000 · 90 min\n• Hydra Facial Standard: Rs 6,000 · 40 min\n• Hydra Facial Ume Care: Rs 8,000 · 40 min\n…and 9 more — tell me the exact name for a precise quote.",
+            "amounts": [
+              7000,
+              7000,
+              4000,
+              15000,
+              15000,
+              5000,
+              6000,
+              8000
+            ],
+            "correlation": {
+              "conversationId": 24,
+              "waMessageId": "p5-smoke-1794658275775-d9dzf5",
+              "replyMessageId": 418
+            }
+          }
+        ]
+      },
+      "severity": null,
+      "finished_utc": "2026-11-14T12:11:19.290Z"
+    },
+    {
+      "id": 9,
+      "name": "booking_flow",
+      "started_utc": "2026-11-14T12:11:21.792Z",
+      "status": "PASS",
+      "expected": [
+        {
+          "message": "book appointment"
+        },
+        {
+          "message": "1"
+        },
+        {
+          "message": "tomorrow"
+        },
+        {
+          "message": "10:00"
+        },
+        {
+          "message": "Phase5 Smoke Test"
+        },
+        {
+          "message": "yes",
+          "expectBooking": true
+        }
+      ],
+      "actual": {
+        "steps": [
+          {
+            "inbound": "book appointment",
+            "outbound": "Hari! Appointment eka confirm karanna, mona date ekeda enna puluwan?",
+            "amounts": [],
+            "correlation": {
+              "conversationId": 24,
+              "waMessageId": "p5-smoke-1794658281798-nom0x5",
+              "replyMessageId": 422
+            }
+          },
+          {
+            "inbound": "1",
+            "outbound": "Got it! For the date, which day would you like to visit us?",
+            "amounts": [],
+            "correlation": {
+              "conversationId": 24,
+              "waMessageId": "p5-smoke-1794658288332-f4geki",
+              "replyMessageId": 424
+            }
+          },
+          {
+            "inbound": "tomorrow",
+            "outbound": "2026-11-15 ta thiyena times:\n*උදේ:* 09:00, 09:15, 09:30, 09:45, 10:00 (+7)\n*දවල්:* 12:00, 12:15, 12:30, 12:45, 13:00 (+15)\n*සවස:* 17:00, 17:15, 17:30\n\nTime ekak kiyanna (e.g. *10:00*), nathnam *morning* / *afternoon* / *evening*.",
+            "amounts": [],
+            "correlation": {
+              "conversationId": 24,
+              "waMessageId": "p5-smoke-1794658291843-qk6usf",
+              "replyMessageId": 426
+            }
+          },
+          {
+            "inbound": "10:00",
+            "outbound": "කරුණාකර තහවුරු කරන්න:\n• සේවාව: Baby Hair Cut\n• වේලාව: 2026-11-15 10:00\n• නම: Hexalyte Innovation - Akila\n\nConfirm karanna *yes*, nathnam cancel karanna *no* kiyanna.",
+            "amounts": [],
+            "correlation": {
+              "conversationId": 24,
+              "waMessageId": "p5-smoke-1794658295357-pskakz",
+              "replyMessageId": 428
+            }
+          },
+          {
+            "inbound": "Phase5 Smoke Test",
+            "outbound": "Got it! Everything looks set for your Baby Hair Cut tomorrow at 10:00 AM (15 Nov 2026). Shall we confirm this appointment?",
+            "amounts": [],
+            "correlation": {
+              "conversationId": 24,
+              "waMessageId": "p5-smoke-1794658298868-2twcde",
+              "replyMessageId": 432
+            }
+          },
+          {
+            "inbound": "yes",
+            "outbound": "Hi Hexalyte Innovation - Akila! Your appointment is confirmed:\nBaby Hair Cut with Nadeeka Gamage\n2026-11-15 at 10:00\nSee you soon!",
+            "amounts": [],
+            "correlation": {
+              "conversationId": 24,
+              "waMessageId": "p5-smoke-1794658311418-xgwlwl",
+              "replyMessageId": 435
+            }
+          }
+        ],
+        "appointment": {
+          "id": 146,
+          "status": "confirmed",
+          "tenant_id": 28
+        },
+        "notes": []
+      },
+      "sanitized": {
+        "steps": [
+          {
+            "inbound": "book appointment",
+            "outbound": "Hari! Appointment eka confirm karanna, mona date ekeda enna puluwan?",
+            "amounts": [],
+            "correlation": {
+              "conversationId": 24,
+              "waMessageId": "p5-smoke-1794658281798-nom0x5",
+              "replyMessageId": 422
+            }
+          },
+          {
+            "inbound": "1",
+            "outbound": "Got it! For the date, which day would you like to visit us?",
+            "amounts": [],
+            "correlation": {
+              "conversationId": 24,
+              "waMessageId": "p5-smoke-1794658288332-f4geki",
+              "replyMessageId": 424
+            }
+          },
+          {
+            "inbound": "tomorrow",
+            "outbound": "2026-11-15 ta thiyena times:\n*උදේ:* 09:00, 09:15, 09:30, 09:45, 10:00 (+7)\n*දවල්:* 12:00, 12:15, 12:30, 12:45, 13:00 (+15)\n*සවස:* 17:00, 17:15, 17:30\n\nTime ekak kiyanna (e.g. *10:00*), nathnam *morning* / *afternoon* / *evening*.",
+            "amounts": [],
+            "correlation": {
+              "conversationId": 24,
+              "waMessageId": "p5-smoke-1794658291843-qk6usf",
+              "replyMessageId": 426
+            }
+          },
+          {
+            "inbound": "10:00",
+            "outbound": "කරුණාකර තහවුරු කරන්න:\n• සේවාව: Baby Hair Cut\n• වේලාව: 2026-11-15 10:00\n• නම: Hexalyte Innovation - Akila\n\nConfirm karanna *yes*, nathnam cancel karanna *no* kiyanna.",
+            "amounts": [],
+            "correlation": {
+              "conversationId": 24,
+              "waMessageId": "p5-smoke-1794658295357-pskakz",
+              "replyMessageId": 428
+            }
+          },
+          {
+            "inbound": "Phase5 Smoke Test",
+            "outbound": "Got it! Everything looks set for your Baby Hair Cut tomorrow at 10:00 AM (15 Nov 2026). Shall we confirm this appointment?",
+            "amounts": [],
+            "correlation": {
+              "conversationId": 24,
+              "waMessageId": "p5-smoke-1794658298868-2twcde",
+              "replyMessageId": 432
+            }
+          },
+          {
+            "inbound": "yes",
+            "outbound": "Hi Hexalyte Innovation - Akila! Your appointment is confirmed:\nBaby Hair Cut with Nadeeka Gamage\n2026-11-15 at 10:00\nSee you soon!",
+            "amounts": [],
+            "correlation": {
+              "conversationId": 24,
+              "waMessageId": "p5-smoke-1794658311418-xgwlwl",
+              "replyMessageId": 435
+            }
+          }
+        ]
+      },
+      "severity": null,
+      "finished_utc": "2026-11-14T12:11:54.951Z"
+    },
+    {
+      "id": 10,
+      "name": "cancellation",
+      "started_utc": "2026-11-14T12:13:30.293Z",
+      "status": "PASS",
+      "expected": "cancel selected appointment with DB cancelled",
+      "actual": {
+        "steps": [
+          {
+            "inbound": "cancel my appointment",
+            "outbound": "No worries! Do you want to cancel appointment #146 (2026-11-15 at 10:00) or #145 (2026-11-16 at 11:00)? Just let me know the number.",
+            "correlation": {
+              "conversationId": 24,
+              "waMessageId": "p5c-1794658410299-a6noj",
+              "replyMessageId": 445
+            }
+          },
+          {
+            "inbound": "1",
+            "outbound": "Hari Hexalyte Innovation - Akila — #146 (2026-11-15 10:00) cancel karannada?\n*yes* = cancel, *no* = keep.",
+            "correlation": {
+              "conversationId": 24,
+              "waMessageId": "p5c-1794658413862-77r0i",
+              "replyMessageId": 447
+            }
+          },
+          {
+            "inbound": "yes",
+            "outbound": "Cancelled ✅ #146 — 2026-11-15 10:00.",
+            "correlation": {
+              "conversationId": 24,
+              "waMessageId": "p5c-1794658417379-ye6s0",
+              "replyMessageId": 450
+            }
+          }
+        ],
+        "appointment_146": {
+          "id": 146,
+          "status": "cancelled",
+          "tenant_id": 28
+        },
+        "appointment_145": {
+          "id": 145,
+          "status": "confirmed",
+          "tenant_id": 28
+        }
+      },
+      "sanitized": {
+        "steps": [
+          {
+            "inbound": "cancel my appointment",
+            "outbound": "No worries! Do you want to cancel appointment #146 (2026-11-15 at 10:00) or #145 (2026-11-16 at 11:00)? Just let me know the number.",
+            "correlation": {
+              "conversationId": 24,
+              "waMessageId": "p5c-1794658410299-a6noj",
+              "replyMessageId": 445
+            }
+          },
+          {
+            "inbound": "1",
+            "outbound": "Hari Hexalyte Innovation - Akila — #146 (2026-11-15 10:00) cancel karannada?\n*yes* = cancel, *no* = keep.",
+            "correlation": {
+              "conversationId": 24,
+              "waMessageId": "p5c-1794658413862-77r0i",
+              "replyMessageId": 447
+            }
+          },
+          {
+            "inbound": "yes",
+            "outbound": "Cancelled ✅ #146 — 2026-11-15 10:00.",
+            "correlation": {
+              "conversationId": 24,
+              "waMessageId": "p5c-1794658417379-ye6s0",
+              "replyMessageId": 450
+            }
+          }
+        ]
+      },
+      "severity": null,
+      "finished_utc": "2026-11-14T12:13:40.907Z"
+    },
+    {
+      "id": 11,
+      "name": "human_handoff",
+      "started_utc": "2026-11-14T12:13:40.909Z",
+      "expected": {
+        "mustIncludeAny": [
+          "staff",
+          "human",
+          "team",
+          "connect"
+        ]
+      },
+      "actual": {
+        "inbound": "I want to speak to a staff member please",
+        "outbound": "I'll connect you with a team member right away. Someone will drop you a message here shortly to help you out!",
+        "correlation": {
+          "conversationId": 24,
+          "waMessageId": "p5c-1794658420936-fisb4",
+          "replyMessageId": 453
+        },
+        "conv_status": "queued",
+        "handoff_reason": "customer_requested_staff"
+      },
+      "sanitized": {
+        "inbound": "I want to speak to a staff member please",
+        "outbound": "I'll connect you with a team member right away. Someone will drop you a message here shortly to help you out!",
+        "correlation": {
+          "conversationId": 24,
+          "waMessageId": "p5c-1794658420936-fisb4",
+          "replyMessageId": 453
+        },
+        "conv_status": "queued",
+        "handoff_reason": "customer_requested_staff"
+      },
+      "severity": null,
+      "status": "PASS",
+      "finished_utc": "2026-11-14T12:13:42.449Z"
+    },
+    {
+      "id": 12,
+      "name": "duplicate_send_protection",
+      "started_utc": "2026-11-14T12:13:44.950Z",
+      "expected": "at most one outbound for same waMessageId",
+      "actual": {
+        "outbound_count": 1,
+        "bodies": [
+          "Got your message ✅ A teammate will reply shortly."
+        ],
+        "waMessageId": "p5-dup-1794658424953"
+      },
+      "sanitized": {
+        "outbound_count": 1,
+        "bodies": [
+          "Got your message ✅ A teammate will reply shortly."
+        ],
+        "waMessageId": "p5-dup-1794658424953"
+      },
+      "severity": null,
+      "status": "PASS",
+      "finished_utc": "2026-11-14T12:13:58.969Z"
+    }
+  ],
+  "stopped_early": false,
+  "critical_stop": null,
+  "tenant": {
+    "id": 28,
+    "slug": "salon-larvendo",
+    "name": "Salon Larvendo Pvt LTD"
+  },
+  "whatsapp_session": {
+    "id": 2,
+    "status": "connected",
+    "tenant_id": 28
+  },
+  "conversation": {
+    "id": 24,
+    "tenant_id": 28,
+    "phone_masked": "947***0063"
+  },
+  "phone_verified": {
+    "matches_test_number": true,
+    "tenant_id": 28,
+    "conversation_id": 24
+  },
+  "finished_utc": "2026-11-14T12:13:58.970Z",
+  "passed": 12,
+  "failed": 0,
+  "blocked": 0,
+  "total_run": 12,
+  "ok": true,
+  "continued_utc": "2026-11-14T12:13:58.970Z",
+  "note_prior_cancel_overflag": "First cancel attempt asked which appointment; not a false success. Retested with selection."
+}

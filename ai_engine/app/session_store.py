@@ -96,9 +96,10 @@ def clear_session(
     Redis key (see booking_flow.session_key):
         ai:booking:session:{tenant_id}:{conversation_id or 0}:{phone}
 
-    The conversation id is part of the key, so when `conversation_id` is None every
-    conversation for that tenant+phone is cleared (SCAN, never KEYS). Phone is matched
-    as given, digits-only, and +digits so formatting differences don't leave sessions behind.
+    ACL-safe: never uses SCAN/KEYS (many Redis users lack those commands).
+    Deletes exact keys for the given conversation + legacy conversation_id=0,
+    plus phone formatting variants. When conversation_id is omitted, only legacy
+    `…:0:…` keys are deleted — callers should pass conversationId when known.
 
     Returns the number of keys deleted. Raises BookingSessionUnavailable if Redis is down.
     """
@@ -106,16 +107,33 @@ def clear_session(
     tid = int(tenant_id)
     keys: set[str] = set()
     for p in _phone_variants(phone):
+        keys.add(redis_key(f"{tid}:0:{p}"))
         if conversation_id is not None:
             keys.add(redis_key(f"{tid}:{int(conversation_id)}:{p}"))
-            continue
-        pattern = redis_key(f"{tid}:*:{_glob_escape(p)}")
-        for k in r.scan_iter(match=pattern, count=200):
-            keys.add(k)
-    if conversation_id is not None:
-        # also the legacy "no conversation id" key
-        for p in _phone_variants(phone):
-            keys.add(redis_key(f"{tid}:0:{p}"))
+
+    # Optional SCAN only if ACL allows — never fail the clear endpoint
+    if conversation_id is None:
+        try:
+            for p in _phone_variants(phone):
+                pattern = redis_key(f"{tid}:*:{_glob_escape(p)}")
+                for k in r.scan_iter(match=pattern, count=200):
+                    keys.add(k)
+        except Exception as exc:
+            # NoPermissionError / ACL deny — exact keys above are still cleared
+            print(f"[session_store] clear_session scan skipped: {exc}")
+
     if not keys:
         return 0
-    return int(r.delete(*keys))
+    try:
+        return int(r.delete(*keys))
+    except Exception as exc:
+        # Fallback: delete one-by-one so one bad key doesn't block the rest
+        deleted = 0
+        for k in keys:
+            try:
+                deleted += int(r.delete(k) or 0)
+            except Exception:
+                pass
+        if deleted:
+            return deleted
+        raise BookingSessionUnavailable(f"clear_session delete failed: {exc}") from exc

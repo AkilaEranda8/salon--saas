@@ -1,0 +1,719 @@
+{
+  "ok": true,
+  "tenant_id": 28,
+  "a4_staff": "unchanged_as_approved",
+  "before": {
+    "at": "2026-11-14T09:29:54.038Z",
+    "tenant": {
+      "id": 28,
+      "slug": "salon-larvendo",
+      "name": "Salon Larvendo Pvt LTD"
+    },
+    "kb_27_28": [
+      {
+        "id": 27,
+        "tenant_id": 28,
+        "title": "Auto-train (Google): haircut එකක කරගන න ක යක යනවද",
+        "category": "faq",
+        "body": "Customer asked: Haircut එකක් කරගන්න කීයක් යනවද?\n\nTrained answer (from Gemini):\nඔබට ගැලපෙන සේවා:\n1. Baby Hair Cut — 30 min · LKR 1000.00\n2. Blade and Bloom BC — 30 min · LKR 1000.00\n3. Blade and Bloom HC — 45 min · LKR 2000.00\n4. Blade and Bloom(Hair & Beard) — 75 min · LKR 3000.00\n5. Ladies Hair Cut — 75 min · LKR 3500.00\n6. Ladies Hair Cut-Butterfly — 105 min · LKR 4500.00\n7. Ladies One Length — 30 min · LKR 1500.00\n\n*අංකය* හෝ සම්පූර්ණ නම එවන්න.\n\nNOTE: This is general guidance / salon reply style. Do NOT invent THIS salon's prices or hours from Google — use live salon data for those.\n\n(Source: Google auto-train @ 2026-11-14T05:17:25.257Z)",
+        "tags": [
+          "google-auto-train",
+          "google-search",
+          "auto-train",
+          "haircut",
+          "එකක",
+          "කරගන",
+          "න",
+          "ක",
+          "යක",
+          "යනවද"
+        ],
+        "branch_id": null,
+        "locale": "en-si",
+        "is_active": true,
+        "priority": 72,
+        "version": 1,
+        "updated_by": null,
+        "createdAt": "2026-11-14T05:17:25.000Z",
+        "updatedAt": "2026-11-14T05:17:25.000Z"
+      },
+      {
+        "id": 28,
+        "tenant_id": 28,
+        "title": "Auto-train (Google): hi මට ක යන න ප ළ වන ද ඔය ලග ත ය න ද නට ත ය න සර ව ස ඇන ඩ මට හ ය ර කට එකක ද ගන න ඕන ත ය න ප රය සස ට ක ක යන න ප ළ වන ද",
+        "category": "faq",
+        "body": "Customer asked: Hi මට කියන්න පුළුවන්ද ඔයාලගේ තියෙන දැනට තියෙන සර්විස් ඇන්ඩ් මට හෙයාර් කට් එකක් දාගන්න ඕනේ තියෙන ප්‍රයිසස් ටික කියන්න පුළුවන්ද?\n\nTrained answer (from Gemini):\nඔබට ගැලපෙන සේවා:\n1. Baby Hair Cut — 30 min · LKR 1000.00\n2. Blade and Bloom BC — 30 min · LKR 1000.00\n3. Blade and Bloom HC — 45 min · LKR 2000.00\n4. Blade and Bloom(Hair & Beard) — 75 min · LKR 3000.00\n5. Ladies Hair Cut — 75 min · LKR 3500.00\n6. Ladies Hair Cut-Butterfly — 105 min · LKR 4500.00\n7. Ladies One Length — 30 min · LKR 1500.00\n\n*අංකය* හෝ සම්පූර්ණ නම එවන්න.\n\nNOTE: This is general guidance / salon reply style. Do NOT invent THIS salon's prices or hours from Google — use live salon data for those.\n\n(Source: Google auto-train @ 2026-11-14T05:20:49.350Z)",
+        "tags": [
+          "google-auto-train",
+          "google-search",
+          "auto-train",
+          "hi",
+          "මට",
+          "ක",
+          "යන",
+          "න",
+          "ප",
+          "ළ",
+          "වන"
+        ],
+        "branch_id": null,
+        "locale": "en-si",
+        "is_active": true,
+        "priority": 72,
+        "version": 1,
+        "updated_by": null,
+        "createdAt": "2026-11-14T05:20:49.000Z",
+        "updatedAt": "2026-11-14T05:20:49.000Z"
+      }
+    ],
+    "services": [
+      {
+        "id": 172,
+        "tenant_id": 28,
+        "name": "Booster Pack +",
+        "price": "2000.00",
+        "duration_minutes": 30,
+        "category": "Additional Services",
+        "is_active": true,
+        "available_online": false
+      },
+      {
+        "id": 196,
+        "tenant_id": 28,
+        "name": "Front Area (Relax/Rebonding)",
+        "price": "7000.00",
+        "duration_minutes": 90,
+        "category": "Hair Treatment",
+        "is_active": true,
+        "available_online": true
+      },
+      {
+        "id": 202,
+        "tenant_id": 28,
+        "name": "Full Dressing (Day Time)",
+        "price": "4000.00",
+        "duration_minutes": 120,
+        "category": "Dressing",
+        "is_active": true,
+        "available_online": true
+      },
+      {
+        "id": 225,
+        "tenant_id": 28,
+        "name": "Hand Wax (Full)",
+        "price": "3000.00",
+        "duration_minutes": 30,
+        "category": "Waxing",
+        "is_active": true,
+        "available_online": true
+      },
+      {
+        "id": 228,
+        "tenant_id": 28,
+        "name": "High Frequency",
+        "price": "1500.00",
+        "duration_minutes": 15,
+        "category": "Additional Services",
+        "is_active": true,
+        "available_online": false
+      },
+      {
+        "id": 240,
+        "tenant_id": 28,
+        "name": "Leg Wax (Full)",
+        "price": "3500.00",
+        "duration_minutes": 45,
+        "category": "Waxing",
+        "is_active": true,
+        "available_online": true
+      },
+      {
+        "id": 259,
+        "tenant_id": 28,
+        "name": "Root Cover (Full Hair)",
+        "price": "4500.00",
+        "duration_minutes": 90,
+        "category": "Grey Hair Cover",
+        "is_active": true,
+        "available_online": true
+      },
+      {
+        "id": 289,
+        "tenant_id": 28,
+        "name": "Root Cover Full Hair",
+        "price": "4500.00",
+        "duration_minutes": 90,
+        "category": "Grey Hair Cover",
+        "is_active": true,
+        "available_online": true
+      },
+      {
+        "id": 291,
+        "tenant_id": 28,
+        "name": "Front Area Relax Rebonding",
+        "price": "7000.00",
+        "duration_minutes": 180,
+        "category": "Hair Treatment",
+        "is_active": true,
+        "available_online": true
+      },
+      {
+        "id": 302,
+        "tenant_id": 28,
+        "name": "Hand Wax Full",
+        "price": "3000.00",
+        "duration_minutes": 30,
+        "category": "Waxing",
+        "is_active": true,
+        "available_online": true
+      },
+      {
+        "id": 304,
+        "tenant_id": 28,
+        "name": "Leg Wax Full",
+        "price": "3500.00",
+        "duration_minutes": 45,
+        "category": "Waxing",
+        "is_active": true,
+        "available_online": true
+      },
+      {
+        "id": 306,
+        "tenant_id": 28,
+        "name": "Full Dressing Day Time",
+        "price": "4000.00",
+        "duration_minutes": 120,
+        "category": "Dressing",
+        "is_active": true,
+        "available_online": true
+      },
+      {
+        "id": 318,
+        "tenant_id": 28,
+        "name": "Booster Pack+",
+        "price": "2000.00",
+        "duration_minutes": 30,
+        "category": "Additional Services",
+        "is_active": true,
+        "available_online": true
+      },
+      {
+        "id": 319,
+        "tenant_id": 28,
+        "name": "High-frequency",
+        "price": "1500.00",
+        "duration_minutes": 15,
+        "category": "Additional Services",
+        "is_active": true,
+        "available_online": true
+      }
+    ],
+    "appointment_refs_on_deactivate_ids": {},
+    "appointment_service_refs": {},
+    "auto_train_articles": [
+      {
+        "id": 23,
+        "title": "Auto-train: Services & prices (live salon data)",
+        "priority": 95,
+        "is_active": true,
+        "version": 1,
+        "body_chars": 6506
+      },
+      {
+        "id": 24,
+        "title": "Auto-train: Staff & hours (live salon data)",
+        "priority": 88,
+        "is_active": true,
+        "version": 1,
+        "body_chars": 752
+      },
+      {
+        "id": 25,
+        "title": "Auto-train: Branches (live salon data)",
+        "priority": 90,
+        "is_active": true,
+        "version": 1,
+        "body_chars": 108
+      }
+    ]
+  },
+  "operations": {
+    "a1": [
+      {
+        "id": 27,
+        "old_title": "Auto-train (Google): haircut එකක කරගන න ක යක යනවද",
+        "new_title": "Auto-train (Google): Haircut එකක් කරගන්න කීයක් යනවද?",
+        "priority": 72,
+        "body_chars": 647,
+        "preserved": [
+          "body",
+          "priority",
+          "category",
+          "tags",
+          "is_active"
+        ]
+      },
+      {
+        "id": 28,
+        "old_title": "Auto-train (Google): hi මට ක යන න ප ළ වන ද ඔය ලග ත ය න ද නට ත ය න සර ව ස ඇන ඩ මට හ ය ර කට එකක ද ගන න ඕන ත ය න ප රය සස ට ක ක යන න ප ළ වන ද",
+        "new_title": "Auto-train (Google): Hi මට කියන්න පුළුවන්ද ඔයාලගේ තියෙන දැනට තියෙන සර්විස් ඇන්ඩ් මට හෙයාර් කට් එකක් දාගන්න ඕ…?",
+        "priority": 72,
+        "body_chars": 742,
+        "preserved": [
+          "body",
+          "priority",
+          "category",
+          "tags",
+          "is_active"
+        ]
+      }
+    ],
+    "a2_a3": [
+      {
+        "id": 306,
+        "name": "Full Dressing Day Time",
+        "before": {
+          "is_active": true,
+          "available_online": true
+        },
+        "after": {
+          "is_active": false,
+          "available_online": true
+        },
+        "keep_counterpart": [
+          202,
+          318,
+          319,
+          225,
+          240,
+          259,
+          291
+        ],
+        "note": "soft-deactivate only — row retained for historical appointment refs"
+      },
+      {
+        "id": 172,
+        "name": "Booster Pack +",
+        "before": {
+          "is_active": true,
+          "available_online": false
+        },
+        "after": {
+          "is_active": false,
+          "available_online": false
+        },
+        "keep_counterpart": [
+          202,
+          318,
+          319,
+          225,
+          240,
+          259,
+          291
+        ],
+        "note": "soft-deactivate only — row retained for historical appointment refs"
+      },
+      {
+        "id": 228,
+        "name": "High Frequency",
+        "before": {
+          "is_active": true,
+          "available_online": false
+        },
+        "after": {
+          "is_active": false,
+          "available_online": false
+        },
+        "keep_counterpart": [
+          202,
+          318,
+          319,
+          225,
+          240,
+          259,
+          291
+        ],
+        "note": "soft-deactivate only — row retained for historical appointment refs"
+      },
+      {
+        "id": 302,
+        "name": "Hand Wax Full",
+        "before": {
+          "is_active": true,
+          "available_online": true
+        },
+        "after": {
+          "is_active": false,
+          "available_online": true
+        },
+        "keep_counterpart": [
+          202,
+          318,
+          319,
+          225,
+          240,
+          259,
+          291
+        ],
+        "note": "soft-deactivate only — row retained for historical appointment refs"
+      },
+      {
+        "id": 304,
+        "name": "Leg Wax Full",
+        "before": {
+          "is_active": true,
+          "available_online": true
+        },
+        "after": {
+          "is_active": false,
+          "available_online": true
+        },
+        "keep_counterpart": [
+          202,
+          318,
+          319,
+          225,
+          240,
+          259,
+          291
+        ],
+        "note": "soft-deactivate only — row retained for historical appointment refs"
+      },
+      {
+        "id": 289,
+        "name": "Root Cover Full Hair",
+        "before": {
+          "is_active": true,
+          "available_online": true
+        },
+        "after": {
+          "is_active": false,
+          "available_online": true
+        },
+        "keep_counterpart": [
+          202,
+          318,
+          319,
+          225,
+          240,
+          259,
+          291
+        ],
+        "note": "soft-deactivate only — row retained for historical appointment refs"
+      },
+      {
+        "id": 196,
+        "name": "Front Area (Relax/Rebonding)",
+        "before": {
+          "is_active": true,
+          "available_online": true
+        },
+        "after": {
+          "is_active": false,
+          "available_online": true
+        },
+        "keep_counterpart": [
+          202,
+          318,
+          319,
+          225,
+          240,
+          259,
+          291
+        ],
+        "note": "soft-deactivate only — row retained for historical appointment refs"
+      }
+    ],
+    "a5": {
+      "ok": true,
+      "tenantId": 28,
+      "slug": "salon-larvendo",
+      "results": [
+        {
+          "action": "updated",
+          "id": 23,
+          "title": "Auto-train: Services & prices (live salon data)"
+        },
+        {
+          "action": "updated",
+          "id": 24,
+          "title": "Auto-train: Staff & hours (live salon data)"
+        },
+        {
+          "action": "updated",
+          "id": 25,
+          "title": "Auto-train: Branches (live salon data)"
+        }
+      ],
+      "message": "Gemini WhatsApp AI auto-trained from live salon data"
+    }
+  },
+  "after": {
+    "at": "2026-11-14T09:29:54.255Z",
+    "kb_27_28": [
+      {
+        "id": 27,
+        "title": "Auto-train (Google): Haircut එකක් කරගන්න කීයක් යනවද?",
+        "priority": 72,
+        "body_chars": 647,
+        "is_active": true
+      },
+      {
+        "id": 28,
+        "title": "Auto-train (Google): Hi මට කියන්න පුළුවන්ද ඔයාලගේ තියෙන දැනට තියෙන සර්විස් ඇන්ඩ් මට හෙයාර් කට් එකක් දාගන්න ඕ…?",
+        "priority": 72,
+        "body_chars": 742,
+        "is_active": true
+      }
+    ],
+    "services": [
+      {
+        "id": 172,
+        "name": "Booster Pack +",
+        "is_active": false,
+        "price": 2000,
+        "duration_minutes": 30,
+        "available_online": false
+      },
+      {
+        "id": 196,
+        "name": "Front Area (Relax/Rebonding)",
+        "is_active": false,
+        "price": 7000,
+        "duration_minutes": 90,
+        "available_online": true
+      },
+      {
+        "id": 202,
+        "name": "Full Dressing (Day Time)",
+        "is_active": true,
+        "price": 4000,
+        "duration_minutes": 120,
+        "available_online": true
+      },
+      {
+        "id": 225,
+        "name": "Hand Wax (Full)",
+        "is_active": true,
+        "price": 3000,
+        "duration_minutes": 30,
+        "available_online": true
+      },
+      {
+        "id": 228,
+        "name": "High Frequency",
+        "is_active": false,
+        "price": 1500,
+        "duration_minutes": 15,
+        "available_online": false
+      },
+      {
+        "id": 240,
+        "name": "Leg Wax (Full)",
+        "is_active": true,
+        "price": 3500,
+        "duration_minutes": 45,
+        "available_online": true
+      },
+      {
+        "id": 259,
+        "name": "Root Cover (Full Hair)",
+        "is_active": true,
+        "price": 4500,
+        "duration_minutes": 90,
+        "available_online": true
+      },
+      {
+        "id": 289,
+        "name": "Root Cover Full Hair",
+        "is_active": false,
+        "price": 4500,
+        "duration_minutes": 90,
+        "available_online": true
+      },
+      {
+        "id": 291,
+        "name": "Front Area Relax Rebonding",
+        "is_active": true,
+        "price": 7000,
+        "duration_minutes": 180,
+        "available_online": true
+      },
+      {
+        "id": 302,
+        "name": "Hand Wax Full",
+        "is_active": false,
+        "price": 3000,
+        "duration_minutes": 30,
+        "available_online": true
+      },
+      {
+        "id": 304,
+        "name": "Leg Wax Full",
+        "is_active": false,
+        "price": 3500,
+        "duration_minutes": 45,
+        "available_online": true
+      },
+      {
+        "id": 306,
+        "name": "Full Dressing Day Time",
+        "is_active": false,
+        "price": 4000,
+        "duration_minutes": 120,
+        "available_online": true
+      },
+      {
+        "id": 318,
+        "name": "Booster Pack+",
+        "is_active": true,
+        "price": 2000,
+        "duration_minutes": 30,
+        "available_online": true
+      },
+      {
+        "id": 319,
+        "name": "High-frequency",
+        "is_active": true,
+        "price": 1500,
+        "duration_minutes": 15,
+        "available_online": true
+      }
+    ],
+    "auto_train_articles": [
+      {
+        "id": 23,
+        "title": "Auto-train: Services & prices (live salon data)",
+        "priority": 95,
+        "version": 2,
+        "body_chars": 8946,
+        "body_preview": "AUTO-TRAINED from salon Services table (source of truth for catalogue).\nUse these names and prices when answering. For length-based colour/treatment prices, prefer the dedicated length price-list articles and still ask/confirm hair length.\n"
+      },
+      {
+        "id": 24,
+        "title": "Auto-train: Staff & hours (live salon data)",
+        "priority": 88,
+        "version": 2,
+        "body_chars": 227,
+        "body_preview": "AUTO-TRAINED from salon Staff table.\nStaff roster (use names; confirm availability when booking):\n- Nadeeka Gamage | hours: 0:09:00-18:00, 1:09:00-18:00, 2:09:00-18:00, 3:09:00-18:00, 4:09:00-18:00, 5:09:00-18:00, 6:09:00-18:00"
+      },
+      {
+        "id": 25,
+        "title": "Auto-train: Branches (live salon data)",
+        "priority": 90,
+        "version": 2,
+        "body_chars": 108,
+        "body_preview": "AUTO-TRAINED from salon Branches table.\n- Larvendo Kandy | 254, William Gopallawa Mawatha,Kandy | 0812235955"
+      }
+    ]
+  },
+  "isolation": {
+    "foreign_services_with_deactivate_ids": 0,
+    "ok": true
+  },
+  "price_duration_verify": [
+    {
+      "id": 202,
+      "name": "Full Dressing (Day Time)",
+      "price": 4000,
+      "duration_minutes": 120,
+      "is_active": true,
+      "expect": {
+        "duration": 120,
+        "price": 4000
+      },
+      "ok": true
+    },
+    {
+      "id": 259,
+      "name": "Root Cover (Full Hair)",
+      "price": 4500,
+      "duration_minutes": 90,
+      "is_active": true,
+      "expect": {
+        "duration": 90,
+        "price": 4500
+      },
+      "ok": true
+    },
+    {
+      "id": 291,
+      "name": "Front Area Relax Rebonding",
+      "price": 7000,
+      "duration_minutes": 180,
+      "is_active": true,
+      "expect": {
+        "name_includes": "Front Area",
+        "duration": 180,
+        "price": 7000
+      },
+      "ok": true
+    }
+  ],
+  "rollback": {
+    "instructions": [
+      "Restore KB titles from before.kb_27_28[].title via update where tenant_id=28 and id in (27,28)",
+      "Restore service is_active from before.services[] where tenant_id=28",
+      "Auto-train articles: re-run autoTrainFromSalon(28) or restore body/version from before.auto_train_articles snapshot file",
+      "Never DELETE rows to rollback"
+    ],
+    "restore_kb": [
+      {
+        "id": 27,
+        "tenant_id": 28,
+        "title": "Auto-train (Google): haircut එකක කරගන න ක යක යනවද",
+        "priority": 72
+      },
+      {
+        "id": 28,
+        "tenant_id": 28,
+        "title": "Auto-train (Google): hi මට ක යන න ප ළ වන ද ඔය ලග ත ය න ද නට ත ය න සර ව ස ඇන ඩ මට හ ය ර කට එකක ද ගන න ඕන ත ය න ප රය සස ට ක ක යන න ප ළ වන ද",
+        "priority": 72
+      }
+    ],
+    "restore_services": [
+      {
+        "id": 172,
+        "tenant_id": 28,
+        "is_active": true,
+        "available_online": false
+      },
+      {
+        "id": 196,
+        "tenant_id": 28,
+        "is_active": true,
+        "available_online": true
+      },
+      {
+        "id": 228,
+        "tenant_id": 28,
+        "is_active": true,
+        "available_online": false
+      },
+      {
+        "id": 289,
+        "tenant_id": 28,
+        "is_active": true,
+        "available_online": true
+      },
+      {
+        "id": 302,
+        "tenant_id": 28,
+        "is_active": true,
+        "available_online": true
+      },
+      {
+        "id": 304,
+        "tenant_id": 28,
+        "is_active": true,
+        "available_online": true
+      },
+      {
+        "id": 306,
+        "tenant_id": 28,
+        "is_active": true,
+        "available_online": true
+      }
+    ]
+  }
+}

@@ -1,0 +1,115 @@
+{
+  "rc_id": "phase4c_t28_rc1",
+  "bundle_path": "e:\\salon_v1\\_release\\phase4c_t28_rc1",
+  "integrity_pass": true,
+  "mismatches": [],
+  "missing_from_disk": [],
+  "extra_on_disk": [
+    "DEPLOY_ORDER.txt",
+    "MANIFEST.json"
+  ],
+  "workspace_mismatches": [],
+  "leak_candidates": [],
+  "checksums": {
+    "ai_engine/app/main.py": {
+      "sha256": "a73d79a65d9f95444573fa977adaed25350dec2ac40ca2a12426cad0c2557cad",
+      "sha16": "a73d79a65d9f9544",
+      "bytes": 88282,
+      "manifest_sha16": "a73d79a65d9f9544",
+      "manifest_bytes": 88282,
+      "sha16_match": true,
+      "bytes_match": true,
+      "matches_workspace_flag": true,
+      "workspace_byte_match_now": true
+    },
+    "ai_engine/app/pricing_resolver.py": {
+      "sha256": "f38c616f83ac98739bed51476505d45446a649fb7385317b4569416e786cfc29",
+      "sha16": "f38c616f83ac9873",
+      "bytes": 29991,
+      "manifest_sha16": "f38c616f83ac9873",
+      "manifest_bytes": 29991,
+      "sha16_match": true,
+      "bytes_match": true,
+      "matches_workspace_flag": true,
+      "workspace_byte_match_now": true
+    },
+    "ai_engine/app/conversation_intelligence.py": {
+      "sha256": "b48ac76f091efb473e3a5c27929a966679852102ff9122b3e21fc874d862c823",
+      "sha16": "b48ac76f091efb47",
+      "bytes": 24981,
+      "manifest_sha16": "b48ac76f091efb47",
+      "manifest_bytes": 24981,
+      "sha16_match": true,
+      "bytes_match": true,
+      "matches_workspace_flag": true,
+      "workspace_byte_match_now": true
+    },
+    "ai_engine/app/booking_flow.py": {
+      "sha256": "f70577c7fa077e1d5217ff975d1d8e1f1979a718cb8e88532682fb965cfab4a4",
+      "sha16": "f70577c7fa077e1d",
+      "bytes": 125699,
+      "manifest_sha16": "f70577c7fa077e1d",
+      "manifest_bytes": 125699,
+      "sha16_match": true,
+      "bytes_match": true,
+      "matches_workspace_flag": true,
+      "workspace_byte_match_now": true
+    },
+    "backend/services/crmInboundTurnService.js": {
+      "sha256": "ef40cdd7dd8b031af23b6e9592e6e5c90ea38d8b4a34a71705d174c79e2e99c3",
+      "sha16": "ef40cdd7dd8b031a",
+      "bytes": 37787,
+      "manifest_sha16": "ef40cdd7dd8b031a",
+      "manifest_bytes": 37787,
+      "sha16_match": true,
+      "bytes_match": true,
+      "matches_workspace_flag": true,
+      "workspace_byte_match_now": true
+    },
+    "backend/services/crmAiMemoryService.js": {
+      "sha256": "f63ea110f2129fa725d83d8064fcf21b4acbd2c1815f0eb40714598733f91c61",
+      "sha16": "f63ea110f2129fa7",
+      "bytes": 8732,
+      "manifest_sha16": "f63ea110f2129fa7",
+      "manifest_bytes": 8732,
+      "sha16_match": true,
+      "bytes_match": true,
+      "matches_workspace_flag": true,
+      "workspace_byte_match_now": true
+    },
+    "worker/services/crmInboundTurnService.js": {
+      "sha256": "ef40cdd7dd8b031af23b6e9592e6e5c90ea38d8b4a34a71705d174c79e2e99c3",
+      "sha16": "ef40cdd7dd8b031a",
+      "bytes": 37787,
+      "manifest_sha16": "ef40cdd7dd8b031a",
+      "manifest_bytes": 37787,
+      "sha16_match": true,
+      "bytes_match": true,
+      "matches_workspace_flag": true,
+      "workspace_byte_match_now": true
+    },
+    "worker/services/crmAiMemoryService.js": {
+      "sha256": "f63ea110f2129fa725d83d8064fcf21b4acbd2c1815f0eb40714598733f91c61",
+      "sha16": "f63ea110f2129fa7",
+      "bytes": 8732,
+      "manifest_sha16": "f63ea110f2129fa7",
+      "manifest_bytes": 8732,
+      "sha16_match": true,
+      "bytes_match": true,
+      "matches_workspace_flag": true,
+      "workspace_byte_match_now": true
+    },
+    "MANIFEST.json": {
+      "sha256": "10d536a06f0156579e6561a947e7af36c4b93ea08297d79a280c2bb4da099a67",
+      "sha16": "10d536a06f015657",
+      "bytes": 1221,
+      "note": "meta_file_not_in_files_section"
+    },
+    "DEPLOY_ORDER.txt": {
+      "sha256": "ecd10c2b5c84a40db4d2eee2a4a28139953fc541afde0ac938bbcd219f369e93",
+      "sha16": "ecd10c2b5c84a40d",
+      "bytes": 630,
+      "note": "meta_file_not_in_files_section"
+    }
+  }
+}

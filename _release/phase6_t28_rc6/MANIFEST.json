@@ -1,0 +1,97 @@
+{
+  "rc_id": "phase6_t28_rc6",
+  "created_utc": "2026-11-15T02:25:08.698951+00:00",
+  "parent_rc": "phase6_t28_rc5",
+  "parent_immutable": true,
+  "tenant": 28,
+  "scope": "advanced_intelligent_receptionist_engine",
+  "production_status": "NOT_DEPLOYED",
+  "note_prod_reality": "Brief said prod=RC3; live T28 runs phase6_t28_rc4. RC5/RC6 are local candidates only until explicit deploy approval.",
+  "changed_files": [
+    "ai_engine/app/response_quality.py",
+    "ai_engine/app/conversation_intelligence.py",
+    "ai_engine/app/main.py",
+    "ai_engine/app/pricing_resolver.py",
+    "ai_engine/app/booking_flow.py",
+    "backend/services/crmHandoffInboundPolicy.js",
+    "worker/services/crmHandoffInboundPolicy.js"
+  ],
+  "files": {
+    "ai_engine/app/response_quality.py": {
+      "sha256": "d583691abd9ce1ac636d302b01d3555b64386368e2bf2dcfc144536278aa0d95",
+      "sha16": "d583691abd9ce1ac",
+      "bytes": 8443,
+      "deploy": true,
+      "note": null
+    },
+    "ai_engine/app/conversation_intelligence.py": {
+      "sha256": "aaaf8aeea311ca9da00b5fafe0050e0178ff99368b57e311b56f88962f200524",
+      "sha16": "aaaf8aeea311ca9d",
+      "bytes": 34145,
+      "deploy": true,
+      "note": null
+    },
+    "ai_engine/app/main.py": {
+      "sha256": "c73f79da8aa585715bfd569f1a00694dfdacef73f6ad0bb0833407cbafcf560a",
+      "sha16": "c73f79da8aa58571",
+      "bytes": 113063,
+      "deploy": true,
+      "note": null
+    },
+    "ai_engine/app/pricing_resolver.py": {
+      "sha256": "cd9f1185c13688233a0388424297a367d2e0bb1e6eaf1dbccda18116d6c1e9e0",
+      "sha16": "cd9f1185c1368823",
+      "bytes": 47471,
+      "deploy": true,
+      "note": null
+    },
+    "ai_engine/app/booking_flow.py": {
+      "sha256": "c3f8ab46d065071cfe8db9e5f20a9d568a91473b90d9f2e1646282d305e388ea",
+      "sha16": "c3f8ab46d065071c",
+      "bytes": 152196,
+      "deploy": true,
+      "note": null
+    },
+    "backend/services/crmHandoffInboundPolicy.js": {
+      "sha256": "64e5aed148d3d72562dedb98d291f8b302afd50538d9f3f7a81658b99bb7d0ca",
+      "sha16": "64e5aed148d3d725",
+      "bytes": 6103,
+      "deploy": true,
+      "note": null
+    },
+    "worker/services/crmHandoffInboundPolicy.js": {
+      "sha256": "64e5aed148d3d72562dedb98d291f8b302afd50538d9f3f7a81658b99bb7d0ca",
+      "sha16": "64e5aed148d3d725",
+      "bytes": 6103,
+      "deploy": true,
+      "mirrored_from": "backend/services/crmHandoffInboundPolicy.js"
+    },
+    "ai_engine/tests/test_response_quality_validator.py": {
+      "sha256": "5bf020fa3d7f07cce7486e422c7c0683a45c971dea9110b23df30a4d8fce3471",
+      "sha16": "5bf020fa3d7f07cc",
+      "bytes": 2068,
+      "deploy": false,
+      "note": "audit only"
+    },
+    "ai_engine/tests/test_human_understanding_engine.py": {
+      "sha256": "9ac85ec858299573a30ea846e8a71c7e0c6f7a50bb4e2dc62c5c1bb01045e8aa",
+      "sha16": "9ac85ec858299573",
+      "bytes": 3221,
+      "deploy": false,
+      "note": "audit only"
+    }
+  },
+  "import_smoke": {
+    "ok": true,
+    "errors": []
+  },
+  "database_changes": [],
+  "notes": [
+    "response_quality: multi-intent decompose + pre-send completeness validator",
+    "Bounded Gemini repair when secondary questions dropped",
+    "Memory correction replaces conflicting last_service",
+    "NLU: eka hodada / cheaper alternative / ehema nam epa",
+    "Pricing/booking authority unchanged",
+    "DO NOT DEPLOY without separate approval"
+  ]
+}

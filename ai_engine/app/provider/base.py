@@ -7,11 +7,14 @@ from typing import Any, Protocol
 
 @dataclass
 class CompletionRequest:
-    messages: list[dict[str, str]]
+    # Each message: {role, content: str, images?: [{mimeType, dataBase64}]}
+    messages: list[dict[str, Any]]
     model: str | None = None
     temperature: float = 0.35
     max_tokens: int = 512
     api_key: str | None = None
+    # Gemini Grounding with Google Search (model may search when useful)
+    google_search: bool = False
 
 
 @dataclass

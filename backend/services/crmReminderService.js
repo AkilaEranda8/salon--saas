@@ -316,7 +316,9 @@ async function runAbandonedBookingNudges({ tenantId = null, delayMs = null } = {
     });
     if (booked) continue;
 
-    const text = `Hi${lead.name ? ` ${lead.name}` : ''}! Still want to book with us? Reply *book* and I’ll help you finish in a minute.`;
+    const text = `Hi${lead.name ? ` ${lead.name}` : ''}! 👋\n`
+      + `තවම book කරගන්න ඕනද? Reply *book* කියලා — මම මිනිත්තුවකින් finish කරන්නම්.\n`
+      + `Still want to book? Tap *Book* or reply *book*.`;
     let queued = null;
     let lastError = null;
 
@@ -330,6 +332,11 @@ async function runAbandonedBookingNudges({ tenantId = null, delayMs = null } = {
         senderType: 'automation',
         name: lead.name || null,
         meta: { source: 'abandoned_booking_nudge', event_type: 'abandoned_booking_nudge', lead_id: lead.id },
+        buttons: [
+          { id: 'book', text: 'Book' },
+          { id: 'later', text: 'Later' },
+        ],
+        footer: 'Tap a choice',
       });
       if (queued?.skipped) {
         lastError = queued.reason || 'send_skipped';
@@ -459,10 +466,169 @@ function startCrmReminderCron() {
   console.log('[crmReminders] API server does not start reminder cron (worker-only)');
 }
 
+const CHAT_ABANDON_DELAY_MS = 2 * 60 * 60 * 1000; // 2 hours
+
+/**
+ * After an AI mid-booking / interested turn, schedule a one-shot nudge if customer goes quiet.
+ * Same jobId replaces prior schedule for that conversation.
+ */
+async function scheduleChatAbandonedNudge({
+  tenantId,
+  conversationId,
+  leadId = null,
+  phone,
+  replyJid = null,
+  lang = null,
+  delayMs = CHAT_ABANDON_DELAY_MS,
+} = {}) {
+  if (!tenantId || !conversationId || !phone) return { skipped: true, reason: 'missing' };
+  const { enqueue, QUEUE_NAMES, getQueue } = require('./queue');
+  const id = `chat-abandon-${tenantId}-${conversationId}`;
+  // Reset timer on every AI turn — remove prior delayed job if still waiting
+  try {
+    const q = getQueue(QUEUE_NAMES.FOLLOWUP);
+    if (q) {
+      const existing = await q.getJob(id);
+      if (existing) await existing.remove().catch(() => {});
+    }
+  } catch (_) { /* ignore */ }
+  const jobId = await enqueue(QUEUE_NAMES.FOLLOWUP, {
+    job: 'chat_abandoned_nudge',
+    tenantId,
+    conversationId,
+    leadId,
+    phone,
+    replyJid,
+    lang,
+  }, {
+    name: 'chat-abandoned-nudge',
+    jobId: id,
+    delay: Math.max(Number(delayMs) || CHAT_ABANDON_DELAY_MS, 15 * 60 * 1000),
+    removeOnComplete: 200,
+    removeOnFail: 200,
+    attempts: 2,
+  });
+  return { ok: true, jobId };
+}
+
+/**
+ * Fire the delayed chat abandoned nudge (only if customer still hasn't replied).
+ */
+async function sendChatAbandonedNudge(data = {}) {
+  const tenantId = Number(data.tenantId || data.tenant_id);
+  const conversationId = Number(data.conversationId || data.conversation_id);
+  const phone = String(data.phone || '').trim();
+  if (!tenantId || !conversationId || !phone) {
+    return { skipped: true, reason: 'missing' };
+  }
+
+  const { CrmConversation, CrmMessage, Appointment, CrmLead } = require('../models');
+  const tenant = await Tenant.findByPk(tenantId);
+  if (!isTenantCrmEligible(tenant)) return { skipped: true, reason: 'tenant_ineligible' };
+
+  const conv = await CrmConversation.findOne({
+    where: { id: conversationId, tenant_id: tenantId },
+  });
+  if (!conv) return { skipped: true, reason: 'no_conversation' };
+  if (['queued', 'human_active', 'closed'].includes(conv.status)) {
+    return { skipped: true, reason: 'not_ai_active', status: conv.status };
+  }
+
+  const last = await CrmMessage.findOne({
+    where: { tenant_id: tenantId, conversation_id: conversationId },
+    order: [['id', 'DESC']],
+  });
+  // Customer already replied after our last AI message
+  if (last && last.direction === 'inbound') {
+    return { skipped: true, reason: 'customer_replied' };
+  }
+
+  const booked = await Appointment.findOne({
+    where: {
+      tenant_id: tenantId,
+      phone,
+      status: { [Op.in]: ['pending', 'confirmed'] },
+      date: { [Op.gte]: slToday() },
+    },
+  });
+  if (booked) return { skipped: true, reason: 'already_booked' };
+
+  const already = await CrmFollowUpJob.findOne({
+    where: {
+      tenant_id: tenantId,
+      conversation_id: conversationId,
+      job_type: 'chat_abandoned',
+      status: 'sent',
+      createdAt: { [Op.gte]: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+    },
+  });
+  if (already) return { skipped: true, reason: 'already_nudged' };
+
+  let leadName = null;
+  if (data.leadId) {
+    const lead = await CrmLead.findByPk(data.leadId);
+    leadName = lead?.name || null;
+  }
+
+  const text = `Hi${leadName ? ` ${leadName}` : ''}! 👋\n`
+    + `Booking එක අඩ ඉවරද? මම උදව් කරන්නම් — *book* කියලා reply කරන්න.\n`
+    + `Still want to finish your booking? Tap *Book* or reply *book*.`;
+
+  const { sendAndLog } = require('./crmOutboundSendService');
+  const queued = await sendAndLog({
+    tenantId,
+    phone,
+    text,
+    senderType: 'automation',
+    conversationId,
+    name: leadName,
+    replyJid: data.replyJid || null,
+    meta: {
+      source: 'chat_abandoned_nudge',
+      event_type: 'chat_abandoned_nudge',
+      lead_id: data.leadId || null,
+      replyJid: data.replyJid || null,
+    },
+    buttons: [
+      { id: 'book', text: 'Book' },
+      { id: 'later', text: 'Later' },
+    ],
+    footer: 'Tap a choice',
+  });
+
+  if (queued?.skipped) {
+    await CrmFollowUpJob.create({
+      tenant_id: tenantId,
+      job_type: 'chat_abandoned',
+      status: 'failed',
+      lead_id: data.leadId || null,
+      conversation_id: conversationId,
+      phone,
+      error_message: String(queued.reason || 'skipped').slice(0, 500),
+    }).catch(() => {});
+    return { skipped: true, reason: queued.reason };
+  }
+
+  await CrmFollowUpJob.create({
+    tenant_id: tenantId,
+    job_type: 'chat_abandoned',
+    status: 'sent',
+    lead_id: data.leadId || null,
+    conversation_id: conversationId,
+    phone,
+    sent_at: new Date(),
+    meta: { crm_message_id: queued.messageId || null },
+  }).catch(() => {});
+
+  return { ok: true, conversationId, messageId: queued.messageId || null };
+}
+
 module.exports = {
   sendBookingConfirmation,
   runDayBeforeReminders,
   runAbandonedBookingNudges,
+  scheduleChatAbandonedNudge,
+  sendChatAbandonedNudge,
   startCrmReminderCron,
   scheduleReminderRepeatableJobs,
   withReminderLock,

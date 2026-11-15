@@ -1,0 +1,107 @@
+{
+  "rc_id": "phase6_t28_rc4",
+  "created_utc": "2026-11-15T02:04:45.433874+00:00",
+  "parent_rc": "phase6_t28_rc3",
+  "parent_immutable": true,
+  "tenant": 28,
+  "scope": "multi_question_completeness_plus_price_rejection_plus_heya_fake_confirm_hotfix",
+  "production_status": "DEPLOYED",
+  "changed_files": [
+    "ai_engine/app/pricing_resolver.py",
+    "ai_engine/app/main.py",
+    "ai_engine/app/booking_flow.py",
+    "backend/services/crmHandoffInboundPolicy.js",
+    "worker/services/crmHandoffInboundPolicy.js"
+  ],
+  "files": {
+    "ai_engine/app/pricing_resolver.py": {
+      "sha256": "67befb7ee1ac48b1b1a53cff087570364e55b8236d913c67d181d09a9d9064d7",
+      "sha16": "67befb7ee1ac48b1",
+      "bytes": 47463,
+      "deploy": true,
+      "note": null
+    },
+    "ai_engine/app/main.py": {
+      "sha256": "bcbed4df3f683e07b0d8d1f38729f6591f4e00b8ab094ba60f66e6c4778818c3",
+      "sha16": "bcbed4df3f683e07",
+      "bytes": 108453,
+      "deploy": true,
+      "note": null
+    },
+    "ai_engine/app/booking_flow.py": {
+      "sha256": "c3f8ab46d065071cfe8db9e5f20a9d568a91473b90d9f2e1646282d305e388ea",
+      "sha16": "c3f8ab46d065071c",
+      "bytes": 152196,
+      "deploy": true,
+      "note": null
+    },
+    "backend/services/crmHandoffInboundPolicy.js": {
+      "sha256": "64e5aed148d3d72562dedb98d291f8b302afd50538d9f3f7a81658b99bb7d0ca",
+      "sha16": "64e5aed148d3d725",
+      "bytes": 6103,
+      "deploy": true,
+      "note": null
+    },
+    "worker/services/crmHandoffInboundPolicy.js": {
+      "sha256": "64e5aed148d3d72562dedb98d291f8b302afd50538d9f3f7a81658b99bb7d0ca",
+      "sha16": "64e5aed148d3d725",
+      "bytes": 6103,
+      "deploy": true,
+      "mirrored_from": "backend/services/crmHandoffInboundPolicy.js"
+    },
+    "ai_engine/tests/test_multi_question_price_completeness.py": {
+      "sha256": "06b931b234923dd1b298a98e2e273fb15a0ff0c9c0954764439eba3dd53c6730",
+      "sha16": "06b931b234923dd1",
+      "bytes": 5791,
+      "deploy": false,
+      "note": "audit only"
+    },
+    "ai_engine/tests/test_price_rejection_and_correction.py": {
+      "sha256": "80111ea2581390f2cb252779d1d7e61121c6a67f6940a8d75d89319fc6800a3d",
+      "sha16": "80111ea2581390f2",
+      "bytes": 1273,
+      "deploy": false,
+      "note": "audit only"
+    },
+    "ai_engine/tests/test_heya_booking_no_fake_confirm.py": {
+      "sha256": "e8321f5b625582a137178cfca9b1009af5dd5646e7ef7550229eff0e5de0d91f",
+      "sha16": "e8321f5b625582a1",
+      "bytes": 899,
+      "deploy": false,
+      "note": "audit only"
+    },
+    "ai_engine/tests/test_ude_time_booking_step.py": {
+      "sha256": "2073ca2bcecc95ed7fc40dd272038fa8974bf6d72781552100f2778e199ee5d3",
+      "sha16": "2073ca2bcecc95ed",
+      "bytes": 1028,
+      "deploy": false,
+      "note": "audit only"
+    },
+    "ai_engine/tests/test_slot_duration_display.py": {
+      "sha256": "0f6fbd48f31de8d527e6b0638077d3a697bbf5ee824a0b5be23c1e85108d874f",
+      "sha16": "0f6fbd48f31de8d5",
+      "bytes": 1637,
+      "deploy": false,
+      "note": "audit only"
+    },
+    "backend/tests/test_handoff_inbound_policy.js": {
+      "sha256": "7a8e9d83922a5959876e34b21b25a4e314d61a61809b36e3c1684de73e5c1f28",
+      "sha16": "7a8e9d83922a5959",
+      "bytes": 4848,
+      "deploy": false,
+      "note": "audit only"
+    }
+  },
+  "import_smoke": {
+    "ok": true,
+    "errors": []
+  },
+  "notes": [
+    "Multi-question: resolve_multi_price_ask assembles all verified parts",
+    "Screenshot bug: 'price aka newei' no longer hard-gates into which-service-price",
+    "Queued: Check history + booking asks AI-assist (not soft-bump only)",
+    "Heya/8.30an typos + Ok/Book resume; hard-block Gemini fake lock-in",
+    "DO NOT DEPLOY without separate approval; do not overwrite phase6_t28_rc3"
+  ],
+  "deployed_utc": "2026-11-15T02:06:08.460887+00:00"
+}

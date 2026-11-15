@@ -1,0 +1,102 @@
+{
+  "rc_id": "phase6_t28_rc5",
+  "created_utc": "2026-11-15T02:17:32.690379+00:00",
+  "parent_rc": "phase6_t28_rc4",
+  "parent_immutable": true,
+  "tenant": 28,
+  "scope": "gemini_full_human_understanding_engine",
+  "production_status": "NOT_DEPLOYED",
+  "note_prod_reality": "Brief said prod=RC3; as of package time live T28 already runs phase6_t28_rc4. This RC5 is a NEW local candidate only \u2014 do not deploy without explicit approval.",
+  "changed_files": [
+    "ai_engine/app/conversation_intelligence.py",
+    "ai_engine/app/main.py",
+    "ai_engine/app/pricing_resolver.py",
+    "ai_engine/app/booking_flow.py",
+    "backend/services/crmHandoffInboundPolicy.js",
+    "worker/services/crmHandoffInboundPolicy.js"
+  ],
+  "files": {
+    "ai_engine/app/conversation_intelligence.py": {
+      "sha256": "1ae69fb5c67ba0abad0da646d872388990a2465c420f47ca67c43b205adb841b",
+      "sha16": "1ae69fb5c67ba0ab",
+      "bytes": 33384,
+      "deploy": true,
+      "note": null
+    },
+    "ai_engine/app/main.py": {
+      "sha256": "4564a2792d2e802411cbe58c22192210199910a6275247ad611e58eec0b799dc",
+      "sha16": "4564a2792d2e8024",
+      "bytes": 109305,
+      "deploy": true,
+      "note": null
+    },
+    "ai_engine/app/pricing_resolver.py": {
+      "sha256": "cd9f1185c13688233a0388424297a367d2e0bb1e6eaf1dbccda18116d6c1e9e0",
+      "sha16": "cd9f1185c1368823",
+      "bytes": 47471,
+      "deploy": true,
+      "note": null
+    },
+    "ai_engine/app/booking_flow.py": {
+      "sha256": "c3f8ab46d065071cfe8db9e5f20a9d568a91473b90d9f2e1646282d305e388ea",
+      "sha16": "c3f8ab46d065071c",
+      "bytes": 152196,
+      "deploy": true,
+      "note": null
+    },
+    "backend/services/crmHandoffInboundPolicy.js": {
+      "sha256": "64e5aed148d3d72562dedb98d291f8b302afd50538d9f3f7a81658b99bb7d0ca",
+      "sha16": "64e5aed148d3d725",
+      "bytes": 6103,
+      "deploy": true,
+      "note": null
+    },
+    "worker/services/crmHandoffInboundPolicy.js": {
+      "sha256": "64e5aed148d3d72562dedb98d291f8b302afd50538d9f3f7a81658b99bb7d0ca",
+      "sha16": "64e5aed148d3d725",
+      "bytes": 6103,
+      "deploy": true,
+      "mirrored_from": "backend/services/crmHandoffInboundPolicy.js"
+    },
+    "ai_engine/tests/test_human_understanding_engine.py": {
+      "sha256": "9ac85ec858299573a30ea846e8a71c7e0c6f7a50bb4e2dc62c5c1bb01045e8aa",
+      "sha16": "9ac85ec858299573",
+      "bytes": 3221,
+      "deploy": false,
+      "note": "audit only"
+    },
+    "ai_engine/tests/test_slot_duration_display.py": {
+      "sha256": "0f6fbd48f31de8d527e6b0638077d3a697bbf5ee824a0b5be23c1e85108d874f",
+      "sha16": "0f6fbd48f31de8d5",
+      "bytes": 1637,
+      "deploy": false,
+      "note": "audit only"
+    },
+    "ai_engine/tests/test_heya_booking_no_fake_confirm.py": {
+      "sha256": "e8321f5b625582a137178cfca9b1009af5dd5646e7ef7550229eff0e5de0d91f",
+      "sha16": "e8321f5b625582a1",
+      "bytes": 899,
+      "deploy": false,
+      "note": "audit only"
+    },
+    "ai_engine/tests/test_ude_time_booking_step.py": {
+      "sha256": "2073ca2bcecc95ed7fc40dd272038fa8974bf6d72781552100f2778e199ee5d3",
+      "sha16": "2073ca2bcecc95ed",
+      "bytes": 1028,
+      "deploy": false,
+      "note": "audit only"
+    }
+  },
+  "import_smoke": {
+    "ok": true,
+    "errors": []
+  },
+  "notes": [
+    "Referent resolution: eka / kalina eka / ehema \u2192 prior topic",
+    "Emotion: fear / hesitation / appreciation + empathise decision",
+    "Concern / alternative / advice intents with memory",
+    "Gemini prompt: human understanding engine + pronoun rules",
+    "Pricing cue: keeyada; booking/price authority unchanged",
+    "DO NOT DEPLOY / restart / WhatsApp without separate approval"
+  ]
+}

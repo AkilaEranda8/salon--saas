@@ -1,0 +1,124 @@
+{
+  "rc_id": "phase6_t28_rc3",
+  "created_utc": "2026-11-14T15:39:19.507101+00:00",
+  "parent_rc": "phase4c_t28_rc5 + silent-still hotfixes (local tree)",
+  "phase4c_immutable": [
+    "phase4c_t28_rc2",
+    "phase4c_t28_rc3",
+    "phase4c_t28_rc4",
+    "phase4c_t28_rc5"
+  ],
+  "tenant": 28,
+  "scope": "phase6_conversation_quality",
+  "production_status": "DEPLOYED_2026-11-14",
+  "deploy_approval": "deplyp",
+  "changed_files": [
+    "ai_engine/app/catalogue_quality.py",
+    "ai_engine/app/booking_flow.py",
+    "ai_engine/app/pricing_resolver.py",
+    "ai_engine/app/main.py",
+    "ai_engine/app/customer_respect.py",
+    "backend/services/crmHandoffInboundPolicy.js",
+    "worker/services/crmHandoffInboundPolicy.js",
+    "backend/services/crmInboundTurnService.js",
+    "worker/services/crmInboundTurnService.js"
+  ],
+  "files": {
+    "ai_engine/app/catalogue_quality.py": {
+      "sha256": "3938ca362c8822584ecd8165f2cb3b5999e6b45cfb7aa9a547088aaf338db3ca",
+      "sha16": "3938ca362c882258",
+      "bytes": 9895,
+      "deploy": true,
+      "note": null
+    },
+    "ai_engine/app/booking_flow.py": {
+      "sha256": "9ae3f2923fd0cd7956cc5293c13b69ccfc26aa05af1ec44632fa5e859a3f019c",
+      "sha16": "9ae3f2923fd0cd79",
+      "bytes": 132513,
+      "deploy": true,
+      "note": null
+    },
+    "ai_engine/app/pricing_resolver.py": {
+      "sha256": "02a0baf7ccbece8a3569a6c877ae4babf66d5e424ce4d91f667c25d64c3aad1d",
+      "sha16": "02a0baf7ccbece8a",
+      "bytes": 35536,
+      "deploy": true,
+      "note": null
+    },
+    "ai_engine/app/main.py": {
+      "sha256": "be460ee08b879e7182af1aa6ec7920368f69c5816e4a07b95d2910c289c76a4c",
+      "sha16": "be460ee08b879e71",
+      "bytes": 104129,
+      "deploy": true,
+      "note": null
+    },
+    "ai_engine/app/customer_respect.py": {
+      "sha256": "a7e03568003a8b16ff3aa318a2fd75b2007c073a05c69796a5af662381557a04",
+      "sha16": "a7e03568003a8b16",
+      "bytes": 12626,
+      "deploy": true,
+      "note": null
+    },
+    "backend/services/crmHandoffInboundPolicy.js": {
+      "sha256": "d60228ae2a628e53ea8ea86f3aec6480a6218c9a9f60842fa87abd2338139ec0",
+      "sha16": "d60228ae2a628e53",
+      "bytes": 5401,
+      "deploy": true,
+      "note": null
+    },
+    "worker/services/crmHandoffInboundPolicy.js": {
+      "sha256": "d60228ae2a628e53ea8ea86f3aec6480a6218c9a9f60842fa87abd2338139ec0",
+      "sha16": "d60228ae2a628e53",
+      "bytes": 5401,
+      "deploy": true,
+      "mirrored_from": "backend/services/crmHandoffInboundPolicy.js"
+    },
+    "backend/services/crmInboundTurnService.js": {
+      "sha256": "9c900212d4b69e8f9ee801356ae62c2be0ef88a8daaa75ada50fd081ed5156fa",
+      "sha16": "9c900212d4b69e8f",
+      "bytes": 42341,
+      "deploy": true,
+      "note": null
+    },
+    "worker/services/crmInboundTurnService.js": {
+      "sha256": "9c900212d4b69e8f9ee801356ae62c2be0ef88a8daaa75ada50fd081ed5156fa",
+      "sha16": "9c900212d4b69e8f",
+      "bytes": 42341,
+      "deploy": true,
+      "mirrored_from": "backend/services/crmInboundTurnService.js"
+    },
+    "ai_engine/tests/test_phase6_conversation_quality.py": {
+      "sha256": "d5ecc3ba8dd919afc5f3fab1d873c4fbe287bddb2bc0a672b6554cc213f07400",
+      "sha16": "d5ecc3ba8dd919af",
+      "bytes": 6006,
+      "deploy": false,
+      "note": "audit only"
+    },
+    "ai_engine/tests/test_customer_respect_sir_madam.py": {
+      "sha256": "672c7d0db5cfe25feb8aa8c7d56ee8e68933be7fc140fc717047a1781658211d",
+      "sha16": "672c7d0db5cfe25f",
+      "bytes": 5206,
+      "deploy": false,
+      "note": "audit only"
+    },
+    "backend/tests/test_handoff_inbound_policy.js": {
+      "sha256": "0a818bf58ef74e0a8b174abd514ad2907ba87b58b815414b851cd27a86995080",
+      "sha16": "0a818bf58ef74e0a",
+      "bytes": 4441,
+      "deploy": false,
+      "note": "audit only"
+    }
+  },
+  "import_smoke": {
+    "ok": true,
+    "errors": []
+  },
+  "notes": [
+    "Hair Cut multi-style resolution (Layer missing / Butterfly id 278 Rs 4500)",
+    "Facial near-duplicates kept distinct with display names + ids",
+    "Verified branch formatting + maps; no invented hours",
+    "Handoff wording = request (not false delivered claim)",
+    "Multi-question structured answers",
+    "DO NOT DEPLOY without separate approval"
+  ]
+}

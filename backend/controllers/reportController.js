@@ -240,6 +240,7 @@ const dashboard = async (req, res) => {
   try {
     const branchWhere = getBranchWhere(req);
     const today = slToday();
+    const yesterday = new Date(Date.now() + SL_OFFSET_MS - 86400000).toISOString().slice(0, 10);
     const selectedMonthRange = getMonthRange(req.query.month);
     const [yrStr, moStr] = (selectedMonthRange ? selectedMonthRange.start : today).split('-');
     const currentMonthStart = `${yrStr}-${moStr}-01`;
@@ -248,18 +249,33 @@ const dashboard = async (req, res) => {
     const monthStart = selectedMonthRange?.start || currentMonthStart;
     const monthEnd = selectedMonthRange?.end || currentMonthEnd;
 
+    // Previous calendar month for MoM comparison
+    const prevMoDate = new Date(parseInt(yrStr, 10), parseInt(moStr, 10) - 2, 1);
+    const prevYr = prevMoDate.getFullYear();
+    const prevMo = String(prevMoDate.getMonth() + 1).padStart(2, '0');
+    const prevLastDay = new Date(prevYr, prevMoDate.getMonth() + 1, 0).getDate();
+    const prevMonthStart = `${prevYr}-${prevMo}-01`;
+    const prevMonthEnd = `${prevYr}-${prevMo}-${String(prevLastDay).padStart(2, '0')}`;
+
     const monthPayWhere = { ...branchWhere, date: { [Op.between]: [monthStart, monthEnd] } };
     const [
       todayAppts,
       todayRevenue,
+      yesterdayAppts,
+      yesterdayRevenue,
       monthPayStats,
+      lastMonthRevenue,
       totalCustomers,
+      newCustomersThisMonth,
       lowStockCount,
+      inventoryTotal,
       pendingReminders,
       branchAppts,
     ] = await Promise.all([
       Appointment.count({ where: { ...branchWhere, date: today } }),
       Payment.sum('total_amount', { where: { ...branchWhere, date: today } }),
+      Appointment.count({ where: { ...branchWhere, date: yesterday } }),
+      Payment.sum('total_amount', { where: { ...branchWhere, date: yesterday } }),
       (async () => {
         const monthPayments = await loadPaymentsForCommission(monthPayWhere);
         const monthRevenue = monthPayments.reduce((s, p) => s + (parseFloat(p.total_amount) || 0), 0);
@@ -278,7 +294,19 @@ const dashboard = async (req, res) => {
         }
         return { monthRevenue, monthCommission, branchRevenue, branchCommission };
       })(),
+      Payment.sum('total_amount', {
+        where: { ...branchWhere, date: { [Op.between]: [prevMonthStart, prevMonthEnd] } },
+      }),
       Customer.count({ where: branchWhere }),
+      Customer.count({
+        where: {
+          ...branchWhere,
+          createdAt: {
+            [Op.gte]: new Date(`${monthStart}T00:00:00+05:30`),
+            [Op.lte]: new Date(`${monthEnd}T23:59:59+05:30`),
+          },
+        },
+      }).catch(() => 0),
       InvProduct.count({
         where: {
           ...branchWhere,
@@ -286,6 +314,7 @@ const dashboard = async (req, res) => {
           current_stock: { [Op.lte]: sequelize.col('min_stock') },
         },
       }),
+      InvProduct.count({ where: { ...branchWhere, status: 'active' } }),
       Reminder.count({ where: { ...branchWhere, is_done: false } }),
       !req.userBranchId
         ? Appointment.findAll({
@@ -321,15 +350,32 @@ const dashboard = async (req, res) => {
       });
     }
 
+    const tr = Number(todayRevenue || 0);
+    const yr = Number(yesterdayRevenue || 0);
+    const mr = Number(monthPayStats.monthRevenue || 0);
+    const lmr = Number(lastMonthRevenue || 0);
+    const inStock = Math.max(0, Number(inventoryTotal || 0) - Number(lowStockCount || 0));
+
     return res.json({
       todayAppts,
-      todayRevenue:    todayRevenue    || 0,
-      monthRevenue:    monthPayStats.monthRevenue || 0,
+      todayRevenue: tr,
+      yesterdayAppts: yesterdayAppts || 0,
+      yesterdayRevenue: yr,
+      monthRevenue: mr,
+      lastMonthRevenue: lmr,
       monthCommission: monthPayStats.monthCommission || 0,
       totalCustomers,
-      lowStockCount,
+      newCustomersThisMonth: newCustomersThisMonth || 0,
+      lowStockCount: lowStockCount || 0,
+      inventoryTotal: inventoryTotal || 0,
+      inventoryInStock: inStock,
       pendingReminders,
       branchStats,
+      deltas: {
+        apptsVsYesterday: (todayAppts || 0) - (yesterdayAppts || 0),
+        revenueVsYesterdayPct: yr > 0 ? Math.round(((tr - yr) / yr) * 100) : (tr > 0 ? 100 : 0),
+        revenueVsLastMonthPct: lmr > 0 ? Math.round(((mr - lmr) / lmr) * 100) : (mr > 0 ? 100 : 0),
+      },
     });
   } catch (err) {
     console.error(err);

@@ -1,0 +1,80 @@
+{
+  "rc_id": "phase4c_t28_rc2",
+  "created_utc": "2026-11-14T11:47:23.680579+00:00",
+  "parent_rc": "phase4c_t28_rc1",
+  "parent_immutable": true,
+  "tenant": 28,
+  "changed_from_rc1": [
+    "ai_engine/app/main.py",
+    "ai_engine/app/pricing_resolver.py"
+  ],
+  "files": {
+    "ai_engine/app/main.py": {
+      "sha256": "1a3a251f5bdaaed7bee3779927d2f860462dd817b1e5c266ea3a7a0864c641fe",
+      "sha16": "1a3a251f5bdaaed7",
+      "bytes": 91472,
+      "changed_from_rc1": true,
+      "rc1_sha16": "a73d79a65d9f9544"
+    },
+    "ai_engine/app/pricing_resolver.py": {
+      "sha256": "27fa6ab72c6b5b6aa59f39e8c2814fa536fbabe97a339041485ae10e02974f44",
+      "sha16": "27fa6ab72c6b5b6a",
+      "bytes": 32889,
+      "changed_from_rc1": true,
+      "rc1_sha16": "f38c616f83ac9873"
+    },
+    "ai_engine/app/conversation_intelligence.py": {
+      "sha256": "b48ac76f091efb473e3a5c27929a966679852102ff9122b3e21fc874d862c823",
+      "sha16": "b48ac76f091efb47",
+      "bytes": 24981,
+      "changed_from_rc1": false,
+      "rc1_sha16": "b48ac76f091efb47"
+    },
+    "ai_engine/app/booking_flow.py": {
+      "sha256": "f70577c7fa077e1d5217ff975d1d8e1f1979a718cb8e88532682fb965cfab4a4",
+      "sha16": "f70577c7fa077e1d",
+      "bytes": 125699,
+      "changed_from_rc1": false,
+      "rc1_sha16": "f70577c7fa077e1d"
+    },
+    "backend/services/crmInboundTurnService.js": {
+      "sha256": "ef40cdd7dd8b031af23b6e9592e6e5c90ea38d8b4a34a71705d174c79e2e99c3",
+      "sha16": "ef40cdd7dd8b031a",
+      "bytes": 37787,
+      "changed_from_rc1": false,
+      "rc1_sha16": "ef40cdd7dd8b031a"
+    },
+    "backend/services/crmAiMemoryService.js": {
+      "sha256": "f63ea110f2129fa725d83d8064fcf21b4acbd2c1815f0eb40714598733f91c61",
+      "sha16": "f63ea110f2129fa7",
+      "bytes": 8732,
+      "changed_from_rc1": false,
+      "rc1_sha16": "f63ea110f2129fa7"
+    },
+    "worker/services/crmInboundTurnService.js": {
+      "sha256": "ef40cdd7dd8b031af23b6e9592e6e5c90ea38d8b4a34a71705d174c79e2e99c3",
+      "sha16": "ef40cdd7dd8b031a",
+      "bytes": 37787,
+      "changed_from_rc1": false,
+      "rc1_sha16": "ef40cdd7dd8b031a",
+      "mirrored_from": "backend/services/crmInboundTurnService.js"
+    },
+    "worker/services/crmAiMemoryService.js": {
+      "sha256": "f63ea110f2129fa725d83d8064fcf21b4acbd2c1815f0eb40714598733f91c61",
+      "sha16": "f63ea110f2129fa7",
+      "bytes": 8732,
+      "changed_from_rc1": false,
+      "rc1_sha16": "f63ea110f2129fa7",
+      "mirrored_from": "backend/services/crmAiMemoryService.js"
+    }
+  },
+  "import_smoke": {
+    "ok": true,
+    "errors": []
+  },
+  "notes": [
+    "Pricing hard-gate + Gemini price-output block",
+    "Keratin shoulder official Rs 25,000 enforced",
+    "RC1 checksums preserved; do not overwrite RC1"
+  ]
+}

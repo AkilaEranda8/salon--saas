@@ -505,7 +505,7 @@ function AppShellRoutes() {
             } />
             <Route path="/crm/whatsapp-cloud" element={
               <RoleRoute roles={['superadmin', 'admin']}>
-                <FeatureRoute feature="whatsapp_ai_crm" title="WhatsApp Cloud">
+                <FeatureRoute feature="whatsapp_ai_crm" title="WhatsApp for CRM">
                   <CrmWhatsAppCloudPage />
                 </FeatureRoute>
               </RoleRoute>

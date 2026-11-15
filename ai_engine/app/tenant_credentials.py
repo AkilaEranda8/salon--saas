@@ -33,3 +33,20 @@ async def resolve_provider_key(tenant_id: int, provider: str) -> tuple[Optional[
     if prov == "gemini":
         return data.get("gemini_api_key"), prov, model
     return data.get("openai_api_key"), prov, model
+
+
+async def resolve_provider_failover(
+    tenant_id: int, provider: str
+) -> tuple[Optional[str], str, Optional[str], Optional[str], Optional[str]]:
+    """
+    Returns (primary_key, primary_provider, primary_model, alt_key, alt_provider).
+    Used when Gemini is overloaded (503) so we can fall back to OpenAI if configured.
+    """
+    data = await fetch_tenant_ai_settings(tenant_id)
+    prov = (provider or data.get("provider") or "openai").lower()
+    model = data.get("model")
+    gemini_key = data.get("gemini_api_key") or None
+    openai_key = data.get("openai_api_key") or None
+    if prov == "gemini":
+        return gemini_key, "gemini", model, openai_key, "openai" if openai_key else None
+    return openai_key, "openai", model, gemini_key, "gemini" if gemini_key else None

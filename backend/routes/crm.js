@@ -27,16 +27,20 @@ router.get('/ai-model-rates', ...admin, aiSettingsCtrl.listModelRates);
 
 // ── AI Rules (bot behaviour) ─────────────────────────────────────────────────
 router.get('/rules', ...admin, rulesCtrl.list);
+router.get('/rules/preview', ...admin, rulesCtrl.preview);
+router.get('/rules/templates', ...admin, rulesCtrl.templates);
 router.post('/rules', ...admin, rulesCtrl.create);
+router.post('/rules/seed-defaults', ...admin, rulesCtrl.seedDefaults);
+router.post('/rules/reorder', ...admin, rulesCtrl.reorder);
+router.post('/rules/bulk', ...admin, rulesCtrl.bulk);
+router.post('/rules/:id/duplicate', ...admin, rulesCtrl.duplicate);
 router.put('/rules/:id', ...admin, rulesCtrl.update);
 router.delete('/rules/:id', ...admin, rulesCtrl.remove);
-router.post('/rules/seed-defaults', ...admin, rulesCtrl.seedDefaults);
 
 // ── Analytics / AI Cost ──────────────────────────────────────────────────────
 router.get('/analytics/ai-cost', ...admin, analyticsCtrl.getAiCostSummary);
 router.get('/analytics/overview', ...admin, analyticsCtrl.getCrmOverview);
-router.post('/analytics/ai-credits/topup', ...admin, analyticsCtrl.addAiCreditTopup);
-router.post('/analytics/ai-credits/set-balance', ...admin, analyticsCtrl.setAiCreditBalance);
+// AI credit top-ups are platform-admin only (see /platform/tenants/:id/ai-credits)
 
 // ── Automations ──────────────────────────────────────────────────────────────
 router.get('/automations/dashboard', ...admin, automationCtrl.dashboard);
@@ -110,7 +114,10 @@ router.post('/follow-ups/run-abandoned', ...admin, async (req, res) => {
 router.get('/knowledge', ...kbAdmin, kbCtrl.list);
 router.get('/knowledge/search', ...kbAdmin, kbCtrl.search);
 router.post('/knowledge/seed-defaults', ...kbAdmin, kbCtrl.seedDefaults);
+router.post('/knowledge/auto-train', ...kbAdmin, kbCtrl.autoTrain);
+router.post('/knowledge/train-from-google', ...kbAdmin, kbCtrl.trainFromGoogle);
 router.post('/knowledge/bulk-import', ...kbAdmin, kbCtrl.bulkImport);
+router.post('/knowledge/bulk', ...kbAdmin, kbCtrl.bulkUpdate);
 router.get('/knowledge/:id', ...kbAdmin, kbCtrl.getOne);
 router.post('/knowledge', ...kbAdmin, kbCtrl.create);
 router.post('/knowledge/:id/duplicate', ...kbAdmin, kbCtrl.duplicate);
@@ -177,10 +184,16 @@ router.post('/internal/whatsapp-qr-send', requireServiceAuth, async (req, res) =
     if (!whatsappWeb.isConnected(tenantId)) {
       return res.status(503).json({ ok: false, reason: 'qr_not_connected' });
     }
+    const buttons = Array.isArray(req.body?.buttons) ? req.body.buttons : undefined;
     const result = await whatsappWeb.sendViaQr(tenantId, phone, message, {
       tenant_id: tenantId,
       event_type: req.body?.event_type || 'crm_ai_reply',
       replyJid,
+      // Keep LID replies on the same chat WhatsApp opened (avoids "Waiting for this message")
+      allowLid: !!(replyJid && String(replyJid).includes('@lid')),
+      replyToInbound: !!replyJid,
+      buttons,
+      footer: req.body?.footer || undefined,
     });
     if (!result?.used) {
       return res.status(502).json({ ok: false, reason: 'qr_send_failed', result });
@@ -192,8 +205,41 @@ router.post('/internal/whatsapp-qr-send', requireServiceAuth, async (req, res) =
   }
 });
 
+/** Worker → API: show WhatsApp "typing…" while Gemini is thinking */
+router.post('/internal/whatsapp-composing', requireServiceAuth, async (req, res) => {
+  try {
+    const tenantId = parseInt(req.body?.tenantId || req.body?.tenant_id || req.headers['x-tenant-id'], 10);
+    const phone = String(req.body?.phone || '').trim();
+    let replyJid = req.body?.replyJid || req.body?.reply_jid || null;
+    const conversationId = parseInt(req.body?.conversation_id || req.body?.conversationId, 10);
+    if (!Number.isInteger(tenantId) || tenantId <= 0) {
+      return res.status(400).json({ message: 'tenantId required' });
+    }
+    if (!replyJid && Number.isInteger(conversationId) && conversationId > 0) {
+      const { CrmMessage } = require('../models');
+      const lastIn = await CrmMessage.findOne({
+        where: { tenant_id: tenantId, conversation_id: conversationId, direction: 'inbound' },
+        order: [['id', 'DESC']],
+      });
+      replyJid = lastIn?.meta?.reply_jid || null;
+    }
+    const whatsappWeb = require('../services/whatsappWebService');
+    if (!whatsappWeb.isConnected(tenantId)) {
+      return res.json({ ok: false, reason: 'qr_not_connected' });
+    }
+    const sent = await whatsappWeb.sendComposing(tenantId, phone, { replyJid });
+    return res.json({ ok: !!sent });
+  } catch (err) {
+    console.warn('[crm] internal whatsapp-composing', err.message);
+    return res.json({ ok: false, error: err.message });
+  }
+});
+
 // ── Leads & Inbox ────────────────────────────────────────────────────────────
 router.get('/leads', ...staffInbox, crmCtrl.listLeads);
+router.get('/leads/summary', ...staffInbox, crmCtrl.getLeadsSummary);
+router.post('/leads', ...staffInbox, crmCtrl.createLead);
+router.post('/leads/bulk', ...staffInbox, crmCtrl.bulkUpdateLeads);
 router.patch('/leads/:id', ...staffInbox, crmCtrl.updateLead);
 router.delete('/leads/:id', ...staffInbox, crmCtrl.deleteLead);
 

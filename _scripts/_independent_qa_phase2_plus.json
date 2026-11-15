@@ -1,0 +1,1100 @@
+{
+  "summary": {
+    "scenarios": 12,
+    "scenarios_passed": 12,
+    "scenarios_failed": 0,
+    "step_failures": 0,
+    "avg_relevance_score": 0.904,
+    "architecture_checks_passed": 7,
+    "architecture_checks_total": 8,
+    "pytest_tail": [
+      "........................................................................ [ 89%]",
+      ".................................................s                       [100%]",
+      "481 passed, 1 skipped in 2.19s"
+    ],
+    "behaviour": {
+      "passed": 17,
+      "total": 17,
+      "score_pct": 100.0
+    }
+  },
+  "architecture": [
+    {
+      "id": "A1_context_ordered",
+      "claim": "Gemini receives CI + recent history + current user (images on user turn)",
+      "evidence": "main.py: system CI block → recentMessages chronologically → user turn with images",
+      "pass": true
+    },
+    {
+      "id": "A2_memory_isolation",
+      "claim": "Memory load/upsert filters tenant_id + phone",
+      "evidence": "crmAiMemoryService.js where: { tenant_id, phone/conversation_id }",
+      "pass": true,
+      "risk": "Same phone across tenants is isolated by tenant_id; conversation_id preferred first"
+    },
+    {
+      "id": "A3_ci_still_regex",
+      "claim": "Intent is Gemini-based NLU",
+      "evidence": "conversation_intelligence.classify_intent is deterministic regex — Gemini generates reply guided by CI, not the classifier itself",
+      "pass": false,
+      "risk": "Architectural gap vs master prompt 'Gemini-based intent understanding' — CI is heuristic; Gemini is response brain"
+    },
+    {
+      "id": "A4_cross_tenant_context",
+      "claim": "No cross-tenant leakage in CI context object",
+      "pass": true,
+      "evidence": "t28=28 t99=99"
+    },
+    {
+      "id": "A5_pricing_no_invent",
+      "claim": "Unknown service cannot produce verified invent quote",
+      "pass": true,
+      "evidence": "ok=False amount=None clarify=True escalate=False"
+    },
+    {
+      "id": "A6_p0_media_pause",
+      "claim": "P0 media pause intact (+ pause actions on yield)",
+      "pass": true
+    },
+    {
+      "id": "A7_image_bytes_to_gemini",
+      "claim": "Image base64 attached on Gemini user turn",
+      "pass": true,
+      "evidence": {
+        "model": "gemini-3.5-flash-lite",
+        "system_has_ci": true,
+        "system_has_priority": true,
+        "system_has_price_lock": false,
+        "system_has_correction": false,
+        "system_has_vision": true,
+        "history_user_count": 2,
+        "history_roles": [
+          "system",
+          "user",
+          "assistant",
+          "user",
+          "assistant",
+          "user"
+        ],
+        "image_count": 1,
+        "image_has_b64": true,
+        "customer_excerpt": "[Customer sent a photo]",
+        "system_excerpt_ci": ": interests, hair length, quotes, objections — never re-ask.\n- PRIORITY: latest customer ask > conversation context > pending booking step > generic help.\n- If booking is PAUSED, answer the new question first; do not force date/time.\n- Topic switch: follow the new topic; keep prior service in memory for later.\n- Correction: re-answer the prior unanswered question — never a generic welcome.\n- Prefer next useful step: clarify → recommend 1–3 verified services → invite to book.\n- When giving times,"
+      }
+    },
+    {
+      "id": "A8_ci_in_system",
+      "claim": "CONVERSATION CONTEXT present in Gemini system when LLM used",
+      "pass": true,
+      "count": 7
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "S1_keratin_memory",
+      "title": "Keratin price → length → Saturday continuity (CI)",
+      "steps": [
+        {
+          "step": 0,
+          "msg": "Keratin kiyada?",
+          "reply": "Keratin price eka hair length eken wenas wenawa. Oyaage length eka *shoulder*, *bra strap* da *hip* da?",
+          "tools": [
+            "list_services_pricing",
+            "pricing_resolver",
+            "pricing_memory_patch"
+          ],
+          "relevance": {
+            "score": 1.0,
+            "hit": [
+              "keratin",
+              "length",
+              "shoulder",
+              "bra",
+              "hip"
+            ],
+            "forbid_hit": [],
+            "generic_welcome": false,
+            "pass": true
+          },
+          "gemini": null,
+          "booking": null,
+          "pass": true
+        },
+        {
+          "step": 1,
+          "msg": "Bra Strap",
+          "reply": "Guide price for Keratin (bra strap): Rs 30,000 · ~300 min. Final price is confirmed at the salon visit.",
+          "tools": [
+            "list_services_pricing",
+            "pricing_resolver",
+            "pricing_memory_patch"
+          ],
+          "relevance": {
+            "score": 1.0,
+            "hit": [
+              "bra",
+              "30,000",
+              "keratin",
+              "rs"
+            ],
+            "forbid_hit": [],
+            "generic_welcome": false,
+            "pass": true
+          },
+          "gemini": null,
+          "booking": null,
+          "pass": true
+        },
+        {
+          "step": 2,
+          "msg": "Saturday puluwanda?",
+          "reply": "Saturday slots thiyenawa — book karanna date+time kiyanna (e.g. Saturday 10am).",
+          "tools": [
+            "customer_lookup",
+            "search_knowledge",
+            "list_branches",
+            "list_services_snapshot",
+            "list_staff_snapshot",
+            "salon_data_snapshot",
+            "salon_rules",
+            "comm_style",
+            "conversation_intelligence",
+            "understand_ask",
+            "google_search_gate"
+          ],
+          "relevance": {
+            "score": 1.0,
+            "hit": [
+              "saturday",
+              "book",
+              "date",
+              "time",
+              "slot"
+            ],
+            "forbid_hit": [],
+            "generic_welcome": false,
+            "pass": true
+          },
+          "gemini": {
+            "model": "gemini-3.5-flash-lite",
+            "system_has_ci": true,
+            "system_has_priority": true,
+            "system_has_price_lock": false,
+            "system_has_correction": false,
+            "system_has_vision": false,
+            "history_user_count": 2,
+            "history_roles": [
+              "system",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "user"
+            ],
+            "image_count": 0,
+            "image_has_b64": false,
+            "customer_excerpt": "Saturday puluwanda?",
+            "system_excerpt_ci": ": interests, hair length, quotes, objections — never re-ask.\n- PRIORITY: latest customer ask > conversation context > pending booking step > generic help.\n- If booking is PAUSED, answer the new question first; do not force date/time.\n- Topic switch: follow the new topic; keep prior service in memory for later.\n- Correction: re-answer the prior unanswered question — never a generic welcome.\n- Prefer next useful step: clarify → recommend 1–3 verified services → invite to book.\n- When giving times,"
+          },
+          "booking": null,
+          "pass": true
+        }
+      ],
+      "pass": true
+    },
+    {
+      "id": "S2_correction",
+      "title": "Correction re-answers prior keratin ask",
+      "steps": [
+        {
+          "step": 0,
+          "msg": "Keratin kiyada?",
+          "reply": "Keratin price eka hair length eken wenas wenawa. Oyaage length eka *shoulder*, *bra strap* da *hip* da?",
+          "tools": [
+            "list_services_pricing",
+            "pricing_resolver",
+            "pricing_memory_patch"
+          ],
+          "relevance": {
+            "score": 0.85,
+            "hit": [
+              "keratin",
+              "length"
+            ],
+            "forbid_hit": [],
+            "generic_welcome": false,
+            "pass": true
+          },
+          "gemini": null,
+          "booking": null,
+          "pass": true
+        },
+        {
+          "step": 1,
+          "msg": "Ahana deta nemei rply denn oya",
+          "reply": "Sorry — miss una. Keratin price eka hair length eka anuwa: Shoulder / Bra Strap / Hip. Length eka kiyanna.",
+          "tools": [
+            "customer_lookup",
+            "search_knowledge",
+            "salon_data_snapshot",
+            "list_branches",
+            "list_services_snapshot",
+            "list_staff_snapshot",
+            "salon_data_snapshot",
+            "salon_rules",
+            "correction_intent",
+            "comm_style",
+            "conversation_intelligence",
+            "understand_ask"
+          ],
+          "relevance": {
+            "score": 1.0,
+            "hit": [
+              "sorry",
+              "keratin",
+              "length",
+              "miss"
+            ],
+            "forbid_hit": [],
+            "generic_welcome": false,
+            "pass": true
+          },
+          "gemini": {
+            "model": "gemini-3.5-flash-lite",
+            "system_has_ci": true,
+            "system_has_priority": true,
+            "system_has_price_lock": false,
+            "system_has_correction": true,
+            "system_has_vision": false,
+            "history_user_count": 1,
+            "history_roles": [
+              "system",
+              "user",
+              "assistant",
+              "user"
+            ],
+            "image_count": 0,
+            "image_has_b64": false,
+            "customer_excerpt": "Ahana deta nemei rply denn oya",
+            "system_excerpt_ci": ": interests, hair length, quotes, objections — never re-ask.\n- PRIORITY: latest customer ask > conversation context > pending booking step > generic help.\n- If booking is PAUSED, answer the new question first; do not force date/time.\n- Topic switch: follow the new topic; keep prior service in memory for later.\n- Correction: re-answer the prior unanswered question — never a generic welcome.\n- Prefer next useful step: clarify → recommend 1–3 verified services → invite to book.\n- When giving times,"
+          },
+          "booking": null,
+          "pass": true
+        }
+      ],
+      "pass": true
+    },
+    {
+      "id": "S3_image_mid_book",
+      "title": "Photo during await_date → vision not date ask",
+      "steps": [
+        {
+          "step": 0,
+          "msg": "book appointment",
+          "reply": "Sure — let's book an appointment. Which service do you want?\nTell me which type you want (e.g. hair treatment, dressing, hair cut).",
+          "tools": [
+            "comm_style",
+            "list_services",
+            "service_category_menu",
+            "booking_flow_state"
+          ],
+          "relevance": {
+            "score": 0.85,
+            "hit": [
+              "service",
+              "which"
+            ],
+            "forbid_hit": [],
+            "generic_welcome": false,
+            "pass": true
+          },
+          "gemini": null,
+          "booking": null,
+          "pass": true
+        },
+        {
+          "step": 1,
+          "msg": "1",
+          "reply": "What date? (today / tomorrow / heta / Monday) — or say *heta 10am* together.",
+          "tools": [
+            "comm_style",
+            "list_staff",
+            "booking_flow_state"
+          ],
+          "relevance": {
+            "score": 1.0,
+            "hit": [
+              "date",
+              "heta",
+              "today",
+              "tomorrow"
+            ],
+            "forbid_hit": [],
+            "generic_welcome": false,
+            "pass": true
+          },
+          "gemini": null,
+          "booking": null,
+          "pass": true
+        },
+        {
+          "step": 2,
+          "msg": "[Customer sent a photo]",
+          "reply": "Photo eke layered style ekak peena. Shoulder length wage estimate. Oya me wage cut ekakda / colour ekakda karaganna balanne?",
+          "tools": [
+            "comm_style",
+            "booking_pause_for_understanding",
+            "booking_flow_state",
+            "customer_lookup",
+            "search_knowledge",
+            "salon_data_snapshot",
+            "list_branches",
+            "list_services_snapshot",
+            "list_staff_snapshot",
+            "salon_data_snapshot",
+            "salon_rules",
+            "comm_style"
+          ],
+          "relevance": {
+            "score": 1.0,
+            "hit": [
+              "photo",
+              "style",
+              "length",
+              "shoulder",
+              "cut",
+              "colour"
+            ],
+            "forbid_hit": [],
+            "generic_welcome": false,
+            "pass": true
+          },
+          "gemini": {
+            "model": "gemini-3.5-flash-lite",
+            "system_has_ci": true,
+            "system_has_priority": true,
+            "system_has_price_lock": false,
+            "system_has_correction": false,
+            "system_has_vision": true,
+            "history_user_count": 2,
+            "history_roles": [
+              "system",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "user"
+            ],
+            "image_count": 1,
+            "image_has_b64": true,
+            "customer_excerpt": "[Customer sent a photo]",
+            "system_excerpt_ci": ": interests, hair length, quotes, objections — never re-ask.\n- PRIORITY: latest customer ask > conversation context > pending booking step > generic help.\n- If booking is PAUSED, answer the new question first; do not force date/time.\n- Topic switch: follow the new topic; keep prior service in memory for later.\n- Correction: re-answer the prior unanswered question — never a generic welcome.\n- Prefer next useful step: clarify → recommend 1–3 verified services → invite to book.\n- When giving times,"
+          },
+          "booking": null,
+          "pass": true
+        }
+      ],
+      "pass": true
+    },
+    {
+      "id": "S4_facial_mid_book",
+      "title": "Facial price mid await_date pauses booking",
+      "steps": [
+        {
+          "step": 0,
+          "msg": "book appointment",
+          "reply": "Sure — let's book an appointment. Which service do you want?\nTell me which type you want (e.g. hair treatment, dressing, hair cut).",
+          "tools": [
+            "comm_style",
+            "list_services",
+            "service_category_menu",
+            "booking_flow_state"
+          ],
+          "relevance": {
+            "score": 0.7,
+            "hit": [
+              "service"
+            ],
+            "forbid_hit": [],
+            "generic_welcome": false,
+            "pass": true
+          },
+          "gemini": null,
+          "booking": null,
+          "pass": true
+        },
+        {
+          "step": 1,
+          "msg": "1",
+          "reply": "What date? (today / tomorrow / heta / Monday) — or say *heta 10am* together.",
+          "tools": [
+            "comm_style",
+            "list_staff",
+            "booking_flow_state"
+          ],
+          "relevance": {
+            "score": 0.7,
+            "hit": [
+              "date"
+            ],
+            "forbid_hit": [],
+            "generic_welcome": false,
+            "pass": true
+          },
+          "gemini": null,
+          "booking": null,
+          "pass": true
+        },
+        {
+          "step": 2,
+          "msg": "Facial mila?",
+          "reply": "Verified salon prices:\n• Hydra Facial: Rs 5,500 · 60 min",
+          "tools": [
+            "search_knowledge",
+            "comm_style",
+            "booking_pause_for_understanding",
+            "booking_flow_state",
+            "list_services_pricing",
+            "pricing_resolver"
+          ],
+          "relevance": {
+            "score": 1.0,
+            "hit": [
+              "facial",
+              "5,500",
+              "hydra",
+              "price"
+            ],
+            "forbid_hit": [],
+            "generic_welcome": false,
+            "pass": true
+          },
+          "gemini": null,
+          "booking": null,
+          "pass": true
+        },
+        {
+          "step": 3,
+          "msg": "continue",
+          "reply": "Date eka kiyanna — *ade* / *heta* / Monday. *Heta 10am* wage ekama message ekenath puluwan!",
+          "tools": [
+            "comm_style",
+            "booking_resume",
+            "booking_flow_state"
+          ],
+          "relevance": {
+            "score": 0.85,
+            "hit": [
+              "date",
+              "heta"
+            ],
+            "forbid_hit": [],
+            "generic_welcome": false,
+            "pass": true
+          },
+          "gemini": null,
+          "booking": null,
+          "pass": true
+        }
+      ],
+      "pass": true
+    },
+    {
+      "id": "S5_details_before_book",
+      "title": "Details before book does not force date",
+      "steps": [
+        {
+          "step": 0,
+          "msg": "book kara gann kalin details kiyana",
+          "reply": "Hari — book karanna kalin details: Keratin length tiers Shoulder/Bra Strap/Hip. Service eka pick karala date/time balamu.",
+          "tools": [
+            "customer_lookup",
+            "search_knowledge",
+            "salon_data_snapshot",
+            "list_branches",
+            "list_services_snapshot",
+            "list_staff_snapshot",
+            "salon_data_snapshot",
+            "salon_rules",
+            "comm_style",
+            "conversation_intelligence",
+            "understand_ask",
+            "google_search_gate"
+          ],
+          "relevance": {
+            "score": 1.0,
+            "hit": [
+              "detail",
+              "keratin",
+              "service",
+              "length",
+              "hari"
+            ],
+            "forbid_hit": [],
+            "generic_welcome": false,
+            "pass": true
+          },
+          "gemini": {
+            "model": "gemini-3.5-flash-lite",
+            "system_has_ci": true,
+            "system_has_priority": true,
+            "system_has_price_lock": false,
+            "system_has_correction": false,
+            "system_has_vision": false,
+            "history_user_count": 0,
+            "history_roles": [
+              "system",
+              "user"
+            ],
+            "image_count": 0,
+            "image_has_b64": false,
+            "customer_excerpt": "book kara gann kalin details kiyana",
+            "system_excerpt_ci": ": interests, hair length, quotes, objections — never re-ask.\n- PRIORITY: latest customer ask > conversation context > pending booking step > generic help.\n- If booking is PAUSED, answer the new question first; do not force date/time.\n- Topic switch: follow the new topic; keep prior service in memory for later.\n- Correction: re-answer the prior unanswered question — never a generic welcome.\n- Prefer next useful step: clarify → recommend 1–3 verified services → invite to book.\n- When giving times,"
+          },
+          "booking": null,
+          "pass": true
+        }
+      ],
+      "pass": true
+    },
+    {
+      "id": "S6_cancel_verified",
+      "title": "Cancel requires backend confirmation",
+      "steps": [
+        {
+          "step": 0,
+          "msg": "cancel my appointment",
+          "reply": "Hi Navee — cancel appointment #145 on 2099-01-05 11:00?\nReply *yes* to cancel it or *no* to keep it.",
+          "tools": [
+            "comm_style",
+            "customer_lookup",
+            "list_appointments",
+            "booking_flow_state"
+          ],
+          "relevance": {
+            "score": 1.0,
+            "hit": [
+              "yes",
+              "cancel",
+              "#145",
+              "145"
+            ],
+            "forbid_hit": [],
+            "generic_welcome": false,
+            "pass": true
+          },
+          "gemini": null,
+          "booking": null,
+          "pass": true
+        },
+        {
+          "step": 1,
+          "msg": "yes",
+          "reply": "Cancelled appointment #145 on 2099-01-05 11:00.",
+          "tools": [
+            "comm_style",
+            "cancel_appointment",
+            "booking_flow_state"
+          ],
+          "relevance": {
+            "score": 0.7,
+            "hit": [
+              "cancel"
+            ],
+            "forbid_hit": [],
+            "generic_welcome": false,
+            "pass": true
+          },
+          "gemini": null,
+          "booking": {
+            "status": "cancelled",
+            "salon_appointment_id": 145,
+            "result": {
+              "appointment": {
+                "id": 145,
+                "status": "cancelled"
+              }
+            }
+          },
+          "pass": true
+        }
+      ],
+      "pass": true
+    },
+    {
+      "id": "S7_language",
+      "title": "Can speak Sinhala — natural SI reply",
+      "steps": [
+        {
+          "step": 0,
+          "msg": "Can I speak Sinhala?",
+          "reply": "ඔව්, පුළුවන් 😊 අපි සිංහලෙන් කතා කරමු. මොන service එක ගැනද දැනගන්න ඕනේ?",
+          "tools": [
+            "customer_lookup",
+            "search_knowledge",
+            "salon_data_snapshot",
+            "list_branches",
+            "list_services_snapshot",
+            "list_staff_snapshot",
+            "salon_data_snapshot",
+            "salon_rules",
+            "comm_style",
+            "conversation_intelligence",
+            "understand_ask",
+            "google_search_gate"
+          ],
+          "relevance": {
+            "score": 1.0,
+            "hit": [
+              "පුළුවන්",
+              "සිංහල",
+              "service"
+            ],
+            "forbid_hit": [],
+            "generic_welcome": false,
+            "pass": true
+          },
+          "gemini": {
+            "model": "gemini-3.5-flash-lite",
+            "system_has_ci": true,
+            "system_has_priority": true,
+            "system_has_price_lock": false,
+            "system_has_correction": false,
+            "system_has_vision": false,
+            "history_user_count": 0,
+            "history_roles": [
+              "system",
+              "user"
+            ],
+            "image_count": 0,
+            "image_has_b64": false,
+            "customer_excerpt": "Can I speak Sinhala?",
+            "system_excerpt_ci": ": interests, hair length, quotes, objections — never re-ask.\n- PRIORITY: latest customer ask > conversation context > pending booking step > generic help.\n- If booking is PAUSED, answer the new question first; do not force date/time.\n- Topic switch: follow the new topic; keep prior service in memory for later.\n- Correction: re-answer the prior unanswered question — never a generic welcome.\n- Prefer next useful step: clarify → recommend 1–3 verified services → invite to book.\n- When giving times,"
+          },
+          "booking": null,
+          "pass": true
+        }
+      ],
+      "pass": true
+    },
+    {
+      "id": "S8_objection",
+      "title": "Price objection acknowledged",
+      "steps": [
+        {
+          "step": 0,
+          "msg": "Keratin kiyada?",
+          "reply": "Keratin price eka hair length eken wenas wenawa. Oyaage length eka *shoulder*, *bra strap* da *hip* da?",
+          "tools": [
+            "list_services_pricing",
+            "pricing_resolver",
+            "pricing_memory_patch"
+          ],
+          "relevance": {
+            "score": 0.7,
+            "hit": [
+              "keratin"
+            ],
+            "forbid_hit": [],
+            "generic_welcome": false,
+            "pass": true
+          },
+          "gemini": null,
+          "booking": null,
+          "pass": true
+        },
+        {
+          "step": 1,
+          "msg": "Ane eka tikak expensive",
+          "reply": "Hari — price eka gana worry ekak thiyenawa. Aduma options catalogue eken kiyannam.",
+          "tools": [
+            "customer_lookup",
+            "search_knowledge",
+            "salon_data_snapshot",
+            "list_branches",
+            "list_services_snapshot",
+            "list_staff_snapshot",
+            "salon_data_snapshot",
+            "salon_rules",
+            "comm_style",
+            "conversation_intelligence",
+            "understand_ask",
+            "google_search_gate"
+          ],
+          "relevance": {
+            "score": 1.0,
+            "hit": [
+              "price",
+              "option",
+              "worry",
+              "hari",
+              "catalogue"
+            ],
+            "forbid_hit": [],
+            "generic_welcome": false,
+            "pass": true
+          },
+          "gemini": {
+            "model": "gemini-3.5-flash-lite",
+            "system_has_ci": true,
+            "system_has_priority": true,
+            "system_has_price_lock": false,
+            "system_has_correction": false,
+            "system_has_vision": false,
+            "history_user_count": 1,
+            "history_roles": [
+              "system",
+              "user",
+              "assistant",
+              "user"
+            ],
+            "image_count": 0,
+            "image_has_b64": false,
+            "customer_excerpt": "Ane eka tikak expensive",
+            "system_excerpt_ci": ": interests, hair length, quotes, objections — never re-ask.\n- PRIORITY: latest customer ask > conversation context > pending booking step > generic help.\n- If booking is PAUSED, answer the new question first; do not force date/time.\n- Topic switch: follow the new topic; keep prior service in memory for later.\n- Correction: re-answer the prior unanswered question — never a generic welcome.\n- Prefer next useful step: clarify → recommend 1–3 verified services → invite to book.\n- When giving times,"
+          },
+          "booking": null,
+          "pass": true
+        }
+      ],
+      "pass": true
+    },
+    {
+      "id": "S9_galaxy_false_quote",
+      "title": "Unknown galaxy treatment must NOT quote Keratin",
+      "steps": [
+        {
+          "step": 0,
+          "msg": "Galaxy Plasma Treatment price kiyada?",
+          "reply": "Eka exact service eka verified list eken hambune na. Catalogue name eka kiyanna — nathnam *staff* kiyala team eken confirm karaganna.",
+          "tools": [
+            "search_knowledge",
+            "list_services_pricing",
+            "pricing_resolver"
+          ],
+          "relevance": {
+            "score": 1.0,
+            "hit": [
+              "catalogue",
+              "staff",
+              "list",
+              "name",
+              "hambune",
+              "exact",
+              "service"
+            ],
+            "forbid_hit": [],
+            "generic_welcome": false,
+            "pass": true
+          },
+          "gemini": null,
+          "booking": null,
+          "pass": true
+        }
+      ],
+      "pass": true
+    },
+    {
+      "id": "S10_length_memory",
+      "title": "Bra Strap after Keratin uses resolver + memory",
+      "steps": [
+        {
+          "step": 0,
+          "msg": "Keratin kiyada?",
+          "reply": "Keratin price eka hair length eken wenas wenawa. Oyaage length eka *shoulder*, *bra strap* da *hip* da?",
+          "tools": [
+            "list_services_pricing",
+            "pricing_resolver",
+            "pricing_memory_patch"
+          ],
+          "relevance": {
+            "score": 0.85,
+            "hit": [
+              "keratin",
+              "length"
+            ],
+            "forbid_hit": [],
+            "generic_welcome": false,
+            "pass": true
+          },
+          "gemini": null,
+          "booking": null,
+          "pass": true
+        },
+        {
+          "step": 1,
+          "msg": "Bra Strap",
+          "reply": "Guide price for Keratin (bra strap): Rs 30,000 · ~300 min. Final price is confirmed at the salon visit.",
+          "tools": [
+            "list_services_pricing",
+            "pricing_resolver",
+            "pricing_memory_patch"
+          ],
+          "relevance": {
+            "score": 1.0,
+            "hit": [
+              "30,000",
+              "keratin",
+              "bra"
+            ],
+            "forbid_hit": [],
+            "generic_welcome": false,
+            "pass": true
+          },
+          "gemini": null,
+          "booking": null,
+          "pass": true
+        }
+      ],
+      "pass": true
+    },
+    {
+      "id": "S11_provider_down",
+      "title": "Provider failure does not say-book",
+      "steps": [
+        {
+          "step": 0,
+          "msg": "Saturday afternoon puluwanda? Recommend a style for wedding",
+          "reply": "Kama nathi — AI system eka temporary busy / unavailable. Oyage question eka save una: \"Saturday afternoon puluwanda? Recommend a style for wedding\". Poddak passe *retry* karanna, nathnam *staff* kiyala human kenekta connect wenna.",
+          "tools": [
+            "customer_lookup",
+            "search_knowledge",
+            "salon_data_snapshot",
+            "list_branches",
+            "list_services_snapshot",
+            "list_staff_snapshot",
+            "salon_data_snapshot",
+            "salon_rules",
+            "comm_style",
+            "conversation_intelligence",
+            "understand_ask",
+            "google_search_gate"
+          ],
+          "relevance": {
+            "score": 1.0,
+            "hit": [
+              "unavailable",
+              "busy",
+              "staff",
+              "retry",
+              "temporary"
+            ],
+            "forbid_hit": [],
+            "generic_welcome": false,
+            "pass": true
+          },
+          "gemini": null,
+          "booking": null,
+          "pass": true
+        }
+      ],
+      "pass": true
+    },
+    {
+      "id": "S12_pause_actions",
+      "title": "Photo mid-book yields with pause actions",
+      "steps": [
+        {
+          "step": 0,
+          "msg": "book appointment",
+          "reply": "Sure — let's book an appointment. Which service do you want?\nTell me which type you want (e.g. hair treatment, dressing, hair cut).",
+          "tools": [
+            "comm_style",
+            "list_services",
+            "service_category_menu",
+            "booking_flow_state"
+          ],
+          "relevance": {
+            "score": 0.7,
+            "hit": [
+              "service"
+            ],
+            "forbid_hit": [],
+            "generic_welcome": false,
+            "pass": true
+          },
+          "gemini": null,
+          "booking": null,
+          "pass": true
+        },
+        {
+          "step": 1,
+          "msg": "1",
+          "reply": "What date? (today / tomorrow / heta / Monday) — or say *heta 10am* together.",
+          "tools": [
+            "comm_style",
+            "list_staff",
+            "booking_flow_state"
+          ],
+          "relevance": {
+            "score": 0.7,
+            "hit": [
+              "date"
+            ],
+            "forbid_hit": [],
+            "generic_welcome": false,
+            "pass": true
+          },
+          "gemini": null,
+          "booking": null,
+          "pass": true
+        },
+        {
+          "step": 2,
+          "msg": "[Customer sent a photo]",
+          "reply": "Photo eke layered style ekak peena. Shoulder length wage estimate. Oya me wage cut ekakda / colour ekakda karaganna balanne?",
+          "tools": [
+            "comm_style",
+            "booking_pause_for_understanding",
+            "booking_flow_state",
+            "customer_lookup",
+            "search_knowledge",
+            "salon_data_snapshot",
+            "list_branches",
+            "list_services_snapshot",
+            "list_staff_snapshot",
+            "salon_data_snapshot",
+            "salon_rules",
+            "comm_style"
+          ],
+          "relevance": {
+            "score": 1.0,
+            "hit": [
+              "photo",
+              "style",
+              "length",
+              "shoulder",
+              "cut",
+              "colour"
+            ],
+            "forbid_hit": [],
+            "generic_welcome": false,
+            "pass": true
+          },
+          "gemini": {
+            "model": "gemini-3.5-flash-lite",
+            "system_has_ci": true,
+            "system_has_priority": true,
+            "system_has_price_lock": false,
+            "system_has_correction": false,
+            "system_has_vision": true,
+            "history_user_count": 2,
+            "history_roles": [
+              "system",
+              "user",
+              "assistant",
+              "user",
+              "assistant",
+              "user"
+            ],
+            "image_count": 1,
+            "image_has_b64": true,
+            "customer_excerpt": "[Customer sent a photo]",
+            "system_excerpt_ci": ": interests, hair length, quotes, objections — never re-ask.\n- PRIORITY: latest customer ask > conversation context > pending booking step > generic help.\n- If booking is PAUSED, answer the new question first; do not force date/time.\n- Topic switch: follow the new topic; keep prior service in memory for later.\n- Correction: re-answer the prior unanswered question — never a generic welcome.\n- Prefer next useful step: clarify → recommend 1–3 verified services → invite to book.\n- When giving times,"
+          },
+          "booking": null,
+          "pass": true
+        }
+      ],
+      "pass": true
+    }
+  ],
+  "failures": [],
+  "gemini_capture_sample": [
+    {
+      "model": "gemini-3.5-flash-lite",
+      "system_has_ci": true,
+      "system_has_priority": true,
+      "system_has_price_lock": false,
+      "system_has_correction": false,
+      "system_has_vision": false,
+      "history_user_count": 2,
+      "history_roles": [
+        "system",
+        "user",
+        "assistant",
+        "user",
+        "assistant",
+        "user"
+      ],
+      "image_count": 0,
+      "image_has_b64": false,
+      "customer_excerpt": "Saturday puluwanda?",
+      "system_excerpt_ci": ": interests, hair length, quotes, objections — never re-ask.\n- PRIORITY: latest customer ask > conversation context > pending booking step > generic help.\n- If booking is PAUSED, answer the new question first; do not force date/time.\n- Topic switch: follow the new topic; keep prior service in memory for later.\n- Correction: re-answer the prior unanswered question — never a generic welcome.\n- Prefer next useful step: clarify → recommend 1–3 verified services → invite to book.\n- When giving times,"
+    },
+    {
+      "model": "gemini-3.5-flash-lite",
+      "system_has_ci": true,
+      "system_has_priority": true,
+      "system_has_price_lock": false,
+      "system_has_correction": true,
+      "system_has_vision": false,
+      "history_user_count": 1,
+      "history_roles": [
+        "system",
+        "user",
+        "assistant",
+        "user"
+      ],
+      "image_count": 0,
+      "image_has_b64": false,
+      "customer_excerpt": "Ahana deta nemei rply denn oya",
+      "system_excerpt_ci": ": interests, hair length, quotes, objections — never re-ask.\n- PRIORITY: latest customer ask > conversation context > pending booking step > generic help.\n- If booking is PAUSED, answer the new question first; do not force date/time.\n- Topic switch: follow the new topic; keep prior service in memory for later.\n- Correction: re-answer the prior unanswered question — never a generic welcome.\n- Prefer next useful step: clarify → recommend 1–3 verified services → invite to book.\n- When giving times,"
+    },
+    {
+      "model": "gemini-3.5-flash-lite",
+      "system_has_ci": true,
+      "system_has_priority": true,
+      "system_has_price_lock": false,
+      "system_has_correction": false,
+      "system_has_vision": true,
+      "history_user_count": 2,
+      "history_roles": [
+        "system",
+        "user",
+        "assistant",
+        "user",
+        "assistant",
+        "user"
+      ],
+      "image_count": 1,
+      "image_has_b64": true,
+      "customer_excerpt": "[Customer sent a photo]",
+      "system_excerpt_ci": ": interests, hair length, quotes, objections — never re-ask.\n- PRIORITY: latest customer ask > conversation context > pending booking step > generic help.\n- If booking is PAUSED, answer the new question first; do not force date/time.\n- Topic switch: follow the new topic; keep prior service in memory for later.\n- Correction: re-answer the prior unanswered question — never a generic welcome.\n- Prefer next useful step: clarify → recommend 1–3 verified services → invite to book.\n- When giving times,"
+    },
+    {
+      "model": "gemini-3.5-flash-lite",
+      "system_has_ci": true,
+      "system_has_priority": true,
+      "system_has_price_lock": false,
+      "system_has_correction": false,
+      "system_has_vision": false,
+      "history_user_count": 0,
+      "history_roles": [
+        "system",
+        "user"
+      ],
+      "image_count": 0,
+      "image_has_b64": false,
+      "customer_excerpt": "book kara gann kalin details kiyana",
+      "system_excerpt_ci": ": interests, hair length, quotes, objections — never re-ask.\n- PRIORITY: latest customer ask > conversation context > pending booking step > generic help.\n- If booking is PAUSED, answer the new question first; do not force date/time.\n- Topic switch: follow the new topic; keep prior service in memory for later.\n- Correction: re-answer the prior unanswered question — never a generic welcome.\n- Prefer next useful step: clarify → recommend 1–3 verified services → invite to book.\n- When giving times,"
+    },
+    {
+      "model": "gemini-3.5-flash-lite",
+      "system_has_ci": true,
+      "system_has_priority": true,
+      "system_has_price_lock": false,
+      "system_has_correction": false,
+      "system_has_vision": false,
+      "history_user_count": 0,
+      "history_roles": [
+        "system",
+        "user"
+      ],
+      "image_count": 0,
+      "image_has_b64": false,
+      "customer_excerpt": "Can I speak Sinhala?",
+      "system_excerpt_ci": ": interests, hair length, quotes, objections — never re-ask.\n- PRIORITY: latest customer ask > conversation context > pending booking step > generic help.\n- If booking is PAUSED, answer the new question first; do not force date/time.\n- Topic switch: follow the new topic; keep prior service in memory for later.\n- Correction: re-answer the prior unanswered question — never a generic welcome.\n- Prefer next useful step: clarify → recommend 1–3 verified services → invite to book.\n- When giving times,"
+    }
+  ]
+}

@@ -1,5 +1,6 @@
 const { Op, fn, col, literal } = require('sequelize');
-const { Tenant, Subscription, Branch, Staff, User, Customer, Appointment, Payment, NotificationSettings, MaintenanceLog, NotificationLog, SupportTicket, PlatformInvoice, PlanConfig, PlanChangeLog } = require('../models');
+const { Tenant, Subscription, Branch, Staff, User, Customer, Appointment, Payment, NotificationSettings, MaintenanceLog, NotificationLog, SupportTicket, PlatformInvoice, PlanConfig, PlanChangeLog, AiCreditEntry } = require('../models');
+const { getWalletSummary } = require('./crmAnalyticsController');
 const { sequelize } = require('../config/database');
 const { invalidateTenantCache } = require('../middleware/tenantScope');
 const { getMaintenanceMode, setMaintenanceMode } = require('../services/systemSettings');
@@ -1989,6 +1990,109 @@ const testPlatformSmtp = async (req, res) => {
   }
 };
 
+/** GET /platform/tenants/:id/ai-credits */
+const getTenantAiCredits = async (req, res) => {
+  try {
+    const tenant = await Tenant.findByPk(req.params.id, { attributes: ['id', 'name', 'slug'] });
+    if (!tenant) return res.status(404).json({ message: 'Tenant not found' });
+    const wallet = await getWalletSummary(tenant.id);
+    return res.json({ tenant, wallet });
+  } catch (err) {
+    console.error('getTenantAiCredits', err);
+    return res.status(500).json({ message: err.message || 'Server error' });
+  }
+};
+
+/** POST /platform/tenants/:id/ai-credits/topup  { amount_usd, note? } */
+const addTenantAiCreditTopup = async (req, res) => {
+  try {
+    const tenant = await Tenant.findByPk(req.params.id, { attributes: ['id', 'name', 'slug'] });
+    if (!tenant) return res.status(404).json({ message: 'Tenant not found' });
+
+    const amount = Number(req.body?.amount_usd);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return res.status(400).json({ message: 'amount_usd must be a positive number' });
+    }
+    if (amount > 100000) {
+      return res.status(400).json({ message: 'amount_usd too large' });
+    }
+
+    const entry = await AiCreditEntry.create({
+      tenant_id: tenant.id,
+      entry_type: 'topup',
+      amount_usd: Math.round(amount * 10000) / 10000,
+      note: String(req.body?.note || `Platform top-up by ${req.user?.email || 'platform_admin'}`).slice(0, 255),
+      created_by: req.user?.id || null,
+    });
+
+    let released = null;
+    try {
+      const { releaseCreditBlockedConversations } = require('../services/crmHandoffService');
+      released = await releaseCreditBlockedConversations(tenant.id);
+    } catch (e) {
+      console.warn('[platform] ai-credit topup release', e.message);
+    }
+
+    const wallet = await getWalletSummary(tenant.id);
+    return res.status(201).json({
+      tenant,
+      entry,
+      wallet,
+      released_conversations: released?.released || 0,
+    });
+  } catch (err) {
+    console.error('addTenantAiCreditTopup', err);
+    return res.status(500).json({ message: err.message || 'Server error' });
+  }
+};
+
+/** POST /platform/tenants/:id/ai-credits/set-balance  { balance_usd, note? } */
+const setTenantAiCreditBalance = async (req, res) => {
+  try {
+    const tenant = await Tenant.findByPk(req.params.id, { attributes: ['id', 'name', 'slug'] });
+    if (!tenant) return res.status(404).json({ message: 'Tenant not found' });
+
+    const target = Number(req.body?.balance_usd);
+    if (!Number.isFinite(target) || target < 0) {
+      return res.status(400).json({ message: 'balance_usd must be a non-negative number' });
+    }
+    if (target > 1000000) {
+      return res.status(400).json({ message: 'balance_usd too large' });
+    }
+
+    const current = await getWalletSummary(tenant.id);
+    const delta = Math.round((target - current.remaining) * 10000) / 10000;
+
+    const entry = await AiCreditEntry.create({
+      tenant_id: tenant.id,
+      entry_type: 'set_balance',
+      amount_usd: delta,
+      note: String(req.body?.note || `Platform synced balance to USD ${target}`).slice(0, 255),
+      created_by: req.user?.id || null,
+    });
+
+    let released = null;
+    try {
+      const { releaseCreditBlockedConversations } = require('../services/crmHandoffService');
+      released = await releaseCreditBlockedConversations(tenant.id);
+    } catch (e) {
+      console.warn('[platform] ai-credit set-balance release', e.message);
+    }
+
+    const wallet = await getWalletSummary(tenant.id);
+    return res.json({
+      tenant,
+      entry,
+      wallet,
+      previous_remaining: current.remaining,
+      released_conversations: released?.released || 0,
+    });
+  } catch (err) {
+    console.error('setTenantAiCreditBalance', err);
+    return res.status(500).json({ message: err.message || 'Server error' });
+  }
+};
+
 module.exports = {
   listTenants,
   createTenant,
@@ -2002,6 +2106,9 @@ module.exports = {
   updateTenantFeatures,
   impersonateTenant,
   quickStatusTenant,
+  getTenantAiCredits,
+  addTenantAiCreditTopup,
+  setTenantAiCreditBalance,
   platformStats,
   listSubscriptions,
   createSubscription,

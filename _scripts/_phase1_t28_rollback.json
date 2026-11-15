@@ -1,0 +1,66 @@
+{
+  "instructions": [
+    "Restore KB titles from before.kb_27_28[].title via update where tenant_id=28 and id in (27,28)",
+    "Restore service is_active from before.services[] where tenant_id=28",
+    "Auto-train articles: re-run autoTrainFromSalon(28) or restore body/version from before.auto_train_articles snapshot file",
+    "Never DELETE rows to rollback"
+  ],
+  "restore_kb": [
+    {
+      "id": 27,
+      "tenant_id": 28,
+      "title": "Auto-train (Google): haircut එකක කරගන න ක යක යනවද",
+      "priority": 72
+    },
+    {
+      "id": 28,
+      "tenant_id": 28,
+      "title": "Auto-train (Google): hi මට ක යන න ප ළ වන ද ඔය ලග ත ය න ද නට ත ය න සර ව ස ඇන ඩ මට හ ය ර කට එකක ද ගන න ඕන ත ය න ප රය සස ට ක ක යන න ප ළ වන ද",
+      "priority": 72
+    }
+  ],
+  "restore_services": [
+    {
+      "id": 172,
+      "tenant_id": 28,
+      "is_active": true,
+      "available_online": false
+    },
+    {
+      "id": 196,
+      "tenant_id": 28,
+      "is_active": true,
+      "available_online": true
+    },
+    {
+      "id": 228,
+      "tenant_id": 28,
+      "is_active": true,
+      "available_online": false
+    },
+    {
+      "id": 289,
+      "tenant_id": 28,
+      "is_active": true,
+      "available_online": true
+    },
+    {
+      "id": 302,
+      "tenant_id": 28,
+      "is_active": true,
+      "available_online": true
+    },
+    {
+      "id": 304,
+      "tenant_id": 28,
+      "is_active": true,
+      "available_online": true
+    },
+    {
+      "id": 306,
+      "tenant_id": 28,
+      "is_active": true,
+      "available_online": true
+    }
+  ]
+}

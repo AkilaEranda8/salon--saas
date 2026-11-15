@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { io } from 'socket.io-client';
 import toast from 'react-hot-toast';
 import api from '../../api/axios';
@@ -65,6 +65,7 @@ function DeliveryTicks({ status }) {
 export default function CrmInboxPage() {
   const { C } = usePageTheme();
   const { tenant, user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
   const tenantId = tenant?.id ?? user?.tenant_id ?? user?.tenantId ?? null;
 
   const [list, setList] = useState([]);
@@ -78,6 +79,7 @@ export default function CrmInboxPage() {
   const [unreadOnly, setUnreadOnly] = useState(false);
   const [search, setSearch] = useState('');
   const [live, setLive] = useState(false);
+  const deepLinkDone = useRef(false);
 
   const threadRef = useRef(null);
   const nearBottomRef = useRef(true);
@@ -124,6 +126,49 @@ export default function CrmInboxPage() {
     nearBottomRef.current = true;
     loadDetail(selectedId);
   }, [selectedId, loadDetail]);
+
+  /* Deep-link from Leads: ?conversation=ID or ?phone=9477… */
+  useEffect(() => {
+    if (deepLinkDone.current || loading) return;
+    const convQ = searchParams.get('conversation');
+    const phoneQ = searchParams.get('phone');
+    if (!convQ && !phoneQ) return;
+
+    const openById = (id) => {
+      if (!id) return false;
+      setSelectedId(Number(id));
+      deepLinkDone.current = true;
+      setSearchParams({}, { replace: true });
+      return true;
+    };
+
+    if (convQ && openById(convQ)) return;
+
+    if (phoneQ) {
+      const digits = String(phoneQ).replace(/\D/g, '');
+      setSearch(digits);
+      const match = list.find((c) => String(c.phone || '').replace(/\D/g, '').includes(digits));
+      if (match) {
+        openById(match.id);
+        return;
+      }
+      // Fetch by phone if not in first page
+      (async () => {
+        try {
+          const { data } = await api.get('/crm/conversations', { params: { phone: digits, limit: 5 } });
+          const rows = data.data || [];
+          if (rows[0]) openById(rows[0].id);
+          else {
+            deepLinkDone.current = true;
+            setSearchParams({}, { replace: true });
+            toast.error('No conversation found for that phone yet');
+          }
+        } catch {
+          deepLinkDone.current = true;
+        }
+      })();
+    }
+  }, [loading, list, searchParams, setSearchParams]);
 
   /* ── Real-time: Socket.io (crm:message / crm:conversation) ───────────── */
   useEffect(() => {

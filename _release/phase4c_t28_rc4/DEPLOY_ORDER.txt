@@ -1,0 +1,13 @@
+RC4 CANDIDATE — Sir/Madam customer respect tone
+Parent: phase4c_t28_rc3 (immutable; already deployed)
+Status: HOLD — do not deploy without explicit approval
+
+Deploy order (when approved):
+1. ai_engine/app/customer_respect.py (CREATE)
+2. ai_engine/app/main.py
+3. backend/services/crmAiMemoryService.js
+4. worker/services/crmAiMemoryService.js (mirror)
+5. Restart ai_engine, then backend + ai_crm_worker
+
+Do NOT overwrite RC2/RC3 release folders.
+Do NOT send WhatsApp until separately approved.

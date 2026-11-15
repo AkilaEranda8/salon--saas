@@ -1,0 +1,118 @@
+{
+  "rc_id": "phase4c_t28_rc4",
+  "created_utc": "2026-11-14T13:17:14.451500+00:00",
+  "parent_rc": "phase4c_t28_rc3",
+  "parent_immutable": true,
+  "tenant": 28,
+  "scope": "customer_respect_sir_madam",
+  "changed_from_rc3": [
+    "ai_engine/app/main.py",
+    "ai_engine/app/customer_respect.py",
+    "backend/services/crmAiMemoryService.js"
+  ],
+  "files": {
+    "ai_engine/app/main.py": {
+      "sha256": "a17474c5d2888380bc7d0df7d8305364d4b956d8a5c62d528a886e2ab475f490",
+      "sha16": "a17474c5d2888380",
+      "bytes": 98044,
+      "changed_from_rc3": true,
+      "deploy": true,
+      "rc3_sha16": "460d4c5d3a185268"
+    },
+    "ai_engine/app/customer_respect.py": {
+      "sha256": "26e2d24db460c12f1f58aeea80aa98549be371f53219153e6b706b0b5954d2ae",
+      "sha16": "26e2d24db460c12f",
+      "bytes": 9379,
+      "changed_from_rc3": true,
+      "deploy": true,
+      "rc3_sha16": null
+    },
+    "backend/services/crmAiMemoryService.js": {
+      "sha256": "8fbe1f9307f0c2295e0e57ac2424ab05b94f1d23890ecc2526a2c76766895cac",
+      "sha16": "8fbe1f9307f0c229",
+      "bytes": 9938,
+      "changed_from_rc3": true,
+      "deploy": true,
+      "rc3_sha16": "f63ea110f2129fa7"
+    },
+    "ai_engine/app/booking_flow.py": {
+      "sha256": "7d5e4d9f5ba17111f967cfff41349d19a79af3c378ae1ecc1f3bdeb93a16bbba",
+      "sha16": "7d5e4d9f5ba17111",
+      "bytes": 132290,
+      "changed_from_rc3": false,
+      "deploy": true,
+      "rc3_sha16": "7d5e4d9f5ba17111"
+    },
+    "ai_engine/app/pricing_resolver.py": {
+      "sha256": "27fa6ab72c6b5b6aa59f39e8c2814fa536fbabe97a339041485ae10e02974f44",
+      "sha16": "27fa6ab72c6b5b6a",
+      "bytes": 32889,
+      "changed_from_rc3": false,
+      "deploy": true,
+      "rc3_sha16": "27fa6ab72c6b5b6a"
+    },
+    "ai_engine/app/conversation_intelligence.py": {
+      "sha256": "b48ac76f091efb473e3a5c27929a966679852102ff9122b3e21fc874d862c823",
+      "sha16": "b48ac76f091efb47",
+      "bytes": 24981,
+      "changed_from_rc3": false,
+      "deploy": true,
+      "rc3_sha16": "b48ac76f091efb47"
+    },
+    "backend/services/crmInboundTurnService.js": {
+      "sha256": "ef40cdd7dd8b031af23b6e9592e6e5c90ea38d8b4a34a71705d174c79e2e99c3",
+      "sha16": "ef40cdd7dd8b031a",
+      "bytes": 37787,
+      "changed_from_rc3": false,
+      "deploy": true,
+      "rc3_sha16": "ef40cdd7dd8b031a"
+    },
+    "worker/services/crmAiMemoryService.js": {
+      "sha256": "8fbe1f9307f0c2295e0e57ac2424ab05b94f1d23890ecc2526a2c76766895cac",
+      "sha16": "8fbe1f9307f0c229",
+      "bytes": 9938,
+      "changed_from_rc3": true,
+      "deploy": true,
+      "mirrored_from": "backend/services/crmAiMemoryService.js",
+      "rc3_sha16": "f63ea110f2129fa7"
+    },
+    "worker/services/crmInboundTurnService.js": {
+      "sha256": "ef40cdd7dd8b031af23b6e9592e6e5c90ea38d8b4a34a71705d174c79e2e99c3",
+      "sha16": "ef40cdd7dd8b031a",
+      "bytes": 37787,
+      "changed_from_rc3": false,
+      "deploy": true,
+      "mirrored_from": "backend/services/crmInboundTurnService.js",
+      "rc3_sha16": "ef40cdd7dd8b031a"
+    },
+    "ai_engine/tests/test_customer_respect_sir_madam.py": {
+      "sha256": "efe8eabe1bc1fa67ce353248657668854cff6dd768676eb191c115b90e6f9ed3",
+      "sha16": "efe8eabe1bc1fa67",
+      "bytes": 5037,
+      "changed_from_rc3": true,
+      "deploy": false,
+      "note": "audit only",
+      "rc3_sha16": null
+    },
+    "ai_engine/tests/test_customer_intent_category_filtering.py": {
+      "sha256": "0bd3765fddf0972c0d48f83020bb34e562758123f54d0ebfb44b9b1703000d80",
+      "sha16": "0bd3765fddf0972c",
+      "bytes": 7050,
+      "changed_from_rc3": true,
+      "deploy": false,
+      "note": "audit only",
+      "rc3_sha16": "0bd3765fddf0972c"
+    }
+  },
+  "import_smoke": {
+    "ok": true,
+    "errors": []
+  },
+  "notes": [
+    "Mandatory Sir/Madam customer respect tone",
+    "RC3 already deployed (category filter) \u2014 this is next candidate RC4",
+    "Do not overwrite RC2/RC3 bundles",
+    "DO NOT DEPLOY without separate explicit approval",
+    "No WhatsApp / no prod restart until approved"
+  ]
+}

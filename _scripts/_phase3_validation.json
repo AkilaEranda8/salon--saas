@@ -1,0 +1,287 @@
+{
+  "tenant": 28,
+  "mode": "local_validation",
+  "pricing": {
+    "checks": [
+      {
+        "id": "unknown:Galaxy Plasma Treatment price kiyada?",
+        "pass": true,
+        "source": "clarify_unknown_named_service",
+        "amount": null
+      },
+      {
+        "id": "unknown:galaxy plasma treatment how much?",
+        "pass": true,
+        "source": "clarify_unknown_named_service",
+        "amount": null
+      },
+      {
+        "id": "unknown:Quantum Laser Facial mila?",
+        "pass": true,
+        "source": "clarify_unknown_named_service",
+        "amount": null
+      },
+      {
+        "id": "unknown:zorblax spa treatment cost",
+        "pass": true,
+        "source": "clarify_unknown_named_service",
+        "amount": null
+      },
+      {
+        "id": "unknown:neon silk facial deluxe how much",
+        "pass": true,
+        "source": "clarify_unknown_named_service",
+        "amount": null
+      },
+      {
+        "id": "unknown:custom invented service 99 treatment pri",
+        "pass": true,
+        "source": "clarify_unknown_named_service",
+        "amount": null
+      },
+      {
+        "id": "cat_list:facial",
+        "pass": true,
+        "kind": "list",
+        "cands": 8
+      },
+      {
+        "id": "cat_list:waxing",
+        "pass": true,
+        "kind": "list",
+        "cands": 8
+      },
+      {
+        "id": "cat_list:treatment",
+        "pass": true,
+        "kind": "list",
+        "cands": 8
+      },
+      {
+        "id": "exact_catalogue_coverage",
+        "pass": true,
+        "ok": 127,
+        "fail": 0
+      },
+      {
+        "id": "length_bra_strap_memory",
+        "pass": true,
+        "amount": 30000
+      },
+      {
+        "id": "length_without_memory_clarify",
+        "pass": true
+      },
+      {
+        "id": "duplicate_booster",
+        "pass": true,
+        "sid": 318,
+        "amount": 2000
+      },
+      {
+        "id": "price_enq:Facial mila?",
+        "pass": true
+      },
+      {
+        "id": "price_enq:facial how much?",
+        "pass": true
+      },
+      {
+        "id": "price_enq:ෆේෂල් මිල",
+        "pass": true
+      },
+      {
+        "id": "price_enq:Keratin kiyada?",
+        "pass": true
+      },
+      {
+        "id": "price_enq:කෙරටින් මිල කීයද",
+        "pass": true
+      }
+    ],
+    "failures": [],
+    "false_quote_count": 0,
+    "exact_fail_sample": [],
+    "pass": true
+  },
+  "booking": {
+    "steps": [
+      {
+        "name": "inquiry_no_book",
+        "pass": true,
+        "reply": null
+      },
+      {
+        "name": "start_book",
+        "msg": "book appointment",
+        "pass": true,
+        "reply": "Sure — let's book an appointment. Which service do you want?\nTell me which type you want (e.g. hair treatment, dressing, hair cut)."
+      },
+      {
+        "name": "pick_service",
+        "msg": "1",
+        "pass": true,
+        "reply": "What date? (today / tomorrow / heta / Monday) — or say *heta 10am* together."
+      },
+      {
+        "name": "topic_switch_pause_actions",
+        "pass": true
+      },
+      {
+        "name": "draft_preserved",
+        "pass": true
+      },
+      {
+        "name": "resume",
+        "msg": "continue",
+        "pass": true,
+        "reply": "Date eka kiyanna — *ade* / *heta* / Monday. *Heta 10am* wage ekama message ekenath puluwan!"
+      },
+      {
+        "name": "set_date",
+        "msg": "2026-11-15",
+        "pass": true,
+        "reply": "කරුණාකර තහවුරු කරන්න:\n• සේවාව: Booster Pack+\n• වේලාව: 2026-11-15 11:00\n• නම: QA Customer\n\nConfirm karanna *yes*, nathnam cancel karanna *no* kiyanna."
+      },
+      {
+        "name": "set_time",
+        "msg": "10:00",
+        "pass": true,
+        "reply": ""
+      },
+      {
+        "name": "cancel_backend_confirmed",
+        "pass": true
+      },
+      {
+        "name": "booking_failure_no_false_success",
+        "pass": true,
+        "booking": null
+      },
+      {
+        "name": "image_mid_book_pause",
+        "pass": true
+      }
+    ],
+    "failures": [],
+    "pass": true
+  },
+  "security": {
+    "checks": [
+      {
+        "id": "ci_tenant_ids_distinct",
+        "pass": true
+      },
+      {
+        "id": "memory_key_no_invent",
+        "pass": true
+      },
+      {
+        "id": "session_key_tenant_scoped",
+        "pass": true
+      },
+      {
+        "id": "memory_js_filters_tenant",
+        "pass": true
+      },
+      {
+        "id": "provider_unavailable_path",
+        "pass": true
+      },
+      {
+        "id": "soft_provider_preserves_question",
+        "pass": true
+      },
+      {
+        "id": "yield_to_llm_exists",
+        "pass": true
+      }
+    ],
+    "pass": true
+  },
+  "failure_recovery": {
+    "checks": [
+      {
+        "id": "pricing_catalogue_fail_closed",
+        "pass": true
+      },
+      {
+        "id": "provider_handoff_on_down",
+        "pass": true
+      },
+      {
+        "id": "gemini_http_timeouts",
+        "pass": true
+      },
+      {
+        "id": "pause_no_duplicate_book",
+        "pass": true
+      }
+    ],
+    "pass": true
+  },
+  "real_gemini": {
+    "ran": false,
+    "reason": "No Gemini API key in process env — real-provider tests SKIPPED",
+    "pass": null,
+    "scenarios": []
+  },
+  "regression": {
+    "pytest_tail": [
+      "........................................................................ [ 89%]",
+      ".................................................s                       [100%]",
+      "481 passed, 1 skipped in 2.17s"
+    ],
+    "pytest_ok": true,
+    "behaviour": {
+      "passed": 17,
+      "total": 17,
+      "score_pct": 100.0
+    },
+    "independent": {
+      "scenarios": 12,
+      "scenarios_passed": 12,
+      "scenarios_failed": 0,
+      "step_failures": 0,
+      "avg_relevance_score": 0.904,
+      "architecture_checks_passed": 7,
+      "architecture_checks_total": 8,
+      "pytest_tail": [
+        "........................................................................ [ 89%]",
+        ".................................................s                       [100%]",
+        "481 passed, 1 skipped in 2.19s"
+      ],
+      "behaviour": {
+        "passed": 17,
+        "total": 17,
+        "score_pct": 100.0
+      }
+    }
+  },
+  "gaps": [
+    {
+      "id": "A3_regex_intent",
+      "severity": "medium",
+      "note": "Intent classification remains heuristic/regex; Gemini is response brain, not NLU classifier."
+    },
+    {
+      "id": "prod_not_deployed",
+      "severity": "high",
+      "note": "Phase 2+/P0–P1 code is local only; production still on older binaries until explicit deploy."
+    },
+    {
+      "id": "real_gemini_env",
+      "severity": "high",
+      "note": "No Gemini API key in process env — real-provider tests SKIPPED"
+    },
+    {
+      "id": "live_wa_smoke",
+      "severity": "high",
+      "note": "No real customer WhatsApp messages sent (authorization required)."
+    }
+  ],
+  "blockers": [
+    "real_gemini_not_run"
+  ],
+  "verdict": "READY WITH CONDITIONS"
+}

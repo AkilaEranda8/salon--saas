@@ -21,6 +21,57 @@ const TURN_PENDING = 'pending_ai';
 const TURN_PROCESSING = 'processing';
 const TURN_COMPLETED = 'completed';
 
+/** Never leave the customer without a WhatsApp reply. */
+function looksSinglishOrSi(text) {
+  const t = String(text || '');
+  return /[\u0D80-\u0DFF]/.test(t) || /\b(?:oni|ona|hari|kohomada|mila|mata|ehenam|kiyanna|puluwan)\b/i.test(t);
+}
+
+/** Customer is correcting / asking something specific — never replace with generic welcome. */
+function isSubstantialCustomerAsk(text) {
+  const t = String(text || '');
+  if (!t.trim()) return false;
+  if (/\[Customer sent a (?:photo|voice note)\]/i.test(t)) return true;
+  if (/\bahana\s+deta\b|\bnemei\b|\breply\s+denn|\bmama\s+ahuwe|\beka\s+nemei|\boya\s+therum|\bquestion\s+ekata|\bwrong\s+answer|\bnot\s+what\s+i\s+asked/i.test(t)) {
+    return true;
+  }
+  if (/\?|kiyada|mila|gana|price|cost|how\s+much|කීයද|ගාන|details?|keratin|facial|waxing|booking|appointment/i.test(t)) {
+    return true;
+  }
+  // Longer than a greeting / yes-no
+  const words = t.trim().split(/\s+/).filter(Boolean);
+  return words.length >= 4;
+}
+
+function correctionFallbackText(message) {
+  if (looksSinglishOrSi(message)) {
+    return 'Sorry — oyage question eka miss una. Mokakda ahuwe? Mata eka hariyata answer karannam.';
+  }
+  return 'Sorry I missed that — what were you asking? I’ll answer that directly.';
+}
+
+function alwaysReplyText({ message, brand }) {
+  const b = brand || 'the salon';
+  // Corrections / substantial asks: never the generic "say book" bubble
+  if (/\bahana\s+deta\b|\bnemei\b|\breply\s+denn|\bmama\s+ahuwe|\beka\s+nemei/i.test(String(message || ''))) {
+    return correctionFallbackText(message);
+  }
+  if (looksSinglishOrSi(message)) {
+    return `හරි! ${b} එකෙන් උදව් කරන්නම් — *book*, මිල, හෝ hours ගැන කියන්න.`;
+  }
+  return `Got it! How can I help at ${b} — say *book*, ask prices, or hours.`;
+}
+
+const {
+  HANDOFF_STATUSES,
+  HANDOFF_ACK_EPISODE_TTL_SEC,
+  HANDOFF_SOFT_BUMP_TTL_SEC,
+  shouldAssistDuringHandoff,
+  shouldAutoResumeHandoff,
+  handoffAckText,
+  handoffSoftBumpText,
+} = require('./crmHandoffInboundPolicy');
+
 // \b doesn't work after Sinhala letters, so use a letter lookahead instead.
 const OPT_OUT_RE = /^(stop|unsubscribe|එපා|නවත්වන්න)(?![\p{L}\p{M}])/iu;
 
@@ -71,9 +122,29 @@ async function processInboundAiTurn(jobData) {
   const phone = String(jobData.phone || '');
   let message = String(jobData.message || '').trim();
   const waMessageId = jobData.waMessageId || jobData.wa_message_id || null;
+  const images = Array.isArray(jobData.images)
+    ? jobData.images
+      .filter((img) => img && typeof img === 'object' && String(img.dataBase64 || '').length > 32)
+      .slice(0, 3)
+      .map((img) => ({
+        mimeType: String(img.mimeType || 'image/jpeg').split(';')[0] || 'image/jpeg',
+        dataBase64: String(img.dataBase64),
+      }))
+    : [];
+  const audioIn = jobData.audio && typeof jobData.audio === 'object'
+    ? jobData.audio
+    : null;
+  const hasAudio = !!(audioIn && String(audioIn.dataBase64 || '').length > 64);
 
-  if (!tenantId || !phone || !message) {
-    throw new Error('tenantId, phone, and message are required');
+  if (!message && images.length) {
+    message = '[Customer sent a photo]';
+  }
+  if ((!message || message === '[Customer sent a voice note]') && hasAudio) {
+    message = '[Customer sent a voice note]';
+  }
+
+  if (!tenantId || !phone || (!message && !images.length && !hasAudio)) {
+    throw new Error('tenantId, phone, and message (or images/audio) are required');
   }
 
   const tenant = await Tenant.findByPk(tenantId);
@@ -176,41 +247,137 @@ async function processInboundAiTurn(jobData) {
     }
   }
 
-  if (['queued', 'human_active'].includes(conversation.status) && !resumeInbound) {
-    try {
-      await appendMessage({
-        tenantId,
-        conversationId: conversation.id,
-        direction: 'inbound',
-        senderType: 'customer',
-        body: message,
-        waMessageId,
-        deliveryStatus: 'received',
-        meta: { skipped_ai: true, reason: conversation.status, turn_state: TURN_COMPLETED },
-      });
-    } catch (e) {
-      if (isUniqueViolation(e)) {
-        return { skipped: true, reason: 'duplicate_wa_message' };
-      }
-      throw e;
-    }
-    // AI stays off, but staff must not miss new customer messages
+  // Handoff pending (queued) or human takeover (human_active):
+  // - Always persist + notify staff (never silently drop).
+  // - AI may answer FAQ / check-ins / substantial asks while KEEPING handoff.
+  // - Soft failures (provider_unavailable) auto-resume AI on next message.
+  // - Do NOT spam the same generic teammate ack; never leave zero customer reply.
+  let preserveHandoffStatus = null;
+  if (
+    conversation.status === 'queued'
+    && shouldAutoResumeHandoff(conversation.handoff_reason)
+    && !resumeInbound
+  ) {
+    await conversation.update({ status: 'ai_resume', handoff_reason: null });
+    conversation.status = 'ai_resume';
+    jobData._autoResumedHandoff = true;
+  }
+
+  if (HANDOFF_STATUSES.includes(conversation.status) && !resumeInbound) {
+    const handoffStatus = conversation.status;
+    const assist = shouldAssistDuringHandoff(message, handoffStatus);
+
+    // Staff must always see new customer messages
     try {
       const { notifyStaffInboundWhileHandoff } = require('./crmHandoffService');
       await notifyStaffInboundWhileHandoff({
         tenantId,
         conversationId: conversation.id,
-        status: conversation.status,
+        status: handoffStatus,
       });
     } catch (e) {
       console.warn('[inbound] handoff re-notify', e.message);
     }
-    return {
-      skipped: true,
-      reason: conversation.status,
-      conversationId: conversation.id,
-      leadId: lead.id,
-    };
+
+    let forceAssistAfterSilentRisk = false;
+    if (!assist) {
+      let customerGotReply = false;
+      // Episode ack once; if already sent, soft bump. If bump cooldown blocks,
+      // force AI assist (queued) so the customer is never left with zero reply.
+      try {
+        const redis = getRedis();
+        const ackKey = cacheKey(tenantId, 'crm', 'handoff_ack_episode', String(conversation.id));
+        const allowAck = !redis || !!(await redis.set(ackKey, '1', 'EX', HANDOFF_ACK_EPISODE_TTL_SEC, 'NX'));
+        if (allowAck) {
+          await sendAndLog({
+            tenantId,
+            phone: lead.phone || phone,
+            text: handoffAckText(message),
+            senderType: 'bot',
+            conversationId: conversation.id,
+            replyJid: jobData.replyJid || jobData.reply_jid || null,
+            meta: {
+              source: 'handoff_ack',
+              event_type: 'handoff_ack',
+              episode: true,
+              replyJid: jobData.replyJid || jobData.reply_jid || null,
+            },
+          });
+          customerGotReply = true;
+        } else {
+          const bumpKey = cacheKey(tenantId, 'crm', 'handoff_soft_bump', String(conversation.id));
+          const allowBump = !redis || !!(await redis.set(bumpKey, '1', 'EX', HANDOFF_SOFT_BUMP_TTL_SEC, 'NX'));
+          if (allowBump) {
+            await sendAndLog({
+              tenantId,
+              phone: lead.phone || phone,
+              text: handoffSoftBumpText(message),
+              senderType: 'bot',
+              conversationId: conversation.id,
+              replyJid: jobData.replyJid || jobData.reply_jid || null,
+              meta: {
+                source: 'handoff_soft_bump',
+                event_type: 'handoff_soft_bump',
+                replyJid: jobData.replyJid || jobData.reply_jid || null,
+              },
+            });
+            customerGotReply = true;
+          }
+        }
+      } catch (e) {
+        console.warn('[inbound] handoff ack/bump', e.message);
+      }
+
+      if (!customerGotReply && handoffStatus === 'queued') {
+        // Never silent while queued — fall through to AI assist
+        forceAssistAfterSilentRisk = true;
+      } else {
+        try {
+          await appendMessage({
+            tenantId,
+            conversationId: conversation.id,
+            direction: 'inbound',
+            senderType: 'customer',
+            body: message,
+            waMessageId,
+            deliveryStatus: 'received',
+            meta: {
+              skipped_ai: true,
+              reason: handoffStatus,
+              turn_state: TURN_COMPLETED,
+              handoff_assist: false,
+              handoff_ack_or_bump: customerGotReply,
+            },
+          });
+        } catch (e) {
+          if (isUniqueViolation(e)) {
+            return { skipped: true, reason: 'duplicate_wa_message' };
+          }
+          throw e;
+        }
+        return {
+          skipped: true,
+          reason: handoffStatus,
+          conversationId: conversation.id,
+          leadId: lead.id,
+          replyText: customerGotReply ? 'handoff_staff_only' : 'handoff_silent_avoided',
+          handoff_assist: false,
+        };
+      }
+    }
+
+    // AI assist while handoff stays active — fall through to normal turn path
+    if (forceAssistAfterSilentRisk) {
+      jobData._forceAssistSilentRisk = true;
+    }
+    preserveHandoffStatus = handoffStatus;
+    jobData._preserveHandoffStatus = handoffStatus;
+    jobData._handoffAssist = true;
+  } else if (HANDOFF_STATUSES.includes(conversation.status) && resumeInbound) {
+    // Crash-resume mid-turn must not flip queued/human_active back to ai_active
+    preserveHandoffStatus = conversation.status;
+    jobData._preserveHandoffStatus = conversation.status;
+    jobData._handoffAssist = true;
   }
 
   let inboundMsg = resumeInbound;
@@ -336,6 +503,55 @@ async function processInboundAiTurn(jobData) {
   const settings = await loadAiSettings(tenantId);
   const brand = tenant.brand_name || tenant.name || 'Salon';
 
+  // Voice note → text (Gemini) so booking flow + LLM both understand the customer
+  let voiceTranscript = null;
+  if (hasAudio) {
+    try {
+      const { transcribeAudio } = require('./aiEngineClient');
+      const tr = await transcribeAudio({
+        tenantId,
+        mimeType: String(audioIn.mimeType || 'audio/ogg').split(';')[0] || 'audio/ogg',
+        dataBase64: String(audioIn.dataBase64),
+        hint: 'WhatsApp voice note from a salon customer (Sinhala / Singlish / English / Tamil possible)',
+      });
+      voiceTranscript = String(tr?.text || tr?.transcript || '').trim();
+      if (voiceTranscript) {
+        message = voiceTranscript;
+        console.log('[inbound] voice transcribed', {
+          tenantId,
+          chars: voiceTranscript.length,
+          preview: voiceTranscript.slice(0, 80),
+        });
+        if (inboundMsg) {
+          await inboundMsg.update({
+            body: `🎤 ${voiceTranscript.slice(0, 1900)}`,
+            meta: {
+              ...(inboundMsg.meta || {}),
+              voice_transcript: voiceTranscript.slice(0, 2000),
+              voice_mime: audioIn.mimeType || null,
+            },
+          }).catch(() => {});
+        }
+      } else {
+        message = message || 'I sent a voice note but it could not be understood — please reply in text.';
+      }
+    } catch (ve) {
+      console.warn('[inbound] voice transcribe', ve.message);
+      message = message && message !== '[Customer sent a voice note]'
+        ? message
+        : (
+          'Customer sent a WhatsApp voice note but transcription failed. '
+          + 'Reply briefly asking them to type the same request in text (Sinhala/Singlish/English OK).'
+        );
+    }
+  } else if (jobData.audioDownloadFailed || /voice note but it could not be downloaded/i.test(message)) {
+    // Download failed upstream — still run a turn so the customer is not left on read.
+    message = (
+      'Customer tried to send a voice note but the audio could not be downloaded. '
+      + 'Apologize briefly and ask them to type their question.'
+    );
+  }
+
   let memoryCtx = null;
   try {
     const { loadMemory, memoryToContext } = require('./crmAiMemoryService');
@@ -355,7 +571,7 @@ async function processInboundAiTurn(jobData) {
     const hist = await CrmMessage.findAll({
       where: { tenant_id: tenantId, conversation_id: conversation.id },
       order: [['id', 'DESC']],
-      limit: 16,
+      limit: 8,
       attributes: ['id', 'direction', 'sender_type', 'body'],
     });
     recentMessages = hist
@@ -363,7 +579,7 @@ async function processInboundAiTurn(jobData) {
       .reverse()
       .map((m) => ({
         role: m.direction === 'inbound' ? 'user' : 'assistant',
-        content: String(m.body || '').slice(0, 500),
+        content: String(m.body || '').slice(0, 280),
       }))
       .filter((m) => m.content);
   } catch (e) {
@@ -374,10 +590,42 @@ async function processInboundAiTurn(jobData) {
   try {
     const { hasTenantFeature } = require('../utils/tenantFeatures');
     if (hasTenantFeature(tenant, 'ai_knowledge_base')) {
-      const { searchKnowledge, formatSnippetsForPrompt } = require('./knowledgeService');
-      const hits = await searchKnowledge(tenantId, message, { limit: 4 });
-      if (hits.length) {
-        kbHints = { hits, prompt_block: formatSnippetsForPrompt(hits) };
+      const {
+        searchKnowledge,
+        formatSnippetsForPrompt,
+        listArticles,
+      } = require('./knowledgeService');
+      // Keep KB compact — large prompts slow Gemini WhatsApp replies
+      const hits = await searchKnowledge(tenantId, message, { limit: 5 });
+      const seen = new Set(hits.map((h) => Number(h.id)));
+      let priorityRows = [];
+      try {
+        const all = await listArticles(tenantId, { activeOnly: true });
+        priorityRows = all
+          .sort((a, b) => (Number(b.priority) || 0) - (Number(a.priority) || 0))
+          .slice(0, 4)
+          .map((r) => {
+            const j = typeof r.toJSON === 'function' ? r.toJSON() : r;
+            return {
+              id: j.id,
+              title: j.title,
+              category: j.category,
+              body: String(j.body || '').slice(0, 700),
+              tags: j.tags,
+              locale: j.locale,
+              priority: j.priority,
+              score: (Number(j.priority) || 0) * 3,
+            };
+          })
+          .filter((h) => !seen.has(Number(h.id)));
+      } catch (pe) {
+        console.warn('[inbound] kb priority pad', pe.message);
+      }
+      const merged = [...hits, ...priorityRows]
+        .map((h) => ({ ...h, body: String(h.body || '').slice(0, 700) }))
+        .slice(0, 6);
+      if (merged.length) {
+        kbHints = { hits: merged, prompt_block: formatSnippetsForPrompt(merged) };
       }
     }
   } catch (e) {
@@ -393,6 +641,31 @@ async function processInboundAiTurn(jobData) {
     console.warn('[inbound] rules load', e.message);
   }
 
+  // Show WhatsApp "typing…" via API process (Baileys socket lives there, not in worker)
+  try {
+    const secret = process.env.AI_ENGINE_SERVICE_SECRET || process.env.CRM_SERVICE_SECRET || '';
+    const base = (process.env.BACKEND_INTERNAL_URL || 'http://backend:5000').replace(/\/$/, '');
+    const rj = jobData.replyJid || jobData.reply_jid || inboundMsg?.meta?.reply_jid || null;
+    if (secret) {
+      fetch(`${base}/api/crm/internal/whatsapp-composing`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Service-Key': secret,
+          'X-Tenant-Id': String(tenantId),
+        },
+        body: JSON.stringify({
+          tenantId,
+          phone: lead.phone || phone,
+          replyJid: rj,
+          conversation_id: conversation.id,
+        }),
+      }).catch(() => {});
+    }
+  } catch (te) {
+    console.warn('[inbound] composing', te.message);
+  }
+
   let turn;
   try {
     turn = await runTurn({
@@ -406,72 +679,115 @@ async function processInboundAiTurn(jobData) {
       kbHints,
       rulesBlock: rulesBlock || undefined,
       recentMessages,
+      images: images.length ? images : undefined,
       customerContext: {
         name: lead.name || jobData.name || null,
         leadId: lead.id,
         customerId: lead.customer_id || null,
         memory: memoryCtx || undefined,
+        handoffPending: !!(preserveHandoffStatus || jobData._preserveHandoffStatus),
+        handoffStatus: preserveHandoffStatus || jobData._preserveHandoffStatus || null,
       },
     });
   } catch (err) {
-    const apology =
-      'Sorry — our assistant is temporarily unavailable. A team member will help you shortly.';
+    const softReply = alwaysReplyText({ message, brand });
     let apologyMsg = null;
     try {
       apologyMsg = await appendMessage({
         tenantId,
         conversationId: conversation.id,
         direction: 'outbound',
-        senderType: 'system',
-        body: apology,
+        senderType: 'ai',
+        body: softReply,
         deliveryStatus: 'pending',
         meta: {
           error: err.message,
+          soft_fallback: true,
+          always_reply: true,
           inbound_message_id: inboundMsg?.id,
           inbound_wa_message_id: waMessageId,
         },
       });
     } catch (appendErr) {
-      console.error('[inbound] apology append failed', appendErr.message);
+      console.error('[inbound] soft fallback append failed', appendErr.message);
     }
 
     // Keep AI channel open on provider/transient errors so the next customer
     // message retries after keys/quota are fixed (do not soft-lock as queued).
-    const transient = /429|quota|rate|timeout|ECONN|fetch failed|503|502/i.test(String(err.message || ''));
+    // Exception: handoff-assist turns must remain queued/human_active.
+    const transient = /429|quota|rate|timeout|ECONN|fetch failed|503|502|unavailable|high demand/i.test(String(err.message || ''));
+    const keepHandoff = preserveHandoffStatus || jobData._preserveHandoffStatus || null;
     await conversation.update({
-      status: transient ? 'ai_active' : 'queued',
-      handoff_reason: transient ? null : `ai_error: ${err.message}`.slice(0, 255),
+      status: keepHandoff || 'ai_active',
+      handoff_reason: keepHandoff
+        ? (conversation.handoff_reason || null)
+        : (transient ? null : `ai_error: ${err.message}`.slice(0, 255)),
       ai_turn_state: TURN_COMPLETED,
     });
+    if (inboundMsg) {
+      await inboundMsg.update({
+        meta: { ...(inboundMsg.meta || {}), turn_state: TURN_COMPLETED, error: err.message },
+      }).catch(() => {});
+    }
 
+    const rj = jobData.replyJid || jobData.reply_jid || inboundMsg?.meta?.reply_jid || null;
     if (apologyMsg) {
       const outJobId = waMessageId ? `wa-out-err-${tenantId}-${waMessageId}` : undefined;
-      await enqueue(QUEUE_NAMES.WA_OUTBOUND, {
+      const jobOk = await enqueue(QUEUE_NAMES.WA_OUTBOUND, {
         tenant_id: tenantId,
         conversation_id: conversation.id,
         phone: lead.phone || phone,
-        message: apology,
+        message: softReply,
         crm_message_id: apologyMsg.id,
-        sender_type: 'system',
-        replyJid: jobData.replyJid || jobData.reply_jid || inboundMsg?.meta?.reply_jid || null,
-      }, { name: 'ai-error-apology', jobId: outJobId }).catch((e) => {
-        console.error('[inbound] apology enqueue failed', e.message);
+        sender_type: 'ai',
+        replyJid: rj,
+      }, { name: 'ai-error-soft', jobId: outJobId }).catch((e) => {
+        console.error('[inbound] soft fallback enqueue failed', e.message);
+        return null;
       });
+      if (!jobOk) {
+        await sendAndLog({
+          tenantId,
+          phone: lead.phone || phone,
+          text: softReply,
+          senderType: 'ai',
+          conversationId: conversation.id,
+          replyJid: rj,
+          meta: { source: 'always_reply_direct', event_type: 'always_reply' },
+        }).catch((e) => console.error('[inbound] always reply direct', e.message));
+      }
     }
 
-    emitConversationChanged(tenantId, conversation.id, { reason: 'ai_error' });
+    emitConversationChanged(tenantId, conversation.id, { reason: 'ai_soft_fallback' });
     return {
       skipped: false,
-      failed: true,
-      unrecoverable: true,
+      failed: false,
+      unrecoverable: false,
+      soft_fallback: true,
       error: err.message,
       conversationId: conversation.id,
       leadId: lead.id,
-      replyText: apology,
+      replyText: softReply,
     };
   }
 
-  const replyText = turn.replyText || turn.reply_text || '';
+  let replyText = String(turn.replyText || turn.reply_text || '').trim();
+  // CRITICAL: customer must always get a reply — never silence on empty model/booking text
+  if (!replyText) {
+    replyText = isSubstantialCustomerAsk(message)
+      ? correctionFallbackText(message)
+      : alwaysReplyText({ message, brand });
+    turn.actions = [
+      ...(turn.actions || []),
+      {
+        tool: isSubstantialCustomerAsk(message) ? 'always_reply_substantial_fill' : 'always_reply_fill',
+        ok: true,
+      },
+    ];
+  }
+  const quickReplies = Array.isArray(turn.quickReplies)
+    ? turn.quickReplies.filter((b) => b && (b.text || b.id)).slice(0, 3)
+    : [];
   let outboundMsg = null;
 
   // Avoid duplicate AI outbound on resume
@@ -488,23 +804,22 @@ async function processInboundAiTurn(jobData) {
     };
   }
 
-  if (replyText) {
-    outboundMsg = await appendMessage({
-      tenantId,
-      conversationId: conversation.id,
-      direction: 'outbound',
-      senderType: 'ai',
-      body: replyText,
-      deliveryStatus: 'pending',
-      meta: {
-        actions: turn.actions || [],
-        usage: turn.usage || null,
-        booking: turn.booking || null,
-        inbound_wa_message_id: waMessageId,
-        turn_state: TURN_COMPLETED,
-      },
-    });
-  }
+  outboundMsg = await appendMessage({
+    tenantId,
+    conversationId: conversation.id,
+    direction: 'outbound',
+    senderType: 'ai',
+    body: replyText,
+    deliveryStatus: 'pending',
+    meta: {
+      actions: turn.actions || [],
+      usage: turn.usage || null,
+      booking: turn.booking || null,
+      quick_replies: quickReplies.length ? quickReplies : undefined,
+      inbound_wa_message_id: waMessageId,
+      turn_state: TURN_COMPLETED,
+    },
+  });
 
   await markTurnState(conversation, TURN_COMPLETED, waMessageId);
   if (inboundMsg) {
@@ -583,9 +898,33 @@ async function processInboundAiTurn(jobData) {
     } catch (e) {
       console.warn('[inbound] booking persist', e.message);
     }
-  } else if (turn.actions?.some((a) => a.tool === 'list_services' || a.tool === 'book_appointment')) {
-    if (['new', 'conversation', 'qualified'].includes(lead.stage)) {
-      await lead.update({ stage: lead.stage === 'new' ? 'interested' : 'booking_requested' }).catch(() => {});
+  } else {
+    // Advanced chat: sync CRM lead stage from booking state machine
+    try {
+      const { stageFromFlowState } = require('./crmAiMemoryService');
+      const flowAct = [...(turn.actions || [])].reverse().find((a) => a?.tool === 'booking_flow_state' && a.ok);
+      const nextStage = stageFromFlowState(
+        flowAct?.state || turn.flowState,
+        turn.booking?.status,
+      );
+      const rank = {
+        new: 0,
+        conversation: 1,
+        interested: 2,
+        qualified: 3,
+        booking_requested: 4,
+        booking_confirmed: 5,
+      };
+      if (nextStage && (rank[nextStage] || 0) > (rank[lead.stage] || 0)) {
+        await lead.update({ stage: nextStage }).catch(() => {});
+      } else if (
+        turn.actions?.some((a) => a.tool === 'list_services' || a.tool === 'book_appointment' || a.tool === 'list_staff')
+        && ['new', 'conversation', 'qualified'].includes(lead.stage)
+      ) {
+        await lead.update({ stage: lead.stage === 'new' ? 'interested' : 'booking_requested' }).catch(() => {});
+      }
+    } catch (stageErr) {
+      console.warn('[inbound] stage sync', stageErr.message);
     }
   }
 
@@ -604,7 +943,39 @@ async function processInboundAiTurn(jobData) {
     console.warn('[inbound] memory upsert', e.message);
   }
 
-  if (turn.handoff) {
+  // Google → auto-train KB + learn how we talk (async, never block the customer reply)
+  try {
+    const { maybeAutoTrainFromTurn } = require('./autoTrainFromGoogle');
+    setImmediate(() => {
+      maybeAutoTrainFromTurn({
+        tenantId,
+        message,
+        replyText,
+        turn,
+        brand,
+      }).catch((e) => console.warn('[inbound] google auto-train', e.message));
+    });
+  } catch (e) {
+    console.warn('[inbound] google auto-train schedule', e.message);
+  }
+
+  const keepHandoff = preserveHandoffStatus || jobData._preserveHandoffStatus || null;
+  if (keepHandoff) {
+    // AI answered during handoff — never clear queued/human_active
+    await conversation.update({
+      status: keepHandoff,
+      handoff_reason: conversation.handoff_reason
+        || (turn.handoff ? String(turn.handoff.reason || 'ai_handoff').slice(0, 255) : null),
+    });
+    if (turn.handoff) {
+      await enqueue(QUEUE_NAMES.HANDOFF, {
+        tenant_id: tenantId,
+        conversation_id: conversation.id,
+        reason: turn.handoff.reason || 'ai_handoff',
+        kind: 'handoff_assist_still_needed',
+      }).catch(() => {});
+    }
+  } else if (turn.handoff) {
     await conversation.update({
       status: 'queued',
       handoff_reason: String(turn.handoff.reason || 'ai_handoff').slice(0, 255),
@@ -619,8 +990,7 @@ async function processInboundAiTurn(jobData) {
   }
 
   if (turn.usage) {
-    const usageJobId = waMessageId ? `ai-usage-${tenantId}-${waMessageId}` : undefined;
-    await enqueue(QUEUE_NAMES.AI_USAGE, {
+    const usagePayload = {
       tenant_id: tenantId,
       conversation_id: conversation.id,
       provider: turn.usage.provider,
@@ -629,8 +999,19 @@ async function processInboundAiTurn(jobData) {
       completion_tokens: turn.usage.completionTokens || turn.usage.completion_tokens || 0,
       latency_ms: turn.usage.latencyMs || turn.usage.latency_ms || null,
       purpose: 'whatsapp_turn',
-      wa_message_id: waMessageId,
-    }, { name: 'usage', jobId: usageJobId });
+    };
+    // Record inline so cost KPIs stay correct even if the usage worker lags
+    try {
+      const { recordAiUsage } = require('./aiUsageCost');
+      await recordAiUsage(usagePayload);
+    } catch (e) {
+      console.warn('[inbound] inline ai usage', e.message);
+      const usageJobId = waMessageId ? `ai-usage-${tenantId}-${waMessageId}` : undefined;
+      await enqueue(QUEUE_NAMES.AI_USAGE, {
+        ...usagePayload,
+        wa_message_id: waMessageId,
+      }, { name: 'usage', jobId: usageJobId }).catch(() => {});
+    }
   }
 
   if (replyText && !priorOut) {
@@ -658,23 +1039,83 @@ async function processInboundAiTurn(jobData) {
       }
     }
 
+    const rj = jobData.replyJid || jobData.reply_jid || inboundMsg?.meta?.reply_jid || null;
+    // If AI repeated the same bubble for a NEW customer message, still reply —
+    // never leave them silent (skipped_dup was causing empty WhatsApp threads).
+    let sendText = replyText;
+    let sendButtons = quickReplies;
     if (tooSoon) {
-      console.warn('[inbound] skip duplicate outbound enqueue', { conversationId: conversation.id });
-      if (outboundMsg) {
-        await outboundMsg.update({ delivery_status: 'skipped_dup' }).catch(() => {});
+      // Never replace a real answer to a substantial/correction ask with generic welcome
+      if (isSubstantialCustomerAsk(message)) {
+        console.warn('[inbound] dup body — keeping original reply for substantial ask', {
+          conversationId: conversation.id,
+        });
+        sendText = replyText;
+      } else {
+        console.warn('[inbound] dup body — sending short ack instead', { conversationId: conversation.id });
+        sendText = alwaysReplyText({ message, brand });
+        sendButtons = [];
+        if (outboundMsg) {
+          await outboundMsg.update({
+            body: sendText,
+            delivery_status: 'pending',
+            meta: { ...(outboundMsg.meta || {}), deduped_ack: true, always_reply: true },
+          }).catch(() => {});
+        }
       }
-    } else {
-      const outJobId = waMessageId ? `wa-out-${tenantId}-${waMessageId}` : undefined;
-      await enqueue(QUEUE_NAMES.WA_OUTBOUND, {
-        tenant_id: tenantId,
-        conversation_id: conversation.id,
-        phone: lead.phone || phone,
-        message: replyText,
-        crm_message_id: outboundMsg?.id || null,
-        sender_type: 'ai',
-        replyJid: jobData.replyJid || jobData.reply_jid || inboundMsg?.meta?.reply_jid || null,
-      }, { name: 'ai-reply', jobId: outJobId });
     }
+    const outJobId = waMessageId ? `wa-out-${tenantId}-${waMessageId}` : undefined;
+    const jobOk = await enqueue(QUEUE_NAMES.WA_OUTBOUND, {
+      tenant_id: tenantId,
+      conversation_id: conversation.id,
+      phone: lead.phone || phone,
+      message: sendText,
+      crm_message_id: outboundMsg?.id || null,
+      sender_type: 'ai',
+      replyJid: rj,
+      buttons: sendButtons.length ? sendButtons : undefined,
+      footer: sendButtons.length ? 'Tap a choice' : undefined,
+    }, { name: 'ai-reply', jobId: outJobId }).catch((e) => {
+      console.error('[inbound] outbound enqueue failed', e.message);
+      return null;
+    });
+    if (!jobOk) {
+      await sendAndLog({
+        tenantId,
+        phone: lead.phone || phone,
+        text: sendText,
+        senderType: 'ai',
+        conversationId: conversation.id,
+        replyJid: rj,
+        meta: {
+          source: 'always_reply_direct',
+          event_type: 'always_reply',
+          inbound_wa_message_id: waMessageId,
+          buttons: sendButtons.length ? sendButtons : undefined,
+        },
+      }).catch((e) => console.error('[inbound] always reply direct', e.message));
+    }
+  }
+
+  // Abandoned chat nudge — if mid-booking / interested and customer goes quiet, ping after 2h
+  try {
+    const flowAct = [...(turn.actions || [])].reverse().find((a) => a?.tool === 'booking_flow_state' && a.ok);
+    const midFlow = ['await_service', 'await_date', 'await_time', 'await_name', 'await_confirm', 'await_staff']
+      .includes(String(flowAct?.state || turn.flowState || ''));
+    const bookingDone = turn.booking?.status === 'confirmed';
+    if (!turn.handoff && !bookingDone && (midFlow || ['interested', 'qualified', 'booking_requested', 'conversation'].includes(lead.stage))) {
+      const { scheduleChatAbandonedNudge } = require('./crmReminderService');
+      await scheduleChatAbandonedNudge({
+        tenantId,
+        conversationId: conversation.id,
+        leadId: lead.id,
+        phone: lead.phone || phone,
+        replyJid: jobData.replyJid || jobData.reply_jid || inboundMsg?.meta?.reply_jid || null,
+        lang: lead.locale || null,
+      });
+    }
+  } catch (abErr) {
+    console.warn('[inbound] abandon schedule', abErr.message);
   }
 
   // Status may have changed (handoff / ai_resume) after the last appendMessage emit
@@ -703,10 +1144,12 @@ async function enqueueInboundTurn(data) {
   const waMessageId = data.waMessageId || data.wa_message_id;
   const phone = String(data.phone || '').replace(/\D/g, '').slice(-12);
   const bodyNorm = String(data.message || '').trim().toLowerCase().replace(/\s+/g, ' ').slice(0, 200);
+  const hasImages = Array.isArray(data.images) && data.images.length > 0;
+  const hasAudio = !!(data.audio && data.audio.dataBase64);
 
   // Baileys can emit the same customer text twice with different message ids —
-  // debounce identical content per phone for a few seconds.
-  if (tenantId && phone && bodyNorm) {
+  // debounce identical content per phone for a few seconds (skip for image/voice turns).
+  if (tenantId && phone && bodyNorm && !hasImages && !hasAudio) {
     const redis = getRedis();
     if (redis) {
       const { createHash } = require('crypto');

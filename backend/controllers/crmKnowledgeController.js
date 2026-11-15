@@ -77,6 +77,30 @@ const STARTER_ARTICLES = [
     tags: ['cancel', 'අවලංගු', 'වෙනස්'],
     body: 'කරුණාකර appointment එකට අඩුම වශයෙන් පැය 2කට පෙර අවලංගු කරන්න හෝ වෙනස් කරන්න. නව වේලාවක් ඕන නම් දිනය/වේලාව කියන්න — අපි help කරමු.',
   },
+  {
+    title: 'Kids / family services',
+    category: 'service',
+    locale: 'en',
+    priority: 68,
+    tags: ['kids', 'children', 'family'],
+    body: 'Ask the guest age and which service they need (haircut, colour, facial, etc.). Recommend only matching services from our catalogue. If age or gender limits apply at this salon, confirm politely before booking.',
+  },
+  {
+    title: 'Wait time & walk-ins',
+    category: 'hours',
+    locale: 'en',
+    priority: 72,
+    tags: ['wait', 'walk-in', 'queue', 'today'],
+    body: 'Do not invent current wait times. Offer to check the next available booking slot. Walk-ins are welcome when capacity allows — booking is safer for weekends and evenings.',
+  },
+  {
+    title: 'Home service / mobile',
+    category: 'faq',
+    locale: 'en',
+    priority: 55,
+    tags: ['home', 'mobile', 'visit', 'doorstep'],
+    body: 'Only offer home or mobile service if this salon publishes that option. If unsure, say staff will confirm availability and travel charges.',
+  },
 ];
 
 function tid(req) {
@@ -248,17 +272,34 @@ const search = async (req, res) => {
   }
 };
 
-/** POST /crm/knowledge/seed-defaults */
+/** POST /crm/knowledge/seed-defaults  body/query: { force?: true } */
 const seedDefaults = async (req, res) => {
   try {
     const tenantId = requireTenant(req, res);
     if (!tenantId) return;
+    const force = req.body?.force === true || req.query?.force === '1';
     let created = 0;
+    let updated = 0;
     for (const a of STARTER_ARTICLES) {
       const exists = await CrmKnowledgeArticle.findOne({
         where: { tenant_id: tenantId, title: a.title },
       });
-      if (exists) continue;
+      if (exists) {
+        if (force) {
+          await exists.update({
+            body: a.body,
+            category: a.category,
+            locale: a.locale,
+            priority: a.priority,
+            tags: a.tags,
+            is_active: true,
+            updated_by: req.user?.id || null,
+            version: (exists.version || 1) + 1,
+          });
+          updated += 1;
+        }
+        continue;
+      }
       await CrmKnowledgeArticle.create({
         tenant_id: tenantId,
         ...a,
@@ -272,9 +313,36 @@ const seedDefaults = async (req, res) => {
       where: { tenant_id: tenantId },
       order: [['priority', 'DESC'], ['id', 'ASC']],
     });
-    return res.json({ created, data: rows, categories: CATEGORIES, stats: await knowledgeStats(tenantId) });
+    return res.json({
+      created,
+      updated,
+      data: rows,
+      categories: CATEGORIES,
+      stats: await knowledgeStats(tenantId),
+    });
   } catch (err) {
     console.error('[kb] seed', err);
+    return res.status(500).json({ message: 'Server error' });
+  }
+};
+
+/** POST /crm/knowledge/bulk  { ids, is_active } */
+const bulkUpdate = async (req, res) => {
+  try {
+    const tenantId = requireTenant(req, res);
+    if (!tenantId) return;
+    const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(Number).filter(Boolean) : [];
+    if (!ids.length) return res.status(400).json({ message: 'ids required' });
+    if (req.body.is_active == null) return res.status(400).json({ message: 'is_active required' });
+    const is_active = req.body.is_active !== false && req.body.is_active !== 0 && req.body.is_active !== '0';
+    const [n] = await CrmKnowledgeArticle.update(
+      { is_active, updated_by: req.user?.id || null },
+      { where: { tenant_id: tenantId, id: { [Op.in]: ids } } },
+    );
+    await invalidateKnowledgeCache(tenantId);
+    return res.json({ ok: true, updated: n, stats: await knowledgeStats(tenantId) });
+  } catch (err) {
+    console.error('[kb] bulk', err);
     return res.status(500).json({ message: 'Server error' });
   }
 };
@@ -380,6 +448,100 @@ const bulkImport = async (req, res) => {
   }
 };
 
+/** POST /crm/knowledge/auto-train — sync live services/staff/branches → Gemini training KB */
+const autoTrain = async (req, res) => {
+  try {
+    const tenantId = req.userTenantId ?? req.tenant?.id;
+    if (!tenantId) return res.status(400).json({ message: 'Tenant required' });
+    const { autoTrainFromSalon } = require('../services/autoTrainFromSalon');
+    const { knowledgeStats } = require('../services/knowledgeService');
+    const result = await autoTrainFromSalon(tenantId, { userId: req.user?.id || null });
+    return res.json({
+      ...result,
+      stats: await knowledgeStats(tenantId),
+    });
+  } catch (err) {
+    console.error('[kb] auto-train', err);
+    return res.status(500).json({ message: err.message || 'Server error' });
+  }
+};
+
+/**
+ * POST /crm/knowledge/train-from-google
+ * body: { query, title?, save?=true, locale? }
+ * Gemini searches Google and saves a training article (general tips — not salon prices).
+ */
+const trainFromGoogle = async (req, res) => {
+  try {
+    const tenantId = req.userTenantId ?? req.tenant?.id;
+    if (!tenantId) return res.status(400).json({ message: 'Tenant required' });
+    const query = String(req.body?.query || '').trim();
+    if (query.length < 3) return res.status(400).json({ message: 'query required (min 3 chars)' });
+    const save = req.body?.save !== false;
+    const { googleTrain } = require('../services/aiEngineClient');
+    const { invalidateKnowledgeCache, knowledgeStats } = require('../services/knowledgeService');
+    const brand = req.tenant?.brand_name || req.tenant?.name || 'the salon';
+    const draft = await googleTrain({
+      tenantId,
+      query,
+      brand,
+      locale: req.body?.locale || 'en-si',
+    });
+
+    let article = null;
+    if (save && draft?.body) {
+      const title = String(req.body?.title || draft.title || query).slice(0, 200);
+      const existing = await CrmKnowledgeArticle.findOne({
+        where: { tenant_id: tenantId, title },
+      });
+      const payload = {
+        category: 'faq',
+        body: String(draft.body).slice(0, 20000),
+        tags: ['google-train', 'google-search', ...String(query).toLowerCase().split(/\s+/).slice(0, 8)],
+        locale: req.body?.locale || 'en-si',
+        priority: 70,
+        is_active: true,
+        updated_by: req.user?.id || null,
+      };
+      if (existing) {
+        await existing.update({
+          ...payload,
+          version: (existing.version || 1) + 1,
+        });
+        article = existing;
+      } else {
+        article = await CrmKnowledgeArticle.create({
+          tenant_id: tenantId,
+          title,
+          ...payload,
+          version: 1,
+        });
+      }
+      await invalidateKnowledgeCache(tenantId);
+    }
+
+    return res.json({
+      ok: true,
+      saved: !!article,
+      article: article ? article.toJSON() : null,
+      draft: {
+        title: draft.title,
+        body: draft.body,
+        query: draft.query,
+        grounding: draft.grounding,
+        model: draft.model,
+      },
+      stats: await knowledgeStats(tenantId),
+      message: article
+        ? 'Trained from Google Search and saved'
+        : 'Google Search draft ready (not saved)',
+    });
+  } catch (err) {
+    console.error('[kb] train-from-google', err);
+    return res.status(err.status || 500).json({ message: err.message || 'Server error' });
+  }
+};
+
 module.exports = {
   list,
   getOne,
@@ -390,6 +552,9 @@ module.exports = {
   seedDefaults,
   duplicate,
   bulkImport,
+  bulkUpdate,
+  autoTrain,
+  trainFromGoogle,
   CATEGORIES,
   STARTER_ARTICLES,
 };

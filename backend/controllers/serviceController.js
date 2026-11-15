@@ -124,6 +124,10 @@ const create = async (req, res) => {
       name,
       tenant_id: tenantId,
     });
+    try {
+      const { scheduleAutoTrain } = require('../services/autoTrainFromSalon');
+      scheduleAutoTrain(tenantId);
+    } catch { /* ignore */ }
     return res.status(201).json(mapService(svc, req.tenant));
   } catch (err) {
     return res.status(500).json({ message: 'Server error.' });
@@ -139,6 +143,10 @@ const update = async (req, res) => {
     const payload = buildServicePayload(req.body, req.tenant);
     await svc.update(payload);
     await svc.reload();
+    try {
+      const { scheduleAutoTrain } = require('../services/autoTrainFromSalon');
+      scheduleAutoTrain(svc.tenant_id || req.userTenantId || req.tenant?.id);
+    } catch { /* ignore */ }
     return res.json(mapService(svc, req.tenant));
   } catch (err) {
     return res.status(500).json({ message: 'Server error.' });
@@ -151,7 +159,12 @@ const remove = async (req, res) => {
     const svc = await Service.findOne({ where });
     if (!svc) return res.status(404).json({ message: 'Service not found.' });
 
+    const tid = svc.tenant_id || req.userTenantId || req.tenant?.id;
     await svc.destroy();
+    try {
+      const { scheduleAutoTrain } = require('../services/autoTrainFromSalon');
+      scheduleAutoTrain(tid);
+    } catch { /* ignore */ }
     return res.json({ message: 'Service deleted.' });
   } catch (err) {
     return res.status(500).json({ message: 'Server error.' });

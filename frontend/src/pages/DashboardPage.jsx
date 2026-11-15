@@ -1,122 +1,203 @@
-import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell,
+  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  PieChart, Pie, Cell, BarChart, Bar, Legend,
 } from 'recharts';
-import { useAuth }       from '../context/AuthContext';
-import { useTheme }      from '../context/ThemeContext';
-import usePageTheme      from '../hooks/usePageTheme';
-import { useBranch }     from '../context/BranchContext';
-import api               from '../api/axios';
-import PageWrapper       from '../components/layout/PageWrapper';
+import { useAuth } from '../context/AuthContext';
+import usePageTheme from '../hooks/usePageTheme';
+import { useBranch } from '../context/BranchContext';
+import api from '../api/axios';
+import PageWrapper from '../components/layout/PageWrapper';
 import { useBreakpoint } from '../hooks/useBreakpoint';
-import { useToast }      from '../components/ui/Toast';
-import { Select }        from '../components/ui/FormElements';
-import { DataTable, TableCraftStatusBadge } from '../components/ui/PageKit';
+import { useToast } from '../components/ui/Toast';
 
-/*  helpers  */
-const fmt   = n => `Rs. ${Number(n || 0).toLocaleString()}`;
-const fmtN  = n => Number(n || 0).toLocaleString();
+/* ── helpers ─────────────────────────────────────────────────────────── */
+const fmt = (n) => `Rs. ${Number(n || 0).toLocaleString()}`;
+const fmtN = (n) => Number(n || 0).toLocaleString();
 const SL_OFFSET_MS = 5.5 * 60 * 60 * 1000;
-const today     = () => new Date(Date.now() + SL_OFFSET_MS).toISOString().slice(0, 10);
+const today = () => new Date(Date.now() + SL_OFFSET_MS).toISOString().slice(0, 10);
 const thisMonth = () => new Date(Date.now() + SL_OFFSET_MS).toISOString().slice(0, 7);
-
-/* design tokens — aligned with design-system.js */
-const G900 = '#1D4ED8';   /* primary dark blue */
-const G700 = '#2563EB';   /* primary blue */
-const G100 = '#EFF6FF';   /* primary light blue */
-const PAGE_BG = '#F7F8FA';
-
-const STATUS_COLOR = {
-  pending:   { dot: '#F59E0B', bg: '#FEF3C7', text: '#92400E' },
-  confirmed: { dot: '#3B82F6', bg: '#DBEAFE', text: '#1E40AF' },
-  completed: { dot: '#10B981', bg: '#D1FAE5', text: '#065F46' },
-  cancelled: { dot: '#EF4444', bg: '#FEE2E2', text: '#991B1B' },
-};
-
-const PIE_COLORS   = ['#2563EB', '#F59E0B', '#10B981', '#EF4444'];
-const MONTHS_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 const apptCustomerName = (a) => a?.customer?.name || a?.customer_name || 'Customer';
-
 const sortApptsByTimeAsc = (rows) =>
   [...rows].sort((a, b) => String(a.time || '').localeCompare(String(b.time || '')));
 
-/*─── sub-components ────────────────────────────────────────────*/
+const STATUS_STYLE = {
+  pending: { bg: '#FFEDD5', color: '#C2410C', label: 'Pending' },
+  confirmed: { bg: '#DCFCE7', color: '#15803D', label: 'Confirmed' },
+  in_progress: { bg: '#DBEAFE', color: '#1D4ED8', label: 'In Progress' },
+  completed: { bg: '#D1FAE5', color: '#065F46', label: 'Completed' },
+  cancelled: { bg: '#FEE2E2', color: '#B91C1C', label: 'Cancelled' },
+  no_show: { bg: '#F3F4F6', color: '#6B7280', label: 'No show' },
+};
 
-function Sk({ h = 20, w = '100%', mb = 0 }) {
-  const { isDark } = useTheme();
-  return <div style={{ height: h, width: w, background: isDark ? '#334155' : '#E5E7EB', borderRadius: 8, animation: 'pulse 1.5s ease-in-out infinite', marginBottom: mb }} />;
+const PIE_COLORS = ['#1D4ED8', '#7C3AED', '#06B6D4', '#F97316', '#22C55E', '#EC4899', '#64748B'];
+
+const CATEGORY_ALIASES = {
+  hair: 'Hair Services',
+  'hair cut': 'Hair Services',
+  'hair styling': 'Hair Services',
+  colour: 'Hair Services',
+  color: 'Hair Services',
+  skin: 'Skin Care',
+  facial: 'Skin Care',
+  nail: 'Nail Services',
+  nails: 'Nail Services',
+  spa: 'Spa & Massage',
+  massage: 'Spa & Massage',
+};
+
+function normalizeCategory(raw) {
+  const s = String(raw || '').trim();
+  if (!s) return 'Others';
+  const key = s.toLowerCase();
+  for (const [k, v] of Object.entries(CATEGORY_ALIASES)) {
+    if (key.includes(k)) return v;
+  }
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-/* Featured KPI – first card (indigo gradient) */
-function FeaturedKpi({ label, value, sub, loading }) {
+function formatTime(t) {
+  if (!t) return '—';
+  const m = String(t).match(/^(\d{1,2}):(\d{2})/);
+  if (!m) return t;
+  let h = parseInt(m[1], 10);
+  const min = m[2];
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  h = h % 12 || 12;
+  return `${h}:${min} ${ampm}`;
+}
+
+function Sk({ h = 20, w = '100%', mb = 0 }) {
   return (
     <div style={{
-      background: 'linear-gradient(135deg, #1E3A5F 0%, #2563EB 100%)',
-      borderRadius: 18, padding: '22px 22px 18px',
-      color: '#fff', position: 'relative', overflow: 'hidden',
-      display: 'flex', flexDirection: 'column', gap: 8,
-      boxShadow: '0 8px 24px rgba(37,99,235,0.30)',
-    }}>
-      <div style={{ position:'absolute', top:-28, right:-28, width:120, height:120, borderRadius:'50%', background:'rgba(255,255,255,0.06)' }} />
-      <div style={{ position:'absolute', bottom:-16, left:-16, width:80, height:80, borderRadius:'50%', background:'rgba(255,255,255,0.04)' }} />
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', position:'relative' }}>
-        <span style={{ fontSize: 12, fontWeight: 700, opacity: 0.8, textTransform:'uppercase', letterSpacing:'0.06em' }}>{label}</span>
-        <span style={{ background:'rgba(255,255,255,0.18)', borderRadius:10, width:30, height:30, display:'flex', alignItems:'center', justifyContent:'center', fontSize:14 }}>📅</span>
-      </div>
-      {loading
-        ? <div style={{ height:36, width:'55%', background:'rgba(255,255,255,0.2)', borderRadius:6 }} />
-        : <div style={{ fontSize:34, fontWeight:800, letterSpacing:'-1.5px', lineHeight:1.1, position:'relative' }}>{value}</div>
-      }
-      {sub && !loading && (
-        <div style={{ fontSize:11, opacity:0.75, display:'flex', alignItems:'center', gap:6, position:'relative' }}>
-          <span style={{ background:'rgba(255,255,255,0.18)', borderRadius:20, padding:'3px 10px', fontWeight:600 }}>↑ {sub}</span>
-        </div>
-      )}
-    </div>
+      height: h, width: w, marginBottom: mb, borderRadius: 10,
+      background: 'linear-gradient(90deg, #F1F5F9 25%, #E2E8F0 50%, #F1F5F9 75%)',
+      backgroundSize: '200% 100%',
+      animation: 'dashShimmer 1.4s ease-in-out infinite',
+    }}
+    />
   );
 }
 
-/* Regular KPI card */
-function KpiCard({ label, value, sub, loading }) {
+function DeltaBadge({ value, suffix = '', invert = false }) {
+  const n = Number(value) || 0;
+  const up = invert ? n < 0 : n > 0;
+  const flat = n === 0;
+  const color = flat ? '#64748B' : up ? '#16A34A' : '#DC2626';
+  const bg = flat ? '#F1F5F9' : up ? '#DCFCE7' : '#FEE2E2';
+  const sign = n > 0 ? '+' : '';
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', gap: 3,
+      padding: '2px 6px', borderRadius: 999, fontSize: 10, fontWeight: 700,
+      background: bg, color, lineHeight: 1.2,
+    }}
+    >
+      {!flat && (
+        <svg width="8" height="8" viewBox="0 0 10 10" fill="none" aria-hidden>
+          <path
+            d={up ? 'M5 2L8.5 7H1.5L5 2Z' : 'M5 8L1.5 3H8.5L5 8Z'}
+            fill="currentColor"
+          />
+        </svg>
+      )}
+      {sign}{n}{suffix}
+    </span>
+  );
+}
+
+/** Compact horizontal KPI — icon + value row, small footprint */
+function MetricCard({
+  label, value, delta, deltaSuffix, deltaHint, iconBg, iconColor, loading, icon, onClick,
+}) {
   const { C } = usePageTheme();
   const [hov, setHov] = React.useState(false);
   return (
-    <div
+    <button
+      type="button"
+      onClick={onClick}
       onMouseEnter={() => setHov(true)}
       onMouseLeave={() => setHov(false)}
       style={{
-        background: C.cardBg, borderRadius: 16, padding: '20px 22px 16px',
-        display: 'flex', flexDirection: 'column', gap: 7,
-        boxShadow: hov ? '0 8px 20px rgba(16,24,40,0.10)' : C.shadow,
-        border: hov ? '1px solid #BFDBFE' : `1px solid ${C.border}`,
-        transform: hov ? 'translateY(-2px)' : 'translateY(0)',
-        transition: 'all 0.2s ease',
-      }}>
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start' }}>
-        <span style={{ fontSize:11, fontWeight:700, color: C.muted, textTransform:'uppercase', letterSpacing:'0.06em' }}>{label}</span>
-        <span style={{ background:G100, borderRadius:8, width:28, height:28, display:'flex', alignItems:'center', justifyContent:'center', fontSize:13, color:G700 }}>↗</span>
+        background: C.cardBg || '#fff',
+        borderRadius: 14,
+        padding: '12px 14px',
+        border: `1px solid ${hov ? (C.primary || '#2563EB') + '55' : (C.border || '#EEF2F6')}`,
+        boxShadow: hov
+          ? '0 6px 16px rgba(16,24,40,0.08)'
+          : (C.shadow || '0 1px 2px rgba(16,24,40,0.04)'),
+        display: 'flex',
+        alignItems: 'center',
+        gap: 12,
+        minHeight: 72,
+        width: '100%',
+        textAlign: 'left',
+        cursor: onClick ? 'pointer' : 'default',
+        transform: hov ? 'translateY(-1px)' : 'none',
+        transition: 'all 0.15s ease',
+        fontFamily: 'inherit',
+      }}
+    >
+      <div style={{
+        width: 36, height: 36, borderRadius: 10,
+        background: iconBg, color: iconColor,
+        display: 'grid', placeItems: 'center', flexShrink: 0,
+      }}
+      >
+        {icon}
       </div>
-      {loading
-        ? <Sk h={30} w="60%" />
-        : <div style={{ fontSize:28, fontWeight:800, color: C.title, letterSpacing:'-0.5px', lineHeight:1.1 }}>{value}</div>
-      }
-      {sub && !loading && (
-        <div style={{ fontSize:11, color:'#98A2B3', display:'flex', alignItems:'center', gap:4 }}>
-          <span style={{ padding:'2px 8px', background:G100, borderRadius:10, fontWeight:600, color:G700, fontSize:10 }}>↑ {sub}</span>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{
+          fontSize: 11, fontWeight: 600, color: C.muted || '#64748B',
+          marginBottom: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+        }}
+        >
+          {label}
         </div>
-      )}
-    </div>
+        {loading ? <Sk h={20} w="60%" /> : (
+          <div style={{
+            fontSize: 18, fontWeight: 800, color: C.title || '#0F172A',
+            letterSpacing: '-0.03em', lineHeight: 1.15,
+            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+          }}
+          >
+            {value}
+          </div>
+        )}
+        {!loading && (delta != null || deltaHint) && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4, flexWrap: 'nowrap' }}>
+            {delta != null && <DeltaBadge value={delta} suffix={deltaSuffix} />}
+            {deltaHint && (
+              <span style={{
+                fontSize: 10, color: C.muted || '#94A3B8',
+                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+              }}
+              >
+                {deltaHint}
+              </span>
+            )}
+          </div>
+        )}
+      </div>
+    </button>
   );
 }
 
-/* Generic card shell */
 function Card({ children, style }) {
   const { C } = usePageTheme();
   return (
-    <div style={{ background: C.cardBg, borderRadius: 16, padding: '20px 22px', boxShadow: C.shadow, border: `1px solid ${C.border}`, ...style }}>
+    <div style={{
+      background: C.cardBg || '#fff',
+      borderRadius: 18,
+      padding: '20px 22px',
+      border: `1px solid ${C.border || '#EEF2F6'}`,
+      boxShadow: C.shadow || '0 1px 2px rgba(16,24,40,0.04), 0 8px 24px rgba(16,24,40,0.04)',
+      ...style,
+    }}
+    >
       {children}
     </div>
   );
@@ -125,147 +206,141 @@ function Card({ children, style }) {
 function CardHead({ title, action }) {
   const { C } = usePageTheme();
   return (
-    <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16 }}>
-      <span style={{ fontSize:15, fontWeight:700, color: C.title }}>{title}</span>
+    <div style={{
+      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+      marginBottom: 16, gap: 10,
+    }}
+    >
+      <span style={{ fontSize: 15, fontWeight: 700, color: C.title || '#0F172A' }}>{title}</span>
       {action}
     </div>
   );
 }
 
-/* bar tooltip */
-function BarTip({ active, payload, label }) {
+function AreaTip({ active, payload, label }) {
   if (!active || !payload?.length) return null;
   return (
-    <div style={{ background:'#fff', border:'1px solid #E5E7EB', borderRadius:10, padding:'8px 12px', fontSize:12, boxShadow:'0 4px 12px rgba(0,0,0,.08)' }}>
-      <div style={{ fontWeight:700, color:'#111827', marginBottom:4 }}>{label}</div>
-      {payload.map(p => (
-        <div key={p.name} style={{ color: p.fill || p.stroke }}>Rs. {Number(p.value).toLocaleString()}</div>
+    <div style={{
+      background: '#0F172A', color: '#fff', borderRadius: 10,
+      padding: '8px 12px', fontSize: 12, boxShadow: '0 8px 20px rgba(15,23,42,0.25)',
+    }}
+    >
+      <div style={{ opacity: 0.7, marginBottom: 2 }}>{label}</div>
+      <div style={{ fontWeight: 700 }}>{fmt(payload[0].value)}</div>
+    </div>
+  );
+}
+
+function MultiTip({ active, payload, label }) {
+  if (!active || !payload?.length) return null;
+  return (
+    <div style={{
+      background: '#0F172A', color: '#fff', borderRadius: 10,
+      padding: '8px 12px', fontSize: 12, boxShadow: '0 8px 20px rgba(15,23,42,0.25)',
+    }}
+    >
+      <div style={{ opacity: 0.7, marginBottom: 4 }}>{label}</div>
+      {payload.map((p) => (
+        <div key={p.dataKey} style={{ fontWeight: 700, color: p.color || '#fff', marginTop: 2 }}>
+          {p.name}: {typeof p.value === 'number' && p.dataKey !== 'appts' && p.dataKey !== 'count' && p.dataKey !== 'value'
+            ? fmt(p.value)
+            : fmtN(p.value)}
+        </div>
       ))}
     </div>
   );
 }
 
-/* Profit KPI — green if positive, red if loss */
-function ProfitKpi({ revenue, commission, expenses, loading }) {
-  const { C } = usePageTheme();
-  const totalCost = (commission || 0) + (expenses || 0);
-  const profit = revenue - totalCost;
-  const pct    = revenue > 0 ? Math.round((profit / revenue) * 100) : 0;
-  const pos    = profit >= 0;
-  const [hov, setHov] = React.useState(false);
+function ChartEmpty({ h = 190, C }) {
   return (
-    <div
-      onMouseEnter={() => setHov(true)}
-      onMouseLeave={() => setHov(false)}
-      style={{
-        background: C.cardBg, borderRadius: 16, padding: '20px 22px 16px',
-        display: 'flex', flexDirection: 'column', gap: 7,
-        boxShadow: hov ? '0 8px 20px rgba(16,24,40,0.10)' : C.shadow,
-        border: hov ? '1px solid #BFDBFE' : `1px solid ${C.border}`,
-        transform: hov ? 'translateY(-2px)' : 'translateY(0)',
-        transition: 'all 0.2s ease',
-      }}>
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start' }}>
-        <span style={{ fontSize:11, fontWeight:700, color: C.muted, textTransform:'uppercase', letterSpacing:'0.06em' }}>Net Profit</span>
-        <span style={{ background: pos ? '#D1FAE5' : '#FEE2E2', borderRadius:8, width:28, height:28, display:'flex', alignItems:'center', justifyContent:'center', fontSize:13 }}>{pos ? '📈' : '📉'}</span>
-      </div>
-      {loading
-        ? <Sk h={30} w="60%" />
-        : <div style={{ fontSize:28, fontWeight:800, color: pos ? '#059669' : '#DC2626', letterSpacing:'-0.5px', lineHeight:1.1 }}>
-            Rs. {Math.abs(profit).toLocaleString()}
-          </div>
-      }
-      {!loading && (
-        <div style={{ display:'flex', flexDirection:'column', gap:3 }}>
-          <div style={{ fontSize:11, color:'#98A2B3', display:'flex', alignItems:'center', gap:4 }}>
-            <span style={{ padding:'2px 8px', background: pos ? '#D1FAE5' : '#FEE2E2', borderRadius:10, fontWeight:600, color: pos ? '#065F46' : '#991B1B', fontSize:10 }}>
-              {pos ? '↑' : '↓'} {Math.abs(pct)}% margin
-            </span>
-          </div>
-          <div style={{ fontSize:10, color:'#B0B8C8' }}>
-            Rev Rs.{Number(revenue).toLocaleString()} · Comm Rs.{Number(commission||0).toLocaleString()} · Exp Rs.{Number(expenses||0).toLocaleString()}
-          </div>
-        </div>
-      )}
+    <div style={{ height: h, display: 'grid', placeItems: 'center', color: C.muted, fontSize: 13 }}>
+      No data yet
     </div>
   );
 }
 
-/* Low-Stock warning card */
-function LowStockCard({ items, loading, onClick }) {
-  const { C } = usePageTheme();
-  const count = items.length;
-  const [hov, setHov] = React.useState(false);
-  return (
-    <div
-      onClick={count > 0 ? onClick : undefined}
-      onMouseEnter={() => setHov(true)}
-      onMouseLeave={() => setHov(false)}
-      style={{
-        borderRadius: 16, padding: '20px 22px 16px',
-        background: count > 0 ? (hov ? '#FFF7F7' : '#FFF9F9') : C.cardBg,
-        display:'flex', flexDirection:'column', gap:7,
-        boxShadow: hov && count > 0 ? '0 8px 20px rgba(16,24,40,0.10)' : C.shadow,
-        border: count > 0 ? (hov ? '1px solid #FCA5A5' : '1px solid #FECACA') : `1px solid ${C.border}`,
-        transform: hov && count > 0 ? 'translateY(-2px)' : 'translateY(0)',
-        transition: 'all 0.2s ease',
-        cursor: count > 0 ? 'pointer' : 'default',
-      }}>
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start' }}>
-        <span style={{ fontSize:11, fontWeight:700, color:'#98A2B3', textTransform:'uppercase', letterSpacing:'0.06em' }}>Low Stock</span>
-        <span style={{ background: count > 0 ? '#FEE2E2' : '#D1FAE5', borderRadius:8, width:28, height:28, display:'flex', alignItems:'center', justifyContent:'center', fontSize:13 }}>{count > 0 ? '⚠️' : '✅'}</span>
-      </div>
-      {loading
-        ? <Sk h={30} w="60%" />
-        : <div style={{ fontSize:28, fontWeight:800, color: count > 0 ? '#DC2626' : '#059669', letterSpacing:'-0.5px', lineHeight:1.1 }}>{count}</div>
-      }
-      {!loading && (
-        <div style={{ fontSize:11, color:'#98A2B3', display:'flex', alignItems:'center', gap:4 }}>
-          <span style={{ padding:'2px 8px', background: count > 0 ? '#FEE2E2' : '#D1FAE5', borderRadius:10, fontWeight:600, color: count > 0 ? '#991B1B' : '#065F46', fontSize:10 }}>
-            {count > 0 ? 'Needs restocking →' : 'All stocked up'}
-          </span>
-        </div>
-      )}
-      {count > 0 && !loading && (
-        <div style={{ marginTop:4, display:'flex', flexDirection:'column', gap:3 }}>
-          {items.slice(0,3).map(it => (
-            <div key={it.id} style={{ fontSize:11, color:'#6B7280', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
-              · {it.name} ({it.current_stock} {it.unit || 'units'})
-            </div>
-          ))}
-          {count > 3 && <div style={{ fontSize:11, color:'#9CA3AF' }}>+{count - 3} more items</div>}
-        </div>
-      )}
-    </div>
-  );
-}
+/* ── icons (compact) ─────────────────────────────────────────────────── */
+const IconCalendar = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" />
+  </svg>
+);
+const IconCash = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="9" /><path d="M12 7v10M9.5 9.5c.5-1 1.5-1.5 2.5-1.5s2 .6 2 1.75-1 1.5-2.5 2-2.5.75-2.5 2 1 1.75 2.5 1.75 2-.5 2.5-1.5" />
+  </svg>
+);
+const IconChart = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M4 19V5M4 19h16" /><path d="M8 15v-4M12 15V8M16 15v-7" />
+  </svg>
+);
+const IconUsers = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" />
+  </svg>
+);
+const IconWarn = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" /><line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" /></svg>
+);
+const IconBox = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z" /></svg>
+);
+const IconStack = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2L2 7l10 5 10-5-10-5z" /><path d="M2 17l10 5 10-5M2 12l10 5 10-5" /></svg>
+);
+const IconProgress = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" />
+  </svg>
+);
+const IconPending = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="9" /><path d="M8 12h4M12 8v4" />
+  </svg>
+);
+const IconCheck = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M20 6L9 17l-5-5" />
+  </svg>
+);
+const IconBell = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 01-3.46 0" />
+  </svg>
+);
+const IconProfit = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M12 19V5M5 12l7-7 7 7" />
+  </svg>
+);
 
-/*  main component  */
 export default function DashboardPage() {
   const { C, isDark } = usePageTheme();
-  const { user }        = useAuth();
+  const { user } = useAuth();
   const { branchFilterKey } = useBranch();
-  const navigate        = useNavigate();
-  const { toast }       = useToast();
-  const { isMobile }    = useBreakpoint();
-  const isAdmin         = ['superadmin','admin','manager'].includes(user?.role);
+  const navigate = useNavigate();
+  const { toast } = useToast();
+  const { isMobile } = useBreakpoint();
   const refreshTimerRef = useRef(null);
 
-  /* state */
-  const [stats,       setStats]       = useState(null);
-  const [appts,       setAppts]       = useState([]);
-  const [reminders,   setReminders]   = useState([]);
-  const [services,    setServices]    = useState([]);
-  const [month,       setMonth]       = useState(thisMonth());
+  const [stats, setStats] = useState(null);
+  const [appts, setAppts] = useState([]);
+  const [services, setServices] = useState([]);
+  const [month, setMonth] = useState(thisMonth());
   const [revenueData, setRevenueData] = useState([]);
-  const [apptStatus,  setApptStatus]  = useState([]);
-  const [staffData,   setStaffData]   = useState([]);
-  const [loading,     setLoading]     = useState(true);
-  const [lowStockItems,   setLowStockItems]   = useState([]);
-  const [monthExpenses,   setMonthExpenses]   = useState(0);
-  const [attendPresent,   setAttendPresent]   = useState(0);
-  const [branding,        setBranding]        = useState({});
-  const [uploadingVariant,setUploadingVariant]= useState('');
+  const [revCommData, setRevCommData] = useState([]);
+  const [categoryPie, setCategoryPie] = useState([]);
+  const [statusPie, setStatusPie] = useState([]);
+  const [staffBars, setStaffBars] = useState([]);
+  const [serviceBars, setServiceBars] = useState([]);
+  const [monthExpenses, setMonthExpenses] = useState(0);
+  const [statusCounts, setStatusCounts] = useState({});
+  const [lastRefresh, setLastRefresh] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  const firstName = user?.name?.split(' ')[0] || 'there';
+  const isAdmin = ['superadmin', 'admin', 'manager'].includes(user?.role);
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -273,506 +348,837 @@ export default function DashboardPage() {
       const reportParams = new URLSearchParams();
       if (month) reportParams.set('month', month);
       const reportQ = reportParams.toString() ? `?${reportParams.toString()}` : '';
-      const extraQPrefix = '';
+      const expQ = reportParams.toString()
+        ? `?${reportParams.toString()}&limit=1`
+        : `?month=${month || thisMonth()}&limit=1`;
 
-      const [dashRes, apptRes, remRes, svcRes, revRes, statusRes, staffRes] = await Promise.all([
+      const [dashRes, apptRes, svcRes, revRes, statusRes, expRes, staffRes] = await Promise.all([
         api.get(`/reports/dashboard${reportQ}`),
-        api.get(`/appointments?limit=8&date=${today()}${extraQPrefix}&sort=time&order=asc`),
-        api.get(`/reminders?done=false&limit=6${extraQPrefix}`),
+        api.get(`/appointments?limit=8&date=${today()}&sort=time&order=asc`),
         api.get(`/reports/services${reportQ}`),
         api.get(`/reports/revenue${reportQ}`),
-        api.get(`/reports/appointments${reportQ}`),
-        api.get(`/reports/staff${reportQ}`),
+        api.get(`/reports/appointments${reportQ}`).catch(() => ({ data: [] })),
+        api.get(`/expenses${expQ}`).catch(() => ({ data: {} })),
+        api.get(`/reports/staff${reportQ}`).catch(() => ({ data: [] })),
       ]);
 
       setStats(dashRes.data);
-      const apptRows = apptRes.data.data || apptRes.data || [];
-      setAppts(sortApptsByTimeAsc(Array.isArray(apptRows) ? apptRows : []));
-      setReminders(Array.isArray(remRes.data) ? remRes.data.slice(0,6) : (remRes.data?.data||[]).slice(0,6));
-      setServices((svcRes.data||[]).slice(0,8));
 
-      /* revenue chart  last 7 months */
+      const apptRows = apptRes.data.data || apptRes.data || [];
+      setAppts(sortApptsByTimeAsc(Array.isArray(apptRows) ? apptRows : []).slice(0, 6));
+
+      const svcRaw = Array.isArray(svcRes.data) ? svcRes.data : [];
+      setServices(svcRaw.slice(0, 5));
+      setServiceBars(
+        svcRaw.slice(0, 6).map((s) => ({
+          name: String(s.service?.name || s.name || 'Service').slice(0, 14),
+          revenue: Number(s.revenue || s.dataValues?.revenue || 0),
+          count: Number(s.count || s.dataValues?.count || 0),
+        })),
+      );
+
+      /* category donut from services */
+      const catMap = {};
+      let catTotal = 0;
+      for (const s of svcRaw) {
+        const rev = Number(s.revenue || s.dataValues?.revenue || 0);
+        const cat = normalizeCategory(s.service?.category || s.category);
+        catMap[cat] = (catMap[cat] || 0) + rev;
+        catTotal += rev;
+      }
+      const pie = Object.entries(catMap)
+        .map(([name, value]) => ({
+          name,
+          value,
+          pct: catTotal > 0 ? Math.round((value / catTotal) * 100) : 0,
+        }))
+        .sort((a, b) => b.value - a.value)
+        .slice(0, 5);
+      setCategoryPie(pie);
+
       const revRaw = Array.isArray(revRes.data) ? revRes.data : [];
-      const revChart = revRaw.slice(-7).map(r => ({
-        month: r.month ? MONTHS_SHORT[parseInt(r.month.split('-')[1],10)-1] : '',
+      const revChart = revRaw.slice(-6).map((r) => ({
+        month: r.month ? MONTHS_SHORT[parseInt(r.month.split('-')[1], 10) - 1] : '',
         revenue: Number(r.revenue || r.dataValues?.revenue || 0),
-        commission: Number(r.commission || r.dataValues?.commission || 0),
       }));
       setRevenueData(revChart);
+      setRevCommData(
+        revRaw.slice(-6).map((r) => ({
+          month: r.month ? MONTHS_SHORT[parseInt(r.month.split('-')[1], 10) - 1] : '',
+          revenue: Number(r.revenue || r.dataValues?.revenue || 0),
+          commission: Number(r.commission || r.dataValues?.commission || 0),
+        })),
+      );
 
-      /* pie data */
       const statusRaw = Array.isArray(statusRes.data) ? statusRes.data : [];
-      const pie = statusRaw.map(s => ({
-        name: (s.status||s.dataValues?.status||'').charAt(0).toUpperCase() + (s.status||s.dataValues?.status||'').slice(1),
-        value: Number(s.count||s.dataValues?.count||0),
-      }));
-      setApptStatus(pie);
+      const sc = {};
+      const statusChart = [];
+      for (const row of statusRaw) {
+        const key = String(row.status || row.dataValues?.status || '').toLowerCase();
+        const count = Number(row.count || row.dataValues?.count || 0);
+        sc[key] = count;
+        if (count > 0) {
+          const st = STATUS_STYLE[key] || { label: key, color: '#64748B' };
+          statusChart.push({ name: st.label, value: count, fill: st.color });
+        }
+      }
+      setStatusCounts(sc);
+      setStatusPie(statusChart);
 
-      /* staff leaderboard top 5 */
       const staffRaw = Array.isArray(staffRes.data) ? staffRes.data : [];
-      const topped = staffRaw
-        .map(s => ({
-          id:         s.id,
-          name:       s.name,
-          revenue:    Number(s.dataValues?.totalRevenue || s.totalRevenue || 0),
-          commission: Number(s.dataValues?.totalCommission || s.totalCommission || 0),
-          appts:      Number(s.dataValues?.apptCount || s.apptCount || 0),
-          branch:     s.branch?.name || '',
-        }))
-        .sort((a,b) => b.revenue - a.revenue)
-        .slice(0,5);
-      setStaffData(topped);
+      setStaffBars(
+        staffRaw
+          .map((s) => ({
+            name: String(s.name || 'Staff').split(' ')[0].slice(0, 10),
+            revenue: Number(s.dataValues?.totalRevenue || s.totalRevenue || 0),
+            appts: Number(s.dataValues?.apptCount || s.apptCount || 0),
+          }))
+          .sort((a, b) => b.revenue - a.revenue)
+          .slice(0, 6),
+      );
 
-      /* secondary: low-stock, expenses, attendance — non-blocking */
-      const expQ = reportParams.toString() ? `?${reportParams.toString()}&limit=1` : `?month=${month || thisMonth()}&limit=1`;
-      const [invRes, expRes, attRes] = await Promise.all([
-        api.get('/salon-inventory/low-stock').catch(() => ({ data: [] })),
-        api.get(`/expenses${expQ}`).catch(() => ({ data: {} })),
-        api.get(`/attendance/summary?month=${month || thisMonth()}`).catch(() => ({ data: [] })),
-      ]);
-      setLowStockItems(Array.isArray(invRes.data) ? invRes.data : []);
       setMonthExpenses(Number(expRes.data?.totalAmount || 0));
-      const attRows = Array.isArray(attRes.data) ? attRes.data : [];
-      const presentIds = new Set(attRows.filter(r => ['present','late'].includes(r.status || '')).map(r => r.staff_id));
-      setAttendPresent(presentIds.size);
-
-    } catch (e) {
+      setLastRefresh(new Date());
+    } catch {
       if (!silent) toast('Failed to load dashboard.', 'error');
     } finally {
       setLoading(false);
     }
-  }, [month, branchFilterKey]);
+  }, [month, branchFilterKey, toast]);
 
   useEffect(() => { load(); }, [load]);
 
-  useEffect(() => {
-    if (['superadmin','admin'].includes(user?.role)) {
-      api.get('/branding').then(r => setBranding(r.data?.data || {})).catch(() => {});
-    }
-  }, [user?.role]);
-
-  const uploadLogo = async (variant, file) => {
-    if (!file) return;
-    setUploadingVariant(variant);
-    try {
-      const payload = new FormData();
-      payload.append('file', file);
-      payload.append('variant', variant);
-      const res = await api.post(`/branding/upload?variant=${encodeURIComponent(variant)}`, payload, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
-      const updated = res.data?.data?.branding;
-      if (updated) setBranding(updated);
-      toast('Logo updated!', 'success');
-    } catch (err) {
-      toast(err.response?.data?.message || 'Upload failed.', 'error');
-    }
-    setUploadingVariant('');
-  };
-
-  /* auto-refresh every 3 min */
   useEffect(() => {
     refreshTimerRef.current = setInterval(() => load(true), 180000);
     return () => clearInterval(refreshTimerRef.current);
   }, [load]);
 
-  /* derived */
-  const branchStats     = stats?.branchStats || [];
-  const nextReminder    = reminders[0];
-  const totalAppts      = apptStatus.reduce((s, x) => s + x.value, 0) || 1;
-  const completedPct    = Math.round(((apptStatus.find(x => x.name === 'Completed')?.value || 0) / totalAppts) * 100);
-  const netProfit       = (stats?.monthRevenue || 0) - (stats?.monthCommission || 0) - monthExpenses;
+  const deltas = stats?.deltas || {};
+  const monthRevenue = Number(stats?.monthRevenue || 0);
+  const monthCommission = Number(stats?.monthCommission || 0);
+  const netProfit = monthRevenue - monthCommission - monthExpenses;
+  const topServiceMax = Number(services[0]?.revenue || services[0]?.dataValues?.revenue || 1) || 1;
+  const completedToday = appts.filter((a) => a.status === 'completed').length;
+  const pendingToday = appts.filter((a) => a.status === 'pending').length;
+  const inProgressToday = appts.filter((a) => a.status === 'in_progress').length;
 
-  const apptColumns = useMemo(() => [
-    {
-      id: 'customer',
-      header: 'Customer',
-      accessorFn: row => apptCustomerName(row),
-      cell: ({ row: { original: a } }) => <span style={{ fontWeight: 600 }}>{apptCustomerName(a)}</span>,
-    },
-    { id: 'service', header: 'Service', accessorFn: row => row.service?.name, cell: ({ row: { original: a } }) => a.service?.name || '' },
-    { id: 'staff', header: 'Staff', accessorFn: row => row.staff?.name, cell: ({ row: { original: a } }) => a.staff?.name || '' },
-    { id: 'date', header: 'Date', accessorKey: 'date' },
-    { id: 'time', header: 'Time', accessorKey: 'time' },
-    {
-      id: 'status',
-      header: 'Status',
-      accessorKey: 'status',
-      cell: ({ getValue }) => <TableCraftStatusBadge status={getValue()} />,
-    },
-    {
-      id: 'amount',
-      header: 'Amount',
-      accessorFn: row => row.payment?.total_amount,
-      meta: { align: 'right' },
-      cell: ({ row: { original: a } }) => (
-        <span style={{ fontWeight: 700, color: '#60a5fa' }}>
-          {a.payment ? fmt(a.payment.total_amount) : ''}
-        </span>
-      ),
-    },
-  ], []);
-
-  const linkBtn = (label, path, pill) => (
+  const linkMuted = (label, path) => (
     <button
+      type="button"
       onClick={() => navigate(path)}
       style={{
-        fontSize: 11, fontWeight: 700, cursor: 'pointer', border: 'none',
-        background: pill ? '#EFF6FF' : 'none',
-        color: pill ? '#2563EB' : '#98A2B3',
-        padding: pill ? '5px 12px' : 0,
-        borderRadius: pill ? 8 : 0,
-        fontFamily: "'Inter',sans-serif",
+        border: 'none', background: 'none', cursor: 'pointer',
+        fontSize: 12.5, fontWeight: 600, color: '#2563EB', padding: 0,
       }}
-    >{label}</button>
+    >
+      {label}
+    </button>
   );
+
+  const refreshedLabel = lastRefresh
+    ? `Updated ${lastRefresh.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+    : 'Live';
 
   return (
     <PageWrapper
-      title={`Welcome, ${user?.name?.split(' ')[0] || 'there'} 👋`}
-      subtitle={`${new Date().toLocaleDateString('en-US',{weekday:'long',year:'numeric',month:'long',day:'numeric'})} — auto-refreshes every 3 min`}
-      actions={
-        <div style={{ display:'flex', gap:10, alignItems:'center' }}>
+      title={`Welcome, ${firstName} 👋`}
+      subtitle={`Here's what's happening at your salon today · ${refreshedLabel}`}
+      actions={(
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           <input
             type="month"
             value={month}
-            onChange={e => setMonth(e.target.value)}
+            onChange={(e) => setMonth(e.target.value)}
             style={{
-              width: 145,
-              borderRadius: 10,
-              border: '1.5px solid #E5E7EB',
-              padding: '9px 10px',
-              fontSize: 13,
-              color: '#374151',
-              background: '#fff',
+              width: 140, borderRadius: 10,
+              border: `1.5px solid ${C.border || '#E5E7EB'}`,
+              padding: '8px 10px', fontSize: 12.5,
+              color: C.text || '#374151',
+              background: C.cardBg || '#fff',
             }}
           />
           <button
+            type="button"
             onClick={() => navigate('/appointments')}
-            style={{ display:'flex', alignItems:'center', gap:7, padding:'10px 18px', borderRadius:12, background:'linear-gradient(135deg, #1D4ED8, #2563EB)', color:'#fff', border:'none', cursor:'pointer', fontSize:13, fontWeight:700, boxShadow:'0 2px 8px rgba(37,99,235,0.30)' }}
-          >+ New Appointment</button>
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '8px 14px', borderRadius: 10,
+              background: 'linear-gradient(135deg, #1D4ED8, #2563EB)',
+              color: '#fff', border: 'none', cursor: 'pointer',
+              fontSize: 12.5, fontWeight: 700,
+              boxShadow: '0 3px 10px rgba(37,99,235,0.25)',
+            }}
+          >
+            + New Appointment
+          </button>
           <button
+            type="button"
             onClick={() => load()}
-            style={{ padding:'10px 16px', borderRadius:12, background:'#fff', color:'#374151', border:'1.5px solid #E5E7EB', cursor:'pointer', fontSize:13, fontWeight:600 }}
-          >↻ Refresh</button>
-        </div>
-      }
-    >
-
-      {/* ── Row 1: KPI tiles ──────────────────────────────── */}
-      <div style={{ display:'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4,1fr)', gap:14 }}>
-        <FeaturedKpi label="Today's Appointments" value={stats ? fmtN(stats.todayAppts) : '—'}       sub="Bookings today"  loading={loading} />
-        <KpiCard     label="Today's Revenue"      value={stats ? fmt(stats.todayRevenue)  : '—'}      sub="Collected today" loading={loading} />
-        <KpiCard     label="Month Revenue"         value={stats ? fmt(stats.monthRevenue)  : '—'}      sub="This month"      loading={loading} />
-        <KpiCard     label="Total Customers"       value={stats ? fmtN(stats.totalCustomers) : '—'}   sub="All time"        loading={loading} />
-      </div>
-
-      {/* ── Row 1.5: Operational Insights ────────────────── */}
-      {isAdmin && (
-        <div style={{ display:'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4,1fr)', gap:14 }}>
-          <KpiCard label="Month Expenses" value={fmt(monthExpenses)} sub="this month" loading={loading} />
-          <ProfitKpi revenue={stats?.monthRevenue || 0} commission={stats?.monthCommission || 0} expenses={monthExpenses} loading={loading} />
-          <KpiCard
-            label="Staff Present"
-            value={`${attendPresent} staff`}
-            sub="active this month"
-            loading={loading}
-          />
-          <LowStockCard items={lowStockItems} loading={loading} onClick={() => navigate('/inventory')} />
+            style={{
+              padding: '8px 12px', borderRadius: 10,
+              background: C.cardBg || '#fff', color: C.text || '#374151',
+              border: `1.5px solid ${C.border || '#E5E7EB'}`,
+              cursor: 'pointer', fontSize: 12.5, fontWeight: 600,
+            }}
+          >
+            Refresh
+          </button>
         </div>
       )}
+    >
+      <div style={{ display: 'grid', gap: isMobile ? 12 : 14, background: 'transparent' }}>
 
-      {/* ── Row 2: Bar chart  |  Reminder  |  Today's schedule ── */}
-      <div style={{ display:'grid', gridTemplateColumns: isMobile ? '1fr' : '2fr 1.05fr 1.05fr', gap:14 }}>
-
-        {/* Revenue bar chart */}
-        <Card>
-          <CardHead title="Revenue Analytics" action={linkBtn('View Reports →', '/reports', true)} />
-          {loading ? <Sk h={200} /> : revenueData.length === 0 ? (
-            <div style={{ height:200, display:'flex', alignItems:'center', justifyContent:'center', color:'#9CA3AF', fontSize:13 }}>No data yet</div>
-          ) : (
-            <ResponsiveContainer width="100%" height={200}>
-              <BarChart data={revenueData} margin={{ top:5, right:5, left:-10, bottom:0 }} barGap={4}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" vertical={false} />
-                <XAxis dataKey="month" tick={{ fontSize:11, fill:'#9CA3AF' }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize:11, fill:'#9CA3AF' }} axisLine={false} tickLine={false} tickFormatter={v=>`${(v/1000).toFixed(0)}k`} />
-                <Tooltip content={<BarTip />} cursor={{ fill:'#F9FAFB' }} />
-                <Bar dataKey="revenue" name="Revenue" radius={[6,6,0,0]}>
-                  {revenueData.map((_,i) => (
-                    <Cell key={i} fill={
-                      i === revenueData.length-1 ? '#2563EB' :
-                      i === revenueData.length-2 ? '#1D4ED8' : '#93C5FD'
-                    } />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          )}
-        </Card>
-
-        {/* Reminder featured card */}
-        <Card style={{ display:'flex', flexDirection:'column' }}>
-          <CardHead title="Reminders" action={linkBtn('All →', '/reminders', false)} />
-          {loading ? (
-            <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-              <Sk h={16} w="80%" /><Sk h={16} w="60%" /><Sk h={40} mb={0} />
-            </div>
-          ) : nextReminder ? (
-            <div style={{ display:'flex', flexDirection:'column', gap:10, flex:1 }}>
-              <div style={{ background:'#EFF6FF', borderRadius:12, padding:'14px 16px', flex:1, border:'1px solid #BFDBFE' }}>
-                <div style={{ fontSize:15, fontWeight:700, color:'#111827', marginBottom:5, lineHeight:1.35 }}>{nextReminder.title}</div>
-                {nextReminder.due_date && (
-                  <div style={{ fontSize:12, color:'#6B7280' }}>📅 Due: {nextReminder.due_date}</div>
-                )}
-                {nextReminder.priority && (
-                  <div style={{ marginTop:8 }}>
-                    <span style={{
-                      fontSize:11, padding:'3px 10px', borderRadius:20, fontWeight:700,
-                      background: nextReminder.priority==='high'?'#FEE2E2':nextReminder.priority==='medium'?'#FEF3C7':'#D1FAE5',
-                      color:      nextReminder.priority==='high'?'#991B1B':nextReminder.priority==='medium'?'#92400E':'#065F46',
-                    }}>{nextReminder.priority.charAt(0).toUpperCase()+nextReminder.priority.slice(1)} Priority</span>
-                  </div>
-                )}
-              </div>
-              <button
-                onClick={() => navigate('/reminders')}
-                style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:8, padding:'12px', borderRadius:12, background:'linear-gradient(135deg, #1D4ED8, #2563EB)', color:'#fff', border:'none', cursor:'pointer', fontSize:13, fontWeight:700, boxShadow:'0 2px 8px rgba(37,99,235,0.25)' }}
-              >📋 View Reminders</button>
-              {reminders.length > 1 && (
-                <div style={{ fontSize:11, color:'#9CA3AF', textAlign:'center' }}>+{reminders.length-1} more</div>
-              )}
-            </div>
-          ) : (
-            <div style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:8, color:'#9CA3AF' }}>
-              <span style={{ fontSize:13 }}>All caught up!</span>
-              <button onClick={() => navigate('/reminders')} style={{ marginTop:8, padding:'10px 20px', borderRadius:12, background:'linear-gradient(135deg, #1D4ED8, #2563EB)', color:'#fff', border:'none', cursor:'pointer', fontSize:13, fontWeight:700 }}>
-                + Add Reminder
-              </button>
-            </div>
-          )}
-        </Card>
-
-        {/* Today's schedule mini */}
-        <Card>
-          <CardHead title="Today's Schedule" action={linkBtn('+ New', '/appointments', true)} />
-          {loading ? (
-            [1,2,3,4].map(i => <Sk key={i} h={46} mb={8} />)
-          ) : appts.length === 0 ? (
-            <div style={{ textAlign:'center', padding:'24px 0', color:'#9CA3AF', fontSize:13 }}>No appointments today</div>
-          ) : appts.slice(0,5).map(a => {
-            const sc = STATUS_COLOR[a.status] || STATUS_COLOR.pending;
-            return (
-              <div key={a.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 0', borderBottom:'1px solid #F9FAFB' }}>
-                <div style={{ width:36, height:36, borderRadius:10, background:'#EFF6FF', display:'flex', alignItems:'center', justifyContent:'center', fontWeight:700, fontSize:13, color:'#2563EB', flexShrink:0 }}>
-                  {(apptCustomerName(a)[0] || '?').toUpperCase()}
-                </div>
-                <div style={{ flex:1, minWidth:0 }}>
-                  <div style={{ fontSize:13, fontWeight:600, color:'#111827', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{apptCustomerName(a)}</div>
-                  <div style={{ fontSize:11, color:'#9CA3AF' }}>{a.service?.name || ''} · {a.time || ''}</div>
-                </div>
-                <span style={{ fontSize:10, padding:'3px 8px', borderRadius:20, background:sc.bg, color:sc.text, fontWeight:700, flexShrink:0, textTransform:'capitalize' }}>
-                  {a.status}
-                </span>
-              </div>
-            );
-          })}
-        </Card>
-      </div>
-
-      {/* ── Row 3: Team  |  Status donut  |  Top Services ──── */}
-      <div style={{ display:'grid', gridTemplateColumns: isMobile ? '1fr' : '2fr 1fr 1fr', gap:14 }}>
-
-        {/* Team / Staff leaderboard */}
-        <Card>
-          <CardHead
-            title="Team Performance"
-            action={
-              <button onClick={() => navigate('/staff')} style={{ display:'flex', alignItems:'center', gap:6, padding:'6px 14px', borderRadius:10, background:'#EFF6FF', border:'1px solid #BFDBFE', cursor:'pointer', fontSize:12, fontWeight:700, color:'#2563EB' }}>
-                + Add Member
-              </button>
-            }
-          />
-          {loading ? (
-            [1,2,3,4].map(i => <Sk key={i} h={52} mb={8} />)
-          ) : staffData.length === 0 ? (
-            <div style={{ textAlign:'center', padding:'24px 0', color:'#9CA3AF', fontSize:13 }}>No staff data</div>
-          ) : staffData.map((s, i) => {
-            const badge = i === 0
-              ? { bg:'#D1FAE5', text:'#065F46', label:'Top Earner' }
-              : { bg:'#DBEAFE', text:'#1E40AF', label:'Active' };
-            return (
-              <div key={s.id} style={{ display:'flex', alignItems:'center', gap:12, padding:'10px 12px', borderRadius:12, background: i===0 ? '#EFF6FF' : '#F9FAFB', marginBottom:8, border: i===0 ? '1px solid #BFDBFE' : '1px solid transparent' }}>
-                <div style={{ width:38, height:38, borderRadius:'50%', background: i===0 ? 'linear-gradient(135deg, #1D4ED8, #2563EB)' : '#E5E7EB', display:'flex', alignItems:'center', justifyContent:'center', fontWeight:700, fontSize:14, color: i===0 ? '#fff' : '#374151', flexShrink:0 }}>
-                  {s.name?.[0]?.toUpperCase() || '?'}
-                </div>
-                <div style={{ flex:1, minWidth:0 }}>
-                  <div style={{ fontSize:13, fontWeight:600, color:'#111827', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{s.name}</div>
-                  <div style={{ fontSize:11, color:'#9CA3AF' }}>{s.appts} appointments · {s.branch || 'All branches'}</div>
-                </div>
-                <div style={{ textAlign:'right', flexShrink:0 }}>
-                  <div style={{ fontSize:13, fontWeight:700, color:'#111827' }}>Rs. {s.revenue.toLocaleString()}</div>
-                  <span style={{ fontSize:10, padding:'2px 8px', borderRadius:20, background:badge.bg, color:badge.text, fontWeight:700 }}>{badge.label}</span>
-                </div>
-              </div>
-            );
-          })}
-        </Card>
-
-        {/* Appointment status donut */}
-        <Card style={{ display:'flex', flexDirection:'column' }}>
-          <CardHead title="Appointment Status" />
-          {loading ? <Sk h={160} /> : apptStatus.length === 0 ? (
-            <div style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', color:'#9CA3AF', fontSize:13 }}>No data</div>
-          ) : (
-            <>
-              <div style={{ position:'relative', display:'flex', alignItems:'center', justifyContent:'center' }}>
-                <ResponsiveContainer width="100%" height={160}>
-                  <PieChart>
-                    <Pie data={apptStatus} cx="50%" cy="50%" innerRadius={44} outerRadius={66} paddingAngle={4} dataKey="value" startAngle={90} endAngle={-270}>
-                      {apptStatus.map((_,i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
-                    </Pie>
-                    <Tooltip formatter={v => [v, 'Count']} />
-                  </PieChart>
-                </ResponsiveContainer>
-                <div style={{ position:'absolute', textAlign:'center', pointerEvents:'none' }}>
-                  <div style={{ fontSize:22, fontWeight:800, color:'#111827' }}>{completedPct}%</div>
-                  <div style={{ fontSize:10, color:'#9CA3AF', marginTop:1 }}>Completed</div>
-                </div>
-              </div>
-              <div style={{ display:'flex', flexWrap:'wrap', gap:6, marginTop:10 }}>
-                {apptStatus.map((s,i) => (
-                  <div key={s.name} style={{ display:'flex', alignItems:'center', gap:5, fontSize:11, color:'#6B7280' }}>
-                    <span style={{ width:8, height:8, borderRadius:'50%', background:PIE_COLORS[i % PIE_COLORS.length], display:'inline-block' }} />
-                    {s.name}
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
-        </Card>
-
-        {/* Top Services */}
-        <Card>
-          <CardHead title="Top Services" action={linkBtn('All →', '/services', false)} />
-          {loading ? (
-            [1,2,3,4,5].map(i => <Sk key={i} h={36} mb={8} />)
-          ) : services.length === 0 ? (
-            <div style={{ textAlign:'center', padding:'24px 0', color:'#9CA3AF', fontSize:13 }}>No data</div>
-          ) : services.slice(0,5).map((s,i) => {
-            const rev    = Number(s.revenue || s.dataValues?.revenue || 0);
-            const maxRev = Number(services[0]?.revenue || services[0]?.dataValues?.revenue || 1);
-            const pct    = Math.round((rev / maxRev) * 100);
-            return (
-              <div key={s.service_id || s.id || i} style={{ marginBottom:10 }}>
-                <div style={{ display:'flex', justifyContent:'space-between', marginBottom:4 }}>
-                  <span style={{ fontSize:12, fontWeight:600, color:'#374151', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:'60%' }}>{s.service?.name || s.name || ''}</span>
-                  <span style={{ fontSize:12, fontWeight:700, color:'#2563EB' }}>Rs. {rev.toLocaleString()}</span>
-                </div>
-                  <div style={{ height:6, background:'#E8ECEF', borderRadius:4, overflow:'hidden' }}>
-                    <div style={{ height:'100%', width:`${pct}%`, background:`linear-gradient(90deg, #1D4ED8, #2563EB)`, borderRadius:4, transition:'width 0.6s ease' }} />
-                </div>
-              </div>
-            );
-          })}
-        </Card>
-      </div>
-
-      {/* ── Row 4: Recent Appointments table ─────────────── */}
-      <Card style={{ padding:0, overflow:'hidden' }}>
-        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'18px 22px', borderBottom:`1px solid ${C.border}`, background: C.headerGrad }}>
-          <span style={{ fontSize:15, fontWeight:700, color: C.title }}>Recent Appointments</span>
-          {linkBtn('View all →', '/appointments', true)}
-        </div>
-        <div style={{ padding:'0 12px 12px' }}>
-          <DataTable
-            noShell
-            compact
-            pagination={false}
-            showRowNumbers={false}
-            enableColumnVisibility={false}
-            columns={apptColumns}
-            data={appts}
+        {/* Compact KPI row */}
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4, 1fr)',
+          gap: 10,
+        }}
+        >
+          <MetricCard
+            label="Today's Appointments"
+            value={stats ? fmtN(stats.todayAppts) : '—'}
+            delta={deltas.apptsVsYesterday}
+            deltaHint="vs yesterday"
             loading={loading}
-            emptyMessage="No appointments today"
-            searchableColumns={[{ id: 'customer', title: 'Customer' }]}
+            iconBg="#DBEAFE"
+            iconColor="#2563EB"
+            icon={<IconCalendar />}
+            onClick={() => navigate('/appointments')}
+          />
+          <MetricCard
+            label="Today's Revenue"
+            value={stats ? fmt(stats.todayRevenue) : '—'}
+            delta={deltas.revenueVsYesterdayPct}
+            deltaSuffix="%"
+            deltaHint="vs yesterday"
+            loading={loading}
+            iconBg="#DCFCE7"
+            iconColor="#16A34A"
+            icon={<IconCash />}
+            onClick={() => navigate('/payments')}
+          />
+          <MetricCard
+            label="Monthly Revenue"
+            value={stats ? fmt(stats.monthRevenue) : '—'}
+            delta={deltas.revenueVsLastMonthPct}
+            deltaSuffix="%"
+            deltaHint="vs last month"
+            loading={loading}
+            iconBg="#EDE9FE"
+            iconColor="#7C3AED"
+            icon={<IconChart />}
+            onClick={() => navigate('/reports')}
+          />
+          <MetricCard
+            label="Total Customers"
+            value={stats ? fmtN(stats.totalCustomers) : '—'}
+            delta={stats?.newCustomersThisMonth || 0}
+            deltaHint="this month"
+            loading={loading}
+            iconBg="#FFEDD5"
+            iconColor="#EA580C"
+            icon={<IconUsers />}
+            onClick={() => navigate('/customers')}
           />
         </div>
-      </Card>
 
-      {/* Branch Performance (admin only) */}
-      {isAdmin && branchStats.length > 0 && (
-        <Card>
-          <CardHead title="Branch Performance" action={linkBtn('Manage →', '/branches', true)} />
-          <div style={{ display:'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill,minmax(260px,1fr))', gap:12 }}>
-            {branchStats.map(b => {
-              const rev  = Number(b.dataValues?.monthRevenue   || b.monthRevenue   || 0);
-              const apts = Number(b.dataValues?.todayAppts     || b.todayAppts     || 0);
-              const com  = Number(b.dataValues?.monthCommission|| b.monthCommission|| 0);
+        {/* Second KPI row — same card style as top metrics */}
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: isMobile ? '1fr 1fr' : (isAdmin ? 'repeat(6, 1fr)' : 'repeat(4, 1fr)'),
+          gap: 10,
+        }}
+        >
+          <MetricCard
+            label="In Progress"
+            value={loading ? '—' : fmtN(inProgressToday)}
+            delta={inProgressToday}
+            deltaHint="live now"
+            loading={loading}
+            iconBg="#DBEAFE"
+            iconColor="#2563EB"
+            icon={<IconProgress />}
+            onClick={() => navigate('/appointments')}
+          />
+          <MetricCard
+            label="Pending Today"
+            value={loading ? '—' : fmtN(pendingToday)}
+            delta={pendingToday}
+            deltaHint="need confirm"
+            loading={loading}
+            iconBg="#FEF3C7"
+            iconColor="#D97706"
+            icon={<IconPending />}
+            onClick={() => navigate('/appointments')}
+          />
+          <MetricCard
+            label="Completed Today"
+            value={loading ? '—' : fmtN(completedToday)}
+            delta={completedToday}
+            deltaHint="done today"
+            loading={loading}
+            iconBg="#DCFCE7"
+            iconColor="#16A34A"
+            icon={<IconCheck />}
+            onClick={() => navigate('/appointments')}
+          />
+          <MetricCard
+            label="Reminders"
+            value={loading ? '—' : fmtN(stats?.pendingReminders || 0)}
+            delta={stats?.pendingReminders || 0}
+            deltaHint="open tasks"
+            loading={loading}
+            iconBg="#F1F5F9"
+            iconColor="#475569"
+            icon={<IconBell />}
+            onClick={() => navigate('/reminders')}
+          />
+          {isAdmin && (
+            <MetricCard
+              label="Net Profit"
+              value={loading ? '—' : fmt(netProfit)}
+              delta={monthRevenue > 0 ? Math.round((netProfit / monthRevenue) * 100) : 0}
+              deltaSuffix="%"
+              deltaHint="margin"
+              loading={loading}
+              iconBg={netProfit >= 0 ? '#DCFCE7' : '#FEE2E2'}
+              iconColor={netProfit >= 0 ? '#16A34A' : '#DC2626'}
+              icon={<IconProfit />}
+              onClick={() => navigate('/reports')}
+            />
+          )}
+          {isAdmin && (
+            <MetricCard
+              label="Low Stock"
+              value={loading ? '—' : fmtN(stats?.lowStockCount || 0)}
+              delta={stats?.lowStockCount || 0}
+              deltaHint="need restock"
+              loading={loading}
+              iconBg={(stats?.lowStockCount || 0) > 0 ? '#FEE2E2' : '#DCFCE7'}
+              iconColor={(stats?.lowStockCount || 0) > 0 ? '#DC2626' : '#16A34A'}
+              icon={<IconWarn />}
+              onClick={() => navigate('/inventory')}
+            />
+          )}
+        </div>
+
+        {/* Month status snapshot */}
+        {!loading && Object.keys(statusCounts).length > 0 && (
+          <div style={{
+            display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center',
+            padding: '8px 12px', borderRadius: 12,
+            background: C.cardBg || '#fff',
+            border: `1px solid ${C.border || '#EEF2F6'}`,
+          }}
+          >
+            <span style={{ fontSize: 11.5, fontWeight: 700, color: C.muted || '#64748B', marginRight: 4 }}>
+              This month
+            </span>
+            {Object.entries(statusCounts).map(([key, count]) => {
+              const st = STATUS_STYLE[key] || { bg: '#F1F5F9', color: '#475569', label: key };
               return (
-              <div key={b.id} style={{ display:'flex', alignItems:'center', gap:12, padding:'14px 16px', background:'#EFF6FF', borderRadius:12, border:'1px solid #BFDBFE' }}>
-                <div style={{ width:42, height:42, borderRadius:12, background:'linear-gradient(135deg, #1D4ED8, #2563EB)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:18, flexShrink:0 }}>🏢</div>
-                  <div style={{ flex:1, minWidth:0 }}>
-                    <div style={{ fontSize:13, fontWeight:700, color:'#111827' }}>{b.name}</div>
-                    <div style={{ fontSize:11, color:'#9CA3AF', marginTop:2 }}>{apts} appt{apts!==1?'s':''} today</div>
+                <span
+                  key={key}
+                  style={{
+                    fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 999,
+                    background: st.bg, color: st.color,
+                  }}
+                >
+                  {st.label} · {count}
+                </span>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Charts row */}
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: isMobile ? '1fr' : '1.55fr 1fr',
+          gap: 14,
+        }}
+        >
+          <Card>
+            <CardHead
+              title="Revenue Analytics"
+              action={(
+                <span style={{ fontSize: 12, fontWeight: 600, color: C.muted || '#94A3B8' }}>
+                  Last 6 Months
+                </span>
+              )}
+            />
+            {loading ? <Sk h={210} /> : revenueData.length === 0 ? (
+              <div style={{ height: 210, display: 'grid', placeItems: 'center', color: C.muted, fontSize: 13 }}>
+                No revenue data yet
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height={210}>
+                <AreaChart data={revenueData} margin={{ top: 10, right: 8, left: -12, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="revFill" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#2563EB" stopOpacity={0.28} />
+                      <stop offset="100%" stopColor="#2563EB" stopOpacity={0.02} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke={isDark ? '#334155' : '#EEF2F7'} vertical={false} />
+                  <XAxis dataKey="month" tick={{ fontSize: 12, fill: '#94A3B8' }} axisLine={false} tickLine={false} />
+                  <YAxis
+                    tick={{ fontSize: 11, fill: '#94A3B8' }}
+                    axisLine={false}
+                    tickLine={false}
+                    tickFormatter={(v) => (v >= 1000 ? `${Math.round(v / 1000)}k` : v)}
+                  />
+                  <Tooltip content={<AreaTip />} />
+                  <Area
+                    type="monotone"
+                    dataKey="revenue"
+                    stroke="#2563EB"
+                    strokeWidth={3}
+                    fill="url(#revFill)"
+                    dot={{ r: 4, fill: '#2563EB', stroke: '#fff', strokeWidth: 2 }}
+                    activeDot={{ r: 6, fill: '#1D4ED8', stroke: '#fff', strokeWidth: 2 }}
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            )}
+          </Card>
+
+          <Card>
+            <CardHead title="Service Performance" />
+            {loading ? <Sk h={210} /> : categoryPie.length === 0 ? (
+              <div style={{ height: 210, display: 'grid', placeItems: 'center', color: C.muted, fontSize: 13 }}>
+                No service sales yet
+              </div>
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 8, alignItems: 'center' }}>
+                <div style={{ position: 'relative', height: 180 }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={categoryPie}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={52}
+                        outerRadius={70}
+                        paddingAngle={3}
+                        dataKey="value"
+                        startAngle={90}
+                        endAngle={-270}
+                      >
+                        {categoryPie.map((_, i) => (
+                          <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip formatter={(v) => fmt(v)} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                  <div style={{
+                    position: 'absolute', inset: 0, display: 'grid', placeItems: 'center',
+                    pointerEvents: 'none', textAlign: 'center',
+                  }}
+                  >
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 800, color: C.title || '#0F172A', lineHeight: 1.2 }}>
+                        {fmt(monthRevenue)}
+                      </div>
+                      <div style={{ fontSize: 10.5, color: C.muted || '#94A3B8', marginTop: 2 }}>Total Revenue</div>
+                    </div>
                   </div>
-                  <div style={{ textAlign:'right', flexShrink:0 }}>
-                    <div style={{ fontSize:13, fontWeight:700, color:G700 }}>{fmt(rev)}</div>
-                    <div style={{ fontSize:10, color:'#9CA3AF' }}>this month · comm. {fmt(com)}</div>
+                </div>
+                <div style={{ display: 'grid', gap: 10 }}>
+                  {categoryPie.map((c, i) => (
+                    <div key={c.name} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{
+                        width: 9, height: 9, borderRadius: 3, flexShrink: 0,
+                        background: PIE_COLORS[i % PIE_COLORS.length],
+                      }}
+                      />
+                      <span style={{ flex: 1, fontSize: 12.5, color: C.text || '#334155', fontWeight: 500 }}>
+                        {c.name}
+                      </span>
+                      <span style={{ fontSize: 12.5, fontWeight: 700, color: C.title || '#0F172A' }}>
+                        {c.pct}%
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </Card>
+        </div>
+
+        {/* Extra charts — 4 panels */}
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
+          gap: 14,
+        }}
+        >
+          {/* 1. Appointment Status */}
+          <Card>
+            <CardHead
+              title="Appointment Status"
+              action={<span style={{ fontSize: 12, fontWeight: 600, color: C.muted || '#94A3B8' }}>This month</span>}
+            />
+            {loading ? <Sk h={200} /> : statusPie.length === 0 ? (
+              <ChartEmpty C={C} />
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1.1fr 1fr', gap: 8, alignItems: 'center' }}>
+                <div style={{ height: 190 }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={statusPie}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={48}
+                        outerRadius={68}
+                        paddingAngle={3}
+                        dataKey="value"
+                        startAngle={90}
+                        endAngle={-270}
+                      >
+                        {statusPie.map((s, i) => (
+                          <Cell key={s.name} fill={s.fill || PIE_COLORS[i % PIE_COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip formatter={(v) => [fmtN(v), 'Count']} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+                <div style={{ display: 'grid', gap: 8 }}>
+                  {statusPie.map((s, i) => (
+                    <div key={s.name} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{
+                        width: 9, height: 9, borderRadius: 3, flexShrink: 0,
+                        background: s.fill || PIE_COLORS[i % PIE_COLORS.length],
+                      }}
+                      />
+                      <span style={{ flex: 1, fontSize: 12.5, color: C.text || '#334155', fontWeight: 500 }}>{s.name}</span>
+                      <span style={{ fontSize: 12.5, fontWeight: 800, color: C.title || '#0F172A' }}>{s.value}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </Card>
+
+          {/* 2. Staff Performance */}
+          <Card>
+            <CardHead
+              title="Staff Performance"
+              action={<span style={{ fontSize: 12, fontWeight: 600, color: C.muted || '#94A3B8' }}>Top earners</span>}
+            />
+            {loading ? <Sk h={200} /> : staffBars.length === 0 ? (
+              <ChartEmpty C={C} />
+            ) : (
+              <ResponsiveContainer width="100%" height={200}>
+                <BarChart data={staffBars} layout="vertical" margin={{ top: 4, right: 12, left: 8, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={isDark ? '#334155' : '#EEF2F7'} horizontal={false} />
+                  <XAxis
+                    type="number"
+                    tick={{ fontSize: 11, fill: '#94A3B8' }}
+                    axisLine={false}
+                    tickLine={false}
+                    tickFormatter={(v) => (v >= 1000 ? `${Math.round(v / 1000)}k` : v)}
+                  />
+                  <YAxis
+                    type="category"
+                    dataKey="name"
+                    width={56}
+                    tick={{ fontSize: 11, fill: '#64748B' }}
+                    axisLine={false}
+                    tickLine={false}
+                  />
+                  <Tooltip content={<MultiTip />} />
+                  <Bar dataKey="revenue" name="Revenue" fill="#7C3AED" radius={[0, 6, 6, 0]} barSize={14} />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </Card>
+
+          {/* 3. Top Services bar */}
+          <Card>
+            <CardHead
+              title="Top Services Chart"
+              action={<span style={{ fontSize: 12, fontWeight: 600, color: C.muted || '#94A3B8' }}>By revenue</span>}
+            />
+            {loading ? <Sk h={200} /> : serviceBars.length === 0 ? (
+              <ChartEmpty C={C} />
+            ) : (
+              <ResponsiveContainer width="100%" height={200}>
+                <BarChart data={serviceBars} margin={{ top: 8, right: 8, left: -8, bottom: 28 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={isDark ? '#334155' : '#EEF2F7'} vertical={false} />
+                  <XAxis
+                    dataKey="name"
+                    tick={{ fontSize: 10, fill: '#94A3B8' }}
+                    axisLine={false}
+                    tickLine={false}
+                    interval={0}
+                    angle={-18}
+                    textAnchor="end"
+                    height={40}
+                  />
+                  <YAxis
+                    tick={{ fontSize: 11, fill: '#94A3B8' }}
+                    axisLine={false}
+                    tickLine={false}
+                    tickFormatter={(v) => (v >= 1000 ? `${Math.round(v / 1000)}k` : v)}
+                  />
+                  <Tooltip content={<MultiTip />} />
+                  <Bar dataKey="revenue" name="Revenue" radius={[6, 6, 0, 0]} barSize={22}>
+                    {serviceBars.map((_, i) => (
+                      <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </Card>
+
+          {/* 4. Revenue vs Commission */}
+          <Card>
+            <CardHead
+              title="Revenue vs Commission"
+              action={<span style={{ fontSize: 12, fontWeight: 600, color: C.muted || '#94A3B8' }}>Last 6 months</span>}
+            />
+            {loading ? <Sk h={200} /> : revCommData.length === 0 ? (
+              <ChartEmpty C={C} />
+            ) : (
+              <ResponsiveContainer width="100%" height={200}>
+                <BarChart data={revCommData} margin={{ top: 8, right: 8, left: -8, bottom: 0 }} barGap={3}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={isDark ? '#334155' : '#EEF2F7'} vertical={false} />
+                  <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#94A3B8' }} axisLine={false} tickLine={false} />
+                  <YAxis
+                    tick={{ fontSize: 11, fill: '#94A3B8' }}
+                    axisLine={false}
+                    tickLine={false}
+                    tickFormatter={(v) => (v >= 1000 ? `${Math.round(v / 1000)}k` : v)}
+                  />
+                  <Tooltip content={<MultiTip />} />
+                  <Legend
+                    verticalAlign="top"
+                    height={28}
+                    iconType="circle"
+                    wrapperStyle={{ fontSize: 11, color: '#64748B' }}
+                  />
+                  <Bar dataKey="revenue" name="Revenue" fill="#2563EB" radius={[5, 5, 0, 0]} barSize={16} />
+                  <Bar dataKey="commission" name="Commission" fill="#F59E0B" radius={[5, 5, 0, 0]} barSize={16} />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </Card>
+        </div>
+
+        {/* Bottom operational row */}
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: isMobile ? '1fr' : '1.35fr 1fr 0.9fr',
+          gap: 14,
+          alignItems: 'stretch',
+        }}
+        >
+          {/* Today's Schedule */}
+          <Card style={{ display: 'flex', flexDirection: 'column' }}>
+            <CardHead
+              title="Today's Schedule"
+              action={linkMuted('View Full Schedule →', '/appointments')}
+            />
+            <div style={{ display: 'grid', gap: 0, flex: 1 }}>
+              {loading && [1, 2, 3, 4].map((i) => <Sk key={i} h={52} mb={10} />)}
+              {!loading && appts.length === 0 && (
+                <div style={{
+                  flex: 1, display: 'grid', placeItems: 'center',
+                  color: C.muted, fontSize: 13, padding: '28px 0',
+                }}
+                >
+                  No appointments today
+                </div>
+              )}
+              {!loading && appts.map((a, idx) => {
+                const st = STATUS_STYLE[a.status] || STATUS_STYLE.pending;
+                const name = apptCustomerName(a);
+                const initial = (name[0] || '?').toUpperCase();
+                return (
+                  <div
+                    key={a.id}
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: '64px 40px 1fr auto',
+                      gap: 10,
+                      alignItems: 'center',
+                      padding: '12px 0',
+                      borderBottom: idx === appts.length - 1 ? 'none' : `1px solid ${C.border || '#F1F5F9'}`,
+                    }}
+                  >
+                    <div style={{ fontSize: 12.5, fontWeight: 700, color: C.muted || '#64748B' }}>
+                      {formatTime(a.time)}
+                    </div>
+                    <div style={{
+                      width: 36, height: 36, borderRadius: '50%',
+                      background: 'linear-gradient(135deg, #DBEAFE, #E0E7FF)',
+                      color: '#1D4ED8', fontWeight: 800, fontSize: 13,
+                      display: 'grid', placeItems: 'center',
+                    }}
+                    >
+                      {initial}
+                    </div>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{
+                        fontSize: 13.5, fontWeight: 700, color: C.title || '#0F172A',
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                      }}
+                      >
+                        {name}
+                      </div>
+                      <div style={{
+                        fontSize: 12, color: C.muted || '#94A3B8', marginTop: 2,
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                      }}
+                      >
+                        {a.service?.name || 'Service'}
+                      </div>
+                    </div>
+                    <span style={{
+                      fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 999,
+                      background: st.bg, color: st.color, whiteSpace: 'nowrap',
+                    }}
+                    >
+                      {st.label}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </Card>
+
+          {/* Top Services */}
+          <Card>
+            <CardHead
+              title="Top Services"
+              action={<span style={{ fontSize: 12, color: C.muted || '#94A3B8', fontWeight: 600 }}>This Month</span>}
+            />
+            {loading && [1, 2, 3, 4, 5].map((i) => <Sk key={i} h={40} mb={10} />)}
+            {!loading && services.length === 0 && (
+              <div style={{ textAlign: 'center', padding: '28px 0', color: C.muted, fontSize: 13 }}>No data</div>
+            )}
+            {!loading && services.map((s, i) => {
+              const rev = Number(s.revenue || s.dataValues?.revenue || 0);
+              const pctOfTop = Math.round((rev / topServiceMax) * 100);
+              const pctOfMonth = monthRevenue > 0 ? Math.round((rev / monthRevenue) * 100) : pctOfTop;
+              const name = s.service?.name || s.name || 'Service';
+              return (
+                <div key={s.service_id || s.id || i} style={{ marginBottom: i === services.length - 1 ? 0 : 14 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+                    <span style={{
+                      width: 22, height: 22, borderRadius: 7, flexShrink: 0,
+                      background: '#EFF6FF', color: '#2563EB',
+                      display: 'grid', placeItems: 'center',
+                      fontSize: 11, fontWeight: 800,
+                    }}
+                    >
+                      {i + 1}
+                    </span>
+                    <span style={{
+                      flex: 1, fontSize: 13, fontWeight: 600, color: C.title || '#0F172A',
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    }}
+                    >
+                      {name}
+                    </span>
+                    <span style={{ fontSize: 12.5, fontWeight: 700, color: C.title || '#0F172A' }}>
+                      {fmt(rev)}
+                    </span>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: '#2563EB', minWidth: 34, textAlign: 'right' }}>
+                      {pctOfMonth}%
+                    </span>
+                  </div>
+                  <div style={{
+                    height: 7, background: isDark ? '#1E293B' : '#EEF2F7',
+                    borderRadius: 99, overflow: 'hidden', marginLeft: 32,
+                  }}
+                  >
+                    <div style={{
+                      height: '100%', width: `${pctOfTop}%`,
+                      background: 'linear-gradient(90deg, #1D4ED8, #60A5FA)',
+                      borderRadius: 99,
+                    }}
+                    />
                   </div>
                 </div>
               );
             })}
-          </div>
-        </Card>
-      )}
+          </Card>
 
-      {/* ── Logo Manager (admin / superadmin only) ──────────── */}
-      {['superadmin','admin'].includes(user?.role) && (
-        <Card>
-          <CardHead title="🖼 Salon Logos" action={linkBtn('Full Branding Settings →', '/branding', true)} />
-          <div style={{ display:'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4,1fr)', gap:16 }}>
-            {[
-              { key:'sidebar', label:'Sidebar Logo',  hint:'Shown in the app sidebar' },
-              { key:'header',  label:'Header Logo',   hint:'Shown in the top header' },
-              { key:'login',   label:'Login Logo',    hint:'Shown on the login page' },
-              { key:'public',  label:'Public Logo',   hint:'Shown on booking / public pages' },
-            ].map(({ key, label, hint }) => {
-              const url  = branding[`logo_${key}_url`];
-              const busy = uploadingVariant === key;
-              return (
-                <div key={key} style={{ display:'flex', flexDirection:'column', gap:8 }}>
-                  <div>
-                    <div style={{ fontSize:12, fontWeight:700, color:'#374151', textTransform:'uppercase', letterSpacing:'0.06em' }}>{label}</div>
-                    <div style={{ fontSize:11, color:'#9CA3AF', marginTop:2 }}>{hint}</div>
+          {/* Inventory Status */}
+          <Card style={{ display: 'flex', flexDirection: 'column' }}>
+            <CardHead
+              title="Inventory Status"
+              action={linkMuted('View Inventory →', '/inventory')}
+            />
+            <div style={{ display: 'grid', gap: 12, flex: 1 }}>
+              {[
+                {
+                  label: 'Low Stock Items',
+                  value: stats?.lowStockCount ?? 0,
+                  bg: '#FEF2F2',
+                  color: '#DC2626',
+                  icon: <IconWarn />,
+                },
+                {
+                  label: 'In Stock Items',
+                  value: stats?.inventoryInStock ?? 0,
+                  bg: '#F0FDF4',
+                  color: '#16A34A',
+                  icon: <IconBox />,
+                },
+                {
+                  label: 'Total Items',
+                  value: stats?.inventoryTotal ?? 0,
+                  bg: '#EFF6FF',
+                  color: '#2563EB',
+                  icon: <IconStack />,
+                },
+              ].map((row) => (
+                <div
+                  key={row.label}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 12,
+                    padding: '14px 14px', borderRadius: 14,
+                    background: isDark ? `${row.color}18` : row.bg,
+                    border: `1px solid ${isDark ? `${row.color}33` : 'transparent'}`,
+                  }}
+                >
+                  <div style={{
+                    width: 36, height: 36, borderRadius: 10,
+                    background: isDark ? `${row.color}22` : '#fff',
+                    color: row.color, display: 'grid', placeItems: 'center',
+                  }}
+                  >
+                    {row.icon}
                   </div>
-                  <div style={{ height:90, borderRadius:12, border:`2px dashed ${url ? '#BFDBFE' : '#E5E7EB'}`, display:'flex', alignItems:'center', justifyContent:'center', background: url ? '#EFF6FF' : '#F9FAFB', overflow:'hidden', position:'relative' }}>
-                    {busy ? (
-                      <div style={{ fontSize:11, color:'#2563EB', fontWeight:600, display:'flex', flexDirection:'column', alignItems:'center', gap:6 }}>
-                        <div style={{ width:20, height:20, border:'2.5px solid #BFDBFE', borderTopColor:'#2563EB', borderRadius:'50%', animation:'spin .8s linear infinite' }} />
-                        Uploading…
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: C.muted || '#64748B' }}>{row.label}</div>
+                    {loading ? <Sk h={22} w={48} /> : (
+                      <div style={{ fontSize: 22, fontWeight: 800, color: row.color, letterSpacing: '-0.02em' }}>
+                        {fmtN(row.value)}
                       </div>
-                    ) : url ? (
-                      <img src={url} alt={label} style={{ maxWidth:'100%', maxHeight:'100%', objectFit:'contain', padding:8 }} />
-                    ) : (
-                      <span style={{ fontSize:11, color:'#9CA3AF' }}>No logo set</span>
                     )}
                   </div>
-                  <label style={{ cursor: busy ? 'not-allowed' : 'pointer' }}>
-                    <input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" style={{ display:'none' }} disabled={!!uploadingVariant}
-                      onChange={e => { const f = e.target.files?.[0]; if (f) uploadLogo(key, f); e.target.value = ''; }} />
-                    <div style={{ padding:'9px 0', borderRadius:10, border:`1.5px solid ${busy ? '#E5E7EB' : '#2563EB'}`, background: busy ? '#F9FAFB' : url ? '#fff' : '#EFF6FF', color: busy ? '#9CA3AF' : '#2563EB', fontSize:12, fontWeight:700, textAlign:'center', transition:'all .15s', userSelect:'none' }}>
-                      {busy ? 'Uploading…' : url ? '↑ Replace Logo' : '↑ Upload Logo'}
-                    </div>
-                  </label>
                 </div>
-              );
-            })}
-          </div>
-        </Card>
-      )}
+              ))}
+            </div>
+          </Card>
+        </div>
+      </div>
 
-      <style>{`@keyframes pulse { 0%,100%{opacity:1}50%{opacity:.45} } @keyframes spin { to { transform:rotate(360deg); } }`}</style>
+      <style>{`
+        @keyframes dashShimmer {
+          0% { background-position: 200% 0; }
+          100% { background-position: -200% 0; }
+        }
+      `}</style>
     </PageWrapper>
   );
 }
-

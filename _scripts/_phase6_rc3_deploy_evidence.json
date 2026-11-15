@@ -1,0 +1,50 @@
+{
+  "mode": "phase6_rc3_production_deploy",
+  "approval": "deplyp / deploy",
+  "started_utc": "2026-11-14T15:45:34.562397+00:00",
+  "bundle": "e:\\salon_v1\\_release\\phase6_t28_rc3",
+  "rc_id": "phase6_t28_rc3",
+  "whatsapp": "NOT_AUTHORIZED_NOT_SENT",
+  "steps": [
+    {
+      "ssh": true
+    },
+    {
+      "snapshot": true,
+      "raw_tail": "SNAP_OK\n"
+    },
+    {
+      "sftp_upload": true,
+      "files": [
+        "ai_engine/app/catalogue_quality.py",
+        "ai_engine/app/pricing_resolver.py",
+        "ai_engine/app/booking_flow.py",
+        "ai_engine/app/customer_respect.py",
+        "ai_engine/app/main.py",
+        "backend/services/crmHandoffInboundPolicy.js",
+        "backend/services/crmInboundTurnService.js"
+      ]
+    },
+    {
+      "docker_cp": true
+    },
+    {
+      "restart": true,
+      "tail": " Container xanesalon-backend-1 Restarting \n Container xanesalon-ai_engine-1 Restarting \n Container xanesalon-ai_crm_worker-1 Restarting \n Container xanesalon-ai_engine-1 Started \n Container xanesalon-ai_crm_worker-1 Started \n Container xanesalon-backend-1 Started \n"
+    }
+  ],
+  "local_hashes": {
+    "ai_engine/app/catalogue_quality.py": "3938ca362c8822584ecd8165f2cb3b5999e6b45cfb7aa9a547088aaf338db3ca",
+    "ai_engine/app/pricing_resolver.py": "02a0baf7ccbece8a3569a6c877ae4babf66d5e424ce4d91f667c25d64c3aad1d",
+    "ai_engine/app/booking_flow.py": "9ae3f2923fd0cd7956cc5293c13b69ccfc26aa05af1ec44632fa5e859a3f019c",
+    "ai_engine/app/customer_respect.py": "a7e03568003a8b16ff3aa318a2fd75b2007c073a05c69796a5af662381557a04",
+    "ai_engine/app/main.py": "be460ee08b879e7182af1aa6ec7920368f69c5816e4a07b95d2910c289c76a4c",
+    "backend/services/crmHandoffInboundPolicy.js": "d60228ae2a628e53ea8ea86f3aec6480a6218c9a9f60842fa87abd2338139ec0",
+    "backend/services/crmInboundTurnService.js": "9c900212d4b69e8f9ee801356ae62c2be0ef88a8daaa75ada50fd081ed5156fa"
+  },
+  "local_match_manifest": true,
+  "snapshot_dir": "/root/xanesalon/_rollback/phase6_rc3_20261114_154539",
+  "verify": "PHASE6_AI_OK {\"ids\": [278, 238], \"missing\": [\"layer\"], \"price\": 4500, \"handoff_snip\": \"Hari Sir, mama dan team ekata request ekak danawa. Podi welawak denna \\u2014 confirm \"}\nPHASE6_WORKER_OK [true,true,true,true]\nNAME                        IMAGE                     COMMAND                  SERVICE         CREATED        STATUS                    PORTS\nxanesalon-ai_crm_worker-1   xanesalon-ai_crm_worker   \"docker-entrypoint.s\u2026\"   ai_crm_worker   33 hours ago   Up 29 seconds             5000/tcp\nxanesalon-ai_engine-1       xanesalon-ai_engine       \"uvicorn app.main:ap\u2026\"   ai_engine       33 hours ago   Up 39 seconds (healthy)   8010/tcp\nxanesalon-backend-1         xanesalon-backend         \"docker-entrypoint.s\u2026\"   backend         28 hours ago   Up 29 seconds (healthy)   0.0.0.0:5001->5000/tcp, [::]:5001->5000/tcp\n",
+  "ok": true,
+  "finished_utc": "2026-11-14T15:46:38.575218+00:00"
+}

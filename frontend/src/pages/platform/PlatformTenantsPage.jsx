@@ -162,6 +162,14 @@ export default function PlatformTenantsPage() {
   const [featuresSaving, setFeaturesSaving] = useState(false);
   const [featuresError, setFeaturesError] = useState('');
   const [featuresAdminControlled, setFeaturesAdminControlled] = useState(false);
+  const [creditTenant, setCreditTenant] = useState(null);
+  const [creditWallet, setCreditWallet] = useState(null);
+  const [creditLoading, setCreditLoading] = useState(false);
+  const [creditSaving, setCreditSaving] = useState(false);
+  const [creditError, setCreditError] = useState('');
+  const [creditAmount, setCreditAmount] = useState('10');
+  const [creditNote, setCreditNote] = useState('AI credit top-up');
+  const [creditBalance, setCreditBalance] = useState('');
   const [clearDataTenant, setClearDataTenant] = useState(null);
   const [clearConfirmSlug, setClearConfirmSlug] = useState('');
   const [clearingData, setClearingData] = useState(false);
@@ -354,6 +362,73 @@ export default function PlatformTenantsPage() {
       fetchTenants();
     } catch (err) {
       alert(err.response?.data?.message || 'Status change failed.');
+    }
+  };
+
+  const openAiCredits = async (tenant) => {
+    setCreditTenant(tenant);
+    setCreditError('');
+    setCreditWallet(null);
+    setCreditAmount('10');
+    setCreditNote('AI credit top-up');
+    setCreditBalance('');
+    setCreditLoading(true);
+    try {
+      const res = await api.get(`/platform/tenants/${tenant.id}/ai-credits`);
+      setCreditWallet(res.data?.wallet || null);
+      if (res.data?.wallet?.remaining != null) {
+        setCreditBalance(String(res.data.wallet.remaining));
+      }
+    } catch (err) {
+      setCreditError(err.response?.data?.message || 'Failed to load AI credits.');
+    } finally {
+      setCreditLoading(false);
+    }
+  };
+
+  const handleAddAiCredit = async () => {
+    if (!creditTenant) return;
+    const amount = Number(creditAmount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setCreditError('Enter a positive USD amount.');
+      return;
+    }
+    setCreditSaving(true);
+    setCreditError('');
+    try {
+      const res = await api.post(`/platform/tenants/${creditTenant.id}/ai-credits/topup`, {
+        amount_usd: amount,
+        note: creditNote || 'AI credit top-up',
+      });
+      setCreditWallet(res.data?.wallet || null);
+      setNotice(`Added USD ${amount.toFixed(2)} AI credit to ${creditTenant.name}.`);
+    } catch (err) {
+      setCreditError(err.response?.data?.message || 'Top-up failed.');
+    } finally {
+      setCreditSaving(false);
+    }
+  };
+
+  const handleSyncAiBalance = async () => {
+    if (!creditTenant) return;
+    const balance = Number(creditBalance);
+    if (!Number.isFinite(balance) || balance < 0) {
+      setCreditError('Enter a non-negative balance.');
+      return;
+    }
+    setCreditSaving(true);
+    setCreditError('');
+    try {
+      const res = await api.post(`/platform/tenants/${creditTenant.id}/ai-credits/set-balance`, {
+        balance_usd: balance,
+        note: `Platform synced balance to USD ${balance}`,
+      });
+      setCreditWallet(res.data?.wallet || null);
+      setNotice(`Synced ${creditTenant.name} AI balance to USD ${balance.toFixed(2)}.`);
+    } catch (err) {
+      setCreditError(err.response?.data?.message || 'Balance sync failed.');
+    } finally {
+      setCreditSaving(false);
     }
   };
 
@@ -643,6 +718,7 @@ export default function PlatformTenantsPage() {
           {t.status === 'suspended' && (
             <IBtn onClick={() => handleQuickStatus(t, 'activate')} title="Activate" bg="#F0FDF4" border="#D1FAE5"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="5 3 19 12 5 21 5 3"/></svg></IBtn>
           )}
+          <IBtn onClick={() => openAiCredits(t)} title="Add AI credit" bg={isDark ? 'rgba(37,99,235,0.12)' : '#EFF6FF'} border={isDark ? 'rgba(37,99,235,0.3)' : '#BFDBFE'}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg></IBtn>
           <IBtn onClick={() => openFeatures(t)} title="Manage features" bg={isDark ? 'rgba(16,185,129,0.12)' : '#ECFDF5'} border={isDark ? 'rgba(16,185,129,0.3)' : '#A7F3D0'}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 3v3m0 12v3M3 12h3m12 0h3M5.6 5.6l2.1 2.1m8.6 8.6 2.1 2.1M5.6 18.4l2.1-2.1m8.6-8.6 2.1-2.1"/></svg></IBtn>
           <IBtn onClick={() => openEditTenant(t)} title="Edit plan / status"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></IBtn>
           <IBtn onClick={() => handleDelete(t)} title="Delete tenant" border="#FEE2E2"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg></IBtn>
@@ -869,6 +945,12 @@ export default function PlatformTenantsPage() {
                   disabled: detailTenant.status === 'cancelled' || notifyingId === detailTenant.id,
                 },
                 {
+                  label: 'Add AI Credit', color: '#2563EB',
+                  bg: isDark ? 'rgba(37,99,235,0.12)' : '#EFF6FF', border: isDark ? 'rgba(37,99,235,0.3)' : '#BFDBFE',
+                  onClick: () => { const t = detailTenant; setDetailTenant(null); openAiCredits(t); },
+                  disabled: false,
+                },
+                {
                   label: 'Manage Features', color: '#059669',
                   bg: isDark ? 'rgba(5,150,105,0.1)' : '#F0FDF4', border: isDark ? 'rgba(5,150,105,0.25)' : '#D1FAE5',
                   onClick: () => { const t = detailTenant; setDetailTenant(null); openFeatures(t); },
@@ -934,6 +1016,150 @@ export default function PlatformTenantsPage() {
         </div>
         );
       })()}
+
+      {/* AI Credits Modal */}
+      {creditTenant && (
+        <Modal
+          title={`AI Credits — ${creditTenant.name}`}
+          onClose={() => setCreditTenant(null)}
+          isDark={isDark}
+          width={520}
+        >
+          {creditLoading ? (
+            <div style={{ fontSize: 13, color: isDark ? '#94A3B8' : '#6B7280', padding: '12px 0' }}>Loading credits…</div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div style={{
+                display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10,
+                padding: 12, borderRadius: 10,
+                background: isDark ? '#0F172A' : '#F8FAFC',
+                border: `1px solid ${isDark ? '#334155' : '#E2E8F0'}`,
+              }}>
+                {[
+                  { label: 'Remaining', value: creditWallet?.remaining },
+                  { label: 'Credits added', value: creditWallet?.credits_added },
+                  { label: 'Spent', value: creditWallet?.spent_total },
+                ].map((k) => (
+                  <div key={k.label}>
+                    <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.6, color: isDark ? '#64748B' : '#94A3B8' }}>{k.label}</div>
+                    <div style={{ fontSize: 18, fontWeight: 800, color: isDark ? '#F1F5F9' : '#0F172A', marginTop: 4 }}>
+                      USD {(Number(k.value) || 0).toFixed(2)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ display: 'grid', gap: 8 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: isDark ? '#94A3B8' : '#64748B', textTransform: 'uppercase', letterSpacing: 0.5 }}>Add credit (USD)</div>
+                <input
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  value={creditAmount}
+                  onChange={(e) => setCreditAmount(e.target.value)}
+                  placeholder="10.00"
+                  style={{
+                    padding: '10px 12px', borderRadius: 10, fontSize: 14,
+                    border: `1px solid ${isDark ? '#334155' : '#E5E7EB'}`,
+                    background: isDark ? '#0F172A' : '#fff', color: isDark ? '#F1F5F9' : '#111827',
+                  }}
+                />
+                <input
+                  type="text"
+                  value={creditNote}
+                  onChange={(e) => setCreditNote(e.target.value)}
+                  placeholder="Note"
+                  style={{
+                    padding: '10px 12px', borderRadius: 10, fontSize: 14,
+                    border: `1px solid ${isDark ? '#334155' : '#E5E7EB'}`,
+                    background: isDark ? '#0F172A' : '#fff', color: isDark ? '#F1F5F9' : '#111827',
+                  }}
+                />
+                <button
+                  type="button"
+                  disabled={creditSaving}
+                  onClick={handleAddAiCredit}
+                  style={{
+                    padding: '10px 14px', borderRadius: 10, border: 'none',
+                    background: '#2563EB', color: '#fff', fontWeight: 700, cursor: creditSaving ? 'wait' : 'pointer',
+                    opacity: creditSaving ? 0.7 : 1,
+                  }}
+                >
+                  Add USD {Number(creditAmount) > 0 ? Number(creditAmount).toFixed(2) : '—'} credit
+                </button>
+              </div>
+
+              <div style={{ display: 'grid', gap: 8, paddingTop: 4, borderTop: `1px solid ${isDark ? '#334155' : '#E5E7EB'}` }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: isDark ? '#94A3B8' : '#64748B', textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 8 }}>
+                  Set remaining balance (USD)
+                </div>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={creditBalance}
+                  onChange={(e) => setCreditBalance(e.target.value)}
+                  placeholder="10.00"
+                  style={{
+                    padding: '10px 12px', borderRadius: 10, fontSize: 14,
+                    border: `1px solid ${isDark ? '#334155' : '#E5E7EB'}`,
+                    background: isDark ? '#0F172A' : '#fff', color: isDark ? '#F1F5F9' : '#111827',
+                  }}
+                />
+                <button
+                  type="button"
+                  disabled={creditSaving}
+                  onClick={handleSyncAiBalance}
+                  style={{
+                    padding: '10px 14px', borderRadius: 10,
+                    border: `1px solid ${isDark ? '#334155' : '#E5E7EB'}`,
+                    background: isDark ? '#1E293B' : '#fff', color: isDark ? '#E2E8F0' : '#111827',
+                    fontWeight: 600, cursor: creditSaving ? 'wait' : 'pointer',
+                    opacity: creditSaving ? 0.7 : 1,
+                  }}
+                >
+                  Match balance
+                </button>
+              </div>
+
+              {creditError && (
+                <div style={{ fontSize: 13, color: '#DC2626', fontWeight: 600 }}>{creditError}</div>
+              )}
+
+              {(creditWallet?.entries || []).length > 0 && (
+                <div style={{ maxHeight: 160, overflowY: 'auto', fontSize: 12 }}>
+                  <div style={{ fontWeight: 700, marginBottom: 6, color: isDark ? '#94A3B8' : '#64748B' }}>Recent ledger</div>
+                  {(creditWallet.entries || []).slice(0, 8).map((e) => (
+                    <div key={e.id} style={{
+                      display: 'flex', justifyContent: 'space-between', gap: 8,
+                      padding: '6px 0', borderTop: `1px solid ${isDark ? '#1E293B' : '#F1F5F9'}`,
+                      color: isDark ? '#CBD5E1' : '#334155',
+                    }}>
+                      <span>{e.entry_type} · {e.note || '—'}</span>
+                      <span style={{ fontWeight: 700 }}>USD {(Number(e.amount_usd) || 0).toFixed(2)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                <button
+                  type="button"
+                  onClick={() => setCreditTenant(null)}
+                  style={{
+                    padding: '8px 14px', borderRadius: 8,
+                    border: `1px solid ${isDark ? '#334155' : '#E5E7EB'}`,
+                    background: isDark ? '#1E293B' : '#fff', color: isDark ? '#E2E8F0' : '#374151',
+                    fontWeight: 600, cursor: 'pointer',
+                  }}
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          )}
+        </Modal>
+      )}
 
       {/* Features Modal */}
       {featuresTenant && (

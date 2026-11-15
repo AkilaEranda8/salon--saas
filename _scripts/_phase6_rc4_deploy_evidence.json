@@ -1,0 +1,44 @@
+{
+  "mode": "phase6_rc4_production_deploy",
+  "approval": "deploy karann / deploy",
+  "started_utc": "2026-11-15T02:05:16.509521+00:00",
+  "bundle": "e:\\salon_v1\\_release\\phase6_t28_rc4",
+  "rc_id": "phase6_t28_rc4",
+  "whatsapp": "NOT_AUTHORIZED_NOT_SENT",
+  "steps": [
+    {
+      "ssh": true
+    },
+    {
+      "snapshot": true,
+      "raw_tail": "SNAP_OK\n"
+    },
+    {
+      "sftp_upload": true,
+      "files": [
+        "ai_engine/app/pricing_resolver.py",
+        "ai_engine/app/booking_flow.py",
+        "ai_engine/app/main.py",
+        "backend/services/crmHandoffInboundPolicy.js"
+      ]
+    },
+    {
+      "docker_cp": true
+    },
+    {
+      "restart": true,
+      "tail": " Container xanesalon-backend-1 Restarting \n Container xanesalon-ai_crm_worker-1 Restarting \n Container xanesalon-ai_engine-1 Restarting \n Container xanesalon-ai_engine-1 Started \n Container xanesalon-ai_crm_worker-1 Started \n Container xanesalon-backend-1 Started \n"
+    }
+  ],
+  "local_hashes": {
+    "ai_engine/app/pricing_resolver.py": "67befb7ee1ac48b1b1a53cff087570364e55b8236d913c67d181d09a9d9064d7",
+    "ai_engine/app/booking_flow.py": "c3f8ab46d065071cfe8db9e5f20a9d568a91473b90d9f2e1646282d305e388ea",
+    "ai_engine/app/main.py": "bcbed4df3f683e07b0d8d1f38729f6591f4e00b8ab094ba60f66e6c4778818c3",
+    "backend/services/crmHandoffInboundPolicy.js": "64e5aed148d3d72562dedb98d291f8b302afd50538d9f3f7a81658b99bb7d0ca"
+  },
+  "local_match_manifest": true,
+  "snapshot_dir": "/root/xanesalon/_rollback/phase6_rc4_20261115_020518",
+  "verify": "PHASE6_RC4_AI_OK {\"rej\": true, \"enq\": false, \"ude\": \"09:00\", \"clear\": true, \"heya\": \"2026-11-16\", \"heya_clear\": true, \"book_ok\": true, \"an_typo\": \"08:30\", \"end\": \"13:30\", \"tot\": 105, \"period_only\": true, \"slot_snip\": \"Together: *Cut + Facial* \\u2014 about *~105 min* (Cut 45m, Facial 60m).\\n*Afternoon* start times on 2026-11-15:\\n*Afternoon:* 1\"}\nPHASE6_RC4_WORKER_OK [true,true,true,true]\nNAME                        IMAGE                     COMMAND                  SERVICE         CREATED        STATUS                    PORTS\nxanesalon-ai_crm_worker-1   xanesalon-ai_crm_worker   \"docker-entrypoint.s\u2026\"   ai_crm_worker   43 hours ago   Up 29 seconds             5000/tcp\nxanesalon-ai_engine-1       xanesalon-ai_engine       \"uvicorn app.main:ap\u2026\"   ai_engine       43 hours ago   Up 39 seconds (healthy)   8010/tcp\nxanesalon-backend-1         xanesalon-backend         \"docker-entrypoint.s\u2026\"   backend         38 hours ago   Up 29 seconds (healthy)   0.0.0.0:5001->5000/tcp, [::]:5001->5000/tcp\n",
+  "ok": true,
+  "finished_utc": "2026-11-15T02:06:08.460887+00:00"
+}

@@ -166,15 +166,15 @@ const listServices = async (req, res) => {
       tenant_id: tenantId,
       is_active: true,
     };
-    // Prefer online-available for AI channel; fall back to all active if none
+    // AI needs the full active catalogue (not only online) so WhatsApp can answer from real data
     let rows = await Service.findAll({
-      where: { ...where, available_online: true },
+      where,
       attributes: ['id', 'name', 'price', 'duration_minutes', 'category', 'description'],
       order: [['name', 'ASC']],
     });
     if (!rows.length) {
       rows = await Service.findAll({
-        where,
+        where: { ...where, available_online: true },
         attributes: ['id', 'name', 'price', 'duration_minutes', 'category', 'description'],
         order: [['name', 'ASC']],
       });
@@ -195,14 +195,15 @@ const listStaff = async (req, res) => {
     const serviceId = req.query.serviceId ? Number(req.query.serviceId) : null;
 
     const where = { tenant_id: tenantId, is_active: true };
+    // Full active staff roster for AI answers (hours/names); booking still filters by specialization
     let rows = await Staff.findAll({
-      where: { ...where, available_online: true },
+      where,
       attributes: ['id', 'name', 'branch_id', 'working_hours', 'photo_url'],
       order: [['name', 'ASC']],
     });
     if (!rows.length) {
       rows = await Staff.findAll({
-        where,
+        where: { ...where, available_online: true },
         attributes: ['id', 'name', 'branch_id', 'working_hours', 'photo_url'],
         order: [['name', 'ASC']],
       });
@@ -366,10 +367,17 @@ const listAppointments = async (req, res) => {
         date: { [Op.gte]: today },
         status: { [Op.in]: ['pending', 'confirmed', 'in_service'] },
       },
+      include: [{ model: Service, as: 'service', attributes: ['id', 'name'], required: false }],
       order: [['date', 'ASC'], ['time', 'ASC']],
       limit: 20,
     });
-    return res.json(rows);
+    // Flatten service_name so AI cancel/reschedule lists can show the service
+    const data = rows.map((r) => {
+      const j = r.toJSON();
+      j.service_name = j.service?.name || null;
+      return j;
+    });
+    return res.json(data);
   } catch (err) {
     console.error('[crm-integration] listAppointments', err);
     return res.status(500).json({ message: 'Server error' });
@@ -838,7 +846,7 @@ const searchKnowledgeHandler = async (req, res) => {
     const q = req.query.q || '';
     const { searchKnowledge, formatSnippetsForPrompt } = require('../services/knowledgeService');
     const hits = await searchKnowledge(tenantId, q, {
-      limit: Math.min(parseInt(req.query.limit, 10) || 5, 10),
+      limit: Math.min(parseInt(req.query.limit, 10) || 12, 25),
       branchId: req.query.branchId || null,
       category: req.query.category || null,
     });

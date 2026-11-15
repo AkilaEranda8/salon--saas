@@ -68,16 +68,26 @@ function getCachedOutboundMessage(key) {
 
 /**
  * Resolve a reliable send JID.
- * Prefer verified PN from onWhatsApp — guessing @lid / raw digits often causes
- * recipient "Waiting for this message" placeholders.
+ *
+ * CRITICAL: When the customer messaged us on @lid, replies MUST go back to that
+ * same @lid. Rewriting LID → PN is a common cause of permanent
+ * "Waiting for this message" placeholders on the recipient.
+ *
+ * For proactive outbound (no inbound reply JID), prefer verified PN via onWhatsApp.
  */
 async function resolveSendJid(sock, phone, meta = {}) {
+  // Inbound reply path — never rewrite away from the chat WhatsApp opened
+  if (meta.replyToInbound && meta.replyJid) return meta.replyJid;
+  if (meta.allowLid && meta.replyJid && isLidJid(meta.replyJid)) return meta.replyJid;
+
   if (meta.replyJid && !isLidJid(meta.replyJid)) return meta.replyJid;
   if (meta.jid && !isLidJid(meta.jid)) return meta.jid;
 
   let digits = String(phone || '').replace(/\D/g, '');
   if (digits.startsWith('0')) digits = `94${digits.slice(1)}`;
   if (digits.length === 9 && digits.startsWith('7')) digits = `94${digits}`;
+  // Never treat LID numeric ids as phone numbers
+  if (digits.length >= 14) digits = '';
 
   if (digits && sock?.onWhatsApp) {
     try {
@@ -200,6 +210,7 @@ async function startSession(tenantId, audit = {}) {
     useMultiFileAuthState,
     DisconnectReason,
     fetchLatestBaileysVersion,
+    downloadMediaMessage,
   } = baileys;
 
   const { state, saveCreds } = await useMultiFileAuthState(sessionDir(tid));
@@ -212,6 +223,10 @@ async function startSession(tenantId, audit = {}) {
     browser: ['HEXAONE', 'Chrome', '1.0.0'],
     syncFullHistory: false,
     markOnlineOnConnect: false,
+    // Baileys 6.x: fetchProps/init queries often time out on WA Web — noise only,
+    // but can flap reconnect. Skip non-essential init queries; chat still works.
+    fireInitQueries: false,
+    defaultQueryTimeoutMs: 60_000,
     // Lets Baileys re-send ciphertext when recipient requests decrypt retry
     // (reduces permanent "Waiting for this message" placeholders).
     getMessage: async (key) => getCachedOutboundMessage(key),
@@ -281,13 +296,97 @@ async function startSession(tenantId, audit = {}) {
       if (!msg.message || msg.key.fromMe) continue;
       const jid = msg.key.remoteJid;
       if (!jid || jid.endsWith('@g.us')) continue;
+
+      // Unwrap ephemeral / view-once so image+caption still reach AI
+      const content =
+        msg.message.ephemeralMessage?.message
+        || msg.message.viewOnceMessage?.message
+        || msg.message.viewOnceMessageV2?.message
+        || msg.message.viewOnceMessageV2Extension?.message
+        || msg.message;
+
       const body =
-        msg.message.conversation
-        || msg.message.extendedTextMessage?.text
-        || msg.message.imageMessage?.caption
-        || msg.message.videoMessage?.caption
+        content.conversation
+        || content.extendedTextMessage?.text
+        || content.imageMessage?.caption
+        || content.videoMessage?.caption
+        || content.audioMessage?.caption
+        // Quick-reply / button taps
+        || content.buttonsResponseMessage?.selectedDisplayText
+        || content.buttonsResponseMessage?.selectedButtonId
+        || content.templateButtonReplyMessage?.selectedDisplayText
+        || content.templateButtonReplyMessage?.selectedId
+        || content.listResponseMessage?.title
+        || content.listResponseMessage?.singleSelectReply?.selectedRowId
         || '';
-      if (!body) continue;
+
+      let images = [];
+      let audio = null;
+      const imageMsg = content.imageMessage;
+      if (imageMsg && typeof downloadMediaMessage === 'function') {
+        try {
+          const buffer = await downloadMediaMessage(
+            { ...msg, message: { imageMessage: imageMsg } },
+            'buffer',
+            {},
+            { reuploadRequest: sock.updateMediaMessage }
+          );
+          const MAX_BYTES = Math.floor(3.5 * 1024 * 1024);
+          if (buffer && Buffer.isBuffer(buffer) && buffer.length > 0 && buffer.length <= MAX_BYTES) {
+            images = [{
+              mimeType: String(imageMsg.mimetype || 'image/jpeg').split(';')[0] || 'image/jpeg',
+              dataBase64: buffer.toString('base64'),
+            }];
+          } else if (buffer && buffer.length > MAX_BYTES) {
+            console.warn(`[WhatsApp] inbound image too large for AI tenant=${tid} bytes=${buffer.length}`);
+          }
+        } catch (imgErr) {
+          console.error('[WhatsApp] image download failed:', imgErr.message);
+        }
+      }
+
+      // Voice notes / audio (PTT) — download for Gemini transcription
+      const audioMsg = content.audioMessage;
+      let audioDownloadFailed = false;
+      if (audioMsg && typeof downloadMediaMessage === 'function') {
+        try {
+          const buffer = await downloadMediaMessage(
+            { ...msg, message: { audioMessage: audioMsg } },
+            'buffer',
+            {},
+            { reuploadRequest: sock.updateMediaMessage }
+          );
+          const MAX_AUDIO = Math.floor(4 * 1024 * 1024);
+          if (buffer && Buffer.isBuffer(buffer) && buffer.length > 0 && buffer.length <= MAX_AUDIO) {
+            audio = {
+              mimeType: String(audioMsg.mimetype || 'audio/ogg').split(';')[0] || 'audio/ogg',
+              dataBase64: buffer.toString('base64'),
+              ptt: !!audioMsg.ptt,
+              seconds: Number(audioMsg.seconds) || null,
+            };
+          } else if (buffer && buffer.length > MAX_AUDIO) {
+            audioDownloadFailed = true;
+            console.warn(`[WhatsApp] inbound audio too large tenant=${tid} bytes=${buffer.length}`);
+          } else {
+            audioDownloadFailed = true;
+            console.warn(`[WhatsApp] inbound audio empty tenant=${tid}`);
+          }
+        } catch (audErr) {
+          audioDownloadFailed = true;
+          console.error('[WhatsApp] audio download failed:', audErr.message);
+        }
+      } else if (audioMsg && typeof downloadMediaMessage !== 'function') {
+        audioDownloadFailed = true;
+        console.error('[WhatsApp] audioMessage present but downloadMediaMessage unavailable');
+      }
+
+      // Text OR image OR voice required.
+      // IMPORTANT: never silently drop a voice note when download fails — customer gets no reply.
+      if (!body && !images.length && !audio && !audioMsg) continue;
+
+      const storeBody = body
+        || (audio || audioMsg ? '[Voice note]' : '')
+        || (images.length ? '[Photo]' : '');
       const peer = await resolveInboundPeer(sock, msg);
       const phone = peer.phone;
       await storeMessage({
@@ -295,7 +394,7 @@ async function startSession(tenantId, audit = {}) {
         direction: 'in',
         phone,
         jid: peer.replyJid || jid,
-        body,
+        body: storeBody,
         status: 'received',
         wa_message_id: msg.key.id,
       });
@@ -307,15 +406,24 @@ async function startSession(tenantId, audit = {}) {
         const tenant = await Tenant.findByPk(tid);
         if (tenant && hasTenantFeature(tenant, 'whatsapp_ai_crm') && phone) {
           const { enqueueInboundTurn } = require('./crmInboundTurnService');
+          const voicePlaceholder = audioDownloadFailed
+            ? 'I sent a voice note but it could not be downloaded — please ask me to type my request in text.'
+            : '[Customer sent a voice note]';
           await enqueueInboundTurn({
             tenantId: tid,
             phone,
-            message: body,
+            message: body
+              || (audio ? '[Customer sent a voice note]' : '')
+              || (audioMsg ? voicePlaceholder : '')
+              || '[Customer sent a photo]',
             waMessageId: msg.key.id || `qr-${tid}-${Date.now()}`,
             name: msg.pushName || null,
             channel: 'qr',
             campaignSource: 'whatsapp_qr',
             replyJid: peer.replyJid,
+            images,
+            audio: audio || undefined,
+            audioDownloadFailed: audioDownloadFailed || undefined,
           });
         }
       } catch (err) {
@@ -389,12 +497,18 @@ async function sendViaQr(tenantId, phone, message, meta = {}) {
   const sock = activeSockets.get(tid);
   if (!sock) return { used: false };
 
+  // CRM AI replies always echo the inbound chat JID (often @lid)
+  const inboundReply = !!(meta.replyJid || meta.replyToInbound);
+  if (inboundReply && meta.replyJid && isLidJid(meta.replyJid)) {
+    meta = { ...meta, allowLid: true, replyToInbound: true };
+  }
+
   let jid = await resolveSendJid(sock, phone, meta);
   if (!jid) return { used: false };
 
-  // Prefer PN chats for proactive staff/customer alerts — @lid outbound is
-  // a frequent cause of permanent "Waiting for this message" on recipients.
-  if (isLidJid(jid) && !meta.allowLid) {
+  // Prefer PN only for proactive alerts (no inbound reply thread).
+  // Never rewrite an inbound @lid reply target — that breaks E2E decrypt.
+  if (isLidJid(jid) && !meta.allowLid && !meta.replyToInbound) {
     const verified = await resolveSendJid(sock, phone, {});
     if (verified && !isLidJid(verified)) {
       console.warn(`[WhatsApp] Replacing @lid with verified PN ${verified}`);
@@ -411,9 +525,52 @@ async function sendViaQr(tenantId, phone, message, meta = {}) {
   let status = 'sent';
   let errorMsg = null;
   let waMessageId = null;
-  const content = { conversation: String(message || '') };
+  const buttons = Array.isArray(meta.buttons)
+    ? meta.buttons
+      .filter((b) => b && (b.text || b.id))
+      .slice(0, 3)
+      .map((b, i) => ({
+        buttonId: String(b.id || `opt_${i + 1}`).slice(0, 256),
+        buttonText: { displayText: String(b.text || b.id).slice(0, 25) },
+        type: 1,
+      }))
+    : [];
+  const content = buttons.length
+    ? { conversation: String(message || ''), buttons }
+    : { conversation: String(message || '') };
   try {
-    const sent = await sock.sendMessage(jid, { text: message });
+    // Warm session + typing indicator before send (feels faster to the customer)
+    try {
+      if (typeof sock.presenceSubscribe === 'function') {
+        await sock.presenceSubscribe(jid);
+      }
+      if (typeof sock.sendPresenceUpdate === 'function') {
+        await sock.sendPresenceUpdate('composing', jid);
+      }
+    } catch (_) { /* ignore */ }
+
+    let sent;
+    if (buttons.length >= 2) {
+      try {
+        sent = await sock.sendMessage(jid, {
+          text: String(message || ''),
+          footer: String(meta.footer || 'Tap a choice').slice(0, 60),
+          buttons,
+          headerType: 1,
+        });
+      } catch (btnErr) {
+        console.warn(`[WhatsApp] buttons failed, text fallback:`, btnErr.message);
+        const withHints = `${message}\n\n👉 ${buttons.map((b) => b.buttonText.displayText).join(' · ')}`;
+        sent = await sock.sendMessage(jid, { text: withHints });
+      }
+    } else {
+      sent = await sock.sendMessage(jid, { text: message });
+    }
+    try {
+      if (typeof sock.sendPresenceUpdate === 'function') {
+        await sock.sendPresenceUpdate('paused', jid);
+      }
+    } catch (_) { /* ignore */ }
     waMessageId = sent?.key?.id || null;
     if (waMessageId) {
       cacheOutboundMessage(jid, waMessageId, content);
@@ -421,6 +578,7 @@ async function sendViaQr(tenantId, phone, message, meta = {}) {
         cacheOutboundMessage(sent.key.remoteJid, waMessageId, content);
       }
     }
+    console.log(`[WhatsApp] sent tenant=${tid} to=${jid} id=${waMessageId || 'n/a'} lid=${isLidJid(jid)}`);
     await storeMessage({
       tenantId: tid,
       direction: 'out',
@@ -527,12 +685,38 @@ async function restoreSessionsOnBoot() {
   }
 }
 
+/**
+ * Show WhatsApp "typing…" while AI is thinking (Baileys presence).
+ * Fire-and-forget safe — never throws to caller.
+ */
+async function sendComposing(tenantId, phone, meta = {}) {
+  const tid = normalizeTenantId(tenantId);
+  const sock = activeSockets.get(tid);
+  if (!sock) return false;
+  try {
+    let jid = meta.replyJid || meta.jid || null;
+    if (!jid) jid = toJid(phone);
+    if (!jid) return false;
+    if (typeof sock.presenceSubscribe === 'function') {
+      await sock.presenceSubscribe(jid).catch(() => {});
+    }
+    if (typeof sock.sendPresenceUpdate === 'function') {
+      await sock.sendPresenceUpdate('composing', jid);
+      return true;
+    }
+  } catch (err) {
+    console.warn(`[WhatsApp] composing tenant=${tid}:`, err.message);
+  }
+  return false;
+}
+
 module.exports = {
   startSession,
   stopSession,
   getStatus,
   isConnected,
   sendViaQr,
+  sendComposing,
   listMessages,
   restoreSessionsOnBoot,
   toJid,

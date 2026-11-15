@@ -1,0 +1,85 @@
+{
+  "mode": "phase6_rc3_production_wa_smoke",
+  "authorization": "RC3 live WhatsApp test kard",
+  "rc": "phase6_t28_rc3",
+  "tenantId": 28,
+  "phone_masked": "947***0063",
+  "started_utc": "2026-11-14T15:56:50.904Z",
+  "scenarios": [
+    {
+      "id": 1,
+      "name": "haircut_layer_butterfly_multi",
+      "started_utc": "2026-11-14T15:56:51.038Z",
+      "status": "FAIL",
+      "expected": {
+        "requireReply": true,
+        "amountExact": 4500,
+        "forbidAmounts": [
+          3500
+        ],
+        "mustIncludeAny": [
+          "butterfly",
+          "4,500",
+          "4500"
+        ],
+        "mustIncludeAll": []
+      },
+      "actual": {
+        "inbound": "Mata hair cut options ona. Layer Cut saha Butterfly Cut thiyenawada? Price saha duration kiyanna.",
+        "outbound": "Ladies Hair Cut-Butterfly: Rs 4,500 · 105 min.",
+        "amounts": [
+          4500
+        ],
+        "convStatus": "ai_active",
+        "handoffReason": null,
+        "correlation": {
+          "conversationId": 24,
+          "waMessageId": "p6-rc3-smoke-1794671811044-kjghrf",
+          "replyMessageId": 637
+        },
+        "notes": [
+          "missing_layer_clarify_cue"
+        ]
+      },
+      "sanitized": {
+        "inbound": "Mata hair cut options ona. Layer Cut saha Butterfly Cut thiyenawada? Price saha duration kiyanna.",
+        "outbound": "Ladies Hair Cut-Butterfly: Rs 4,500 · 105 min.",
+        "amounts": [
+          4500
+        ],
+        "convStatus": "ai_active",
+        "handoffReason": null,
+        "correlation": {
+          "conversationId": 24,
+          "waMessageId": "p6-rc3-smoke-1794671811044-kjghrf",
+          "replyMessageId": 637
+        }
+      },
+      "severity": "CRITICAL_PRICING",
+      "finished_utc": "2026-11-14T15:56:52.600Z"
+    }
+  ],
+  "stopped_early": true,
+  "critical_stop": "haircut_layer_butterfly_multi:missing_layer_clarify_cue",
+  "tenant": {
+    "id": 28,
+    "slug": "salon-larvendo",
+    "name": "Salon Larvendo Pvt LTD"
+  },
+  "whatsapp_session": {
+    "id": 2,
+    "status": "connected",
+    "tenant_id": 28
+  },
+  "conversation": {
+    "id": 24,
+    "tenant_id": 28,
+    "phone_masked": "947***0063"
+  },
+  "finished_utc": "2026-11-14T15:56:52.606Z",
+  "passed": 0,
+  "failed": 1,
+  "blocked": 0,
+  "total_run": 1,
+  "ok": false
+}

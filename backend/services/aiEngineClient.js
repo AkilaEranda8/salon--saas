@@ -78,9 +78,55 @@ async function clearSession({ tenantId, phone, conversationId = null }) {
   }
 }
 
+/**
+ * Gemini + Google Search → training article draft
+ * @param {{ tenantId:number, query:string, brand?:string, locale?:string }} payload
+ */
+async function googleTrain(payload) {
+  const r = await fetch(`${AI_ENGINE_URL}/v1/google-train`, {
+    method: 'POST',
+    headers: headers(),
+    body: JSON.stringify(payload || {}),
+  });
+  const text = await r.text();
+  let data;
+  try { data = JSON.parse(text); } catch { data = { detail: text }; }
+  if (!r.ok) {
+    const err = new Error(data.detail || data.message || `ai_engine google-train failed (${r.status})`);
+    err.status = r.status;
+    err.data = data;
+    throw err;
+  }
+  return data;
+}
+
+/**
+ * Transcribe WhatsApp voice note via Gemini audio understanding.
+ * @param {{ tenantId:number, mimeType:string, dataBase64:string, hint?:string }} payload
+ */
+async function transcribeAudio(payload) {
+  const r = await fetch(`${AI_ENGINE_URL}/v1/transcribe`, {
+    method: 'POST',
+    headers: headers(),
+    body: JSON.stringify(payload || {}),
+  });
+  const text = await r.text();
+  let data;
+  try { data = JSON.parse(text); } catch { data = { detail: text }; }
+  if (!r.ok) {
+    const err = new Error(data.detail || data.message || `ai_engine transcribe failed (${r.status})`);
+    err.status = r.status;
+    err.data = data;
+    throw err;
+  }
+  return data;
+}
+
 module.exports = {
   health,
   runTurn,
   clearSession,
+  googleTrain,
+  transcribeAudio,
   AI_ENGINE_URL,
 };

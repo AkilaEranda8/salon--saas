@@ -422,4 +422,5 @@ module.exports = {
   getCrmOverview,
   addAiCreditTopup,
   setAiCreditBalance,
+  getWalletSummary,
 };

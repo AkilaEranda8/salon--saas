@@ -10,8 +10,6 @@ const { Worker, UnrecoverableError } = require('bullmq');
 const { getRedis, cacheKey } = require('../utils/redis');
 const { QUEUE_NAMES, moveToDlq, enqueue } = require('../services/queue');
 const {
-  AiUsage,
-  AiModelRate,
   CrmMessage,
   CrmConversation,
   CrmLead,
@@ -46,36 +44,16 @@ function serviceSecret() {
   return process.env.AI_ENGINE_SERVICE_SECRET || process.env.CRM_SERVICE_SECRET || '';
 }
 
-async function computeCost(provider, model, promptTokens, completionTokens) {
-  const rate = await AiModelRate.findOne({
-    where: { provider, model, active: true },
-  });
-  if (!rate) return { cost: 0, currency: 'USD' };
-  const input = Number(rate.input_per_1k) * (promptTokens / 1000);
-  const output = Number(rate.output_per_1k) * (completionTokens / 1000);
-  return { cost: input + output, currency: rate.currency || 'USD' };
-}
-
 async function handleAiUsage(job) {
   const d = job.data || {};
-  const prompt = Number(d.prompt_tokens) || 0;
-  const completion = Number(d.completion_tokens) || 0;
-  const { cost, currency } = await computeCost(
-    d.provider || 'unknown',
-    d.model || 'unknown',
-    prompt,
-    completion
-  );
-  await AiUsage.create({
+  const { recordAiUsage } = require('../services/aiUsageCost');
+  await recordAiUsage({
     tenant_id: d.tenant_id,
     conversation_id: d.conversation_id || null,
     provider: d.provider || 'unknown',
     model: d.model || null,
-    prompt_tokens: prompt,
-    completion_tokens: completion,
-    total_tokens: prompt + completion,
-    cost,
-    currency,
+    prompt_tokens: d.prompt_tokens || 0,
+    completion_tokens: d.completion_tokens || 0,
     latency_ms: d.latency_ms || null,
     purpose: d.purpose || 'whatsapp_turn',
   });
@@ -124,11 +102,60 @@ async function handleInbound(job) {
       throw new UnrecoverableError(result.error || 'inbound_unrecoverable');
     }
     return result;
+  } catch (err) {
+    // Last-resort always-reply if inbound turn crashed before soft fallback
+    try {
+      const { sendAndLog } = require('../services/crmOutboundSendService');
+      const tid = data.tenantId || data.tenant_id;
+      const ph = String(data.phone || '').replace(/\D/g, '').slice(-12);
+      const msg = String(data.message || data.text || '');
+      const si = /[\u0D80-\u0DFF]/.test(msg) || /\b(?:oni|hari|kohomada|mila)\b/i.test(msg);
+      const text = si
+        ? 'හරි! Message එක ලැබුණා — *book*, මිල, හෝ hours කියන්න.'
+        : 'Got your message — say *book*, ask prices, or hours.';
+      if (tid && ph) {
+        await sendAndLog({
+          tenantId: tid,
+          phone: ph,
+          text,
+          senderType: 'ai',
+          replyJid: data.replyJid || data.reply_jid || null,
+          meta: { source: 'worker_always_reply', event_type: 'always_reply', error: String(err?.message || err).slice(0, 160) },
+        });
+      }
+    } catch (sendErr) {
+      console.error('[worker] always-reply failed', sendErr.message);
+    }
+    throw err;
   } finally {
     if (lockKey) {
       try {
         await redis.eval(RELEASE_LOCK_LUA, 1, lockKey, lockToken);
       } catch { /* lock expires via TTL */ }
+    }
+  }
+}
+
+/** Serialize sends per phone so rapid AI replies don't race encryption sessions. */
+async function withOutboundPeerLock(tenantId, phone, fn) {
+  const redis = getRedis();
+  const digits = String(phone || '').replace(/\D/g, '').slice(-12) || 'unknown';
+  const lockKey = cacheKey(tenantId, 'crm', 'wa_out_lock', digits);
+  if (!redis) return fn();
+  const token = `${process.pid}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
+  let got = false;
+  for (let i = 0; i < 25; i += 1) {
+    got = await redis.set(lockKey, token, 'EX', 30, 'NX');
+    if (got) break;
+    await new Promise((r) => setTimeout(r, 120 + i * 40));
+  }
+  try {
+    return await fn();
+  } finally {
+    if (got) {
+      try {
+        await redis.eval(RELEASE_LOCK_LUA, 1, lockKey, token);
+      } catch { /* TTL */ }
     }
   }
 }
@@ -140,6 +167,16 @@ async function handleOutbound(job) {
   const message = d.message;
   if (!tenantId || !phone || !message) {
     throw new UnrecoverableError('tenant_id, phone, message required for wa-outbound');
+  }
+
+  // One send at a time per customer — avoids parallel ciphertext races → "Waiting for this message"
+  if (!d._peerLocked) {
+    return withOutboundPeerLock(tenantId, phone, async () => {
+      job.data._peerLocked = true;
+      // Brief gap so WhatsApp can settle session after previous bubble
+      await new Promise((r) => setTimeout(r, 350));
+      return handleOutbound(job);
+    });
   }
 
   // Prevent BullMQ retries from double-sending the same outbound
@@ -252,6 +289,8 @@ async function handleOutbound(job) {
           event_type: d.event_type || 'crm_ai_reply',
           replyJid: d.replyJid || d.reply_jid || null,
           conversation_id: d.conversation_id || d.conversationId || null,
+          buttons: Array.isArray(d.buttons) ? d.buttons : undefined,
+          footer: d.footer || undefined,
         }),
       });
       const body = await r.json().catch(() => ({}));
@@ -468,6 +507,10 @@ async function handleFollowup(job) {
       runAbandonedBookingNudges({ tenantId: d.tenantId || d.tenant_id || null })
     );
   }
+  if (name === 'chat-abandoned-nudge' || d.job === 'chat_abandoned_nudge') {
+    const { sendChatAbandonedNudge } = require('../services/crmReminderService');
+    return sendChatAbandonedNudge(d);
+  }
   if (d.job === 'tenant_day_before' && d.tenantId) {
     return runDayBeforeReminders({ tenantId: d.tenantId });
   }
@@ -529,7 +572,7 @@ function startAiCrmWorkers() {
   const workers = [
     new Worker(QUEUE_NAMES.AI_USAGE, handleAiUsage, { connection: conn, concurrency: 5 }),
     new Worker(QUEUE_NAMES.WA_INBOUND_AI, handleInbound, { connection: conn, concurrency: 3 }),
-    new Worker(QUEUE_NAMES.WA_OUTBOUND, handleOutbound, { connection: conn, concurrency: 5 }),
+    new Worker(QUEUE_NAMES.WA_OUTBOUND, handleOutbound, { connection: conn, concurrency: 2 }),
     new Worker(QUEUE_NAMES.HANDOFF, handleHandoff, { connection: conn, concurrency: 2 }),
     new Worker(QUEUE_NAMES.FOLLOWUP, handleFollowup, { connection: conn, concurrency: 1 }),
     new Worker(QUEUE_NAMES.BOOKING_RETRY, handleBookingRetry, { connection: conn, concurrency: 2 }),

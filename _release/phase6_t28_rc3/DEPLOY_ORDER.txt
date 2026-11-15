@@ -1,0 +1,17 @@
+PHASE 6 RC3 CANDIDATE — conversation quality
+Parent: current local tree after phase4c_t28_rc5 + hotfixes
+Status: HOLD — do not deploy without explicit approval
+Immutable: do NOT overwrite phase4c_t28_rc2..rc5 folders
+
+Deploy order (when approved):
+1. ai_engine/app/catalogue_quality.py (CREATE)
+2. ai_engine/app/pricing_resolver.py
+3. ai_engine/app/booking_flow.py
+4. ai_engine/app/customer_respect.py
+5. ai_engine/app/main.py
+6. backend/services/crmHandoffInboundPolicy.js + worker mirror
+7. backend/services/crmInboundTurnService.js + worker mirror
+8. Restart ai_engine, ai_crm_worker, backend
+
+Do NOT send WhatsApp until separately approved.
+Do NOT mutate customer data.

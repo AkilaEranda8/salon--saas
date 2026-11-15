@@ -1,0 +1,235 @@
+{
+  "at": "2026-11-14T09:29:54.038Z",
+  "tenant": {
+    "id": 28,
+    "slug": "salon-larvendo",
+    "name": "Salon Larvendo Pvt LTD"
+  },
+  "kb_27_28": [
+    {
+      "id": 27,
+      "tenant_id": 28,
+      "title": "Auto-train (Google): haircut එකක කරගන න ක යක යනවද",
+      "category": "faq",
+      "body": "Customer asked: Haircut එකක් කරගන්න කීයක් යනවද?\n\nTrained answer (from Gemini):\nඔබට ගැලපෙන සේවා:\n1. Baby Hair Cut — 30 min · LKR 1000.00\n2. Blade and Bloom BC — 30 min · LKR 1000.00\n3. Blade and Bloom HC — 45 min · LKR 2000.00\n4. Blade and Bloom(Hair & Beard) — 75 min · LKR 3000.00\n5. Ladies Hair Cut — 75 min · LKR 3500.00\n6. Ladies Hair Cut-Butterfly — 105 min · LKR 4500.00\n7. Ladies One Length — 30 min · LKR 1500.00\n\n*අංකය* හෝ සම්පූර්ණ නම එවන්න.\n\nNOTE: This is general guidance / salon reply style. Do NOT invent THIS salon's prices or hours from Google — use live salon data for those.\n\n(Source: Google auto-train @ 2026-11-14T05:17:25.257Z)",
+      "tags": [
+        "google-auto-train",
+        "google-search",
+        "auto-train",
+        "haircut",
+        "එකක",
+        "කරගන",
+        "න",
+        "ක",
+        "යක",
+        "යනවද"
+      ],
+      "branch_id": null,
+      "locale": "en-si",
+      "is_active": true,
+      "priority": 72,
+      "version": 1,
+      "updated_by": null,
+      "createdAt": "2026-11-14T05:17:25.000Z",
+      "updatedAt": "2026-11-14T05:17:25.000Z"
+    },
+    {
+      "id": 28,
+      "tenant_id": 28,
+      "title": "Auto-train (Google): hi මට ක යන න ප ළ වන ද ඔය ලග ත ය න ද නට ත ය න සර ව ස ඇන ඩ මට හ ය ර කට එකක ද ගන න ඕන ත ය න ප රය සස ට ක ක යන න ප ළ වන ද",
+      "category": "faq",
+      "body": "Customer asked: Hi මට කියන්න පුළුවන්ද ඔයාලගේ තියෙන දැනට තියෙන සර්විස් ඇන්ඩ් මට හෙයාර් කට් එකක් දාගන්න ඕනේ තියෙන ප්‍රයිසස් ටික කියන්න පුළුවන්ද?\n\nTrained answer (from Gemini):\nඔබට ගැලපෙන සේවා:\n1. Baby Hair Cut — 30 min · LKR 1000.00\n2. Blade and Bloom BC — 30 min · LKR 1000.00\n3. Blade and Bloom HC — 45 min · LKR 2000.00\n4. Blade and Bloom(Hair & Beard) — 75 min · LKR 3000.00\n5. Ladies Hair Cut — 75 min · LKR 3500.00\n6. Ladies Hair Cut-Butterfly — 105 min · LKR 4500.00\n7. Ladies One Length — 30 min · LKR 1500.00\n\n*අංකය* හෝ සම්පූර්ණ නම එවන්න.\n\nNOTE: This is general guidance / salon reply style. Do NOT invent THIS salon's prices or hours from Google — use live salon data for those.\n\n(Source: Google auto-train @ 2026-11-14T05:20:49.350Z)",
+      "tags": [
+        "google-auto-train",
+        "google-search",
+        "auto-train",
+        "hi",
+        "මට",
+        "ක",
+        "යන",
+        "න",
+        "ප",
+        "ළ",
+        "වන"
+      ],
+      "branch_id": null,
+      "locale": "en-si",
+      "is_active": true,
+      "priority": 72,
+      "version": 1,
+      "updated_by": null,
+      "createdAt": "2026-11-14T05:20:49.000Z",
+      "updatedAt": "2026-11-14T05:20:49.000Z"
+    }
+  ],
+  "services": [
+    {
+      "id": 172,
+      "tenant_id": 28,
+      "name": "Booster Pack +",
+      "price": "2000.00",
+      "duration_minutes": 30,
+      "category": "Additional Services",
+      "is_active": true,
+      "available_online": false
+    },
+    {
+      "id": 196,
+      "tenant_id": 28,
+      "name": "Front Area (Relax/Rebonding)",
+      "price": "7000.00",
+      "duration_minutes": 90,
+      "category": "Hair Treatment",
+      "is_active": true,
+      "available_online": true
+    },
+    {
+      "id": 202,
+      "tenant_id": 28,
+      "name": "Full Dressing (Day Time)",
+      "price": "4000.00",
+      "duration_minutes": 120,
+      "category": "Dressing",
+      "is_active": true,
+      "available_online": true
+    },
+    {
+      "id": 225,
+      "tenant_id": 28,
+      "name": "Hand Wax (Full)",
+      "price": "3000.00",
+      "duration_minutes": 30,
+      "category": "Waxing",
+      "is_active": true,
+      "available_online": true
+    },
+    {
+      "id": 228,
+      "tenant_id": 28,
+      "name": "High Frequency",
+      "price": "1500.00",
+      "duration_minutes": 15,
+      "category": "Additional Services",
+      "is_active": true,
+      "available_online": false
+    },
+    {
+      "id": 240,
+      "tenant_id": 28,
+      "name": "Leg Wax (Full)",
+      "price": "3500.00",
+      "duration_minutes": 45,
+      "category": "Waxing",
+      "is_active": true,
+      "available_online": true
+    },
+    {
+      "id": 259,
+      "tenant_id": 28,
+      "name": "Root Cover (Full Hair)",
+      "price": "4500.00",
+      "duration_minutes": 90,
+      "category": "Grey Hair Cover",
+      "is_active": true,
+      "available_online": true
+    },
+    {
+      "id": 289,
+      "tenant_id": 28,
+      "name": "Root Cover Full Hair",
+      "price": "4500.00",
+      "duration_minutes": 90,
+      "category": "Grey Hair Cover",
+      "is_active": true,
+      "available_online": true
+    },
+    {
+      "id": 291,
+      "tenant_id": 28,
+      "name": "Front Area Relax Rebonding",
+      "price": "7000.00",
+      "duration_minutes": 180,
+      "category": "Hair Treatment",
+      "is_active": true,
+      "available_online": true
+    },
+    {
+      "id": 302,
+      "tenant_id": 28,
+      "name": "Hand Wax Full",
+      "price": "3000.00",
+      "duration_minutes": 30,
+      "category": "Waxing",
+      "is_active": true,
+      "available_online": true
+    },
+    {
+      "id": 304,
+      "tenant_id": 28,
+      "name": "Leg Wax Full",
+      "price": "3500.00",
+      "duration_minutes": 45,
+      "category": "Waxing",
+      "is_active": true,
+      "available_online": true
+    },
+    {
+      "id": 306,
+      "tenant_id": 28,
+      "name": "Full Dressing Day Time",
+      "price": "4000.00",
+      "duration_minutes": 120,
+      "category": "Dressing",
+      "is_active": true,
+      "available_online": true
+    },
+    {
+      "id": 318,
+      "tenant_id": 28,
+      "name": "Booster Pack+",
+      "price": "2000.00",
+      "duration_minutes": 30,
+      "category": "Additional Services",
+      "is_active": true,
+      "available_online": true
+    },
+    {
+      "id": 319,
+      "tenant_id": 28,
+      "name": "High-frequency",
+      "price": "1500.00",
+      "duration_minutes": 15,
+      "category": "Additional Services",
+      "is_active": true,
+      "available_online": true
+    }
+  ],
+  "appointment_refs_on_deactivate_ids": {},
+  "appointment_service_refs": {},
+  "auto_train_articles": [
+    {
+      "id": 23,
+      "title": "Auto-train: Services & prices (live salon data)",
+      "priority": 95,
+      "is_active": true,
+      "version": 1,
+      "body_chars": 6506
+    },
+    {
+      "id": 24,
+      "title": "Auto-train: Staff & hours (live salon data)",
+      "priority": 88,
+      "is_active": true,
+      "version": 1,
+      "body_chars": 752
+    },
+    {
+      "id": 25,
+      "title": "Auto-train: Branches (live salon data)",
+      "priority": 90,
+      "is_active": true,
+      "version": 1,
+      "body_chars": 108
+    }
+  ]
+}

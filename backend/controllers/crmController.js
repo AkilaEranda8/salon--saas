@@ -24,21 +24,114 @@ function isUnread(conv) {
   return inboundAt > readAt;
 }
 
+const FOLLOW_UP_STATUSES = ['none', 'pending', 'done', 'snoozed'];
+
+function buildLeadWhere(req, tenantId) {
+  const where = { tenant_id: tenantId };
+  if (req.query.stage) {
+    const stages = String(req.query.stage).split(',').map((s) => s.trim()).filter(Boolean);
+    if (stages.length === 1) where.stage = stages[0];
+    else if (stages.length > 1) where.stage = { [Op.in]: stages };
+  }
+  if (req.query.follow_up) where.follow_up_status = String(req.query.follow_up);
+  if (req.query.opt_out === '1' || req.query.opt_out === 'true') where.marketing_opt_out = true;
+  if (req.query.opt_out === '0' || req.query.opt_out === 'false') where.marketing_opt_out = false;
+  if (req.query.has_customer === '1' || req.query.has_customer === 'true') {
+    where.customer_id = { [Op.ne]: null };
+  }
+  if (req.query.has_customer === '0' || req.query.has_customer === 'false') {
+    where.customer_id = null;
+  }
+  if (req.query.source) {
+    where.campaign_source = { [Op.like]: `%${String(req.query.source).trim()}%` };
+  }
+  if (req.query.q) {
+    const q = `%${String(req.query.q).trim()}%`;
+    where[Op.or] = [
+      { phone: { [Op.like]: q } },
+      { name: { [Op.like]: q } },
+      { campaign_source: { [Op.like]: q } },
+    ];
+  }
+  return where;
+}
+
+async function attachLatestConversations(tenantId, leads) {
+  if (!leads.length) return leads;
+  const ids = leads.map((l) => l.id);
+  const convs = await CrmConversation.findAll({
+    where: { tenant_id: tenantId, lead_id: { [Op.in]: ids } },
+    attributes: ['id', 'lead_id', 'status', 'phone', 'updatedAt', 'last_inbound_at'],
+    order: [['updatedAt', 'DESC']],
+  });
+  const byLead = new Map();
+  for (const c of convs) {
+    if (!byLead.has(c.lead_id)) byLead.set(c.lead_id, c);
+  }
+  return leads.map((row) => {
+    const json = typeof row.toJSON === 'function' ? row.toJSON() : { ...row };
+    const conv = byLead.get(json.id);
+    json.conversation = conv
+      ? {
+          id: conv.id,
+          status: conv.status,
+          phone: conv.phone,
+          updated_at: conv.updatedAt,
+          last_inbound_at: conv.last_inbound_at,
+        }
+      : null;
+    return json;
+  });
+}
+
+async function leadSummary(tenantId) {
+  const byStage = {};
+  for (const s of CrmLead.STAGES) byStage[s] = 0;
+  const stageRows = await CrmLead.findAll({
+    where: { tenant_id: tenantId },
+    attributes: [
+      'stage',
+      [CrmLead.sequelize.fn('COUNT', CrmLead.sequelize.col('id')), 'count'],
+    ],
+    group: ['stage'],
+    raw: true,
+  });
+  let total = 0;
+  for (const r of stageRows) {
+    const n = Number(r.count) || 0;
+    total += n;
+    byStage[r.stage] = n;
+  }
+  const [followUpPending, optOut, linkedCustomers] = await Promise.all([
+    CrmLead.count({ where: { tenant_id: tenantId, follow_up_status: 'pending' } }),
+    CrmLead.count({ where: { tenant_id: tenantId, marketing_opt_out: true } }),
+    CrmLead.count({ where: { tenant_id: tenantId, customer_id: { [Op.ne]: null } } }),
+  ]);
+  const openPipeline = total - (byStage.converted || 0) - (byStage.lost || 0);
+  return {
+    total,
+    openPipeline,
+    followUpPending,
+    optOut,
+    linkedCustomers,
+    byStage,
+  };
+}
+
 /** GET /api/crm/leads */
 const listLeads = async (req, res) => {
   try {
     const tenantId = tid(req);
-    const where = { tenant_id: tenantId };
-    if (req.query.stage) where.stage = req.query.stage;
-    if (req.query.q) {
-      const q = `%${req.query.q}%`;
-      where[Op.or] = [
-        { phone: { [Op.like]: q } },
-        { name: { [Op.like]: q } },
-      ];
-    }
+    if (!tenantId) return res.status(400).json({ message: 'Tenant context required' });
+    const where = buildLeadWhere(req, tenantId);
     const limit = Math.min(parseInt(req.query.limit, 10) || 50, 200);
     const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+    const sort = String(req.query.sort || 'recent');
+    let order = [['last_message_at', 'DESC'], ['id', 'DESC']];
+    if (sort === 'oldest') order = [['last_message_at', 'ASC'], ['id', 'ASC']];
+    if (sort === 'name') order = [['name', 'ASC'], ['id', 'DESC']];
+    if (sort === 'stage') order = [['stage', 'ASC'], ['last_message_at', 'DESC']];
+
     const { rows, count } = await CrmLead.findAndCountAll({
       where,
       include: [{
@@ -47,19 +140,82 @@ const listLeads = async (req, res) => {
         required: false,
         attributes: ['id', 'name', 'phone', 'email'],
       }],
-      order: [['last_message_at', 'DESC'], ['id', 'DESC']],
+      order,
       limit,
       offset: (page - 1) * limit,
     });
+    const data = await attachLatestConversations(tenantId, rows);
+    const summary = await leadSummary(tenantId);
     return res.json({
       total: count,
       page,
       limit,
       stages: CrmLead.STAGES,
-      data: rows,
+      followUpStatuses: FOLLOW_UP_STATUSES,
+      summary,
+      data,
     });
   } catch (err) {
     console.error('[crm] listLeads', err);
+    return res.status(500).json({ message: 'Server error' });
+  }
+};
+
+/** GET /api/crm/leads/summary */
+const getLeadsSummary = async (req, res) => {
+  try {
+    const tenantId = tid(req);
+    if (!tenantId) return res.status(400).json({ message: 'Tenant context required' });
+    const summary = await leadSummary(tenantId);
+    return res.json({ stages: CrmLead.STAGES, summary });
+  } catch (err) {
+    console.error('[crm] getLeadsSummary', err);
+    return res.status(500).json({ message: 'Server error' });
+  }
+};
+
+/** POST /api/crm/leads — manual lead */
+const createLead = async (req, res) => {
+  try {
+    const tenantId = tid(req);
+    if (!tenantId) return res.status(400).json({ message: 'Tenant context required' });
+    const phoneRaw = String(req.body.phone || '').replace(/\D/g, '');
+    if (!phoneRaw || phoneRaw.length < 9) {
+      return res.status(400).json({ message: 'Valid phone required' });
+    }
+    const existing = await CrmLead.findOne({ where: { tenant_id: tenantId, phone: phoneRaw } });
+    if (existing) {
+      return res.status(409).json({ message: 'Lead with this phone already exists', lead: existing });
+    }
+    let stage = req.body.stage || 'new';
+    if (!CrmLead.STAGES.includes(stage)) stage = 'new';
+    const lead = await CrmLead.create({
+      tenant_id: tenantId,
+      phone: phoneRaw,
+      name: req.body.name ? String(req.body.name).trim().slice(0, 150) : null,
+      stage,
+      campaign_source: req.body.campaign_source
+        ? String(req.body.campaign_source).trim().slice(0, 120)
+        : 'manual',
+      follow_up_status: FOLLOW_UP_STATUSES.includes(req.body.follow_up_status)
+        ? req.body.follow_up_status
+        : 'none',
+      interest_tags: Array.isArray(req.body.interest_tags) ? req.body.interest_tags : null,
+      branch_id: req.body.branch_id || null,
+      last_message_at: new Date(),
+    });
+    await CrmAuditLog.create({
+      tenant_id: tenantId,
+      actor_type: 'user',
+      actor_id: req.user?.id || null,
+      action: 'lead_created',
+      entity_type: 'lead',
+      entity_id: lead.id,
+      meta: { phone: phoneRaw, source: lead.campaign_source },
+    }).catch(() => {});
+    return res.status(201).json(lead);
+  } catch (err) {
+    console.error('[crm] createLead', err);
     return res.status(500).json({ message: 'Server error' });
   }
 };
@@ -70,7 +226,10 @@ const updateLead = async (req, res) => {
     const tenantId = tid(req);
     const lead = await CrmLead.findOne({ where: { id: req.params.id, tenant_id: tenantId } });
     if (!lead) return res.status(404).json({ message: 'Lead not found' });
-    const allowed = ['stage', 'name', 'campaign_source', 'interest_tags', 'follow_up_status', 'branch_id'];
+    const allowed = [
+      'stage', 'name', 'campaign_source', 'interest_tags',
+      'follow_up_status', 'branch_id', 'marketing_opt_out',
+    ];
     const patch = {};
     for (const k of allowed) {
       if (req.body[k] !== undefined) patch[k] = req.body[k];
@@ -78,9 +237,65 @@ const updateLead = async (req, res) => {
     if (patch.stage && !CrmLead.STAGES.includes(patch.stage)) {
       return res.status(400).json({ message: `Invalid stage. Use: ${CrmLead.STAGES.join(', ')}` });
     }
+    if (patch.follow_up_status && !FOLLOW_UP_STATUSES.includes(patch.follow_up_status)) {
+      return res.status(400).json({ message: `Invalid follow_up_status` });
+    }
+    if (patch.name != null) patch.name = String(patch.name).trim().slice(0, 150) || null;
+    if (patch.campaign_source != null) {
+      patch.campaign_source = String(patch.campaign_source).trim().slice(0, 120) || null;
+    }
+    if (patch.marketing_opt_out !== undefined) {
+      patch.marketing_opt_out = !!patch.marketing_opt_out;
+      patch.marketing_opt_out_at = patch.marketing_opt_out ? new Date() : null;
+    }
     await lead.update(patch);
-    return res.json(lead);
+    const refreshed = await CrmLead.findByPk(lead.id, {
+      include: [{
+        model: Customer,
+        as: 'customer',
+        required: false,
+        attributes: ['id', 'name', 'phone', 'email'],
+      }],
+    });
+    const [enriched] = await attachLatestConversations(tenantId, [refreshed]);
+    return res.json(enriched);
   } catch (err) {
+    return res.status(500).json({ message: 'Server error' });
+  }
+};
+
+/** POST /api/crm/leads/bulk  { ids, stage?, follow_up_status?, marketing_opt_out? } */
+const bulkUpdateLeads = async (req, res) => {
+  try {
+    const tenantId = tid(req);
+    const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(Number).filter(Boolean) : [];
+    if (!ids.length) return res.status(400).json({ message: 'ids required' });
+    const patch = {};
+    if (req.body.stage != null) {
+      if (!CrmLead.STAGES.includes(req.body.stage)) {
+        return res.status(400).json({ message: 'Invalid stage' });
+      }
+      patch.stage = req.body.stage;
+    }
+    if (req.body.follow_up_status != null) {
+      if (!FOLLOW_UP_STATUSES.includes(req.body.follow_up_status)) {
+        return res.status(400).json({ message: 'Invalid follow_up_status' });
+      }
+      patch.follow_up_status = req.body.follow_up_status;
+    }
+    if (req.body.marketing_opt_out !== undefined) {
+      patch.marketing_opt_out = !!req.body.marketing_opt_out;
+      patch.marketing_opt_out_at = patch.marketing_opt_out ? new Date() : null;
+    }
+    if (!Object.keys(patch).length) {
+      return res.status(400).json({ message: 'Nothing to update' });
+    }
+    const [n] = await CrmLead.update(patch, {
+      where: { tenant_id: tenantId, id: { [Op.in]: ids } },
+    });
+    return res.json({ ok: true, updated: n, patch });
+  } catch (err) {
+    console.error('[crm] bulkUpdateLeads', err);
     return res.status(500).json({ message: 'Server error' });
   }
 };
@@ -171,6 +386,11 @@ const listConversations = async (req, res) => {
     const tenantId = tid(req);
     const where = { tenant_id: tenantId };
     if (req.query.status) where.status = req.query.status;
+    if (req.query.lead_id) where.lead_id = Number(req.query.lead_id) || 0;
+    if (req.query.phone) {
+      const digits = String(req.query.phone).replace(/\D/g, '');
+      if (digits) where.phone = { [Op.like]: `%${digits}%` };
+    }
     if (req.query.unread === '1' || req.query.unread === 'true') {
       where[Op.and] = [
         ...(where[Op.and] || []),
@@ -538,7 +758,10 @@ const simulateInbound = async (req, res) => {
 
 module.exports = {
   listLeads,
+  getLeadsSummary,
+  createLead,
   updateLead,
+  bulkUpdateLeads,
   deleteLead,
   listConversations,
   getConversation,

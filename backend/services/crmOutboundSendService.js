@@ -136,6 +136,9 @@ async function sendAndLog({
   templateParams = null,
   languageCode = 'en',
   meta = null,
+  buttons = null,
+  footer = null,
+  replyJid = null,
 }) {
   if (String(channel || 'whatsapp').toLowerCase() !== 'whatsapp') {
     return { skipped: true, reason: 'not_whatsapp' };
@@ -187,6 +190,9 @@ async function sendAndLog({
       template_params: templateParams || null,
       language_code: languageCode,
       event_type: (meta && meta.event_type) || `crm_${sender}`,
+      buttons: Array.isArray(buttons) && buttons.length ? buttons.slice(0, 3) : undefined,
+      footer: footer || undefined,
+      replyJid: replyJid || (meta && meta.replyJid) || undefined,
     }, { name: `crm-out-${sender}`, jobId: `wa-out-${tenantId}-msg-${msg.id}` });
     queued = jobId != null;
   } catch (err) {

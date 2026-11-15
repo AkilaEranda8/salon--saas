@@ -1,0 +1,1208 @@
+[
+  {
+    "id": 172,
+    "name": "Booster Pack +",
+    "price": 2000,
+    "duration_minutes": 30,
+    "available_online": false,
+    "category": "Additional Services",
+    "is_active": false
+  },
+  {
+    "id": 318,
+    "name": "Booster Pack+",
+    "price": 2000,
+    "duration_minutes": 30,
+    "available_online": true,
+    "category": "Additional Services",
+    "is_active": true
+  },
+  {
+    "id": 182,
+    "name": "Dermaplaning Treatment",
+    "price": 5000,
+    "duration_minutes": 30,
+    "available_online": true,
+    "category": "Additional Services",
+    "is_active": true
+  },
+  {
+    "id": 171,
+    "name": "Full Body Massage",
+    "price": 12000,
+    "duration_minutes": 45,
+    "available_online": true,
+    "category": "Additional Services",
+    "is_active": true
+  },
+  {
+    "id": 205,
+    "name": "Galvanic",
+    "price": 500,
+    "duration_minutes": 15,
+    "available_online": false,
+    "category": "Additional Services",
+    "is_active": true
+  },
+  {
+    "id": 219,
+    "name": "Hair Braiding",
+    "price": 2500,
+    "duration_minutes": 60,
+    "available_online": true,
+    "category": "Additional Services",
+    "is_active": true
+  },
+  {
+    "id": 228,
+    "name": "High Frequency",
+    "price": 1500,
+    "duration_minutes": 15,
+    "available_online": false,
+    "category": "Additional Services",
+    "is_active": false
+  },
+  {
+    "id": 319,
+    "name": "High-frequency",
+    "price": 1500,
+    "duration_minutes": 15,
+    "available_online": true,
+    "category": "Additional Services",
+    "is_active": true
+  },
+  {
+    "id": 270,
+    "name": "Warts Burn",
+    "price": 500,
+    "duration_minutes": 30,
+    "available_online": true,
+    "category": "Additional Services",
+    "is_active": true
+  },
+  {
+    "id": 199,
+    "name": "Full Dressing (5 A.M. - 6 A.M.)",
+    "price": 6000,
+    "duration_minutes": 120,
+    "available_online": true,
+    "category": "Dressing",
+    "is_active": true
+  },
+  {
+    "id": 200,
+    "name": "Full Dressing (6 A.M. - 7 A.M.)",
+    "price": 5000,
+    "duration_minutes": 120,
+    "available_online": true,
+    "category": "Dressing",
+    "is_active": true
+  },
+  {
+    "id": 201,
+    "name": "Full Dressing (7 A.M. - 8 A.M.)",
+    "price": 4500,
+    "duration_minutes": 120,
+    "available_online": true,
+    "category": "Dressing",
+    "is_active": true
+  },
+  {
+    "id": 202,
+    "name": "Full Dressing (Day Time)",
+    "price": 4000,
+    "duration_minutes": 120,
+    "available_online": true,
+    "category": "Dressing",
+    "is_active": true
+  },
+  {
+    "id": 309,
+    "name": "Full Dressing 5-6 AM",
+    "price": 6000,
+    "duration_minutes": 120,
+    "available_online": true,
+    "category": "Dressing",
+    "is_active": true
+  },
+  {
+    "id": 308,
+    "name": "Full Dressing 6-7 AM",
+    "price": 5000,
+    "duration_minutes": 120,
+    "available_online": true,
+    "category": "Dressing",
+    "is_active": true
+  },
+  {
+    "id": 307,
+    "name": "Full Dressing 7-8 AM",
+    "price": 4500,
+    "duration_minutes": 120,
+    "available_online": true,
+    "category": "Dressing",
+    "is_active": true
+  },
+  {
+    "id": 306,
+    "name": "Full Dressing Day Time",
+    "price": 4000,
+    "duration_minutes": 120,
+    "available_online": true,
+    "category": "Dressing",
+    "is_active": false
+  },
+  {
+    "id": 223,
+    "name": "Hair Style",
+    "price": 1500,
+    "duration_minutes": 45,
+    "available_online": true,
+    "category": "Dressing",
+    "is_active": true
+  },
+  {
+    "id": 242,
+    "name": "Make-up",
+    "price": 2500,
+    "duration_minutes": 60,
+    "available_online": true,
+    "category": "Dressing",
+    "is_active": true
+  },
+  {
+    "id": 260,
+    "name": "Saree Dropping",
+    "price": 1000,
+    "duration_minutes": 15,
+    "available_online": true,
+    "category": "Dressing",
+    "is_active": true
+  },
+  {
+    "id": 275,
+    "name": "Eyelash Extensions - Hybrid",
+    "price": 7000,
+    "duration_minutes": 75,
+    "available_online": true,
+    "category": "Eyelash Extensions",
+    "is_active": true
+  },
+  {
+    "id": 189,
+    "name": "Eyelash Extensions-Classic",
+    "price": 5000,
+    "duration_minutes": 60,
+    "available_online": true,
+    "category": "Eyelash Extensions",
+    "is_active": true
+  },
+  {
+    "id": 295,
+    "name": "Aroma Magic Gold Facial",
+    "price": 7000,
+    "duration_minutes": 90,
+    "available_online": true,
+    "category": "Facials",
+    "is_active": true
+  },
+  {
+    "id": 178,
+    "name": "Clean-up",
+    "price": 4000,
+    "duration_minutes": 60,
+    "available_online": true,
+    "category": "Facials",
+    "is_active": true
+  },
+  {
+    "id": 298,
+    "name": "Fox C Peel Treatment",
+    "price": 15000,
+    "duration_minutes": 75,
+    "available_online": true,
+    "category": "Facials",
+    "is_active": true
+  },
+  {
+    "id": 214,
+    "name": "Gold/Diamond Facial",
+    "price": 5000,
+    "duration_minutes": 90,
+    "available_online": true,
+    "category": "Facials",
+    "is_active": true
+  },
+  {
+    "id": 296,
+    "name": "Hydra Facial Standard",
+    "price": 6000,
+    "duration_minutes": 40,
+    "available_online": true,
+    "category": "Facials",
+    "is_active": true
+  },
+  {
+    "id": 297,
+    "name": "Hydra Facial Ume Care",
+    "price": 8000,
+    "duration_minutes": 40,
+    "available_online": true,
+    "category": "Facials",
+    "is_active": true
+  },
+  {
+    "id": 294,
+    "name": "Normal Facial",
+    "price": 4500,
+    "duration_minutes": 90,
+    "available_online": true,
+    "category": "Facials",
+    "is_active": true
+  },
+  {
+    "id": 255,
+    "name": "Pimple Treatment",
+    "price": 4500,
+    "duration_minutes": 75,
+    "available_online": true,
+    "category": "Facials",
+    "is_active": true
+  },
+  {
+    "id": 261,
+    "name": "Spacylon Facial",
+    "price": 6000,
+    "duration_minutes": 90,
+    "available_online": true,
+    "category": "Facials",
+    "is_active": true
+  },
+  {
+    "id": 293,
+    "name": "Umecare Clean-up",
+    "price": 6000,
+    "duration_minutes": 60,
+    "available_online": true,
+    "category": "Facials",
+    "is_active": true
+  },
+  {
+    "id": 265,
+    "name": "Umecare Facial",
+    "price": 10000,
+    "duration_minutes": 90,
+    "available_online": true,
+    "category": "Facials",
+    "is_active": true
+  },
+  {
+    "id": 166,
+    "name": "Aroma Magic Gold",
+    "price": 7000,
+    "duration_minutes": 90,
+    "available_online": true,
+    "category": "Facials (Ladies and Gents)",
+    "is_active": true
+  },
+  {
+    "id": 194,
+    "name": "Fox C Peal Treatment",
+    "price": 15000,
+    "duration_minutes": 75,
+    "available_online": true,
+    "category": "Facials (Ladies and Gents)",
+    "is_active": true
+  },
+  {
+    "id": 246,
+    "name": "Normal Facial (Jovis)",
+    "price": 4500,
+    "duration_minutes": 90,
+    "available_online": true,
+    "category": "Facials (Ladies and Gents)",
+    "is_active": true
+  },
+  {
+    "id": 247,
+    "name": "Normal Facial (Oxy)",
+    "price": 4500,
+    "duration_minutes": 90,
+    "available_online": true,
+    "category": "Facials (Ladies and Gents)",
+    "is_active": true
+  },
+  {
+    "id": 230,
+    "name": "Standard Hydra Facial",
+    "price": 10000,
+    "duration_minutes": 90,
+    "available_online": true,
+    "category": "Facials (Ladies and Gents)",
+    "is_active": true
+  },
+  {
+    "id": 266,
+    "name": "Umecare Hydra Facial",
+    "price": 14000,
+    "duration_minutes": 90,
+    "available_online": true,
+    "category": "Facials (Ladies and Gents)",
+    "is_active": true
+  },
+  {
+    "id": 283,
+    "name": "Blond Color",
+    "price": 20000,
+    "duration_minutes": 300,
+    "available_online": true,
+    "category": "Fashion Colours",
+    "is_active": true
+  },
+  {
+    "id": 284,
+    "name": "Crown",
+    "price": 15000,
+    "duration_minutes": 150,
+    "available_online": true,
+    "category": "Fashion Colours",
+    "is_active": true
+  },
+  {
+    "id": 204,
+    "name": "Full Hair Colour",
+    "price": 12000,
+    "duration_minutes": 150,
+    "available_online": true,
+    "category": "Fashion Colours",
+    "is_active": true
+  },
+  {
+    "id": 209,
+    "name": "Gents Fashion Colour",
+    "price": 5000,
+    "duration_minutes": 180,
+    "available_online": true,
+    "category": "Fashion Colours",
+    "is_active": true
+  },
+  {
+    "id": 229,
+    "name": "Highlights",
+    "price": 15000,
+    "duration_minutes": 300,
+    "available_online": true,
+    "category": "Fashion Colours",
+    "is_active": true
+  },
+  {
+    "id": 249,
+    "name": "Ombré",
+    "price": 20000,
+    "duration_minutes": 300,
+    "available_online": true,
+    "category": "Fashion Colours",
+    "is_active": true
+  },
+  {
+    "id": 195,
+    "name": "Front Area",
+    "price": 2500,
+    "duration_minutes": 90,
+    "available_online": true,
+    "category": "Grey Hair Cover",
+    "is_active": true
+  },
+  {
+    "id": 210,
+    "name": "Gents Grey Cover",
+    "price": 2500,
+    "duration_minutes": 90,
+    "available_online": true,
+    "category": "Grey Hair Cover",
+    "is_active": true
+  },
+  {
+    "id": 211,
+    "name": "Gents Grey Cover-Beard",
+    "price": 1000,
+    "duration_minutes": 90,
+    "available_online": true,
+    "category": "Grey Hair Cover",
+    "is_active": true
+  },
+  {
+    "id": 290,
+    "name": "Grey Cover Front Area",
+    "price": 2500,
+    "duration_minutes": 90,
+    "available_online": true,
+    "category": "Grey Hair Cover",
+    "is_active": true
+  },
+  {
+    "id": 215,
+    "name": "Grey Hair Color Apply-Full Hair",
+    "price": 2500,
+    "duration_minutes": 90,
+    "available_online": true,
+    "category": "Grey Hair Cover",
+    "is_active": true
+  },
+  {
+    "id": 216,
+    "name": "Grey Hair Color Apply-Root",
+    "price": 1500,
+    "duration_minutes": 90,
+    "available_online": true,
+    "category": "Grey Hair Cover",
+    "is_active": true
+  },
+  {
+    "id": 288,
+    "name": "Ladies Full Grey Cover",
+    "price": 8000,
+    "duration_minutes": 120,
+    "available_online": true,
+    "category": "Grey Hair Cover",
+    "is_active": true
+  },
+  {
+    "id": 237,
+    "name": "Ladies Full Hair",
+    "price": 8000,
+    "duration_minutes": 120,
+    "available_online": true,
+    "category": "Grey Hair Cover",
+    "is_active": true
+  },
+  {
+    "id": 259,
+    "name": "Root Cover (Full Hair)",
+    "price": 4500,
+    "duration_minutes": 90,
+    "available_online": true,
+    "category": "Grey Hair Cover",
+    "is_active": true
+  },
+  {
+    "id": 289,
+    "name": "Root Cover Full Hair",
+    "price": 4500,
+    "duration_minutes": 90,
+    "available_online": true,
+    "category": "Grey Hair Cover",
+    "is_active": false
+  },
+  {
+    "id": 167,
+    "name": "Baby Hair Cut",
+    "price": 1000,
+    "duration_minutes": 30,
+    "available_online": true,
+    "category": "Hair Cut",
+    "is_active": true
+  },
+  {
+    "id": 168,
+    "name": "Blade and Bloom BC",
+    "price": 1000,
+    "duration_minutes": 30,
+    "available_online": false,
+    "category": "Hair Cut",
+    "is_active": true
+  },
+  {
+    "id": 169,
+    "name": "Blade and Bloom HC",
+    "price": 2000,
+    "duration_minutes": 45,
+    "available_online": false,
+    "category": "Hair Cut",
+    "is_active": true
+  },
+  {
+    "id": 276,
+    "name": "Blade and Bloom(Hair & Beard)",
+    "price": 3000,
+    "duration_minutes": 75,
+    "available_online": true,
+    "category": "Hair Cut",
+    "is_active": true
+  },
+  {
+    "id": 286,
+    "name": "Front Cut",
+    "price": 1500,
+    "duration_minutes": 30,
+    "available_online": true,
+    "category": "Hair Cut",
+    "is_active": true
+  },
+  {
+    "id": 287,
+    "name": "Gents Beard Cut",
+    "price": 1000,
+    "duration_minutes": 30,
+    "available_online": true,
+    "category": "Hair Cut",
+    "is_active": true
+  },
+  {
+    "id": 285,
+    "name": "Gents Hair Cut",
+    "price": 2000,
+    "duration_minutes": 45,
+    "available_online": true,
+    "category": "Hair Cut",
+    "is_active": true
+  },
+  {
+    "id": 238,
+    "name": "Ladies Hair Cut",
+    "price": 3500,
+    "duration_minutes": 45,
+    "available_online": true,
+    "category": "Hair Cut",
+    "is_active": true
+  },
+  {
+    "id": 278,
+    "name": "Ladies Hair Cut-Butterfly",
+    "price": 4500,
+    "duration_minutes": 105,
+    "available_online": false,
+    "category": "Hair Cut",
+    "is_active": true
+  },
+  {
+    "id": 239,
+    "name": "Ladies One Length",
+    "price": 1500,
+    "duration_minutes": 30,
+    "available_online": false,
+    "category": "Hair Cut",
+    "is_active": true
+  },
+  {
+    "id": 170,
+    "name": "Blow Dry",
+    "price": 1500,
+    "duration_minutes": 45,
+    "available_online": true,
+    "category": "Hair Setting",
+    "is_active": true
+  },
+  {
+    "id": 213,
+    "name": "Gents Hair Setting-at Salon",
+    "price": 2500,
+    "duration_minutes": 30,
+    "available_online": false,
+    "category": "Hair Setting",
+    "is_active": true
+  },
+  {
+    "id": 220,
+    "name": "Hair Iron",
+    "price": 1500,
+    "duration_minutes": 45,
+    "available_online": true,
+    "category": "Hair Setting",
+    "is_active": true
+  },
+  {
+    "id": 165,
+    "name": "Anti-Dandruff Treatment",
+    "price": 4500,
+    "duration_minutes": 90,
+    "available_online": true,
+    "category": "Hair Treatment",
+    "is_active": true
+  },
+  {
+    "id": 173,
+    "name": "Botox Hair Treatment",
+    "price": 18000,
+    "duration_minutes": 300,
+    "available_online": true,
+    "category": "Hair Treatment",
+    "is_active": true
+  },
+  {
+    "id": 181,
+    "name": "Condition Treatment",
+    "price": 3500,
+    "duration_minutes": 60,
+    "available_online": true,
+    "category": "Hair Treatment",
+    "is_active": true
+  },
+  {
+    "id": 196,
+    "name": "Front Area (Relax/Rebonding)",
+    "price": 7000,
+    "duration_minutes": 90,
+    "available_online": true,
+    "category": "Hair Treatment",
+    "is_active": false
+  },
+  {
+    "id": 291,
+    "name": "Front Area Relax Rebonding",
+    "price": 7000,
+    "duration_minutes": 180,
+    "available_online": true,
+    "category": "Hair Treatment",
+    "is_active": true
+  },
+  {
+    "id": 221,
+    "name": "Hair Spa Treatment",
+    "price": 4500,
+    "duration_minutes": 90,
+    "available_online": true,
+    "category": "Hair Treatment",
+    "is_active": true
+  },
+  {
+    "id": 292,
+    "name": "Hair Spa Treatment with BF",
+    "price": 6000,
+    "duration_minutes": 90,
+    "available_online": true,
+    "category": "Hair Treatment",
+    "is_active": true
+  },
+  {
+    "id": 222,
+    "name": "Hair Spa Treatment-Keune with BF",
+    "price": 6000,
+    "duration_minutes": 90,
+    "available_online": true,
+    "category": "Hair Treatment",
+    "is_active": true
+  },
+  {
+    "id": 226,
+    "name": "Head Massage Treatment",
+    "price": 1000,
+    "duration_minutes": 30,
+    "available_online": true,
+    "category": "Hair Treatment",
+    "is_active": true
+  },
+  {
+    "id": 227,
+    "name": "Head Wash",
+    "price": 1000,
+    "duration_minutes": 30,
+    "available_online": true,
+    "category": "Hair Treatment",
+    "is_active": true
+  },
+  {
+    "id": 233,
+    "name": "Keratin",
+    "price": 25000,
+    "duration_minutes": 300,
+    "available_online": true,
+    "category": "Hair Treatment",
+    "is_active": true
+  },
+  {
+    "id": 248,
+    "name": "Oil Treatment",
+    "price": 3500,
+    "duration_minutes": 30,
+    "available_online": true,
+    "category": "Hair Treatment",
+    "is_active": true
+  },
+  {
+    "id": 253,
+    "name": "Perming",
+    "price": 15000,
+    "duration_minutes": 240,
+    "available_online": true,
+    "category": "Hair Treatment",
+    "is_active": true
+  },
+  {
+    "id": 257,
+    "name": "Rebonding / Relaxing",
+    "price": 15000,
+    "duration_minutes": 300,
+    "available_online": true,
+    "category": "Hair Treatment",
+    "is_active": true
+  },
+  {
+    "id": 315,
+    "name": "Foot Massage 30 min",
+    "price": 2000,
+    "duration_minutes": 30,
+    "available_online": true,
+    "category": "Manicure & Pedicure",
+    "is_active": true
+  },
+  {
+    "id": 316,
+    "name": "Foot Massage 60 min",
+    "price": 4000,
+    "duration_minutes": 60,
+    "available_online": true,
+    "category": "Manicure & Pedicure",
+    "is_active": true
+  },
+  {
+    "id": 207,
+    "name": "Gel Pedicure",
+    "price": 4500,
+    "duration_minutes": 60,
+    "available_online": true,
+    "category": "Manicure & Pedicure",
+    "is_active": true
+  },
+  {
+    "id": 314,
+    "name": "Manicure",
+    "price": 4000,
+    "duration_minutes": 60,
+    "available_online": true,
+    "category": "Manicure & Pedicure",
+    "is_active": true
+  },
+  {
+    "id": 317,
+    "name": "Normal Nail Color",
+    "price": 500,
+    "duration_minutes": 20,
+    "available_online": true,
+    "category": "Manicure & Pedicure",
+    "is_active": true
+  },
+  {
+    "id": 193,
+    "name": "Foot Massage",
+    "price": 2000,
+    "duration_minutes": 30,
+    "available_online": true,
+    "category": "Manicure and Pedicure",
+    "is_active": true
+  },
+  {
+    "id": 243,
+    "name": "Manicure-Full Hand",
+    "price": 4000,
+    "duration_minutes": 60,
+    "available_online": true,
+    "category": "Manicure and Pedicure",
+    "is_active": true
+  },
+  {
+    "id": 245,
+    "name": "Nail Color +",
+    "price": 2000,
+    "duration_minutes": 30,
+    "available_online": false,
+    "category": "Manicure and Pedicure",
+    "is_active": true
+  },
+  {
+    "id": 263,
+    "name": "Top Code",
+    "price": 1500,
+    "duration_minutes": 30,
+    "available_online": false,
+    "category": "Manicure and Pedicure",
+    "is_active": true
+  },
+  {
+    "id": 162,
+    "name": "Acrylic And Gel X",
+    "price": 5000,
+    "duration_minutes": 120,
+    "available_online": true,
+    "category": "Nails",
+    "is_active": true
+  },
+  {
+    "id": 310,
+    "name": "Acrylic Gel X",
+    "price": 5000,
+    "duration_minutes": 120,
+    "available_online": true,
+    "category": "Nails",
+    "is_active": true
+  },
+  {
+    "id": 163,
+    "name": "Additional",
+    "price": 1000,
+    "duration_minutes": 30,
+    "available_online": false,
+    "category": "Nails",
+    "is_active": true
+  },
+  {
+    "id": 177,
+    "name": "Cat Eye Gel Color",
+    "price": 2000,
+    "duration_minutes": 30,
+    "available_online": true,
+    "category": "Nails",
+    "is_active": true
+  },
+  {
+    "id": 183,
+    "name": "Dipping",
+    "price": 4500,
+    "duration_minutes": 90,
+    "available_online": true,
+    "category": "Nails",
+    "is_active": true
+  },
+  {
+    "id": 311,
+    "name": "Dipping Nails",
+    "price": 4500,
+    "duration_minutes": 90,
+    "available_online": true,
+    "category": "Nails",
+    "is_active": true
+  },
+  {
+    "id": 206,
+    "name": "Gel Nail Colour",
+    "price": 1500,
+    "duration_minutes": 30,
+    "available_online": true,
+    "category": "Nails",
+    "is_active": true
+  },
+  {
+    "id": 313,
+    "name": "Nail Removal",
+    "price": 1500,
+    "duration_minutes": 45,
+    "available_online": true,
+    "category": "Nails",
+    "is_active": true
+  },
+  {
+    "id": 256,
+    "name": "Poly Nail",
+    "price": 4500,
+    "duration_minutes": 30,
+    "available_online": true,
+    "category": "Nails",
+    "is_active": true
+  },
+  {
+    "id": 312,
+    "name": "Poly Nail Colour",
+    "price": 4500,
+    "duration_minutes": 120,
+    "available_online": true,
+    "category": "Nails",
+    "is_active": true
+  },
+  {
+    "id": 258,
+    "name": "Removal",
+    "price": 1500,
+    "duration_minutes": 45,
+    "available_online": true,
+    "category": "Nails",
+    "is_active": true
+  },
+  {
+    "id": 262,
+    "name": "Tip Nail With Base Color",
+    "price": 4000,
+    "duration_minutes": 120,
+    "available_online": true,
+    "category": "Nails",
+    "is_active": true
+  },
+  {
+    "id": 250,
+    "name": "One ear (Full)",
+    "price": 800,
+    "duration_minutes": 45,
+    "available_online": false,
+    "category": "Piercing",
+    "is_active": true
+  },
+  {
+    "id": 305,
+    "name": "One Ear Piercing",
+    "price": 800,
+    "duration_minutes": 45,
+    "available_online": true,
+    "category": "Piercing",
+    "is_active": true
+  },
+  {
+    "id": 254,
+    "name": "Piercing (Nose)",
+    "price": 2500,
+    "duration_minutes": 30,
+    "available_online": false,
+    "category": "Piercing",
+    "is_active": true
+  },
+  {
+    "id": 241,
+    "name": "Lehenga Rental",
+    "price": 15000,
+    "duration_minutes": 30,
+    "available_online": false,
+    "category": "Rental",
+    "is_active": true
+  },
+  {
+    "id": 186,
+    "name": "Eyebrow & Upper Lips",
+    "price": 400,
+    "duration_minutes": 20,
+    "available_online": true,
+    "category": "Threading",
+    "is_active": true
+  },
+  {
+    "id": 299,
+    "name": "Eyebrow Threading",
+    "price": 300,
+    "duration_minutes": 15,
+    "available_online": true,
+    "category": "Threading",
+    "is_active": true
+  },
+  {
+    "id": 273,
+    "name": "Eyebrow,Upper Lips with Chin",
+    "price": 500,
+    "duration_minutes": 30,
+    "available_online": true,
+    "category": "Threading",
+    "is_active": true
+  },
+  {
+    "id": 187,
+    "name": "Eyebrows",
+    "price": 300,
+    "duration_minutes": 15,
+    "available_online": true,
+    "category": "Threading",
+    "is_active": true
+  },
+  {
+    "id": 203,
+    "name": "Full Face",
+    "price": 850,
+    "duration_minutes": 30,
+    "available_online": true,
+    "category": "Threading",
+    "is_active": true
+  },
+  {
+    "id": 301,
+    "name": "Full Face Threading",
+    "price": 850,
+    "duration_minutes": 30,
+    "available_online": true,
+    "category": "Threading",
+    "is_active": true
+  },
+  {
+    "id": 269,
+    "name": "Upper Lips",
+    "price": 200,
+    "duration_minutes": 5,
+    "available_online": true,
+    "category": "Threading",
+    "is_active": true
+  },
+  {
+    "id": 300,
+    "name": "Upper Lips Threading",
+    "price": 200,
+    "duration_minutes": 5,
+    "available_online": true,
+    "category": "Threading",
+    "is_active": true
+  },
+  {
+    "id": 188,
+    "name": "Eyebrows Wax",
+    "price": 2000,
+    "duration_minutes": 30,
+    "available_online": true,
+    "category": "Waxing",
+    "is_active": true
+  },
+  {
+    "id": 190,
+    "name": "Face Wax",
+    "price": 3500,
+    "duration_minutes": 30,
+    "available_online": true,
+    "category": "Waxing",
+    "is_active": true
+  },
+  {
+    "id": 198,
+    "name": "Full Body Wax",
+    "price": 10000,
+    "duration_minutes": 75,
+    "available_online": true,
+    "category": "Waxing",
+    "is_active": true
+  },
+  {
+    "id": 224,
+    "name": "Half Leg Wax",
+    "price": 3000,
+    "duration_minutes": 30,
+    "available_online": true,
+    "category": "Waxing",
+    "is_active": true
+  },
+  {
+    "id": 225,
+    "name": "Hand Wax (Full)",
+    "price": 3000,
+    "duration_minutes": 30,
+    "available_online": true,
+    "category": "Waxing",
+    "is_active": true
+  },
+  {
+    "id": 302,
+    "name": "Hand Wax Full",
+    "price": 3000,
+    "duration_minutes": 30,
+    "available_online": true,
+    "category": "Waxing",
+    "is_active": false
+  },
+  {
+    "id": 240,
+    "name": "Leg Wax (Full)",
+    "price": 3500,
+    "duration_minutes": 45,
+    "available_online": true,
+    "category": "Waxing",
+    "is_active": true
+  },
+  {
+    "id": 304,
+    "name": "Leg Wax Full",
+    "price": 3500,
+    "duration_minutes": 45,
+    "available_online": true,
+    "category": "Waxing",
+    "is_active": false
+  },
+  {
+    "id": 264,
+    "name": "Ultimate Body Wax",
+    "price": 15000,
+    "duration_minutes": 90,
+    "available_online": true,
+    "category": "Waxing",
+    "is_active": true
+  },
+  {
+    "id": 267,
+    "name": "Under Arms",
+    "price": 2000,
+    "duration_minutes": 15,
+    "available_online": true,
+    "category": "Waxing",
+    "is_active": true
+  },
+  {
+    "id": 303,
+    "name": "Under Arms Wax",
+    "price": 2000,
+    "duration_minutes": 15,
+    "available_online": true,
+    "category": "Waxing",
+    "is_active": true
+  },
+  {
+    "id": 268,
+    "name": "Upper Lip  Wax",
+    "price": 1000,
+    "duration_minutes": 30,
+    "available_online": true,
+    "category": "Waxing",
+    "is_active": true
+  },
+  {
+    "id": 174,
+    "name": "Bridal Package Lehanga (Without)- At Salon",
+    "price": 85000,
+    "duration_minutes": 30,
+    "available_online": false,
+    "category": "Wedding Arrangement",
+    "is_active": true
+  },
+  {
+    "id": 175,
+    "name": "Bridal Package Option 1- At Salon",
+    "price": 210000,
+    "duration_minutes": 30,
+    "available_online": false,
+    "category": "Wedding Arrangement",
+    "is_active": true
+  },
+  {
+    "id": 176,
+    "name": "Bridal Package Option 2- At Salon",
+    "price": 150000,
+    "duration_minutes": 30,
+    "available_online": false,
+    "category": "Wedding Arrangement",
+    "is_active": true
+  },
+  {
+    "id": 184,
+    "name": "Engagement Groom Package- At Salon",
+    "price": 15000,
+    "duration_minutes": 30,
+    "available_online": false,
+    "category": "Wedding Arrangement",
+    "is_active": true
+  },
+  {
+    "id": 185,
+    "name": "Engagement Package(Bride)- At Salon",
+    "price": 45000,
+    "duration_minutes": 30,
+    "available_online": false,
+    "category": "Wedding Arrangement",
+    "is_active": true
+  },
+  {
+    "id": 217,
+    "name": "Groom Hair Setting-at Salon",
+    "price": 5000,
+    "duration_minutes": 30,
+    "available_online": false,
+    "category": "Wedding Arrangement",
+    "is_active": true
+  },
+  {
+    "id": 218,
+    "name": "Groom Package- At Hotel(Kandy)",
+    "price": 25000,
+    "duration_minutes": 30,
+    "available_online": false,
+    "category": "Wedding Arrangement",
+    "is_active": true
+  }
+]

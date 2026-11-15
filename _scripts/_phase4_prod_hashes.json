@@ -1,0 +1,92 @@
+{
+  "local": {
+    "ai_engine/app/pricing_resolver.py": {
+      "exists": true,
+      "sha16": "f38c616f83ac9873",
+      "bytes": 29991
+    },
+    "ai_engine/app/main.py": {
+      "exists": true,
+      "sha16": "a73d79a65d9f9544",
+      "bytes": 88282
+    },
+    "ai_engine/app/booking_flow.py": {
+      "exists": true,
+      "sha16": "f70577c7fa077e1d",
+      "bytes": 125699
+    },
+    "ai_engine/app/conversation_intelligence.py": {
+      "exists": true,
+      "sha16": "b48ac76f091efb47",
+      "bytes": 24981
+    },
+    "backend/services/crmInboundTurnService.js": {
+      "exists": true,
+      "sha16": "ef40cdd7dd8b031a",
+      "bytes": 37787
+    },
+    "backend/services/crmAiMemoryService.js": {
+      "exists": true,
+      "sha16": "f63ea110f2129fa7",
+      "bytes": 8732
+    }
+  },
+  "prod": {
+    "ai_engine": {
+      "/app/app/pricing_resolver.py": {
+        "exists": false
+      },
+      "/app/app/main.py": {
+        "exists": true,
+        "sha16": "54fb1d8e327ad022",
+        "bytes": 80112
+      },
+      "/app/app/booking_flow.py": {
+        "exists": true,
+        "sha16": "1933294042289bf8",
+        "bytes": 113002
+      },
+      "/app/app/conversation_intelligence.py": {
+        "exists": false
+      }
+    },
+    "backend": {
+      "/app/services/crmInboundTurnService.js": {
+        "exists": true,
+        "sha16": "2cb7fab3b0dee5c4",
+        "bytes": 35985
+      },
+      "/app/services/crmAiMemoryService.js": {
+        "exists": true,
+        "sha16": "0572832729073581",
+        "bytes": 6611
+      }
+    },
+    "ai_crm_worker": {
+      "/app/services/crmInboundTurnService.js": {
+        "exists": true,
+        "sha16": "2cb7fab3b0dee5c4",
+        "bytes": 35985
+      },
+      "/app/services/crmAiMemoryService.js": {
+        "exists": true,
+        "sha16": "0572832729073581",
+        "bytes": 6611
+      }
+    },
+    "stderr_ai": "",
+    "stderr_be": ""
+  },
+  "mapping": {
+    "ai": {
+      "ai_engine/app/pricing_resolver.py": "/app/app/pricing_resolver.py",
+      "ai_engine/app/main.py": "/app/app/main.py",
+      "ai_engine/app/booking_flow.py": "/app/app/booking_flow.py",
+      "ai_engine/app/conversation_intelligence.py": "/app/app/conversation_intelligence.py"
+    },
+    "backend": {
+      "backend/services/crmInboundTurnService.js": "/app/services/crmInboundTurnService.js",
+      "backend/services/crmAiMemoryService.js": "/app/services/crmAiMemoryService.js"
+    }
+  }
+}

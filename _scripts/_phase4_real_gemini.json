@@ -1,0 +1,303 @@
+{
+  "mode": "real_gemini_phase4",
+  "key_source": "file:.env.gemini.local",
+  "key_present": true,
+  "key_fingerprint": "len=53",
+  "deterministic": [
+    {
+      "id": "det_butterfly_278",
+      "provider": "pricing_resolver",
+      "pass": true,
+      "amount": 4500,
+      "service_id": 278
+    },
+    {
+      "id": "det_galaxy_no_quote",
+      "provider": "pricing_resolver",
+      "pass": true,
+      "source": "clarify_unknown_named_service"
+    },
+    {
+      "id": "det_bra_strap_keratin",
+      "provider": "pricing_resolver",
+      "pass": true,
+      "amount": 30000
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "si_service",
+      "provider": "real_gemini",
+      "request": "ආයුබෝවන්, කෙරටින් treatment ගැන කෙටියෙන් කියන්න",
+      "expected_any": [
+        "keratin",
+        "කෙරටින්",
+        "length",
+        "shoulder",
+        "service"
+      ],
+      "forbid": [],
+      "hit": [
+        "keratin"
+      ],
+      "forbid_hit": [],
+      "pass": true,
+      "latency_ms": 3707,
+      "reply": "ආයුබෝවන්! Salon Larvendo වෙත සාදරයෙන් පිළිගනිමු.\n\nඅපගේ Keratin treatment එක මඟින් ඔබේ හිසකෙස් වල ඇති වියළි ස්වභාවය නැති කර, සිනිඳු, දිදුලන සහ පාලනය කිරීමට පහසු පෙනුමක් ලබා දේ. \n\nනිවැරදි මිල ගණන් දැනගැනීම සඳහා, ඔබේ හිසකෙස් වල දිග (Short, Medium, Long, Extra Long) අපට සඳහන් කරන්න පුළුවන්ද?",
+      "error": null
+    },
+    {
+      "id": "sg_price",
+      "provider": "real_gemini",
+      "request": "Keratin kiyada? Shoulder length",
+      "expected_any": [
+        "keratin",
+        "shoulder",
+        "price",
+        "rs",
+        "length",
+        "25000",
+        "25"
+      ],
+      "forbid": [
+        "galaxy",
+        "99999"
+      ],
+      "hit": [
+        "keratin",
+        "shoulder",
+        "price",
+        "rs",
+        "length"
+      ],
+      "forbid_hit": [],
+      "pass": true,
+      "latency_ms": 1710,
+      "reply": "Hi! For Keratin treatment on shoulder-length hair at Salon Larvendo, the guide price is Rs. 15,000. \n\nWould you like to check available dates with us?",
+      "error": null
+    },
+    {
+      "id": "en_service",
+      "provider": "real_gemini",
+      "request": "What facials do you offer?",
+      "expected_any": [
+        "facial",
+        "hydra",
+        "cleanup",
+        "service",
+        "catalogue"
+      ],
+      "forbid": [],
+      "hit": [
+        "facial",
+        "cleanup",
+        "catalogue"
+      ],
+      "forbid_hit": [],
+      "pass": true,
+      "latency_ms": 2155,
+      "reply": "We offer a variety of facials at Salon Larvendo, including cleanup, basic, and advanced treatments tailored to different skin types. \n\nCould you please share your specific skin type or the exact facial from our catalogue you are interested in so I can check the details and guide pricing for you?",
+      "error": null
+    },
+    {
+      "id": "en_unknown",
+      "provider": "real_gemini",
+      "request": "How much is Galaxy Plasma Treatment?",
+      "expected_any": [
+        "verify",
+        "catalogue",
+        "staff",
+        "exact",
+        "list",
+        "don't",
+        "not sure",
+        "cannot",
+        "can't",
+        "confirm"
+      ],
+      "forbid": [
+        "25000",
+        "25,000",
+        "keratin treatment:"
+      ],
+      "hit": [
+        "catalogue",
+        "staff",
+        "list"
+      ],
+      "forbid_hit": [],
+      "pass": true,
+      "latency_ms": 2319,
+      "reply": "Hi! For the Galaxy Plasma Treatment price, I need to check the specific catalogue name or the stylist you'd prefer since rates vary by staff tier. Could you let me know which stylist you're looking at?",
+      "error": null
+    },
+    {
+      "id": "en_butterfly_ask",
+      "provider": "real_gemini",
+      "request": "How much is Ladies Hair Cut Butterfly?",
+      "expected_any": [
+        "4500",
+        "4,500",
+        "butterfly",
+        "hair",
+        "cut",
+        "price",
+        "staff",
+        "confirm"
+      ],
+      "forbid": [
+        "3500"
+      ],
+      "hit": [
+        "butterfly",
+        "hair",
+        "cut",
+        "price"
+      ],
+      "forbid_hit": [],
+      "pass": true,
+      "latency_ms": 2729,
+      "reply": "Hello! For a Ladies Hair Cut Butterfly, I need to check our exact catalogue and which stylist you would prefer (Senior or Junior), as prices vary. \n\nCould you please let me know your preferred stylist, or I can check our general price list for you?",
+      "error": null
+    },
+    {
+      "id": "sg_length_followup",
+      "provider": "real_gemini",
+      "request": "Bra Strap",
+      "expected_any": [
+        "bra",
+        "length",
+        "keratin",
+        "price",
+        "which service",
+        "confirm"
+      ],
+      "forbid": [],
+      "hit": [
+        "bra",
+        "length",
+        "keratin"
+      ],
+      "forbid_hit": [],
+      "pass": true,
+      "latency_ms": 1664,
+      "reply": "Thanks for mentioning the \"Bra Strap\" length! \n\nSince you didn't mention the specific service (like Keratin or Botox), I need to check our catalogue first. Could you let me know which treatment you are looking to get done?",
+      "error": null
+    },
+    {
+      "id": "en_correction",
+      "provider": "real_gemini",
+      "request": "That was wrong — I asked about facial prices not haircut",
+      "expected_any": [
+        "facial",
+        "sorry",
+        "price",
+        "hydra"
+      ],
+      "forbid": [
+        "say *book*"
+      ],
+      "hit": [
+        "facial",
+        "price"
+      ],
+      "forbid_hit": [],
+      "pass": true,
+      "latency_ms": 3274,
+      "reply": "Apologies for that! Could you please let me know which specific facial you are interested in (or share the catalogue name/staff member) so I can check the exact price for you?",
+      "error": null
+    },
+    {
+      "id": "sg_topic_switch",
+      "provider": "real_gemini",
+      "request": "I'm booking a haircut but first — waxing mila?",
+      "expected_any": [
+        "wax",
+        "price",
+        "book",
+        "pause",
+        "later"
+      ],
+      "forbid": [],
+      "hit": [
+        "wax",
+        "price",
+        "book"
+      ],
+      "forbid_hit": [],
+      "pass": true,
+      "latency_ms": 2926,
+      "reply": "Hi! Waxing prices depend on the specific area you need done (e.g., full legs, underarms, bikini). Which areas are you looking to wax? \n\n*(We can also continue with your haircut booking anytime!)*",
+      "error": null
+    },
+    {
+      "id": "en_human",
+      "provider": "real_gemini",
+      "request": "Please connect me to a staff member",
+      "expected_any": [
+        "staff",
+        "human",
+        "team",
+        "connect",
+        "handoff"
+      ],
+      "forbid": [],
+      "hit": [
+        "staff",
+        "connect"
+      ],
+      "forbid_hit": [],
+      "pass": true,
+      "latency_ms": 5953,
+      "reply": "I've connected you to a staff member. Someone will be with you shortly to assist you!",
+      "error": null
+    },
+    {
+      "id": "sg_before_book",
+      "provider": "real_gemini",
+      "request": "Book karanna kalin keratin details kiyanna",
+      "expected_any": [
+        "keratin",
+        "detail",
+        "length",
+        "book"
+      ],
+      "forbid": [],
+      "hit": [
+        "keratin",
+        "detail",
+        "length"
+      ],
+      "forbid_hit": [],
+      "pass": true,
+      "latency_ms": 2284,
+      "reply": "Anivaryen! Keratin treatment eka karanna kalin, oyage hair eke length eka (short, medium, long, extra long) kohomada kiyala balanna oone. \n\nHair eka dan thiyena widiya poddak kiyanawada? Ethakota exact prices & details denna puluwan!",
+      "error": null
+    },
+    {
+      "id": "image_inquiry",
+      "provider": "real_gemini",
+      "request": "[Customer sent a photo]",
+      "pass": true,
+      "latency_ms": 3466,
+      "reply": "That's a lovely style! Could you tell me the exact name of the service from our catalogue or which staff member you'd prefer, so I can check the pricing for you?",
+      "error": null
+    },
+    {
+      "id": "provider_recovery_basic",
+      "provider": "real_gemini",
+      "request": "availability ping",
+      "pass": true,
+      "ok": true,
+      "latency_ms": 1938,
+      "reply": "Yes, we are available to help you—what would you like to book or know today?",
+      "error": null
+    }
+  ],
+  "ran": true,
+  "gemini_pass": true,
+  "deterministic_pass": true,
+  "pass": true,
+  "passed": 12,
+  "total": 12
+}

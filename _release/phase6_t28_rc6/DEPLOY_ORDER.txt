@@ -1,0 +1,15 @@
+PHASE 6 RC6 CANDIDATE — Advanced Intelligent Receptionist Engine
+Parent: phase6_t28_rc5
+Status: HOLD — do not deploy without explicit approval
+
+Deploy order (when approved):
+1. ai_engine/app/response_quality.py (NEW)
+2. ai_engine/app/conversation_intelligence.py
+3. ai_engine/app/main.py
+4. ai_engine/app/pricing_resolver.py
+5. ai_engine/app/booking_flow.py
+6. backend + worker crmHandoffInboundPolicy.js
+7. Restart ai_engine, ai_crm_worker, backend
+
+Rollback: restore prior docker snapshot under /root/xanesalon/_rollback/
+Do NOT send WhatsApp until separately approved.

@@ -1,0 +1,21 @@
+Phase 4C T28 RC2 — DEPLOY ORDER (do not execute without approval)
+RC1 (_release/phase4c_t28_rc1) is IMMUTABLE and was not modified.
+Rollback: redeploy RC1 files if RC2 misbehaves.
+
+Phase 4C T28 release candidate — DEPLOY ORDER (do not execute without approval)
+
+1. Snapshot current prod files (see docs/PHASE4C_ROLLBACK_VERIFICATION.md)
+2. CREATE on ai_engine BEFORE restart:
+   - pricing_resolver.py
+   - conversation_intelligence.py
+3. REPLACE on ai_engine:
+   - booking_flow.py
+   - main.py
+4. Restart ai_engine → GET /health must be 200
+5. REPLACE on backend AND ai_crm_worker:
+   - crmInboundTurnService.js
+   - crmAiMemoryService.js
+6. Restart backend + ai_crm_worker
+7. Authorized T28 WhatsApp smoke only after approval
+
+CRITICAL: Never restart ai_engine after copying only main.py.

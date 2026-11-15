@@ -5,7 +5,7 @@
   "parent_immutable": true,
   "tenant": 28,
   "scope": "conversation_truth_booking_consistency_plus_autonomous_intelligence",
-  "production_status": "NOT_DEPLOYED",
+  "production_status": "DEPLOYED",
   "note_prod_reality": "Preserve live RC4/RC6. RC7 LOCAL ONLY \u2014 conversation truth + relative dates + duration/service retention. No deploy / restart / WhatsApp / commit without approval.",
   "changed_files": [
     "ai_engine/app/conversation_truth.py",
@@ -139,5 +139,6 @@
     "Service retention + recall; duration from catalogue before availability",
     "turn_planner / turn_trace / response_quality / CI retained from prior RC7 work",
     "DO NOT DEPLOY without separate approval"
-  ]
+  ],
+  "deployed_utc": "2026-11-15T03:26:01.901236+00:00"
 }

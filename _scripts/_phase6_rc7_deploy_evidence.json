@@ -1,0 +1,56 @@
+{
+  "mode": "phase6_rc7_production_deploy",
+  "approval": "commit and deploy",
+  "started_utc": "2026-11-15T03:25:02.229505+00:00",
+  "bundle": "e:\\salon_v1\\_release\\phase6_t28_rc7",
+  "rc_id": "phase6_t28_rc7",
+  "whatsapp": "NOT_AUTHORIZED_NOT_SENT",
+  "steps": [
+    {
+      "ssh": true
+    },
+    {
+      "snapshot": true,
+      "raw_tail": "SNAP_OK\n"
+    },
+    {
+      "sftp_upload": true,
+      "files": [
+        "ai_engine/app/conversation_truth.py",
+        "ai_engine/app/turn_planner.py",
+        "ai_engine/app/turn_trace.py",
+        "ai_engine/app/response_quality.py",
+        "ai_engine/app/conversation_intelligence.py",
+        "ai_engine/app/pricing_resolver.py",
+        "ai_engine/app/booking_flow.py",
+        "ai_engine/app/main.py",
+        "backend/services/crmHandoffInboundPolicy.js",
+        "backend/services/crmAiMemoryService.js"
+      ]
+    },
+    {
+      "docker_cp": true
+    },
+    {
+      "restart": true,
+      "tail": " Container xanesalon-ai_engine-1 Restarting \n Container xanesalon-ai_crm_worker-1 Restarting \n Container xanesalon-backend-1 Restarting \n Container xanesalon-ai_engine-1 Started \n Container xanesalon-ai_crm_worker-1 Started \n Container xanesalon-backend-1 Started \n"
+    }
+  ],
+  "local_hashes": {
+    "ai_engine/app/conversation_truth.py": "68c6f4057fa75befece8712fdaf55884f5f9039e985a6d06bba18144c301d973",
+    "ai_engine/app/turn_planner.py": "8384d0bb7512a7a70dcc9536ddd53328388db0cd2e448ab2bd5dc56668a1a071",
+    "ai_engine/app/turn_trace.py": "e82ecb572da93af316c384da8982dfbfa3aa051203d90a254696ff4f2ee85983",
+    "ai_engine/app/response_quality.py": "130413a8ad1eea61c52b13114ed7bf16948099316e5f13ec32c47c8cf489c2ab",
+    "ai_engine/app/conversation_intelligence.py": "3ba97ef1979b504e08f2204eca57ec2e26eb151ee579fde8887095ce08fa4698",
+    "ai_engine/app/pricing_resolver.py": "cd9f1185c13688233a0388424297a367d2e0bb1e6eaf1dbccda18116d6c1e9e0",
+    "ai_engine/app/booking_flow.py": "439848140f946b38b922754df8305ffa549968c4648d18527e36c9931255823e",
+    "ai_engine/app/main.py": "2b5357251ce997145cf1caaaf3f3751dc2a31642ad65f6f225c3e96a26a85411",
+    "backend/services/crmHandoffInboundPolicy.js": "64e5aed148d3d72562dedb98d291f8b302afd50538d9f3f7a81658b99bb7d0ca",
+    "backend/services/crmAiMemoryService.js": "1d4370ace8f1f2a7f14545a44d3aec289028a8eb90747e6caf0332fec8de90d7"
+  },
+  "local_match_manifest": true,
+  "snapshot_dir": "/root/xanesalon/_rollback/phase6_rc7_20261115_032504",
+  "verify": "PHASE6_RC7_AI_OK {\"date\": \"2026-12-05\", \"rel\": \"2026-12-05\", \"pick\": null, \"ni\": \"date_day\", \"units\": 3}\nPHASE6_RC7_WORKER_OK [true,true,true]\nNAME                        IMAGE                     COMMAND                  SERVICE         CREATED        STATUS                    PORTS\nxanesalon-ai_crm_worker-1   xanesalon-ai_crm_worker   \"docker-entrypoint.s\u2026\"   ai_crm_worker   45 hours ago   Up 32 seconds             5000/tcp\nxanesalon-ai_engine-1       xanesalon-ai_engine       \"uvicorn app.main:ap\u2026\"   ai_engine       45 hours ago   Up 41 seconds (healthy)   8010/tcp\nxanesalon-backend-1         xanesalon-backend         \"docker-entrypoint.s\u2026\"   backend         39 hours ago   Up 31 seconds (healthy)   0.0.0.0:5001->5000/tcp, [::]:5001->5000/tcp\n",
+  "ok": true,
+  "finished_utc": "2026-11-15T03:26:01.901236+00:00"
+}

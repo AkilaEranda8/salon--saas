@@ -141,16 +141,26 @@ async function upsertMemoryFromTurn({
   const lastExchange = `Customer: ${msg.slice(0, 100)} | AI: ${String(replyText || '').slice(0, 100)}`;
   summaryBits.push(lastExchange);
 
-  // Phase 2+: merge conversation_intelligence + pricing_memory_patch when present
+  // Phase 2+/RC7: merge CI + pricing + respect + memory_correction patches
   const ciAct = [...actions].reverse().find((a) => a?.tool === 'conversation_intelligence' && a.ok);
   const priceMemAct = [...actions].reverse().find((a) => a?.tool === 'pricing_memory_patch' && a.ok);
   const respectAct = [...actions].reverse().find((a) => a?.tool === 'customer_respect_memory' && a.ok);
+  const correctionAct = [...actions].reverse().find((a) => a?.tool === 'memory_correction' && a.ok);
   const pauseAct = [...actions].reverse().find((a) => a?.tool === 'booking_pause_for_understanding' && a.ok);
   const patch = {
     ...((ciAct && typeof ciAct.memory_patch === 'object') ? ciAct.memory_patch : {}),
     ...((priceMemAct && typeof priceMemAct.memory_patch === 'object') ? priceMemAct.memory_patch : {}),
     ...((respectAct && typeof respectAct.memory_patch === 'object') ? respectAct.memory_patch : {}),
+    // Corrections win over stale CI topic
+    ...((correctionAct && typeof correctionAct.memory_patch === 'object') ? correctionAct.memory_patch : {}),
   };
+  // Privacy: never persist secret-looking keys from patches
+  for (const k of Object.keys(patch)) {
+    const lk = String(k).toLowerCase();
+    if (/(api_key|password|secret|token|card|nic|otp|cvv|bank_account)/.test(lk)) {
+      delete patch[k];
+    }
+  }
   const styleAct = [...actions].reverse().find((a) => a?.tool === 'comm_style' && a.ok);
   const scriptMode = styleAct?.script_mode || patch.script_mode || prevMeta.script_mode || null;
 
@@ -185,6 +195,24 @@ async function upsertMemoryFromTurn({
         : (prevMeta.honorific || prevMeta.address_preference || null)),
     address_form: patch.address_form || prevMeta.address_form || null,
     address_preference_asked: !!(patch.address_preference_asked || prevMeta.address_preference_asked),
+    // RC7 advanced memory
+    conversation_summary: patch.conversation_summary
+      ? String(patch.conversation_summary).slice(0, 480)
+      : (prevMeta.conversation_summary || null),
+    pending_questions: Array.isArray(patch.pending_questions)
+      ? patch.pending_questions.slice(0, 8)
+      : (Array.isArray(prevMeta.pending_questions) ? prevMeta.pending_questions.slice(0, 8) : []),
+    commitments: Array.isArray(patch.commitments)
+      ? patch.commitments.slice(0, 8)
+      : (Array.isArray(prevMeta.commitments) ? prevMeta.commitments.slice(0, 8) : []),
+    correction_log: Array.isArray(patch.correction_log)
+      ? patch.correction_log.slice(-12)
+      : (Array.isArray(prevMeta.correction_log) ? prevMeta.correction_log.slice(-12) : []),
+    emotion: patch.emotion || prevMeta.emotion || null,
+    last_trace_id: (() => {
+      const tr = [...actions].reverse().find((a) => a?.tool === 'turn_trace' && a.trace_id);
+      return tr?.trace_id || prevMeta.last_trace_id || null;
+    })(),
   };
 
   if (Array.isArray(patch.preferred_services)) {

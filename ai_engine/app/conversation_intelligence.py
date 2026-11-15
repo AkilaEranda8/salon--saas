@@ -149,6 +149,21 @@ _SERVICE_HINT_RE = re.compile(
     r"cleanup|clean-?up|dressing|treatment)\b",
     re.I,
 )
+_INCOMPLETE_RE = re.compile(
+    r"^(?:eka|ehema|hari|ow|hmm+|hm+|ane+|aththa|then|and|but|so|"
+    r"mata|oyata|meka|ඒක|හරි)[\s?.!]*$",
+    re.I,
+)
+_IMPLICIT_BOOK_RE = re.compile(
+    r"\b(?:free\s*(?:da|tha)|slot\s*(?:thiyen|available)|"
+    r"kalata\s+enna|enawa|come\s+tomorrow|heta\s+enna)\b",
+    re.I,
+)
+_COMMITMENT_RE = re.compile(
+    r"\b(?:i\s+(?:will|ll)\s+|mama\s+(?:enawa|karannam)|balamu|"
+    r"passe\s+kiyannam|call\s+(?:you|me)|confirm\s+karannam)\b",
+    re.I,
+)
 
 
 @dataclass
@@ -182,9 +197,87 @@ class ConversationContext:
     referent_topic: Optional[str] = None  # resolved "eka" / prior service
     decision: dict = field(default_factory=dict)
     must_answer: str = ""
+    # RC7 advanced memory fields
+    conversation_summary: Optional[str] = None
+    pending_questions: list = field(default_factory=list)
+    commitments: list = field(default_factory=list)
+    is_incomplete: bool = False
+    is_implicit: bool = False
+    stale_context_blocked: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
+
+
+def is_incomplete_utterance(text: str) -> bool:
+    """Short / trailing fragments that need conversation context to interpret."""
+    raw = (text or "").strip()
+    if not raw:
+        return True
+    if len(raw.split()) <= 2 and _INCOMPLETE_RE.match(raw):
+        return True
+    if raw.endswith(("...", "…", " and", " but", " so")) and len(raw.split()) <= 6:
+        return True
+    return False
+
+
+def is_implicit_request(text: str) -> bool:
+    """Implied booking/availability without explicit 'book' keyword."""
+    return bool(_IMPLICIT_BOOK_RE.search(text or ""))
+
+
+def extract_commitment(text: str) -> Optional[str]:
+    raw = (text or "").strip()
+    if not raw or not _COMMITMENT_RE.search(raw):
+        return None
+    return raw[:160]
+
+
+def build_conversation_summary(
+    *,
+    memory: Optional[dict] = None,
+    ctx_topic: Optional[str] = None,
+    intent: Optional[str] = None,
+    last_user: Optional[str] = None,
+) -> str:
+    """Compact rolling summary for prompt + CRM meta (no secrets)."""
+    mem = memory if isinstance(memory, dict) else {}
+    bits: list[str] = []
+    prior = mem.get("conversation_summary") or mem.get("summary")
+    if prior:
+        bits.append(str(prior)[:220])
+    if ctx_topic:
+        bits.append(f"topic={ctx_topic}")
+    if intent:
+        bits.append(f"intent={intent}")
+    if last_user:
+        bits.append(f"last_ask={str(last_user)[:80]}")
+    prefs = mem.get("preferred_services")
+    if isinstance(prefs, list) and prefs:
+        bits.append("services=" + ",".join(str(p) for p in prefs[:4]))
+    return " · ".join(bits)[:480]
+
+
+def apply_stale_context_guard(
+    *,
+    message: str,
+    prior_topic: Optional[str],
+    new_topic: Optional[str],
+    intent: str,
+) -> tuple[Optional[str], bool]:
+    """
+    Prevent stale memory topic from overriding a clear new ask.
+    Returns (effective_topic, stale_blocked).
+    """
+    if new_topic and prior_topic and detect_topic_switch(
+        message, prior_topic=prior_topic, new_topic=new_topic, intent=intent
+    ):
+        return new_topic, True
+    # Explicit new category in message wins over memory
+    msg_cat = detect_service_category(message or "")
+    if msg_cat and prior_topic and msg_cat != prior_topic:
+        return msg_cat, True
+    return new_topic or prior_topic, False
 
 
 def _last_user_and_assistant(recent: Optional[list]) -> tuple[Optional[str], Optional[str]]:
@@ -585,6 +678,33 @@ def classify_intent(
             "referent_topic": prior_topic or mem.get("last_service"),
         }
 
+    # Implicit availability / visit intent without saying "book"
+    if is_implicit_request(raw):
+        return {
+            "intent": INTENT_BOOK if not (booking_state and booking_state != "idle") else INTENT_BOOK_CONTINUE,
+            "topic": detect_service_category(raw) or referent_topic or prior_topic or mem.get("last_service"),
+            "must": (
+                "Customer implied they want a slot / to come in — help with availability or booking. "
+                "Do not claim a booking without backend confirmation."
+            ),
+            "implicit": True,
+            "referent_topic": referent_topic,
+        }
+
+    # Incomplete short fragment — lean on prior topic rather than resetting
+    if is_incomplete_utterance(raw) and (referent_topic or prior_topic or mem.get("last_service")):
+        topic = referent_topic or prior_topic or mem.get("last_service")
+        return {
+            "intent": INTENT_CLARIFY,
+            "topic": topic,
+            "must": (
+                f"Incomplete short message — interpret using prior topic ({topic}) and recent chat. "
+                "Ask at most one clarifying question if still ambiguous."
+            ),
+            "incomplete": True,
+            "referent_topic": topic,
+        }
+
     return {
         "intent": INTENT_GENERAL,
         "topic": prior_topic or mem.get("last_service"),
@@ -666,6 +786,14 @@ def build_conversation_context(
     topic_switch = detect_topic_switch(
         message, prior_topic=prior_topic, new_topic=topic, intent=intent
     )
+    topic, stale_blocked = apply_stale_context_guard(
+        message=message,
+        prior_topic=prior_topic,
+        new_topic=topic,
+        intent=intent,
+    )
+    if stale_blocked:
+        topic_switch = True
 
     services = list(mem.get("preferred_services") or [])
     for s in _extract_services_from_text(message):
@@ -677,6 +805,8 @@ def build_conversation_context(
     emotion = _emotion_from_text(message)
     lang = reply_lang or mem.get("language") or detect_lang(message) or "en"
     sm = script_mode or mem.get("script_mode") or detect_script_mode(message)
+    incomplete = bool(classified.get("incomplete")) or is_incomplete_utterance(message)
+    implicit = bool(classified.get("implicit")) or is_implicit_request(message)
 
     draft = booking_draft if isinstance(booking_draft, dict) else {}
     pending_q = None
@@ -697,6 +827,26 @@ def build_conversation_context(
     elif booking_paused:
         unresolved = message[:200]
 
+    pending_questions = list(mem.get("pending_questions") or [])
+    if pending_q and f"booking_{pending_q}" not in pending_questions:
+        pending_questions = [f"booking_{pending_q}"] + pending_questions
+    if incomplete and topic and "clarify_prior_topic" not in pending_questions:
+        pending_questions.insert(0, "clarify_prior_topic")
+    pending_questions = pending_questions[:8]
+
+    commitments = list(mem.get("commitments") or [])
+    cust_commit = extract_commitment(message)
+    if cust_commit:
+        commitments = [f"customer:{cust_commit}"] + commitments
+    commitments = commitments[:8]
+
+    summary = build_conversation_summary(
+        memory=mem,
+        ctx_topic=topic or prior_topic,
+        intent=intent,
+        last_user=message,
+    )
+
     decision = evaluate_response_decision(
         intent=intent,
         topic=topic,
@@ -714,6 +864,18 @@ def build_conversation_context(
         decision["action"] = "empathise_then_answer"
         decision["rules"] = list(decision.get("rules") or []) + [
             "Empathise in one short beat before the factual answer.",
+        ]
+    if incomplete:
+        decision["rules"] = list(decision.get("rules") or []) + [
+            "Message looks incomplete — use referent/memory; one clarifying question max.",
+        ]
+    if implicit:
+        decision["rules"] = list(decision.get("rules") or []) + [
+            "Implicit request detected — address availability/booking softly without fake confirm.",
+        ]
+    if stale_blocked:
+        decision["rules"] = list(decision.get("rules") or []) + [
+            "Stale prior topic blocked — answer the NEW topic only.",
         ]
 
     return ConversationContext(
@@ -747,6 +909,12 @@ def build_conversation_context(
         referent_topic=referent_topic or (topic if is_referent_message(message) else None),
         decision=decision,
         must_answer=str(classified.get("must") or ""),
+        conversation_summary=summary,
+        pending_questions=pending_questions,
+        commitments=commitments,
+        is_incomplete=incomplete,
+        is_implicit=implicit,
+        stale_context_blocked=stale_blocked,
     )
 
 
@@ -850,6 +1018,20 @@ def format_context_for_prompt(ctx: ConversationContext) -> str:
         lines.append(f"- Unresolved / to re-answer: {ctx.unresolved_question[:180]}")
     if ctx.objections:
         lines.append(f"- Objections: {str(ctx.objections[0])[:120]}")
+    if ctx.conversation_summary:
+        lines.append(f"- Summary: {ctx.conversation_summary[:220]}")
+    if ctx.pending_questions:
+        lines.append(f"- Pending questions: {', '.join(str(p) for p in ctx.pending_questions[:5])}")
+    if ctx.commitments:
+        lines.append(f"- Commitments: {', '.join(str(c) for c in ctx.commitments[:4])}")
+    if ctx.is_incomplete:
+        lines.append("- Incomplete utterance: yes — use referent/memory")
+    if ctx.is_implicit:
+        lines.append("- Implicit request: yes")
+    if ctx.stale_context_blocked:
+        lines.append("- Stale context blocked: use NEW topic only")
+    if not ctx.has_media:
+        lines.append("- Media: none this turn — never claim you saw a photo/heard audio")
     lines.append(
         "Priority: latest customer request > conversation context > pending booking > generic help."
     )
@@ -861,7 +1043,9 @@ def format_context_for_prompt(ctx: ConversationContext) -> str:
 
 def memory_patch_from_context(ctx: ConversationContext) -> dict[str, Any]:
     """Fields safe to merge into CrmAiMemory.meta / preferred_services."""
-    return {
+    from app.response_quality import scrub_sensitive_memory
+
+    patch = {
         "current_topic": ctx.current_topic,
         "last_intent": ctx.current_intent,
         "script_mode": ctx.script_mode,
@@ -873,4 +1057,10 @@ def memory_patch_from_context(ctx: ConversationContext) -> dict[str, Any]:
         "unresolved_question": ctx.unresolved_question,
         "last_quoted_price": ctx.last_quoted_price,
         "preferred_services": ctx.discussed_services[:12],
+        "conversation_summary": ctx.conversation_summary,
+        "pending_questions": list(ctx.pending_questions or [])[:8],
+        "commitments": list(ctx.commitments or [])[:8],
+        "emotion": ctx.emotion,
+        "tenant_id": ctx.tenant_id,  # isolation hint for CRM layer
     }
+    return scrub_sensitive_memory(patch)

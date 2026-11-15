@@ -1,0 +1,18 @@
+PHASE 6 RC7 CANDIDATE — Advanced Autonomous Intelligence
+Parent: phase6_t28_rc6 (immutable)
+Status: HOLD — do not deploy without explicit approval
+
+Deploy order (when approved):
+1. ai_engine/app/turn_trace.py (NEW)
+2. ai_engine/app/turn_planner.py (NEW)
+3. ai_engine/app/response_quality.py
+4. ai_engine/app/conversation_intelligence.py
+5. ai_engine/app/booking_flow.py
+6. ai_engine/app/main.py
+7. ai_engine/app/pricing_resolver.py
+8. backend/services/crmAiMemoryService.js
+9. backend + worker crmHandoffInboundPolicy.js
+10. Restart ai_engine, ai_crm_worker, backend
+
+Rollback: restore prior docker snapshot under /root/xanesalon/_rollback/
+Do NOT send WhatsApp until separately approved.

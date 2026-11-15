@@ -1,8 +1,11 @@
 """
 Advanced receptionist — response quality validator + multi-intent completeness.
 
+RC7: intent coverage, multi-question completeness, source/price/service identity,
+context consistency, language match, repetition, hallucination heuristics,
+false booking claims, media-claim guard, tool-success awareness.
 Deterministic checks before WhatsApp send. Does not invent prices/services.
-Bounded repair signal only (caller may retry Gemini once).
+Bounded repair signal only (caller may retry Gemini once — never invent facts).
 """
 from __future__ import annotations
 
@@ -10,13 +13,13 @@ import re
 from dataclasses import asdict, dataclass, field
 from typing import Any, Optional
 
-from app.booking_flow import detect_service_category
+from app.booking_flow import detect_lang, detect_script_mode, detect_service_category
 from app.pricing_resolver import extract_lkr_amounts, is_price_enquiry
 
 
 @dataclass
 class AskUnit:
-    kind: str  # price|duration|location|hours|service|booking|advice|compare|other
+    kind: str  # price|duration|location|hours|service|booking|advice|compare|other|objection
     label: str
     required_signals: list[str] = field(default_factory=list)
 
@@ -30,6 +33,11 @@ class QualityReport:
     repair_hint: str = ""
     falsely_claims_booking: bool = False
     invented_price_risk: bool = False
+    language_mismatch: bool = False
+    repetition: bool = False
+    media_claim_without_media: bool = False
+    tool_failure_unacknowledged: bool = False
+    context_inconsistency: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -63,6 +71,19 @@ _PRICE_SIGNAL = re.compile(r"\b(?:rs\.?|lkr|රු|price|mila|gana)\b|\d{3,}", r
 _DURATION_SIGNAL = re.compile(r"\b\d{1,3}\s*(?:min|mins|minutes|hr|hrs|hour)\b|විනාඩි", re.I)
 _LOCATION_SIGNAL = re.compile(
     r"\b(?:kandy|branch|mawatha|road|street|maps?|google|081|address)\b|ලිපින",
+    re.I,
+)
+_MEDIA_CLAIM = re.compile(
+    r"\b(?:i\s+(?:can\s+)?see\s+(?:your\s+)?(?:photo|image|picture)|"
+    r"from\s+(?:the\s+)?(?:photo|image|picture)|looking\s+at\s+(?:your\s+)?(?:photo|image)|"
+    r"photo\s+eka\s+(?:baluwa|dækka|dakka)|image\s+eka\s+baluwa|"
+    r"voice\s+(?:eka\s+)?(?:ahuna|heard)|i\s+heard\s+your\s+(?:voice|audio))\b",
+    re.I,
+)
+_SINHALA_SCRIPT = re.compile(r"[\u0D80-\u0DFF]")
+_HEALTH_DIAG = re.compile(
+    r"\b(?:you\s+have\s+(?:eczema|psoriasis|dermatitis|fungal)|"
+    r"diagnos(?:e|is)|medical\s+condition|skin\s+disease)\b",
     re.I,
 )
 
@@ -143,10 +164,105 @@ def _unit_answered(unit: AskUnit, reply: str) -> bool:
     if unit.kind == "advice":
         return len(r.split()) >= 6  # non-empty substantive reply
     if unit.kind == "service":
-        # at least mention the label token or catalogue language
         token = unit.label.replace("service_", "").replace("_", " ")
         return token in r or bool(re.search(r"\b(?:service|thiyen|option|cut|facial|treatment)\b", r))
     return True
+
+
+def _language_mismatch(message: str, reply: str) -> bool:
+    """Flag hard script mismatch: Sinhala Unicode ask vs pure Latin formal English essay."""
+    msg = message or ""
+    rep = reply or ""
+    if not msg.strip() or not rep.strip():
+        return False
+    msg_si = bool(_SINHALA_SCRIPT.search(msg))
+    rep_si = bool(_SINHALA_SCRIPT.search(rep))
+    # Customer wrote Sinhala script; reply has zero Sinhala and is long English-only → mismatch
+    if msg_si and not rep_si and len(rep.split()) > 40:
+        return True
+    # Customer clearly Singlish Latin; reply dumps dense Sinhala Unicode
+    sm = detect_script_mode(msg)
+    if sm == "latin" and detect_lang(msg) in ("si", "en") and rep_si and not re.search(
+        r"[A-Za-z]{3,}", msg
+    ):
+        return False  # rare edge
+    if sm == "latin" and re.search(r"\b(?:kiyada|keeyada|oni|hari|heta|mila)\b", msg, re.I):
+        # Singlish ask → heavy Sinhala-only reply is mismatch
+        if rep_si and len(re.findall(r"[A-Za-z]+", rep)) < 3 and len(rep) > 40:
+            return True
+    return False
+
+
+def _is_repetition(reply: str, prior_ai: Optional[str]) -> bool:
+    if not prior_ai or not reply:
+        return False
+    a = re.sub(r"\s+", " ", prior_ai.lower()).strip()[:280]
+    b = re.sub(r"\s+", " ", reply.lower()).strip()[:280]
+    if len(a) < 40 or len(b) < 40:
+        return False
+    if a == b:
+        return True
+    # High overlap of content words
+    wa = set(re.findall(r"[a-z\u0d80-\u0dff]{4,}", a))
+    wb = set(re.findall(r"[a-z\u0d80-\u0dff]{4,}", b))
+    if not wa or not wb:
+        return False
+    overlap = len(wa & wb) / max(1, min(len(wa), len(wb)))
+    return overlap >= 0.92 and abs(len(a) - len(b)) < 40
+
+
+def _media_claim_without_media(reply: str, *, has_media: bool) -> bool:
+    if has_media:
+        return False
+    return bool(_MEDIA_CLAIM.search(reply or ""))
+
+
+def _tool_failure_unacked(reply: str, actions: Optional[list]) -> bool:
+    if not actions:
+        return False
+    failed = [
+        a for a in actions
+        if isinstance(a, dict)
+        and a.get("tool") in (
+            "book_appointment", "cancel_appointment", "reschedule_appointment",
+            "check_availability", "list_services",
+        )
+        and a.get("ok") is False
+    ]
+    if not failed:
+        return False
+    r = (reply or "").lower()
+    # If tool failed but reply claims success / ignores failure
+    if _FAKE_BOOK.search(reply or ""):
+        return True
+    if any(a.get("tool") == "book_appointment" for a in failed):
+        if re.search(r"\b(?:booked|confirmed|locked)\b", r) and not re.search(
+            r"\b(?:couldn'?t|unable|fail|try\s+again|issue|problem)\b", r
+        ):
+            return True
+    return False
+
+
+def _context_inconsistency(
+    reply: str,
+    *,
+    expected_topic: Optional[str],
+    message: str,
+) -> bool:
+    """Soft: reply hard-pivots to unrelated bridal when ask is clearly haircut."""
+    if not expected_topic or not reply:
+        return False
+    msg_cat = detect_service_category(message) or expected_topic
+    if not msg_cat:
+        return False
+    r = reply.lower()
+    # Haircut ask answered only with bridal package pitch
+    if msg_cat in ("haircut", "hair_cut", "cut") or re.search(r"\b(?:butterfly|layer|bob)\b", message, re.I):
+        if re.search(r"\bbridal\b", r) and not re.search(
+            r"\b(?:cut|butterfly|layer|haircut|trim)\b", r
+        ):
+            return True
+    return False
 
 
 def validate_customer_reply(
@@ -156,9 +272,15 @@ def validate_customer_reply(
     prior_topic: Optional[str] = None,
     booking_confirmed: bool = False,
     price_hard_gated: bool = False,
+    has_media: bool = False,
+    prior_ai_reply: Optional[str] = None,
+    verified_amounts: Optional[list[int]] = None,
+    actions: Optional[list] = None,
+    expected_service: Optional[str] = None,
 ) -> QualityReport:
     """
     Pre-send validator. ok=False → caller should bounded-repair or clarify once.
+    Never invents missing facts in repair_hint — only lists gaps.
     """
     units = decompose_customer_asks(message, prior_topic=prior_topic)
     missing: list[str] = []
@@ -170,9 +292,45 @@ def validate_customer_reply(
     falsely = bool(_FAKE_BOOK.search(reply or "")) and not booking_confirmed
     invented = False
     if is_price_enquiry(message) and extract_lkr_amounts(reply) and not price_hard_gated:
-        # Soft warning only — hard invent block lives in pricing_resolver / main gates
-        invented = False
         warnings.append("price_amounts_present_outside_hard_gate")
+
+    # Price identity: if verified amounts provided, flag invent
+    if verified_amounts is not None and extract_lkr_amounts(reply):
+        got = set(extract_lkr_amounts(reply))
+        allowed = set(int(x) for x in verified_amounts)
+        if got and allowed and not got.issubset(allowed):
+            invented = True
+            missing.append("price_identity")
+            warnings.append("unverified_price_amounts")
+
+    lang_mis = _language_mismatch(message, reply)
+    if lang_mis:
+        missing.append("language_match")
+        warnings.append("language_mismatch")
+
+    repet = _is_repetition(reply, prior_ai_reply)
+    if repet:
+        missing.append("repetition")
+        warnings.append("near_duplicate_prior_reply")
+
+    media_bad = _media_claim_without_media(reply, has_media=has_media)
+    if media_bad:
+        missing.append("media_claim_without_media")
+
+    tool_bad = _tool_failure_unacked(reply, actions)
+    if tool_bad:
+        missing.append("tool_failure_unacknowledged")
+
+    ctx_bad = _context_inconsistency(
+        reply, expected_topic=expected_service or prior_topic, message=message
+    )
+    if ctx_bad:
+        missing.append("context_consistency")
+        warnings.append("service_identity_drift")
+
+    if _HEALTH_DIAG.search(reply or ""):
+        missing.append("health_diagnosis_forbidden")
+        warnings.append("health_diagnosis")
 
     if falsely:
         missing.append("false_booking_claim")
@@ -180,10 +338,15 @@ def validate_customer_reply(
     repair = ""
     if missing:
         repair = (
-            "Your previous reply missed: "
-            + ", ".join(missing[:8])
-            + ". Rewrite ONE WhatsApp reply that covers EACH missing part using verified salon data only. "
-            "Do not invent prices. Do not claim booking success."
+            "Your previous reply had gaps: "
+            + ", ".join(missing[:10])
+            + ". Rewrite ONE WhatsApp reply that covers EACH missing customer ask using "
+            "ONLY verified salon data already available. "
+            "Do not invent prices, services, or booking success. "
+            "Do not claim you saw a photo/heard audio unless media was actually provided. "
+            "Do not diagnose medical/skin conditions. "
+            "Match the customer's language (Singlish/Sinhala/English). "
+            "If a fact is unknown, say you will confirm with the team — never fabricate."
         )
 
     return QualityReport(
@@ -194,6 +357,11 @@ def validate_customer_reply(
         repair_hint=repair,
         falsely_claims_booking=falsely,
         invented_price_risk=invented,
+        language_mismatch=lang_mis,
+        repetition=repet,
+        media_claim_without_media=media_bad,
+        tool_failure_unacknowledged=tool_bad,
+        context_inconsistency=ctx_bad,
     )
 
 
@@ -213,10 +381,34 @@ def merge_memory_correction(
     hist = list(mem.get("correction_log") or [])
     hist.append({"field": field, "from": old, "to": new_value, "reason": reason})
     mem["correction_log"] = hist[-12:]
-    # Clear stale twin keys that would contradict
     if field == "last_service":
         mem["current_topic"] = new_value
         mem.pop("unresolved_question", None)
     if field == "hair_length":
         mem["hair_length"] = new_value
+    return mem
+
+
+def scrub_sensitive_memory(meta: Optional[dict[str, Any]]) -> dict[str, Any]:
+    """
+    Retention / privacy: drop keys that should not persist in CRM memory.
+    """
+    mem = dict(meta or {})
+    for k in list(mem.keys()):
+        lk = str(k).lower()
+        if any(
+            x in lk
+            for x in (
+                "api_key", "password", "secret", "card", "nic", "passport",
+                "otp", "cvv", "bank_account",
+            )
+        ):
+            mem.pop(k, None)
+    # Cap correction log
+    if isinstance(mem.get("correction_log"), list):
+        mem["correction_log"] = mem["correction_log"][-12:]
+    if isinstance(mem.get("commitments"), list):
+        mem["commitments"] = mem["commitments"][-8:]
+    if isinstance(mem.get("pending_questions"), list):
+        mem["pending_questions"] = mem["pending_questions"][-8:]
     return mem

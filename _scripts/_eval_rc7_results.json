@@ -1,0 +1,175 @@
+{
+  "rc": "phase6_t28_rc7",
+  "started_utc": "2026-11-15T03:09:50.364897+00:00",
+  "whatsapp": "NOT_SENT",
+  "production_mutations": "NONE",
+  "offline": {
+    "mode": "offline",
+    "passed": 10,
+    "total": 10,
+    "results": [
+      {
+        "id": "frag_short",
+        "ok": true,
+        "checks": [],
+        "intent": "clarification",
+        "topic": "keratin",
+        "tools": [
+          "search_knowledge",
+          "list_services"
+        ]
+      },
+      {
+        "id": "multi_q",
+        "ok": true,
+        "checks": [],
+        "intent": "branch_information",
+        "topic": "location",
+        "tools": [
+          "list_services",
+          "search_knowledge",
+          "list_branches"
+        ]
+      },
+      {
+        "id": "correction",
+        "ok": true,
+        "checks": [],
+        "intent": "correction",
+        "topic": "facial",
+        "tools": [
+          "search_knowledge",
+          "list_services"
+        ]
+      },
+      {
+        "id": "topic_switch",
+        "ok": true,
+        "checks": [],
+        "intent": "service_enquiry",
+        "topic": "dressing",
+        "tools": [
+          "search_knowledge",
+          "list_services"
+        ]
+      },
+      {
+        "id": "price_obj",
+        "ok": true,
+        "checks": [],
+        "intent": "alternative_request",
+        "topic": "keratin",
+        "tools": [
+          "list_services",
+          "search_knowledge"
+        ]
+      },
+      {
+        "id": "singlish",
+        "ok": true,
+        "checks": [],
+        "intent": "price_enquiry",
+        "topic": "haircut",
+        "tools": [
+          "list_services",
+          "search_knowledge"
+        ]
+      },
+      {
+        "id": "sinhala",
+        "ok": true,
+        "checks": [],
+        "intent": "price_enquiry",
+        "topic": null,
+        "tools": [
+          "list_services",
+          "search_knowledge"
+        ]
+      },
+      {
+        "id": "handoff",
+        "ok": true,
+        "checks": [],
+        "intent": "human_handoff",
+        "topic": "handoff",
+        "tools": [
+          "search_knowledge",
+          "list_services"
+        ]
+      },
+      {
+        "id": "fake_book_guard",
+        "ok": true,
+        "checks": []
+      },
+      {
+        "id": "media_guard",
+        "ok": true,
+        "checks": []
+      }
+    ]
+  },
+  "live": {
+    "mode": "live_gemini",
+    "passed": 6,
+    "total": 6,
+    "results": [
+      {
+        "id": "frag_short",
+        "ok": true,
+        "latency_ms": 1891.8,
+        "prompt_tokens": 29,
+        "completion_tokens": 25,
+        "model": "gemini-3.5-flash-lite",
+        "reply_preview": "Hei! Tervetuloa Larvendo-salongiin. Miten voin auttaa sinua t\u00e4n\u00e4\u00e4n?"
+      },
+      {
+        "id": "multi_q",
+        "ok": true,
+        "latency_ms": 1578.6,
+        "prompt_tokens": 39,
+        "completion_tokens": 53,
+        "model": "gemini-3.5-flash-lite",
+        "reply_preview": "Butterfly haircut eke price eka salon eka visit karala balala thama kiyanna puluwan (hair length eka anuwa wenas wenawa). Api innet Nugegoda. Appointment ekak daaganna kamathida?"
+      },
+      {
+        "id": "correction",
+        "ok": true,
+        "latency_ms": 1450.0,
+        "prompt_tokens": 35,
+        "completion_tokens": 25,
+        "model": "gemini-3.5-flash-lite",
+        "reply_preview": "No problem! I have updated your request to a keratin treatment. Would you like to check available dates and times for this?"
+      },
+      {
+        "id": "topic_switch",
+        "ok": true,
+        "latency_ms": 1699.8,
+        "prompt_tokens": 33,
+        "completion_tokens": 57,
+        "model": "gemini-3.5-flash-lite",
+        "reply_preview": "Hi! Mata bridal dressing \u0d9a\u0dbb\u0db1\u0dca\u0db1 \u0db4\u0dd4\u0dc5\u0dd4\u0dc0\u0db1\u0dca. \u0db1\u0dd2\u0dc0\u0dd0\u0dbb\u0daf\u0dd2\u0db8 \u0db8\u0dd2\u0dbd \u0d9c\u0dab\u0db1\u0dca \u0dc3\u0dc4 \u0dc0\u0dd9\u0dbd\u0dcf\u0dc0 \u0dc0\u0dd9\u0db1\u0dca \u0d9a\u0dbb\u0d9c\u0db1\u0dca\u0db1 \u0d85\u0db4\u0dda 0773824343 \u0d85\u0d82\u0d9a\u0dba\u0da7 Call \u0d91\u0d9a\u0d9a\u0dca \u0daf\u0dd9\u0db1\u0dca\u0db1. \u0dc3\u0dca\u0dad\u0dd6\u0dad\u0dd2\u0dba\u0dd2!"
+      },
+      {
+        "id": "price_obj",
+        "ok": true,
+        "latency_ms": 1977.9,
+        "prompt_tokens": 45,
+        "completion_tokens": 59,
+        "model": "gemini-3.5-flash-lite",
+        "reply_preview": "\u0d85\u0db4\u0d9c\u0dda \u0daf\u0dd0\u0db1\u0da7 \u0db4\u0dc0\u0dad\u0dd2\u0db1 \u0dc0\u0da7\u0dca\u0da7\u0db8\u0dca \u0dc4\u0ddd \u0dc0\u0dd2\u0dc1\u0dda\u0dc2 \u0daf\u0dd3\u0db8\u0db1\u0dcf \u0db4\u0dd2\u0dc5\u0dd2\u0db6\u0db3 \u0dc0\u0dd2\u0dc3\u0dca\u0dad\u0dbb \u0dbd\u0db6\u0dcf \u0d9c\u0dd0\u0db1\u0dd3\u0db8\u0da7 \u0d9a\u0dbb\u0dd4\u0dab\u0dcf\u0d9a\u0dbb \u0d85\u0db4\u0d9c\u0dda \u0dc3\u0dd0\u0dbd\u0ddd\u0db1\u0dca \u0d91\u0d9a\u0da7 \u0d9a\u0ddd\u0dbd\u0dca \u0d91\u0d9a\u0d9a\u0dca \u0daf\u0dd9\u0db1\u0dca\u0db1. \u0db8\u0db8 \u0d94\u0db6\u0da7 \u0db6\u0dd4\u0d9a\u0dd2\u0db1\u0dca \u0d91\u0d9a\u0d9a\u0dca \u0dad\u0dc4\u0dc0\u0dd4\u0dbb\u0dd4 \u0d9a\u0dbb \u0daf\u0dd9\u0db1\u0dca\u0db1\u0daf?"
+      },
+      {
+        "id": "singlish",
+        "ok": true,
+        "latency_ms": 1555.2,
+        "prompt_tokens": 37,
+        "completion_tokens": 25,
+        "model": "gemini-3.5-flash-lite",
+        "reply_preview": "\u0d85\u0daf \u0dbb\u0dd1 9 \u0da7 \u0d85\u0db4\u0dda \u0d89\u0da9\u0d9a\u0da9 \u0db1\u0dd0\u0dad. \u0dc0\u0dd9\u0db1\u0dad\u0dca \u0dc0\u0dd9\u0dbd\u0dcf\u0dc0\u0d9a\u0dca \u0db6\u0dbd\u0db8\u0dd4\u0daf?"
+      }
+    ]
+  },
+  "finished_utc": "2026-11-15T03:10:01.585522+00:00",
+  "ok": true
+}

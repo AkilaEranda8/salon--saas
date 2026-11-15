@@ -59,3 +59,21 @@ def test_memory_correction_replaces():
     assert out["last_service"] == "facial"
     assert out["current_topic"] == "facial"
     assert out["correction_log"][-1]["from"] == "keratin"
+
+
+def test_rc7_price_identity_and_tool_failure():
+    rep = validate_customer_reply(
+        "Butterfly kiyada?",
+        "Butterfly Rs 9,999.",
+        price_hard_gated=True,
+        verified_amounts=[4500],
+    )
+    assert rep.invented_price_risk is True or "price_identity" in rep.missing
+
+    rep2 = validate_customer_reply(
+        "Book karanna",
+        "Your appointment is confirmed!",
+        booking_confirmed=False,
+        actions=[{"tool": "book_appointment", "ok": False}],
+    )
+    assert rep2.ok is False

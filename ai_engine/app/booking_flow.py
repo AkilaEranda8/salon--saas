@@ -22,6 +22,18 @@ from app.session_store import (
     save_session_raw,
 )
 from app.tools import run_tool
+from app.conversation_truth import (
+    ConversationTruth,
+    bump_turn,
+    format_truth_for_prompt,
+    is_explicit_service_change,
+    is_memory_recall_ask,
+    parse_relative_date,
+    set_field,
+    short_numeric_intent,
+    today_colombo,
+    validate_booking_preflight,
+)
 
 IDLE = "idle"
 AWAIT_SERVICE = "await_service"
@@ -530,6 +542,9 @@ class Session:
     # When True, booking step is preserved but Gemini answers the latest ask first.
     paused: bool = False
     pause_reason: Optional[str] = None
+    # RC7 conversation truth — structured fields Gemini must not freely overwrite
+    truth: dict = field(default_factory=dict)
+    last_ai_prompt: Optional[str] = None  # last step question we asked (for short-msg context)
 
 
 def _draft_services_list(draft: BookingDraft) -> list[dict[str, Any]]:
@@ -629,6 +644,8 @@ def _session_to_dict(sess: Session) -> dict[str, Any]:
         "services": sess.services,
         "staff": sess.staff,
         "slots": sess.slots,
+        "truth": getattr(sess, "truth", None) or {},
+        "last_ai_prompt": getattr(sess, "last_ai_prompt", None),
     }
 
 
@@ -655,7 +672,48 @@ def _session_from_dict(data: Optional[dict[str, Any]]) -> Session:
         script_mode=sm,
         paused=bool(data.get("paused")),
         pause_reason=(str(data.get("pause_reason")).strip() if data.get("pause_reason") else None),
+        truth=data.get("truth") if isinstance(data.get("truth"), dict) else {},
+        last_ai_prompt=(str(data["last_ai_prompt"]) if data.get("last_ai_prompt") else None),
     )
+
+
+def _truth(sess: Session) -> ConversationTruth:
+    return ConversationTruth.from_dict(getattr(sess, "truth", None) or {})
+
+
+def _save_truth(sess: Session, truth: ConversationTruth) -> None:
+    sess.truth = truth.to_dict()
+
+
+def _sync_truth_from_draft(sess: Session, *, source: str = "draft") -> None:
+    truth = _truth(sess)
+    bump_turn(truth)
+    d = sess.draft
+    if d.service_id:
+        set_field(truth, "selected_service_id", int(d.service_id), source=source, confidence=0.95, confirmed=True)
+    if d.service_name:
+        set_field(truth, "selected_service_name", d.service_name, source=source, confidence=0.95, confirmed=True)
+    if d.duration:
+        set_field(truth, "service_duration", int(d.duration), source=source, confidence=0.95, confirmed=True)
+    if d.date:
+        set_field(truth, "preferred_date", d.date, source=source, confidence=0.95, confirmed=True)
+    if d.time:
+        set_field(truth, "preferred_time", d.time, source=source, confidence=0.95, confirmed=True)
+    if d.branch_id:
+        set_field(truth, "selected_branch", int(d.branch_id), source=source, confidence=0.8)
+    if sess.services:
+        props = [
+            {
+                "id": s.get("id"),
+                "name": s.get("name"),
+                "duration_minutes": s.get("duration_minutes"),
+            }
+            for s in (sess.services or [])[:12]
+            if isinstance(s, dict)
+        ]
+        set_field(truth, "proposed_services", props, source=source, confidence=0.9)
+    set_field(truth, "current_intent", sess.state, source=source, confidence=0.7)
+    _save_truth(sess, truth)
 
 
 def get_session(key: str) -> Session:
@@ -800,7 +858,9 @@ _CORRECTION_RE = re.compile(
     r"|\bquestion\s+ekata\b|\bwrong\s+answer\b|\bnot\s+what\s+i\s+(?:asked|said|meant)\b"
     r"|\bthat'?s\s+not\s+(?:what|right|correct)\b|\bi\s+asked\s+(?:something|a\s+different)\b"
     r"|\banswer\s+(?:the\s+)?(?:question|ask)\b"
-    r"|\bprice\s+aka\s+newei\b|\btime\s+aka\s+newei\b",
+    r"|\bprice\s+aka\s+newei\b|\btime\s+aka\s+newei\b"
+    r"|\bi\s+meant\b|\bi\s+mean\b|\bwrong\s*[—\-,]?\s*i\s+meant\b"
+    r"|\bnaha\s+.{0,20}\s+eka\b|\bnot\s+facial\b|\bwena\s+eka\s+keewe\b",
     re.I,
 )
 
@@ -1145,10 +1205,24 @@ _WEEKDAYS = [
 ]
 
 
-def _parse_date(text: str) -> Optional[str]:
-    today = date.today()
+def _parse_date(text: str, *, now: Optional[date] = None) -> Optional[str]:
+    """
+    Resolve dates against Asia/Colombo 'now' (never stale conversation clocks).
+    Relative phrases (labana mase / 1laweni sathiye / me masene 11) go first.
+    """
+    today = now or today_colombo()
     t_ = _norm(text)
     raw = str(text or "").strip()
+
+    # RC7: relative month / nth-weekday / day-in-month (Colombo)
+    rel = parse_relative_date(raw, now=today)
+    if rel.get("ok") and rel.get("date"):
+        return str(rel["date"])
+    if rel.get("ambiguous") and rel.get("clarify"):
+        # Signal ambiguity via sentinel consumed by AWAIT_DATE (None + side channel)
+        _parse_date.last_clarify = rel.get("clarify")  # type: ignore[attr-defined]
+        return None
+
     # Today — English + Sinhala script + Singlish (ade/aade/ida)
     if (
         re.search(r"\b(?:today|tdy)\b", t_)
@@ -1168,15 +1242,25 @@ def _parse_date(text: str) -> Optional[str]:
     # Day after tomorrow (Singlish)
     if re.search(r"\b(?:day\s*after\s*tomorrow|anidda|aniddha)\b", t_) or "අනිද්දා" in t_:
         return (today + timedelta(days=2)).isoformat()
+
+    # If message has next/this month + weekday without ordinal, prefer relative clarify
+    # rather than "next Saturday from today" which ignores the month intent.
+    if re.search(r"\b(?:labana\s+mas|next\s+months?|me\s+mas|this\s+months?)\b", t_, re.I):
+        _parse_date.last_clarify = (  # type: ignore[attr-defined]
+            rel.get("clarify")
+            or "Which exact date in that month? (e.g. first Saturday / 5 December)"
+        )
+        return None
+
     for i, (pat, native) in enumerate(_WEEKDAYS):
-        # Singlish weekday short forms
+        # Singlish weekday short forms (sathiye = Saturday)
         singlish = {
             0: r"sanduda|handuda",
             1: r"angaharuwada|angaharu",
             2: r"badada|badaada",
             3: r"brahaspathinda|brahas",
             4: r"sikurada|sikura",
-            5: r"senasurada|senasura|sani",
+            5: r"senasurada|senasura|sani|sathiye|sathiya|sathida",
             6: r"irida|iridaa",
         }.get(i, "")
         if (
@@ -1187,7 +1271,11 @@ def _parse_date(text: str) -> Optional[str]:
             delta = (i - today.weekday()) % 7
             if delta == 0:
                 delta = 7
-            return (today + timedelta(days=delta)).isoformat()
+            resolved = today + timedelta(days=delta)
+            # Validate weekday matches requested
+            if resolved.weekday() != i:
+                return None
+            return resolved.isoformat()
     # YYYY-MM-DD / YYYY.MM.DD / YYYY/MM/DD
     m = re.search(r"(\d{4})[-./](\d{1,2})[-./](\d{1,2})", raw)
     if m:
@@ -1210,7 +1298,7 @@ def _parse_date(text: str) -> Optional[str]:
                 return date(y, a, b).isoformat()
             except ValueError:
                 return None
-    # DD/MM or DD-MM (current year)
+    # DD/MM or DD-MM (current year, Colombo)
     m = re.search(r"(\d{1,2})[/-](\d{1,2})(?!\d)", raw)
     if m:
         d, mo = int(m.group(1)), int(m.group(2))
@@ -1222,15 +1310,20 @@ def _parse_date(text: str) -> Optional[str]:
                 return date(y, d, mo).isoformat()
             except ValueError:
                 return None
+    # Bare day number while correcting month context is handled by parse_relative_date
     return None
 
 
-def _valid_future_date(d: Optional[str]) -> Optional[str]:
-    """Return d only if it is a real ISO date that is not in the past."""
+_parse_date.last_clarify = None  # type: ignore[attr-defined]
+
+
+def _valid_future_date(d: Optional[str], *, now: Optional[date] = None) -> Optional[str]:
+    """Return d only if it is a real ISO date that is not in the past (Asia/Colombo)."""
     if not d:
         return None
+    today = now or today_colombo()
     try:
-        return d if date.fromisoformat(d) >= date.today() else None
+        return d if date.fromisoformat(d) >= today else None
     except ValueError:
         return None
 
@@ -1518,9 +1611,13 @@ _GENERIC_HAIRCUT_RE = re.compile(
 
 
 def _pick_by_index_or_name(text: str, items: list[dict], name_key: str = "name") -> Optional[dict]:
-    """Pick a single item by 1-based index or unique name match (staff, etc.)."""
+    """
+    Pick a single item by 1-based index or unique name match (staff, etc.).
+    RC7: ONLY pure numeric messages count as list indices — never '11 kiy nne me masene'.
+    """
     t_ = _norm(text)
-    m = re.search(r"\b(\d{1,2})\b", t_)
+    # Pure "3" / "11" only — embedded numbers are dates/times/corrections
+    m = re.search(r"^\s*(\d{1,2})\s*$", t_)
     if m:
         idx = int(m.group(1)) - 1
         if 0 <= idx < len(items):
@@ -2053,6 +2150,8 @@ async def handle_booking_turn(
         sess.script_mode = sm
         sess.paused = False
         sess.pause_reason = None
+        sess.truth = {}
+        sess.last_ai_prompt = None
 
     result: Optional[dict[str, Any]] = None
     try:
@@ -2304,13 +2403,35 @@ async def _handle_booking_turn_body(
             return _reply(t(lang, "no_services", brand=brand), actions)
         sess.state = AWAIT_SERVICE
         # Bare "book" / "make appointment" → use last discussed service (e.g. Keratin)
+        # RC7: NEVER invent Ladies Hair Cut from stale hint when they only gave a date/month.
         msg_has_service = bool(
             detect_service_category(message) or _SERVICE_WORD_RE.search(_norm(message))
         )
+        dateish = bool(
+            parse_relative_date(message).get("ok")
+            or parse_relative_date(message).get("ambiguous")
+            or re.search(
+                r"\b(?:labana\s+mas|next\s+months?|me\s+mas|booking\s+ek|date|sathiye)\b",
+                _norm(message),
+            )
+        )
+        bare_book = bool(
+            re.search(
+                r"^\s*(?:book|booking|appointment|reserve|yes|ow|hari|ඔව්)\b",
+                _norm(message),
+            )
+        ) and not dateish
         pick_text = message
-        if not msg_has_service and hint_service:
+        if not msg_has_service and hint_service and bare_book:
             pick_text = hint_service  # resolve against discussed service, not the word "appointment"
             actions.append({"tool": "service_hint", "ok": True, "hint": hint_service[:80]})
+        elif not msg_has_service and hint_service and dateish:
+            actions.append({
+                "tool": "service_hint_suppressed",
+                "ok": True,
+                "reason": "date_without_service",
+                "hint_ignored": hint_service[:80],
+            })
         picked, candidates = _resolve_service_pick(pick_text, services)
         if not picked and hint_service and pick_text != hint_service:
             picked, candidates = _resolve_service_pick(hint_service, services)
@@ -2364,8 +2485,89 @@ async def _handle_booking_turn_body(
         return _reply(ask, actions)
 
     if sess.state == AWAIT_SERVICE:
+        # Memory recall: "kalin kiwwe dressing ek mokakd" → repeat selected/proposed, no regenerate dump
+        if is_memory_recall_ask(message):
+            truth = _truth(sess)
+            selected = sess.draft.service_name or (truth.selected_service_name.value if truth else None)
+            props = sess.services or (truth.proposed_services.value if truth else None) or []
+            if selected:
+                actions.append({
+                    "tool": "conversation_truth_recall",
+                    "ok": True,
+                    "service_id": sess.draft.service_id,
+                    "service": selected,
+                })
+                return _reply(
+                    (
+                        f"Mathaka — oya select kala service eka: *{selected}* "
+                        f"(~{int(sess.draft.duration or 0)} min). Continue karanna date eka kiyanna."
+                        if (getattr(sess, "script_mode", None) == "singlish" or lang == "si")
+                        else (
+                            f"I remember — you selected *{selected}* "
+                            f"(~{int(sess.draft.duration or 0)} min). Send a date to continue."
+                        )
+                    ),
+                    actions,
+                )
+            if props:
+                listing = _format_list(
+                    props[:12] if isinstance(props, list) else [],
+                    extra_fn=lambda s: f" — {s.get('duration_minutes', 30)} min · LKR {s.get('price', 0)}",
+                )
+                actions.append({"tool": "conversation_truth_recall", "ok": True, "proposed": True})
+                return _reply(
+                    (
+                        f"Kalin show kala dressing options:\n{listing}\n\nNumber ekak pick karanna."
+                        if (getattr(sess, "script_mode", None) == "singlish" or lang == "si")
+                        else f"Previously shown options:\n{listing}\n\nReply with a number."
+                    ),
+                    actions,
+                )
+
+        # Short numeric: only list-index when expected service (not date corrections)
+        ni = short_numeric_intent(
+            message,
+            expected_step="service",
+            last_ai_question=getattr(sess, "last_ai_prompt", None),
+        )
+        if ni == "date_day":
+            actions.append({"tool": "short_msg_date_not_service", "ok": True})
+            return _reply(
+                (
+                    "E number eka date ekak wage penne — service pick karanna number ekak (list eke), "
+                    "nathnam service name eka type karanna."
+                    if (getattr(sess, "script_mode", None) == "singlish" or lang == "si")
+                    else "That looks like a date — pick a service number from the list, or type the service name."
+                ),
+                actions,
+            )
+        if ni == "unclear" and re.match(r"^\s*\d{1,2}\s*$", message or ""):
+            actions.append({"tool": "short_msg_clarify", "ok": True})
+            return _reply(
+                (
+                    "Number eka service list index ekada, nathnam date ekada? "
+                    "Service nam *3* wage reply karanna; date nam *me mase 11* kiyanna."
+                    if (getattr(sess, "script_mode", None) == "singlish" or lang == "si")
+                    else "Is that a service list number or a date? Reply *3* for option 3, or *11 this month* for a date."
+                ),
+                actions,
+            )
+
         # Always resolve against FULL catalogue so "hair treatment" isn't stuck on haircut page
         services = await _load_services(tenant_id, sess, force_refresh=True)
+        # If a service is already selected and message is NOT an explicit change, keep it
+        if sess.draft.service_id and not is_explicit_service_change(message):
+            if not re.match(r"^\s*\d{1,2}\s*$", _norm(message)) and not detect_service_category(message):
+                actions.append({
+                    "tool": "service_retained",
+                    "ok": True,
+                    "service_id": sess.draft.service_id,
+                    "service": sess.draft.service_name,
+                })
+                return await _auto_assign_staff_ask_date(
+                    tenant_id, sess, actions, do_reset,
+                    seed_message=message, customer_name=customer_name,
+                )
         picked, candidates = _resolve_service_pick(message, services)
         if not picked:
             if not candidates:
@@ -2384,9 +2586,46 @@ async def _handle_booking_turn_body(
                 "category": detect_service_category(message),
             })
             return _reply(t(lang, "svc_filtered", listing=listing), actions)
+        # Explicit change vs first select — log correction when replacing
+        if sess.draft.service_id and int(picked["id"]) != int(sess.draft.service_id):
+            if not is_explicit_service_change(message) and not re.match(r"^\s*\d{1,2}\s*$", _norm(message)):
+                actions.append({
+                    "tool": "service_change_blocked",
+                    "ok": False,
+                    "kept": sess.draft.service_name,
+                    "attempted": picked.get("name"),
+                })
+                return _reply(
+                    (
+                        f"Dæn *{sess.draft.service_name}* select wela thiyenawa. "
+                        f"Change karanna oni nam explicitly kiyanna "
+                        f"(e.g. *hair cut ekata change karanna*)."
+                        if (getattr(sess, "script_mode", None) == "singlish" or lang == "si")
+                        else (
+                            f"You already selected *{sess.draft.service_name}*. "
+                            f"To change, say so clearly (e.g. *change to hair cut*)."
+                        )
+                    ),
+                    actions,
+                )
+            truth = _truth(sess)
+            bump_turn(truth)
+            logs = list(truth.service_corrections.value or []) if isinstance(truth.service_corrections.value, list) else []
+            logs.append({
+                "from_id": sess.draft.service_id,
+                "from": sess.draft.service_name,
+                "to_id": picked.get("id"),
+                "to": picked.get("name"),
+                "source": message[:120],
+            })
+            set_field(truth, "service_corrections", logs[-8:], source=message, confidence=0.95, force=True)
+            _save_truth(sess, truth)
         sess.draft.service_id = int(picked["id"])
         sess.draft.service_name = picked.get("name")
-        sess.draft.duration = int(picked.get("duration_minutes") or 30)
+        # Authoritative catalogue duration — never invent 30 for a 120-min service
+        sess.draft.duration = max(15, int(picked.get("duration_minutes") or 30))
+        _sync_truth_from_draft(sess, source=message)
+        sess.last_ai_prompt = "date"
         return await _auto_assign_staff_ask_date(
             tenant_id, sess, actions, do_reset,
             seed_message=message, customer_name=customer_name,
@@ -2431,10 +2670,78 @@ async def _handle_booking_turn_body(
         )
 
     if sess.state == AWAIT_DATE:
-        d = _valid_future_date(_parse_date(message))
+        # Short "11 kiy nne me masene" → date correction, NEVER additional service
+        ni = short_numeric_intent(
+            message,
+            expected_step="date",
+            last_ai_question=getattr(sess, "last_ai_prompt", None) or "date",
+        )
+        if ni == "list_index" and sess.draft.service_id:
+            actions.append({"tool": "numeric_kept_as_date_context", "ok": True})
+        _parse_date.last_clarify = None  # type: ignore[attr-defined]
+        parsed = _parse_date(message)
+        d = _valid_future_date(parsed)
         if not d:
+            clarify = getattr(_parse_date, "last_clarify", None)
+            if clarify:
+                actions.append({"tool": "date_clarify", "ok": True, "reason": "ambiguous_relative"})
+                return _reply(str(clarify), actions)
             return _reply(t(lang, "bad_date"), actions)
+        # Weekday consistency: if message named a weekday, resolved date must match
+        for i, (pat, native) in enumerate(_WEEKDAYS):
+            singlish = {
+                5: r"senasurada|senasura|sani|sathiye|sathiya|sathida",
+            }.get(i, "")
+            hit = (
+                re.search(rf"\b(?:{pat})\b", _norm(message))
+                or any(n in _norm(message) for n in native)
+                or (singlish and re.search(rf"\b(?:{singlish})\b", _norm(message)))
+            )
+            if hit:
+                try:
+                    if date.fromisoformat(d).weekday() != i:
+                        actions.append({
+                            "tool": "date_weekday_mismatch",
+                            "ok": False,
+                            "date": d,
+                            "expected_weekday": i,
+                        })
+                        return _reply(
+                            (
+                                f"E date eka (*{d}*) e weekday ekata match wenne naha. "
+                                f"Exact date ekak Clarification ekak denna."
+                                if (getattr(sess, "script_mode", None) == "singlish" or lang == "si")
+                                else (
+                                    f"*{d}* does not fall on that weekday. "
+                                    f"Please send the exact calendar date."
+                                )
+                            ),
+                            actions,
+                        )
+                except ValueError:
+                    pass
+                break
+        # Preflight: service id + catalogue duration before availability
+        pre = validate_booking_preflight(
+            service_id=sess.draft.service_id,
+            duration_minutes=sess.draft.duration,
+            preferred_date=d,
+            catalogue_duration=sess.draft.duration,
+        )
+        actions.append({"tool": "booking_preflight", "ok": pre["ok"], **pre})
+        if not pre["ok"] and "missing_service_id" in (pre.get("errors") or []):
+            sess.state = AWAIT_SERVICE
+            return _reply(
+                (
+                    "Service eka select karanna issella date eka fix karanna bari. "
+                    "Mokakda service eka?"
+                    if (getattr(sess, "script_mode", None) == "singlish" or lang == "si")
+                    else "Please choose the service first, then the date."
+                ),
+                actions,
+            )
         sess.draft.date = d
+        _sync_truth_from_draft(sess, source=message)
         slots = await _fetch_slots_any_staff(tenant_id, sess, d, actions)
         sess.slots = slots
         if not slots:
@@ -2684,6 +2991,27 @@ async def _fetch_slots_any_staff(
             seen.add(sid)
 
     duration = _draft_total_duration(sess.draft)
+    # RC7: never probe availability with a silent 30-min default when catalogue says longer
+    if sess.draft.service_id and int(sess.draft.duration or 0) >= 15:
+        duration = max(duration, int(sess.draft.duration))
+    actions.append({
+        "tool": "availability_duration_guard",
+        "ok": True,
+        "service_id": sess.draft.service_id,
+        "service": sess.draft.service_name,
+        "duration_minutes": duration,
+        "date": d,
+    })
+    truth = _truth(sess)
+    set_field(truth, "service_duration", duration, source="availability", confidence=0.95, confirmed=True)
+    set_field(
+        truth,
+        "availability_result",
+        {"date": d, "duration_minutes": duration},
+        source="availability",
+        confidence=0.7,
+    )
+    _save_truth(sess, truth)
     for s in ordered:
         sid = int(s.get("id") or 0)
         if not sid:

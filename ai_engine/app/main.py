@@ -57,6 +57,9 @@ from app.response_quality import (
     merge_memory_correction,
     validate_customer_reply,
 )
+from app.turn_planner import build_turn_plan, format_plan_for_prompt
+from app.turn_trace import TurnTrace, new_trace_id, redact_phone
+from app.conversation_truth import ConversationTruth, format_truth_for_prompt
 from app.customer_respect import (
     ensure_respectful_address,
     find_banned_casual,
@@ -1196,6 +1199,15 @@ async def turns(
     if isinstance(body.customerContext, dict):
         customer_name = body.customerContext.get("name")
 
+    # RC7 observability — correlation id (no secrets / full phone)
+    trace = TurnTrace(
+        trace_id=new_trace_id(),
+        tenant_id=body.tenantId,
+        conversation_id=body.conversationId,
+        phone_redacted=redact_phone(body.phone),
+    )
+    actions.append({"tool": "turn_trace_start", "ok": True, "trace_id": trace.trace_id})
+
     address_form, respect_patch, address_ask_once = _resolve_respect(body)
     actions.append({"tool": "customer_respect_memory", "ok": True, "memory_patch": respect_patch})
 
@@ -1710,9 +1722,29 @@ async def turns(
         "topic_switch": conv_ctx.is_topic_switch,
         "correction": conv_ctx.is_correction,
         "paused": conv_ctx.booking_paused,
+        "incomplete": getattr(conv_ctx, "is_incomplete", False),
+        "implicit": getattr(conv_ctx, "is_implicit", False),
+        "stale_blocked": getattr(conv_ctx, "stale_context_blocked", False),
         "address_form": address_form,
         "memory_patch": ci_patch,
+        "trace_id": trace.trace_id,
     })
+    trace.add(
+        "conversation_intelligence",
+        intent=conv_ctx.current_intent,
+        topic=conv_ctx.current_topic,
+        incomplete=bool(getattr(conv_ctx, "is_incomplete", False)),
+    )
+
+    # RC7 bounded planner — selects existing tools; never exposed to customer
+    turn_plan = build_turn_plan(message=body.message or "", ctx=conv_ctx)
+    actions.append(turn_plan.to_action())
+    trace.add(
+        "turn_planner",
+        tools=turn_plan.selected_tools[:4],
+        ask_units=len(turn_plan.ask_units),
+        confirm=turn_plan.require_customer_confirm,
+    )
 
     system_parts.append(
         respect_system_prompt_block(
@@ -1721,6 +1753,20 @@ async def turns(
             script_mode=script_mode,
         )
     )
+    system_parts.append(format_plan_for_prompt(turn_plan))
+    # RC7 conversation truth — prevent Gemini from inventing service/date over confirmed state
+    try:
+        mem_truth = None
+        if isinstance(mem_for_ci, dict) and isinstance(mem_for_ci.get("conversation_truth"), dict):
+            mem_truth = ConversationTruth.from_dict(mem_for_ci.get("conversation_truth"))
+        elif conv_ctx and conv_ctx.current_topic:
+            mem_truth = ConversationTruth()
+            mem_truth.selected_service_name.value = conv_ctx.current_topic
+            mem_truth.selected_service_name.confidence = 0.5
+        if mem_truth:
+            system_parts.append(format_truth_for_prompt(mem_truth))
+    except Exception:
+        pass
 
     system_parts.append(
         f"ROLE: HUMAN-LIKE AI WHATSAPP SALES / FRONT-DESK AGENT for {brand}. "
@@ -2326,56 +2372,88 @@ async def turns(
         for a in actions
     )
     if raw_user and reply_text:
+        _has_media_turn = bool(body.images) or is_media_message(raw_user)
+        _prior_ai = None
+        if conv_ctx and conv_ctx.last_ai_response:
+            _prior_ai = conv_ctx.last_ai_response
         qrep = validate_customer_reply(
             raw_user,
             reply_text,
             prior_topic=(conv_ctx.current_topic if conv_ctx else None) or (ask_meta or {}).get("category"),
             booking_confirmed=_booked_ok_pre,
             price_hard_gated=_price_gated,
+            has_media=_has_media_turn,
+            prior_ai_reply=_prior_ai,
+            actions=actions,
+            expected_service=(conv_ctx.current_topic if conv_ctx else None),
         )
         actions.append({
             "tool": "response_quality",
             "ok": qrep.ok,
             "missing": qrep.missing[:12],
             "ask_units": len(qrep.ask_units),
-            "warnings": qrep.warnings[:6],
+            "warnings": qrep.warnings[:8],
+            "language_mismatch": qrep.language_mismatch,
+            "media_claim_without_media": qrep.media_claim_without_media,
+            "trace_id": trace.trace_id,
         })
+        trace.add(
+            "response_quality",
+            ok=qrep.ok,
+            missing=len(qrep.missing),
+            media_bad=qrep.media_claim_without_media,
+        )
+        # Bounded repair: strict single retry — never invent facts
         if (not qrep.ok) and qrep.repair_hint and result:
-            actions.append({"tool": "response_quality_repair", "ok": True, "missing": qrep.missing[:8]})
+            actions.append({
+                "tool": "response_quality_repair",
+                "ok": True,
+                "missing": qrep.missing[:8],
+                "attempt": 1,
+                "max_attempts": 1,
+            })
             try:
-                fix_messages = list(chat_messages) + [
-                    {"role": "assistant", "content": reply_text[:600]},
-                    {"role": "user", "content": qrep.repair_hint[:900]},
-                ]
-                fix_provider = get_provider(str(getattr(result, "provider", None) or provider_name or "gemini"))
-                fix = await fix_provider.complete(
-                    CompletionRequest(
-                        messages=fix_messages,
-                        model=str(getattr(result, "model", None) or model or ""),
-                        api_key=api_key,
-                        google_search=False,
-                        max_tokens=800,
-                        temperature=0.2,
+                with trace.span("response_quality_repair") as span:
+                    span.detail(missing=qrep.missing[:6])
+                    fix_messages = list(chat_messages) + [
+                        {"role": "assistant", "content": reply_text[:600]},
+                        {"role": "user", "content": qrep.repair_hint[:900]},
+                    ]
+                    fix_provider = get_provider(str(getattr(result, "provider", None) or provider_name or "gemini"))
+                    fix = await fix_provider.complete(
+                        CompletionRequest(
+                            messages=fix_messages,
+                            model=str(getattr(result, "model", None) or model or ""),
+                            api_key=api_key,
+                            google_search=False,
+                            max_tokens=800,
+                            temperature=0.2,
+                        )
                     )
-                )
-                fixed = _sanitize_reply_text(fix.text or "", customer_name)
-                if fixed:
-                    q2 = validate_customer_reply(
-                        raw_user,
-                        fixed,
-                        prior_topic=(conv_ctx.current_topic if conv_ctx else None),
-                        booking_confirmed=_booked_ok_pre,
-                        price_hard_gated=_price_gated,
-                    )
-                    if q2.ok or len(q2.missing) < len(qrep.missing):
-                        reply_text = fixed
-                        result = fix
-                        actions.append({
-                            "tool": "response_quality",
-                            "ok": q2.ok,
-                            "missing": q2.missing[:12],
-                            "repaired": True,
-                        })
+                    fixed = _sanitize_reply_text(fix.text or "", customer_name)
+                    if fixed:
+                        q2 = validate_customer_reply(
+                            raw_user,
+                            fixed,
+                            prior_topic=(conv_ctx.current_topic if conv_ctx else None),
+                            booking_confirmed=_booked_ok_pre,
+                            price_hard_gated=_price_gated,
+                            has_media=_has_media_turn,
+                            prior_ai_reply=_prior_ai,
+                            actions=actions,
+                            expected_service=(conv_ctx.current_topic if conv_ctx else None),
+                        )
+                        if q2.ok or len(q2.missing) < len(qrep.missing):
+                            reply_text = fixed
+                            result = fix
+                            actions.append({
+                                "tool": "response_quality",
+                                "ok": q2.ok,
+                                "missing": q2.missing[:12],
+                                "repaired": True,
+                            })
+                        else:
+                            span.fail(still_missing=q2.missing[:6])
             except Exception as qexc:
                 actions.append({"tool": "response_quality_repair", "ok": False, "error": str(qexc)[:160]})
 
@@ -2455,6 +2533,16 @@ async def turns(
         script_mode=script_mode,
         actions=actions,
     )
+
+    if result:
+        trace.record_usage(
+            provider=getattr(result, "provider", None),
+            model=getattr(result, "model", None),
+            prompt_tokens=getattr(result, "prompt_tokens", None),
+            completion_tokens=getattr(result, "completion_tokens", None),
+            latency_ms=getattr(result, "latency_ms", None),
+        )
+    actions.append(trace.to_action())
 
     return TurnResponse(
         replyText=reply_text,

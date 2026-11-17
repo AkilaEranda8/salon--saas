@@ -14,7 +14,7 @@ from dataclasses import asdict, dataclass, field
 from typing import Any, Optional
 
 from app.booking_flow import detect_lang, detect_script_mode, detect_service_category
-from app.pricing_resolver import extract_lkr_amounts, is_price_enquiry
+from app.pricing_resolver import extract_lkr_amounts, is_duration_enquiry, is_price_enquiry
 
 
 @dataclass
@@ -51,7 +51,7 @@ _LOCATION_HINT = re.compile(
     r"\b(?:koheda|kohada|where|location|address|branch|කොහෙද|directions?)\b",
     re.I,
 )
-_HOURS_HINT = re.compile(r"\b(?:open|hours|closing|විවෘත)\b", re.I)
+_HOURS_HINT = re.compile(r"\b(?:open(?:ing)?\s+hours|closing\s+hours|විවෘත|are\s+you\s+open)\b", re.I)
 _BOOK_HINT = re.compile(r"\b(?:book|booking|appointment|reserve|වෙන්|බුක්)\b", re.I)
 _COMPARE_HINT = re.compile(
     r"\b(?:wada|vs|versus|difference|compare|mita\s+wada|adu\s+eka|"
@@ -134,11 +134,11 @@ def decompose_customer_asks(
                 ["rs|lkr|price|mila|gana|රු|confirm"],
             )
         )
-    if _DURATION_HINT.search(raw):
+    if _DURATION_HINT.search(raw) or is_duration_enquiry(raw):
         units.append(AskUnit("duration", f"duration_{cat or 'service'}", ["min|minute|wela|duration|විනාඩි"]))
     if _LOCATION_HINT.search(raw):
         units.append(AskUnit("location", "branch_location", ["address|branch|kandy|mawatha|maps|phone|081"]))
-    if _HOURS_HINT.search(raw) and not _BOOK_HINT.search(raw):
+    if _HOURS_HINT.search(raw) and not _BOOK_HINT.search(raw) and not is_duration_enquiry(raw):
         units.append(AskUnit("hours", "opening_hours", ["open|close|hour|am|pm|විවෘත|confirm"]))
     if _BOOK_HINT.search(raw):
         units.append(AskUnit("booking", "booking_help", ["date|time|book|yes|slot|appointment"]))
@@ -166,7 +166,11 @@ def _unit_answered(unit: AskUnit, reply: str) -> bool:
     if unit.kind == "price":
         return bool(_PRICE_SIGNAL.search(r) or extract_lkr_amounts(reply) or re.search(r"confirm|team|stylist|list wela naha|not listed", r))
     if unit.kind == "duration":
-        return bool(_DURATION_SIGNAL.search(r) or re.search(r"duration|wela|min", r))
+        # Price-only replies do not satisfy a duration ask
+        has_dur = bool(_DURATION_SIGNAL.search(r) or re.search(r"\b(?:duration|wela|විනාඩි)\b", r, re.I))
+        if not has_dur:
+            return False
+        return True
     if unit.kind == "location":
         return bool(_LOCATION_SIGNAL.search(r))
     if unit.kind == "hours":
@@ -357,6 +361,10 @@ def validate_customer_reply(
     invented = False
     if is_price_enquiry(message) and extract_lkr_amounts(reply) and not price_hard_gated:
         warnings.append("price_amounts_present_outside_hard_gate")
+    # Duration ask answered with price only (no minutes) is a hard miss
+    if is_duration_enquiry(message) and extract_lkr_amounts(reply) and not _DURATION_SIGNAL.search(reply or ""):
+        missing.append("duration_answered_with_price_only")
+        warnings.append("duration_ask_got_price_dump")
 
     # Price identity: if verified amounts provided, flag invent
     if verified_amounts is not None and extract_lkr_amounts(reply):

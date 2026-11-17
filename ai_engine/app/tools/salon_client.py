@@ -106,6 +106,10 @@ async def book_appointment(tenant_id: int, payload: dict) -> dict:
     return await _post("/appointments", tenant_id, payload)
 
 
+async def add_appointment_services(tenant_id: int, appointment_id: int, payload: dict) -> dict:
+    return await _post(f"/appointments/{appointment_id}/services", tenant_id, payload)
+
+
 async def reschedule_appointment(tenant_id: int, appointment_id: int, payload: dict) -> dict:
     return await _put(f"/appointments/{appointment_id}", tenant_id, payload)
 

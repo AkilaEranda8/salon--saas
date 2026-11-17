@@ -22,6 +22,15 @@ from app.session_store import (
     save_session_raw,
 )
 from app.tools import run_tool
+from app.booking_multistylist import (
+    wants_different_stylist,
+    wants_add_to_existing,
+    wants_decline_one_keep_other,
+    upsert_service_staff,
+    service_staff_payload,
+    pick_staff_by_message,
+    staff_eligible,
+)
 from app.conversation_truth import (
     ConversationTruth,
     bump_turn,
@@ -48,10 +57,17 @@ AWAIT_RESCHED_PICK = "await_resched_pick"
 AWAIT_RESCHED_DATE = "await_resched_date"
 AWAIT_RESCHED_TIME = "await_resched_time"
 AWAIT_RESCHED_CONFIRM = "await_resched_confirm"
+AWAIT_LINE_STAFF = "await_line_staff"
+AWAIT_ADD_SVC_PICK = "await_add_svc_pick"
+AWAIT_ADD_SVC_SERVICE = "await_add_svc_service"
+AWAIT_ADD_SVC_CONFIRM = "await_add_svc_confirm"
 
 CANCEL_STATES = frozenset({AWAIT_CANCEL_PICK, AWAIT_CANCEL_CONFIRM})
 RESCHED_STATES = frozenset(
     {AWAIT_RESCHED_PICK, AWAIT_RESCHED_DATE, AWAIT_RESCHED_TIME, AWAIT_RESCHED_CONFIRM}
+)
+ADD_SVC_STATES = frozenset(
+    {AWAIT_ADD_SVC_PICK, AWAIT_ADD_SVC_SERVICE, AWAIT_ADD_SVC_CONFIRM}
 )
 
 CONFIRM_TOKENS = frozenset(
@@ -516,17 +532,23 @@ class BookingDraft:
     service_id: Optional[int] = None
     service_name: Optional[str] = None
     duration: int = 30
-    # Extra services combined into one visit: [{id, name, duration_minutes}, ...]
+    # Extra services combined into one visit: [{id, name, duration_minutes, staff_id?}, ...]
     extra_services: list = field(default_factory=list)
+    # Per-service staff: [{service_id, staff_id, staff_name?}] — never invent stylists
+    service_staff: list = field(default_factory=list)
     staff_id: Optional[int] = None
     staff_name: Optional[str] = None
+    # When asking for a different stylist for a specific service line
+    pending_staff_service_id: Optional[int] = None
     date: Optional[str] = None
     time: Optional[str] = None
     name: Optional[str] = None
     phone: Optional[str] = None
-    # cancel / reschedule: upcoming appointments offered to the customer + the one chosen
+    # cancel / reschedule / add-svc: upcoming appointments + chosen target
     cancel_candidates: list = field(default_factory=list)
     target: Optional[dict] = None
+    # Pending service to add onto an existing appointment (after explicit confirm)
+    pending_add_service: Optional[dict] = None
 
 
 @dataclass
@@ -782,10 +804,11 @@ _ABORT_RE = re.compile(r"\b(?:stop|never\s*mind|nvm|forget\s+it|exit|cancel\s+bo
 _CANCEL_RE = re.compile(
     r"\bcancel\s+(?:my|the|this|that|our)\s+(?:appointment|booking|reservation|visit|slot|appoinment|appoimnet)s?\b"
     r"|\bcancel\s+(?:appointment|booking|reservation|appoinment|appoimnet)\b"
+    r"|\bcancel\s+this\b"
     # Singlish: "cancel karann oni appointment" / "mage appointment eka cancel karanna"
     r"|\bcancel\s+karan\w*"
     r"|\b(?:appointment|appoinment|appoimnet|booking|reservation)s?\b.{0,48}\bcancel\b"
-    r"|\bcancel\b.{0,48}\b(?:appointment|appoinment|appoimnet|booking|reservation)s?\b"
+    r"|\bcancel\b.{0,48}\b(?:appointment|appoinment|appoimnet|booking|reservation|this|eka)s?\b"
     r"|\bremove\s+(?:my\s+)?(?:booking|appointment)\b"
     r"|අවලංගු|ரத்து"
 )
@@ -854,9 +877,12 @@ _CORRECTION_RE = re.compile(
     r"|\bmama\s+ahuwe\b|\bmama\s+ahuve\b|\bahuwe\s+wena\b"
     r"|\bmama\s+keewe\b|\bkeewe\b.{0,40}\bnewei\b"
     r"|\bcheck\s+history\b|\bsee\s+history\b|\bread\s+(?:the\s+)?history\b|\bchat\s+history\b"
+    r"|\bprevious\s+conversation\b|\bearlier\s+(?:chat|message|conversation)\b"
     r"|\beka\s+nemei\b|\boya\s+therum\b|\btherum\s+ganna\b"
     r"|\bquestion\s+ekata\b|\bwrong\s+answer\b|\bnot\s+what\s+i\s+(?:asked|said|meant)\b"
     r"|\bthat'?s\s+not\s+(?:what|right|correct)\b|\bi\s+asked\s+(?:something|a\s+different)\b"
+    r"|\bi\s+asked\s+for\s+time[,\s]+not\s+price\b|\basked\s+for\s+time[,\s]+not\s+price\b"
+    r"|\btime[,\s]+not\s+price\b"
     r"|\banswer\s+(?:the\s+)?(?:question|ask)\b"
     r"|\bprice\s+aka\s+newei\b|\btime\s+aka\s+newei\b"
     r"|\bi\s+meant\b|\bi\s+mean\b|\bwrong\s*[—\-,]?\s*i\s+meant\b"
@@ -958,10 +984,14 @@ def expected_step_for_state(state: str) -> str:
     return {
         AWAIT_SERVICE: "service",
         AWAIT_STAFF: "service",
+        AWAIT_LINE_STAFF: "pick",
         AWAIT_DATE: "date",
         AWAIT_TIME: "time",
         AWAIT_NAME: "name",
         AWAIT_CONFIRM: "confirm",
+        AWAIT_ADD_SVC_PICK: "pick",
+        AWAIT_ADD_SVC_SERVICE: "service",
+        AWAIT_ADD_SVC_CONFIRM: "confirm",
         AWAIT_CANCEL_PICK: "pick",
         AWAIT_CANCEL_CONFIRM: "confirm",
         AWAIT_RESCHED_PICK: "pick",
@@ -1110,6 +1140,7 @@ def detect_intent(text: str, sess: Session) -> str:
     t_ = _norm(text)
     cancel_hit = bool(_CANCEL_RE.search(t_))
     resched_hit = bool(_RESCHEDULE_RE.search(t_))
+    add_existing_hit = wants_add_to_existing(text)
     if sess.state != IDLE:
         if _ABORT_RE.search(t_):
             return "abort"
@@ -1118,11 +1149,15 @@ def detect_intent(text: str, sess: Session) -> str:
             return "cancel"
         if resched_hit and sess.state not in RESCHED_STATES:
             return "reschedule"
+        if add_existing_hit and sess.state not in ADD_SVC_STATES and sess.mode != "book":
+            return "add_services"
         return "continue"
     if cancel_hit:
         return "cancel"
     if resched_hit:
         return "reschedule"
+    if add_existing_hit:
+        return "add_services"
     if is_details_before_book(text) or is_correction_message(text):
         return "chat"
     # Booking / appointment wins over FAQ (e.g. "can u make a appointment")
@@ -1860,8 +1895,9 @@ def _resolve_service_pick(text: str, services: list[dict]) -> tuple[Optional[dic
 
 
 _EKATHU_RE = re.compile(
-    r"\b(?:ekathu|ekathukarala|ekathu\s*karala|add(?:ing)?|plus|together|combine|combined)\b"
-    r"|එකතු|සමඟ",
+    r"\b(?:ekathu|ekathukarala|ekathu\s*karala|add(?:ing)?|plus|together|combine|combined|"
+    r"also\s+add|and\s+also|ekathu\s+karanna|with\s+(?:a\s+)?(?:facial|wax|color|colour|haircut|cut))\b"
+    r"|එකතු|සමඟ|\+",
     re.I,
 )
 
@@ -1894,6 +1930,29 @@ async def _try_add_extra_service(
         "duration_minutes": int(picked.get("duration_minutes") or 30),
     })
     sess.draft.extra_services = extras
+    # Resolve specialist for the new line from authoritative staff list — never invent
+    try:
+        eligible = await run_tool("list_staff", tenant_id=tenant_id, service_id=pid) or []
+        actions.append({"tool": "list_staff", "ok": True, "count": len(eligible), "for_service": pid})
+    except Exception as exc:
+        eligible = []
+        actions.append({"tool": "list_staff", "ok": False, "error": str(exc)[:120]})
+    header_ok = staff_eligible(eligible, sess.draft.staff_id)
+    if header_ok and sess.draft.staff_id:
+        extras[-1]["staff_id"] = int(sess.draft.staff_id)
+        upsert_service_staff(sess.draft, pid, int(sess.draft.staff_id), sess.draft.staff_name)
+    elif eligible:
+        # Different specialist required — ask customer; do not silently pick another name
+        sess.staff = eligible
+        sess.draft.pending_staff_service_id = pid
+        sess.state = AWAIT_LINE_STAFF
+        actions.append({
+            "tool": "booking_need_line_staff",
+            "ok": True,
+            "service_id": pid,
+            "reason": "specialist_required",
+            "auto_substituted": False,
+        })
     actions.append({
         "tool": "booking_add_extra_service",
         "ok": True,
@@ -1926,6 +1985,13 @@ async def _auto_assign_staff_ask_date(
     picked = staff[0]
     sess.draft.staff_id = int(picked["id"])
     sess.draft.staff_name = picked.get("name")  # internal only — never shown in WhatsApp copy
+    if sess.draft.service_id:
+        upsert_service_staff(
+            sess.draft,
+            int(sess.draft.service_id),
+            int(picked["id"]),
+            picked.get("name"),
+        )
     if picked.get("branch_id"):
         sess.draft.branch_id = int(picked["branch_id"])
     sess.state = AWAIT_DATE
@@ -2263,6 +2329,62 @@ async def _handle_booking_turn_body(
         do_reset()
         return _reply(t(lang, "abort"), [{"tool": "booking_abort", "ok": True}])
 
+    # Phase 2.2 — keep add-svc / line-staff / stylist-change in SM (do not yield to LLM)
+    if sess.state in ADD_SVC_STATES:
+        return await _add_svc_continue(
+            tenant_id, sess, message, actions, do_reset, brand=brand,
+        )
+    if sess.state == AWAIT_LINE_STAFF:
+        return await _line_staff_continue(tenant_id, sess, message, actions, do_reset)
+    if wants_different_stylist(message) and sess.draft.service_id and sess.state in (
+        AWAIT_DATE, AWAIT_TIME, AWAIT_NAME, AWAIT_CONFIRM, AWAIT_STAFF,
+    ):
+        svc_for = int(sess.draft.pending_staff_service_id or sess.draft.service_id)
+        try:
+            staff = await run_tool("list_staff", tenant_id=tenant_id, service_id=svc_for) or []
+        except Exception as exc:
+            actions.append({"tool": "list_staff", "ok": False, "error": str(exc)[:120]})
+            staff = []
+        if not staff:
+            return _reply(
+                t(lang, "no_staff", service=sess.draft.service_name or "service"),
+                actions,
+            )
+        sess.staff = staff
+        sess.draft.pending_staff_service_id = svc_for
+        sess.state = AWAIT_LINE_STAFF
+        lines = "\n".join(
+            f"{i}. {s.get('name') or 'Stylist'}" for i, s in enumerate(staff[:8], 1)
+        )
+        return _reply(
+            (
+                f"Hari — stylist kenek select karanna:\n{lines}\n\nNumber eka kiyanna."
+                if (getattr(sess, "script_mode", None) == "singlish" or lang == "si")
+                else f"Please choose a stylist:\n{lines}\n\nReply with the number."
+            ),
+            actions,
+        )
+    if wants_decline_one_keep_other(message) and sess.draft.extra_services and sess.state in (
+        AWAIT_DATE, AWAIT_TIME, AWAIT_NAME, AWAIT_CONFIRM,
+    ):
+        removed = sess.draft.extra_services.pop()
+        sid = int(removed.get("id") or 0) if isinstance(removed, dict) else 0
+        if sid:
+            sess.draft.service_staff = [
+                r for r in (sess.draft.service_staff or [])
+                if int((r or {}).get("service_id") or 0) != sid
+            ]
+        actions.append({"tool": "booking_drop_extra", "ok": True, "removed": removed})
+        return _reply(
+            (
+                f"Hari — *{(removed or {}).get('name') if isinstance(removed, dict) else 'extra'}* ain kala. "
+                f"Thiyenne: *{_services_label(sess.draft)}*."
+                if (getattr(sess, "script_mode", None) == "singlish" or lang == "si")
+                else f"Removed the extra. Keeping: *{_services_label(sess.draft)}*."
+            ),
+            actions,
+        )
+
     media = is_media_message(message, has_media=has_media)
     correction = is_correction_message(message)
     expected = expected_step_for_state(sess.state)
@@ -2306,7 +2428,7 @@ async def _handle_booking_turn_body(
 
         # Not paused yet: yield to Gemini unless this is a clear step answer
         # (cancel/reschedule intents still switch modes below)
-        if intent not in ("cancel", "reschedule", "abort"):
+        if intent not in ("cancel", "reschedule", "abort", "add_services"):
             # Catalogue re-filter while picking service stays in SM
             if (
                 expected == "service"
@@ -2338,7 +2460,7 @@ async def _handle_booking_turn_body(
     if sess.state == IDLE and is_catalogue_ask(message) and not _BOOK_ACTION_RE.search(_norm(message)):
         return None
 
-    # ── Cancel / reschedule: start (also interrupts mid-book) ────────────────
+    # ── Cancel / reschedule / add-services: start (also interrupts mid-book) ─
     if intent in ("cancel", "reschedule") and sess.state not in CANCEL_STATES and sess.state not in RESCHED_STATES:
         if sess.state != IDLE:
             do_reset()
@@ -2347,6 +2469,19 @@ async def _handle_booking_turn_body(
             actions=actions, do_reset=do_reset,
             customer_name=customer_name,
         )
+
+    if intent == "add_services" and sess.state not in ADD_SVC_STATES:
+        if sess.state != IDLE and sess.mode == "book":
+            # Mid new-booking: prefer combining into draft (ekathu), not mutating existing
+            pass
+        else:
+            if sess.state != IDLE:
+                do_reset()
+            return await _add_svc_flow_start(
+                tenant_id=tenant_id, sess=sess, phone=phone,
+                message=message, actions=actions, do_reset=do_reset,
+                customer_name=customer_name,
+            )
 
     # ── Cancel flow (continue) ───────────────────────────────────────────────
     if sess.state in CANCEL_STATES:
@@ -2363,6 +2498,23 @@ async def _handle_booking_turn_body(
         added = await _try_add_extra_service(tenant_id, sess, message, actions)
         if added:
             total = _draft_total_duration(sess.draft)
+            if sess.state == AWAIT_LINE_STAFF:
+                staff = list(sess.staff or [])
+                lines = "\n".join(
+                    f"{i}. {s.get('name') or 'Stylist'}" for i, s in enumerate(staff[:8], 1)
+                )
+                return _reply(
+                    (
+                        f"Hari — *{_services_label(sess.draft)}* ekathu (~{total} min). "
+                        f"E service ekata stylist kenek select karanna:\n{lines}"
+                        if (getattr(sess, "script_mode", None) == "singlish" or lang == "si")
+                        else (
+                            f"Added *{_services_label(sess.draft)}* (~{total} min). "
+                            f"This service needs a specialist — choose one:\n{lines}"
+                        )
+                    ),
+                    actions,
+                )
             # Refresh slots for new total duration when date already chosen
             if sess.draft.date and sess.state in (AWAIT_TIME, AWAIT_CONFIRM, AWAIT_NAME):
                 slots = await _fetch_slots_any_staff(tenant_id, sess, str(sess.draft.date), actions)
@@ -2899,10 +3051,28 @@ async def _handle_booking_turn_body(
                 "error": f"slot_recheck:{exc}",
             })
 
-        idem = f"wa:{tenant_id}:{phone}:{d.service_id}:{d.staff_id}:{d.date}:{d.time}"
+        extra_ids = [
+            int(x.get("id"))
+            for x in (d.extra_services or [])
+            if isinstance(x, dict) and x.get("id")
+        ]
+        service_ids = [int(d.service_id)] + [sid for sid in extra_ids if sid != int(d.service_id)]
+        extra_key = ",".join(str(sid) for sid in extra_ids)
+        idem = (
+            f"wa:{tenant_id}:{phone}:{d.service_id}"
+            f"{('+' + extra_key) if extra_key else ''}"
+            f":{d.staff_id}:{d.date}:{d.time}"
+        )
+        total_mins = _draft_total_duration(d)
+        end_hhmm = _end_hhmm(str(d.time or ""), total_mins)
+        # CRM integration persists appointment + appointment_services (sequential lines).
+        line_staff = service_staff_payload(d)
         payload = {
             "service_id": d.service_id,
+            "service_ids": service_ids,
+            "extra_service_ids": extra_ids,
             "staff_id": d.staff_id,
+            "service_staff": line_staff,
             "date": d.date,
             "time": d.time,
             "customer_name": d.name,
@@ -2912,8 +3082,8 @@ async def _handle_booking_turn_body(
             "notes": (
                 f"Booked via WhatsApp AI CRM. "
                 f"Services: {_services_label(d)}. "
-                f"Duration ~{_draft_total_duration(d)} min "
-                f"({d.time}→{_end_hhmm(str(d.time or ''), _draft_total_duration(d))})."
+                f"Duration ~{total_mins} min "
+                f"({d.time}→{end_hhmm})."
             ),
         }
         try:
@@ -2921,6 +3091,39 @@ async def _handle_booking_turn_body(
             actions.append({"tool": "book_appointment", "ok": True, "idempotency_key": idem})
         except Exception as exc:
             actions.append({"tool": "book_appointment", "ok": False, "error": str(exc), "idempotency_key": idem})
+            # HTTP 409: surface alternative slots. NEVER auto-substitute a different time —
+            # customer must explicitly pick and re-confirm.
+            if _http_status(exc) == 409:
+                body = _http_json(exc) or {}
+                alts = body.get("available_slots") or []
+                alts_norm = [str(s)[:5] for s in alts if s]
+                requested = str(body.get("requested") or d.time or "")[:5]
+                if alts_norm:
+                    sess.slots = alts_norm
+                    d.time = None  # clear conflicted pick; do not invent a replacement
+                    sess.state = AWAIT_TIME
+                    actions.append({
+                        "tool": "book_appointment_conflict",
+                        "ok": False,
+                        "requested": requested,
+                        "available_slots": alts_norm[:24],
+                        "auto_substituted": False,
+                    })
+                    return _reply(
+                        t(lang, "slot_taken", options=", ".join(alts_norm[:12]))
+                        + "\n\n"
+                        + _times_text(lang, str(d.date or ""), alts_norm, draft=d),
+                        actions,
+                        {
+                            "status": "slot_conflict",
+                            "retryable": True,
+                            "requested": requested,
+                            "available_slots": alts_norm[:24],
+                            "auto_substituted": False,
+                            "payload": payload,
+                            "idempotency_key": idem,
+                        },
+                    )
             return _reply(
                 t(lang, "book_fail", err=exc),
                 actions,
@@ -3399,6 +3602,340 @@ async def _appt_selected(
     )
 
 
+# ── Per-line stylist + add-services to existing (explicit confirm) ───────────
+
+async def _line_staff_continue(
+    tenant_id: int, sess: Session, message: str, actions: list, do_reset,
+) -> dict[str, Any]:
+    lang = sess.lang
+    staff = list(sess.staff or [])
+    if not staff:
+        do_reset()
+        return _reply(t(lang, "no_staff", service=sess.draft.service_name or "service"), actions)
+    picked = pick_staff_by_message(message, staff)
+    if not picked:
+        lines = "\n".join(
+            f"{i}. {s.get('name') or 'Stylist'}" for i, s in enumerate(staff[:8], 1)
+        )
+        return _reply(
+            (
+                f"Stylist number eka hariyata kiyanna:\n{lines}"
+                if (getattr(sess, "script_mode", None) == "singlish" or lang == "si")
+                else f"Please reply with a stylist number:\n{lines}"
+            ),
+            actions,
+        )
+    svc_id = int(sess.draft.pending_staff_service_id or sess.draft.service_id or 0)
+    if not svc_id:
+        do_reset()
+        return _reply(t(lang, "abort"), actions)
+    upsert_service_staff(sess.draft, svc_id, int(picked["id"]), picked.get("name"))
+    # Update matching extra line staff_id
+    for x in sess.draft.extra_services or []:
+        if isinstance(x, dict) and int(x.get("id") or 0) == svc_id:
+            x["staff_id"] = int(picked["id"])
+    if svc_id == int(sess.draft.service_id or 0):
+        sess.draft.staff_id = int(picked["id"])
+        sess.draft.staff_name = picked.get("name")
+        if picked.get("branch_id"):
+            sess.draft.branch_id = int(picked["branch_id"])
+    sess.draft.pending_staff_service_id = None
+    actions.append({
+        "tool": "line_staff_assigned",
+        "ok": True,
+        "service_id": svc_id,
+        "staff_id": int(picked["id"]),
+        "auto_substituted": False,
+    })
+    # Resume toward date/time — never claim booked
+    if not sess.draft.date:
+        sess.state = AWAIT_DATE
+        return _reply(t(lang, "ask_date"), actions)
+    slots = await _fetch_slots_any_staff(tenant_id, sess, str(sess.draft.date), actions)
+    sess.slots = slots
+    sess.draft.time = None
+    sess.state = AWAIT_TIME
+    if not slots:
+        sess.state = AWAIT_DATE
+        return _reply(t(lang, "no_slots", date=sess.draft.date), actions)
+    return _reply(_times_text(lang, str(sess.draft.date), slots, draft=sess.draft), actions)
+
+
+async def _add_svc_flow_start(
+    *,
+    tenant_id: int,
+    sess: Session,
+    phone: Optional[str],
+    message: str,
+    actions: list,
+    do_reset,
+    customer_name: Optional[str] = None,
+) -> dict[str, Any]:
+    lang = sess.lang
+    sess.mode = "add_services"
+    if not phone:
+        do_reset()
+        return _reply(t(lang, "need_phone"), actions)
+    known_name = await _identify_customer(tenant_id, phone, actions, customer_name)
+    try:
+        rows = await run_tool("list_appointments", tenant_id=tenant_id, phone=phone) or []
+        actions.append({"tool": "list_appointments", "ok": True, "count": len(rows)})
+    except Exception as exc:
+        actions.append({"tool": "list_appointments", "ok": False, "error": str(exc)})
+        do_reset()
+        return _reply(t(lang, "appts_load_fail"), actions)
+    service_names: dict = {}
+    try:
+        services = await _load_services(tenant_id, sess, force_refresh=True)
+        for s in services:
+            if isinstance(s, dict) and s.get("id") is not None:
+                service_names[str(s["id"])] = s.get("name")
+                service_names[s["id"]] = s.get("name")
+    except Exception as exc:
+        actions.append({"tool": "list_services", "ok": False, "error": str(exc)})
+        services = []
+    cands = [
+        _slim_appt(a, service_names) for a in rows if isinstance(a, dict) and a.get("id")
+    ][:8]
+    if not cands:
+        do_reset()
+        return _reply(t(lang, "no_appts"), actions)
+    sess.draft = BookingDraft(phone=phone, name=known_name or customer_name, cancel_candidates=cands)
+    # Try resolve service from the same message
+    picked, _ = _resolve_service_pick(message, services or sess.services or [])
+    if picked and picked.get("id"):
+        sess.draft.pending_add_service = {
+            "id": int(picked["id"]),
+            "name": picked.get("name"),
+            "duration_minutes": int(picked.get("duration_minutes") or 30),
+        }
+    if len(cands) == 1:
+        sess.draft.target = cands[0]
+        if sess.draft.pending_add_service:
+            sess.state = AWAIT_ADD_SVC_CONFIRM
+            svc = sess.draft.pending_add_service
+            return _reply(
+                (
+                    f"#{cands[0]['id']} ({cands[0].get('date')} {cands[0].get('time')}) "
+                    f"ekata *{svc.get('name')}* add karannada?\n*yes* = confirm, *no* = cancel."
+                    if (getattr(sess, "script_mode", None) == "singlish" or lang == "si")
+                    else (
+                        f"Add *{svc.get('name')}* to appointment #{cands[0]['id']} "
+                        f"({cands[0].get('date')} {cands[0].get('time')})?\n"
+                        f"Reply *yes* to confirm or *no* to cancel."
+                    )
+                ),
+                actions,
+            )
+        sess.state = AWAIT_ADD_SVC_SERVICE
+        return _reply(
+            (
+                "Monada service eka add karanne? Name eka kiyanna."
+                if (getattr(sess, "script_mode", None) == "singlish" or lang == "si")
+                else "Which service should I add? Tell me the name."
+            ),
+            actions,
+        )
+    sess.state = AWAIT_ADD_SVC_PICK
+    return _reply(
+        (
+            f"Monada appointment ekata add karanne?\n{_appt_lines(cands)}\n\nNumber eka kiyanna."
+            if (getattr(sess, "script_mode", None) == "singlish" or lang == "si")
+            else f"Which appointment should I add a service to?\n{_appt_lines(cands)}\n\nReply with the number."
+        ),
+        actions,
+    )
+
+
+async def _add_svc_continue(
+    tenant_id: int,
+    sess: Session,
+    message: str,
+    actions: list,
+    do_reset,
+    brand: str = "",
+) -> dict[str, Any]:
+    lang = sess.lang
+    cands = sess.draft.cancel_candidates or []
+
+    if sess.state == AWAIT_ADD_SVC_PICK:
+        if not re.search(r"\d", message):
+            return _reply(t(lang, "pick_number"), actions)
+        appt = _pick_appt(message, cands)
+        if not appt:
+            return _reply(
+                (
+                    f"Hariyata number eka kiyanna:\n{_appt_lines(cands)}"
+                    if (getattr(sess, "script_mode", None) == "singlish" or lang == "si")
+                    else t(lang, "pick_number")
+                ),
+                actions,
+            )
+        sess.draft.target = appt
+        if sess.draft.pending_add_service:
+            sess.state = AWAIT_ADD_SVC_CONFIRM
+            svc = sess.draft.pending_add_service
+            return _reply(
+                (
+                    f"#{appt['id']} ekata *{svc.get('name')}* add karannada?\n*yes* / *no*"
+                    if (getattr(sess, "script_mode", None) == "singlish" or lang == "si")
+                    else (
+                        f"Add *{svc.get('name')}* to #{appt['id']}?\nReply *yes* or *no*."
+                    )
+                ),
+                actions,
+            )
+        sess.state = AWAIT_ADD_SVC_SERVICE
+        return _reply(
+            (
+                "Monada service eka add karanne?"
+                if (getattr(sess, "script_mode", None) == "singlish" or lang == "si")
+                else "Which service should I add?"
+            ),
+            actions,
+        )
+
+    if sess.state == AWAIT_ADD_SVC_SERVICE:
+        services = await _load_services(tenant_id, sess, force_refresh=False)
+        picked, _ = _resolve_service_pick(message, services)
+        if not picked or not picked.get("id"):
+            return _reply(
+                (
+                    "Service name eka hariyata kiyanna."
+                    if (getattr(sess, "script_mode", None) == "singlish" or lang == "si")
+                    else "Please name the service to add."
+                ),
+                actions,
+            )
+        sess.draft.pending_add_service = {
+            "id": int(picked["id"]),
+            "name": picked.get("name"),
+            "duration_minutes": int(picked.get("duration_minutes") or 30),
+        }
+        sess.state = AWAIT_ADD_SVC_CONFIRM
+        appt = sess.draft.target or {}
+        return _reply(
+            (
+                f"#{appt.get('id')} ekata *{picked.get('name')}* add karannada?\n*yes* / *no*"
+                if (getattr(sess, "script_mode", None) == "singlish" or lang == "si")
+                else f"Add *{picked.get('name')}* to #{appt.get('id')}?\nReply *yes* or *no*."
+            ),
+            actions,
+        )
+
+    # AWAIT_ADD_SVC_CONFIRM — require exact yes; never confirm before backend success
+    if is_exact_decline(message):
+        do_reset()
+        return _reply(
+            (
+                "Hari — add karala naha. Booking eka wage thiyenawa."
+                if (getattr(sess, "script_mode", None) == "singlish" or lang == "si")
+                else "Okay — nothing was changed."
+            ),
+            actions,
+        )
+    if not is_exact_confirm(message):
+        appt = sess.draft.target or {}
+        svc = sess.draft.pending_add_service or {}
+        return _reply(
+            (
+                f"Confirm karanna *yes*, nathnam *no*.\n"
+                f"#{appt.get('id')} + *{svc.get('name')}*"
+                if (getattr(sess, "script_mode", None) == "singlish" or lang == "si")
+                else (
+                    f"Please reply *yes* to add *{svc.get('name')}* to #{appt.get('id')}, "
+                    f"or *no* to cancel."
+                )
+            ),
+            actions,
+        )
+
+    appt = sess.draft.target or {}
+    svc = sess.draft.pending_add_service or {}
+    appt_id = int(appt.get("id") or 0)
+    svc_id = int(svc.get("id") or 0)
+    if not appt_id or not svc_id:
+        do_reset()
+        return _reply(t(lang, "abort"), actions)
+
+    idem = f"wa-addsvc:{tenant_id}:{appt_id}:{svc_id}"
+    payload = {
+        "add_service_ids": [svc_id],
+        "idempotency_key": idem,
+        "notes": "Added via WhatsApp AI CRM after explicit customer confirm.",
+    }
+    # Preserve header staff unless draft has an explicit line staff for this service
+    line = service_staff_payload(sess.draft)
+    if line:
+        payload["service_staff"] = line
+    try:
+        result = await run_tool(
+            "add_appointment_services",
+            tenant_id=tenant_id,
+            appointment_id=appt_id,
+            **payload,
+        )
+        actions.append({"tool": "add_appointment_services", "ok": True, "idempotency_key": idem})
+    except Exception as exc:
+        actions.append({"tool": "add_appointment_services", "ok": False, "error": str(exc)})
+        if _http_status(exc) == 409:
+            body = _http_json(exc) or {}
+            if body.get("reason") == "duplicate_service":
+                do_reset()
+                return _reply(
+                    (
+                        "E service eka already booking ekata thiyenawa."
+                        if (getattr(sess, "script_mode", None) == "singlish" or lang == "si")
+                        else "That service is already on the appointment."
+                    ),
+                    actions,
+                )
+            alts = [str(s)[:5] for s in (body.get("available_slots") or []) if s]
+            do_reset()
+            return _reply(
+                (
+                    "Add karanna slots naha — time change karanna oni nam kiyanna."
+                    if (getattr(sess, "script_mode", None) == "singlish" or lang == "si")
+                    else "Can't add at the current time"
+                    + (f". Alternatives: {', '.join(alts[:8])}" if alts else ".")
+                    + " Nothing was changed."
+                ),
+                actions,
+                {
+                    "status": "add_services_conflict",
+                    "auto_substituted": False,
+                    "available_slots": alts[:24],
+                },
+            )
+        do_reset()
+        return _reply(
+            (
+                f"Add karanna bari una: {exc}"
+                if (getattr(sess, "script_mode", None) == "singlish" or lang == "si")
+                else f"Could not add the service: {exc}"
+            ),
+            actions,
+            {"status": "failed", "retryable": True, "error": str(exc)},
+        )
+
+    do_reset()
+    return _reply(
+        (
+            f"Hari — #{appt_id} ekata *{svc.get('name')}* add una. Ref #{appt_id}."
+            if (getattr(sess, "script_mode", None) == "singlish" or lang == "si")
+            else f"Done — added *{svc.get('name')}* to appointment #{appt_id}."
+        ),
+        actions,
+        {
+            "status": "services_added",
+            "salon_appointment_id": appt_id,
+            "added_service_id": svc_id,
+            "result": result,
+            "idempotency_key": idem,
+        },
+    )
+
+
 # ── Cancel (explicit confirm required) ───────────────────────────────────────
 
 async def _cancel_continue(
@@ -3492,6 +4029,18 @@ def _resched_summary(sess: Session) -> str:
 def _http_status(exc: Exception) -> Optional[int]:
     resp = getattr(exc, "response", None)
     return getattr(resp, "status_code", None)
+
+
+def _http_json(exc: Exception) -> Optional[dict]:
+    """Best-effort JSON body from an httpx HTTPStatusError (e.g. 409 available_slots)."""
+    resp = getattr(exc, "response", None)
+    if resp is None:
+        return None
+    try:
+        data = resp.json()
+        return data if isinstance(data, dict) else None
+    except Exception:
+        return None
 
 
 async def _resched_continue(

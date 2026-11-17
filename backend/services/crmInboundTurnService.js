@@ -848,15 +848,48 @@ async function processInboundAiTurn(jobData) {
         });
         try {
           const { sendBookingConfirmation } = require('./crmReminderService');
+          const { CrmFollowUpJob } = require('../models');
           const appt = await Appointment.findByPk(b.salon_appointment_id);
           if (appt) {
-            await sendBookingConfirmation({
-              tenantId,
-              appointment: appt,
-              phone: lead.phone || phone,
-              conversationId: conversation.id,
-              leadId: lead.id,
-            });
+            // AI turn already sent the customer-facing confirmation in replyText —
+            // do not send a second template/text confirm for the same appointment.
+            const aiReply = String(turn.replyText || turn.reply_text || '');
+            const aiAlreadyConfirmed = /\b(confirmed|booked|appointment\s+(?:is\s+)?(?:set|confirmed)|ref\s*#?\d+)\b/i.test(aiReply);
+            if (aiAlreadyConfirmed) {
+              const existing = await CrmFollowUpJob.findOne({
+                where: {
+                  tenant_id: tenantId,
+                  appointment_id: appt.id,
+                  job_type: 'booking_confirm',
+                  status: 'sent',
+                },
+              });
+              if (!existing) {
+                await CrmFollowUpJob.create({
+                  tenant_id: tenantId,
+                  job_type: 'booking_confirm',
+                  status: 'sent',
+                  appointment_id: appt.id,
+                  conversation_id: conversation.id,
+                  lead_id: lead.id,
+                  phone: lead.phone || phone,
+                  sent_at: new Date(),
+                  meta: {
+                    channel: 'ai_reply_text',
+                    suppressed_duplicate_template: true,
+                    inbound_wa_message_id: waMessageId || null,
+                  },
+                }).catch(() => {});
+              }
+            } else {
+              await sendBookingConfirmation({
+                tenantId,
+                appointment: appt,
+                phone: lead.phone || phone,
+                conversationId: conversation.id,
+                leadId: lead.id,
+              });
+            }
           }
         } catch (confirmErr) {
           console.warn('[inbound] booking confirm WA', confirmErr.message);
@@ -1094,6 +1127,29 @@ async function processInboundAiTurn(jobData) {
           buttons: sendButtons.length ? sendButtons : undefined,
         },
       }).catch((e) => console.error('[inbound] always reply direct', e.message));
+    } else {
+      // H-CALTE P0: approved trigger is outbound_queued. Fire-and-forget only.
+      // H_CALTE_ENABLED defaults false ⇒ bridge no-ops; never awaits analysis.
+      setImmediate(() => {
+        try {
+          const { emitLearningEventSafe } = require('./hCalteBridge');
+          emitLearningEventSafe({
+            trustedTenantId: tenantId,
+            eventType: 'outbound_queued',
+            conversationId: conversation.id,
+            inboundMessageId: waMessageId || inboundMsg?.id || null,
+            marketingOptOut: !!lead.marketing_opt_out,
+            // Purpose-specific learning consent persistence is not yet available — fail closed.
+            learningConsent: null,
+            accessGrants: null,
+            language: lead.locale || null,
+            customerMessage: message,
+            aiResponse: sendText,
+          });
+        } catch (_) {
+          /* never interrupt customer path */
+        }
+      });
     }
   }
 
@@ -1147,17 +1203,18 @@ async function enqueueInboundTurn(data) {
   const hasImages = Array.isArray(data.images) && data.images.length > 0;
   const hasAudio = !!(data.audio && data.audio.dataBase64);
 
-  // Baileys can emit the same customer text twice with different message ids —
-  // debounce identical content per phone for a few seconds (skip for image/voice turns).
-  if (tenantId && phone && bodyNorm && !hasImages && !hasAudio) {
+  // Body debounce is only for transports without stable WA message IDs (e.g. Baileys).
+  // Cloud API webhook redeliveries are deduped by jobId=wa-in-{tenant}-{waMessageId}.
+  // Do NOT discard an intentional customer repeat that has a new waMessageId but matching text.
+  if (tenantId && phone && bodyNorm && !hasImages && !hasAudio && !waMessageId) {
     const redis = getRedis();
     if (redis) {
       const { createHash } = require('crypto');
       const h = createHash('sha1').update(bodyNorm).digest('hex').slice(0, 16);
       const key = cacheKey(tenantId, 'crm', 'inbound_debounce', `${phone}:${h}`);
-      const got = await redis.set(key, waMessageId || '1', 'EX', 12, 'NX');
+      const got = await redis.set(key, '1', 'EX', 12, 'NX');
       if (!got) {
-        console.log('[inbound] debounce skip duplicate body', { tenantId, phone, waMessageId });
+        console.log('[inbound] debounce skip duplicate body (no waMessageId)', { tenantId, phone });
         return null;
       }
     }

@@ -38,6 +38,7 @@ from app.pricing_resolver import (
     detect_length,
     detect_length_service_key,
     extract_lkr_amounts,
+    is_duration_enquiry,
     is_length_only_message,
     is_price_enquiry,
     is_price_rejection,
@@ -196,14 +197,26 @@ def _understand_customer_ask(message: str) -> dict[str, Any]:
     branch = bool(re.search(
         r"\bbranch|location|address|koheda|කොහෙද|where|directions?|parking\b", t, re.I
     ))
+    duration = bool(re.search(
+        r"\b(?:how\s+long|how\s+much\s+time|duration|kochchara\s+wela(?:wak)?|"
+        r"wela(?:wak)?\s+yanawa|wela\s*yan|time[,\s]+not\s+price|"
+        r"asked\s+for\s+time|කොච්චර\s*වෙලා|කොච්චර\s*වේලා|වේලාව|විනාඩි)\b",
+        t,
+        re.I,
+    )) or (
+        is_price_rejection(raw)
+        and bool(re.search(r"\b(?:time|wela|duration|වේලා)\b", t, re.I))
+    )
     hours = bool(re.search(
-        r"\bopen|hours|closing|විවෘත|වේලා|are you open|salon\s+open\b", t, re.I
-    ))
+        r"\bopen(?:ing)?\s+hours|closing\s+hours|විවෘත|are you open|salon\s+open\b", t, re.I
+    )) and not duration
     price = bool(re.search(
         r"\bprice|prices|mila|gana|ganada|how\s*much|keeyak|kiyada|කීය|ගාන|ගණන්|cost|rates?\b",
         t,
         re.I,
-    )) and not is_price_rejection(raw)
+    )) and not is_price_rejection(raw) and not (
+        duration and not re.search(r"\b(?:price|mila|gana|kiyada|කීය|ගණන්)\b", t, re.I)
+    )
     book = bool(re.search(
         r"\bbook|booking|appointment|reserve|වෙන්|බුක්|schedule|slot\b", t, re.I
     ))
@@ -231,6 +244,11 @@ def _understand_customer_ask(message: str) -> dict[str, Any]:
             "location (verified branch name/address/phone/maps only — never invent; "
             "hours only if present in live branch/KB data)"
         )
+    if duration:
+        topics.append(
+            f"DURATION (minutes) for {cat or 'the discussed service'} from live catalogue only — "
+            "lead with how long it takes; do not answer with price unless also asked"
+        )
     if hours and not book:
         topics.append("opening hours from verified salon data only (never invent)")
     if offer:
@@ -241,7 +259,7 @@ def _understand_customer_ask(message: str) -> dict[str, Any]:
         topics.append("aftercare/advice for what they named")
     if cat and price:
         topics.append(f"price for {cat} from live data only")
-    elif cat:
+    elif cat and not duration:
         topics.append(f"{cat} services from live data only (no unrelated categories)")
     elif price:
         topics.append("price for the named service (clarify if unclear — no full dump)")
@@ -263,6 +281,11 @@ def _understand_customer_ask(message: str) -> dict[str, Any]:
         intent, must = "location", (
             "Answer branch / location / address / phone / maps from VERIFIED salon branch data only. "
             "Do NOT invent hours or addresses. Do NOT dump a service list."
+        )
+    elif duration and not multi:
+        intent, must = "duration", (
+            f"They asked how LONG {cat or 'the service'} takes. Answer with verified catalogue minutes. "
+            "Do NOT lead with / substitute a price quote."
         )
     elif hours and not book and not multi:
         intent, must = "hours", (
@@ -319,6 +342,7 @@ def _understand_customer_ask(message: str) -> dict[str, Any]:
         "greeting": greeting,
         "branch": branch,
         "hours": hours,
+        "duration": duration,
         "price": price,
         "book": book,
         "cancel": cancel,
@@ -369,6 +393,18 @@ def _reply_mismatches_ask(message: str, reply: str, ask: Optional[dict[str, Any]
     # Price ask → should include a price-ish signal
     if intent in ("price", "price_category"):
         if not _REPLY_HAS_PRICE.search(r):
+            return True
+
+    # Duration ask → must mention minutes/time; price-only reply is a mismatch
+    if intent == "duration" or ask.get("duration"):
+        has_duration = bool(re.search(
+            r"\b\d{1,3}\s*(?:min|mins|minutes|hr|hrs|hour)|විනාඩි|duration|wela",
+            r,
+            re.I,
+        ))
+        if not has_duration:
+            return True
+        if _REPLY_HAS_PRICE.search(r) and not has_duration:
             return True
 
     # Language ask → shouldn't be a service catalogue dump
@@ -1043,6 +1079,145 @@ async def _build_salon_data_block(
     )
 
 
+async def _maybe_duration_resolver_reply(
+    body: "TurnRequest",
+    actions: list[dict[str, Any]],
+) -> Optional[TurnResponse]:
+    """
+    Hard gate for duration asks: answer verified catalogue minutes — never lead with price.
+    """
+    msg = body.message or ""
+    ask = _understand_customer_ask(msg)
+    if not (is_duration_enquiry(msg) or ask.get("duration") or ask.get("intent") == "duration"):
+        return None
+    # If they also explicitly asked price, let the pricing path / Gemini handle multi-ask
+    if is_price_enquiry(msg) or ask.get("price"):
+        actions.append({"tool": "duration_resolver", "ok": True, "skipped": True, "reason": "also_price_ask"})
+        return None
+
+    mem_ctx = None
+    if isinstance(body.customerContext, dict):
+        mem_ctx = body.customerContext.get("memory") if isinstance(body.customerContext.get("memory"), dict) else None
+    prior_key = resolve_service_key_from_memory(mem_ctx)
+    cat = detect_service_category(msg) or (mem_ctx or {}).get("last_service") or prior_key
+    script = detect_script_mode(msg)
+
+    try:
+        raw = await run_tool("list_services", tenant_id=body.tenantId) or []
+        actions.append({"tool": "list_services_duration", "ok": True, "count": len(raw) if isinstance(raw, list) else 0})
+    except Exception as exc:
+        actions.append({"tool": "list_services_duration", "ok": False, "error": str(exc)})
+        fail = (
+            "Duration eka denata verify karanna bari una — team eken confirm karagannam."
+            if script == "singlish"
+            else (
+                "දැන් කාලය තහවුරු කළ නොහැක — කාර්ය මණ්ඩලයක් confirm කරයි."
+                if script == "sinhala"
+                else "I can't verify that duration right now — a team member will confirm how long it takes."
+            )
+        )
+        addr_form, addr_patch, _ = _resolve_respect(body)
+        actions.append({"tool": "customer_respect_memory", "ok": True, "memory_patch": addr_patch})
+        actions.append({"tool": "duration_resolver", "ok": False, "escalate": True})
+        return TurnResponse(
+            replyText=_finalize_customer_reply(fail, address_form=addr_form, script_mode=script, actions=actions),
+            actions=actions,
+            booking=None,
+            handoff={"wanted": True, "reason": "duration_catalogue_unavailable"},
+            usage=None,
+        )
+
+    # Prefer memory last_duration when topic matches
+    last_dur = None
+    if isinstance(mem_ctx, dict) and mem_ctx.get("last_duration_minutes") is not None:
+        try:
+            last_dur = int(mem_ctx.get("last_duration_minutes"))
+        except (TypeError, ValueError):
+            last_dur = None
+
+    matches: list[dict[str, Any]] = []
+    cat_l = str(cat or "").lower()
+    for s in raw if isinstance(raw, list) else []:
+        if not isinstance(s, dict) or not s.get("is_active", True):
+            continue
+        name = str(s.get("name") or "")
+        name_l = name.lower()
+        if cat_l and (cat_l in name_l or cat_l.replace("_", " ") in name_l or cat_l.replace("_", "") in name_l.replace(" ", "")):
+            matches.append(s)
+        elif prior_key and str(prior_key).lower() in name_l:
+            matches.append(s)
+
+    mins: Optional[int] = None
+    label = str(cat or "that service")
+    if matches:
+        # Use the most common / first verified duration; never invent
+        durs = [int(m.get("duration_minutes") or 0) for m in matches if int(m.get("duration_minutes") or 0) > 0]
+        if durs:
+            mins = durs[0]
+            label = str(matches[0].get("name") or label)
+    elif last_dur and last_dur > 0:
+        mins = last_dur
+
+    addr_form, addr_patch, _ = _resolve_respect(body)
+    actions.append({"tool": "customer_respect_memory", "ok": True, "memory_patch": addr_patch})
+    if not mins:
+        clarify = (
+            f"{label} duration eka catalogue eken confirm karanna ona — team eken exact minutes kiyannam."
+            if script == "singlish"
+            else (
+                f"{label} කාලය catalogue එකෙන් තහවුරු කළ යුතුයි — කාර්ය මණ්ඩලය exact minutes කියයි."
+                if script == "sinhala"
+                else f"I don't have a verified duration for {label} yet — a team member will confirm the exact minutes."
+            )
+        )
+        actions.append({"tool": "duration_resolver", "ok": True, "escalate": True, "source": "no_verified_duration"})
+        patch = {"last_service": cat} if cat else {}
+        if patch:
+            actions.append({"tool": "memory_patch", "ok": True, "memory_patch": patch})
+        return TurnResponse(
+            replyText=_finalize_customer_reply(clarify, address_form=addr_form, script_mode=script, actions=actions),
+            actions=actions,
+            booking=None,
+            handoff={"wanted": True, "reason": "duration_unverified"},
+            usage=None,
+        )
+
+    hours = mins / 60.0
+    hours_txt = f"{hours:.1f}h" if mins >= 60 else f"{mins} min"
+    reply = (
+        f"{label} eka roughly *{mins} minutes* ({hours_txt}) gannawa."
+        if script == "singlish"
+        else (
+            f"{label} එකට ආසන්න වශයෙන් *{mins} විනාඩි* ({hours_txt}) ගත වෙනවා."
+            if script == "sinhala"
+            else f"{label} usually takes about *{mins} minutes* ({hours_txt})."
+        )
+    )
+    actions.append({
+        "tool": "duration_resolver",
+        "ok": True,
+        "source": "catalogue" if matches else "memory",
+        "duration_minutes": mins,
+        "service": label,
+    })
+    actions.append({
+        "tool": "memory_patch",
+        "ok": True,
+        "memory_patch": {
+            "last_service": cat or label,
+            "last_duration_minutes": mins,
+            "current_topic": cat or label,
+        },
+    })
+    return TurnResponse(
+        replyText=_finalize_customer_reply(reply, address_form=addr_form, script_mode=script, actions=actions),
+        actions=actions,
+        booking=None,
+        handoff=None,
+        usage=None,
+    )
+
+
 async def _maybe_pricing_resolver_reply(
     body: "TurnRequest",
     actions: list[dict[str, Any]],
@@ -1065,6 +1240,12 @@ async def _maybe_pricing_resolver_reply(
     # Customer rejected price/time quote — never force "which service price?"
     if is_price_rejection(msg):
         actions.append({"tool": "pricing_resolver", "ok": True, "skipped": True, "reason": "price_rejection"})
+        return None
+    # Duration-only asks are handled by the duration hard-gate — do not dump prices
+    if (is_duration_enquiry(msg) or ask.get("duration")) and not (
+        is_price_enquiry(msg) or ask.get("price") or length_key or length_only
+    ):
+        actions.append({"tool": "pricing_resolver", "ok": True, "skipped": True, "reason": "duration_ask"})
         return None
     # Enter hard-gate for price asks, length-tier service names, OR length-only follow-ups
     if not (is_price_enquiry(msg) or ask.get("price") or length_key or length_only):
@@ -1280,16 +1461,43 @@ async def turns(
                         script_mode=sm0,
                         actions=book_actions,
                     )
+                    booking_payload = booked.get("booking") or {}
+                    handoff = _detect_handoff(body.message or "", booked_text)
+                    # Clear booking progress / confirmed book must not route to generic human handoff
+                    if handoff and (
+                        str((booking_payload or {}).get("status") or "").lower() == "confirmed"
+                        or str(handoff.get("reason") or "").lower() in {
+                            "customer_booking_confirmation",
+                            "booking_confirmation",
+                            "confirm_booking",
+                        }
+                    ):
+                        book_actions.append({
+                            "tool": "handoff_booking_confirm_suppressed",
+                            "ok": True,
+                            "reason": handoff.get("reason"),
+                            "path": "early_booking_return",
+                        })
+                        handoff = None
                     return TurnResponse(
                         replyText=booked_text,
                         actions=book_actions,
-                        booking=booked.get("booking"),
+                        booking=booking_payload,
                         quickReplies=booked.get("quickReplies") or None,
-                        handoff=_detect_handoff(body.message or "", booked_text),
+                        handoff=handoff,
                         usage=None,
                     )
         except Exception as exc:
             actions.append({"tool": "booking_flow", "ok": False, "error": str(exc)})
+
+    # 1a) Deterministic duration resolver — before price hard-gate / Gemini
+    if not force_handoff:
+        try:
+            timed = await _maybe_duration_resolver_reply(body, actions)
+            if timed is not None:
+                return timed
+        except Exception as exc:
+            actions.append({"tool": "duration_resolver", "ok": False, "error": str(exc)})
 
     # 1b) Deterministic pricing resolver (price / length-tier asks) — before Gemini
     if not force_handoff:
@@ -2288,12 +2496,29 @@ async def turns(
                         script_mode=script_mode,
                         actions=soft_actions,
                     )
+                    soft_booking = booked.get("booking") or {}
+                    soft_handoff = _detect_handoff(body.message or "", booked_text)
+                    if soft_handoff and (
+                        str((soft_booking or {}).get("status") or "").lower() == "confirmed"
+                        or str(soft_handoff.get("reason") or "").lower() in {
+                            "customer_booking_confirmation",
+                            "booking_confirmation",
+                            "confirm_booking",
+                        }
+                    ):
+                        soft_actions.append({
+                            "tool": "handoff_booking_confirm_suppressed",
+                            "ok": True,
+                            "reason": soft_handoff.get("reason"),
+                            "path": "soft_booking_return",
+                        })
+                        soft_handoff = None
                     return TurnResponse(
                         replyText=booked_text,
                         actions=soft_actions,
-                        booking=booked.get("booking"),
+                        booking=soft_booking,
                         quickReplies=booked.get("quickReplies") or None,
-                        handoff=_detect_handoff(body.message or "", booked_text),
+                        handoff=soft_handoff,
                         usage=None,
                     )
                 if booked is not None and booked.get("yieldToLlm"):

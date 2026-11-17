@@ -6,7 +6,6 @@
 'use strict';
 
 const { Op } = require('sequelize');
-const { sequelize } = require('../config/database');
 const Branch = require('../models/Branch');
 const Service = require('../models/Service');
 const Staff = require('../models/Staff');
@@ -21,10 +20,17 @@ const Attendance = require('../models/Attendance');
 const {
   parseDurationMinutes,
   listAvailableSlots,
-  BLOCKING_ATTENDANCE_STATUSES,
 } = require('../utils/staffAvailability');
-const { resolveStaffDayWindow } = require('../utils/staffSchedule');
 const { getRedis, cacheKey } = require('../utils/redis');
+const {
+  normalizeServiceIdList,
+} = require('../services/crmMultiServiceBooking');
+const {
+  createCrmAppointmentTransactional,
+} = require('../services/crmAppointmentCreateService');
+const {
+  addServicesToCrmAppointment,
+} = require('../services/crmAppointmentAddServicesService');
 
 const CACHE_TTL_SEC = 120;
 
@@ -448,14 +454,21 @@ async function storeIdempotent(tenantId, idempotencyKey, appointmentId) {
 
 /**
  * POST /appointments
- * Body: { branch_id, service_id, staff_id, date, time, customer_name, phone, email?, notes?, idempotency_key? }
+ * Body: {
+ *   branch_id, service_id, staff_id, date, time, customer_name, phone, email?, notes?,
+ *   idempotency_key?,
+ *   service_ids?: number[],          // ordered multi-service (primary first)
+ *   extra_service_ids?: number[],    // appended after service_id
+ *   services?: Array<{id|service_id}>
+ * }
  * Creates confirmed appointment (AI customer already confirmed on WhatsApp).
+ * Multi-service: one Appointment row + N appointment_services lines (sequential times)
+ * inside a single DB transaction. Partial failure rolls back.
  * C17: DB unique active slot + transaction — Redis optional, never sole guard.
  */
 const createAppointment = async (req, res) => {
   const tenantId = req.crmTenantId;
   const {
-    branch_id,
     service_id,
     staff_id,
     date,
@@ -463,20 +476,28 @@ const createAppointment = async (req, res) => {
     customer_name,
     phone,
     email,
-    notes,
     idempotency_key,
   } = req.body || {};
 
-  if (!service_id || !staff_id || !date || !time || !customer_name || !phone) {
+  const serviceIdList = normalizeServiceIdList(req.body || {});
+  if ((!service_id && !serviceIdList.length) || !staff_id || !date || !time || !customer_name || !phone) {
     return res.status(400).json({
-      message: 'service_id, staff_id, date, time, customer_name, and phone are required',
+      message: 'service_id (or service_ids), staff_id, date, time, customer_name, and phone are required',
     });
   }
 
   try {
     const existingIdem = await resolveIdempotent(tenantId, idempotency_key);
     if (existingIdem) {
-      return res.status(200).json({ appointment: existingIdem, idempotent: true });
+      const existingLinks = await AppointmentService.findAll({
+        where: { appointment_id: existingIdem.id },
+        order: [['sort_order', 'ASC'], ['id', 'ASC']],
+      }).catch(() => []);
+      return res.status(200).json({
+        appointment: existingIdem,
+        service_links: existingLinks,
+        idempotent: true,
+      });
     }
 
     const lock = await acquireIdempotencyLock(tenantId, idempotency_key);
@@ -503,184 +524,25 @@ const createAppointment = async (req, res) => {
       }
     }
 
-    const result = await sequelize.transaction(async (t) => {
-      const clash = await Appointment.findOne({
-        where: {
-          tenant_id: tenantId,
-          staff_id: Number(staff_id),
-          date: dateKey,
-          time: timeKey,
-          status: { [Op.in]: ['pending', 'confirmed', 'in_service'] },
-        },
-        transaction: t,
-        lock: t.LOCK.UPDATE,
-      });
-      if (clash) {
-        const err = new Error('Selected time is already booked');
-        err.code = 'SLOT_CONFLICT';
-        err.appointment = clash;
-        throw err;
-      }
-
-      const [service, staffRow] = await Promise.all([
-        Service.findOne({
-          where: { id: service_id, tenant_id: tenantId, is_active: true },
-          transaction: t,
-        }),
-        Staff.findOne({
-          where: { id: staff_id, tenant_id: tenantId, is_active: true },
-          transaction: t,
-        }),
-      ]);
-      if (!service) {
-        const err = new Error('Service not found');
-        err.code = 'NOT_FOUND';
-        throw err;
-      }
-      if (!staffRow) {
-        const err = new Error('Staff not found');
-        err.code = 'NOT_FOUND';
-        throw err;
-      }
-
-      let branchId = branch_id ? Number(branch_id) : (staffRow.branch_id || null);
-      if (!branchId) {
-        const first = await Branch.findOne({
-          where: { tenant_id: tenantId, status: 'active' },
-          attributes: ['id'],
-          transaction: t,
-        });
-        branchId = first?.id || null;
-      }
-      if (!branchId) {
-        const err = new Error('No active branch for this tenant');
-        err.code = 'BAD_REQUEST';
-        throw err;
-      }
-
-      const branch = await Branch.findOne({
-        where: { id: branchId, tenant_id: tenantId, status: 'active' },
-        transaction: t,
-      });
-      if (!branch) {
-        const err = new Error('Invalid branch');
-        err.code = 'BAD_REQUEST';
-        throw err;
-      }
-
-      const off = await StaffOffDay.findOne({
-        where: { staff_id, date: dateKey },
-        transaction: t,
-      });
-      if (off) {
-        const err = new Error('Staff is marked off on this date');
-        err.code = 'BAD_REQUEST';
-        throw err;
-      }
-
-      const leave = await Attendance.findOne({
-        where: {
-          staff_id,
-          date: dateKey,
-          status: { [Op.in]: BLOCKING_ATTENDANCE_STATUSES },
-        },
-        transaction: t,
-      });
-      if (leave) {
-        const err = new Error(`Staff is on ${leave.status}`);
-        err.code = 'BAD_REQUEST';
-        throw err;
-      }
-
-      const duration = service.duration_minutes || 30;
-      const dayWindow = resolveStaffDayWindow(staffRow.working_hours, dateKey);
-      if (dayWindow.closed) {
-        const err = new Error('Staff is not working on this date');
-        err.code = 'BAD_REQUEST';
-        throw err;
-      }
-      const start = toMinutes(timeKey);
-      const end = start + duration;
-      if (start < dayWindow.startMin || end > dayWindow.endMin) {
-        const err = new Error('Selected time is outside working hours');
-        err.code = 'BAD_REQUEST';
-        throw err;
-      }
-
-      const slotResult = await listAvailableSlots({
-        Staff,
-        StaffOffDay,
-        Attendance,
-        Appointment,
-        Service,
-        staffId: Number(staff_id),
-        date: dateKey,
-        durationMinutes: duration,
-        tenantId,
-        requireOnline: false,
-        scopeBranchConflicts: false,
-      });
-      const slots = Array.isArray(slotResult?.slots) ? slotResult.slots : [];
-      if (!slots.includes(timeKey)) {
-        const err = new Error('Selected time is not available');
-        err.code = 'SLOT_CONFLICT';
-        throw err;
-      }
-
-      let customer = await findCustomerByPhone(tenantId, phone);
-      if (!customer) {
-        customer = await Customer.create({
-          name: customer_name,
-          phone: String(phone).trim(),
-          email: email || null,
-          branch_id: branchId,
-          tenant_id: tenantId,
-        }, { transaction: t });
-      }
-
-      const noteParts = [];
-      if (notes) noteParts.push(String(notes));
-      noteParts.push('[source:whatsapp_ai_crm]');
-      if (idempotency_key) noteParts.push(`[idem:${idempotency_key}]`);
-
-      const appointment = await Appointment.create({
-        tenant_id: tenantId,
-        branch_id: branchId,
-        customer_id: customer.id,
-        service_id: service.id,
-        staff_id: Number(staff_id),
-        customer_name,
-        phone: String(phone).trim(),
-        date: dateKey,
-        time: timeKey,
-        amount: service.price || 0,
-        status: 'confirmed',
-        notes: noteParts.join(' '),
-      }, { transaction: t });
-
-      try {
-        await AppointmentService.create({
-          appointment_id: appointment.id,
-          service_id: service.id,
-          staff_id: Number(staff_id) || null,
-          date: dateKey,
-          time: timeKey,
-        }, { transaction: t });
-      } catch {
-        // join optional
-      }
-
-      return { appointment, customer };
+    const result = await createCrmAppointmentTransactional({
+      tenantId,
+      body: req.body || {},
     });
+
+    if (result.idempotent) {
+      return res.status(200).json({
+        appointment: result.appointment,
+        service_links: result.service_links,
+        idempotent: true,
+      });
+    }
 
     await storeIdempotent(tenantId, idempotency_key, result.appointment.id);
 
-    // Same salon notification path as UI bookings (SMS / WhatsApp / staff WA)
+    // Staff notify only — customer confirmation is owned by the AI turn / inbound confirm path
+    // to avoid duplicate customer-facing WhatsApp/SMS confirmations.
     try {
-      const {
-        notifyAppointmentConfirmed,
-        notifyStaffAppointmentAssigned,
-      } = require('../services/notificationService');
+      const { notifyStaffAppointmentAssigned } = require('../services/notificationService');
       const branch = await Branch.findOne({
         where: { id: result.appointment.branch_id, tenant_id: tenantId },
         attributes: ['id', 'name', 'phone'],
@@ -696,10 +558,9 @@ const createAppointment = async (req, res) => {
       };
       await Promise.allSettled([
         notifyStaffAppointmentAssigned(apptPayload, branch, serviceRow, tenantId),
-        notifyAppointmentConfirmed(apptPayload, branch, serviceRow, tenantId),
       ]);
       console.log(
-        `[crm-integration] salon notifications queued appointment=${result.appointment.id} phone=${apptPayload.phone}`
+        `[crm-integration] staff notify queued appointment=${result.appointment.id} multi=${(result.service_links || []).length} phone=${apptPayload.phone}`
       );
     } catch (notifyErr) {
       console.warn('[crm-integration] appointment notify failed:', notifyErr.message);
@@ -707,12 +568,16 @@ const createAppointment = async (req, res) => {
 
     return res.status(201).json({
       appointment: result.appointment,
+      service_links: result.service_links,
+      total_duration_minutes: result.total_duration_minutes,
+      total_amount: result.total_amount,
       customer: {
         id: result.customer.id,
         name: result.customer.name,
         phone: result.customer.phone,
       },
       idempotent: false,
+      customer_notify: 'deferred_to_ai_turn',
     });
   } catch (err) {
     if (err.code === 'SLOT_CONFLICT' || err.name === 'SequelizeUniqueConstraintError') {
@@ -725,8 +590,68 @@ const createAppointment = async (req, res) => {
         });
       }
       return res.status(409).json({
-        message: 'Selected time is already booked',
+        message: 'Selected time is not available',
         conflict: true,
+        requested: err.requested || null,
+        available_slots: Array.isArray(err.available_slots) ? err.available_slots : undefined,
+        total_duration_minutes: err.total_duration_minutes || undefined,
+      });
+    }
+    if (err.code === 'NOT_FOUND') {
+      return res.status(404).json({ message: err.message });
+    }
+    if (err.code === 'BAD_REQUEST') {
+      return res.status(400).json({ message: err.message, details: err.details || undefined });
+    }
+    console.error('[crm-integration] createAppointment', err);
+    return res.status(500).json({ message: err.message || 'Server error' });
+  }
+};
+
+/**
+ * POST /appointments/:id/services
+ * Add catalogue services to an existing confirmed/pending appointment.
+ * Preserves appointment id. Never auto-moves start time.
+ * Customer confirm is owned by the AI turn (customer_notify deferred).
+ */
+const addAppointmentServices = async (req, res) => {
+  const tenantId = req.crmTenantId;
+  const appointmentId = Number(req.params.id);
+  if (!Number.isInteger(appointmentId) || appointmentId <= 0) {
+    return res.status(400).json({ message: 'Valid appointment id is required' });
+  }
+  try {
+    const result = await addServicesToCrmAppointment({
+      tenantId,
+      appointmentId,
+      body: req.body || {},
+    });
+    return res.status(result.idempotent ? 200 : 200).json({
+      appointment: result.appointment,
+      service_links: result.service_links,
+      added_service_ids: result.added_service_ids,
+      total_duration_minutes: result.total_duration_minutes,
+      total_amount: result.total_amount,
+      idempotent: !!result.idempotent,
+      customer_notify: 'deferred_to_ai_turn',
+    });
+  } catch (err) {
+    if (err.code === 'DUPLICATE_SERVICE') {
+      return res.status(409).json({
+        message: err.message,
+        conflict: true,
+        reason: 'duplicate_service',
+        duplicate_service_ids: err.duplicate_service_ids || [],
+      });
+    }
+    if (err.code === 'SLOT_CONFLICT') {
+      return res.status(409).json({
+        message: err.message || 'Selected time is not available',
+        conflict: true,
+        requested: err.requested || null,
+        available_slots: Array.isArray(err.available_slots) ? err.available_slots : undefined,
+        total_duration_minutes: err.total_duration_minutes || undefined,
+        conflicts: err.conflicts || undefined,
       });
     }
     if (err.code === 'NOT_FOUND') {
@@ -735,7 +660,7 @@ const createAppointment = async (req, res) => {
     if (err.code === 'BAD_REQUEST') {
       return res.status(400).json({ message: err.message });
     }
-    console.error('[crm-integration] createAppointment', err);
+    console.error('[crm-integration] addAppointmentServices', err);
     return res.status(500).json({ message: err.message || 'Server error' });
   }
 };
@@ -871,6 +796,7 @@ module.exports = {
   listPromotions,
   listAppointments,
   createAppointment,
+  addAppointmentServices,
   rescheduleAppointment,
   cancelAppointment,
   searchKnowledge: searchKnowledgeHandler,

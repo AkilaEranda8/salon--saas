@@ -60,7 +60,11 @@ INTENT_COMPLIMENT = "compliment"
 
 
 _DURATION_RE = re.compile(
-    r"\b(?:how\s+long|duration|kochchara\s+wela|wela\s+yanawa|කොච්චර\s*වෙලා|වේලාව)\b",
+    r"\b(?:how\s+long|how\s+much\s+time|duration|kochchara\s+wela(?:wak)?|"
+    r"wela(?:wak)?\s+yanawa|wela\s*yan|time\s+(?:eka|for)|"
+    r"කොච්චර\s*වෙලා|කොච්චර\s*වේලා|වේලාව|විනාඩි)\b"
+    r"|\b(?:asked|ask)\s+for\s+time\b"
+    r"|\btime[,\s]+not\s+price\b",
     re.I,
 )
 _RECOMMEND_RE = re.compile(
@@ -135,9 +139,13 @@ _BOOK_RE = re.compile(
     r"\b(?:book|booking|appointment|reserve|schedule|slot|වෙන්|බුක්)\b",
     re.I,
 )
-_CANCEL_RE = re.compile(r"\b(?:cancel|අවලංගු)\b", re.I)
+_CANCEL_RE = re.compile(
+    r"\b(?:cancel(?:\s+this)?|cancel\s+(?:my|the|this|that)\b|අවලංගු)\b",
+    re.I,
+)
 _RESCHED_RE = re.compile(r"\b(?:reschedule|postpone|වෙනස්\s*කර)\b", re.I)
-_HOURS_RE = re.compile(r"\b(?:open|hours|closing|විවෘත|වේලා)\b", re.I)
+# Do NOT match bare Sinhala වේලා here — that usually means duration/time-of-day, not hours.
+_HOURS_RE = re.compile(r"\b(?:open(?:ing)?\s+hours|opening\s+hours|closing\s+hours|are\s+you\s+open|විවෘත|salon\s+open)\b", re.I)
 _BRANCH_RE = re.compile(r"\b(?:branch|location|address|koheda|කොහෙද|where)\b", re.I)
 _GREETING_RE = re.compile(
     r"^(?:hi+|hii+|hello|hey+|hai|ayo+|ayubowan|oii+|ආයුබෝවන්|வணக்கம்)[\s!.]*$",
@@ -160,8 +168,9 @@ _IMPLICIT_BOOK_RE = re.compile(
     re.I,
 )
 _DURATION_FOLLOWUP_RE = re.compile(
-    r"\b(?:ekata\s+kochchara|kochchara\s+welawak|how\s+long\s+(?:for\s+)?(?:it|that|eka)|"
-    r"duration\s+(?:eka)?|wela\s*yan)\b",
+    r"\b(?:ekata\s+kochchara|kochchara\s+wela(?:wak)?|how\s+long\s+(?:for\s+)?(?:it|that|eka)|"
+    r"how\s+much\s+time|duration\s+(?:eka)?|wela\s*yan|"
+    r"time\s+eka\s+(?:kochchara|kiyada)|කොච්චර\s*වේලා)\b",
     re.I,
 )
 _COMMITMENT_RE = re.compile(
@@ -541,11 +550,15 @@ def classify_intent(
             "must": "Offer human handoff; summarise what they need for staff.",
         }
 
-    if _CANCEL_RE.search(raw) and re.search(r"appointment|booking|appoinment|වෙන්", t, re.I):
+    if _CANCEL_RE.search(raw) and (
+        re.search(r"appointment|booking|appoinment|වෙන්|\bthis\b|\beka\b", t, re.I)
+        or booking_state not in (None, "", "idle")
+        or bool(mem.get("last_appointment_id") or mem.get("active_booking_ref"))
+    ):
         return {
             "intent": INTENT_CANCEL,
             "topic": "cancel",
-            "must": "Help cancel — confirm which appointment, require explicit yes before tool.",
+            "must": "Help cancel — resolve the correct active booking, require explicit yes before tool.",
         }
 
     if _RESCHED_RE.search(raw):
@@ -576,7 +589,22 @@ def classify_intent(
             "must": "Answer location/address/directions from salon data only.",
         }
 
-    if _HOURS_RE.search(raw) and not _BOOK_RE.search(raw):
+    # Duration BEFORE hours — Sinhala/Singlish "වේලා / wela" is usually service duration.
+    if _DURATION_RE.search(raw) and not _HOURS_RE.search(raw):
+        cat = detect_service_category(raw) or referent_topic or prior_topic or mem.get("last_service")
+        return {
+            "intent": INTENT_DURATION,
+            "topic": cat,
+            "must": (
+                f"Answer DURATION (minutes) for {cat or 'the discussed service'} from live catalogue only. "
+                "Lead with how long it takes — do NOT answer with price unless they also asked price. "
+                "If they said 'eka', use prior topic — do not re-ask which service when known."
+            ),
+            "referent_topic": referent_topic or cat,
+            "ask_kind": "duration",
+        }
+
+    if _HOURS_RE.search(raw) and not _BOOK_RE.search(raw) and not _DURATION_RE.search(raw):
         return {
             "intent": INTENT_HOURS,
             "topic": "hours",
@@ -595,18 +623,6 @@ def classify_intent(
             "intent": INTENT_STAFF,
             "topic": "staff",
             "must": "Answer staff questions carefully; do not invent stylist availability.",
-        }
-
-    if _DURATION_RE.search(raw):
-        cat = detect_service_category(raw) or referent_topic or prior_topic or mem.get("last_service")
-        return {
-            "intent": INTENT_DURATION,
-            "topic": cat,
-            "must": (
-                f"Answer duration for {cat or 'the discussed service'} from live catalogue only; "
-                "if they said 'eka', use prior topic — do not re-ask which service when known."
-            ),
-            "referent_topic": referent_topic or cat,
         }
 
     if is_price_enquiry(raw) or (detect_service_category(raw) and re.search(r"mila|kiyada|keeyada|price|cost|gana", t)):

@@ -69,6 +69,11 @@ async def book_appointment(tenant_id: int, **payload):
     return await api.book_appointment(tenant_id, payload)
 
 
+@tool("add_appointment_services")
+async def add_appointment_services(tenant_id: int, appointment_id: int, **payload):
+    return await api.add_appointment_services(tenant_id, appointment_id, payload)
+
+
 @tool("reschedule_appointment")
 async def reschedule_appointment(tenant_id: int, appointment_id: int, **payload):
     return await api.reschedule_appointment(tenant_id, appointment_id, payload)

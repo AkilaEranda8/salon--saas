@@ -53,6 +53,7 @@ router.get('/packages', ctrl.listPackages);
 router.get('/promotions', ctrl.listPromotions);
 router.get('/appointments', ctrl.listAppointments);
 router.post('/appointments', ctrl.createAppointment);
+router.post('/appointments/:id/services', ctrl.addAppointmentServices);
 router.put('/appointments/:id', ctrl.rescheduleAppointment);
 router.post('/appointments/:id/cancel', ctrl.cancelAppointment);
 router.get('/knowledge/search', ctrl.searchKnowledge);

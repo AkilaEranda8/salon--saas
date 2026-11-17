@@ -143,10 +143,21 @@ _PRICE_REJECTION_RE = re.compile(
     r"\b(?:newei|nemei|nemeiye|not)\b[^\n]{0,24}\b(?:price|mila|time)\b|"
     r"\b(?:didn'?t|did\s+not|dont|don'?t)\s+ask\b[^\n]{0,40}\b(?:price|prices|time)\b|"
     r"\bi\s+(?:didn'?t|did\s+not)\s+ask\s+(?:for\s+)?(?:the\s+)?(?:price|time)\b|"
+    r"\bi\s+asked\s+for\s+time[,\s]+not\s+price\b|"
+    r"\basked\s+(?:for\s+)?time[,\s]+not\s+(?:the\s+)?price\b|"
+    r"\btime[,\s]+not\s+price\b|"
     r"\bmama\s+keewe\b[^\n]{0,60}\b(?:price|time|mila)\b[^\n]{0,24}\b(?:newei|nemei)\b|"
     r"\bnot\s+(?:the\s+)?(?:price|prices|time)\b|"
     r"මිල\s*නෙවෙි|මිල\s*නෙමෙ|කාලය\s*නෙවෙි"
     r")",
+    re.I,
+)
+
+_DURATION_CUE_RE = re.compile(
+    r"\b(?:how\s+long|how\s+much\s+time|duration|kochchara\s+wela(?:wak)?|"
+    r"wela(?:wak)?\s+yanawa|wela\s*yan|minutes?\b|විනාඩි|"
+    r"කොච්චර\s*වෙලා|කොච්චර\s*වේලා|වේලාව|"
+    r"asked\s+for\s+time|time[,\s]+not\s+price)\b",
     re.I,
 )
 
@@ -156,6 +167,22 @@ def is_price_rejection(text: str) -> bool:
     return bool(_PRICE_REJECTION_RE.search(str(text or "")))
 
 
+def is_duration_enquiry(text: str) -> bool:
+    """True when the customer is asking how long a service takes (not opening hours / price)."""
+    t = (text or "").strip()
+    if not t:
+        return False
+    if is_price_rejection(t) and re.search(r"\b(?:time|wela|duration|වේලා)\b", t, re.I):
+        # "I asked for time, not price" → treat as duration follow-up
+        return True
+    if not _DURATION_CUE_RE.search(t):
+        return False
+    # Opening-hours asks are not service-duration asks
+    if re.search(r"\b(?:open(?:ing)?\s+hours|closing\s+hours|are\s+you\s+open|විවෘත)\b", t, re.I):
+        return False
+    return True
+
+
 def is_price_enquiry(text: str) -> bool:
     """True for EN / Singlish / SI price asks (including short category+mila forms)."""
     t = (text or "").strip()
@@ -163,6 +190,11 @@ def is_price_enquiry(text: str) -> bool:
         return False
     # Negation wins — never hard-gate into "which service price?"
     if is_price_rejection(t):
+        return False
+    # Pure duration asks must not enter the price hard-gate
+    if is_duration_enquiry(t) and not _PRICE_CUE_RE.search(t) and not re.search(
+        r"කීයද|මිල|ගානේ|ගණන්", t
+    ):
         return False
     if _PRICE_CUE_RE.search(t):
         return True

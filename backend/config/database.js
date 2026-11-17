@@ -9,6 +9,8 @@ const sequelize = new Sequelize(
   process.env.DB_PASS,
   {
     host:    process.env.DB_HOST,
+    // DB_PORT enables isolated staging MySQL (e.g. host 3307) without touching production 3306
+    port:    process.env.DB_PORT ? Number(process.env.DB_PORT) : 3306,
     dialect: 'mysql',
     logging: false,
     timezone: '+05:30', // Asia/Colombo
